@@ -24,19 +24,10 @@ import org.goja.mcp.tools.GetDocumentSymbolsTool;
 import org.goja.mcp.tools.GetTypeMembersTool;
 import org.goja.mcp.tools.GetClasspathInfoTool;
 import org.goja.mcp.tools.GetProjectStructureTool;
-import org.goja.mcp.tools.GetSymbolInfoTool;
-import org.goja.mcp.tools.GetTypeAtPositionTool;
-import org.goja.mcp.tools.GetMethodAtPositionTool;
-import org.goja.mcp.tools.GetFieldAtPositionTool;
-import org.goja.mcp.tools.GetHoverInfoTool;
-import org.goja.mcp.tools.GetJavadocTool;
-import org.goja.mcp.tools.GetSignatureHelpTool;
-import org.goja.mcp.tools.GetEnclosingElementTool;
-import org.goja.mcp.tools.GetSuperMethodTool;
+import org.goja.mcp.tools.GetAtPositionTool;
 import org.goja.mcp.tools.GetDiagnosticsTool;
 import org.goja.mcp.tools.ValidateSyntaxTool;
-import org.goja.mcp.tools.GetCallHierarchyIncomingTool;
-import org.goja.mcp.tools.GetCallHierarchyOutgoingTool;
+import org.goja.mcp.tools.GetCallHierarchyTool;
 import org.goja.mcp.tools.FindFieldWritesTool;
 import org.goja.mcp.tools.FindTestsTool;
 import org.goja.mcp.tools.FindPatternUsagesTool;
@@ -360,23 +351,17 @@ public class GojaApplication implements IApplication {
 
         // Batch 3: Project Structure & Position Info
         toolRegistry.register(new GetProjectStructureTool(() -> jdtService));
-        toolRegistry.register(new GetSymbolInfoTool(() -> jdtService));
-        toolRegistry.register(new GetTypeAtPositionTool(() -> jdtService));
-        toolRegistry.register(new GetMethodAtPositionTool(() -> jdtService));
-        toolRegistry.register(new GetFieldAtPositionTool(() -> jdtService));
-        toolRegistry.register(new GetHoverInfoTool(() -> jdtService));
-
-        // Batch 4: Javadoc & Method Analysis
-        toolRegistry.register(new GetJavadocTool(() -> jdtService));
-        toolRegistry.register(new GetSignatureHelpTool(() -> jdtService));
-        toolRegistry.register(new GetEnclosingElementTool(() -> jdtService));
-        toolRegistry.register(new GetSuperMethodTool(() -> jdtService));
+        // Sprint 16b/A: get_at_position collapses the 9 read-only position-lookup
+        // tools (type/method/field/hover/javadoc/signature/enclosing/super/symbol)
+        // into one always-loaded front door. The narrow classes remain as the
+        // delegated implementations; they're no longer registered.
+        toolRegistry.register(new GetAtPositionTool(() -> jdtService));
 
         // Batch 5: Diagnostics & Call Hierarchy
         toolRegistry.register(new GetDiagnosticsTool(() -> jdtService));
         toolRegistry.register(new ValidateSyntaxTool(() -> jdtService));
-        toolRegistry.register(new GetCallHierarchyIncomingTool(() -> jdtService));
-        toolRegistry.register(new GetCallHierarchyOutgoingTool(() -> jdtService));
+        // Sprint 16b/A: get_call_hierarchy collapses incoming + outgoing by direction.
+        toolRegistry.register(new GetCallHierarchyTool(() -> jdtService));
 
         // Analysis tools
         toolRegistry.register(new FindFieldWritesTool(() -> jdtService));
