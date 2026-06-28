@@ -1,9 +1,10 @@
 package org.goja.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.goja.core.IJdtService;
+import org.goja.mcp.domain.DetectorCatalog;
+import org.goja.mcp.domain.GojaService;
+import org.goja.mcp.domain.IGojaService;
 import org.goja.mcp.models.ToolResponse;
 
 import java.util.LinkedHashMap;
@@ -12,61 +13,29 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Sprint 11 Phase D — parametric tool that replaces eight narrow
- * code-quality tools with a single dispatching call.
+ * Parametric Smell front door. Its {@code kind} enum and dispatch are a
+ * <em>projection</em> of a {@link DetectorCatalog} (Sprint 16b/D): the loaded
+ * tool surface is constant while the capability behind it grows by registration.
+ * Sprint 17 (Fowler) / 20 (SOLID) add a {@code Detector} (a kind) to the catalog
+ * and it appears here automatically — no edit to this class, no new tool.
  *
- * <p>Replaces the per-service tool registrations:</p>
- * <ul>
- *   <li>{@code find_naming_violations}</li>
- *   <li>{@code find_possible_bugs}</li>
- *   <li>{@code find_unused_code}</li>
- *   <li>{@code find_large_classes}</li>
- *   <li>{@code find_circular_dependencies}</li>
- *   <li>{@code find_reflection_usage}</li>
- *   <li>{@code find_throws_declarations}</li>
- *   <li>{@code find_catch_blocks}</li>
- * </ul>
- *
- * <p>The narrow tool classes stay in the same package as concrete
- * implementations of the AST / search analyses; this tool delegates to
- * them through their package-private {@link AbstractTool#executeWithService}
- * entry point. They are no longer registered as user-facing MCP tools so
- * agents see only {@code find_quality_issue} in {@code tools/list}.</p>
+ * <p>Originally (Sprint 11 Phase D) this hard-coded a switch over eight narrow
+ * analyzers; those analyzers are now the built-in detectors registered by
+ * {@link QualityDetectors#builtins}.</p>
  */
 public class FindQualityIssueTool extends AbstractTool {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final DetectorCatalog catalog;
 
-    private static final List<String> KINDS = List.of(
-        "naming",
-        "bugs",
-        "unused",
-        "large_classes",
-        "circular_deps",
-        "reflection",
-        "throws",
-        "catches"
-    );
-
-    private final FindNamingViolationsTool naming;
-    private final FindPossibleBugsTool bugs;
-    private final FindUnusedCodeTool unused;
-    private final FindLargeClassesTool largeClasses;
-    private final FindCircularDependenciesTool circularDeps;
-    private final FindReflectionUsageTool reflection;
-    private final FindThrowsDeclarationsTool throwsDecls;
-    private final FindCatchBlocksTool catches;
-
+    /** Back-compat: build the default catalog of the eight built-in detectors. */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier) {
-        super(serviceSupplier);
-        this.naming = new FindNamingViolationsTool(serviceSupplier);
-        this.bugs = new FindPossibleBugsTool(serviceSupplier);
-        this.unused = new FindUnusedCodeTool(serviceSupplier);
-        this.largeClasses = new FindLargeClassesTool(serviceSupplier);
-        this.circularDeps = new FindCircularDependenciesTool(serviceSupplier);
-        this.reflection = new FindReflectionUsageTool(serviceSupplier);
-        this.throwsDecls = new FindThrowsDeclarationsTool(serviceSupplier);
-        this.catches = new FindCatchBlocksTool(serviceSupplier);
+        this(new GojaService(serviceSupplier, QualityDetectors.builtins(serviceSupplier)));
+    }
+
+    /** The seam: project from the supplied service's detector catalog. */
+    public FindQualityIssueTool(IGojaService goja) {
+        super(goja::jdt);
+        this.catalog = goja.detectors();
     }
 
     @Override
@@ -92,6 +61,9 @@ public class FindQualityIssueTool extends AbstractTool {
             - throws         — methods declaring 'throws <query>' (query = exception FQN).
             - catches        — 'catch (<query> ...)' blocks (query = exception FQN).
 
+            The available kinds are the registered detectors (see the kind enum);
+            more analyses may be added without introducing new tools.
+
             Examples:
             - find_quality_issue(kind="naming", filePath="path/to/File.java")
             - find_quality_issue(kind="large_classes", maxLines=500)
@@ -110,7 +82,7 @@ public class FindQualityIssueTool extends AbstractTool {
 
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
+        kind.put("enum", catalog.kinds()); // projected from the catalog
         kind.put("description",
             "Which quality analysis to run. See the tool description for what each kind reports.");
         properties.put("kind", kind);
@@ -157,47 +129,11 @@ public class FindQualityIssueTool extends AbstractTool {
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind",
-                "kind is required; one of " + KINDS);
+            return ToolResponse.invalidParameter("kind", "kind is required; one of " + catalog.kinds());
         }
-        if (!KINDS.contains(kind)) {
-            return ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS);
-        }
-
-        return switch (kind) {
-            case "naming"        -> naming.executeWithService(service, arguments);
-            case "bugs"          -> bugs.executeWithService(service, arguments);
-            case "unused"        -> unused.executeWithService(service, arguments);
-            case "large_classes" -> largeClasses.executeWithService(service, arguments);
-            case "circular_deps" -> circularDeps.executeWithService(service, arguments);
-            case "reflection"    -> reflection.executeWithService(service, arguments);
-            case "throws"        -> throwsDecls.executeWithService(service, withExceptionTypeAlias(arguments));
-            case "catches"       -> catches.executeWithService(service, withExceptionTypeAlias(arguments));
-            default -> throw new IllegalStateException("validated above; unreachable");
-        };
-    }
-
-    /**
-     * The narrow throws/catches tools read {@code exceptionType}; the
-     * unified surface uses {@code query}. Build a copy of arguments with
-     * {@code exceptionType} populated from {@code query} so we don't
-     * change the underlying tool implementations.
-     */
-    private static JsonNode withExceptionTypeAlias(JsonNode arguments) {
-        if (arguments == null || arguments.isNull()) {
-            return arguments;
-        }
-        ObjectNode copy;
-        if (arguments instanceof ObjectNode existing) {
-            copy = existing.deepCopy();
-        } else {
-            copy = MAPPER.createObjectNode();
-            arguments.fields().forEachRemaining(e -> copy.set(e.getKey(), e.getValue()));
-        }
-        if (!copy.has("exceptionType") && copy.has("query")) {
-            copy.set("exceptionType", copy.get("query"));
-        }
-        return copy;
+        return catalog.get(kind)
+            .map(detector -> detector.detect(service, arguments))
+            .orElseGet(() -> ToolResponse.invalidParameter("kind",
+                "Unknown kind '" + kind + "'. Allowed: " + catalog.kinds()));
     }
 }

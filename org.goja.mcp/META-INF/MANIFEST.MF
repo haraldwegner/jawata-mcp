@@ -7,6 +7,7 @@ Bundle-Vendor: GOJA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
 Export-Package: org.goja.mcp,
+ org.goja.mcp.domain,
  org.goja.mcp.models,
  org.goja.mcp.protocol,
  org.goja.mcp.refactoring,
