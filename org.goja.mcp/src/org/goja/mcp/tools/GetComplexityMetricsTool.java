@@ -4,27 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.Block;
-import org.eclipse.jdt.core.dom.CatchClause;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.ConditionalExpression;
-import org.eclipse.jdt.core.dom.DoStatement;
-import org.eclipse.jdt.core.dom.EnhancedForStatement;
-import org.eclipse.jdt.core.dom.ForStatement;
-import org.eclipse.jdt.core.dom.IfStatement;
-import org.eclipse.jdt.core.dom.InfixExpression;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.jdt.core.dom.MethodInvocation;
-import org.eclipse.jdt.core.dom.Statement;
-import org.eclipse.jdt.core.dom.SwitchCase;
-import org.eclipse.jdt.core.dom.ThrowStatement;
-import org.eclipse.jdt.core.dom.TryStatement;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.dom.WhileStatement;
 import org.goja.core.IJdtService;
 import org.goja.mcp.models.ResponseMeta;
 import org.goja.mcp.models.ToolResponse;
+import org.goja.mcp.tools.smell.MethodMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -243,20 +229,18 @@ public class GetComplexityMetricsTool extends AbstractTool {
             methodInfo.put("line", ast.getLineNumber(method.getStartPosition()) - 1);
 
             // Calculate cyclomatic complexity
-            int cc = calculateCyclomaticComplexity(method);
+            int cc = MethodMetrics.cyclomaticComplexity(method);
             methodInfo.put("cyclomaticComplexity", cc);
 
             // Calculate cognitive complexity
-            int cognitive = calculateCognitiveComplexity(method);
+            int cognitive = MethodMetrics.cognitiveComplexity(method);
             methodInfo.put("cognitiveComplexity", cognitive);
 
             // Calculate method LOC
-            int startLine = ast.getLineNumber(method.getStartPosition());
-            int endLine = ast.getLineNumber(method.getStartPosition() + method.getLength());
-            methodInfo.put("physicalLOC", endLine - startLine + 1);
+            methodInfo.put("physicalLOC", MethodMetrics.physicalLoc(ast, method));
 
             // Parameter count
-            methodInfo.put("parameterCount", method.parameters().size());
+            methodInfo.put("parameterCount", MethodMetrics.parameterCount(method));
 
             // Risk classification
             String risk = cc > 10 ? "high" : (cc > 5 ? "medium" : "low");
@@ -269,206 +253,5 @@ public class GetComplexityMetricsTool extends AbstractTool {
         for (TypeDeclaration nestedType : typeDecl.getTypes()) {
             collectMethodMetrics(nestedType, ast, metrics);
         }
-    }
-
-    /**
-     * Calculate cyclomatic complexity for a method.
-     * CC = 1 + number of decision points
-     */
-    private int calculateCyclomaticComplexity(MethodDeclaration method) {
-        final int[] complexity = {1}; // Base complexity
-
-        method.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(IfStatement node) {
-                complexity[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(ForStatement node) {
-                complexity[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(EnhancedForStatement node) {
-                complexity[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(WhileStatement node) {
-                complexity[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(DoStatement node) {
-                complexity[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(SwitchCase node) {
-                if (!node.isDefault()) {
-                    complexity[0]++;
-                }
-                return true;
-            }
-
-            @Override
-            public boolean visit(CatchClause node) {
-                complexity[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(ConditionalExpression node) {
-                complexity[0]++; // Ternary operator
-                return true;
-            }
-
-            @Override
-            public boolean visit(InfixExpression node) {
-                // && and || add to complexity
-                if (node.getOperator() == InfixExpression.Operator.CONDITIONAL_AND ||
-                    node.getOperator() == InfixExpression.Operator.CONDITIONAL_OR) {
-                    complexity[0]++;
-                }
-                return true;
-            }
-
-            @Override
-            public boolean visit(ThrowStatement node) {
-                complexity[0]++;
-                return true;
-            }
-        });
-
-        return complexity[0];
-    }
-
-    /**
-     * Calculate cognitive complexity for a method.
-     * Penalizes nesting and breaks in linear flow.
-     */
-    private int calculateCognitiveComplexity(MethodDeclaration method) {
-        final int[] complexity = {0};
-        final int[] nestingLevel = {0};
-        final String methodName = method.getName().getIdentifier();
-
-        method.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(IfStatement node) {
-                // +1 for if, +nesting penalty
-                complexity[0] += 1 + nestingLevel[0];
-                nestingLevel[0]++;
-                return true;
-            }
-
-            @Override
-            public void endVisit(IfStatement node) {
-                nestingLevel[0]--;
-            }
-
-            @Override
-            public boolean visit(ForStatement node) {
-                complexity[0] += 1 + nestingLevel[0];
-                nestingLevel[0]++;
-                return true;
-            }
-
-            @Override
-            public void endVisit(ForStatement node) {
-                nestingLevel[0]--;
-            }
-
-            @Override
-            public boolean visit(EnhancedForStatement node) {
-                complexity[0] += 1 + nestingLevel[0];
-                nestingLevel[0]++;
-                return true;
-            }
-
-            @Override
-            public void endVisit(EnhancedForStatement node) {
-                nestingLevel[0]--;
-            }
-
-            @Override
-            public boolean visit(WhileStatement node) {
-                complexity[0] += 1 + nestingLevel[0];
-                nestingLevel[0]++;
-                return true;
-            }
-
-            @Override
-            public void endVisit(WhileStatement node) {
-                nestingLevel[0]--;
-            }
-
-            @Override
-            public boolean visit(DoStatement node) {
-                complexity[0] += 1 + nestingLevel[0];
-                nestingLevel[0]++;
-                return true;
-            }
-
-            @Override
-            public void endVisit(DoStatement node) {
-                nestingLevel[0]--;
-            }
-
-            @Override
-            public boolean visit(TryStatement node) {
-                complexity[0] += 1 + nestingLevel[0];
-                nestingLevel[0]++;
-                return true;
-            }
-
-            @Override
-            public void endVisit(TryStatement node) {
-                nestingLevel[0]--;
-            }
-
-            @Override
-            public boolean visit(CatchClause node) {
-                complexity[0] += 1 + nestingLevel[0];
-                return true;
-            }
-
-            @Override
-            public boolean visit(ConditionalExpression node) {
-                complexity[0] += 1 + nestingLevel[0];
-                return true;
-            }
-
-            @Override
-            public boolean visit(InfixExpression node) {
-                // Binary logical operators (first in sequence only)
-                if (node.getOperator() == InfixExpression.Operator.CONDITIONAL_AND ||
-                    node.getOperator() == InfixExpression.Operator.CONDITIONAL_OR) {
-                    // Check if parent is also a logical expression
-                    if (!(node.getParent() instanceof InfixExpression parent) ||
-                        (parent.getOperator() != InfixExpression.Operator.CONDITIONAL_AND &&
-                         parent.getOperator() != InfixExpression.Operator.CONDITIONAL_OR)) {
-                        complexity[0]++;
-                    }
-                }
-                return true;
-            }
-
-            @Override
-            public boolean visit(MethodInvocation node) {
-                // Recursion adds complexity
-                if (node.getName().getIdentifier().equals(methodName)) {
-                    complexity[0]++;
-                }
-                return true;
-            }
-        });
-
-        return complexity[0];
     }
 }

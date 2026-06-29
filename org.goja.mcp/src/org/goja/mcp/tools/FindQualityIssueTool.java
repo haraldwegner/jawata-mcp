@@ -6,6 +6,7 @@ import org.goja.mcp.domain.DetectorCatalog;
 import org.goja.mcp.domain.GojaService;
 import org.goja.mcp.domain.IGojaService;
 import org.goja.mcp.models.ToolResponse;
+import org.goja.mcp.tools.smell.FowlerDetectors;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,9 +28,16 @@ public class FindQualityIssueTool extends AbstractTool {
 
     private final DetectorCatalog catalog;
 
-    /** Back-compat: build the default catalog of the eight built-in detectors. */
+    /**
+     * Build the default catalog: the eight built-in quality detectors plus the
+     * Sprint 17 Fowler smell detectors. The live registration
+     * ({@code GojaApplication}) uses this ctor, so registering a Fowler kind in
+     * {@link FowlerDetectors} surfaces it here automatically — no edit to this
+     * class, no new tool.
+     */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier) {
-        this(new GojaService(serviceSupplier, QualityDetectors.builtins(serviceSupplier)));
+        this(new GojaService(serviceSupplier,
+            FowlerDetectors.registerInto(QualityDetectors.builtins(serviceSupplier))));
     }
 
     /** The seam: project from the supplied service's detector catalog. */
@@ -60,6 +68,9 @@ public class FindQualityIssueTool extends AbstractTool {
             - reflection     — Class.forName / Method.invoke / Field.get usage sites.
             - throws         — methods declaring 'throws <query>' (query = exception FQN).
             - catches        — 'catch (<query> ...)' blocks (query = exception FQN).
+
+            Fowler smell kinds (Sprint 17) are also registered — e.g. long_method;
+            most accept an optional `threshold`. See the kind enum for the full list.
 
             The available kinds are the registered detectors (see the kind enum);
             more analyses may be added without introducing new tools.
@@ -118,6 +129,14 @@ public class FindQualityIssueTool extends AbstractTool {
         maxResults.put("type", "integer");
         maxResults.put("description", "kind=throws or kind=catches — caps result count (default 100).");
         properties.put("maxResults", maxResults);
+
+        Map<String, Object> threshold = new LinkedHashMap<>();
+        threshold.put("type", "integer");
+        threshold.put("description",
+            "Optional sensitivity threshold for the Fowler smell kinds (Sprint 17), e.g. "
+                + "long_method LOC cutoff. Each smell kind documents its threshold meaning; "
+                + "omit to use the kind's default.");
+        properties.put("threshold", threshold);
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
