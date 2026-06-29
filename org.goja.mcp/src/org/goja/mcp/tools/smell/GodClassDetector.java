@@ -1,18 +1,12 @@
 package org.goja.mcp.tools.smell;
 
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.search.SearchMatch;
 import org.goja.core.IJdtService;
 import org.goja.mcp.domain.Finding;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Sprint 17 (Fowler) — <b>Large / God Class</b>. Distinct from the size-only
@@ -48,7 +42,7 @@ public final class GodClassDetector extends AbstractAstDetector {
                 if (members <= threshold) {
                     return true;
                 }
-                int fanIn = fanIn(node, service);
+                int fanIn = SmellSearch.referencingTypeCount(node.resolveBinding(), service);
                 if (fanIn >= FANIN_TRIGGER) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
@@ -62,36 +56,5 @@ public final class GodClassDetector extends AbstractAstDetector {
                 return true;
             }
         });
-    }
-
-    /** Distinct other types that reference this type; 0 on any failure. */
-    private int fanIn(TypeDeclaration node, IJdtService service) {
-        try {
-            ITypeBinding binding = node.resolveBinding();
-            if (binding == null) {
-                return 0;
-            }
-            IJavaElement element = binding.getJavaElement();
-            if (!(element instanceof IType type)) {
-                return 0;
-            }
-            String selfFqn = type.getFullyQualifiedName();
-            List<SearchMatch> refs = service.getSearchService().findAllReferences(type, 1000);
-            Set<String> referencingTypes = new HashSet<>();
-            for (SearchMatch match : refs) {
-                if (match.getElement() instanceof IJavaElement el) {
-                    IType enclosing = (IType) el.getAncestor(IJavaElement.TYPE);
-                    if (enclosing != null) {
-                        String fqn = enclosing.getFullyQualifiedName();
-                        if (!fqn.equals(selfFqn)) {
-                            referencingTypes.add(fqn);
-                        }
-                    }
-                }
-            }
-            return referencingTypes.size();
-        } catch (Exception e) {
-            return 0;
-        }
     }
 }

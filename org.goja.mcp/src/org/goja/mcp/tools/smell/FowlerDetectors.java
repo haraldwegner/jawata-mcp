@@ -18,26 +18,33 @@ public final class FowlerDetectors {
     private FowlerDetectors() {
     }
 
-    /** Register every Fowler detector into {@code catalog}; returns it for chaining. */
+    /**
+     * Register every Fowler detector into {@code catalog} (family {@code fowler});
+     * returns it for chaining. Four kinds are also tagged {@code solid} (Sprint 20),
+     * because the SOLID lens re-frames them rather than re-detecting:
+     * {@code incomplete_delegation} (SRP — §7 unfinished encapsulation),
+     * {@code refused_bequest} (LSP), and {@code divergent_change}/{@code shotgun_surgery}
+     * (the OCP trace).
+     */
     public static DetectorCatalog registerInto(DetectorCatalog catalog) {
         return catalog
-            .register(new LongMethodDetector())
-            .register(new GodClassDetector())
-            .register(new LongParameterListDetector())
-            .register(new DataClumpsDetector())
-            .register(new FeatureEnvyDetector())
-            .register(new MessageChainsDetector())
-            .register(new InappropriateIntimacyDetector())
-            .register(new MiddleManDetector())
-            .register(new PrimitiveObsessionDetector())
-            .register(new SwitchStatementsDetector())
-            .register(new RefusedBequestDetector())
-            .register(new TemporaryFieldDetector())
-            .register(new LazyClassDetector())
-            .register(new SpeculativeGeneralityDetector())
-            .register(new ParallelInheritanceDetector())
-            .register(new IncompleteDelegationDetector())
-            .register(new DivergentChangeDetector())
-            .register(new ShotgunSurgeryDetector());
+            .register(new LongMethodDetector(), "fowler")
+            .register(new GodClassDetector(), "fowler")
+            .register(new LongParameterListDetector(), "fowler")
+            .register(new DataClumpsDetector(), "fowler")
+            .register(new FeatureEnvyDetector(), "fowler")
+            .register(new MessageChainsDetector(), "fowler")
+            .register(new InappropriateIntimacyDetector(), "fowler")
+            .register(new MiddleManDetector(), "fowler")
+            .register(new PrimitiveObsessionDetector(), "fowler")
+            .register(new SwitchStatementsDetector(), "fowler")
+            .register(new RefusedBequestDetector(), "fowler", "solid")
+            .register(new TemporaryFieldDetector(), "fowler")
+            .register(new LazyClassDetector(), "fowler")
+            .register(new SpeculativeGeneralityDetector(), "fowler")
+            .register(new ParallelInheritanceDetector(), "fowler")
+            .register(new IncompleteDelegationDetector(), "fowler", "solid")
+            .register(new DivergentChangeDetector(), "fowler", "solid")
+            .register(new ShotgunSurgeryDetector(), "fowler", "solid");
     }
 }

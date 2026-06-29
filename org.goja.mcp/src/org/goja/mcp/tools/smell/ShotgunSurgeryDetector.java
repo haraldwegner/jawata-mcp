@@ -1,18 +1,14 @@
 package org.goja.mcp.tools.smell;
 
-import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.search.SearchMatch;
 import org.goja.core.IJdtService;
 import org.goja.mcp.domain.Finding;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Sprint 17 (Fowler) — <b>Shotgun Surgery</b>. The structural dual of Divergent
@@ -42,7 +38,7 @@ public final class ShotgunSurgeryDetector extends AbstractAstDetector {
                 if (binding == null || !(binding.getJavaElement() instanceof IType type)) {
                     return true;
                 }
-                int spread = referencingTypeCount(type, service);
+                int spread = SmellSearch.referencingTypeCount(type, service);
                 if (spread > threshold) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
@@ -56,24 +52,5 @@ public final class ShotgunSurgeryDetector extends AbstractAstDetector {
                 return true;
             }
         });
-    }
-
-    private int referencingTypeCount(IType type, IJdtService service) {
-        try {
-            String selfFqn = type.getFullyQualifiedName();
-            List<SearchMatch> refs = service.getSearchService().findAllReferences(type, 1000);
-            Set<String> referencingTypes = new HashSet<>();
-            for (SearchMatch match : refs) {
-                if (match.getElement() instanceof IJavaElement el) {
-                    IType enclosing = (IType) el.getAncestor(IJavaElement.TYPE);
-                    if (enclosing != null && !enclosing.getFullyQualifiedName().equals(selfFqn)) {
-                        referencingTypes.add(enclosing.getFullyQualifiedName());
-                    }
-                }
-            }
-            return referencingTypes.size();
-        } catch (Exception e) {
-            return 0;
-        }
     }
 }

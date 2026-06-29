@@ -1,19 +1,14 @@
 package org.goja.mcp.tools.smell;
 
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.search.SearchMatch;
 import org.goja.core.IJdtService;
 import org.goja.mcp.domain.Finding;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Sprint 17 (Fowler) — <b>Lazy Class</b>. A concrete class that does too little
@@ -52,7 +47,9 @@ public final class LazyClassDetector extends AbstractAstDetector {
                 if (binding == null || binding.isEnum()) {
                     return true;
                 }
-                if (fanIn(binding, service) <= 1) {
+                // -1 = search failed → do not flag (preserves the prior MAX_VALUE behaviour).
+                int fanIn = SmellSearch.referencingTypeCount(binding, service);
+                if (fanIn >= 0 && fanIn <= 1) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
                     out.add(new Finding(
@@ -64,27 +61,5 @@ public final class LazyClassDetector extends AbstractAstDetector {
                 return true;
             }
         });
-    }
-
-    private int fanIn(ITypeBinding binding, IJdtService service) {
-        try {
-            if (!(binding.getJavaElement() instanceof IType type)) {
-                return Integer.MAX_VALUE;
-            }
-            String selfFqn = type.getFullyQualifiedName();
-            List<SearchMatch> refs = service.getSearchService().findAllReferences(type, 200);
-            Set<String> referencingTypes = new HashSet<>();
-            for (SearchMatch match : refs) {
-                if (match.getElement() instanceof IJavaElement el) {
-                    IType enclosing = (IType) el.getAncestor(IJavaElement.TYPE);
-                    if (enclosing != null && !enclosing.getFullyQualifiedName().equals(selfFqn)) {
-                        referencingTypes.add(enclosing.getFullyQualifiedName());
-                    }
-                }
-            }
-            return referencingTypes.size();
-        } catch (Exception e) {
-            return Integer.MAX_VALUE; // on failure, do not flag
-        }
     }
 }

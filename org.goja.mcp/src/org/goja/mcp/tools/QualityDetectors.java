@@ -30,28 +30,28 @@ public final class QualityDetectors {
         return new DetectorCatalog()
             .register(adapt("naming",
                 "Java naming-convention violations (classes, methods, fields, constants).",
-                new FindNamingViolationsTool(svc), false))
+                new FindNamingViolationsTool(svc), false), "quality")
             .register(adapt("bugs",
                 "Common bug patterns (null deref, == on objects, mutation in lambda, …).",
-                new FindPossibleBugsTool(svc), false))
+                new FindPossibleBugsTool(svc), false), "quality")
             .register(adapt("unused",
                 "Unused private methods and fields.",
-                new FindUnusedCodeTool(svc), false))
+                new FindUnusedCodeTool(svc), false), "quality")
             .register(adapt("large_classes",
                 "Classes exceeding maxMethods/maxFields/maxLines thresholds.",
-                new FindLargeClassesTool(svc), false))
+                new FindLargeClassesTool(svc), false), "quality")
             .register(adapt("circular_deps",
                 "Cyclic package or class dependencies.",
-                new FindCircularDependenciesTool(svc), false))
+                new FindCircularDependenciesTool(svc), false), "quality")
             .register(adapt("reflection",
                 "Class.forName / Method.invoke / Field.get usage sites.",
-                new FindReflectionUsageTool(svc), false))
+                new FindReflectionUsageTool(svc), false), "quality")
             .register(adapt("throws",
                 "Methods declaring 'throws <query>' (query = exception FQN).",
-                new FindThrowsDeclarationsTool(svc), true))
+                new FindThrowsDeclarationsTool(svc), true), "quality")
             .register(adapt("catches",
                 "'catch (<query> …)' blocks (query = exception FQN).",
-                new FindCatchBlocksTool(svc), true));
+                new FindCatchBlocksTool(svc), true), "quality");
     }
 
     /**

@@ -5,9 +5,11 @@ import org.goja.core.IJdtService;
 import org.goja.mcp.domain.DetectorCatalog;
 import org.goja.mcp.domain.GojaService;
 import org.goja.mcp.domain.IGojaService;
+import org.goja.mcp.models.ResponseMeta;
 import org.goja.mcp.models.ToolResponse;
 import org.goja.mcp.tools.smell.FowlerDetectors;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,8 +102,19 @@ public class FindQualityIssueTool extends AbstractTool {
         kind.put("type", "string");
         kind.put("enum", catalog.kinds()); // projected from the catalog
         kind.put("description",
-            "Which quality analysis to run. See the tool description for what each kind reports.");
+            "Which single analysis to run. See the tool description for what each kind reports. "
+                + "Provide `kind` OR `family` (family runs the whole set).");
         properties.put("kind", kind);
+
+        Map<String, Object> family = new LinkedHashMap<>();
+        family.put("type", "string");
+        family.put("enum", List.of("quality", "fowler", "solid"));
+        family.put("description",
+            "Optional family lens (Sprint 20). With no `kind`, runs every detector in the family and "
+                + "merges the findings (e.g. family=\"solid\" returns the SOLID set as a unit: dip, isp, "
+                + "srp_cohesion, lsp + the tagged incomplete_delegation/refused_bequest/divergent_change/"
+                + "shotgun_surgery). With a `kind`, validates the kind belongs to the family.");
+        properties.put("family", family);
 
         Map<String, Object> filePath = new LinkedHashMap<>();
         filePath.put("type", "string");
@@ -152,7 +165,8 @@ public class FindQualityIssueTool extends AbstractTool {
         properties.put("includeTests", includeTests);
 
         schema.put("properties", properties);
-        schema.put("required", List.of("kind"));
+        // kind OR family — validated in executeWithService (a static `required` can't express "one of").
+        schema.put("required", List.of());
 
         return withProjectKey(schema);
     }
@@ -160,12 +174,50 @@ public class FindQualityIssueTool extends AbstractTool {
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         String kind = getStringParam(arguments, "kind");
-        if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + catalog.kinds());
+        String family = getStringParam(arguments, "family");
+        boolean hasKind = kind != null && !kind.isBlank();
+        boolean hasFamily = family != null && !family.isBlank();
+
+        // family without kind: run every detector in the family and merge findings.
+        if (!hasKind && hasFamily) {
+            return runFamily(service, family, arguments);
+        }
+        if (!hasKind) {
+            return ToolResponse.invalidParameter("kind",
+                "Provide `kind` (one of " + catalog.kinds() + ") or `family` (quality/fowler/solid).");
+        }
+        if (hasFamily && !catalog.kinds(family).contains(kind)) {
+            return ToolResponse.invalidParameter("kind",
+                "kind '" + kind + "' is not in family '" + family + "'. That family: " + catalog.kinds(family));
         }
         return catalog.get(kind)
             .map(detector -> detector.detect(service, arguments))
             .orElseGet(() -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + catalog.kinds()));
+    }
+
+    /** Run every detector in {@code family} and merge their {@code findings} into one response. */
+    @SuppressWarnings("unchecked")
+    private ToolResponse runFamily(IJdtService service, String family, JsonNode arguments) {
+        List<String> kinds = catalog.kinds(family);
+        if (kinds.isEmpty()) {
+            return ToolResponse.invalidParameter("family",
+                "Unknown family '" + family + "'. One of: quality, fowler, solid.");
+        }
+        List<Object> merged = new ArrayList<>();
+        for (String k : kinds) {
+            ToolResponse r = catalog.get(k).map(d -> d.detect(service, arguments)).orElse(null);
+            if (r != null && r.isSuccess() && r.getData() instanceof Map<?, ?> data
+                && data.get("findings") instanceof List<?> fs) {
+                merged.addAll((List<Object>) fs);
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("family", family);
+        out.put("kinds", kinds);
+        out.put("count", merged.size());
+        out.put("findings", merged);
+        return ToolResponse.success(out, ResponseMeta.builder()
+            .totalCount(merged.size()).returnedCount(merged.size()).build());
     }
 }
