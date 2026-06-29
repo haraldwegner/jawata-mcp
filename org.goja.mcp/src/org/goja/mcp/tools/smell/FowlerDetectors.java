@@ -35,8 +35,8 @@ public final class FowlerDetectors {
             .register(new TemporaryFieldDetector())
             .register(new LazyClassDetector())
             .register(new SpeculativeGeneralityDetector())
-            .register(new ParallelInheritanceDetector());
-        // Stage 4b: incomplete_delegation (blocked on REFACTORING_LESSONS_LEARNED.md §7);
+            .register(new ParallelInheritanceDetector())
+            .register(new IncompleteDelegationDetector());
         // Stage 5: git-history — divergent_change, shotgun_surgery.
     }
 }
