@@ -36,7 +36,8 @@ public final class FowlerDetectors {
             .register(new LazyClassDetector())
             .register(new SpeculativeGeneralityDetector())
             .register(new ParallelInheritanceDetector())
-            .register(new IncompleteDelegationDetector());
-        // Stage 5: git-history — divergent_change, shotgun_surgery.
+            .register(new IncompleteDelegationDetector())
+            .register(new DivergentChangeDetector())
+            .register(new ShotgunSurgeryDetector());
     }
 }
