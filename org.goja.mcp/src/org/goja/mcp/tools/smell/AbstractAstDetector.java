@@ -99,7 +99,7 @@ public abstract class AbstractAstDetector implements Detector {
                                     IJdtService service, int threshold, List<Finding> out);
 
     /** Parse a compilation unit with binding resolution; null on failure. */
-    protected CompilationUnit parse(ICompilationUnit cu) {
+    protected static CompilationUnit parse(ICompilationUnit cu) {
         try {
             ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
             parser.setSource(cu);

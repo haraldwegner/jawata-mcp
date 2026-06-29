@@ -69,8 +69,9 @@ public class FindQualityIssueTool extends AbstractTool {
             - throws         — methods declaring 'throws <query>' (query = exception FQN).
             - catches        — 'catch (<query> ...)' blocks (query = exception FQN).
 
-            Fowler smell kinds (Sprint 17) are also registered — e.g. long_method;
-            most accept an optional `threshold`. See the kind enum for the full list.
+            Fowler smell kinds (Sprint 17) are also registered — long_method,
+            god_class, long_parameter_list, data_clumps; most accept an optional
+            `threshold`. See the kind enum for the full list.
 
             The available kinds are the registered detectors (see the kind enum);
             more analyses may be added without introducing new tools.

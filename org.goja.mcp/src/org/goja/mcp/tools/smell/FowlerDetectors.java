@@ -21,7 +21,10 @@ public final class FowlerDetectors {
     /** Register every Fowler detector into {@code catalog}; returns it for chaining. */
     public static DetectorCatalog registerInto(DetectorCatalog catalog) {
         return catalog
-            .register(new LongMethodDetector());
-        // Stage 1+ append: god_class, long_parameter_list, data_clumps, feature_envy, …
+            .register(new LongMethodDetector())
+            .register(new GodClassDetector())
+            .register(new LongParameterListDetector())
+            .register(new DataClumpsDetector());
+        // Stage 2+ append: feature_envy, message_chains, inappropriate_intimacy, middle_man, …
     }
 }
