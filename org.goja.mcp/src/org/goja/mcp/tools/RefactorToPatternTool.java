@@ -42,6 +42,7 @@ public class RefactorToPatternTool extends AbstractTool {
     private final RefactorToCommandDispatcherTool refactorToCommand;
     private final FormTemplateMethodTool formTemplateMethod;
     private final RefactorToVisitorTool refactorToVisitor;
+    private final ReplacePatternWithIdiomTool replacePatternWithIdiom;
 
     public RefactorToPatternTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -52,6 +53,7 @@ public class RefactorToPatternTool extends AbstractTool {
         this.refactorToCommand = new RefactorToCommandDispatcherTool(serviceSupplier, cache);
         this.formTemplateMethod = new FormTemplateMethodTool(serviceSupplier, cache);
         this.refactorToVisitor = new RefactorToVisitorTool(serviceSupplier, cache);
+        this.replacePatternWithIdiom = new ReplacePatternWithIdiomTool(serviceSupplier, cache);
     }
 
     @Override
@@ -108,7 +110,11 @@ public class RefactorToPatternTool extends AbstractTool {
                                  Needs: line, column on the abstract base type. Base abstract +
                                  >= 2 subtypes in the same file. (find_quality_issue
                                  kind=switch_statements locates instanceof/type-code chains.)
-            (further kinds ship across Sprint 19: replace_pattern_with_idiom.)
+            - replace_pattern_with_idiom — AWAY: replace a pattern with the language feature that
+                                 superseded it. v1.4: an anonymous class implementing a functional
+                                 interface -> a lambda. Needs: line, column on the anonymous class's
+                                 `new` keyword (optional idiom, default anonymous_to_lambda).
+                                 (find_modernization kind=anon_to_lambda locates candidates.)
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying. Verify with compile_workspace;
@@ -142,6 +148,8 @@ public class RefactorToPatternTool extends AbstractTool {
             "description", "replace_type_code_with_class: name for the generated enum type."));
         properties.put("prefix", Map.of("type", "string",
             "description", "replace_type_code_with_class: optional constant prefix to convert (e.g. STATUS)."));
+        properties.put("idiom", Map.of("type", "string",
+            "description", "replace_pattern_with_idiom: which idiom (default anonymous_to_lambda)."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind", "filePath"));
@@ -162,10 +170,7 @@ public class RefactorToPatternTool extends AbstractTool {
             case "refactor_to_command_dispatcher" -> refactorToCommand.executeWithService(service, arguments);
             case "form_template_method" -> formTemplateMethod.executeWithService(service, arguments);
             case "refactor_to_visitor" -> refactorToVisitor.executeWithService(service, arguments);
-            case "replace_pattern_with_idiom" -> ToolResponse.error(
-                    "NOT_YET_IMPLEMENTED",
-                    "refactor_to_pattern kind '" + kind + "' ships later in Sprint 19.",
-                    "Available now: inline_singleton. See the tool description for the schedule.");
+            case "replace_pattern_with_idiom" -> replacePatternWithIdiom.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
