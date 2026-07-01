@@ -38,12 +38,14 @@ public class RefactorToPatternTool extends AbstractTool {
     private final InlineSingletonTool inlineSingleton;
     private final ComposeMethodTool composeMethod;
     private final ReplaceTypeCodeWithClassTool replaceTypeCode;
+    private final RefactorToStateTool refactorToState;
 
     public RefactorToPatternTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
         this.inlineSingleton = new InlineSingletonTool(serviceSupplier, cache);
         this.composeMethod = new ComposeMethodTool(serviceSupplier, cache);
         this.replaceTypeCode = new ReplaceTypeCodeWithClassTool(serviceSupplier, cache);
+        this.refactorToState = new RefactorToStateTool(serviceSupplier, cache);
     }
 
     @Override
@@ -78,9 +80,13 @@ public class RefactorToPatternTool extends AbstractTool {
                                  to pick the constant group). Conservative: introduces the enum +
                                  reports the mapping; does NOT auto-migrate usages.
                                  (find_quality_issue kind=type_code locates candidates.)
-            (further kinds ship across Sprint 19: refactor_to_state,
-             refactor_to_command_dispatcher, form_template_method,
-             refactor_to_visitor, replace_pattern_with_idiom.)
+            - refactor_to_state — TOWARD: a method switching on an int state field becomes
+                                 delegation to nested State classes (a <Context>State interface +
+                                 one inner class per case). Needs: line, column on/inside the
+                                 switch. Conservative — refuses unsafe shapes (see errors).
+                                 (find_quality_issue kind=switch_statements locates candidates.)
+            (further kinds ship across Sprint 19: refactor_to_command_dispatcher,
+             form_template_method, refactor_to_visitor, replace_pattern_with_idiom.)
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying. Verify with compile_workspace;
@@ -130,8 +136,8 @@ public class RefactorToPatternTool extends AbstractTool {
             case "inline_singleton" -> inlineSingleton.executeWithService(service, arguments);
             case "compose_method" -> composeMethod.executeWithService(service, arguments);
             case "replace_type_code_with_class" -> replaceTypeCode.executeWithService(service, arguments);
-            case "refactor_to_state",
-                 "refactor_to_command_dispatcher", "form_template_method", "refactor_to_visitor",
+            case "refactor_to_state" -> refactorToState.executeWithService(service, arguments);
+            case "refactor_to_command_dispatcher", "form_template_method", "refactor_to_visitor",
                  "replace_pattern_with_idiom" -> ToolResponse.error(
                     "NOT_YET_IMPLEMENTED",
                     "refactor_to_pattern kind '" + kind + "' ships later in Sprint 19.",
