@@ -8,6 +8,7 @@ import org.goja.mcp.domain.IGojaService;
 import org.goja.mcp.models.ResponseMeta;
 import org.goja.mcp.models.ToolResponse;
 import org.goja.mcp.tools.smell.FowlerDetectors;
+import org.goja.mcp.tools.smell.KerievskyDetectors;
 import org.goja.mcp.tools.smell.SolidDetectors;
 
 import java.util.ArrayList;
@@ -40,8 +41,9 @@ public class FindQualityIssueTool extends AbstractTool {
      */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier) {
         this(new GojaService(serviceSupplier,
-            SolidDetectors.registerInto(
-                FowlerDetectors.registerInto(QualityDetectors.builtins(serviceSupplier)))));
+            KerievskyDetectors.registerInto(
+                SolidDetectors.registerInto(
+                    FowlerDetectors.registerInto(QualityDetectors.builtins(serviceSupplier))))));
     }
 
     /** The seam: project from the supplied service's detector catalog. */
@@ -110,7 +112,7 @@ public class FindQualityIssueTool extends AbstractTool {
 
         Map<String, Object> family = new LinkedHashMap<>();
         family.put("type", "string");
-        family.put("enum", List.of("quality", "fowler", "solid"));
+        family.put("enum", List.of("quality", "fowler", "solid", "kerievsky"));
         family.put("description",
             "Optional family lens (Sprint 20). With no `kind`, runs every detector in the family and "
                 + "merges the findings (e.g. family=\"solid\" returns the SOLID set as a unit: dip, isp, "
@@ -186,7 +188,7 @@ public class FindQualityIssueTool extends AbstractTool {
         }
         if (!hasKind) {
             return ToolResponse.invalidParameter("kind",
-                "Provide `kind` (one of " + catalog.kinds() + ") or `family` (quality/fowler/solid).");
+                "Provide `kind` (one of " + catalog.kinds() + ") or `family` (quality/fowler/solid/kerievsky).");
         }
         if (hasFamily && !catalog.kinds(family).contains(kind)) {
             return ToolResponse.invalidParameter("kind",
@@ -204,7 +206,7 @@ public class FindQualityIssueTool extends AbstractTool {
         List<String> kinds = catalog.kinds(family);
         if (kinds.isEmpty()) {
             return ToolResponse.invalidParameter("family",
-                "Unknown family '" + family + "'. One of: quality, fowler, solid.");
+                "Unknown family '" + family + "'. One of: quality, fowler, solid, kerievsky.");
         }
         List<Object> merged = new ArrayList<>();
         for (String k : kinds) {

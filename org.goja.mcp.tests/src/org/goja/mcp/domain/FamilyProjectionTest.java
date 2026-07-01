@@ -42,11 +42,11 @@ class FamilyProjectionTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    @DisplayName("schema advertises the three families")
+    @DisplayName("schema advertises the four families")
     void schema_lists_families() {
         Map<String, Object> props = (Map<String, Object>) tool.getInputSchema().get("properties");
         Map<String, Object> family = (Map<String, Object>) props.get("family");
-        assertEquals(List.of("quality", "fowler", "solid"), family.get("enum"));
+        assertEquals(List.of("quality", "fowler", "solid", "kerievsky"), family.get("enum"));
     }
 
     @SuppressWarnings("unchecked")

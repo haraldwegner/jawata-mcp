@@ -32,6 +32,7 @@ import org.goja.mcp.tools.ExtractTool;
 import org.goja.mcp.tools.InlineTool;
 import org.goja.mcp.tools.MoveTool;
 import org.goja.mcp.tools.MoveInHierarchyTool;
+import org.goja.mcp.tools.RefactorToPatternTool;
 import org.goja.mcp.tools.EncapsulateFieldTool;
 import org.goja.mcp.tools.CompileWorkspaceTool;
 import org.goja.mcp.tools.RefreshWorkspaceTool;
@@ -333,6 +334,10 @@ public class GojaApplication implements IApplication {
         toolRegistry.register(new MoveTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new MoveInHierarchyTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new GenerateTool(() -> jdtService, refactoringChangeCache));
+
+        // Sprint 19 (Kerievsky): pattern-targeted refactorings behind one parametric
+        // front door; the per-pattern delegates are not registered standalone.
+        toolRegistry.register(new RefactorToPatternTool(() -> jdtService, refactoringChangeCache));
 
         // Fine-grained reference search (JDT-unique capabilities).
         // Sprint 11 Phase D: 13 narrow find_* tools collapsed to 2 parametric ones.
