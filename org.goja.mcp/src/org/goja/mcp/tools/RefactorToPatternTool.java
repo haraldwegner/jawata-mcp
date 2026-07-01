@@ -41,6 +41,7 @@ public class RefactorToPatternTool extends AbstractTool {
     private final RefactorToStateTool refactorToState;
     private final RefactorToCommandDispatcherTool refactorToCommand;
     private final FormTemplateMethodTool formTemplateMethod;
+    private final RefactorToVisitorTool refactorToVisitor;
 
     public RefactorToPatternTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -50,6 +51,7 @@ public class RefactorToPatternTool extends AbstractTool {
         this.refactorToState = new RefactorToStateTool(serviceSupplier, cache);
         this.refactorToCommand = new RefactorToCommandDispatcherTool(serviceSupplier, cache);
         this.formTemplateMethod = new FormTemplateMethodTool(serviceSupplier, cache);
+        this.refactorToVisitor = new RefactorToVisitorTool(serviceSupplier, cache);
     }
 
     @Override
@@ -100,8 +102,13 @@ public class RefactorToPatternTool extends AbstractTool {
                                  method. Conservative — no-arg methods, same statement count, same
                                  file. (find_quality_issue kind=parallel_inheritance or
                                  find_duplicate_code locate candidates.)
-            (further kinds ship across Sprint 19: refactor_to_visitor,
-             replace_pattern_with_idiom.)
+            - refactor_to_visitor — TOWARD: generate a <Base>Visitor interface + accept()
+                                 double-dispatch across an abstract hierarchy (the invasive
+                                 boilerplate; migrate the instanceof-chain accumulator after).
+                                 Needs: line, column on the abstract base type. Base abstract +
+                                 >= 2 subtypes in the same file. (find_quality_issue
+                                 kind=switch_statements locates instanceof/type-code chains.)
+            (further kinds ship across Sprint 19: replace_pattern_with_idiom.)
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying. Verify with compile_workspace;
@@ -154,8 +161,8 @@ public class RefactorToPatternTool extends AbstractTool {
             case "refactor_to_state" -> refactorToState.executeWithService(service, arguments);
             case "refactor_to_command_dispatcher" -> refactorToCommand.executeWithService(service, arguments);
             case "form_template_method" -> formTemplateMethod.executeWithService(service, arguments);
-            case "refactor_to_visitor",
-                 "replace_pattern_with_idiom" -> ToolResponse.error(
+            case "refactor_to_visitor" -> refactorToVisitor.executeWithService(service, arguments);
+            case "replace_pattern_with_idiom" -> ToolResponse.error(
                     "NOT_YET_IMPLEMENTED",
                     "refactor_to_pattern kind '" + kind + "' ships later in Sprint 19.",
                     "Available now: inline_singleton. See the tool description for the schedule.");
