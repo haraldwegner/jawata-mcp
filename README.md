@@ -22,8 +22,9 @@ tool getting it subtly wrong.
   after every edit.
 - **Reversible** — every mutating tool returns an `undoChangeId`; one call rolls the change back.
 
-**85 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, modernise, generate,
-manage dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
+**40 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
+(Fowler / SOLID / Kerievsky), apply pattern-targeted refactorings, modernise, generate, manage
+dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
 
 ```bash
 # Linux — installs goja-studio, which fetches and runs the GOJA engine for you
@@ -156,7 +157,12 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 
 ---
 
-## The 85 tools
+## The tools
+
+> Front doors consolidate many operations behind a `kind` parameter — e.g. `extract(kind)`,
+> `inline(kind)`, `find_quality_issue(kind)`, `refactor_to_pattern(kind)` — so the loaded surface
+> stays small (40) while the capability behind it keeps growing by registration.
+
 
 **Workspace & navigation**
 - *Workspace* — `add_project`, `remove_project`, `list_projects`, `load_project`, `refresh_workspace`
@@ -169,8 +175,10 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 **Understand**
 - *Analyse* — `analyze_type`, `analyze_method`, `analyze_file`, `analyze_control_flow`,
   `analyze_data_flow`, `analyze_change_impact`, `analyze_naming`, `analyze_javadocs`,
-  `analyze_nullness`, `find_quality_issue` *(naming / bugs / unused / large-classes / circular-deps /
-  reflection / throws / catches)*
+  `analyze_nullness`, `find_quality_issue` *(quality: naming / bugs / unused / large-classes /
+  circular-deps / reflection / throws / catches · 18 Fowler smells · SOLID: dip / isp / srp_cohesion
+  / lsp · Kerievsky: singleton / type_code — with a `family` filter: quality / fowler / solid /
+  kerievsky)*
 - *Inspect* — `get_symbol_info`, `get_hover_info`, `get_signature_help`, `get_javadoc`,
   `get_type_at_position`, `get_method_at_position`, `get_field_at_position`, `get_enclosing_element`,
   `get_complexity_metrics`, `get_project_structure`, `get_classpath_info`, `get_di_registrations`
@@ -180,6 +188,11 @@ gate to check its own edits before moving on — the post-edit loop a careful de
   `extract_interface`, `inline_method`, `inline_variable`, `move_class`, `move_package`, `pull_up`,
   `push_down`, `encapsulate_field`, `change_method_signature`, `convert_anonymous_to_lambda`,
   `override_methods` · `apply_refactoring` · `inspect_refactoring` · `undo_refactoring`
+- *Refactor to patterns (Kerievsky)* — `refactor_to_pattern` *(inline_singleton / compose_method /
+  replace_type_code_with_class / refactor_to_state / refactor_to_command_dispatcher /
+  form_template_method / refactor_to_visitor / replace_pattern_with_idiom)* — behaviour-preserving,
+  reversible, compiling; toward a pattern when complexity warrants and away from one that has
+  outlived its use.
 - *Imports & modernise* — `organize_imports`, `optimize_imports_workspace`, `suggest_imports`,
   `find_modernization`, `apply_cleanup`
 - *Null-safety* — `analyze_nullness`, `apply_null_annotations`
