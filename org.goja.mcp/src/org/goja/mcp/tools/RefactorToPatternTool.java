@@ -36,10 +36,12 @@ public class RefactorToPatternTool extends AbstractTool {
         "replace_pattern_with_idiom");   // away  — Stage 7
 
     private final InlineSingletonTool inlineSingleton;
+    private final ComposeMethodTool composeMethod;
 
     public RefactorToPatternTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
         this.inlineSingleton = new InlineSingletonTool(serviceSupplier, cache);
+        this.composeMethod = new ComposeMethodTool(serviceSupplier, cache);
     }
 
     @Override
@@ -62,7 +64,13 @@ public class RefactorToPatternTool extends AbstractTool {
                                  constructor public, and strip the static holder + accessor.
                                  Needs: line, column on the singleton type. (find_quality_issue
                                  kind=singleton locates candidates.)
-            (further kinds ship across Sprint 19: compose_method, replace_type_code_with_class,
+            - compose_method   — TOWARD: reshape a long method into a short sequence of
+                                 intention-revealing calls. Needs: `sections` = an array of
+                                 >= 2 disjoint {startLine, startColumn, endLine, endColumn,
+                                 methodName} statement ranges to extract. Applies atomically
+                                 (auto_apply=false not supported). (find_quality_issue
+                                 kind=long_method locates candidates.)
+            (further kinds ship across Sprint 19: replace_type_code_with_class,
              refactor_to_state, refactor_to_command_dispatcher, form_template_method,
              refactor_to_visitor, replace_pattern_with_idiom.)
 
@@ -90,6 +98,10 @@ public class RefactorToPatternTool extends AbstractTool {
         properties.put("line", Map.of("type", "integer",
             "description", "Zero-based line of the target (e.g. the singleton type for inline_singleton)."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column of the target."));
+        properties.put("sections", Map.of("type", "array",
+            "items", Map.of("type", "object"),
+            "description", "compose_method: >= 2 disjoint {startLine, startColumn, endLine, endColumn, "
+                + "methodName} statement ranges (ZERO-BASED) to extract into named sub-methods."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind", "filePath"));
@@ -104,7 +116,8 @@ public class RefactorToPatternTool extends AbstractTool {
         }
         return switch (kind) {
             case "inline_singleton" -> inlineSingleton.executeWithService(service, arguments);
-            case "compose_method", "replace_type_code_with_class", "refactor_to_state",
+            case "compose_method" -> composeMethod.executeWithService(service, arguments);
+            case "replace_type_code_with_class", "refactor_to_state",
                  "refactor_to_command_dispatcher", "form_template_method", "refactor_to_visitor",
                  "replace_pattern_with_idiom" -> ToolResponse.error(
                     "NOT_YET_IMPLEMENTED",
