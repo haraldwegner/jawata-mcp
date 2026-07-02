@@ -32,7 +32,7 @@ public class GenerateTool extends AbstractTool {
 
     private static final List<String> KINDS = List.of(
         "constructor", "getters_setters", "equals_hashcode",
-        "tostring", "test_skeleton", "override_methods");
+        "tostring", "test_skeleton", "override_methods", "copy_class");
 
     private final GenerateConstructorTool constructor;
     private final GenerateGettersSettersTool gettersSetters;
@@ -40,6 +40,7 @@ public class GenerateTool extends AbstractTool {
     private final GenerateToStringTool toStringTool;
     private final GenerateTestSkeletonTool testSkeleton;
     private final OverrideMethodsTool overrideMethods;
+    private final CopyClassTool copyClass;
 
     public GenerateTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -49,6 +50,7 @@ public class GenerateTool extends AbstractTool {
         this.toStringTool = new GenerateToStringTool(serviceSupplier, cache);
         this.testSkeleton = new GenerateTestSkeletonTool(serviceSupplier, cache);
         this.overrideMethods = new OverrideMethodsTool(serviceSupplier, cache);
+        this.copyClass = new CopyClassTool(serviceSupplier, cache);
     }
 
     @Override
@@ -70,6 +72,10 @@ public class GenerateTool extends AbstractTool {
             - tostring         — toString(). Needs: fields[]. Optional: style.
             - test_skeleton    — a test class for the type. Optional: framework, includePrivateMethods.
             - override_methods — override/implement methods. Optional: methods[] (else all overridable).
+            - copy_class       — clone the top-level class at the caret into a new same-package file.
+                                 Needs: newTypeName. The compiler-cheap way to derive a sibling class
+                                 (e.g. PizzaSalami -> PizzaFungi) before Extract Superclass, instead
+                                 of re-authoring a near-duplicate.
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage only.
@@ -104,6 +110,8 @@ public class GenerateTool extends AbstractTool {
         properties.put("includePrivateMethods", Map.of("type", "boolean", "description", "test_skeleton: also stub private methods."));
         properties.put("methods", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "override_methods: specific method names to override (default all overridable)."));
+        properties.put("newTypeName", Map.of("type", "string",
+            "description", "copy_class: name for the cloned class (must not already exist in the package)."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind", "filePath", "line", "column"));
@@ -123,6 +131,7 @@ public class GenerateTool extends AbstractTool {
             case "tostring"         -> toStringTool.executeWithService(service, arguments);
             case "test_skeleton"    -> testSkeleton.executeWithService(service, arguments);
             case "override_methods" -> overrideMethods.executeWithService(service, arguments);
+            case "copy_class"       -> copyClass.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
