@@ -15,10 +15,17 @@ public final class GojaService implements IGojaService {
 
     private final Supplier<IJdtService> jdt;
     private final DetectorCatalog detectors;
+    private final Advisor advisor;
 
+    /** Convenience: a service with the default {@link NoOpAdvisor} (no knowledge store). */
     public GojaService(Supplier<IJdtService> jdt, DetectorCatalog detectors) {
+        this(jdt, detectors, new NoOpAdvisor());
+    }
+
+    public GojaService(Supplier<IJdtService> jdt, DetectorCatalog detectors, Advisor advisor) {
         this.jdt = Objects.requireNonNull(jdt, "jdt supplier");
         this.detectors = Objects.requireNonNull(detectors, "detectors");
+        this.advisor = Objects.requireNonNull(advisor, "advisor");
     }
 
     @Override
@@ -29,5 +36,10 @@ public final class GojaService implements IGojaService {
     @Override
     public DetectorCatalog detectors() {
         return detectors;
+    }
+
+    @Override
+    public Advisor advisor() {
+        return advisor;
     }
 }

@@ -17,4 +17,11 @@ public interface IGojaService {
 
     /** The quality/smell detector registry projected by the Smell front door. */
     DetectorCatalog detectors();
+
+    /**
+     * Sprint 18 — the learning seam: consulted before a refactoring and emitted
+     * to after it ({@link Advisor}). Defaults to a {@link NoOpAdvisor}; Sprint 21
+     * swaps in the knowledge-store-backed implementation.
+     */
+    Advisor advisor();
 }
