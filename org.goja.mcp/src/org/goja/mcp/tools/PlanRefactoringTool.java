@@ -101,6 +101,8 @@ class PlanRefactoringTool extends AbstractTool {
         return switch (action) {
             case "plan" -> doPlan(arguments);
             case "apply_plan" -> doApplyPlan(service, arguments);
+            case "inspect_plan" -> doInspectPlan(arguments);
+            case "undo_plan" -> doUndoPlan(service, arguments);
             default -> ToolResponse.invalidParameter("action",
                 "plan lifecycle: '" + action + "' is not available in this build.");
         };
@@ -245,6 +247,7 @@ class PlanRefactoringTool extends AbstractTool {
             planUndoId = changeCache.put(RefactoringChangeCache.Kind.UNDO, composite,
                 "undo: plan " + planId, "", new ArrayList<>(modifiedFiles));
         }
+        plan.undoChangeId(planUndoId);
 
         List<String> notes = new ArrayList<>();
         purityFindings.forEach(f -> notes.add(f.get("rule") + " @step" + f.get("stepIndex")));
@@ -307,6 +310,103 @@ class PlanRefactoringTool extends AbstractTool {
         data.put("outcome", outcomeView(outcome));
         return ToolResponse.success(data, ResponseMeta.builder()
             .suggestedNextTools(List.of("refactoring(action=inspect_plan, planId) to review the plan"))
+            .build());
+    }
+
+    // ------------------------------------------------- inspect_plan / undo_plan (C6)
+
+    private ToolResponse doInspectPlan(JsonNode args) {
+        String planId = getStringParam(args, "planId");
+        if (planId == null || planId.isBlank()) {
+            return ToolResponse.invalidParameter("planId", "Required.");
+        }
+        Optional<Plan> opt = planStore.get(planId);
+        if (opt.isEmpty()) {
+            return ToolResponse.invalidParameter("planId", "Unknown or expired plan '" + planId + "'.");
+        }
+        Plan plan = opt.get();
+        int applied = plan.appliedThrough();
+
+        List<Map<String, Object>> stepView = new ArrayList<>();
+        for (PlanStep s : plan.steps()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("index", s.index());
+            m.put("tool", s.tool());
+            m.put("args", s.args());
+            m.put("expectedStateAfter", s.expectedStateAfter());
+            m.put("status", s.index() <= applied ? "applied" : "pending");
+            stepView.add(m);
+        }
+        boolean fullyApplied = applied >= 0 && applied == plan.steps().size() - 1;
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("operation", "refactoring");
+        data.put("action", "inspect_plan");
+        data.put("planId", planId);
+        data.put("kind", plan.kind());
+        data.put("target", plan.target());
+        data.put("stepCount", plan.steps().size());
+        data.put("appliedThrough", applied);
+        data.put("applied", fullyApplied);
+        data.put("undoChangeId", plan.undoChangeId());
+        data.put("steps", stepView);
+        data.put("advice", plan.advice());
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .totalCount(plan.steps().size())
+            .returnedCount(plan.steps().size())
+            .build());
+    }
+
+    private ToolResponse doUndoPlan(IJdtService service, JsonNode args) {
+        String planId = getStringParam(args, "planId");
+        if (planId == null || planId.isBlank()) {
+            return ToolResponse.invalidParameter("planId", "Required.");
+        }
+        Optional<Plan> opt = planStore.get(planId);
+        if (opt.isEmpty()) {
+            return ToolResponse.invalidParameter("planId", "Unknown or expired plan '" + planId + "'.");
+        }
+        Plan plan = opt.get();
+        if (plan.appliedThrough() < 0 || plan.undoChangeId() == null) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("operation", "refactoring");
+            data.put("action", "undo_plan");
+            data.put("planId", planId);
+            data.put("undone", false);
+            data.put("message", "Plan has no applied changes to undo.");
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+
+        Optional<Change> undo = changeCache.take(plan.undoChangeId(), RefactoringChangeCache.Kind.UNDO)
+            .map(e -> e.change());
+        if (undo.isEmpty()) {
+            return ToolResponse.error("UNDO_UNAVAILABLE",
+                "The undo handle for plan '" + planId + "' has expired or was already consumed.",
+                "Re-run the plan if you need to change it.");
+        }
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(undo.get(), service);
+        if (outcome.validationError() != null) {
+            return ToolResponse.error("UNDO_FAILED",
+                "undo_plan failed: " + outcome.validationError(),
+                "The workspace may be in a partially-reverted state; inspect it before retrying.");
+        }
+        plan.appliedThrough(-1);
+        plan.undoChangeId(null);
+
+        Outcome oc = new Outcome("refactoring.undo_plan", plan.kind(), plan.target(),
+            Outcome.ROLLED_BACK, outcome.modifiedFilePaths(), null, List.of("plan undone"));
+        advisor.record(oc);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("operation", "refactoring");
+        data.put("action", "undo_plan");
+        data.put("planId", planId);
+        data.put("undone", true);
+        data.put("filesModified", outcome.modifiedFilePaths());
+        data.put("outcome", outcomeView(oc));
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .totalCount(outcome.modifiedFilePaths().size())
+            .returnedCount(outcome.modifiedFilePaths().size())
             .build());
     }
 

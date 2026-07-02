@@ -22,7 +22,8 @@ public class RefactoringTool extends AbstractTool {
     // Sprint 18: the single-change lifecycle (apply/undo/inspect on a changeId) plus
     // the multi-step plan lifecycle. Actions are advertised as they land (C4: plan;
     // C5: apply_plan; C6: inspect_plan/undo_plan).
-    private static final List<String> ACTIONS = List.of("apply", "undo", "inspect", "plan", "apply_plan");
+    private static final List<String> ACTIONS =
+        List.of("apply", "undo", "inspect", "plan", "apply_plan", "inspect_plan", "undo_plan");
 
     private final ApplyRefactoringTool apply;
     private final UndoRefactoringTool undo;
@@ -63,6 +64,8 @@ public class RefactoringTool extends AbstractTool {
             - apply_plan — run a planId step by step, parity-gated (compile 0/0 + a purity check)
                            after each; rolls the whole plan back atomically on failure. Needs: planId.
                            Returns the composed undoChangeId + any purity findings.
+            - inspect_plan — review a planId: its steps, which are applied vs pending. Needs: planId.
+            - undo_plan  — revert a fully-applied plan via its composed undo. Needs: planId.
 
             Requires load_project to be called first.
             """;
@@ -105,8 +108,8 @@ public class RefactoringTool extends AbstractTool {
             case "apply"   -> apply.executeWithService(service, arguments);
             case "undo"    -> undo.executeWithService(service, arguments);
             case "inspect" -> inspect.executeWithService(service, arguments);
-            case "plan"       -> planTool.executeWithService(service, arguments);
-            case "apply_plan" -> planTool.executeWithService(service, arguments);
+            case "plan", "apply_plan", "inspect_plan", "undo_plan"
+                           -> planTool.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("action",
                 "Unknown action '" + action + "'. Allowed: " + ACTIONS);
         };

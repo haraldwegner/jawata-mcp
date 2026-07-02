@@ -19,6 +19,7 @@ public final class Plan {
     private final List<String> advice;
     private final long insertedAtMillis;
     private int appliedThrough = -1;
+    private String undoChangeId;
 
     public Plan(String planId, String kind, String target, List<PlanStep> steps,
                 List<String> advice, long insertedAtMillis) {
@@ -40,4 +41,8 @@ public final class Plan {
     /** Index of the last committed step ({@code -1} = nothing applied yet). */
     public int appliedThrough() { return appliedThrough; }
     public void appliedThrough(int index) { this.appliedThrough = index; }
+
+    /** The composed plan-level undo handle, set by apply_plan on success ({@code null} until then / after undo). */
+    public String undoChangeId() { return undoChangeId; }
+    public void undoChangeId(String id) { this.undoChangeId = id; }
 }
