@@ -165,47 +165,50 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 
 
 **Workspace & navigation**
-- *Workspace* — `add_project`, `remove_project`, `list_projects`, `load_project`, `refresh_workspace`
-- *Navigate* — `go_to_definition`, `find_references`, `find_method_references`,
-  `find_implementations`, `get_call_hierarchy_incoming` / `_outgoing`, `get_super_method`,
-  `get_type_hierarchy`, `get_type_members`, `get_document_symbols`
-- *Search* — `search_symbols`, `find_pattern_usages` *(annotation / instantiation / type-argument /
-  cast / instanceof)*, `find_field_writes`, `get_type_usage_summary`
+- *Workspace* — `load_project`, `project` *(list / add / remove)*, `refresh_workspace`
+- *Navigate* — `go_to_definition`, `find_references` *(references / implementations /
+  method_references)*, `get_call_hierarchy` *(incoming / outgoing)*, `inspect` *(type_hierarchy /
+  document_symbols / type_members / …)*, `get_at_position` *(type / method / field / hover /
+  javadoc / signature / enclosing / super / symbol)*
+- *Search* — `search_symbols`, `find_pattern_usages` *(annotation / instantiation / type_argument /
+  cast / instanceof)*, `find_field_writes`
 
 **Understand**
-- *Analyse* — `analyze_type`, `analyze_method`, `analyze_file`, `analyze_control_flow`,
-  `analyze_data_flow`, `analyze_change_impact`, `analyze_naming`, `analyze_javadocs`,
-  `analyze_nullness`, `find_quality_issue` *(quality: naming / bugs / unused / large-classes /
+- *Analyse* — `analyze` *(file / type / method / control_flow / data_flow / change_impact / naming /
+  javadocs / nullness)*, `find_quality_issue` *(quality: naming / bugs / unused / large-classes /
   circular-deps / reflection / throws / catches · 18 Fowler smells · SOLID: dip / isp / srp_cohesion
   / lsp · Kerievsky: singleton / type_code — with a `family` filter: quality / fowler / solid /
   kerievsky)*
-- *Inspect* — `get_symbol_info`, `get_hover_info`, `get_signature_help`, `get_javadoc`,
-  `get_type_at_position`, `get_method_at_position`, `get_field_at_position`, `get_enclosing_element`,
-  `get_complexity_metrics`, `get_project_structure`, `get_classpath_info`, `get_di_registrations`
+- *Inspect* — `inspect` *(complexity / project_structure / classpath / type_usage /
+  dependency_graph / di_registrations)*
 
 **Change**
-- *Refactor* — `rename_symbol`, `extract_method`, `extract_variable`, `extract_constant`,
-  `extract_interface`, `inline_method`, `inline_variable`, `move_class`, `move_package`, `pull_up`,
-  `push_down`, `encapsulate_field`, `change_method_signature`, `convert_anonymous_to_lambda`,
-  `override_methods` · `apply_refactoring` · `inspect_refactoring` · `undo_refactoring`
+- *Refactor* — `rename_symbol`, `extract` *(method / variable / constant / interface)*, `inline`
+  *(method / variable)*, `move` *(class / package)*, `move_in_hierarchy` *(pull-up / push-down)*,
+  `encapsulate_field`, `change_method_signature`, `convert_anonymous_to_lambda`, `generate`
+  *(constructor / getters_setters / equals_hashcode / tostring / test_skeleton / override_methods)*
+  · `refactoring` *(apply / undo / inspect a staged change)*
 - *Refactor to patterns (Kerievsky)* — `refactor_to_pattern` *(inline_singleton / compose_method /
   replace_type_code_with_class / refactor_to_state / refactor_to_command_dispatcher /
   form_template_method / refactor_to_visitor / replace_pattern_with_idiom)* — behaviour-preserving,
   reversible, compiling; toward a pattern when complexity warrants and away from one that has
   outlived its use.
-- *Imports & modernise* — `organize_imports`, `optimize_imports_workspace`, `suggest_imports`,
-  `find_modernization`, `apply_cleanup`
-- *Null-safety* — `analyze_nullness`, `apply_null_annotations`
-- *Generate* — `generate_constructor`, `generate_getters_setters`, `generate_equals_hashcode`,
-  `generate_tostring`, `generate_test_skeleton`, `format`
-- *Quick fixes* — `get_quick_fixes`, `apply_quick_fix`, `validate_syntax`
+- *Imports & modernise* — `organize_imports`, `optimize_imports_workspace`, `find_modernization`
+  *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers)*
+- *Null-safety* — `apply_null_annotations` *(add / migrate)*
+- *Format* — `format`
+- *Quick fixes* — `quick_fix` *(suggest_imports / list / apply)*, `validate_syntax`
 - *Duplicates* — `find_duplicate_code`, `replace_duplicates`
 
 **Build & verify**
-- *Dependencies* — `add_dependency`, `update_dependency`, `find_unused_dependencies`,
-  `get_dependency_graph`
+- *Dependencies (Maven)* — `dependency` *(add / update / find_unused)*
 - *Verify* — `compile_workspace`, `get_diagnostics`, `find_tests`, `run_tests`
 - *Health* — `health_check`
+
+*40 tools total; front doors (`analyze`, `inspect`, `extract`, `inline`, `move`, `generate`,
+`find_quality_issue`, `find_pattern_usages`, `find_modernization`, `refactor_to_pattern`,
+`dependency`, `quick_fix`, `refactoring`, `project`) each dispatch a `kind`/action, so the loaded
+surface stays small while capability grows by registration.*
 
 ---
 
