@@ -37,7 +37,7 @@ class WorkspaceFileWatcherTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        dataDir = Files.createTempDirectory("jl-workspace-watcher-test-");
+        dataDir = Files.createTempDirectory("goja-workspace-watcher-test-");
         workspaceJson = dataDir.resolve("workspace.json");
         service = new JdtServiceImpl();
     }
