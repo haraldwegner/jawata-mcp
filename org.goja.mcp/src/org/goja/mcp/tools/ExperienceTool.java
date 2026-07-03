@@ -1,15 +1,18 @@
 package org.goja.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.eclipse.jdt.core.IType;
 import org.goja.core.IJdtService;
 import org.goja.mcp.knowledge.Confidence;
 import org.goja.mcp.knowledge.ExperienceEntry;
+import org.goja.mcp.knowledge.ExperienceMaintenance;
 import org.goja.mcp.knowledge.ExperienceRetrieval;
 import org.goja.mcp.knowledge.ExperienceStore;
 import org.goja.mcp.knowledge.RecallQuery;
 import org.goja.mcp.knowledge.SymbolFact;
 import org.goja.mcp.models.ToolResponse;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,16 +30,34 @@ import java.util.function.Supplier;
  */
 public final class ExperienceTool implements Tool {
 
-    private static final List<String> KINDS = List.of("record", "recall");
+    private static final List<String> KINDS =
+        List.of("record", "recall", "load", "refresh", "wipe", "promote");
 
     private final Supplier<IJdtService> serviceSupplier;
     private final ExperienceStore store;
     private final ExperienceRetrieval retrieval;
+    private final ExperienceMaintenance maintenance;
 
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store) {
         this.serviceSupplier = serviceSupplier;
         this.store = store;
         this.retrieval = new ExperienceRetrieval(store, serviceSupplier);
+        this.maintenance = new ExperienceMaintenance(store, this::resolvesViaJdt);
+    }
+
+    /** Bridge the JDT service to the maintenance resolver (TRUE=resolves, FALSE=stale, null=no project). */
+    private Boolean resolvesViaJdt(String symbolFqn) {
+        IJdtService s = serviceSupplier.get();
+        if (s == null) {
+            return null;
+        }
+        String typeName = symbolFqn.contains("#") ? symbolFqn.substring(0, symbolFqn.indexOf('#')) : symbolFqn;
+        try {
+            IType t = s.findType(typeName);
+            return t != null && t.exists();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override
@@ -61,6 +82,12 @@ public final class ExperienceTool implements Tool {
             - recall — TERMINAL retrieval for a cue. Give any of symbol / package / operation
               / symptom / external_system. Returns exactly the fitting node(s) with pointers
               resolved to current code, OR an authoritative absence — never a similarity pile.
+            - load — seed the store from memory files. Needs: path (a directory of *.md or a
+              single file). Frontmatter type/description/symbol + [[wikilinks]]; entries are
+              accepted/medium; idempotent per source (re-load replaces).
+            - refresh — re-resolve every symbol pointer through JDT; flag stale (superseded).
+            - wipe — remove everything.
+            - promote — set an entry's curation status. Needs: id. Optional: status (default accepted).
 
             The store is local + workspace-scoped. Record after a surprising failure, a
             discovered invariant, or a hazard the compiler cannot tell you; recall before a
@@ -85,6 +112,11 @@ public final class ExperienceTool implements Tool {
             "description", "recall: a package you are working in (cue)."));
         props.put("symptom", Map.of("type", "string",
             "description", "recall: an observed symptom / cue phrase (alias-normalized)."));
+
+        // maintenance
+        props.put("path", Map.of("type", "string",
+            "description", "load: a directory of *.md memory files, or a single file."));
+        props.put("id", Map.of("type", "string", "description", "promote: the entry id to re-status."));
 
         props.put("type", Map.of("type", "string",
             "description", "record: entry type (domain_fact / lesson / failure_mode / api_contract / naming_convention / ...)."));
@@ -128,9 +160,36 @@ public final class ExperienceTool implements Tool {
         return switch (kind) {
             case "record" -> record(args);
             case "recall" -> recall(args);
+            case "load" -> load(args);
+            case "refresh" -> ToolResponse.success(maintenance.refresh());
+            case "wipe" -> ToolResponse.success(maintenance.wipe());
+            case "promote" -> promote(args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
+    }
+
+    private ToolResponse load(JsonNode args) {
+        String path = text(args, "path");
+        if (path == null || path.isBlank()) {
+            return ToolResponse.invalidParameter("path", "load requires a 'path'");
+        }
+        return ToolResponse.success(maintenance.load(Path.of(path)));
+    }
+
+    private ToolResponse promote(JsonNode args) {
+        String id = text(args, "id");
+        if (id == null || id.isBlank()) {
+            return ToolResponse.invalidParameter("id", "promote requires an entry 'id'");
+        }
+        String status = text(args, "status");
+        String target = status == null || status.isBlank() ? ExperienceEntry.ACCEPTED : status;
+        boolean changed = store.setStatus(id, target);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", id);
+        data.put("status", target);
+        data.put("changed", changed);
+        return ToolResponse.success(data);
     }
 
     private ToolResponse recall(JsonNode args) {

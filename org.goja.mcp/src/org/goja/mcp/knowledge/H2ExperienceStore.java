@@ -81,10 +81,12 @@ public final class H2ExperienceStore implements ExperienceStore {
                     fault_owner     VARCHAR(16),
                     external_system VARCHAR(256),
                     summary         VARCHAR(4096),
+                    source_ref      VARCHAR(512),
                     body_json       CLOB,
                     created_at      TIMESTAMP,
                     updated_at      TIMESTAMP
                 )""");
+            s.execute("CREATE INDEX IF NOT EXISTS ix_entry_source ON experience_entry(source_ref)");
             s.execute("CREATE INDEX IF NOT EXISTS ix_entry_type ON experience_entry(type)");
             s.execute("CREATE INDEX IF NOT EXISTS ix_entry_symbol ON experience_entry(symbol_fqn)");
             s.execute("CREATE INDEX IF NOT EXISTS ix_entry_status ON experience_entry(status)");
@@ -115,8 +117,16 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized String put(ExperienceEntry entry) {
+        return insert(entry, UUID.randomUUID().toString(), null);
+    }
+
+    @Override
+    public synchronized String putWithSource(ExperienceEntry entry, String sourceRef) {
+        return insert(entry, UUID.randomUUID().toString(), sourceRef);
+    }
+
+    private String insert(ExperienceEntry entry, String id, String sourceRef) {
         Map<String, Object> factMap = entry.fact().toMap();
-        String id = UUID.randomUUID().toString();
         String body;
         try {
             body = json.writeValueAsString(entry.toMap());
@@ -127,8 +137,8 @@ public final class H2ExperienceStore implements ExperienceStore {
             try (PreparedStatement ps = conn.prepareStatement(
                     "INSERT INTO experience_entry"
                     + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
-                    + "fault_owner,external_system,summary,body_json,created_at,updated_at) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -141,9 +151,10 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setString(9, entry.faultOwner());
                 ps.setString(10, entry.externalSystem());
                 ps.setString(11, str(factMap.get("summary")));
-                ps.setString(12, body);
-                ps.setTimestamp(13, now);
+                ps.setString(12, sourceRef);
+                ps.setString(13, body);
                 ps.setTimestamp(14, now);
+                ps.setTimestamp(15, now);
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
@@ -151,6 +162,64 @@ public final class H2ExperienceStore implements ExperienceStore {
             return id;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to put entry: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized int deleteBySource(String sourceRef) {
+        if (sourceRef == null) {
+            return 0;
+        }
+        try {
+            // Remove children first (no FK cascade in this embedded schema).
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM experience_symptom WHERE entry_id IN"
+                    + " (SELECT id FROM experience_entry WHERE source_ref = ?)")) {
+                ps.setString(1, sourceRef);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM experience_link WHERE entry_id IN"
+                    + " (SELECT id FROM experience_entry WHERE source_ref = ?)")) {
+                ps.setString(1, sourceRef);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM experience_entry WHERE source_ref = ?")) {
+                ps.setString(1, sourceRef);
+                return ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to delete by source: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized long wipe() {
+        try (Statement s = conn.createStatement()) {
+            long n = count();
+            s.execute("DELETE FROM experience_symptom");
+            s.execute("DELETE FROM experience_link");
+            s.execute("DELETE FROM experience_entry");
+            return n;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to wipe store: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<StoredEntry> all() {
+        List<StoredEntry> out = new ArrayList<>();
+        try (Statement s = conn.createStatement();
+                ResultSet rs = s.executeQuery(
+                    "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,"
+                    + "external_system,summary,body_json,created_at FROM experience_entry")) {
+            while (rs.next()) {
+                out.add(mapRow(rs));
+            }
+            return out;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to list entries: " + e.getMessage(), e);
         }
     }
 
@@ -268,7 +337,8 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
         String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,"
             + "external_system,summary,body_json,created_at FROM experience_entry WHERE ("
-            + String.join(" OR ", clauses) + ") AND status <> 'rejected' ORDER BY created_at DESC";
+            + String.join(" OR ", clauses)
+            + ") AND status NOT IN ('rejected', 'superseded') ORDER BY created_at DESC";
 
         List<StoredEntry> out = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -277,33 +347,39 @@ public final class H2ExperienceStore implements ExperienceStore {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String id = rs.getString("id");
-                    Map<String, Object> body;
-                    try {
-                        body = json.readValue(rs.getString("body_json"), LinkedHashMap.class);
-                    } catch (Exception e) {
-                        body = new LinkedHashMap<>();
-                    }
-                    Timestamp ts = rs.getTimestamp("created_at");
-                    out.add(new StoredEntry(
-                        id,
-                        rs.getString("type"),
-                        rs.getString("symbol_fqn"),
-                        rs.getString("package_name"),
-                        rs.getString("operation"),
-                        rs.getString("status"),
-                        rs.getString("confidence"),
-                        rs.getString("external_system"),
-                        rs.getString("summary"),
-                        loadSymptoms(id),
-                        ts == null ? null : ts.toInstant(),
-                        body));
+                    out.add(mapRow(rs));
                 }
             }
             return out;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to query entries: " + e.getMessage(), e);
         }
+    }
+
+    /** Map a row (selecting the projection columns below) to a {@link StoredEntry}. */
+    @SuppressWarnings("unchecked")
+    private StoredEntry mapRow(ResultSet rs) throws SQLException {
+        String id = rs.getString("id");
+        Map<String, Object> body;
+        try {
+            body = json.readValue(rs.getString("body_json"), LinkedHashMap.class);
+        } catch (Exception e) {
+            body = new LinkedHashMap<>();
+        }
+        Timestamp ts = rs.getTimestamp("created_at");
+        return new StoredEntry(
+            id,
+            rs.getString("type"),
+            rs.getString("symbol_fqn"),
+            rs.getString("package_name"),
+            rs.getString("operation"),
+            rs.getString("status"),
+            rs.getString("confidence"),
+            rs.getString("external_system"),
+            rs.getString("summary"),
+            loadSymptoms(id),
+            ts == null ? null : ts.toInstant(),
+            body);
     }
 
     private List<String> loadSymptoms(String id) throws SQLException {

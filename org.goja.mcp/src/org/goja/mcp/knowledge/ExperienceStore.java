@@ -24,6 +24,22 @@ public interface ExperienceStore extends AutoCloseable {
     /** Persist a full entry (with retrieval facets: status/scope/operation/symptoms/links). */
     String put(ExperienceEntry entry);
 
+    /**
+     * Persist an entry tagged with an origin marker (Stage 4). A re-load of the same
+     * {@code sourceRef} is made idempotent by {@link #deleteBySource} first — so seeding
+     * from a memory file twice replaces rather than duplicates.
+     */
+    String putWithSource(ExperienceEntry entry, String sourceRef);
+
+    /** Remove all entries (+ children) that came from a given source; returns rows removed. */
+    int deleteBySource(String sourceRef);
+
+    /** Remove everything (maintenance: wipe); returns the entry count removed. */
+    long wipe();
+
+    /** Every entry (maintenance: refresh re-resolves their pointers through JDT). */
+    List<StoredEntry> all();
+
     /** Fetch an entry's stored document by id, or empty when absent. */
     Optional<Map<String, Object>> get(String id);
 
