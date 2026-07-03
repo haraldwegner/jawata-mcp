@@ -71,6 +71,12 @@ navigation, and LTK-backed refactorings that genuinely preserve behaviour.
 | `grep "save("` | 47 hits — including `orderService.save()`, `saveButton`, comments |
 | GOJA `find_references` | exactly 12 — the real calls |
 
+GOJA ships this bias with the connection itself: the MCP `instructions` field injects a trigger→tool
+guide at connect, so every client is told to reach for GOJA first — not `grep`, not a hand-edit —
+for anything semantic ([goja-studio](https://github.com/haraldwegner/goja-studio) adds a hard
+try-first hook on top). And "understand this symbol" is one call: `analyze(kind=symbol)` returns the
+definition, the type, and the references together, so there's no multi-step detour to defect from.
+
 ---
 
 ## Installation
@@ -175,7 +181,7 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 
 **Understand**
 - *Analyse* — `analyze` *(file / type / method / control_flow / data_flow / change_impact / naming /
-  javadocs / nullness)*, `find_quality_issue` *(quality: naming / bugs / unused / large-classes /
+  javadocs / nullness / symbol — one call: definition + type + references)*, `find_quality_issue` *(quality: naming / bugs / unused / large-classes /
   circular-deps / reflection / throws / catches · 18 Fowler smells · SOLID: dip / isp / srp_cohesion
   / lsp · Kerievsky: singleton / type_code — with a `family` filter: quality / fowler / solid /
   kerievsky)*
