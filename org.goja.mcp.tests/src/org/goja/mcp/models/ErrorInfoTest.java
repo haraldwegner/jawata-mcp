@@ -81,13 +81,16 @@ class ErrorInfoTest {
     }
 
     @Test
-    @DisplayName("invalidParameter should include param and reason")
+    @DisplayName("invalidParameter should include param and reason + a schema hint")
     void invalidParameter_includesParamAndReason() {
         ErrorInfo error = ErrorInfo.invalidParameter("filePath", "cannot be empty");
 
         assertEquals(ErrorInfo.INVALID_PARAMETER, error.getCode());
         assertTrue(error.getMessage().contains("filePath"));
         assertTrue(error.getMessage().contains("cannot be empty"));
+        // Sprint 22 (POST layer): invalidParameter now carries a recovery hint.
+        assertNotNull(error.getHint());
+        assertTrue(error.getHint().contains("inputSchema"));
     }
 
     @Test

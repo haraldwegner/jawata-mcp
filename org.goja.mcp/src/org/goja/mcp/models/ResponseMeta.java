@@ -16,6 +16,15 @@ public class ResponseMeta {
     private Boolean truncated;
     private List<String> suggestedNextTools;
     private String verbosity;
+    /**
+     * Sprint 22 (POST layer): a short directional nudge to the next grounded
+     * step, injected centrally on every successful tool result (see
+     * {@code ToolRegistry.callTool}). Distinct from {@code suggestedNextTools}
+     * (tool-specific next lookups): steering names the do → change → verify
+     * direction so the result the agent reads keeps it inside GOJA rather than
+     * defaulting to grep / a hand-edit.
+     */
+    private String steering;
 
     private ResponseMeta() {
         // Use builder
@@ -39,6 +48,15 @@ public class ResponseMeta {
 
     public String getVerbosity() {
         return verbosity;
+    }
+
+    public String getSteering() {
+        return steering;
+    }
+
+    /** Package-private: central steering injection onto an already-built meta. */
+    void setSteering(String steering) {
+        this.steering = steering;
     }
 
     public static Builder builder() {
@@ -78,6 +96,11 @@ public class ResponseMeta {
 
         public Builder verbosity(String verbosity) {
             meta.verbosity = verbosity;
+            return this;
+        }
+
+        public Builder steering(String steering) {
+            meta.steering = steering;
             return this;
         }
 

@@ -209,6 +209,60 @@ class ToolRegistryTest {
         assertNotNull(response.getError());
     }
 
+    // ========== Steering Injection Tests (Sprint 22 POST layer) ==========
+
+    @Test
+    @DisplayName("callTool steers a read-only navigate tool toward a GOJA refactor tool")
+    void callTool_steersReadOnlyToChange() throws Exception {
+        registry.register(new MockTool("search_symbols", "read-only navigate"));
+
+        ToolResponse r = registry.callTool("search_symbols", objectMapper.createObjectNode());
+
+        assertTrue(r.isSuccess());
+        assertNotNull(r.getMeta());
+        String steering = r.getMeta().getSteering();
+        assertNotNull(steering, "read-only success carries steering");
+        assertTrue(steering.contains("rename_symbol") && steering.contains("refactoring(action=plan)"),
+            "steering names GOJA refactor tools");
+        assertTrue(steering.contains("not a hand-edit"), "steering discourages hand-editing");
+    }
+
+    @Test
+    @DisplayName("callTool steers a mutating tool toward verification")
+    void callTool_steersMutatorToVerify() throws Exception {
+        registry.register(new MockTool("rename_symbol", "mutator"));
+
+        ToolResponse r = registry.callTool("rename_symbol", objectMapper.createObjectNode());
+
+        assertTrue(r.isSuccess());
+        assertNotNull(r.getMeta());
+        assertTrue(r.getMeta().getSteering().contains("compile_workspace"),
+            "mutator steering points at verification");
+    }
+
+    @Test
+    @DisplayName("callTool adds no steering for session/build/verify tools")
+    void callTool_noSteeringForNoSteerTools() throws Exception {
+        registry.register(new MockTool("health_check", "session"));
+
+        ToolResponse r = registry.callTool("health_check", objectMapper.createObjectNode());
+
+        assertTrue(r.isSuccess());
+        assertTrue(r.getMeta() == null || r.getMeta().getSteering() == null,
+            "no-steer tools carry no steering");
+    }
+
+    @Test
+    @DisplayName("a failed tool call carries no steering")
+    void callTool_noSteeringOnFailure() throws Exception {
+        registry.register(new FailingTool());
+
+        ToolResponse r = registry.callTool("failing_tool", objectMapper.createObjectNode());
+
+        assertFalse(r.isSuccess());
+        assertNull(r.getMeta(), "error responses have no steering meta");
+    }
+
     // ========== Mock Tool Implementation ==========
 
     /**

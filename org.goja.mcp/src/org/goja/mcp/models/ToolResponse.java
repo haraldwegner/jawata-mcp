@@ -35,6 +35,22 @@ public class ToolResponse {
     }
 
     /**
+     * Sprint 22 (POST layer): central steering injection. On a successful
+     * response, attach the directional next-step nudge unless the tool already
+     * set one. No-op on errors or when {@code steering} is null.
+     */
+    public void applySteering(String steering) {
+        if (!success || steering == null) {
+            return;
+        }
+        if (meta == null) {
+            meta = ResponseMeta.builder().steering(steering).build();
+        } else if (meta.getSteering() == null) {
+            meta.setSteering(steering);
+        }
+    }
+
+    /**
      * Create a successful response with data and optional metadata.
      */
     public static ToolResponse success(Object data) {

@@ -93,7 +93,7 @@ public class ErrorInfo {
         return new ErrorInfo(
             INVALID_PARAMETER,
             String.format("Invalid parameter '%s': %s", param, reason),
-            null
+            "Check the tool's inputSchema (tools/list) for the required parameters and their expected shapes."
         );
     }
 

@@ -106,6 +106,33 @@ public class ToolRegistry {
         return definitions;
     }
 
+    /**
+     * Sprint 22 (POST layer): tools that get no steering — session/build/verify
+     * tools where a "next step" nudge would be noise or self-referential.
+     */
+    private static final Set<String> NO_STEER = Set.of(
+        "health_check", "list_projects", "load_project", "project",
+        "refresh_workspace", "validate_syntax", "compile_workspace", "get_diagnostics");
+
+    /**
+     * The directional next-step nudge for a tool, by category. Reuses
+     * {@link #isReadOnly} to split navigate/understand (→ change with a GOJA
+     * refactor tool, not a hand-edit) from mutate (→ verify with the build).
+     * Returns null for session/build/verify tools (see {@link #NO_STEER}).
+     */
+    static String steeringFor(String name) {
+        if (NO_STEER.contains(name)) {
+            return null;
+        }
+        if (isReadOnly(name)) {
+            return "Grounded next step: change what you found with a GOJA refactor tool "
+                + "(rename_symbol / extract / move / refactoring(action=plan)) — not a hand-edit "
+                + "(grep and hand-edits miss references).";
+        }
+        return "Grounded next step: verify with compile_workspace + get_diagnostics; "
+            + "GOJA changes are reversible (undo / undo_plan).";
+    }
+
     /** True when the named tool is a detect tool per the Sprint 14b sets. */
     static boolean isReadOnly(String toolName) {
         if (READ_ONLY_NAMES.contains(toolName)) {
@@ -140,6 +167,9 @@ public class ToolRegistry {
             ToolResponse response = tool.execute(arguments);
             long duration = System.currentTimeMillis() - startTime;
             log.info("Tool {} completed in {}ms, success={}", name, duration, response.isSuccess());
+            // Sprint 22 (POST layer): central steering injection — every success
+            // result names the next grounded step (see steeringFor).
+            response.applySteering(steeringFor(name));
             return response;
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
