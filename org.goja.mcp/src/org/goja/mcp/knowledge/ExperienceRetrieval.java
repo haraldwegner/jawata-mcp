@@ -42,6 +42,13 @@ public final class ExperienceRetrieval {
 
     public static final String RESULT_MATCH = "match";
     public static final String RESULT_ABSENCE = "absence";
+    public static final String RESULT_PRIMER = "primer";
+
+    /** Domain-layer entry types + scope kinds — the always-relevant knowledge the primer pushes. */
+    private static final java.util.Set<String> DOMAIN_TYPES = java.util.Set.of(
+        "domain_fact", "domain_concept", "bounded_context", "invariant", "ubiquitous_language");
+    private static final java.util.Set<String> DOMAIN_SCOPES = java.util.Set.of(
+        "bounded_context", "domain_concept");
 
     private final ExperienceStore store;
     private final Supplier<IJdtService> jdt;
@@ -99,6 +106,88 @@ public final class ExperienceRetrieval {
         }
         out.put("entries", entries);
         return out;
+    }
+
+    /**
+     * Sprint 21 Stage 5 — the domain-layer primer: the accepted DOMAIN nodes in the store,
+     * for the always-on SessionStart injection (vs cue-gated recall). Domain is the layer
+     * that is always relevant (bounded contexts, concepts, invariants, ubiquitous language),
+     * so it is pushed up front. Ordered confidence › recency, capped at {@code limit}.
+     */
+    public Map<String, Object> primer(int limit) {
+        List<StoredEntry> domain = new ArrayList<>();
+        for (StoredEntry e : store.all()) {
+            if (!ExperienceEntry.ACCEPTED.equals(e.status())) {
+                continue;
+            }
+            String type = e.type() == null ? "" : e.type().toLowerCase(Locale.ROOT);
+            Object sk = e.body().get("scope_kind");
+            String scopeKind = sk == null ? "" : sk.toString().toLowerCase(Locale.ROOT);
+            if (DOMAIN_TYPES.contains(type) || DOMAIN_SCOPES.contains(scopeKind)) {
+                domain.add(e);
+            }
+        }
+        domain.sort(Comparator
+            .comparingInt(StoredEntry::confidenceRank).reversed()
+            .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (domain.isEmpty()) {
+            out.put("result", RESULT_ABSENCE);
+            out.put("message", "No domain knowledge loaded.");
+            out.put("entries", List.of());
+            return out;
+        }
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (int i = 0; i < domain.size() && i < limit; i++) {
+            entries.add(present(domain.get(i)));
+        }
+        out.put("result", RESULT_PRIMER);
+        out.put("count", entries.size());
+        out.put("entries", entries);
+        return out;
+    }
+
+    /**
+     * Render a recall/primer result as flat, injection-ready lines (Stage 5 {@code
+     * format=text}). Rendering lives here (reactor-tested), so the push hooks stay dumb —
+     * they peel the MCP envelope and emit these lines verbatim.
+     */
+    public static String renderText(Map<String, Object> result) {
+        Object res = result.get("result");
+        if (RESULT_ABSENCE.equals(res)) {
+            Object msg = result.get("message");
+            return msg == null ? "No known knowledge for this cue." : msg.toString();
+        }
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entries =
+            (List<Map<String, Object>>) result.getOrDefault("entries", List.of());
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> e : entries) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(renderEntryLine(e));
+        }
+        return sb.toString();
+    }
+
+    static String renderEntryLine(Map<String, Object> e) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('[').append(e.get("type")).append("] ").append(e.get("summary"));
+        Object status = e.get("status");
+        if (status != null) {
+            sb.append(" (").append(status).append(')');
+        }
+        Object details = e.get("details");
+        if (details != null) {
+            String d = details.toString();
+            if (d.length() > 160) {
+                d = d.substring(0, 157) + "...";
+            }
+            sb.append(" — ").append(d);
+        }
+        return sb.toString();
     }
 
     // --- Phase 2: fit gate (scope-containment) -----------------------------------------

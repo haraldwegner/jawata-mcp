@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 public final class ExperienceTool implements Tool {
 
     private static final List<String> KINDS =
-        List.of("record", "recall", "load", "refresh", "wipe", "promote");
+        List.of("record", "recall", "primer", "load", "refresh", "wipe", "promote");
 
     private final Supplier<IJdtService> serviceSupplier;
     private final ExperienceStore store;
@@ -82,6 +82,9 @@ public final class ExperienceTool implements Tool {
             - recall — TERMINAL retrieval for a cue. Give any of symbol / package / operation
               / symptom / external_system. Returns exactly the fitting node(s) with pointers
               resolved to current code, OR an authoritative absence — never a similarity pile.
+              Pass format="text" for flat, injection-ready lines (else structured JSON).
+            - primer — the always-on DOMAIN layer: accepted domain nodes for a SessionStart
+              orientation. Optional: limit (default 20), format="text".
             - load — seed the store from memory files. Needs: path (a directory of *.md or a
               single file). Frontmatter type/description/symbol + [[wikilinks]]; entries are
               accepted/medium; idempotent per source (re-load replaces).
@@ -117,6 +120,9 @@ public final class ExperienceTool implements Tool {
         props.put("path", Map.of("type", "string",
             "description", "load: a directory of *.md memory files, or a single file."));
         props.put("id", Map.of("type", "string", "description", "promote: the entry id to re-status."));
+        props.put("limit", Map.of("type", "integer", "description", "primer: max domain nodes (default 20)."));
+        props.put("format", Map.of("type", "string", "enum", List.of("json", "text"),
+            "description", "recall/primer: text = flat injection-ready lines; default json."));
 
         props.put("type", Map.of("type", "string",
             "description", "record: entry type (domain_fact / lesson / failure_mode / api_contract / naming_convention / ...)."));
@@ -160,6 +166,7 @@ public final class ExperienceTool implements Tool {
         return switch (kind) {
             case "record" -> record(args);
             case "recall" -> recall(args);
+            case "primer" -> primer(args);
             case "load" -> load(args);
             case "refresh" -> ToolResponse.success(maintenance.refresh());
             case "wipe" -> ToolResponse.success(maintenance.wipe());
@@ -199,7 +206,21 @@ public final class ExperienceTool implements Tool {
             text(args, "operation"),
             text(args, "symptom"),
             text(args, "external_system"));
-        return ToolResponse.success(retrieval.recall(q));
+        return respond(args, retrieval.recall(q));
+    }
+
+    private ToolResponse primer(JsonNode args) {
+        int limit = args != null && args.has("limit") && args.get("limit").isInt()
+            ? args.get("limit").asInt() : 20;
+        return respond(args, retrieval.primer(limit));
+    }
+
+    /** Structured JSON by default; {@code format=text} returns flat injection-ready lines. */
+    private ToolResponse respond(JsonNode args, Map<String, Object> result) {
+        if ("text".equalsIgnoreCase(text(args, "format"))) {
+            return ToolResponse.success(ExperienceRetrieval.renderText(result));
+        }
+        return ToolResponse.success(result);
     }
 
     private ToolResponse record(JsonNode args) {
