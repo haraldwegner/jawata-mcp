@@ -282,6 +282,91 @@ public class GojaApplication implements IApplication {
         return workspaceJson != null ? workspaceJson.getParent() : dataDir;
     }
 
+    // --- Sprint 21a (item C): default memory roots for load/reseed ------------------------
+
+    /**
+     * The default roots the no-path {@code experience(kind=load|reseed)} seeds from:
+     * extra roots from {@code -Dgoja.memory.roots} (path-separator list — the studio
+     * config channel), the layered {@code CLAUDE.md} set (global {@code ~/.claude} +
+     * each workspace project dir and its ancestors up to {@code $HOME}), and the Claude
+     * per-project memory dirs ({@code ~/.claude/projects/<sanitized-path>/memory}).
+     */
+    private java.util.List<Path> defaultMemoryRoots() {
+        return defaultMemoryRoots(
+            Path.of(System.getProperty("user.home")),
+            workspaceProjectDirs(),
+            System.getProperty("goja.memory.roots"));
+    }
+
+    /** Package-private + static for tests (no OSGi). Only existing paths are returned. */
+    static java.util.List<Path> defaultMemoryRoots(Path home, java.util.List<Path> projectDirs,
+            String extraRoots) {
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        if (extraRoots != null && !extraRoots.isBlank()) {
+            for (String s : extraRoots.split(java.io.File.pathSeparator)) {
+                if (!s.isBlank()) {
+                    addIfExists(roots, Path.of(s.strip()));
+                }
+            }
+        }
+        addIfExists(roots, home.resolve(".claude").resolve("CLAUDE.md"));
+        for (Path proj : projectDirs) {
+            Path d = proj.toAbsolutePath().normalize();
+            while (d != null) {
+                addIfExists(roots, d.resolve("CLAUDE.md"));
+                if (d.equals(home) || !d.startsWith(home)) {
+                    break;                     // layered up to $HOME; foreign roots: dir only
+                }
+                d = d.getParent();
+            }
+            addIfExists(roots, home.resolve(".claude").resolve("projects")
+                .resolve(sanitizeProjectDir(proj)).resolve("memory"));
+        }
+        return java.util.List.copyOf(roots);
+    }
+
+    /** The Claude Code project-dir convention: the absolute path with separators as dashes. */
+    static String sanitizeProjectDir(Path proj) {
+        return proj.toAbsolutePath().normalize().toString()
+            .replace(java.io.File.separatorChar, '-').replace('/', '-');
+    }
+
+    private static void addIfExists(java.util.Set<Path> set, Path p) {
+        if (Files.exists(p)) {
+            set.add(p);
+        }
+    }
+
+    private java.util.List<Path> workspaceProjectDirs() {
+        Path dataDir = resolveDataDir();
+        Path root = resolveWorkspaceRoot(dataDir);
+        Path workspaceJson = root != null && Files.isRegularFile(root.resolve("workspace.json"))
+            ? root.resolve("workspace.json")
+            : findWorkspaceJson(dataDir);
+        return workspaceJson == null ? java.util.List.of() : readProjects(workspaceJson);
+    }
+
+    /** All project paths from {@code workspace.json} (empty on any parse problem). */
+    static java.util.List<Path> readProjects(Path workspaceJson) {
+        try {
+            JsonNode root = new ObjectMapper().readTree(Files.readString(workspaceJson));
+            java.util.List<Path> out = new java.util.ArrayList<>();
+            JsonNode projects = root.path("projects");
+            if (projects.isArray()) {
+                for (JsonNode p : projects) {
+                    String s = p.asText(null);
+                    if (s != null && !s.isBlank()) {
+                        out.add(Path.of(s));
+                    }
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Cannot read projects from {}: {}", workspaceJson, e.getMessage());
+            return java.util.List.of();
+        }
+    }
+
     /**
      * Parse {@code workspace.json} into provenance facets: {@code [workspaceId, projectId]}
      * (the manager's workspace {@code name} + first project path; either may be null).
@@ -511,7 +596,8 @@ public class GojaApplication implements IApplication {
         // Sprint 21 (v2.0): the local experience/knowledge store front door.
         // experience(kind=record|...) — writes now, recall/load/maintenance land in
         // later stages. Backed by the store opened in start(), closed in stop().
-        toolRegistry.register(new ExperienceTool(() -> jdtService, experienceStore));
+        toolRegistry.register(new ExperienceTool(() -> jdtService, experienceStore,
+            this::defaultMemoryRoots));
     }
 
     private void runMessageLoop(TransportConfig config) {

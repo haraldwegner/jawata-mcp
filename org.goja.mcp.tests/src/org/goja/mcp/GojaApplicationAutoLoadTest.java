@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for bug #5 (v1.7.1) — GojaApplication.findWorkspaceJson must
@@ -119,6 +120,42 @@ class GojaApplicationAutoLoadTest {
             "no workspace.json anywhere → the data dir itself");
 
         assertNull(GojaApplication.resolveWorkspaceRoot(null));
+    }
+
+    // --- Sprint 21a (item C): default memory roots -----------------------------------------
+
+    @Test
+    @DisplayName("defaultMemoryRoots layers CLAUDE.md up to $HOME, adds memory-dir convention + extra roots")
+    void defaultMemoryRoots_layering(@TempDir Path home) throws Exception {
+        Path proj = Files.createDirectories(home.resolve("CursorProjects").resolve("proj"));
+        Files.writeString(home.resolve("CLAUDE.md"), "home rules");
+        Files.writeString(home.resolve("CursorProjects").resolve("CLAUDE.md"), "dir rules");
+        Files.writeString(proj.resolve("CLAUDE.md"), "project rules");
+        Files.createDirectories(home.resolve(".claude"));
+        Files.writeString(home.resolve(".claude").resolve("CLAUDE.md"), "global rules");
+        Path memDir = Files.createDirectories(home.resolve(".claude").resolve("projects")
+            .resolve(GojaApplication.sanitizeProjectDir(proj)).resolve("memory"));
+        Path extra = Files.createDirectories(home.resolve("extra-root"));
+
+        var roots = GojaApplication.defaultMemoryRoots(home, java.util.List.of(proj), extra.toString());
+
+        assertTrue(roots.contains(extra), "explicit extra root first");
+        assertTrue(roots.contains(home.resolve(".claude").resolve("CLAUDE.md")), "global CLAUDE.md");
+        assertTrue(roots.contains(proj.resolve("CLAUDE.md")), "project CLAUDE.md");
+        assertTrue(roots.contains(home.resolve("CursorProjects").resolve("CLAUDE.md")), "ancestor CLAUDE.md");
+        assertTrue(roots.contains(home.resolve("CLAUDE.md")), "home-level CLAUDE.md");
+        assertTrue(roots.contains(memDir), "Claude per-project memory dir convention");
+        assertEquals(6, roots.size(), "nothing beyond the existing layered set");
+    }
+
+    @Test
+    @DisplayName("readProjects parses all project paths; missing/broken file → empty list")
+    void readProjects_parsesAll(@TempDir Path dir) throws Exception {
+        Path json = dir.resolve("workspace.json");
+        Files.writeString(json, "{\"name\":\"w\",\"projects\":[\"/a/one\",\"/b/two\"],\"version\":1}");
+        assertEquals(java.util.List.of(Path.of("/a/one"), Path.of("/b/two")),
+            GojaApplication.readProjects(json));
+        assertTrue(GojaApplication.readProjects(dir.resolve("nope.json")).isEmpty());
     }
 
     // --- Sprint 21a (item B): provenance facets from workspace.json -----------------------

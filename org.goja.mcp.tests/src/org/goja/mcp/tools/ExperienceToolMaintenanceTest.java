@@ -66,10 +66,52 @@ class ExperienceToolMaintenanceTest {
     }
 
     @Test
-    void load_requires_path() {
+    void load_without_path_and_without_roots_fails() {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
-        assertFalse(tool.execute(a).isSuccess());
+        assertFalse(tool.execute(a).isSuccess(), "no path + no configured default roots");
+    }
+
+    // --- Sprint 21a (items C+G): default roots + the confirm-gated reseed -----------------
+
+    @Test
+    void load_without_path_seeds_from_default_roots(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("m.md"),
+            "---\nname: n\ndescription: seeded note\ntype: domain_fact\n---\nbody");
+        ExperienceTool rooted = new ExperienceTool(() -> null, store, () -> java.util.List.of(dir));
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "load");
+        assertEquals(1, data(rooted.execute(a)).get("loaded"));
+    }
+
+    @Test
+    void reseed_requires_confirm_then_wipes_and_reloads(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("m.md"),
+            "---\nname: n\ndescription: seeded note\ntype: domain_fact\n---\nbody");
+        ExperienceTool rooted = new ExperienceTool(() -> null, store, () -> java.util.List.of(dir));
+        recordOneVia(rooted);
+        assertEquals(1L, store.count());
+
+        ObjectNode noConfirm = mapper.createObjectNode();
+        noConfirm.put("kind", "reseed");
+        assertFalse(rooted.execute(noConfirm).isSuccess(), "reseed is confirm-gated");
+        assertEquals(1L, store.count(), "nothing wiped without confirm");
+
+        ObjectNode confirmed = mapper.createObjectNode();
+        confirmed.put("kind", "reseed");
+        confirmed.put("confirm", true);
+        Map<String, Object> d = data(rooted.execute(confirmed));
+        assertEquals(1L, d.get("removed"), "the hand-recorded entry was wiped");
+        assertEquals(1, d.get("loaded"), "the seed file was reloaded");
+        assertEquals(1L, store.count());
+    }
+
+    private void recordOneVia(ExperienceTool t) {
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "record");
+        a.put("type", "lesson");
+        a.put("summary", "to be wiped");
+        t.execute(a);
     }
 
     @Test

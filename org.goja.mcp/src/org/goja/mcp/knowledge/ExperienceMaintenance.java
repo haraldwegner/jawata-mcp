@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -24,6 +25,13 @@ public final class ExperienceMaintenance {
 
     private static final Logger log = LoggerFactory.getLogger(ExperienceMaintenance.class);
     private static final Pattern WIKILINK = Pattern.compile("\\[\\[([^\\]]+)\\]\\]");
+    /** Relative markdown links to .md files — the MEMORY.md index convention. */
+    private static final Pattern MD_LINK = Pattern.compile("\\]\\(([^)#?:]+\\.md)\\)");
+
+    // Sprint 21a (item C): crawl bounds — a link closure must terminate and stay honest.
+    static final int DEFAULT_MAX_DEPTH = 5;
+    static final int DEFAULT_MAX_FILES = 200;
+    static final long DEFAULT_MAX_BYTES = 2_000_000L;
 
     /** Resolve a symbol pointer: {@code TRUE}=resolves, {@code FALSE}=stale, {@code null}=unknown (no project). */
     @FunctionalInterface
@@ -33,82 +41,208 @@ public final class ExperienceMaintenance {
 
     private final ExperienceStore store;
     private final PointerResolver resolver;
+    private final Supplier<List<Path>> defaultRoots;
 
     public ExperienceMaintenance(ExperienceStore store, PointerResolver resolver) {
+        this(store, resolver, List::of);
+    }
+
+    /** Sprint 21a (item C): {@code defaultRoots} feed the no-path {@code load}/{@code reseed}. */
+    public ExperienceMaintenance(ExperienceStore store, PointerResolver resolver,
+            Supplier<List<Path>> defaultRoots) {
         this.store = store;
         this.resolver = resolver == null ? fqn -> null : resolver;
+        this.defaultRoots = defaultRoots == null ? List::of : defaultRoots;
+    }
+
+    /** True when at least one configured default root exists on disk. */
+    public boolean hasDefaultRoots() {
+        return defaultRoots.get().stream().anyMatch(Files::exists);
     }
 
     // --- load ---------------------------------------------------------------------------
 
-    /**
-     * Seed the store from memory files under {@code path} (a directory of {@code *.md} or a
-     * single file). Frontmatter {@code type} → entry type, {@code description} → summary,
-     * {@code symbol} → JDT-resolved pointer (flagged stale on ingest), {@code [[wikilinks]]}
-     * → {@code related} edges. Entries are {@code accepted}/{@code medium}. Idempotent by
-     * source: a re-load of the same file replaces its entries.
-     */
     public Map<String, Object> load(Path path) {
-        Map<String, Object> report = new LinkedHashMap<>();
-        List<Map<String, Object>> stale = new ArrayList<>();
-        if (path == null || !Files.exists(path)) {
+        return load(path, false);
+    }
+
+    /**
+     * Seed the store from memory files. {@code path} = a directory of {@code *.md} or a
+     * single file; {@code null} = the configured default roots (layered {@code CLAUDE.md}
+     * set + memory dirs). Frontmatter {@code type} → entry type, {@code description} →
+     * summary, {@code symbol} → JDT-resolved pointer (Java anchors only, item I),
+     * {@code [[wikilinks]]} → {@code related} edges. Entries are {@code accepted}/medium;
+     * idempotent by absolute source path.
+     *
+     * <p>Sprint 21a (item C): ingest follows the LINK GRAPH — {@code [[wikilinks]]} and
+     * relative {@code [x](file.md)} links are resolved and crawled transitively (how our
+     * memory is actually organized: an index plus cross-linked fact files), cycle-safe and
+     * bounded (depth / file-count / byte caps; skips are reported, never silent).
+     * {@code recursive} additionally walks subdirectories of directory roots.</p>
+     */
+    public Map<String, Object> load(Path path, boolean recursive) {
+        if (path == null) {
+            List<Path> roots = defaultRoots.get().stream().filter(Files::exists).toList();
+            if (roots.isEmpty()) {
+                Map<String, Object> report = new LinkedHashMap<>();
+                report.put("loaded", 0);
+                report.put("error", "no path given and no default memory roots configured"
+                    + " (set -Dgoja.memory.roots or pass a path)");
+                return report;
+            }
+            return loadSources(roots, recursive, DEFAULT_MAX_DEPTH, DEFAULT_MAX_FILES, DEFAULT_MAX_BYTES);
+        }
+        if (!Files.exists(path)) {
+            Map<String, Object> report = new LinkedHashMap<>();
             report.put("loaded", 0);
             report.put("error", "path does not exist");
             return report;
         }
-        List<Path> files = new ArrayList<>();
-        if (Files.isDirectory(path)) {
-            try (Stream<Path> s = Files.list(path)) {
-                s.filter(p -> p.getFileName().toString().endsWith(".md")).sorted().forEach(files::add);
-            } catch (IOException e) {
-                report.put("loaded", 0);
-                report.put("error", "cannot list directory: " + e.getMessage());
-                return report;
+        return loadSources(List.of(path), recursive, DEFAULT_MAX_DEPTH, DEFAULT_MAX_FILES, DEFAULT_MAX_BYTES);
+    }
+
+    /** Crawl + ingest; package-private so tests can exercise the caps directly. */
+    Map<String, Object> loadSources(List<Path> roots, boolean recursive,
+            int maxDepth, int maxFiles, long maxBytes) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        List<Map<String, Object>> stale = new ArrayList<>();
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        List<Path> rootDirs = new ArrayList<>();
+
+        record Item(Path file, int depth) {}
+        java.util.ArrayDeque<Item> queue = new java.util.ArrayDeque<>();
+        java.util.Set<Path> seen = new java.util.HashSet<>();
+
+        for (Path root : roots) {
+            if (Files.isDirectory(root)) {
+                rootDirs.add(root);
+                try (Stream<Path> s = recursive ? Files.walk(root, Math.max(1, maxDepth)) : Files.list(root)) {
+                    s.filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".md"))
+                        .sorted()
+                        .forEach(p -> queue.add(new Item(p, 0)));
+                } catch (IOException e) {
+                    skipped.add(Map.of("source", root.toString(), "reason", "cannot list: " + e.getMessage()));
+                }
+            } else if (Files.isRegularFile(root)) {
+                queue.add(new Item(root, 0));
+                if (root.getParent() != null) {
+                    rootDirs.add(root.getParent());
+                }
+            } else {
+                skipped.add(Map.of("source", root.toString(), "reason", "does not exist"));
             }
-        } else {
-            files.add(path);
         }
 
         int loaded = 0;
-        for (Path f : files) {
+        int linked = 0;
+        long bytes = 0;
+        while (!queue.isEmpty()) {
+            Item item = queue.poll();
+            Path f = item.file().toAbsolutePath().normalize();
+            if (!seen.add(f)) {
+                continue;                            // cycle-safe / dedup
+            }
+            if (loaded >= maxFiles) {
+                skipped.add(Map.of("source", f.toString(), "reason", "max-files (" + maxFiles + ")"));
+                continue;
+            }
+            String content;
             try {
-                MemoryDoc doc = parse(Files.readString(f), f.getFileName().toString());
-                String sourceRef = "memory:" + f.getFileName();
-                store.deleteBySource(sourceRef);   // idempotent re-seed
-
-                SymbolFact.Builder fb = SymbolFact.of(
-                    doc.type == null ? "note" : doc.type,
-                    doc.summary(), Confidence.MEDIUM);
-                if (doc.symbol != null) {
-                    fb.symbol(doc.symbol);
+                long size = Files.size(f);
+                if (bytes + size > maxBytes) {
+                    skipped.add(Map.of("source", f.toString(), "reason", "max-bytes (" + maxBytes + ")"));
+                    continue;
                 }
-                if (!doc.body.isBlank()) {
-                    fb.details(doc.body.strip());
-                }
-                ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
-                    .status(ExperienceEntry.ACCEPTED)
-                    .language(doc.language);
-                for (String link : doc.links) {
-                    eb.addLink("related", link);
-                }
-                store.putWithSource(eb.build(), sourceRef);
-                loaded++;
-
-                // Item I: only Java anchors are judged by the JDT resolver on ingest.
-                boolean javaAnchor = doc.language == null || doc.language.isBlank()
-                    || "java".equalsIgnoreCase(doc.language);
-                if (doc.symbol != null && javaAnchor
-                        && Boolean.FALSE.equals(resolver.resolves(doc.symbol))) {
-                    stale.add(Map.of("source", f.getFileName().toString(), "symbol", doc.symbol));
-                }
+                content = Files.readString(f);
+                bytes += size;
             } catch (IOException e) {
                 log.warn("load: cannot read {}: {}", f, e.getMessage());
+                skipped.add(Map.of("source", f.toString(), "reason", "unreadable: " + e.getMessage()));
+                continue;
+            }
+
+            MemoryDoc doc = parse(content, f.getFileName().toString());
+            String sourceRef = "memory:" + f;
+            store.deleteBySource(sourceRef);         // idempotent re-seed
+
+            SymbolFact.Builder fb = SymbolFact.of(
+                doc.type == null ? "note" : doc.type,
+                doc.summary(), Confidence.MEDIUM);
+            if (doc.symbol != null) {
+                fb.symbol(doc.symbol);
+            }
+            if (!doc.body.isBlank()) {
+                fb.details(doc.body.strip());
+            }
+            ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
+                .status(ExperienceEntry.ACCEPTED)
+                .language(doc.language);
+            for (String link : doc.links) {
+                eb.addLink("related", link);
+            }
+            store.putWithSource(eb.build(), sourceRef);
+            loaded++;
+
+            // Item I: only Java anchors are judged by the JDT resolver on ingest.
+            boolean javaAnchor = doc.language == null || doc.language.isBlank()
+                || "java".equalsIgnoreCase(doc.language);
+            if (doc.symbol != null && javaAnchor
+                    && Boolean.FALSE.equals(resolver.resolves(doc.symbol))) {
+                stale.add(Map.of("source", f.getFileName().toString(), "symbol", doc.symbol));
+            }
+
+            // Item C: follow the link graph.
+            List<Path> targets = resolveLinks(doc, f.getParent(), rootDirs);
+            if (!targets.isEmpty() && item.depth() >= maxDepth) {
+                skipped.add(Map.of("source", f.toString(),
+                    "reason", "max-depth (" + maxDepth + ") — " + targets.size() + " link(s) not followed"));
+                continue;
+            }
+            for (Path t : targets) {
+                Path norm = t.toAbsolutePath().normalize();
+                if (!seen.contains(norm)) {
+                    queue.add(new Item(norm, item.depth() + 1));
+                    linked++;
+                }
             }
         }
-        report.put("files", files.size());
+
+        report.put("files", loaded);
         report.put("loaded", loaded);
+        report.put("linked", linked);
         report.put("stale", stale);
+        report.put("skipped", skipped);
+        if (!skipped.isEmpty()) {
+            log.info("load: {} source(s) skipped: {}", skipped.size(), skipped);
+        }
         return report;
+    }
+
+    /** {@code [[name]]} → {@code <dir>/name.md} (containing dir first, then root dirs);
+     *  {@code [x](rel/path.md)} → resolved against the containing dir. Existing files only. */
+    private static List<Path> resolveLinks(MemoryDoc doc, Path containingDir, List<Path> rootDirs) {
+        List<Path> out = new ArrayList<>();
+        for (String name : doc.links) {
+            String file = name.endsWith(".md") ? name : name + ".md";
+            List<Path> candidates = new ArrayList<>();
+            if (containingDir != null) {
+                candidates.add(containingDir.resolve(file));
+            }
+            for (Path rd : rootDirs) {
+                candidates.add(rd.resolve(file));
+            }
+            candidates.stream().filter(Files::isRegularFile).findFirst().ifPresent(out::add);
+        }
+        if (containingDir != null) {
+            for (String rel : doc.fileLinks) {
+                Path t = containingDir.resolve(rel).normalize();
+                if (Files.isRegularFile(t)) {
+                    out.add(t);
+                }
+            }
+        }
+        return out;
     }
 
     // --- refresh ------------------------------------------------------------------------
@@ -169,7 +303,8 @@ public final class ExperienceMaintenance {
     // --- frontmatter parsing ------------------------------------------------------------
 
     private record MemoryDoc(String name, String description, String type, String symbol,
-                             String language, String body, List<String> links) {
+                             String language, String body, List<String> links,
+                             List<String> fileLinks) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
         String summary() {
             if (description != null && !description.isBlank()) {
@@ -225,10 +360,19 @@ public final class ExperienceMaintenance {
                 links.add(link);
             }
         }
+        // Item C: relative markdown links (the MEMORY.md "- [Title](file.md)" index style).
+        List<String> fileLinks = new ArrayList<>();
+        Matcher fm = MD_LINK.matcher(body);
+        while (fm.find()) {
+            String link = fm.group(1).strip();
+            if (!link.isEmpty() && !link.startsWith("/") && !fileLinks.contains(link)) {
+                fileLinks.add(link);
+            }
+        }
         if (name == null) {
             name = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
         }
-        return new MemoryDoc(name, description, type, symbol, language, body.toString(), links);
+        return new MemoryDoc(name, description, type, symbol, language, body.toString(), links, fileLinks);
     }
 
     private static String emptyToNull(String s) {

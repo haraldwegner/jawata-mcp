@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 public final class ExperienceTool implements Tool {
 
     private static final List<String> KINDS =
-        List.of("record", "recall", "primer", "load", "refresh", "wipe", "promote");
+        List.of("record", "recall", "primer", "load", "reseed", "refresh", "wipe", "promote");
 
     private final Supplier<IJdtService> serviceSupplier;
     private final ExperienceStore store;
@@ -39,10 +39,16 @@ public final class ExperienceTool implements Tool {
     private final ExperienceMaintenance maintenance;
 
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store) {
+        this(serviceSupplier, store, List::of);
+    }
+
+    /** Sprint 21a (item C): {@code defaultRoots} feed no-path {@code load} / {@code reseed}. */
+    public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+            Supplier<List<java.nio.file.Path>> defaultRoots) {
         this.serviceSupplier = serviceSupplier;
         this.store = store;
         this.retrieval = new ExperienceRetrieval(store, serviceSupplier);
-        this.maintenance = new ExperienceMaintenance(store, this::resolvesViaJdt);
+        this.maintenance = new ExperienceMaintenance(store, this::resolvesViaJdt, defaultRoots);
     }
 
     /** Bridge the JDT service to the maintenance resolver (TRUE=resolves, FALSE=stale, null=no project). */
@@ -87,10 +93,17 @@ public final class ExperienceTool implements Tool {
               Pass format="text" for flat, injection-ready lines (else structured JSON).
             - primer — the always-on DOMAIN layer: accepted domain nodes for a SessionStart
               orientation. Optional: limit (default 20), format="text".
-            - load — seed the store from memory files. Needs: path (a directory of *.md or a
-              single file). Frontmatter type/description/symbol + [[wikilinks]]; entries are
-              accepted/medium; idempotent per source (re-load replaces).
-            - refresh — re-resolve every symbol pointer through JDT; flag stale (superseded).
+            - load — seed the store from memory files. Optional: path (a directory of *.md or
+              a single file; OMIT to seed from the configured default roots — the layered
+              CLAUDE.md set + memory dirs), recursive (walk subdirectories). Ingest FOLLOWS
+              the link graph: [[wikilinks]] and relative [x](file.md) links are crawled
+              transitively (cycle-safe, bounded, skips reported). Frontmatter
+              type/description/symbol/language; entries are accepted/medium; idempotent per
+              source (re-load replaces).
+            - reseed — the explicit "initial load": wipe EVERYTHING, then load from the
+              default roots (or path). REQUIRES confirm:true. Optional: path, recursive.
+            - refresh — re-resolve Java symbol pointers through JDT; flag stale (superseded).
+              Non-Java anchors are opaque (never staled).
             - wipe — remove everything.
             - promote — set an entry's curation status. Needs: id. Optional: status (default accepted).
 
@@ -120,7 +133,12 @@ public final class ExperienceTool implements Tool {
 
         // maintenance
         props.put("path", Map.of("type", "string",
-            "description", "load: a directory of *.md memory files, or a single file."));
+            "description", "load/reseed: a directory of *.md memory files, or a single file."
+                + " Omit to use the configured default roots."));
+        props.put("recursive", Map.of("type", "boolean",
+            "description", "load/reseed: also walk subdirectories of directory roots (default false)."));
+        props.put("confirm", Map.of("type", "boolean",
+            "description", "reseed: REQUIRED true — reseed wipes the whole store first."));
         props.put("id", Map.of("type", "string", "description", "promote: the entry id to re-status."));
         props.put("limit", Map.of("type", "integer", "description", "primer: max domain nodes (default 20)."));
         props.put("format", Map.of("type", "string", "enum", List.of("json", "text"),
@@ -173,6 +191,7 @@ public final class ExperienceTool implements Tool {
             case "recall" -> recall(args);
             case "primer" -> primer(args);
             case "load" -> load(args);
+            case "reseed" -> reseed(args);
             case "refresh" -> ToolResponse.success(maintenance.refresh());
             case "wipe" -> ToolResponse.success(maintenance.wipe());
             case "promote" -> promote(args);
@@ -183,10 +202,44 @@ public final class ExperienceTool implements Tool {
 
     private ToolResponse load(JsonNode args) {
         String path = text(args, "path");
+        boolean recursive = bool(args, "recursive");
         if (path == null || path.isBlank()) {
-            return ToolResponse.invalidParameter("path", "load requires a 'path'");
+            if (!maintenance.hasDefaultRoots()) {
+                return ToolResponse.invalidParameter("path", "load without 'path' needs configured"
+                    + " default memory roots (-Dgoja.memory.roots) — none found");
+            }
+            return ToolResponse.success(maintenance.load(null, recursive));
         }
-        return ToolResponse.success(maintenance.load(Path.of(path)));
+        return ToolResponse.success(maintenance.load(Path.of(path), recursive));
+    }
+
+    /**
+     * Sprint 21a (item G): the explicit "initial load" — atomic wipe → load-from-defaults
+     * (or path). The wipe half is destructive, so {@code confirm:true} is REQUIRED: a
+     * prompt-driven "reset my store" can never fire half-armed.
+     */
+    private ToolResponse reseed(JsonNode args) {
+        if (!bool(args, "confirm")) {
+            return ToolResponse.invalidParameter("confirm",
+                "reseed WIPES the whole store before reloading — pass confirm:true to proceed");
+        }
+        String path = text(args, "path");
+        boolean recursive = bool(args, "recursive");
+        if ((path == null || path.isBlank()) && !maintenance.hasDefaultRoots()) {
+            return ToolResponse.invalidParameter("path", "reseed without 'path' needs configured"
+                + " default memory roots (-Dgoja.memory.roots) — none found (store NOT wiped)");
+        }
+        Map<String, Object> wiped = maintenance.wipe();
+        Map<String, Object> loaded = maintenance.load(
+            path == null || path.isBlank() ? null : Path.of(path), recursive);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("removed", wiped.get("removed"));
+        data.putAll(loaded);
+        return ToolResponse.success(data);
+    }
+
+    private static boolean bool(JsonNode n, String field) {
+        return n != null && n.has(field) && n.get(field).asBoolean(false);
     }
 
     private ToolResponse promote(JsonNode args) {
