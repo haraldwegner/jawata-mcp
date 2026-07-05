@@ -31,7 +31,11 @@ import java.util.function.Supplier;
 public final class ExperienceTool implements Tool {
 
     private static final List<String> KINDS =
-        List.of("record", "recall", "primer", "load", "reseed", "refresh", "wipe", "promote");
+        List.of("record", "recall", "primer", "list", "load", "reseed", "refresh",
+            "wipe", "promote", "export", "import");
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+        new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final Supplier<IJdtService> serviceSupplier;
     private final ExperienceStore store;
@@ -106,6 +110,14 @@ public final class ExperienceTool implements Tool {
               Non-Java anchors are opaque (never staled).
             - wipe — remove everything.
             - promote — set an entry's curation status. Needs: id. Optional: status (default accepted).
+            - list — curation view: browse entries by type / status / scope (symbol|package
+              prefix) / language, newest first (limit, default 50). Unlike recall this SHOWS
+              the set — including rejected/superseded — so candidates can be promoted.
+              format="text" for flat lines.
+            - export — full-fidelity dump (optionally filtered by status/type). Pass path to
+              write a JSON file (backup/sharing), else entries return inline.
+            - import — re-ingest exported entries (dedup by id). Pass entries[] inline or
+              path to an export file.
 
             The store is local + workspace-scoped. Record after a surprising failure, a
             discovered invariant, or a hazard the compiler cannot tell you; recall before a
@@ -140,9 +152,14 @@ public final class ExperienceTool implements Tool {
         props.put("confirm", Map.of("type", "boolean",
             "description", "reseed: REQUIRED true — reseed wipes the whole store first."));
         props.put("id", Map.of("type", "string", "description", "promote: the entry id to re-status."));
-        props.put("limit", Map.of("type", "integer", "description", "primer: max domain nodes (default 20)."));
+        props.put("limit", Map.of("type", "integer",
+            "description", "primer: max domain nodes (default 20); list: max rows (default 50)."));
         props.put("format", Map.of("type", "string", "enum", List.of("json", "text"),
-            "description", "recall/primer: text = flat injection-ready lines; default json."));
+            "description", "recall/primer/list: text = flat injection-ready lines; default json."));
+        props.put("scope", Map.of("type", "string",
+            "description", "list: symbol/package prefix filter."));
+        props.put("entries", Map.of("type", "array", "items", Map.of("type", "object"),
+            "description", "import: exported entries (inline alternative to path)."));
 
         props.put("type", Map.of("type", "string",
             "description", "record: entry type (domain_fact / lesson / failure_mode / api_contract / naming_convention / ...)."));
@@ -195,6 +212,9 @@ public final class ExperienceTool implements Tool {
             case "refresh" -> ToolResponse.success(maintenance.refresh());
             case "wipe" -> ToolResponse.success(maintenance.wipe());
             case "promote" -> promote(args);
+            case "list" -> list(args);
+            case "export" -> exportEntries(args);
+            case "import" -> importEntries(args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -240,6 +260,94 @@ public final class ExperienceTool implements Tool {
 
     private static boolean bool(JsonNode n, String field) {
         return n != null && n.has(field) && n.get(field).asBoolean(false);
+    }
+
+    // --- Sprint 21a (item G): curation verbs -------------------------------------------
+
+    /** Curation browse — recall is terminal-single; promoting needs to SEE the set. */
+    private ToolResponse list(JsonNode args) {
+        int limit = args != null && args.has("limit") && args.get("limit").isInt()
+            ? args.get("limit").asInt() : 50;
+        List<org.goja.mcp.knowledge.StoredEntry> rows = store.listEntries(
+            text(args, "type"), text(args, "status"), text(args, "scope"),
+            text(args, "language"), limit);
+        if ("text".equalsIgnoreCase(text(args, "format"))) {
+            return ToolResponse.success(ExperienceRetrieval.renderList(rows));
+        }
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (org.goja.mcp.knowledge.StoredEntry e : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", e.id());
+            m.put("type", e.type());
+            m.put("status", e.status());
+            if (e.language() != null) {
+                m.put("language", e.language());
+            }
+            if (e.symbolFqn() != null) {
+                m.put("symbol", e.symbolFqn());
+            }
+            m.put("summary", e.summary());
+            if (e.createdAt() != null) {
+                m.put("created_at", e.createdAt().toString());
+            }
+            entries.add(m);
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("count", entries.size());
+        data.put("entries", entries);
+        return ToolResponse.success(data);
+    }
+
+    private ToolResponse exportEntries(JsonNode args) {
+        List<Map<String, Object>> entries =
+            store.exportEntries(text(args, "status"), text(args, "type"));
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("count", entries.size());
+        String path = text(args, "path");
+        if (path != null && !path.isBlank()) {
+            try {
+                Map<String, Object> doc = new LinkedHashMap<>();
+                doc.put("count", entries.size());
+                doc.put("entries", entries);
+                java.nio.file.Files.writeString(Path.of(path),
+                    JSON.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
+                data.put("path", path);
+                data.put("written", true);
+            } catch (Exception e) {
+                return ToolResponse.invalidParameter("path",
+                    "cannot write export file: " + e.getMessage());
+            }
+        } else {
+            data.put("entries", entries);
+        }
+        return ToolResponse.success(data);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ToolResponse importEntries(JsonNode args) {
+        List<Map<String, Object>> entries;
+        if (args != null && args.has("entries") && args.get("entries").isArray()) {
+            entries = (List<Map<String, Object>>) JSON.convertValue(args.get("entries"), List.class);
+        } else {
+            String path = text(args, "path");
+            if (path == null || path.isBlank()) {
+                return ToolResponse.invalidParameter("entries",
+                    "import needs 'entries' (inline array) or 'path' (an export file)");
+            }
+            try {
+                JsonNode root = JSON.readTree(java.nio.file.Files.readString(Path.of(path)));
+                JsonNode arr = root.isArray() ? root : root.path("entries");
+                if (!arr.isArray()) {
+                    return ToolResponse.invalidParameter("path",
+                        "file has no 'entries' array: " + path);
+                }
+                entries = (List<Map<String, Object>>) JSON.convertValue(arr, List.class);
+            } catch (Exception e) {
+                return ToolResponse.invalidParameter("path",
+                    "cannot read export file: " + e.getMessage());
+            }
+        }
+        return ToolResponse.success(store.importEntries(entries));
     }
 
     private ToolResponse promote(JsonNode args) {

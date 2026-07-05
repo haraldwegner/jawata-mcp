@@ -172,6 +172,25 @@ public final class ExperienceRetrieval {
         return sb.toString();
     }
 
+    /** Sprint 21a (item G): render a curation list as flat lines ({@code list} format=text). */
+    public static String renderList(List<StoredEntry> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return "No entries match.";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (StoredEntry e : rows) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(san(e.id())).append(" [").append(san(e.type())).append('/')
+                .append(san(e.status())).append("] ").append(san(e.summary()));
+            if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
+                sb.append(" @ ").append(san(e.symbolFqn()));
+            }
+        }
+        return sb.toString();
+    }
+
     static String renderEntryLine(Map<String, Object> e) {
         StringBuilder sb = new StringBuilder();
         sb.append('[').append(san(e.get("type"))).append("] ").append(san(e.get("summary")));

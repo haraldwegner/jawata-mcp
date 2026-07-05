@@ -57,6 +57,27 @@ public interface ExperienceStore extends AutoCloseable {
     /** Total entry count — diagnostics + tests. */
     long count();
 
+    // --- Sprint 21a (item G): curation --------------------------------------------------
+
+    /**
+     * Full-fidelity export of every entry (optionally filtered by {@code status} /
+     * {@code type}): all columns + facets + symptoms + links + timestamps, portable enough
+     * that {@link #importEntries} round-trips losslessly. Backup, sharing, cross-machine
+     * seeding — ahead of the networked store.
+     */
+    List<Map<String, Object>> exportEntries(String status, String type);
+
+    /** Re-ingest exported entries; dedup by id. Returns {@code {imported, duplicates, invalid}}. */
+    Map<String, Object> importEntries(List<Map<String, Object>> entries);
+
+    /**
+     * Curation listing — {@code recall} is terminal-single by design, but you cannot
+     * promote what you cannot see. Filter by {@code type} / {@code status} / {@code scope}
+     * (symbol/package prefix) / {@code language}; newest first, capped at {@code limit}.
+     * Unlike {@link #query}, rejected/superseded entries are INCLUDED (curation sees all).
+     */
+    List<StoredEntry> listEntries(String type, String status, String scope, String language, int limit);
+
     /**
      * Sprint 21a (item B): provenance stamped on every subsequent write — the workspace +
      * project this resident serves (from {@code workspace.json} at store-open). Enables the

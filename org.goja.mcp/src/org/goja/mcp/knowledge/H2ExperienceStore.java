@@ -457,6 +457,220 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    // --- Sprint 21a (item G): curation — export / import / list -------------------------
+
+    private static final String ALL_COLUMNS =
+        "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
+        + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
+        + "workspace_id,project_id,language";
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public synchronized List<Map<String, Object>> exportEntries(String status, String type) {
+        List<String> clauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (status != null && !status.isBlank()) {
+            clauses.add("status = ?");
+            params.add(status);
+        }
+        if (type != null && !type.isBlank()) {
+            clauses.add("type = ?");
+            params.add(type);
+        }
+        String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry"
+            + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
+            + " ORDER BY created_at";
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    String id = rs.getString("id");
+                    row.put("id", id);
+                    for (String col : new String[] {"type", "scope_kind", "symbol_fqn",
+                            "package_name", "operation", "status", "confidence", "fault_owner",
+                            "external_system", "summary", "source_ref", "workspace_id",
+                            "project_id", "language"}) {
+                        Object v = rs.getString(col);
+                        if (v != null) {
+                            row.put(col, v);
+                        }
+                    }
+                    Timestamp created = rs.getTimestamp("created_at");
+                    Timestamp updated = rs.getTimestamp("updated_at");
+                    if (created != null) {
+                        row.put("created_at", created.toInstant().toString());
+                    }
+                    if (updated != null) {
+                        row.put("updated_at", updated.toInstant().toString());
+                    }
+                    try {
+                        row.put("body", json.readValue(rs.getString("body_json"), LinkedHashMap.class));
+                    } catch (Exception e) {
+                        row.put("body", new LinkedHashMap<>());
+                    }
+                    List<String> symptoms = loadSymptoms(id);
+                    if (!symptoms.isEmpty()) {
+                        row.put("symptoms", symptoms);
+                    }
+                    List<Map<String, Object>> links = loadLinks(id);
+                    if (!links.isEmpty()) {
+                        row.put("links", links);
+                    }
+                    out.add(row);
+                }
+            }
+            return out;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to export entries: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized Map<String, Object> importEntries(List<Map<String, Object>> entries) {
+        int imported = 0;
+        int duplicates = 0;
+        int invalid = 0;
+        for (Map<String, Object> row : entries == null ? List.<Map<String, Object>>of() : entries) {
+            String id = str(row.get("id"));
+            if (id == null || id.isBlank()) {
+                invalid++;
+                continue;
+            }
+            if (idExists(id)) {
+                duplicates++;
+                continue;
+            }
+            try {
+                String body;
+                Object bodyObj = row.get("body");
+                body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO experience_entry (" + ALL_COLUMNS
+                        + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    ps.setString(1, id);
+                    ps.setString(2, str(row.get("type")));
+                    ps.setString(3, str(row.get("scope_kind")));
+                    ps.setString(4, str(row.get("symbol_fqn")));
+                    ps.setString(5, str(row.get("package_name")));
+                    ps.setString(6, str(row.get("operation")));
+                    ps.setString(7, row.get("status") == null ? ExperienceEntry.CANDIDATE : str(row.get("status")));
+                    ps.setString(8, str(row.get("confidence")));
+                    ps.setString(9, str(row.get("fault_owner")));
+                    ps.setString(10, str(row.get("external_system")));
+                    ps.setString(11, str(row.get("summary")));
+                    ps.setString(12, str(row.get("source_ref")));
+                    ps.setString(13, body);
+                    ps.setTimestamp(14, parseInstant(row.get("created_at")));
+                    ps.setTimestamp(15, parseInstant(row.get("updated_at")));
+                    ps.setString(16, str(row.get("workspace_id")));
+                    ps.setString(17, str(row.get("project_id")));
+                    String lang = str(row.get("language"));
+                    ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                    ps.executeUpdate();
+                }
+                if (row.get("symptoms") instanceof List<?> symptoms) {
+                    List<String> ss = new ArrayList<>();
+                    for (Object s : symptoms) {
+                        ss.add(String.valueOf(s));
+                    }
+                    insertSymptoms(id, ss);
+                }
+                if (row.get("links") instanceof List<?> links) {
+                    List<ExperienceEntry.Link> ls = new ArrayList<>();
+                    for (Object l : links) {
+                        if (l instanceof Map<?, ?> lm) {
+                            ls.add(new ExperienceEntry.Link(
+                                str(lm.get("rel")), str(lm.get("target"))));
+                        }
+                    }
+                    insertLinks(id, ls);
+                }
+                imported++;
+            } catch (Exception e) {
+                log.warn("import: cannot insert {}: {}", id, e.getMessage());
+                invalid++;
+            }
+        }
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("imported", imported);
+        report.put("duplicates", duplicates);
+        report.put("invalid", invalid);
+        return report;
+    }
+
+    @Override
+    public synchronized List<StoredEntry> listEntries(String type, String status, String scope,
+            String language, int limit) {
+        List<String> clauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (type != null && !type.isBlank()) {
+            clauses.add("type = ?");
+            params.add(type);
+        }
+        if (status != null && !status.isBlank()) {
+            clauses.add("status = ?");
+            params.add(status);
+        }
+        if (scope != null && !scope.isBlank()) {
+            clauses.add("(symbol_fqn = ? OR symbol_fqn LIKE ? OR package_name = ? OR package_name LIKE ?)");
+            params.add(scope);
+            params.add(scope + ".%");
+            params.add(scope);
+            params.add(scope + ".%");
+        }
+        if (language != null && !language.isBlank()) {
+            clauses.add("LOWER(language) = LOWER(?)");
+            params.add(language);
+        }
+        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,"
+            + "external_system,summary,body_json,created_at FROM experience_entry"
+            + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
+            + " ORDER BY created_at DESC LIMIT " + Math.max(1, limit);
+        List<StoredEntry> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(mapRow(rs));
+                }
+            }
+            return out;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to list entries: " + e.getMessage(), e);
+        }
+    }
+
+    private List<Map<String, Object>> loadLinks(String id) throws SQLException {
+        List<Map<String, Object>> links = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT rel, target FROM experience_link WHERE entry_id = ?")) {
+            ps.setString(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    links.add(Map.of("rel", rs.getString(1), "target", rs.getString(2)));
+                }
+            }
+        }
+        return links;
+    }
+
+    private static Timestamp parseInstant(Object iso) {
+        if (iso == null) {
+            return Timestamp.from(Instant.now());
+        }
+        try {
+            return Timestamp.from(Instant.parse(String.valueOf(iso)));
+        } catch (Exception e) {
+            return Timestamp.from(Instant.now());
+        }
+    }
+
     // --- Sprint 21a (item A): one-time recovery of orphaned per-session stores ----------
 
     /**
