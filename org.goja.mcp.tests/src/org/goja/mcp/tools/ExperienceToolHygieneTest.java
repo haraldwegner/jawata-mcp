@@ -142,4 +142,30 @@ class ExperienceToolHygieneTest {
         Map<String, Object> report = data(exec("compact", a -> { }));
         assertEquals(false, report.get("compacted"));
     }
+
+    // --- Sprint 21a (item F): stats for the Knowledge view --------------------------------
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void stats_counts_by_status_and_language() {
+        setStatus(record("a lesson", "com.example.A"), "accepted");
+        record("b lesson", "com.example.B");                     // stays candidate
+        ObjectNode rust = mapper.createObjectNode();
+        rust.put("kind", "record");
+        rust.put("type", "lesson");
+        rust.put("summary", "rust note");
+        rust.put("language", "rust");
+        data(tool.execute(rust));
+
+        Map<String, Object> stats = data(exec("stats", a -> { }));
+        assertEquals(3L, stats.get("total"));
+        Map<String, Object> byStatus = (Map<String, Object>) stats.get("by_status");
+        assertEquals(1L, byStatus.get("accepted"));
+        assertEquals(2L, byStatus.get("candidate"));
+        Map<String, Object> byLanguage = (Map<String, Object>) stats.get("by_language");
+        assertEquals(2L, byLanguage.get("java"));
+        assertEquals(1L, byLanguage.get("rust"));
+        Map<String, Object> store = (Map<String, Object>) stats.get("store");
+        assertEquals("in-memory", store.get("file"));
+    }
 }

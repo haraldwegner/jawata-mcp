@@ -32,7 +32,7 @@ public final class ExperienceTool implements Tool {
 
     private static final List<String> KINDS =
         List.of("record", "recall", "primer", "list", "load", "reseed", "refresh",
-            "wipe", "promote", "export", "import", "prune", "dedup", "compact");
+            "wipe", "promote", "export", "import", "prune", "dedup", "compact", "stats");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -124,6 +124,8 @@ public final class ExperienceTool implements Tool {
               groups; pass confirm:true to MERGE (best survives, rest superseded).
             - compact — reclaim H2 file space after prunes/wipes. Briefly closes the store
               (concurrently attached residents reconnect); run when quiet.
+            - stats — store overview: entry counts by status/language + the backing file
+              location and size.
 
             The store is local + workspace-scoped. Record after a surprising failure, a
             discovered invariant, or a hazard the compiler cannot tell you; recall before a
@@ -226,6 +228,7 @@ public final class ExperienceTool implements Tool {
             case "prune" -> prune(args);
             case "dedup" -> ToolResponse.success(maintenance.dedup(bool(args, "confirm")));
             case "compact" -> ToolResponse.success(store.compact());
+            case "stats" -> ToolResponse.success(store.stats());
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };

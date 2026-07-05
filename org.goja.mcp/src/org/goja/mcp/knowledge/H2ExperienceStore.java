@@ -710,6 +710,39 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    @Override
+    public synchronized Map<String, Object> stats() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", count());
+        out.put("by_status", groupCount("status"));
+        out.put("by_language", groupCount("language"));
+        Map<String, Object> store = new LinkedHashMap<>();
+        if (storeFile != null) {
+            store.put("file", storeFile.toAbsolutePath().toString());
+            store.put("bytes", fileSize(storeFile));
+        } else {
+            store.put("file", "in-memory");
+        }
+        out.put("store", store);
+        return out;
+    }
+
+    private Map<String, Object> groupCount(String column) {
+        Map<String, Object> counts = new LinkedHashMap<>();
+        try (Statement s = conn.createStatement();
+                ResultSet rs = s.executeQuery(
+                    "SELECT " + column + ", COUNT(*) FROM experience_entry GROUP BY " + column
+                    + " ORDER BY " + column)) {
+            while (rs.next()) {
+                String key = rs.getString(1);
+                counts.put(key == null ? "(none)" : key, rs.getLong(2));
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to count by " + column + ": " + e.getMessage(), e);
+        }
+        return counts;
+    }
+
     private List<Map<String, Object>> loadLinks(String id) throws SQLException {
         List<Map<String, Object>> links = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(

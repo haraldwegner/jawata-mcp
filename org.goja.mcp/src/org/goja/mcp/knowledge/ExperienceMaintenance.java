@@ -29,9 +29,22 @@ public final class ExperienceMaintenance {
     private static final Pattern MD_LINK = Pattern.compile("\\]\\(([^)#?:]+\\.md)\\)");
 
     // Sprint 21a (item C): crawl bounds — a link closure must terminate and stay honest.
+    // Item F: tunable via system properties (studio passes them from the Knowledge prefs).
     static final int DEFAULT_MAX_DEPTH = 5;
     static final int DEFAULT_MAX_FILES = 200;
     static final long DEFAULT_MAX_BYTES = 2_000_000L;
+
+    static int maxDepth() {
+        return Integer.getInteger("goja.memory.maxDepth", DEFAULT_MAX_DEPTH);
+    }
+
+    static int maxFiles() {
+        return Integer.getInteger("goja.memory.maxFiles", DEFAULT_MAX_FILES);
+    }
+
+    static long maxBytes() {
+        return Long.getLong("goja.memory.maxBytes", DEFAULT_MAX_BYTES);
+    }
 
     /** Resolve a symbol pointer: {@code TRUE}=resolves, {@code FALSE}=stale, {@code null}=unknown (no project). */
     @FunctionalInterface
@@ -90,7 +103,7 @@ public final class ExperienceMaintenance {
                     + " (set -Dgoja.memory.roots or pass a path)");
                 return report;
             }
-            return loadSources(roots, recursive, DEFAULT_MAX_DEPTH, DEFAULT_MAX_FILES, DEFAULT_MAX_BYTES);
+            return loadSources(roots, recursive, maxDepth(), maxFiles(), maxBytes());
         }
         if (!Files.exists(path)) {
             Map<String, Object> report = new LinkedHashMap<>();
@@ -98,7 +111,7 @@ public final class ExperienceMaintenance {
             report.put("error", "path does not exist");
             return report;
         }
-        return loadSources(List.of(path), recursive, DEFAULT_MAX_DEPTH, DEFAULT_MAX_FILES, DEFAULT_MAX_BYTES);
+        return loadSources(List.of(path), recursive, maxDepth(), maxFiles(), maxBytes());
     }
 
     /** Crawl + ingest; package-private so tests can exercise the caps directly. */
