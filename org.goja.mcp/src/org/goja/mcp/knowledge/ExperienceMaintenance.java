@@ -229,6 +229,11 @@ public final class ExperienceMaintenance {
             ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
                 .status(ExperienceEntry.ACCEPTED)
                 .language(doc.language);
+            // v2.2.5 (find #13): the NAME is where cue-dense phrasing lives ("…renders
+            // blank on aarch64") — index it as a symptom so recall can reach it.
+            if (doc.name != null && !doc.name.isBlank()) {
+                eb.addSymptom(doc.name);
+            }
             for (String link : doc.links) {
                 eb.addLink("related", link);
             }

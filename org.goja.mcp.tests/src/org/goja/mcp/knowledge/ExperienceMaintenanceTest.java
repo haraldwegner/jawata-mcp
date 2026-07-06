@@ -194,6 +194,25 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
+    void load_indexes_the_name_as_a_symptom_cue(@TempDir Path dir) throws IOException {
+        // v2.2.5 dogfood find #13: the frontmatter NAME is where cue-dense phrasing lives
+        // ("Tauri webview renders blank on aarch64") while the description may use other
+        // words ("stays the GTK background colour") — recall by "blank webview" missed
+        // the entry because the loader dropped the name entirely.
+        writeMemory(dir, "webkit.md",
+            "name: Tauri webview renders blank on aarch64\n"
+                + "description: DMABUF compositor fails silently; content area stays the GTK background colour\n"
+                + "type: reference",
+            "fix body");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+
+        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null));
+        assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"),
+            "name tokens are recallable symptom cues");
+    }
+
+    @Test
     void load_skips_contentless_index_files_but_follows_their_links(@TempDir Path dir) throws IOException {
         // v2.2.3 dogfood find: MEMORY.md-style indexes ingested as junk rows ("MEMORY", "''").
         Files.writeString(dir.resolve("MEMORY.md"), "- [Fact](fact.md) — hook\n");
