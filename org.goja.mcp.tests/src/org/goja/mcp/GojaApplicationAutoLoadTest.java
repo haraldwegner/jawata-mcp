@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -146,6 +147,39 @@ class GojaApplicationAutoLoadTest {
         assertTrue(roots.contains(home.resolve("CLAUDE.md")), "home-level CLAUDE.md");
         assertTrue(roots.contains(memDir), "Claude per-project memory dir convention");
         assertEquals(6, roots.size(), "nothing beyond the existing layered set");
+    }
+
+    @Test
+    @DisplayName("Sprint 21b (item C2): autofind — ALL Claude memory dirs + Cursor & friends")
+    void defaultMemoryRoots_autofind(@TempDir Path home) throws Exception {
+        Path proj = Files.createDirectories(home.resolve("CursorProjects").resolve("proj"));
+
+        // A Claude memory dir belonging to a DIFFERENT project (not in this workspace):
+        // the store is user-level, so discovery must be too.
+        Path otherMem = Files.createDirectories(home.resolve(".claude").resolve("projects")
+            .resolve("-somewhere-else-project").resolve("memory"));
+        // A projects entry WITHOUT a memory dir must not contribute anything.
+        Files.createDirectories(home.resolve(".claude").resolve("projects").resolve("-memoryless"));
+
+        // The other agents' per-project files.
+        Path cursorRules = Files.createDirectories(proj.resolve(".cursor").resolve("rules"));
+        Path cursorLegacy = Files.writeString(proj.resolve(".cursorrules"), "cursor legacy rules");
+        Path agentsMd = Files.writeString(proj.resolve("AGENTS.md"), "# agents");
+        Path copilot = Files.createDirectories(proj.resolve(".github"))
+            .resolve("copilot-instructions.md");
+        Files.writeString(copilot, "copilot rules");
+        Path windsurf = Files.writeString(proj.resolve(".windsurfrules"), "windsurf rules");
+
+        var roots = GojaApplication.defaultMemoryRoots(home, java.util.List.of(proj), null);
+
+        assertTrue(roots.contains(otherMem), "every ~/.claude/projects/*/memory dir, not just this workspace's");
+        assertTrue(roots.contains(cursorRules), "Cursor project rules dir");
+        assertTrue(roots.contains(cursorLegacy), "legacy .cursorrules");
+        assertTrue(roots.contains(agentsMd), "AGENTS.md convention");
+        assertTrue(roots.contains(copilot), "GitHub Copilot instructions");
+        assertTrue(roots.contains(windsurf), ".windsurfrules");
+        assertFalse(roots.contains(home.resolve(".claude").resolve("projects")
+            .resolve("-memoryless").resolve("memory")), "no phantom memory dirs");
     }
 
     @Test

@@ -157,6 +157,16 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
+    void load_ingests_mdc_files_from_directories(@TempDir Path dir) throws IOException {
+        // Sprint 21b (item C2): Cursor project rules are .mdc — directory crawls accept them.
+        Files.writeString(dir.resolve("rule.mdc"),
+            "---\ndescription: prefer composition\n---\nCursor rule body");
+        writeMemory(dir, "plain.md", "name: p\ndescription: plain\ntype: lesson", "x");
+        assertEquals(2, maint(fqn -> null).load(dir, true).get("loaded"),
+            ".mdc crawled alongside .md");
+    }
+
+    @Test
     void default_caps_are_runaway_backstops_not_tuning_values(@TempDir Path dir) throws IOException {
         // Sprint 21b (item C): "I want everything you can find" — a memory tree LARGER than
         // the old tuning caps (depth 5 / 200 files) must ingest COMPLETELY with the defaults.

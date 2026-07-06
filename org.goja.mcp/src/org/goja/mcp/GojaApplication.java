@@ -337,6 +337,22 @@ public class GojaApplication implements IApplication {
             }
             addIfExists(roots, home.resolve(".claude").resolve("projects")
                 .resolve(sanitizeProjectDir(proj)).resolve("memory"));
+            // Sprint 21b (item C2): the other agents' per-project conventions.
+            addIfExists(roots, proj.resolve(".cursor").resolve("rules"));
+            addIfExists(roots, proj.resolve(".cursorrules"));
+            addIfExists(roots, proj.resolve("AGENTS.md"));
+            addIfExists(roots, proj.resolve(".github").resolve("copilot-instructions.md"));
+            addIfExists(roots, proj.resolve(".windsurfrules"));
+        }
+        // Sprint 21b (item C2): the store is user-level, so discovery is too — EVERY
+        // Claude memory dir, not just this workspace's projects ("autofind").
+        Path claudeProjects = home.resolve(".claude").resolve("projects");
+        if (Files.isDirectory(claudeProjects)) {
+            try (var dirs = Files.list(claudeProjects)) {
+                dirs.sorted().forEach(p -> addIfExists(roots, p.resolve("memory")));
+            } catch (java.io.IOException e) {
+                log.warn("Cannot list {}: {}", claudeProjects, e.getMessage());
+            }
         }
         return java.util.List.copyOf(roots);
     }

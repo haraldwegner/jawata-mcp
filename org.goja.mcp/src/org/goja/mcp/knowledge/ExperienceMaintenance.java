@@ -131,8 +131,13 @@ public final class ExperienceMaintenance {
             if (Files.isDirectory(root)) {
                 rootDirs.add(root);
                 try (Stream<Path> s = recursive ? Files.walk(root, Math.max(1, maxDepth)) : Files.list(root)) {
+                    // Sprint 21b (item C2): .mdc = Cursor project rules; explicit FILE
+                    // roots (.cursorrules etc.) ingest regardless of extension.
                     s.filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().endsWith(".md"))
+                        .filter(p -> {
+                            String n = p.getFileName().toString();
+                            return n.endsWith(".md") || n.endsWith(".mdc");
+                        })
                         .sorted()
                         .forEach(p -> queue.add(new Item(p, 0)));
                 } catch (IOException e) {
