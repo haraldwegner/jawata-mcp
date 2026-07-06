@@ -99,7 +99,8 @@ public final class ExperienceTool implements Tool {
               orientation. Optional: limit (default 20), format="text".
             - load — seed the store from memory files. Optional: path (a directory of *.md or
               a single file; OMIT to seed from the configured default roots — the layered
-              CLAUDE.md set + memory dirs), recursive (walk subdirectories). Ingest FOLLOWS
+              CLAUDE.md set + memory dirs), recursive (default true; false = don't walk
+              subdirectories). Ingest FOLLOWS
               the link graph: [[wikilinks]] and relative [x](file.md) links are crawled
               transitively (cycle-safe, bounded, skips reported). Frontmatter
               type/description/symbol/language; entries are accepted/medium; idempotent per
@@ -156,7 +157,8 @@ public final class ExperienceTool implements Tool {
             "description", "load/reseed: a directory of *.md memory files, or a single file."
                 + " Omit to use the configured default roots."));
         props.put("recursive", Map.of("type", "boolean",
-            "description", "load/reseed: also walk subdirectories of directory roots (default false)."));
+            "description", "load/reseed: walk subdirectories of directory roots (default TRUE —"
+                + " the crawl finds everything; pass false to stay flat)."));
         props.put("confirm", Map.of("type", "boolean",
             "description", "reseed: REQUIRED true (wipes first). dedup: true = merge the groups."));
         props.put("days", Map.of("type", "integer",
@@ -236,7 +238,7 @@ public final class ExperienceTool implements Tool {
 
     private ToolResponse load(JsonNode args) {
         String path = text(args, "path");
-        boolean recursive = bool(args, "recursive");
+        boolean recursive = boolOr(args, "recursive", true);
         if (path == null || path.isBlank()) {
             if (!maintenance.hasDefaultRoots()) {
                 return ToolResponse.invalidParameter("path", "load without 'path' needs configured"
@@ -258,7 +260,7 @@ public final class ExperienceTool implements Tool {
                 "reseed WIPES the whole store before reloading — pass confirm:true to proceed");
         }
         String path = text(args, "path");
-        boolean recursive = bool(args, "recursive");
+        boolean recursive = boolOr(args, "recursive", true);
         if ((path == null || path.isBlank()) && !maintenance.hasDefaultRoots()) {
             return ToolResponse.invalidParameter("path", "reseed without 'path' needs configured"
                 + " default memory roots (-Dgoja.memory.roots) — none found (store NOT wiped)");
@@ -274,6 +276,11 @@ public final class ExperienceTool implements Tool {
 
     private static boolean bool(JsonNode n, String field) {
         return n != null && n.has(field) && n.get(field).asBoolean(false);
+    }
+
+    /** Sprint 21b (item C): a boolean with an explicit default when the field is absent. */
+    private static boolean boolOr(JsonNode n, String field, boolean absent) {
+        return n != null && n.has(field) ? n.get(field).asBoolean(absent) : absent;
     }
 
     private ToolResponse prune(JsonNode args) {

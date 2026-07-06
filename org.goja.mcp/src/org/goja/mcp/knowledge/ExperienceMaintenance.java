@@ -28,11 +28,12 @@ public final class ExperienceMaintenance {
     /** Relative markdown links to .md files — the MEMORY.md index convention. */
     private static final Pattern MD_LINK = Pattern.compile("\\]\\(([^)#?:]+\\.md)\\)");
 
-    // Sprint 21a (item C): crawl bounds — a link closure must terminate and stay honest.
-    // Item F: tunable via system properties (studio passes them from the Knowledge prefs).
-    static final int DEFAULT_MAX_DEPTH = 5;
-    static final int DEFAULT_MAX_FILES = 200;
-    static final long DEFAULT_MAX_BYTES = 2_000_000L;
+    // Sprint 21b (item C): the crawl finds EVERYTHING reachable — these are runaway
+    // BACKSTOPS (pathological trees/cycles), not tuning values, and have no UI. The
+    // -Dgoja.memory.max* properties remain honored; a fired backstop is still reported.
+    static final int DEFAULT_MAX_DEPTH = 32;
+    static final int DEFAULT_MAX_FILES = 10_000;
+    static final long DEFAULT_MAX_BYTES = 268_435_456L;
 
     static int maxDepth() {
         return Integer.getInteger("goja.memory.maxDepth", DEFAULT_MAX_DEPTH);

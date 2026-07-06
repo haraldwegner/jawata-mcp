@@ -157,6 +157,26 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
+    void default_caps_are_runaway_backstops_not_tuning_values(@TempDir Path dir) throws IOException {
+        // Sprint 21b (item C): "I want everything you can find" — a memory tree LARGER than
+        // the old tuning caps (depth 5 / 200 files) must ingest COMPLETELY with the defaults.
+        for (int i = 0; i < 210; i++) {
+            writeMemory(dir, "n" + i + ".md", "name: n" + i + "\ndescription: note " + i + "\ntype: lesson", "x");
+        }
+        Path deep = dir;
+        for (int i = 0; i < 7; i++) {
+            deep = deep.resolve("d" + i);
+        }
+        Files.createDirectories(deep);
+        Files.writeString(deep.resolve("deepest.md"),
+            "---\nname: deepest\ndescription: seven levels down\ntype: lesson\n---\nbody");
+
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+        assertEquals(211, report.get("loaded"), "210 flat + 1 at depth 7 — nothing dropped");
+        assertTrue(((List<?>) report.get("skipped")).isEmpty(), "no backstop fired");
+    }
+
+    @Test
     void load_without_path_uses_default_roots(@TempDir Path dir) throws IOException {
         writeMemory(dir, "seed.md", "name: s\ndescription: seeded\ntype: domain_fact", "x");
         ExperienceMaintenance withRoots =

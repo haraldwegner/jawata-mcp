@@ -66,6 +66,30 @@ class ExperienceToolMaintenanceTest {
     }
 
     @Test
+    void load_without_recursive_arg_walks_subdirectories(@TempDir Path dir) throws IOException {
+        // Sprint 21b (item C): the crawler finds everything — recursive is the DEFAULT.
+        Files.createDirectory(dir.resolve("nested"));
+        Files.writeString(dir.resolve("nested").resolve("deep.md"),
+            "---\nname: deep\ndescription: nested note\ntype: lesson\n---\nbody");
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "load");
+        a.put("path", dir.toString());
+        assertEquals(1, data(tool.execute(a)).get("loaded"), "no recursive arg → walks subdirs");
+    }
+
+    @Test
+    void load_recursive_false_stays_flat(@TempDir Path dir) throws IOException {
+        Files.createDirectory(dir.resolve("nested"));
+        Files.writeString(dir.resolve("nested").resolve("deep.md"),
+            "---\nname: deep\ndescription: nested note\ntype: lesson\n---\nbody");
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "load");
+        a.put("path", dir.toString());
+        a.put("recursive", false);
+        assertEquals(0, data(tool.execute(a)).get("loaded"), "explicit recursive:false honored");
+    }
+
+    @Test
     void load_without_path_and_without_roots_fails() {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
