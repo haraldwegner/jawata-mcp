@@ -26,14 +26,16 @@ import java.util.Map;
  *
  * <p>Migration steps are cumulative: v1 = the v2.0.0 base schema; v2 = the Sprint-21a
  * provenance + language facets ({@code workspace_id}, {@code project_id},
- * {@code language} — backfilled {@code 'java'}, see item I).</p>
+ * {@code language} — backfilled {@code 'java'}, see item I); v3 = the Sprint-21b
+ * {@code source_hash} (skip-unchanged loads — an unmodified memory file causes no
+ * write, so repeated loads stop growing the MVStore file).</p>
  */
 final class SchemaMigrations {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 2;
+    static final int LATEST = 3;
 
     private SchemaMigrations() {
     }
@@ -72,6 +74,9 @@ final class SchemaMigrations {
         }
         if (from < 2) {
             migrateToV2(conn);
+        }
+        if (from < 3) {
+            migrateToV3(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -160,6 +165,14 @@ final class SchemaMigrations {
             s.execute("UPDATE experience_entry SET language = 'java' WHERE language IS NULL");
             s.execute("CREATE INDEX IF NOT EXISTS ix_entry_language ON experience_entry(language)");
             s.execute("CREATE INDEX IF NOT EXISTS ix_entry_workspace ON experience_entry(workspace_id)");
+        }
+    }
+
+    /** v3 (Sprint 21b): content hash of the ingested memory file — lets {@code load}
+     *  skip unchanged sources without any write (NULL = unknown, next load rewrites once). */
+    private static void migrateToV3(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS source_hash VARCHAR(64)");
         }
     }
 

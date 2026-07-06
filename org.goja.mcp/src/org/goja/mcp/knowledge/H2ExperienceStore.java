@@ -166,15 +166,38 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized String put(ExperienceEntry entry) {
-        return insert(entry, UUID.randomUUID().toString(), null);
+        return insert(entry, UUID.randomUUID().toString(), null, null);
     }
 
     @Override
     public synchronized String putWithSource(ExperienceEntry entry, String sourceRef) {
-        return insert(entry, UUID.randomUUID().toString(), sourceRef);
+        return insert(entry, UUID.randomUUID().toString(), sourceRef, null);
     }
 
-    private String insert(ExperienceEntry entry, String id, String sourceRef) {
+    @Override
+    public synchronized String putWithSource(ExperienceEntry entry, String sourceRef, String sourceHash) {
+        return insert(entry, UUID.randomUUID().toString(), sourceRef, sourceHash);
+    }
+
+    /** Sprint 21b: skip-unchanged — any entry from this source with this exact hash? */
+    @Override
+    public synchronized boolean sourceUnchanged(String sourceRef, String sourceHash) {
+        if (sourceRef == null || sourceHash == null) {
+            return false;
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM experience_entry WHERE source_ref = ? AND source_hash = ? LIMIT 1")) {
+            ps.setString(1, sourceRef);
+            ps.setString(2, sourceHash);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to check source hash: " + e.getMessage(), e);
+        }
+    }
+
+    private String insert(ExperienceEntry entry, String id, String sourceRef, String sourceHash) {
         Map<String, Object> factMap = entry.fact().toMap();
         String body;
         try {
@@ -187,8 +210,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                     "INSERT INTO experience_entry"
                     + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                     + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
-                    + "workspace_id,project_id,language) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "workspace_id,project_id,language,source_hash) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -209,6 +232,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setString(17, projectId);
                 String lang = entry.language();
                 ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                ps.setString(19, sourceHash);
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());

@@ -154,6 +154,7 @@ public final class ExperienceMaintenance {
         }
 
         int loaded = 0;
+        int unchanged = 0;
         int linked = 0;
         long bytes = 0;
         while (!queue.isEmpty()) {
@@ -162,7 +163,7 @@ public final class ExperienceMaintenance {
             if (!seen.add(f)) {
                 continue;                            // cycle-safe / dedup
             }
-            if (loaded >= maxFiles) {
+            if (loaded + unchanged >= maxFiles) {
                 skipped.add(Map.of("source", f.toString(), "reason", "max-files (" + maxFiles + ")"));
                 continue;
             }
@@ -183,6 +184,23 @@ public final class ExperienceMaintenance {
 
             MemoryDoc doc = parse(content, f.getFileName().toString());
             String sourceRef = "memory:" + f;
+
+            // Sprint 21b: an unchanged source causes NO write at all (the delete+insert
+            // churn grew the MVStore file on every load). Links are still followed —
+            // an unchanged index can point at new files.
+            String hash = sha256(content);
+            if (store.sourceUnchanged(sourceRef, hash)) {
+                unchanged++;
+                List<Path> unchangedTargets = resolveLinks(doc, f.getParent(), rootDirs);
+                for (Path t : unchangedTargets) {
+                    Path norm = t.toAbsolutePath().normalize();
+                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                        queue.add(new Item(norm, item.depth() + 1));
+                        linked++;
+                    }
+                }
+                continue;
+            }
             store.deleteBySource(sourceRef);         // idempotent re-seed
 
             SymbolFact.Builder fb = SymbolFact.of(
@@ -200,7 +218,7 @@ public final class ExperienceMaintenance {
             for (String link : doc.links) {
                 eb.addLink("related", link);
             }
-            store.putWithSource(eb.build(), sourceRef);
+            store.putWithSource(eb.build(), sourceRef, hash);
             loaded++;
 
             // Item I: only Java anchors are judged by the JDT resolver on ingest.
@@ -227,8 +245,9 @@ public final class ExperienceMaintenance {
             }
         }
 
-        report.put("files", loaded);
+        report.put("files", loaded + unchanged);
         report.put("loaded", loaded);
+        report.put("unchanged", unchanged);
         report.put("linked", linked);
         report.put("stale", stale);
         report.put("skipped", skipped);
@@ -236,6 +255,17 @@ public final class ExperienceMaintenance {
             log.info("load: {} source(s) skipped: {}", skipped.size(), skipped);
         }
         return report;
+    }
+
+    /** SHA-256 of the raw file content — the skip-unchanged key (Sprint 21b). */
+    private static String sha256(String content) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
     }
 
     /** {@code [[name]]} → {@code <dir>/name.md} (containing dir first, then root dirs);

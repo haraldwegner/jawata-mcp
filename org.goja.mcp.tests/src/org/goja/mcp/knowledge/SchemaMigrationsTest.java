@@ -96,6 +96,9 @@ class SchemaMigrationsTest {
         assertEquals("java",
             scalar(dir, "SELECT language FROM experience_entry WHERE id = '" + id + "'"),
             "new writes default language=java");
+        // Sprint 21b (v3): the skip-unchanged hash column exists on a fresh install.
+        assertNull(scalar(dir, "SELECT source_hash FROM experience_entry WHERE id = '" + id + "'"),
+            "plain put has no source hash (column exists, value null)");
     }
 
     @Test
@@ -114,6 +117,8 @@ class SchemaMigrationsTest {
             "existing rows backfilled to language=java");
         assertNull(scalar(dir, "SELECT workspace_id FROM experience_entry WHERE id = 'legacy-1'"),
             "pre-facet rows have no provenance (columns exist, values null)");
+        assertNull(scalar(dir, "SELECT source_hash FROM experience_entry WHERE id = 'legacy-1'"),
+            "v3: pre-hash rows have no source hash (column exists, value null)");
 
         try (Stream<Path> files = Files.list(dir.resolve("goja-experience"))) {
             assertTrue(files.anyMatch(p -> p.getFileName().toString().startsWith("experience-pre-migration-v1")),

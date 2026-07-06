@@ -31,6 +31,18 @@ public interface ExperienceStore extends AutoCloseable {
      */
     String putWithSource(ExperienceEntry entry, String sourceRef);
 
+    /** Sprint 21b: like {@link #putWithSource(ExperienceEntry, String)} but records the
+     *  source content hash so {@link #sourceUnchanged} can skip future no-op re-loads. */
+    default String putWithSource(ExperienceEntry entry, String sourceRef, String sourceHash) {
+        return putWithSource(entry, sourceRef);
+    }
+
+    /** Sprint 21b: true when an entry for {@code sourceRef} exists with this exact
+     *  content hash — the load can skip the source without a single write. */
+    default boolean sourceUnchanged(String sourceRef, String sourceHash) {
+        return false;
+    }
+
     /** Remove all entries (+ children) that came from a given source; returns rows removed. */
     int deleteBySource(String sourceRef);
 

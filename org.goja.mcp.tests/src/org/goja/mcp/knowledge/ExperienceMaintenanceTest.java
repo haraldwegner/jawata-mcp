@@ -157,6 +157,28 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
+    void load_skips_unchanged_files_entirely(@TempDir Path dir) throws IOException {
+        // Sprint 21b (Harald): every load rewrote every entry — logical count stable but
+        // the H2 file grew each click. An unchanged source must cause NO write at all.
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: lesson", "body a");
+        writeMemory(dir, "b.md", "name: b\ndescription: fact b\ntype: lesson", "body b");
+        ExperienceMaintenance m = maint(fqn -> null);
+        assertEquals(2, m.load(dir, true).get("loaded"));
+
+        Map<String, Object> second = m.load(dir, true);
+        assertEquals(0, second.get("loaded"), "no rewrite of unchanged sources");
+        assertEquals(2, second.get("unchanged"));
+        assertEquals(2, second.get("files"), "files = loaded + unchanged");
+        assertEquals(2L, store.count());
+
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a CHANGED\ntype: lesson", "body a2");
+        Map<String, Object> third = m.load(dir, true);
+        assertEquals(1, third.get("loaded"), "changed source is re-ingested");
+        assertEquals(1, third.get("unchanged"));
+        assertEquals(2L, store.count());
+    }
+
+    @Test
     void load_ingests_mdc_files_from_directories(@TempDir Path dir) throws IOException {
         // Sprint 21b (item C2): Cursor project rules are .mdc — directory crawls accept them.
         Files.writeString(dir.resolve("rule.mdc"),
