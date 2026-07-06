@@ -94,6 +94,20 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
+    void refresh_judges_only_active_entries() {
+        // Sprint 21b: re-superseding an already superseded entry wrote an UPDATE per
+        // refresh — with refresh automatic after every load, the store grew per click.
+        store.put(ExperienceEntry.of(
+            SymbolFact.of("lesson", "note", Confidence.HIGH).symbol("com.gone.Removed").build()).build());
+        ExperienceMaintenance m = maint(fqn -> Boolean.FALSE);
+        assertEquals(1, ((List<?>) m.refresh().get("staled")).size(), "first pass supersedes");
+
+        Map<String, Object> second = m.refresh();
+        assertEquals(0, second.get("checked"), "superseded entries are not re-judged");
+        assertEquals(0, ((List<?>) second.get("staled")).size(), "and never re-written");
+    }
+
+    @Test
     void refresh_with_no_project_skips_without_flagging() {
         store.put(ExperienceEntry.of(
             SymbolFact.of("lesson", "note", Confidence.HIGH).symbol("com.a.Foo").build()).build());

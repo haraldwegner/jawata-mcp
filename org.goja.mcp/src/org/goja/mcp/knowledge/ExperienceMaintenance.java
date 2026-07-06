@@ -317,6 +317,13 @@ public final class ExperienceMaintenance {
             if (fqn == null || fqn.isBlank()) {
                 continue;
             }
+            // Sprint 21b: only ACTIVE entries are judged. Re-superseding an already
+            // superseded entry wrote an UPDATE per entry per refresh — with refresh now
+            // automatic after every load, that grew the store file on every click.
+            if (!ExperienceEntry.ACCEPTED.equals(e.status())
+                    && !ExperienceEntry.CANDIDATE.equals(e.status())) {
+                continue;
+            }
             if (!e.isJavaResolvable()) {
                 nonJava++;                         // opaque anchor — never staled by JDT
                 continue;

@@ -137,6 +137,18 @@ class ExperienceToolMaintenanceTest {
     }
 
     @Test
+    void wipe_compacts_the_store_afterwards() {
+        // Sprint 21b: MVStore never shrinks on deletes — a wipe that leaves an 800k
+        // file reads as a bug, so wipe compacts.
+        recordOne();
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "wipe");
+        Map<String, Object> d = data(tool.execute(a));
+        assertEquals(1L, ((Number) d.get("removed")).longValue());
+        assertTrue(d.containsKey("compact"), "wipe response carries the compact report");
+    }
+
+    @Test
     void autoRefresh_never_throws_even_on_a_broken_resolver() {
         recordOne();
         ExperienceTool broken = new ExperienceTool(() -> null, store,

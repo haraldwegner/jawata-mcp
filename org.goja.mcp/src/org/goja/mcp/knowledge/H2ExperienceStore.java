@@ -46,6 +46,25 @@ public final class H2ExperienceStore implements ExperienceStore {
     private volatile String workspaceId;
     private volatile String projectId;
 
+    /**
+     * The live connection — self-heals when the shared AUTO_SERVER database was shut
+     * down under us (Sprint 21b: a {@code compact} on ANY attached resident closes the
+     * database for ALL of them; the peers must reconnect, not die).
+     */
+    private Connection live() {
+        try {
+            if (conn == null || conn.isClosed() || !conn.isValid(1)) {
+                JdbcDataSource ds = new JdbcDataSource();
+                ds.setURL(url);
+                conn = ds.getConnection();
+                log.info("Experience store connection re-established");
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to re-open store connection: " + e.getMessage(), e);
+        }
+        return conn;
+    }
+
     private H2ExperienceStore(Connection conn, String url, Path storeDir, Path storeFile)
             throws SQLException {
         this.conn = conn;
@@ -185,7 +204,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         if (sourceRef == null || sourceHash == null) {
             return false;
         }
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "SELECT 1 FROM experience_entry WHERE source_ref = ? AND source_hash = ? LIMIT 1")) {
             ps.setString(1, sourceRef);
             ps.setString(2, sourceHash);
@@ -206,7 +225,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             throw new IllegalStateException("failed to serialize entry: " + e.getMessage(), e);
         }
         try {
-            try (PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = live().prepareStatement(
                     "INSERT INTO experience_entry"
                     + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                     + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
@@ -250,19 +269,19 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
         try {
             // Remove children first (no FK cascade in this embedded schema).
-            try (PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = live().prepareStatement(
                     "DELETE FROM experience_symptom WHERE entry_id IN"
                     + " (SELECT id FROM experience_entry WHERE source_ref = ?)")) {
                 ps.setString(1, sourceRef);
                 ps.executeUpdate();
             }
-            try (PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = live().prepareStatement(
                     "DELETE FROM experience_link WHERE entry_id IN"
                     + " (SELECT id FROM experience_entry WHERE source_ref = ?)")) {
                 ps.setString(1, sourceRef);
                 ps.executeUpdate();
             }
-            try (PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = live().prepareStatement(
                     "DELETE FROM experience_entry WHERE source_ref = ?")) {
                 ps.setString(1, sourceRef);
                 return ps.executeUpdate();
@@ -274,7 +293,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized long wipe() {
-        try (Statement s = conn.createStatement()) {
+        try (Statement s = live().createStatement()) {
             long n = count();
             s.execute("DELETE FROM experience_symptom");
             s.execute("DELETE FROM experience_link");
@@ -288,7 +307,7 @@ public final class H2ExperienceStore implements ExperienceStore {
     @Override
     public synchronized List<StoredEntry> all() {
         List<StoredEntry> out = new ArrayList<>();
-        try (Statement s = conn.createStatement();
+        try (Statement s = live().createStatement();
                 ResultSet rs = s.executeQuery(
                     "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,"
                     + "external_system,summary,body_json,created_at FROM experience_entry")) {
@@ -303,7 +322,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized boolean setStatus(String id, String status) {
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "UPDATE experience_entry SET status = ?, updated_at = ? WHERE id = ?")) {
             ps.setString(1, status);
             ps.setTimestamp(2, Timestamp.from(Instant.now()));
@@ -319,7 +338,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         if (symptoms.isEmpty()) {
             return;
         }
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "MERGE INTO experience_symptom(entry_id, symptom) VALUES (?, ?)")) {
             for (String s : symptoms) {
                 String norm = normalize(s);
@@ -337,7 +356,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         if (links.isEmpty()) {
             return;
         }
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "MERGE INTO experience_link(entry_id, rel, target) VALUES (?, ?, ?)")) {
             for (ExperienceEntry.Link l : links) {
                 if (l.rel() == null || l.target() == null) {
@@ -360,7 +379,7 @@ public final class H2ExperienceStore implements ExperienceStore {
     @SuppressWarnings("unchecked")
     public synchronized Optional<Map<String, Object>> get(String id) {
         try (PreparedStatement ps =
-                conn.prepareStatement("SELECT body_json FROM experience_entry WHERE id = ?")) {
+                live().prepareStatement("SELECT body_json FROM experience_entry WHERE id = ?")) {
             ps.setString(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
@@ -419,7 +438,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             + ") AND status NOT IN ('rejected', 'superseded') ORDER BY created_at DESC";
 
         List<StoredEntry> out = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = live().prepareStatement(sql)) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
             }
@@ -463,7 +482,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     private List<String> loadSymptoms(String id) throws SQLException {
         List<String> symptoms = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "SELECT symptom FROM experience_symptom WHERE entry_id = ?")) {
             ps.setString(1, id);
             try (ResultSet rs = ps.executeQuery()) {
@@ -477,7 +496,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized long count() {
-        try (Statement s = conn.createStatement();
+        try (Statement s = live().createStatement();
                 ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM experience_entry")) {
             return rs.next() ? rs.getLong(1) : 0L;
         } catch (SQLException e) {
@@ -509,7 +528,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
             + " ORDER BY created_at";
         List<Map<String, Object>> out = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = live().prepareStatement(sql)) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
             }
@@ -576,7 +595,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 String body;
                 Object bodyObj = row.get("body");
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
-                try (PreparedStatement ps = conn.prepareStatement(
+                try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     ps.setString(1, id);
@@ -659,7 +678,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
             + " ORDER BY created_at DESC LIMIT " + Math.max(1, limit);
         List<StoredEntry> out = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = live().prepareStatement(sql)) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
             }
@@ -681,14 +700,14 @@ public final class H2ExperienceStore implements ExperienceStore {
         Timestamp cutoff = Timestamp.from(Instant.now().minusSeconds(Math.max(0, days) * 86400L));
         try {
             for (String child : new String[] {"experience_symptom", "experience_link"}) {
-                try (PreparedStatement ps = conn.prepareStatement(
+                try (PreparedStatement ps = live().prepareStatement(
                         "DELETE FROM " + child + " WHERE entry_id IN (SELECT id FROM experience_entry"
                         + " WHERE status IN ('rejected','superseded') AND updated_at < ?)")) {
                     ps.setTimestamp(1, cutoff);
                     ps.executeUpdate();
                 }
             }
-            try (PreparedStatement ps = conn.prepareStatement(
+            try (PreparedStatement ps = live().prepareStatement(
                     "DELETE FROM experience_entry"
                     + " WHERE status IN ('rejected','superseded') AND updated_at < ?")) {
                 ps.setTimestamp(1, cutoff);
@@ -709,7 +728,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
         long before = fileSize(storeFile);
         try {
-            try (Statement s = conn.createStatement()) {
+            try (Statement s = live().createStatement()) {
                 s.execute("SHUTDOWN COMPACT");       // closes the database (and this conn)
             }
             closeQuietly(conn);
@@ -753,7 +772,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     private Map<String, Object> groupCount(String column) {
         Map<String, Object> counts = new LinkedHashMap<>();
-        try (Statement s = conn.createStatement();
+        try (Statement s = live().createStatement();
                 ResultSet rs = s.executeQuery(
                     "SELECT " + column + ", COUNT(*) FROM experience_entry GROUP BY " + column
                     + " ORDER BY " + column)) {
@@ -769,7 +788,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     private List<Map<String, Object>> loadLinks(String id) throws SQLException {
         List<Map<String, Object>> links = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "SELECT rel, target FROM experience_link WHERE entry_id = ?")) {
             ps.setString(1, id);
             try (ResultSet rs = ps.executeQuery()) {
@@ -890,7 +909,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                     duplicates++;
                     continue;
                 }
-                try (PreparedStatement ps = conn.prepareStatement(
+                try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry"
                         + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
@@ -920,7 +939,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 "SELECT symptom FROM experience_symptom WHERE entry_id = ?")) {
             q.setString(1, id);
             try (ResultSet rs = q.executeQuery();
-                    PreparedStatement ins = conn.prepareStatement(
+                    PreparedStatement ins = live().prepareStatement(
                         "MERGE INTO experience_symptom(entry_id, symptom) VALUES (?, ?)")) {
                 while (rs.next()) {
                     ins.setString(1, id);
@@ -933,7 +952,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 "SELECT rel, target FROM experience_link WHERE entry_id = ?")) {
             q.setString(1, id);
             try (ResultSet rs = q.executeQuery();
-                    PreparedStatement ins = conn.prepareStatement(
+                    PreparedStatement ins = live().prepareStatement(
                         "MERGE INTO experience_link(entry_id, rel, target) VALUES (?, ?, ?)")) {
                 while (rs.next()) {
                     ins.setString(1, id);
@@ -946,7 +965,7 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     private boolean idExists(String id) {
-        try (PreparedStatement ps = conn.prepareStatement(
+        try (PreparedStatement ps = live().prepareStatement(
                 "SELECT 1 FROM experience_entry WHERE id = ?")) {
             ps.setString(1, id);
             try (ResultSet rs = ps.executeQuery()) {

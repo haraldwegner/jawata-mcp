@@ -250,7 +250,7 @@ public final class ExperienceTool implements Tool {
             case "load" -> load(args);
             case "reseed" -> reseed(args);
             case "refresh" -> ToolResponse.success(maintenance.refresh());
-            case "wipe" -> ToolResponse.success(maintenance.wipe());
+            case "wipe" -> wipe();
             case "promote" -> promote(args);
             case "list" -> list(args);
             case "export" -> exportEntries(args);
@@ -300,6 +300,17 @@ public final class ExperienceTool implements Tool {
         data.put("removed", wiped.get("removed"));
         data.putAll(loaded);
         return ToolResponse.success(withRefresh(data));
+    }
+
+    /**
+     * Sprint 21b: wipe compacts afterwards — H2's MVStore never shrinks on deletes, and
+     * "I wiped and the file is still 800k" reads as a bug (Harald, 2026-07-06). Attached
+     * peer residents survive the shutdown via the store's self-healing connection.
+     */
+    private ToolResponse wipe() {
+        Map<String, Object> data = new LinkedHashMap<>(maintenance.wipe());
+        data.put("compact", store.compact());
+        return ToolResponse.success(data);
     }
 
     private static boolean bool(JsonNode n, String field) {

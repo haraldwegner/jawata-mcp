@@ -21,6 +21,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExperienceStoreLocationTest {
 
     @Test
+    void peer_connection_self_heals_after_a_compact(@TempDir Path dir) {
+        // Sprint 21b: compact = SHUTDOWN COMPACT on the SHARED AUTO_SERVER database —
+        // it closes the db for EVERY attached resident. The peer must reconnect, not
+        // die (live "clean up" left the other workspace permanently unreachable).
+        try (H2ExperienceStore a = H2ExperienceStore.openAt(dir);
+             H2ExperienceStore b = H2ExperienceStore.openAt(dir)) {
+            b.put(SymbolFact.of("lesson", "before compact", Confidence.MEDIUM).build());
+            a.compact();
+            b.put(SymbolFact.of("lesson", "after compact", Confidence.MEDIUM).build());
+            assertEquals(2L, b.count(), "peer keeps working after another resident compacts");
+        }
+    }
+
+    @Test
     void shared_store_honors_dir_override_and_persists(@TempDir Path dir) {
         System.setProperty("goja.experience.shared.dir", dir.toString());
         try {
