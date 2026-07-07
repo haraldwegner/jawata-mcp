@@ -227,14 +227,18 @@ public final class ExperienceMaintenance {
             }
             store.deleteBySource(sourceRef);         // idempotent re-seed
 
+            boolean split = !doc.sections.isEmpty();
             SymbolFact.Builder fb = SymbolFact.of(
                 doc.type == null ? "note" : doc.type,
                 doc.summary(), Confidence.MEDIUM);
             if (doc.symbol != null) {
                 fb.symbol(doc.symbol);
             }
-            if (!doc.body.isBlank()) {
-                fb.details(doc.body.strip());
+            // Sprint 21c (item B): with sections, the parent is THIN — its details are
+            // the preamble only; the body bulk lives in the section entries.
+            String parentDetails = (split ? doc.preamble : doc.body).strip();
+            if (!parentDetails.isBlank()) {
+                fb.details(parentDetails);
             }
             ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
                 .status(ExperienceEntry.ACCEPTED)
@@ -246,19 +250,34 @@ public final class ExperienceMaintenance {
             }
             // Sprint 21c (item A): the harvested keyword surface — headings, bold
             // phrases, backticked terms, wikilink names — becomes symptom rows.
-            int kw = 0;
-            for (String keyword : doc.keywords) {
-                if (kw == MAX_KEYWORDS_PER_ENTRY) {
-                    keywordCapped++;
-                    break;
-                }
-                eb.addSymptom(keyword);
-                kw++;
+            if (addKeywords(eb, doc.keywords)) {
+                keywordCapped++;
             }
             for (String link : doc.links) {
                 eb.addLink("related", link);
             }
             store.putWithSource(eb.build(), sourceRef, hash);
+            // Sprint 21c (item B): one entry per section — the atomic FACT the fit
+            // gate answers with. The whole family shares the file-level source_ref +
+            // source_hash, so skip-unchanged and deleteBySource stay untouched.
+            for (Section s : doc.sections) {
+                SymbolFact.Builder sf = SymbolFact.of(
+                    doc.type == null ? "note" : doc.type, s.heading(), Confidence.MEDIUM);
+                if (!s.body().isBlank()) {
+                    sf.details(s.body().strip());
+                }
+                ExperienceEntry.Builder sb = ExperienceEntry.of(sf.build())
+                    .status(ExperienceEntry.ACCEPTED)
+                    .language(doc.language)
+                    .scopeKind("section");
+                if (addKeywords(sb, s.keywords())) {
+                    keywordCapped++;
+                }
+                for (String link : s.links()) {
+                    sb.addLink("related", link);
+                }
+                store.putWithSource(sb.build(), sourceRef, hash);
+            }
             loaded++;
 
             // Item I: only Java anchors are judged by the JDT resolver on ingest.
@@ -433,6 +452,13 @@ public final class ExperienceMaintenance {
                     || ExperienceEntry.SUPERSEDED.equals(e.status())) {
                 continue;
             }
+            // Sprint 21c: file-backed entries are family-idempotent (the next load
+            // resets them) and generic section headings repeat across files — merging
+            // them is hazardous AND pointless. Files are the source of truth; fix
+            // duplicates in the files. Dedup's domain is RECORDED entries.
+            if (e.sourceRef() != null) {
+                continue;
+            }
             String key = H2ExperienceStore.normalize(e.summary() == null ? "" : e.summary())
                 + "|" + (e.symbolFqn() == null ? "" : e.symbolFqn())
                 + "|" + (e.packageName() == null ? "" : e.packageName());
@@ -476,7 +502,8 @@ public final class ExperienceMaintenance {
 
     private record MemoryDoc(String name, String description, String type, String symbol,
                              String language, String body, List<String> links,
-                             List<String> fileLinks, List<String> keywords) {
+                             List<String> fileLinks, List<String> keywords,
+                             String preamble, List<Section> sections) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
         String summary() {
             if (description != null && !description.isBlank()) {
@@ -551,17 +578,11 @@ public final class ExperienceMaintenance {
             body.append(lines[i]).append('\n');
         }
 
-        List<String> links = new ArrayList<>();
-        Matcher m = WIKILINK.matcher(body);
-        while (m.find()) {
-            String link = m.group(1).strip();
-            if (!link.isEmpty() && !links.contains(link)) {
-                links.add(link);
-            }
-        }
+        String bodyStr = body.toString();
+        List<String> links = wikilinks(bodyStr);
         // Item C: relative markdown links (the MEMORY.md "- [Title](file.md)" index style).
         List<String> fileLinks = new ArrayList<>();
-        Matcher fm = MD_LINK.matcher(body);
+        Matcher fm = MD_LINK.matcher(bodyStr);
         while (fm.find()) {
             String link = fm.group(1).strip();
             if (!link.isEmpty() && !link.startsWith("/") && !fileLinks.contains(link)) {
@@ -571,8 +592,78 @@ public final class ExperienceMaintenance {
         if (name == null) {
             name = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
         }
-        return new MemoryDoc(name, description, type, symbol, language, body.toString(),
-            links, fileLinks, harvestKeywords(body.toString()));
+        Split split = splitSections(bodyStr);
+        // Keywords for the PARENT entry: with sections, only the preamble — each
+        // section harvests its own body (Sprint 21c item B).
+        List<String> keywords =
+            harvestKeywords(split.sections().isEmpty() ? bodyStr : split.preamble());
+        return new MemoryDoc(name, description, type, symbol, language, bodyStr,
+            links, fileLinks, keywords, split.preamble(), split.sections());
+    }
+
+    /** Sprint 21c (item B): a heading-bounded body slice — the atomic fact. */
+    private record Section(String heading, String body, List<String> links, List<String> keywords) {}
+
+    private record Split(String preamble, List<Section> sections) {}
+
+    /** Split the body at heading boundaries (any level, fence-aware); text before the
+     *  first heading is the preamble and stays with the file-level parent. */
+    private static Split splitSections(String body) {
+        StringBuilder preamble = new StringBuilder();
+        List<Section> sections = new ArrayList<>();
+        String heading = null;
+        StringBuilder cur = new StringBuilder();
+        boolean fenced = false;
+        for (String line : body.split("\n", -1)) {
+            String s = line.strip();
+            if (s.startsWith("```")) {
+                fenced = !fenced;
+            }
+            Matcher h = HEADING.matcher(s);
+            if (!fenced && h.matches()) {
+                if (heading != null) {
+                    sections.add(section(heading, cur.toString()));
+                }
+                heading = h.group(1).replace("**", "").replace("`", "").strip();
+                cur = new StringBuilder();
+                continue;
+            }
+            (heading == null ? preamble : cur).append(line).append('\n');
+        }
+        if (heading != null) {
+            sections.add(section(heading, cur.toString()));
+        }
+        return new Split(preamble.toString(), sections);
+    }
+
+    private static Section section(String heading, String body) {
+        return new Section(heading, body, wikilinks(body),
+            harvestKeywords("## " + heading + "\n" + body));
+    }
+
+    private static List<String> wikilinks(String text) {
+        List<String> links = new ArrayList<>();
+        Matcher m = WIKILINK.matcher(text);
+        while (m.find()) {
+            String link = m.group(1).strip();
+            if (!link.isEmpty() && !links.contains(link)) {
+                links.add(link);
+            }
+        }
+        return links;
+    }
+
+    /** Add harvested keywords as symptoms up to the backstop; true when capped. */
+    private static boolean addKeywords(ExperienceEntry.Builder eb, List<String> keywords) {
+        int kw = 0;
+        for (String keyword : keywords) {
+            if (kw == MAX_KEYWORDS_PER_ENTRY) {
+                return true;
+            }
+            eb.addSymptom(keyword);
+            kw++;
+        }
+        return false;
     }
 
     /**

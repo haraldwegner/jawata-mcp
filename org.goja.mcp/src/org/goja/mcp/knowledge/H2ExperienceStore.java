@@ -351,7 +351,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         List<StoredEntry> out = new ArrayList<>();
         try (Statement s = live().createStatement();
                 ResultSet rs = s.executeQuery(
-                    "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,"
+                    "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
                     + "external_system,summary,body_json,created_at FROM experience_entry")) {
             while (rs.next()) {
                 out.add(mapRow(rs));
@@ -484,7 +484,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 clauses.add("(" + String.join(" AND ", tokenClauses) + ")");
             }
         }
-        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,"
+        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
             + "external_system,summary,body_json,created_at FROM experience_entry WHERE ("
             + String.join(" OR ", clauses)
             + ") AND status NOT IN ('rejected', 'superseded') ORDER BY created_at DESC";
@@ -528,6 +528,8 @@ public final class H2ExperienceStore implements ExperienceStore {
             rs.getString("external_system"),
             rs.getString("summary"),
             loadSymptoms(id),
+            rs.getString("source_ref"),
+            rs.getString("scope_kind"),
             ts == null ? null : ts.toInstant(),
             body);
     }
@@ -725,7 +727,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             clauses.add("LOWER(language) = LOWER(?)");
             params.add(language);
         }
-        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,"
+        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
             + "external_system,summary,body_json,created_at FROM experience_entry"
             + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
             + " ORDER BY created_at DESC LIMIT " + Math.max(1, limit);

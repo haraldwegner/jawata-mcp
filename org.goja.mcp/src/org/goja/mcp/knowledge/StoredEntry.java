@@ -14,7 +14,13 @@ import java.util.Map;
 public record StoredEntry(String id, String type, String symbolFqn, String packageName,
                           String operation, String status, String confidence, String language,
                           String externalSystem, String summary, List<String> symptoms,
+                          String sourceRef, String scopeKind,
                           Instant createdAt, Map<String, Object> body) {
+
+    /** Sprint 21c: a section entry split out of a memory file ({@code scope_kind} marker). */
+    public boolean isSection() {
+        return "section".equals(scopeKind);
+    }
 
     /**
      * Sprint 21a (item I): true when this entry's anchor may be judged by the JDT

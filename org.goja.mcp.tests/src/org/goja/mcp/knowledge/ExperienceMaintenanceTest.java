@@ -291,9 +291,10 @@ class ExperienceMaintenanceTest {
     @Test
     void harvest_caps_keywords_per_entry_and_reports_it(@TempDir Path dir) throws IOException {
         // Sprint 21c (item A): 30/entry is a runaway backstop — hitting it is REPORTED.
-        StringBuilder body = new StringBuilder();
+        // Headingless on purpose: the cap is per ENTRY, and a headingless file is one entry.
+        StringBuilder body = new StringBuilder("prose with many terms: ");
         for (int i = 0; i < 40; i++) {
-            body.append("## unique heading number ").append(i).append('\n');
+            body.append("`unique term number ").append(i).append("` and ");
         }
         writeMemory(dir, "big.md", "name: big\ndescription: cap fixture\ntype: lesson", body.toString());
 
@@ -302,6 +303,85 @@ class ExperienceMaintenanceTest {
         assertEquals(1, report.get("keyword_capped"), "cap hit is reported, not silent");
         StoredEntry e = store.all().get(0);
         assertEquals(31, e.symptoms().size(), "30 harvested keywords + the name symptom");
+    }
+
+    @Test
+    void load_splits_sections_into_atomic_entries(@TempDir Path dir) throws IOException {
+        // Sprint 21c (item B): files are bundles — one entry per heading section plus a
+        // thin file-level parent, so the fit gate can answer with the FACT.
+        writeMemory(dir, "bundle.md",
+            "name: bundle\ndescription: two facts wearing one coat\ntype: lesson",
+            "Preamble before any heading.\n\n"
+                + "## First atomic fact\n\nbody one with [[linked-note]].\n\n"
+                + "## Second atomic fact\n\nbody two.\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"), "loaded counts FILES");
+        assertEquals(3L, store.count(), "parent + 2 sections");
+
+        List<StoredEntry> all = store.all();
+        StoredEntry parent = all.stream().filter(e -> !e.isSection()).findFirst().orElseThrow();
+        assertEquals("two facts wearing one coat", parent.summary());
+        List<StoredEntry> sections = all.stream().filter(StoredEntry::isSection).toList();
+        assertEquals(2, sections.size());
+        StoredEntry first = sections.stream()
+            .filter(e -> "First atomic fact".equals(e.summary())).findFirst().orElseThrow();
+        assertTrue(store.get(first.id()).orElseThrow().toString().contains("body one"),
+            "section details = the section body");
+        String sourceRef = "memory:" + dir.resolve("bundle.md").toAbsolutePath().normalize();
+        assertTrue(all.stream().allMatch(e -> sourceRef.equals(e.sourceRef())),
+            "whole family shares the file-level source_ref");
+    }
+
+    @Test
+    void section_family_reingests_as_one_unit(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: lesson",
+            "## A one\n\nx\n\n## A two\n\ny\n");
+        writeMemory(dir, "b.md", "name: b\ndescription: db\ntype: lesson",
+            "## B one\n\nz\n");
+        ExperienceMaintenance m = maint(fqn -> null);
+        assertEquals(2, m.load(dir, true).get("loaded"));
+        assertEquals(5L, store.count(), "(parent+2) + (parent+1)");
+
+        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: lesson",
+            "## A one\n\nx CHANGED\n\n## A two\n\ny\n");
+        Map<String, Object> second = m.load(dir, true);
+        assertEquals(1, second.get("loaded"), "only the changed file re-ingests");
+        assertEquals(1, second.get("unchanged"));
+        assertEquals(5L, store.count(), "family replaced as one unit, nothing duplicated");
+    }
+
+    @Test
+    void headingless_files_stay_single_entries(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "flat.md", "name: flat\ndescription: no headings\ntype: lesson",
+            "just prose with **a phrase** and nothing else.\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+        assertEquals(1L, store.count(), "no headings, no split — exactly today's shape");
+        assertFalse(store.all().get(0).isSection());
+    }
+
+    @Test
+    void fenced_heading_lines_do_not_split(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "f.md", "name: f\ndescription: fence fixture\ntype: lesson",
+            "prose\n```md\n# not a heading\n```\nmore prose\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+        assertEquals(1L, store.count(), "a heading inside a fence is code, not a boundary");
+    }
+
+    @Test
+    void dedup_never_merges_file_backed_entries(@TempDir Path dir) throws IOException {
+        // Sprint 21c plan finding: generic headings ("Context", "DoD") repeat ACROSS
+        // files — the clean-up chain must not eat sections. Files are the source of
+        // truth and families are idempotent; duplicates are fixed in the files.
+        writeMemory(dir, "one.md", "name: one\ndescription: d1\ntype: lesson",
+            "## Context\n\nfact one.\n");
+        writeMemory(dir, "two.md", "name: two\ndescription: d2\ntype: lesson",
+            "## Context\n\nfact two.\n");
+        ExperienceMaintenance m = maint(fqn -> null);
+        assertEquals(2, m.load(dir, true).get("loaded"));
+
+        m.dedup(true);
+        long active = store.all().stream()
+            .filter(e -> !ExperienceEntry.SUPERSEDED.equals(e.status())).count();
+        assertEquals(4L, active, "same-heading sections across files are NOT duplicates");
     }
 
     @Test
@@ -320,8 +400,11 @@ class ExperienceMaintenanceTest {
         Files.writeString(dir.resolve("CLAUDE.md"),
             "# Collaboration rules\n\nAlways use goja before shell text tools.\n");
         assertEquals(1, maint(fqn -> null).load(dir, false).get("loaded"));
-        StoredEntry e = store.all().get(0);
-        assertEquals("Collaboration rules", e.summary(), "summary derived from the first heading, not the filename");
+        // Sprint 21c: the heading also splits into a section — parent AND section carry
+        // the derived summary; the filename is a junk summary in neither.
+        assertTrue(store.all().stream().anyMatch(e -> "Collaboration rules".equals(e.summary())),
+            "summary derived from the first heading, not the filename");
+        assertTrue(store.all().stream().noneMatch(e -> "CLAUDE".equals(e.summary())));
     }
 
     @Test
@@ -331,8 +414,11 @@ class ExperienceMaintenanceTest {
         Files.writeString(dir.resolve("CLAUDE.md"),
             "<!-- collaboration-spec:start -->\n\n# Collaboration spec\n\nRules body.\n");
         assertEquals(1, maint(fqn -> null).load(dir, false).get("loaded"));
-        assertEquals("Collaboration spec", store.all().get(0).summary(),
+        assertTrue(store.all().stream().anyMatch(e -> "Collaboration spec".equals(e.summary())),
             "HTML comments are not content");
+        assertTrue(store.all().stream()
+                .noneMatch(e -> String.valueOf(e.summary()).startsWith("<!--")),
+            "no junk summaries from managed-section markers");
     }
 
     @Test
