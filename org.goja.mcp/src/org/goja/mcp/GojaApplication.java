@@ -190,6 +190,11 @@ public class GojaApplication implements IApplication {
      * asynchronously AFTER the store opens, so every pointer would judge as "unknown".
      * Run the automatic staleness pass here instead, once projects are in. Already on
      * the async auto-load thread (zero startup cost); autoRefresh never throws.
+     *
+     * <p>Sprint 21d (item C, declared boundary): this path runs OUTSIDE the dispatch
+     * disk-sync guard on purpose — it fires immediately after project load, when the
+     * JDT model was just read from this same disk state (fresh by construction). Every
+     * OTHER refresh/recall runs under {@code ToolRegistry.callTool}'s guard.</p>
      */
     private void refreshExperienceAfterProjectLoad() {
         if (experienceTool != null) {
