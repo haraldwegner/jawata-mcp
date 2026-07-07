@@ -1,7 +1,10 @@
 package org.goja.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.eclipse.core.resources.IMarker;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IJavaModelMarker;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
@@ -174,8 +177,12 @@ public class GetDiagnosticsTool extends AbstractTool {
             );
 
             if (ast == null) {
-                log.debug("No AST returned for {}", path);
-                return new DiagnosticCounts(0, 0);
+                // Sprint 21e (item C): reconcile returns a null AST for NON-working-copies
+                // — in this headless server no file is ever a working copy, so this tool
+                // NEVER reported problems for closed files (proven 2026-07-07). Post-build
+                // PROBLEM markers are per-call fresh since 21d (build on change): read them
+                // instead — the same sweep compile_workspace uses, same response shape.
+                return collectFromMarkers(service, cu, path, severity, remaining, diagnostics);
             }
 
             IProblem[] problems = ast.getProblems();
@@ -218,6 +225,65 @@ public class GetDiagnosticsTool extends AbstractTool {
             errorCount++;
         }
 
+        return new DiagnosticCounts(errorCount, warningCount);
+    }
+
+    /**
+     * Sprint 21e (item C): the honest closed-file path — read the file's post-build
+     * {@link IMarker#PROBLEM} markers. {@code problemId}/{@code category} are
+     * best-effort (marker attributes where present); counts, locations and severity
+     * are the contract.
+     */
+    private DiagnosticCounts collectFromMarkers(IJdtService service, ICompilationUnit cu, Path path,
+                                                  String severity, int remaining,
+                                                  List<Map<String, Object>> diagnostics) {
+        int errorCount = 0;
+        int warningCount = 0;
+        try {
+            IResource resource = cu.getResource();
+            if (resource == null || !resource.exists()) {
+                return new DiagnosticCounts(0, 0);
+            }
+            for (IMarker marker : resource.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_ZERO)) {
+                if (remaining <= 0) {
+                    break;
+                }
+                int sev = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
+                boolean isError = sev == IMarker.SEVERITY_ERROR;
+                boolean isWarning = sev == IMarker.SEVERITY_WARNING;
+                if ("error".equals(severity) && !isError) {
+                    continue;
+                }
+                if ("warning".equals(severity) && !isWarning) {
+                    continue;
+                }
+                if (isError) {
+                    errorCount++;
+                }
+                if (isWarning) {
+                    warningCount++;
+                }
+                Map<String, Object> diag = new LinkedHashMap<>();
+                diag.put("filePath", service.getPathUtils().formatPath(path));
+                diag.put("line", Math.max(0, marker.getAttribute(IMarker.LINE_NUMBER, 1) - 1));
+                diag.put("startOffset", marker.getAttribute(IMarker.CHAR_START, -1));
+                diag.put("endOffset", marker.getAttribute(IMarker.CHAR_END, -1));
+                diag.put("severity", isError ? "error" : isWarning ? "warning" : "info");
+                diag.put("message", marker.getAttribute(IMarker.MESSAGE, ""));
+                int problemId = marker.getAttribute(IJavaModelMarker.ID, -1);
+                if (problemId >= 0) {
+                    diag.put("problemId", problemId);
+                }
+                int categoryId = marker.getAttribute("categoryId", -1);
+                if (categoryId >= 0) {
+                    diag.put("category", String.valueOf(categoryId));
+                }
+                diagnostics.add(diag);
+                remaining--;
+            }
+        } catch (Exception e) {
+            log.debug("Marker read failed for {}: {}", path, e.getMessage());
+        }
         return new DiagnosticCounts(errorCount, warningCount);
     }
 
