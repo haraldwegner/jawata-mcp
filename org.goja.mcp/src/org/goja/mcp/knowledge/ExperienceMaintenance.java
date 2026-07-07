@@ -7,9 +7,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,6 +29,13 @@ public final class ExperienceMaintenance {
     private static final Pattern WIKILINK = Pattern.compile("\\[\\[([^\\]]+)\\]\\]");
     /** Relative markdown links to .md files — the MEMORY.md index convention. */
     private static final Pattern MD_LINK = Pattern.compile("\\]\\(([^)#?:]+\\.md)\\)");
+
+    // Sprint 21c (item A): the cue-dense body structure the symptom matcher never saw.
+    private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+(.+)$");
+    private static final Pattern BOLD = Pattern.compile("\\*\\*([^*\\n]+)\\*\\*");
+    private static final Pattern CODE_SPAN = Pattern.compile("`([^`\\n]+)`");
+    /** Keyword-harvest backstop per entry — hitting it is reported, never silent. */
+    static final int MAX_KEYWORDS_PER_ENTRY = 30;
 
     // Sprint 21b (item C): the crawl finds EVERYTHING reachable — these are runaway
     // BACKSTOPS (pathological trees/cycles), not tuning values, and have no UI. The
@@ -156,6 +165,7 @@ public final class ExperienceMaintenance {
         int loaded = 0;
         int unchanged = 0;
         int linked = 0;
+        int keywordCapped = 0;
         long bytes = 0;
         while (!queue.isEmpty()) {
             Item item = queue.poll();
@@ -234,6 +244,17 @@ public final class ExperienceMaintenance {
             if (doc.name != null && !doc.name.isBlank()) {
                 eb.addSymptom(doc.name);
             }
+            // Sprint 21c (item A): the harvested keyword surface — headings, bold
+            // phrases, backticked terms, wikilink names — becomes symptom rows.
+            int kw = 0;
+            for (String keyword : doc.keywords) {
+                if (kw == MAX_KEYWORDS_PER_ENTRY) {
+                    keywordCapped++;
+                    break;
+                }
+                eb.addSymptom(keyword);
+                kw++;
+            }
             for (String link : doc.links) {
                 eb.addLink("related", link);
             }
@@ -270,6 +291,9 @@ public final class ExperienceMaintenance {
         report.put("linked", linked);
         report.put("stale", stale);
         report.put("skipped", skipped);
+        if (keywordCapped > 0) {
+            report.put("keyword_capped", keywordCapped);
+        }
         if (!skipped.isEmpty()) {
             log.info("load: {} source(s) skipped: {}", skipped.size(), skipped);
         }
@@ -284,9 +308,10 @@ public final class ExperienceMaintenance {
      * retroactively. Within one version, idempotency stays byte-strict.
      * History: 1 = content-only (v2.2.1) · 2 = name-as-symptom (v2.2.6) ·
      * 3 = HTML comments are not content (derived summaries skipped "&lt;!-- … --&gt;"
-     * managed-section markers in CLAUDE.md files).
+     * managed-section markers in CLAUDE.md files) · 4 = body keyword harvest
+     * (Sprint 21c item A: headings/bold/backticks/wikilinks → symptom rows).
      */
-    static final int LOADER_VERSION = 3;
+    static final int LOADER_VERSION = 4;
 
     /** The skip-unchanged key: SHA-256 of the file content + the loader fingerprint. */
     static String sourceHash(String content) {
@@ -451,7 +476,7 @@ public final class ExperienceMaintenance {
 
     private record MemoryDoc(String name, String description, String type, String symbol,
                              String language, String body, List<String> links,
-                             List<String> fileLinks) {
+                             List<String> fileLinks, List<String> keywords) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
         String summary() {
             if (description != null && !description.isBlank()) {
@@ -546,7 +571,57 @@ public final class ExperienceMaintenance {
         if (name == null) {
             name = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
         }
-        return new MemoryDoc(name, description, type, symbol, language, body.toString(), links, fileLinks);
+        return new MemoryDoc(name, description, type, symbol, language, body.toString(),
+            links, fileLinks, harvestKeywords(body.toString()));
+    }
+
+    /**
+     * Sprint 21c (item A): harvest the body's cue-dense structure — headings (all
+     * levels), {@code **bold**} phrases, {@code `backticked`} terms and
+     * {@code [[wikilink]]} names — as keyword phrases for the symptom index. Fenced
+     * {@code ```} blocks are code, not cues. Deduplicated after normalization; phrases
+     * capped to the VARCHAR(512) symptom column.
+     */
+    static List<String> harvestKeywords(String body) {
+        List<String> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        StringBuilder prose = new StringBuilder();
+        boolean fenced = false;
+        for (String line : body.split("\n", -1)) {
+            String s = line.strip();
+            if (s.startsWith("```")) {
+                fenced = !fenced;
+                continue;
+            }
+            if (fenced) {
+                continue;
+            }
+            Matcher h = HEADING.matcher(s);
+            if (h.matches()) {
+                addKeyword(out, seen, h.group(1).replace("**", "").replace("`", ""));
+            }
+            prose.append(line).append('\n');
+        }
+        for (Pattern p : List.of(BOLD, CODE_SPAN, WIKILINK)) {
+            Matcher m = p.matcher(prose);
+            while (m.find()) {
+                addKeyword(out, seen, m.group(1));
+            }
+        }
+        return out;
+    }
+
+    private static void addKeyword(List<String> out, Set<String> seen, String phrase) {
+        String p = phrase.strip();
+        if (p.length() < 3) {
+            return;                                    // single chars are noise, not cues
+        }
+        if (p.length() > 512) {
+            p = p.substring(0, 512);                   // experience_symptom column limit
+        }
+        if (seen.add(H2ExperienceStore.normalize(p))) {
+            out.add(p);
+        }
     }
 
     private static String emptyToNull(String s) {

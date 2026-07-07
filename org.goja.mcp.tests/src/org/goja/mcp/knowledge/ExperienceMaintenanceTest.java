@@ -248,6 +248,73 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
+    void load_harvests_body_structure_as_symptom_cues(@TempDir Path dir) throws IOException {
+        // Sprint 21c (item A): headings, **bold** phrases, `backticked` terms and
+        // [[wikilink]] names are the cue-dense keyword surface the matcher never saw.
+        writeMemory(dir, "k.md",
+            "name: k\ndescription: keyword harvest fixture\ntype: lesson",
+            "## Loader fingerprint self-heal\n\n"
+                + "The **skip-unchanged hash** mixes in `LOADER_VERSION` so a bump\n"
+                + "re-ingests the corpus once. See [[recall-gap-lesson]].\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+
+        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+        for (String cue : List.of("loader fingerprint self-heal", "skip-unchanged hash",
+                "loader_version", "recall-gap-lesson")) {
+            assertEquals(ExperienceRetrieval.RESULT_MATCH,
+                retrieval.recall(new RecallQuery(null, null, null, cue, null)).get("result"),
+                "harvested cue hits: " + cue);
+        }
+    }
+
+    @Test
+    void harvest_skips_fenced_code_blocks(@TempDir Path dir) throws IOException {
+        // Sprint 21c (item A, audit finding): code is not a cue source — bold/backtick
+        // inside ``` fences must not become symptom rows.
+        writeMemory(dir, "c.md",
+            "name: c\ndescription: fenced fixture\ntype: lesson",
+            "Real cue: **dmabuf renderer disable**.\n"
+                + "```bash\n"
+                + "echo **shellglobnoise** `fencedterm`\n"
+                + "```\n"
+                + "after the fence\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+
+        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+        assertEquals(ExperienceRetrieval.RESULT_MATCH,
+            retrieval.recall(new RecallQuery(null, null, null, "dmabuf renderer disable", null)).get("result"));
+        assertEquals(ExperienceRetrieval.RESULT_ABSENCE,
+            retrieval.recall(new RecallQuery(null, null, null, "fencedterm", null)).get("result"),
+            "fenced code is not a keyword source");
+    }
+
+    @Test
+    void harvest_caps_keywords_per_entry_and_reports_it(@TempDir Path dir) throws IOException {
+        // Sprint 21c (item A): 30/entry is a runaway backstop — hitting it is REPORTED.
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < 40; i++) {
+            body.append("## unique heading number ").append(i).append('\n');
+        }
+        writeMemory(dir, "big.md", "name: big\ndescription: cap fixture\ntype: lesson", body.toString());
+
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+        assertEquals(1, report.get("loaded"));
+        assertEquals(1, report.get("keyword_capped"), "cap hit is reported, not silent");
+        StoredEntry e = store.all().get(0);
+        assertEquals(31, e.symptoms().size(), "30 harvested keywords + the name symptom");
+    }
+
+    @Test
+    void harvest_truncates_oversize_phrases_to_the_column_limit(@TempDir Path dir) throws IOException {
+        // experience_symptom.symptom is VARCHAR(512) — an oversize bold phrase must not
+        // break the insert.
+        writeMemory(dir, "l.md", "name: l\ndescription: long fixture\ntype: lesson",
+            "**" + "x".repeat(600) + "**\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"),
+            "oversize phrase truncated, ingest survives");
+    }
+
+    @Test
     void load_derives_summary_from_first_content_line_when_no_frontmatter(@TempDir Path dir) throws IOException {
         // CLAUDE.md-style files: no frontmatter, but the body IS the knowledge.
         Files.writeString(dir.resolve("CLAUDE.md"),
