@@ -66,6 +66,14 @@ the same compiler the Eclipse IDE does, so the agent gets type resolution across
 method overloading/overriding, generics, classpath + import resolution, cross-bundle (OSGi)
 navigation, and LTK-backed refactorings that genuinely preserve behaviour.
 
+There is a deeper reason this works: **an agent's prior is verifiability-seeking, not
+shortcut-seeking.** It grinds toward whatever it can verify — which is a liability only while
+design properties are expensive to check. Make them cheap and the prior flips sign: the agent
+pursues `find_field_writes = 0` with the same stubbornness it pursues green tests. That is what
+compiler-accurate tooling is *for* in agent hands — it turns structural facts (writers per field,
+reference audits, SOLID and smell detection) into two-minute checks, so design erosion shows up
+as a number under surveillance instead of an incident in production.
+
 | Task: find every call to `UserService.save()` | Result |
 |---|---|
 | `grep "save("` | 47 hits — including `orderService.save()`, `saveButton`, comments |
