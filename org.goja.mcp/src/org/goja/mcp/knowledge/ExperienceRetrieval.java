@@ -106,9 +106,18 @@ public final class ExperienceRetrieval {
             }
         }
 
-        // Disambiguate: scope-specificity › confidence › recency (newest first).
+        // Disambiguate: scope-specificity › member affinity › confidence › recency.
+        // Sprint 21e: a #member cue ranks entries that KNOW the member (anchor or
+        // symptom/summary mention) above the type's other lessons — live finding: a
+        // real corpus holds MANY facts anchored to one busy type (17 for the ORB
+        // SlotManager), and without affinity the top-N tie broke on insertion order.
+        String memberToken = q.hasSymbol() && q.symbol().indexOf('#') >= 0
+            ? q.symbol().substring(q.symbol().indexOf('#') + 1)
+            : null;
         fitting.sort(Comparator
             .comparingInt(StoredEntry::specificity).reversed()
+            .thenComparing(Comparator.comparingInt(
+                (StoredEntry e) -> memberAffinity(e, memberToken)).reversed())
             .thenComparing(Comparator.comparingInt(StoredEntry::confidenceRank).reversed())
             .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
 
@@ -321,6 +330,21 @@ public final class ExperienceRetrieval {
             }
         }
         return true;
+    }
+
+    /** Sprint 21e: 1 when the entry knows the cue's member — anchored to it, or its
+     *  (alias-normalized) symptoms/summary mention it; 0 otherwise. */
+    private static int memberAffinity(StoredEntry e, String memberToken) {
+        if (memberToken == null || memberToken.isBlank()) {
+            return 0;
+        }
+        if (e.symbolFqn() != null && e.symbolFqn().endsWith("#" + memberToken)) {
+            return 1;
+        }
+        String norm = H2ExperienceStore.normalize(memberToken);
+        String haystack = String.join(" ", e.symptoms()) + " "
+            + H2ExperienceStore.normalize(e.summary() == null ? "" : e.summary());
+        return haystack.contains(norm) ? 1 : 0;
     }
 
     private static boolean eqIgnoreCase(String a, String b) {

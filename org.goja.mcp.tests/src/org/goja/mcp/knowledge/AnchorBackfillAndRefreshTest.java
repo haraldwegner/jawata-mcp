@@ -148,6 +148,35 @@ class AnchorBackfillAndRefreshTest {
         }
     }
 
+    @Test
+    @DisplayName("member-affinity tiebreak: a #member cue ranks the entry that KNOWS the member first")
+    void member_cue_ranks_member_aware_entry_above_type_bystanders() {
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+
+            // Both anchored TYPE-level to the same busy type — equal specificity.
+            String bystander = store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "unrelated lesson on the same type", Confidence.MEDIUM).build())
+                .status(ExperienceEntry.ACCEPTED).build());
+            assertTrue(store.updateSymbolAnchor(bystander, "pipeline.SlotManager"));
+
+            String knowsMember = store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "the freeSlot release path misses state", Confidence.MEDIUM).build())
+                .status(ExperienceEntry.ACCEPTED)
+                .addSymptom("SlotManager.freeSlot(4)")
+                .build());
+            assertTrue(store.updateSymbolAnchor(knowsMember, "pipeline.SlotManager"));
+
+            Map<String, Object> r = retrieval.recall(
+                new RecallQuery("pipeline.SlotManager#freeSlot", null, null, null, null));
+            assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) r.get("entries");
+            assertEquals("the freeSlot release path misses state", entries.get(0).get("summary"),
+                "the member-aware entry outranks the type-level bystander");
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static void assertMatch(ExperienceRetrieval retrieval, String symbolCue, String expectedSummary) {
         Map<String, Object> r = retrieval.recall(new RecallQuery(symbolCue, null, null, null, null));
