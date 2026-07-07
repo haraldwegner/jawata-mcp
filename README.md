@@ -77,6 +77,25 @@ for anything semantic ([goja-studio](https://github.com/haraldwegner/goja-studio
 try-first hook on top). And "understand this symbol" is one call: `analyze(kind=symbol)` returns the
 definition, the type, and the references together, so there's no multi-step detour to defect from.
 
+### Strict disk sync — every answer reflects current disk (v2.4.0)
+
+Agents, `git checkout`, and other editors all change files outside GOJA's JVM. A staleness guard
+runs once per tool call, before the tool computes anything: a millisecond scan detects external
+edits by evidence (mtime/size, content hash inside the timestamp-granularity window), then exactly
+the changed files are reconciled and the affected project rebuilt — only when something changed.
+Search, analysis, refactor change computation, and the knowledge store's pointer judgments all
+answer about the tree as of the call. There is no off switch: the only skip is the earned one —
+no edit detected, no work.
+
+Measured on this repository (~500 source files, Linux, warm):
+
+| Case | Cost |
+|---|---|
+| Unchanged tree (the common case) | ~10 ms scan; tool calls total 22–28 ms |
+| 1 file changed externally | ~0.03 s on the next call (reconcile + rebuild) |
+| 100 files changed (branch switch shape) | ~32 ms scan + one rebuild on the next call |
+| Newly loaded project (once) | one whole-project reconcile, ~4 s |
+
 ---
 
 ## Installation
