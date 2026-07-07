@@ -378,9 +378,11 @@ public final class ExperienceMaintenance {
      * History: 1 = content-only (v2.2.1) · 2 = name-as-symptom (v2.2.6) ·
      * 3 = HTML comments are not content (derived summaries skipped "&lt;!-- … --&gt;"
      * managed-section markers in CLAUDE.md files) · 4 = body keyword harvest
-     * (Sprint 21c item A: headings/bold/backticks/wikilinks → symptom rows).
+     * (Sprint 21c item A: headings/bold/backticks/wikilinks → symptom rows) ·
+     * 5 = ingest-time symbol-anchor resolution (Sprint 21e item A: backticked
+     * tokens JDT-resolved to unique project-source types, column-only).
      */
-    static final int LOADER_VERSION = 4;
+    static final int LOADER_VERSION = 5;
 
     /** The skip-unchanged key: SHA-256 of the file content + the loader fingerprint. */
     static String sourceHash(String content) {
@@ -438,6 +440,7 @@ public final class ExperienceMaintenance {
     public Map<String, Object> refresh() {
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> staled = new ArrayList<>();
+        List<Map<String, Object>> cleared = new ArrayList<>();
         int checked = 0;
         int resolved = 0;
         int skipped = 0;
@@ -464,9 +467,18 @@ public final class ExperienceMaintenance {
                 skipped++;                         // no project / unknown — do not flag
             } else if (ok) {
                 resolved++;
-            } else {
+            } else if (isAssertedAnchor(e)) {
+                // The author asserted this pointer (frontmatter `symbol:` or agent
+                // `record(symbol=…)` — the fact-map key in the frozen body) — an
+                // unresolvable assertion supersedes the entry, unchanged semantics.
                 store.setStatus(e.id(), ExperienceEntry.SUPERSEDED);
                 staled.add(Map.of("id", e.id(), "symbol", fqn));
+            } else {
+                // Sprint 21e (item A): an AUTO anchor (column set, fact-map key absent
+                // — all section entries included) is CLEARED, never used to supersede:
+                // the lesson outlives its pointer. Backfill may re-anchor it later.
+                store.updateSymbolAnchor(e.id(), null);
+                cleared.add(Map.of("id", e.id(), "symbol", fqn));
             }
         }
         report.put("checked", checked);
@@ -474,7 +486,66 @@ public final class ExperienceMaintenance {
         report.put("skipped", skipped);
         report.put("non_java", nonJava);
         report.put("staled", staled);
+        if (!cleared.isEmpty()) {
+            report.put("cleared", cleared);
+        }
         return report;
+    }
+
+    /** Sprint 21e (item A): asserted anchor = the fact-map {@code symbol} key survives in
+     *  the frozen {@code body_json}; auto-anchors are written column-only and never do. */
+    private static boolean isAssertedAnchor(StoredEntry e) {
+        return e.body() != null && e.body().containsKey("symbol");
+    }
+
+    /**
+     * Sprint 21e (item A): anchor BACKFILL — memory usually loads BEFORE projects, so
+     * ingest-time resolution had no JDT to ask. Runs in the post-project-load refresh
+     * path (startup auto-load AND tool-initiated {@code load_project}/{@code project}
+     * mutations): every NULL-anchor active Java entry gets one resolution pass over its
+     * frozen text; a hit writes the {@code symbol_fqn} column ONLY ({@code source_hash}
+     * untouched — byte-strict skip-unchanged never sees backfill as change). Idempotent:
+     * anchored entries are never revisited.
+     */
+    public Map<String, Object> backfillAutoAnchors() {
+        Map<String, Object> report = new LinkedHashMap<>();
+        long start = System.nanoTime();
+        int checked = 0;
+        int anchored = 0;
+        if (anchorService != null && anchorService.get() != null) {
+            SymbolAnchorResolver anchors = new SymbolAnchorResolver(anchorService);
+            for (StoredEntry e : store.all()) {
+                if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
+                    continue;
+                }
+                if (!ExperienceEntry.ACCEPTED.equals(e.status())
+                        && !ExperienceEntry.CANDIDATE.equals(e.status())) {
+                    continue;
+                }
+                if (!e.isJavaResolvable()) {
+                    continue;
+                }
+                String text = anchorText(e);
+                if (text.isBlank()) {
+                    continue;
+                }
+                checked++;
+                anchored += anchors.resolve(text)
+                    .map(fqn -> store.updateSymbolAnchor(e.id(), fqn) ? 1 : 0)
+                    .orElse(0);
+            }
+        }
+        report.put("checked", checked);
+        report.put("anchored", anchored);
+        report.put("duration_ms", (System.nanoTime() - start) / 1_000_000);
+        return report;
+    }
+
+    /** The entry's own text surface for anchor resolution: summary + frozen details. */
+    private static String anchorText(StoredEntry e) {
+        Object details = e.body() == null ? null : e.body().get("details");
+        String summary = e.summary() == null ? "" : e.summary();
+        return details == null ? summary : summary + "\n" + details;
     }
 
     // --- wipe ---------------------------------------------------------------------------

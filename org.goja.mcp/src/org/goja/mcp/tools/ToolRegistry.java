@@ -45,6 +45,28 @@ public class ToolRegistry {
         this.diskSync = diskSync;
     }
 
+    /** Sprint 21e (item A): fired after a SUCCESSFUL project mutation
+     *  ({@code load_project}, {@code project(action=add|remove)}) so the experience
+     *  store's refresh + anchor backfill see the new project set. Null = no hook. */
+    private Runnable projectsMutatedHook;
+
+    /** Install the post-project-mutation hook (Sprint 21e). Null = no hook (tests). */
+    public void setProjectsMutatedHook(Runnable hook) {
+        this.projectsMutatedHook = hook;
+    }
+
+    private static boolean isProjectMutation(String name, JsonNode arguments) {
+        if ("load_project".equals(name)) {
+            return true;
+        }
+        if (!"project".equals(name)) {
+            return false;
+        }
+        String action = arguments != null && arguments.has("action")
+            ? arguments.get("action").asText("") : "";
+        return "add".equals(action) || "remove".equals(action);
+    }
+
     /**
      * Register a tool with the registry.
      */
@@ -195,6 +217,17 @@ public class ToolRegistry {
             ToolResponse response = tool.execute(arguments);
             long duration = System.currentTimeMillis() - startTime;
             log.info("Tool {} completed in {}ms, success={}", name, duration, response.isSuccess());
+            // Sprint 21e (item A): a successful project mutation changes what symbol
+            // anchors can resolve — refresh + backfill the store's anchors now (add:
+            // new types become anchorable; remove: their auto-anchors get cleared).
+            if (projectsMutatedHook != null && response.isSuccess()
+                    && isProjectMutation(name, arguments)) {
+                try {
+                    projectsMutatedHook.run();
+                } catch (Exception e) {
+                    log.warn("Post-project-mutation experience hook failed after {}", name, e);
+                }
+            }
             // Sprint 22 (POST layer): central steering injection — every success
             // result names the next grounded step (see steeringFor).
             response.applySteering(steeringFor(name));

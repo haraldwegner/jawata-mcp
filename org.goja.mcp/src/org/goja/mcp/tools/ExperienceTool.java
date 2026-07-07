@@ -71,7 +71,15 @@ public final class ExperienceTool implements Tool {
      */
     public Map<String, Object> autoRefresh() {
         try {
-            return maintenance.refresh();
+            Map<String, Object> out = new java.util.LinkedHashMap<>(maintenance.refresh());
+            // Sprint 21e (item A): refresh first (stale auto-anchors get cleared), then
+            // backfill (NULL-anchor entries — incl. freshly cleared ones — re-resolve
+            // against the current project set).
+            Map<String, Object> backfill = maintenance.backfillAutoAnchors();
+            if (backfill.get("checked") instanceof Integer i && i > 0) {
+                out.put("anchor_backfill", backfill);
+            }
+            return out;
         } catch (Exception e) {
             return Map.of("error", "auto-refresh failed: " + e.getMessage());
         }

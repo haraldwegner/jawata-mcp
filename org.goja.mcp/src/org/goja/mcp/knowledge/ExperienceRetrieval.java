@@ -275,13 +275,16 @@ public final class ExperienceRetrieval {
             && !eqIgnoreCase(e.operation(), q.operation()));
     }
 
-    /** Symbol cue fits when the entry is scoped to that symbol (equal/enclosing) or to a
-     *  package that contains it. */
+    /** Symbol cue fits when the entry is scoped to that symbol (equal/enclosing), is a
+     *  member OF the cue type, or is scoped to a package that contains it. Sprint 21e:
+     *  cue and anchor match at TYPE level regardless of member notation — a type-level
+     *  anchor answers a member cue AND a member anchor answers its type's cue. */
     private boolean symbolFits(StoredEntry e, String symbol) {
         String s = e.symbolFqn();
         if (s != null && !s.isBlank()) {
-            if (s.equals(symbol) || symbol.startsWith(s + ".") || symbol.startsWith(s + "#")) {
-                return true;               // entry symbol equals or encloses the cue symbol
+            if (s.equals(symbol) || symbol.startsWith(s + ".") || symbol.startsWith(s + "#")
+                    || s.startsWith(symbol + "#")) {
+                return true;
             }
         }
         String pkg = e.packageName();

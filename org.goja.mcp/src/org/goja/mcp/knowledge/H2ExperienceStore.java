@@ -457,9 +457,15 @@ public final class H2ExperienceStore implements ExperienceStore {
         List<String> clauses = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         if (q.hasSymbol()) {
-            // entry symbol equals/encloses the cue, cue's package holds it, or entry symbol is under the cue
-            clauses.add("(symbol_fqn = ? OR ? LIKE symbol_fqn || '.%' OR ? LIKE package_name || '.%'"
-                + " OR symbol_fqn LIKE ? || '.%')");
+            // entry symbol equals/encloses the cue, cue's package holds it, or entry symbol
+            // is under the cue. Sprint 21e: '#' enclosure variants BOTH directions so a
+            // type-level anchor matches a member cue and a member anchor matches its
+            // type's cue (member notation never splits type-level matching).
+            clauses.add("(symbol_fqn = ? OR ? LIKE symbol_fqn || '.%' OR ? LIKE symbol_fqn || '#%'"
+                + " OR ? LIKE package_name || '.%'"
+                + " OR symbol_fqn LIKE ? || '.%' OR symbol_fqn LIKE ? || '#%')");
+            params.add(q.symbol());
+            params.add(q.symbol());
             params.add(q.symbol());
             params.add(q.symbol());
             params.add(q.symbol());

@@ -195,6 +195,15 @@ public class GojaApplication implements IApplication {
      * disk-sync guard on purpose — it fires immediately after project load, when the
      * JDT model was just read from this same disk state (fresh by construction). Every
      * OTHER refresh/recall runs under {@code ToolRegistry.callTool}'s guard.</p>
+     *
+     * <p>Sprint 21e (item A): the same pass now also BACKFILLS symbol auto-anchors
+     * (memory loads before projects — resolution needs the loaded model), and it fires
+     * on BOTH post-load paths: this startup auto-load AND, via
+     * {@code ToolRegistry.setProjectsMutatedHook}, every successful tool-initiated
+     * {@code load_project} / {@code project(action=add|remove)} — add makes new types
+     * anchorable, remove lets refresh CLEAR their auto-anchors. Same
+     * fresh-by-construction footing: it runs immediately after the mutation, inside
+     * the guarded call.</p>
      */
     private void refreshExperienceAfterProjectLoad() {
         if (experienceTool != null) {
@@ -497,6 +506,10 @@ public class GojaApplication implements IApplication {
         // before executing; the unchanged-tree fast path is the only skip.
         toolRegistry.setDiskSync(
             new org.goja.core.workspace.StrictDiskSync(() -> jdtService));
+
+        // Sprint 21e (item A): tool-initiated project mutations refresh + backfill the
+        // store's symbol anchors too (the startup auto-load path calls this directly).
+        toolRegistry.setProjectsMutatedHook(this::refreshExperienceAfterProjectLoad);
 
         // Register HealthCheckTool with suppliers for project status, tool
         // count, loading state, and (Sprint 10) the multi-project workspace
