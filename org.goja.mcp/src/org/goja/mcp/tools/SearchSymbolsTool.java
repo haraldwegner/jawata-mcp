@@ -109,6 +109,14 @@ public class SearchSymbolsTool extends AbstractTool {
             List<SearchMatch> matches = service.getSearchService()
                 .searchSymbols(query, searchFor, offset + maxResults + 10);
 
+            // Sprint 22a P2 rider: a bare (no-wildcard) query that finds nothing
+            // retries as a substring match — "Recall" then finds ExperienceRecall,
+            // "idget" finds Widget. Explicit wildcards are respected as given.
+            if (matches.isEmpty() && query.indexOf('*') < 0 && query.indexOf('?') < 0) {
+                matches = service.getSearchService()
+                    .searchSymbols("*" + query + "*", searchFor, offset + maxResults + 10);
+            }
+
             // Convert matches to result format
             List<Map<String, Object>> results = new ArrayList<>();
             int skipped = 0;

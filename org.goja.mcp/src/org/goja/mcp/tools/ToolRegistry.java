@@ -178,6 +178,44 @@ public class ToolRegistry {
     }
 
     /**
+     * Sprint 22a P2 rider: renamed / consolidated tool names → their current
+     * front door, so a call to an old name gets a "did you mean" hint instead of
+     * a bare not-found (the tool surface collapsed many narrow tools into
+     * parametric front doors across Sprints 11–19).
+     */
+    private static final Map<String, String> RENAMED_TOOLS = Map.ofEntries(
+        Map.entry("get_type_members", "inspect"),
+        Map.entry("get_type_hierarchy", "inspect"),
+        Map.entry("get_type_usage_summary", "inspect"),
+        Map.entry("get_symbol_info", "get_at_position"),
+        Map.entry("get_call_hierarchy_incoming", "get_call_hierarchy"),
+        Map.entry("get_call_hierarchy_outgoing", "get_call_hierarchy"),
+        Map.entry("find_method_references", "find_references"),
+        Map.entry("move_class", "move"),
+        Map.entry("move_package", "move"),
+        Map.entry("pull_up", "move_in_hierarchy"),
+        Map.entry("push_down", "move_in_hierarchy"),
+        Map.entry("extract_method", "extract"),
+        Map.entry("extract_variable", "extract"),
+        Map.entry("inline_method", "inline")
+    );
+
+    /** The current front door for a renamed/removed tool name, or {@code null}. */
+    private static String aliasHint(String name) {
+        String direct = RENAMED_TOOLS.get(name);
+        if (direct != null) {
+            return direct;
+        }
+        if (name.startsWith("analyze_")) {
+            return "analyze";
+        }
+        if (name.startsWith("inspect_")) {
+            return "inspect";
+        }
+        return null;
+    }
+
+    /**
      * Call a tool by name with the given arguments.
      *
      * @param name The tool name
@@ -188,7 +226,9 @@ public class ToolRegistry {
     public ToolResponse callTool(String name, JsonNode arguments) throws ToolNotFoundException {
         Tool tool = tools.get(name);
         if (tool == null) {
-            throw new ToolNotFoundException("Tool not found: " + name);
+            String hint = aliasHint(name);
+            throw new ToolNotFoundException("Tool not found: " + name
+                + (hint != null ? ". Did you mean '" + hint + "'?" : ""));
         }
 
         log.info("Executing tool: {}", name);
