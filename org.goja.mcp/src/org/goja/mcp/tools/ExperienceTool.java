@@ -32,7 +32,8 @@ public final class ExperienceTool implements Tool {
 
     private static final List<String> KINDS =
         List.of("record", "recall", "primer", "list", "load", "reseed", "refresh",
-            "wipe", "promote", "export", "import", "prune", "dedup", "compact", "stats");
+            "wipe", "promote", "export", "import", "prune", "dedup", "compact", "stats",
+            "fallback_report");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -268,6 +269,7 @@ public final class ExperienceTool implements Tool {
             case "dedup" -> ToolResponse.success(maintenance.dedup(bool(args, "confirm")));
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(store.stats());
+            case "fallback_report" -> fallbackReport();
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -374,6 +376,46 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("count", entries.size());
         data.put("entries", entries);
+        return ToolResponse.success(data);
+    }
+
+    /**
+     * Sprint 22a R.2 — the bottom-up half of upstream parity: tally every
+     * {@code goja-fallback slip:} declaration the observer recorded (a real-use
+     * "goja couldn't do X" signal) by reason, ranked by frequency → a
+     * capability-gap backlog grounded in actual usage.
+     */
+    private ToolResponse fallbackReport() {
+        List<org.goja.mcp.knowledge.StoredEntry> rows =
+            store.listEntries("failure_mode", null, null, null, 10000);
+        String prefix = "goja-fallback slip:";
+        Map<String, Integer> tally = new LinkedHashMap<>();
+        int total = 0;
+        for (org.goja.mcp.knowledge.StoredEntry e : rows) {
+            String s = e.summary();
+            if (s == null || !s.startsWith(prefix)) {
+                continue;
+            }
+            String reason = s.substring(prefix.length()).strip();
+            if (reason.isEmpty()) {
+                reason = "(unspecified)";
+            }
+            tally.merge(reason, 1, Integer::sum);
+            total++;
+        }
+        List<Map<String, Object>> gaps = new ArrayList<>();
+        tally.entrySet().stream()
+            .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+            .forEach(en -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("reason", en.getKey());
+                m.put("count", en.getValue());
+                gaps.add(m);
+            });
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("totalFallbacks", total);
+        data.put("distinctGaps", gaps.size());
+        data.put("gaps", gaps);
         return ToolResponse.success(data);
     }
 
