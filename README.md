@@ -104,6 +104,20 @@ Measured on this repository (~500 source files, Linux, warm):
 | 100 files changed (branch switch shape) | ~32 ms scan + one rebuild on the next call |
 | Newly loaded project (once) | one whole-project reconcile, ~4 s |
 
+### Memory that doesn't live in a chat product (v2.5.0)
+
+Chat clients have memories — opaque ones: not listable, not exportable, not writable on
+command, gone when you switch tools. GOJA's knowledge store is the opposite by design:
+**portable markdown files in your git plus a grounded H2 store anchored to your
+symbols.** Since v2.5.0 the anchoring is automatic — a lesson whose text names its code
+(`SlotManager.freeSlot`) is resolved through the compiler at ingest and anchored to the
+one real type it denotes; dead names, library types and ambiguous names never anchor
+(absence beats a wrong pointer). Recall is terminal and classification-steered: ask by
+symbol, get the lesson that was written for it — with the mandate to *match evidence
+against the closed set, not invent a cause*. Written from any MCP client, recalled from
+any MCP client: a lesson recorded in Cursor today answers by symbol in Claude Code
+tomorrow. Promote it, prune it, export it — it's yours.
+
 ---
 
 ## Installation
