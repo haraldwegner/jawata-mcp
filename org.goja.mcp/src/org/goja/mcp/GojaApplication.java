@@ -1,72 +1,72 @@
 package org.goja.mcp;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
-import org.goja.mcp.protocol.McpProtocolHandler;
 import org.goja.core.IJdtService;
+import org.goja.core.JdtServiceImpl;
 import org.goja.core.workspace.WorkspaceFileWatcher;
-import org.goja.mcp.refactoring.RefactoringChangeCache;
+import org.goja.mcp.knowledge.ExperienceAdvisor;
 import org.goja.mcp.knowledge.ExperienceStore;
 import org.goja.mcp.knowledge.H2ExperienceStore;
-import org.goja.mcp.tools.ReplaceDuplicatesTool;
-import org.goja.mcp.tools.ExperienceTool;
-import org.goja.mcp.knowledge.ExperienceAdvisor;
-import org.goja.mcp.tools.HealthCheckTool;
-import org.goja.mcp.tools.LoadProjectTool;
-import org.goja.mcp.tools.SearchSymbolsTool;
-import org.goja.mcp.tools.GoToDefinitionTool;
-import org.goja.mcp.tools.GetAtPositionTool;
-import org.goja.mcp.tools.FindRefsTool;
-import org.goja.mcp.tools.RefactoringTool;
-import org.goja.mcp.tools.ProjectTool;
-import org.goja.mcp.tools.QuickFixTool;
-import org.goja.mcp.tools.build.DependencyTool;
+import org.goja.mcp.protocol.McpProtocolHandler;
+import org.goja.mcp.refactoring.RefactoringChangeCache;
 import org.goja.mcp.tools.AnalyzeTool;
-import org.goja.mcp.tools.InspectTool;
-import org.goja.mcp.tools.GetDiagnosticsTool;
-import org.goja.mcp.tools.ValidateSyntaxTool;
-import org.goja.mcp.tools.GetCallHierarchyTool;
-import org.goja.mcp.tools.FindFieldWritesTool;
-import org.goja.mcp.tools.FindTestsTool;
-import org.goja.mcp.tools.FindPatternUsagesTool;
-import org.goja.mcp.tools.FindQualityIssueTool;
-import org.goja.mcp.tools.RenameSymbolTool;
-import org.goja.mcp.tools.OrganizeImportsTool;
-import org.goja.mcp.tools.ExtractTool;
-import org.goja.mcp.tools.InlineTool;
-import org.goja.mcp.tools.MoveTool;
-import org.goja.mcp.tools.MoveInHierarchyTool;
-import org.goja.mcp.tools.RefactorToPatternTool;
-import org.goja.mcp.tools.EncapsulateFieldTool;
-import org.goja.mcp.tools.CompileWorkspaceTool;
-import org.goja.mcp.tools.RefreshWorkspaceTool;
-import org.goja.mcp.tools.FindDuplicateCodeTool;
 import org.goja.mcp.tools.ApplyCleanupTool;
 import org.goja.mcp.tools.ApplyNullAnnotationsTool;
+import org.goja.mcp.tools.ChangeMethodSignatureTool;
+import org.goja.mcp.tools.CompileWorkspaceTool;
+import org.goja.mcp.tools.ConvertAnonymousToLambdaTool;
+import org.goja.mcp.tools.EncapsulateFieldTool;
+import org.goja.mcp.tools.ExperienceTool;
+import org.goja.mcp.tools.ExtractTool;
+import org.goja.mcp.tools.FindDuplicateCodeTool;
+import org.goja.mcp.tools.FindFieldWritesTool;
 import org.goja.mcp.tools.FindModernizationTool;
+import org.goja.mcp.tools.FindPatternUsagesTool;
+import org.goja.mcp.tools.FindQualityIssueTool;
+import org.goja.mcp.tools.FindRefsTool;
+import org.goja.mcp.tools.FindTestsTool;
+import org.goja.mcp.tools.GetAtPositionTool;
+import org.goja.mcp.tools.GetCallHierarchyTool;
+import org.goja.mcp.tools.GetDiagnosticsTool;
+import org.goja.mcp.tools.GoToDefinitionTool;
+import org.goja.mcp.tools.HealthCheckTool;
+import org.goja.mcp.tools.InlineTool;
+import org.goja.mcp.tools.InspectTool;
+import org.goja.mcp.tools.LoadProjectTool;
+import org.goja.mcp.tools.MoveInHierarchyTool;
+import org.goja.mcp.tools.MoveMethodTool;
+import org.goja.mcp.tools.MoveTool;
+import org.goja.mcp.tools.OrganizeImportsTool;
+import org.goja.mcp.tools.ProjectTool;
+import org.goja.mcp.tools.QuickFixTool;
+import org.goja.mcp.tools.RefactorToPatternTool;
+import org.goja.mcp.tools.RefactoringTool;
+import org.goja.mcp.tools.RefreshWorkspaceTool;
+import org.goja.mcp.tools.RenameSymbolTool;
+import org.goja.mcp.tools.ReplaceDuplicatesTool;
 import org.goja.mcp.tools.RunTestsTool;
+import org.goja.mcp.tools.SearchSymbolsTool;
+import org.goja.mcp.tools.ToolRegistry;
+import org.goja.mcp.tools.ValidateSyntaxTool;
+import org.goja.mcp.tools.build.DependencyTool;
 import org.goja.mcp.tools.codegen.GenerateTool;
 import org.goja.mcp.tools.workflow.FormatTool;
 import org.goja.mcp.tools.workflow.OptimizeImportsWorkspaceTool;
-import org.goja.mcp.tools.ChangeMethodSignatureTool;
-import org.goja.mcp.tools.ConvertAnonymousToLambdaTool;
-import org.goja.mcp.tools.ToolRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.goja.core.JdtServiceImpl;
 import org.goja.mcp.transport.HttpTransport;
 import org.goja.mcp.transport.StdioTransport;
 import org.goja.mcp.transport.TokenGenerator;
 import org.goja.mcp.transport.Transport;
 import org.goja.mcp.transport.TransportConfig;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * OSGi application entry point for GOJA MCP server.
@@ -571,6 +571,9 @@ public class GojaApplication implements IApplication {
         toolRegistry.register(new InlineTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new MoveTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new MoveInHierarchyTool(() -> jdtService, refactoringChangeCache));
+        // Sprint 22a P1-a.1: the composition-axis primitive — move an instance
+        // method onto the type of one of its parameters/fields (net-new front door).
+        toolRegistry.register(new MoveMethodTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new GenerateTool(() -> jdtService, refactoringChangeCache));
 
         // Sprint 19 (Kerievsky): pattern-targeted refactorings behind one parametric

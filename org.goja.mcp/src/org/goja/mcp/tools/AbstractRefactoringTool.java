@@ -246,74 +246,115 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
                     }});
             }
 
-            // 4b. Initialise the change's validation state. LTK's
-            //     PerformChangeOperation calls Change.isValid() during
-            //     execution; without initializeValidationData(), TextFileChange
-            //     (and friends) throw "has not been initialialized". Eclipse's
-            //     refactoring wizard infrastructure does this implicitly via
-            //     CreateChangeOperation; the headless path doesn't.
-            change.initializeValidationData(new NullProgressMonitor());
-
-            String diff = ChangeEngine.previewDiff(change, service);
-            String summary = operationLabel + ": " + change.getName();
-
-            boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
-            if (!autoApply) {
-                List<String> files = ChangeEngine.affectedFilePaths(change, service);
-                String changeId = changeCache.put(
-                    RefactoringChangeCache.Kind.STAGED, change, summary, diff, files);
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("operation", operationLabel);
-                data.put("applied", false);
-                data.put("changeId", changeId);
-                data.put("diff", diff);
-                data.put("summary", summary);
-                return ToolResponse.success(data, ResponseMeta.builder()
-                    .suggestedNextTools(List.of(
-                        "apply_refactoring with this changeId to commit the staged change",
-                        "inspect_refactoring with this changeId to re-examine the diff"))
-                    .build());
-            }
-
-            // 5. Perform via the shared engine: resource-listener file
-            //    capture (some LTK ProcessorChanges expose no children) +
-            //    undo capture from PerformChangeOperation.
-            ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
-            if (outcome.validationError() != null) {
-                return ToolResponse.error(
-                    "REFACTORING_FAILED",
-                    operationLabel + " failed: " + outcome.validationError(),
-                    "Inspect the conflict description and either adjust the input or fix "
-                        + "the workspace state. No files were modified.");
-            }
-
-            String undoChangeId = null;
-            if (outcome.undoChange() != null) {
-                undoChangeId = changeCache.put(
-                    RefactoringChangeCache.Kind.UNDO, outcome.undoChange(),
-                    "undo: " + summary, "", outcome.modifiedFilePaths());
-            }
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("operation", operationLabel);
-            data.put("applied", true);
-            data.put("filesModified", outcome.modifiedFilePaths());
-            data.put("diff", diff);
-            data.put("undoChangeId", undoChangeId);
-            data.put("summary", summary);
-
-            return ToolResponse.success(data, ResponseMeta.builder()
-                .totalCount(outcome.modifiedFilePaths().size())
-                .returnedCount(outcome.modifiedFilePaths().size())
-                .suggestedNextTools(List.of(
-                    "compile_workspace to verify the refactoring",
-                    "undo_refactoring with the undoChangeId if verification fails"))
-                .build());
+            // 4b–5. Validate, then stage or perform via the shared tail.
+            return respondForChange(service, change, operationLabel, arguments);
 
         } catch (Exception e) {
             log.warn("Refactoring '{}' threw unexpectedly: {}", operationLabel, e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * Like {@link #runRefactoring(IJdtService, Refactoring, String, JsonNode)}
+     * but the caller has ALREADY run {@code checkInitialConditions} on the
+     * refactoring and configured its processor from AST bindings that a second
+     * initial-conditions pass would invalidate (e.g. {@code move_method}'s
+     * target selection: {@code getPossibleTargets()} + {@code setTarget(...)}
+     * must happen between initial and final conditions). Runs final conditions
+     * → createChange → apply, sharing the same response contract.
+     */
+    protected ToolResponse runPreCheckedRefactoring(IJdtService service,
+                                                    Refactoring refactoring,
+                                                    String operationLabel,
+                                                    JsonNode arguments) {
+        initializeJdtManipulation();
+        try {
+            RefactoringStatus finalStatus = refactoring.checkFinalConditions(new NullProgressMonitor());
+            if (finalStatus.hasFatalError() || finalStatus.hasError()) {
+                return refactoringFailed(operationLabel, finalStatus);
+            }
+            Change change = refactoring.createChange(new NullProgressMonitor());
+            if (change == null) {
+                RefactoringStatus s = new RefactoringStatus();
+                s.addFatalError("createChange() returned null");
+                return refactoringFailed(operationLabel, s);
+            }
+            return respondForChange(service, change, operationLabel, arguments);
+        } catch (Exception e) {
+            log.warn("Refactoring '{}' threw unexpectedly: {}", operationLabel, e.getMessage(), e);
+            return ToolResponse.internalError(e);
+        }
+    }
+
+    /**
+     * Shared tail of {@link #runRefactoring(IJdtService, Refactoring, String, JsonNode)}
+     * and {@link #runPreCheckedRefactoring}: initialise the change's validation
+     * data (LTK's {@code PerformChangeOperation} calls {@code Change.isValid()};
+     * without this, {@code TextFileChange} throws "has not been initialialized"
+     * — the wizard does it via {@code CreateChangeOperation}, the headless path
+     * does not), then either stage the change ({@code auto_apply:false}) or
+     * perform it, returning the uniform
+     * {@code {filesModified, diff, undoChangeId, summary}} response.
+     */
+    private ToolResponse respondForChange(IJdtService service, Change change,
+                                          String operationLabel, JsonNode arguments) {
+        change.initializeValidationData(new NullProgressMonitor());
+
+        String diff = ChangeEngine.previewDiff(change, service);
+        String summary = operationLabel + ": " + change.getName();
+
+        boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
+        if (!autoApply) {
+            List<String> files = ChangeEngine.affectedFilePaths(change, service);
+            String changeId = changeCache.put(
+                RefactoringChangeCache.Kind.STAGED, change, summary, diff, files);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("operation", operationLabel);
+            data.put("applied", false);
+            data.put("changeId", changeId);
+            data.put("diff", diff);
+            data.put("summary", summary);
+            return ToolResponse.success(data, ResponseMeta.builder()
+                .suggestedNextTools(List.of(
+                    "apply_refactoring with this changeId to commit the staged change",
+                    "inspect_refactoring with this changeId to re-examine the diff"))
+                .build());
+        }
+
+        // Perform via the shared engine: resource-listener file capture (some
+        // LTK ProcessorChanges expose no children) + undo capture.
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
+        if (outcome.validationError() != null) {
+            return ToolResponse.error(
+                "REFACTORING_FAILED",
+                operationLabel + " failed: " + outcome.validationError(),
+                "Inspect the conflict description and either adjust the input or fix "
+                    + "the workspace state. No files were modified.");
+        }
+
+        String undoChangeId = null;
+        if (outcome.undoChange() != null) {
+            undoChangeId = changeCache.put(
+                RefactoringChangeCache.Kind.UNDO, outcome.undoChange(),
+                "undo: " + summary, "", outcome.modifiedFilePaths());
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("operation", operationLabel);
+        data.put("applied", true);
+        data.put("filesModified", outcome.modifiedFilePaths());
+        data.put("diff", diff);
+        data.put("undoChangeId", undoChangeId);
+        data.put("summary", summary);
+
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .totalCount(outcome.modifiedFilePaths().size())
+            .returnedCount(outcome.modifiedFilePaths().size())
+            .suggestedNextTools(List.of(
+                "compile_workspace to verify the refactoring",
+                "undo_refactoring with the undoChangeId if verification fails"))
+            .build());
     }
 
     /**
