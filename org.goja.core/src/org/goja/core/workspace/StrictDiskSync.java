@@ -41,24 +41,38 @@ public class StrictDiskSync {
 
     /** Per-call outcome, for the dispatch log + the workspace-scope benchmark. */
     public record SyncReport(boolean skipped, int newProjects, int refreshedFiles,
-                             int builtProjects, long scanNanos, long totalNanos) {
+                             int builtProjects, long scanNanos, long totalNanos,
+                             boolean fullBuild) {
         public boolean reconciled() {
             return newProjects > 0 || refreshedFiles > 0;
         }
     }
 
     /**
-     * Build kind for absorbing targeted refreshes — an EMPIRICAL decision, settled
-     * (Sprint 21d Stage 1, 2026-07-07): with {@code INCREMENTAL_BUILD} the SEARCH
-     * index followed the refreshLocal resource deltas (the new-file repro passed) but
-     * the incremental BUILDER did not — an externally added broken file produced no
-     * PROBLEM markers, reproducing {@code CompileWorkspaceTool}'s documented finding
-     * ("INCREMENTAL_BUILD's delta tracking lags fresh refreshLocal additions in
-     * Tycho-test-style headless Equinox runtimes") on the marker path. FULL_BUILD is
-     * therefore the kind here too; it runs ONLY when changes were detected — the
-     * unchanged-tree fast path builds nothing.
+     * Sprint 22a P2-d — the build kind is decided per sync pass, not a constant.
+     * {@code INCREMENTAL_BUILD} by default (fast — the common method-body edit); a
+     * clean {@code FULL_BUILD} only when incremental is unsafe or unreliable:
+     * <ul>
+     *   <li>a {@code .java} file was added or deleted — the type universe changed,
+     *       and the incremental builder lags fresh additions in this headless
+     *       runtime (the Sprint 21d finding: an added file produced no markers);</li>
+     *   <li>a build-config file ({@code pom.xml}/{@code .classpath}/{@code MANIFEST.MF}/…)
+     *       changed — the classpath moved, so incremental state is suspect;</li>
+     *   <li>the project's previous build was RED — recover from a possibly
+     *       inconsistent incremental delta state (the "if something breaks, clean
+     *       compile" rule).</li>
+     * </ul>
+     * A modify-only, green pass takes the fast incremental path. (The remaining
+     * refinement — escalating a modify whose DECLARATION surface changed, to catch
+     * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
+     * per-file declaration-hash cache and is a deliberate follow-up, kept out of this
+     * correctness hot path until it can be done + tested carefully.)
      */
-    private static final int BUILD_KIND = IncrementalProjectBuilder.FULL_BUILD;
+    private static final java.util.List<String> CONFIG_FILES = java.util.List.of(
+        "pom.xml", ".classpath", ".project", "MANIFEST.MF", "build.gradle", "build.gradle.kts");
+
+    /** Project names whose last build produced error markers (→ next build is FULL). */
+    private final Set<String> lastRedProjects = new java.util.HashSet<>();
 
     private final Supplier<IJdtService> service;
     private final DiskSyncGuard guard = new DiskSyncGuard();
@@ -76,11 +90,11 @@ public class StrictDiskSync {
         long t0 = System.nanoTime();
         IJdtService s = service.get();
         if (s == null) {
-            return new SyncReport(true, 0, 0, 0, 0, System.nanoTime() - t0);
+            return new SyncReport(true, 0, 0, 0, 0, System.nanoTime() - t0, false);
         }
         Collection<LoadedProject> projects = s.allProjects();
         if (projects.isEmpty()) {
-            return new SyncReport(true, 0, 0, 0, 0, System.nanoTime() - t0);
+            return new SyncReport(true, 0, 0, 0, 0, System.nanoTime() - t0, false);
         }
 
         Map<Path, LoadedProject> byRoot = new LinkedHashMap<>();
@@ -138,11 +152,15 @@ public class StrictDiskSync {
                 }
             }
         }
+        boolean full = decideFullBuild(scan, toBuild);
+        int buildKind = full ? IncrementalProjectBuilder.FULL_BUILD
+                             : IncrementalProjectBuilder.INCREMENTAL_BUILD;
         for (IProject prj : toBuild) {
-            prj.build(BUILD_KIND, monitor);
+            prj.build(buildKind, monitor);
         }
+        recordRedState(toBuild);
         return new SyncReport(false, scan.newRoots().size(), refreshed, toBuild.size(),
-            scan.durationNanos(), System.nanoTime() - t0);
+            scan.durationNanos(), System.nanoTime() - t0, full);
     }
 
     /** Changed or deleted: refresh exactly the file handle (deletion drops it from the model). */
@@ -209,5 +227,48 @@ public class StrictDiskSync {
             }
         }
         return mapped.length > 0 ? mapped[0] : null;
+    }
+
+    /** Sprint 22a P2-d: FULL only when incremental is unsafe/unreliable (see field javadoc). */
+    private boolean decideFullBuild(DiskSyncGuard.ScanResult scan, Set<IProject> toBuild) {
+        if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
+            return true;   // type universe changed; incremental lags fresh additions
+        }
+        for (Path p : scan.changed()) {
+            Path name = p.getFileName();
+            if (name != null && CONFIG_FILES.contains(name.toString())) {
+                return true;   // classpath / build config changed
+            }
+        }
+        for (IProject prj : toBuild) {
+            if (lastRedProjects.contains(prj.getName())) {
+                return true;   // recover from a previously-broken build
+            }
+        }
+        return false;
+    }
+
+    /** After building, remember which projects are red so the next pass runs FULL. */
+    private void recordRedState(Set<IProject> built) {
+        for (IProject prj : built) {
+            boolean red = false;
+            try {
+                for (org.eclipse.core.resources.IMarker m : prj.findMarkers(
+                        org.eclipse.core.resources.IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
+                    if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY, 0)
+                            == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+                        red = true;
+                        break;
+                    }
+                }
+            } catch (CoreException e) {
+                // marker read failed — leave the prior red-state unchanged
+            }
+            if (red) {
+                lastRedProjects.add(prj.getName());
+            } else {
+                lastRedProjects.remove(prj.getName());
+            }
+        }
     }
 }
