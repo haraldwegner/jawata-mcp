@@ -60,17 +60,9 @@ public abstract class AbstractAstDetector implements Detector {
     @Override
     public ToolResponse detect(IJdtService service, JsonNode arguments) {
         int threshold = readInt(arguments, "threshold", defaultThreshold);
-        String filePath = readString(arguments, "filePath");
-        boolean includeTests = includeTests(arguments);
         List<Finding> findings = new ArrayList<>();
         try {
-            List<Path> files = (filePath != null && !filePath.isBlank())
-                ? List.of(Path.of(filePath))
-                : service.getAllJavaFiles();
-            for (Path path : files) {
-                if (!includeTests && isTestSource(path, service)) {
-                    continue;
-                }
+            for (Path path : scopedSourceFiles(service, arguments)) {
                 ICompilationUnit cu = service.getCompilationUnit(path);
                 if (cu == null) {
                     continue;
@@ -88,6 +80,37 @@ public abstract class AbstractAstDetector implements Detector {
         findings.sort(Comparator.comparingInt(
             (Finding f) -> SEVERITY_RANK.getOrDefault(f.severity(), 0)).reversed());
         return Findings.toResponse(findings);
+    }
+
+    /**
+     * Sprint 22a 2.6.1 — the source files a detector should scan: the single
+     * {@code filePath} if set, else all non-test source files. A relative
+     * {@code filePath} is RESOLVED against the project root, so it never leaks a
+     * CWD/AppImage-mount path through {@code formatPath} (bug #3) and every finding
+     * carries a project-relative path. Shared by the AST detectors AND the
+     * git-history churn detectors ({@code DivergentChangeDetector}) so {@code filePath}
+     * scopes EVERY detector uniformly (bug #2) — not just the AST ones.
+     */
+    public static List<Path> scopedSourceFiles(IJdtService service, JsonNode args) {
+        String filePath = readString(args, "filePath");
+        boolean includeTests = includeTests(args);
+        List<Path> candidates = new ArrayList<>();
+        if (filePath != null && !filePath.isBlank()) {
+            Path p = Path.of(filePath);
+            if (!p.isAbsolute() && service.getProjectRoot() != null) {
+                p = service.getProjectRoot().resolve(p);
+            }
+            candidates.add(p.normalize());
+        } else {
+            candidates.addAll(service.getAllJavaFiles());
+        }
+        List<Path> out = new ArrayList<>();
+        for (Path f : candidates) {
+            if (includeTests || !isTestSource(f, service)) {
+                out.add(f);
+            }
+        }
+        return out;
     }
 
     /**

@@ -70,4 +70,41 @@ class DivergentChangeDetectorTest {
         assertFalse(hits.contains("HelloWorld"), "no git history → no divergent_change findings: " + hits);
         assertTrue(hits.isEmpty(), "unavailable history must yield zero findings: " + hits);
     }
+
+    @SuppressWarnings("unchecked")
+    private Set<String> runScoped(DivergentChangeDetector det, String filePath) {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "divergent_change");
+        if (filePath != null) {
+            args.put("filePath", filePath);
+        }
+        ToolResponse r = det.detect(service, args);
+        assertTrue(r.isSuccess(), "divergent_change must succeed");
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        List<Map<String, Object>> findings = (List<Map<String, Object>>) data.get("findings");
+        return findings.stream().map(f -> String.valueOf(f.get("symbol"))).collect(Collectors.toSet());
+    }
+
+    @Test
+    @DisplayName("Sprint 22a 2.6.1 (#2): filePath scopes the churn detector — other high-churn files excluded")
+    void filePath_scopes_the_churn_detector() {
+        String hw = "src/main/java/com/example/HelloWorld.java";
+        String cm = "src/main/java/com/example/ComposeMethodTargets.java";
+        List<List<String>> commits = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            commits.add(List.of(hw, cm, "src/main/java/com/example/area" + i + "/Other.java"));
+        }
+        DivergentChangeDetector det = new DivergentChangeDetector(root -> GitHistory.of(commits));
+
+        // Unscoped: both high-churn files are flagged.
+        Set<String> all = runScoped(det, null);
+        assertTrue(all.contains("HelloWorld") && all.contains("ComposeMethodTargets"),
+            "both high-churn files are flagged when unscoped: " + all);
+
+        // Scoped to one file: ONLY that file — the churn detector must respect filePath.
+        Set<String> scoped = runScoped(det, hw);
+        assertTrue(scoped.contains("HelloWorld"), "the scoped file is still flagged: " + scoped);
+        assertFalse(scoped.contains("ComposeMethodTargets"),
+            "filePath must scope the churn detector — other files are excluded: " + scoped);
+    }
 }

@@ -31,6 +31,9 @@ import java.util.function.Supplier;
  */
 public class FindQualityIssueTool extends AbstractTool {
 
+    /** Sprint 22a 2.6.1 (#1) — default cap on a family sweep's findings; the full total stays in `count`. */
+    private static final int DEFAULT_FINDINGS_LIMIT = 100;
+
     private final DetectorCatalog catalog;
 
     /**
@@ -178,6 +181,14 @@ public class FindQualityIssueTool extends AbstractTool {
             "enum", List.of("save", "diff"),
             "description", "family sweeps only: 'save' snapshots the current findings; 'diff' "
                 + "returns {new, fixed, unchanged} vs the saved snapshot (trend over time)."));
+        properties.put("summary", Map.of("type", "boolean",
+            "description", "family sweeps only: return counts-by-kind + the conflicts list only "
+                + "(NO full findings array) — the consumable shape for a broad sweep on a large project."));
+        properties.put("offset", Map.of("type", "integer",
+            "description", "family sweeps only: skip the first N findings (pagination; default 0)."));
+        properties.put("limit", Map.of("type", "integer",
+            "description", "family sweeps only: cap the findings returned (default " + DEFAULT_FINDINGS_LIMIT
+                + "); the full total is always in `count`. Prefer `summary` for a broad sweep."));
 
         schema.put("properties", properties);
         // kind OR family — validated in executeWithService (a static `required` can't express "one of").
@@ -200,7 +211,8 @@ public class FindQualityIssueTool extends AbstractTool {
             if (r.isSuccess() && baseline != null && !baseline.isBlank()) {
                 return applyBaseline(service, family, baseline, r);
             }
-            return r;
+            // Sprint 22a 2.6.1 (#1): bound the sweep for MCP consumers (summary / cap / page).
+            return r.isSuccess() ? paginateFamily(r, arguments) : r;
         }
         if (!hasKind) {
             return ToolResponse.invalidParameter("kind",
@@ -294,6 +306,62 @@ public class FindQualityIssueTool extends AbstractTool {
             out.add(conflict);
         }
         return out;
+    }
+
+    /**
+     * Sprint 22a 2.6.1 (#1) — bound a whole-family sweep for MCP consumers. A sweep on a
+     * large repo produces thousands of findings (222k+ chars) — unconsumable inline.
+     * {@code summary=true} returns counts-by-kind + the conflicts (what a broad sweep wants);
+     * otherwise the findings are paged (default cap {@link #DEFAULT_FINDINGS_LIMIT}). Applied
+     * AFTER the baseline branch, so trend diffing still sees the full finding set.
+     */
+    @SuppressWarnings("unchecked")
+    private ToolResponse paginateFamily(ToolResponse full, JsonNode args) {
+        if (!(full.getData() instanceof Map<?, ?> raw)) {
+            return full;
+        }
+        Map<String, Object> data = new LinkedHashMap<>((Map<String, Object>) raw);
+        List<Object> findings = data.get("findings") instanceof List<?> l
+            ? new ArrayList<>((List<Object>) l) : new ArrayList<>();
+        int total = findings.size();
+
+        if (args.path("summary").asBoolean(false)) {
+            Map<String, Integer> byKind = new LinkedHashMap<>();
+            for (Object o : findings) {
+                if (o instanceof Map<?, ?> f && f.get("kind") != null) {
+                    byKind.merge(String.valueOf(f.get("kind")), 1, Integer::sum);
+                }
+            }
+            Object conflicts = data.getOrDefault("conflicts", List.of());
+            data.remove("findings");
+            data.put("summary", true);
+            data.put("byKind", byKind);
+            data.put("conflictCount", conflicts instanceof List<?> c ? c.size() : 0);
+            return ToolResponse.success(data, ResponseMeta.builder()
+                .totalCount(total).returnedCount(0).build());
+        }
+
+        int offset = Math.max(0, args.path("offset").asInt(0));
+        int limit = args.path("limit").asInt(DEFAULT_FINDINGS_LIMIT);
+        if (limit <= 0) {
+            limit = DEFAULT_FINDINGS_LIMIT;
+        }
+        int from = Math.min(offset, total);
+        int to = Math.min(from + limit, total);
+        List<Object> page = new ArrayList<>(findings.subList(from, to));
+        boolean truncated = to < total || from > 0;
+        data.put("count", total);
+        data.put("offset", offset);
+        data.put("limit", limit);
+        data.put("returnedCount", page.size());
+        data.put("truncated", truncated);
+        data.put("findings", page);
+        if (truncated) {
+            data.put("hint", "showing findings " + from + "–" + to + " of " + total
+                + " — use summary:true for counts+conflicts only, or offset/limit to page");
+        }
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .totalCount(total).returnedCount(page.size()).build());
     }
 
     /**

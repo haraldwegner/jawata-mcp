@@ -51,16 +51,18 @@ public final class DivergentChangeDetector implements Detector {
     @Override
     public ToolResponse detect(IJdtService service, JsonNode arguments) {
         int threshold = AbstractAstDetector.readInt(arguments, "threshold", 5);
-        boolean includeTests = AbstractAstDetector.includeTests(arguments);
         List<Finding> out = new ArrayList<>();
         Path root = service.getProjectRoot();
         GitHistory history = historyProvider.apply(root);
         if (!history.available() || root == null) {
             return Findings.toResponse(out); // graceful no-op
         }
-        for (Path file : service.getAllJavaFiles()) {
-            if (!includeTests && AbstractAstDetector.isTestSource(file, service)) {
-                continue;
+        // Sprint 22a 2.6.1 (#2): scope through the shared helper so a filePath argument
+        // limits the churn detector to that file — it previously scanned every file
+        // regardless, leaking project-wide findings into a single-file sweep.
+        for (Path file : AbstractAstDetector.scopedSourceFiles(service, arguments)) {
+            if (!file.startsWith(root)) {
+                continue; // a filePath outside the project has no git-relative form
             }
             String rel = root.relativize(file).toString().replace('\\', '/');
             int commits = history.commitCount(rel);
