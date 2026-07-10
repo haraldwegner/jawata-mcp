@@ -391,7 +391,7 @@ public class FindDuplicateCodeTool extends AbstractTool {
      * exactness anyway).
      */
     private static int countAndNormalize(char[] source, StringBuilder seq) {
-        String src = stripComments(new String(source));
+        String src = collapseNoise(new String(source));
         Matcher m = TOKEN_PATTERN.matcher(src);
         int count = 0;
         while (m.find()) {
@@ -405,10 +405,72 @@ public class FindDuplicateCodeTool extends AbstractTool {
         return count;
     }
 
-    private static String stripComments(String src) {
-        // Block comments first (handles Javadoc), then line comments.
-        String noBlock = src.replaceAll("/\\*[\\s\\S]*?\\*/", " ");
-        return noBlock.replaceAll("//[^\\n]*", " ");
+    /**
+     * v2.7.1 — linear single-pass scanner: drops comments and collapses
+     * string / char / text-block literals to short placeholders BEFORE the
+     * regex tokenizer runs.
+     *
+     * <p>Why not regex: the tokenizer's quantified-alternation literal
+     * branches ({@code "(?:\\.|[^"\\])*"}) burn one backtracking frame per
+     * matched char — a string literal past ~2k chars overflows the stack.
+     * {@link StackOverflowError} is an {@link Error}, so it sailed past every
+     * {@code catch (Exception)} and killed the transport worker (dogfood find
+     * 2026-07-10: jawata-mcp's own tool descriptions are text blocks far past
+     * the threshold — self-scan dropped the socket). A hand scan is O(n) with
+     * zero recursion, and also lexes text blocks correctly, which the old
+     * regex mis-read as an empty string plus a dangling quote.</p>
+     */
+    static String collapseNoise(String src) {
+        StringBuilder out = new StringBuilder(src.length());
+        int i = 0;
+        final int n = src.length();
+        while (i < n) {
+            char c = src.charAt(i);
+            if (c == '/' && i + 1 < n && src.charAt(i + 1) == '/') {
+                // line comment — drop to EOL
+                while (i < n && src.charAt(i) != '\n') i++;
+                out.append(' ');
+            } else if (c == '/' && i + 1 < n && src.charAt(i + 1) == '*') {
+                // block comment / Javadoc — drop to */
+                i += 2;
+                while (i + 1 < n && !(src.charAt(i) == '*' && src.charAt(i + 1) == '/')) i++;
+                i = Math.min(i + 2, n);
+                out.append(' ');
+            } else if (c == '"' && i + 2 < n
+                    && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"') {
+                // text block — collapse to a short string placeholder
+                i += 3;
+                while (i + 2 < n && !(src.charAt(i) == '"'
+                        && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"')) {
+                    if (src.charAt(i) == '\\') i++;
+                    i++;
+                }
+                i = Math.min(i + 3, n);
+                out.append("\"S\"");
+            } else if (c == '"') {
+                // string literal — collapse (escape-aware)
+                i++;
+                while (i < n && src.charAt(i) != '"') {
+                    if (src.charAt(i) == '\\') i++;
+                    i++;
+                }
+                i = Math.min(i + 1, n);
+                out.append("\"S\"");
+            } else if (c == '\'') {
+                // char literal — collapse (escape-aware)
+                i++;
+                while (i < n && src.charAt(i) != '\'') {
+                    if (src.charAt(i) == '\\') i++;
+                    i++;
+                }
+                i = Math.min(i + 1, n);
+                out.append("'c'");
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     private static String normalize(String token) {

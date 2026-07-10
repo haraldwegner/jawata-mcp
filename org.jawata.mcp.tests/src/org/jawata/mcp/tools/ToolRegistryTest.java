@@ -209,6 +209,24 @@ class ToolRegistryTest {
         assertNotNull(response.getError());
     }
 
+    @Test
+    @DisplayName("v2.7.1: callTool turns a JVM Error (StackOverflowError) into a structured INTERNAL_ERROR instead of killing the worker")
+    void callTool_handlesErrors_notJustExceptions() throws Exception {
+        // Dogfood find 2026-07-10: find_duplicate_code's tokenizer threw
+        // StackOverflowError on a giant string literal; the Error escaped every
+        // catch(Exception) and the client saw a dropped socket. The registry is
+        // the per-request boundary — it must answer structurally for ANY Throwable.
+        registry.register(new ErrorThrowingTool());
+        JsonNode args = objectMapper.createObjectNode();
+
+        ToolResponse response = registry.callTool("error_tool", args);
+
+        assertFalse(response.isSuccess(),
+            "an Error inside a tool must surface as a structured failure");
+        assertNotNull(response.getError(),
+            "the client must receive a diagnosable error, never a dropped connection");
+    }
+
     // ========== Steering Injection Tests (Sprint 22 POST layer) ==========
 
     @Test
@@ -298,6 +316,32 @@ class ToolRegistryTest {
         @Override
         public ToolResponse execute(JsonNode arguments) {
             return ToolResponse.success(Map.of("executed", true, "tool", name));
+        }
+    }
+
+    /**
+     * Tool that throws a JVM Error (not an Exception) — models the v2.7.1
+     * StackOverflowError dogfood find. Must NOT escape callTool.
+     */
+    private static class ErrorThrowingTool implements Tool {
+        @Override
+        public String getName() {
+            return "error_tool";
+        }
+
+        @Override
+        public String getDescription() {
+            return "A tool that dies with a JVM Error";
+        }
+
+        @Override
+        public Map<String, Object> getInputSchema() {
+            return Map.of();
+        }
+
+        @Override
+        public ToolResponse execute(JsonNode arguments) {
+            throw new StackOverflowError("simulated pathological-scan stack overflow");
         }
     }
 

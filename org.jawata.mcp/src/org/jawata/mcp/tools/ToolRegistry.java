@@ -275,6 +275,14 @@ public class ToolRegistry {
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
             return ToolResponse.internalError(e);
+        } catch (Error err) {
+            // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
+            // pathological scan) escaped every catch(Exception), killed the
+            // transport worker and the client saw a dropped socket. This is the
+            // per-request boundary — answer structurally for ANY Throwable; the
+            // request already failed, dying with it helps nobody.
+            log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
+            return ToolResponse.internalError(err);
         }
     }
 

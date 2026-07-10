@@ -11,6 +11,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -144,6 +146,42 @@ class FindDuplicateCodeToolTest {
             assertEquals(1.0, ((Number) inst.get("similarity")).doubleValue(),
                 "v1.8.0 MVP exact-match always yields similarity 1.0");
         }
+    }
+
+    @Test
+    @DisplayName("v2.7.1 SOE regression: giant string literals + text blocks must scan, not StackOverflow")
+    void giantStringLiteral_doesNotBlowTheStack() throws Exception {
+        // Dogfood find 2026-07-10: the regex tokenizer's quantified-alternation
+        // literal branches overflow the stack at ~2k chars of string literal
+        // (Java regex backtracking frames). jawata-mcp's own tool descriptions
+        // are text blocks far past that — the self-scan killed the transport.
+        // A file carrying BOTH shapes must scan cleanly.
+        // 60k: the SOE threshold scales with thread stack size (the surefire
+        // main thread survives 4k where the server's worker thread died at
+        // ~2k) — size the literal so the OLD tokenizer overflows on ANY stack.
+        Path copy = helper.copyFixtureAs("simple-maven", "soe-fixture");
+        String giant = "x".repeat(60_000);
+        String source = "package com.example;\n"
+            + "public class GiantLiteralHolder {\n"
+            + "    static final String GIANT = \"" + giant + "\";\n"
+            + "    static final String BLOCK = \"\"\"\n"
+            + "        " + giant + "\n"
+            + "        \"\"\";\n"
+            + "    void a() { System.out.println(GIANT); int i = 1 + 2 + 3; }\n"
+            + "}\n";
+        Files.writeString(
+            copy.resolve("src/main/java/com/example/GiantLiteralHolder.java"), source);
+
+        JdtServiceImpl svc = new JdtServiceImpl();
+        svc.loadProject(copy);
+        FindDuplicateCodeTool giantTool = new FindDuplicateCodeTool(() -> svc);
+
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("minTokens", 5);
+        ToolResponse r = giantTool.execute(args);
+
+        assertTrue(r.isSuccess(),
+            "scan over giant literals must succeed, not StackOverflow; got: " + r.getError());
     }
 
     @Test
