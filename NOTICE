@@ -1,4 +1,4 @@
-GOJA — goja-mcp
+JAWATA — jawata-mcp
 Copyright (c) 2026 Harald Wegner
 
 This product is licensed under the GNU Affero General Public License,
@@ -8,7 +8,7 @@ version 3.0. See the LICENSE file for the full terms.
 Heritage / retained MIT notice
 ================================================================================
 
-goja-mcp originated as a fork of the javalens-mcp project. Portions of the
+jawata-mcp originated as a fork of the javalens-mcp project. Portions of the
 original base remain available under the MIT License:
 
     Copyright (c) 2025 Peter Zalutski   (original work)
@@ -33,5 +33,5 @@ original base remain available under the MIT License:
     DEALINGS IN THE SOFTWARE.
 
 The MIT-licensed material above may continue to be used under those MIT terms.
-The combined work as distributed here — including all GOJA additions — is
+The combined work as distributed here — including all JAWATA additions — is
 licensed under the AGPL-3.0 (see LICENSE).

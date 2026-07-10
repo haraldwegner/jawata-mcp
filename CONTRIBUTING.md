@@ -1,15 +1,15 @@
-# Contributing to GOJA (goja-mcp)
+# Contributing to JAWATA (jawata-mcp)
 
-Thanks for your interest in GOJA — IDE-grade, compiler-accurate Java intelligence and
+Thanks for your interest in JAWATA — IDE-grade, compiler-accurate Java intelligence and
 behaviour-preserving refactoring for AI agents. A few ground rules keep the project
 sustainable and safe to change.
 
 ## Licence & CLA
 
-GOJA is licensed under **AGPL-3.0** (see [`LICENSE`](LICENSE)). Portions of the original base
+JAWATA is licensed under **AGPL-3.0** (see [`LICENSE`](LICENSE)). Portions of the original base
 are retained under MIT (see [`NOTICE`](NOTICE)).
 
-By contributing you agree to the **GOJA Contributor License Agreement** ([`CLA.md`](CLA.md)),
+By contributing you agree to the **JAWATA Contributor License Agreement** ([`CLA.md`](CLA.md)),
 recorded automatically via **CLA-assistant** on your first pull request. The CLA lets the
 maintainer keep the project sustainably licensed (including any future dual-licensing) while
 **you retain full rights to your own work**.
@@ -42,7 +42,7 @@ PRs that carry such trailers will be asked to remove them before merge.
 
 ## Building
 
-GOJA is an Eclipse-JDT / Tycho Maven build (Java 21):
+JAWATA is an Eclipse-JDT / Tycho Maven build (Java 21):
 
 ```bash
 mvn clean verify          # full reactor + tests

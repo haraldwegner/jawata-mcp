@@ -1,10 +1,10 @@
-# GOJA — surgical, risk-free Java refactoring for autonomous agents
+# JAWATA — surgical, risk-free Java refactoring for autonomous agents
 
-[![GitHub release](https://img.shields.io/github/v/release/haraldwegner/goja-mcp)](https://github.com/haraldwegner/goja-mcp/releases)
+[![GitHub release](https://img.shields.io/github/v/release/haraldwegner/jawata-mcp)](https://github.com/haraldwegner/jawata-mcp/releases)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 
-**GOJA lets an AI agent refactor and maintain Java *surgically* — compiler-accurate,
+**JAWATA lets an AI agent refactor and maintain Java *surgically* — compiler-accurate,
 behaviour-preserving, and reversible in one call.** Every change runs through Eclipse JDT and the
 Eclipse LTK refactoring engine (the same machinery behind the Eclipse IDE), so the agent edits
 *real* code with IDE-grade guarantees instead of guessing from text — then checks it against the
@@ -15,7 +15,7 @@ tool getting it subtly wrong.
 **Why an autonomous agent can trust it**
 
 - **Compiler-accurate** — every answer comes from Eclipse JDT's resolved model, not text matching.
-  GOJA *knows* which `save()` you meant.
+  JAWATA *knows* which `save()` you meant.
 - **Behaviour-preserving** — refactorings pass the LTK pre/post-condition checks the IDE enforces,
   so the transformation provably preserves semantics.
 - **Verified** — `compile_workspace` + `get_diagnostics` are a real compiler gate the agent runs
@@ -27,12 +27,12 @@ tool getting it subtly wrong.
 dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
 
 ```bash
-# Linux — installs goja-studio, which fetches and runs the GOJA engine for you
-curl -sSL https://raw.githubusercontent.com/haraldwegner/goja-studio/main/install.sh | bash
+# Linux — installs jawata-studio, which fetches and runs the JAWATA engine for you
+curl -sSL https://raw.githubusercontent.com/haraldwegner/jawata-studio/main/install.sh | bash
 ```
 
-GOJA is driven by **[goja-studio](https://github.com/haraldwegner/goja-studio)** — the desktop
-control plane that downloads the engine, manages workspaces, and wires GOJA into your agent's MCP
+JAWATA is driven by **[jawata-studio](https://github.com/haraldwegner/jawata-studio)** — the desktop
+control plane that downloads the engine, manages workspaces, and wires JAWATA into your agent's MCP
 config. macOS / Windows / manager-free setup are in **[Installation](#installation)** below.
 
 ---
@@ -41,13 +41,13 @@ config. macOS / Windows / manager-free setup are in **[Installation](#installati
 
 For twenty years languages trended terse — Python, then Kotlin, Scala, Go — because the cost that
 mattered was *human* authoring. The agent era moves that cost: the agent writes the ceremony
-tirelessly, and GOJA reads the codebase through the compiler instead of your eyes. The verbosity
+tirelessly, and JAWATA reads the codebase through the compiler instead of your eyes. The verbosity
 tax is now paid by something that never tires — and the comprehension dividend is still yours. In
 the agent era **you are the auditor, not the author**, and auditing favours explicit over clever;
 that's why explicit, statically-typed Java beats terse Kotlin/Scala (harder to audit) and dynamic
-Python (no compiler oracle). The types aren't ceremony — **they're the substrate GOJA stands on**:
+Python (no compiler oracle). The types aren't ceremony — **they're the substrate JAWATA stands on**:
 you can't compiler-accurately refactor, prove behaviour-preservation, or detect a smell on code you
-can't statically type. **GOJA is what flips Java's verbosity from liability to asset** — letting an
+can't statically type. **JAWATA is what flips Java's verbosity from liability to asset** — letting an
 agent *fully engineer* Java, not merely generate it.
 
 ---
@@ -61,7 +61,7 @@ When an agent reaches for `grep` or plain file-reading to understand Java, it ca
 - an interface implementation from any other reference to the type,
 - a cast from any other mention of that type.
 
-The result is wrong refactorings, missed usages, and confident-but-incorrect reasoning. GOJA drives
+The result is wrong refactorings, missed usages, and confident-but-incorrect reasoning. JAWATA drives
 the same compiler the Eclipse IDE does, so the agent gets type resolution across inheritance,
 method overloading/overriding, generics, classpath + import resolution, cross-bundle (OSGi)
 navigation, and LTK-backed refactorings that genuinely preserve behaviour.
@@ -77,17 +77,17 @@ as a number under surveillance instead of an incident in production.
 | Task: find every call to `UserService.save()` | Result |
 |---|---|
 | `grep "save("` | 47 hits — including `orderService.save()`, `saveButton`, comments |
-| GOJA `find_references` | exactly 12 — the real calls |
+| JAWATA `find_references` | exactly 12 — the real calls |
 
-GOJA ships this bias with the connection itself: the MCP `instructions` field injects a trigger→tool
-guide at connect, so every client is told to reach for GOJA first — not `grep`, not a hand-edit —
-for anything semantic ([goja-studio](https://github.com/haraldwegner/goja-studio) adds a hard
+JAWATA ships this bias with the connection itself: the MCP `instructions` field injects a trigger→tool
+guide at connect, so every client is told to reach for JAWATA first — not `grep`, not a hand-edit —
+for anything semantic ([jawata-studio](https://github.com/haraldwegner/jawata-studio) adds a hard
 try-first hook on top). And "understand this symbol" is one call: `analyze(kind=symbol)` returns the
 definition, the type, and the references together, so there's no multi-step detour to defect from.
 
 ### Strict disk sync — every answer reflects current disk (v2.4.0)
 
-Agents, `git checkout`, and other editors all change files outside GOJA's JVM. A staleness guard
+Agents, `git checkout`, and other editors all change files outside JAWATA's JVM. A staleness guard
 runs once per tool call, before the tool computes anything: a millisecond scan detects external
 edits by evidence (mtime/size, content hash inside the timestamp-granularity window), then exactly
 the changed files are reconciled and the affected project rebuilt — only when something changed.
@@ -107,7 +107,7 @@ Measured on this repository (~500 source files, Linux, warm):
 ### Memory that doesn't live in a chat product (v2.5.0)
 
 Chat clients have memories — opaque ones: not listable, not exportable, not writable on
-command, gone when you switch tools. GOJA's knowledge store is the opposite by design:
+command, gone when you switch tools. JAWATA's knowledge store is the opposite by design:
 **portable markdown files in your git plus a grounded H2 store anchored to your
 symbols.** Since v2.5.0 the anchoring is automatic — a lesson whose text names its code
 (`SlotManager.freeSlot`) is resolved through the compiler at ingest and anchored to the
@@ -124,34 +124,34 @@ tomorrow. Promote it, prune it, export it — it's yours.
 
 ### Prerequisites
 
-- **Java 21+** on the `PATH` — the GOJA engine runs as a JVM process.
+- **Java 21+** on the `PATH` — the JAWATA engine runs as a JVM process.
 
-### Recommended — install goja-studio
+### Recommended — install jawata-studio
 
-[goja-studio](https://github.com/haraldwegner/goja-studio) is the desktop control plane. It
-downloads the matching GOJA engine, manages named workspaces of Java projects, runs one resident
+[jawata-studio](https://github.com/haraldwegner/jawata-studio) is the desktop control plane. It
+downloads the matching JAWATA engine, manages named workspaces of Java projects, runs one resident
 JVM per workspace, and writes the MCP entry into Cursor / Claude Desktop / Antigravity /
 IntelliJ-style configs for you.
 
 | Platform | Install |
 |---|---|
-| **Linux** (x86_64 / aarch64) | `curl -sSL https://raw.githubusercontent.com/haraldwegner/goja-studio/main/install.sh \| bash` — pulls the matching `.AppImage` and adds a desktop entry |
-| **macOS** (Apple Silicon) | download the `.dmg` from [goja-studio releases](https://github.com/haraldwegner/goja-studio/releases/latest) (unsigned — right-click → Open once to clear Gatekeeper) |
-| **Windows** (x64 / ARM64) | download the `.msi` or `-setup.exe` from [goja-studio releases](https://github.com/haraldwegner/goja-studio/releases/latest) (unsigned — one-time SmartScreen "More info → Run anyway") |
+| **Linux** (x86_64 / aarch64) | `curl -sSL https://raw.githubusercontent.com/haraldwegner/jawata-studio/main/install.sh \| bash` — pulls the matching `.AppImage` and adds a desktop entry |
+| **macOS** (Apple Silicon) | download the `.dmg` from [jawata-studio releases](https://github.com/haraldwegner/jawata-studio/releases/latest) (unsigned — right-click → Open once to clear Gatekeeper) |
+| **Windows** (x64 / ARM64) | download the `.msi` or `-setup.exe` from [jawata-studio releases](https://github.com/haraldwegner/jawata-studio/releases/latest) (unsigned — one-time SmartScreen "More info → Run anyway") |
 
-Add your Java projects in the goja-studio window (or point its autoscan at a parent folder), pick
+Add your Java projects in the jawata-studio window (or point its autoscan at a parent folder), pick
 your MCP client, and it deploys the config. Done.
 
-### Manager-free — wire GOJA into an MCP client yourself
+### Manager-free — wire JAWATA into an MCP client yourself
 
-Prefer to run the engine directly? Download the `goja-<platform>` archive from the
-[releases](https://github.com/haraldwegner/goja-mcp/releases/latest), unpack it, and launch:
+Prefer to run the engine directly? Download the `jawata-<platform>` archive from the
+[releases](https://github.com/haraldwegner/jawata-mcp/releases/latest), unpack it, and launch:
 
 ```bash
-./goja/goja -data /path/to/workspace-dir
+./jawata/jawata -data /path/to/workspace-dir
 ```
 
-GOJA speaks MCP over HTTP/SSE. On startup it prints a ready line with the endpoint and a
+JAWATA speaks MCP over HTTP/SSE. On startup it prints a ready line with the endpoint and a
 session token:
 
 ```
@@ -164,7 +164,7 @@ config block:
 ```jsonc
 {
   "mcpServers": {
-    "goja": {
+    "jawata": {
       "url": "http://127.0.0.1:8800/mcp",
       "headers": { "Authorization": "Bearer ab12cd34…" }
     }
@@ -173,19 +173,19 @@ config block:
 ```
 
 Define the workspace's projects by writing `<data-dir>/workspace.json` (see
-[How workspaces work](#how-workspaces-work)). goja-studio automates all of this — the manual path
+[How workspaces work](#how-workspaces-work)). jawata-studio automates all of this — the manual path
 is for custom setups and CI.
 
 ---
 
-## What GOJA does
+## What JAWATA does
 
-**Multi-project workspaces.** A *workspace* is a named group of Java projects loaded into one GOJA
+**Multi-project workspaces.** A *workspace* is a named group of Java projects loaded into one JAWATA
 process and exposed as a single MCP service. The agent sees the combined symbol set of every
 project; navigation, find-references, and refactorings work across the whole group. Every analysis
 tool also takes an optional `projectKey` to scope down to one project.
 
-**Live, no-restart updates.** GOJA watches `<data-dir>/workspace.json`. Add or remove a project and
+**Live, no-restart updates.** JAWATA watches `<data-dir>/workspace.json`. Add or remove a project and
 the running process reconciles its project list in about a second — no process restart, no MCP
 reload, no agent-session refresh.
 
@@ -282,9 +282,9 @@ A workspace is described by a JSON file the engine watches:
 { "version": 1, "name": "example", "projects": ["/abs/path/project-a", "/abs/path/project-b"] }
 ```
 
-GOJA loads every listed project into one process and serves them as a single MCP endpoint.
+JAWATA loads every listed project into one process and serves them as a single MCP endpoint.
 `java.nio.file.WatchService` picks up edits to this file and reconciles the live project set within
-about a second. goja-studio writes and maintains this file as you add and remove projects in the
+about a second. jawata-studio writes and maintains this file as you add and remove projects in the
 UI; when running manager-free you write it yourself.
 
 ---
@@ -293,11 +293,11 @@ UI; when running manager-free you write it yourself.
 
 | Variable | Purpose |
 |---|---|
-| `GOJA_HTTP_PORT` | bind port for the MCP endpoint (default: auto in 8800–8999) |
-| `GOJA_HTTP_TOKEN` | session token clients must present (default: generated, printed in `READY`) |
-| `GOJA_DATA_DIR` | workspace data directory (location of `workspace.json`) |
+| `JAWATA_HTTP_PORT` | bind port for the MCP endpoint (default: auto in 8800–8999) |
+| `JAWATA_HTTP_TOKEN` | session token clients must present (default: generated, printed in `READY`) |
+| `JAWATA_DATA_DIR` | workspace data directory (location of `workspace.json`) |
 
-goja-studio sets these per workspace automatically and allocates a stable `(port, token)` per
+jawata-studio sets these per workspace automatically and allocates a stable `(port, token)` per
 workspace, so multiple agents share one engine instead of spawning a JVM each.
 
 ---
@@ -305,23 +305,23 @@ workspace, so multiple agents share one engine instead of spawning a JVM each.
 ## Building from source
 
 ```bash
-git clone https://github.com/haraldwegner/goja-mcp.git
-cd goja-mcp
-./mvnw clean verify          # Tycho reactor build — produces the product under org.goja.product/target
+git clone https://github.com/haraldwegner/jawata-mcp.git
+cd jawata-mcp
+./mvnw clean verify          # Tycho reactor build — produces the product under org.jawata.product/target
 ```
 
-Requires JDK 21. The build is an Eclipse Tycho / OSGi reactor; `org.goja.product` materialises the
+Requires JDK 21. The build is an Eclipse Tycho / OSGi reactor; `org.jawata.product` materialises the
 runnable engine for each platform.
 
 ---
 
 ## Architecture
 
-GOJA is an OSGi application built on Eclipse JDT and the Eclipse Language Toolkit (LTK):
+JAWATA is an OSGi application built on Eclipse JDT and the Eclipse Language Toolkit (LTK):
 
-- **`org.goja.core`** — workspace + project model, JDT integration, the analysis/refactoring engine.
-- **`org.goja.mcp`** — the MCP server: tool registry, protocol handler, HTTP/SSE transport.
-- **`org.goja.launcher`** / **`org.goja.product`** — Equinox launcher and the packaged product.
+- **`org.jawata.core`** — workspace + project model, JDT integration, the analysis/refactoring engine.
+- **`org.jawata.mcp`** — the MCP server: tool registry, protocol handler, HTTP/SSE transport.
+- **`org.jawata.launcher`** / **`org.jawata.product`** — Equinox launcher and the packaged product.
 
 One process hosts a whole workspace; tools operate on the shared JDT model, which is what makes
 cross-project, compiler-accurate answers cheap.
@@ -330,9 +330,9 @@ cross-project, compiler-accurate answers cheap.
 
 ## Heritage & license
 
-GOJA began as a fork of the MIT-licensed
+JAWATA began as a fork of the MIT-licensed
 **[javalens-mcp](https://github.com/pzalutski-pixel/javalens-mcp)** by Peter Zalutski. That MIT base
-is retained and credited in [`NOTICE`](NOTICE). GOJA is distributed under the
-**[GNU AGPL-3.0](LICENSE)** — running a GOJA server over a network makes it covered work, so network
+is retained and credited in [`NOTICE`](NOTICE). JAWATA is distributed under the
+**[GNU AGPL-3.0](LICENSE)** — running a JAWATA server over a network makes it covered work, so network
 users are entitled to its source. Contributions are accepted under the
 [Contributor License Agreement](CLA.md); see [`CONTRIBUTING.md`](CONTRIBUTING.md).

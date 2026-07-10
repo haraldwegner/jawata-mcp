@@ -4,14 +4,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.goja</groupId>
-    <artifactId>org.goja.parent</artifactId>
+    <groupId>org.jawata</groupId>
+    <artifactId>org.jawata.parent</artifactId>
     <version>2.6.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>GOJA :: Parent</name>
+    <name>JAWATA :: Parent</name>
     <description>MCP server for Java semantic code analysis built on Eclipse JDT/OSGi</description>
-    <url>https://github.com/haraldwegner/goja-mcp</url>
+    <url>https://github.com/haraldwegner/jawata-mcp</url>
 
     <licenses>
         <license>
@@ -32,13 +32,13 @@
     </properties>
 
     <modules>
-        <module>org.goja.target</module>
-        <module>org.goja.core</module>
-        <module>org.goja.core.tests</module>
-        <module>org.goja.mcp</module>
-        <module>org.goja.mcp.tests</module>
-        <module>org.goja.launcher</module>
-        <module>org.goja.product</module>
+        <module>org.jawata.target</module>
+        <module>org.jawata.core</module>
+        <module>org.jawata.core.tests</module>
+        <module>org.jawata.mcp</module>
+        <module>org.jawata.mcp.tests</module>
+        <module>org.jawata.launcher</module>
+        <module>org.jawata.product</module>
     </modules>
 
     <build>
@@ -59,8 +59,8 @@
                 <configuration>
                     <target>
                         <artifact>
-                            <groupId>org.goja</groupId>
-                            <artifactId>org.goja.target</artifactId>
+                            <groupId>org.jawata</groupId>
+                            <artifactId>org.jawata.target</artifactId>
                             <version>${project.version}</version>
                         </artifact>
                     </target>
