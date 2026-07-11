@@ -31,6 +31,22 @@ class JreTypeResolutionTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     @Test
+    @DisplayName("patched bundle active: ProblemReporter is served from the -jawata5188 repack")
+    void patchedBundleActive() throws Exception {
+        // While the eclipse.jdt.core#5188 local patch exists, the runtime MUST serve
+        // the repacked compiler.batch (higher qualifier -jawata5188 wins in p2) —
+        // this pins the wiring for product and test runtime alike. (Historical note:
+        // an OSGi patch FRAGMENT was tried first and silently did nothing — current
+        // Equinox no longer supports Eclipse-PatchFragment; hence the repack.)
+        Class<?> pr = org.eclipse.jdt.core.JavaCore.class.getClassLoader()
+            .loadClass("org.eclipse.jdt.internal.compiler.problem.ProblemReporter");
+        var src = pr.getProtectionDomain().getCodeSource();
+        String where = src == null ? "null" : String.valueOf(src.getLocation());
+        assertTrue(where.contains("jawata5188"),
+            "ProblemReporter must come from the patched bundle; served from: " + where);
+    }
+
+    @Test
     @DisplayName("findType resolves a JRE type and the type_argument tool answers for it")
     void jreTypeResolvesAndToolAnswers() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");

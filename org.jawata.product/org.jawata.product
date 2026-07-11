@@ -34,9 +34,9 @@
       <plugin id="org.eclipse.equinox.preferences"/>
       <plugin id="org.eclipse.equinox.registry"/>
       <plugin id="org.eclipse.jdt.core"/>
+      <!-- 22c: compiler.batch resolves to the LOCALLY PATCHED 3.46.0-jawata5188 bundle
+           (eclipse.jdt.core#5188) — see org.jawata.target/patched-bundles -->
       <plugin id="org.eclipse.jdt.core.compiler.batch"/>
-      <!-- 22c: patch fragment for eclipse.jdt.core#5188 — remove with the fragment -->
-      <plugin id="org.jawata.jdtpatch" fragment="true"/>
       <plugin id="org.eclipse.jdt.launching"/>
       <plugin id="org.eclipse.debug.core"/>
       <plugin id="org.eclipse.osgi"/>

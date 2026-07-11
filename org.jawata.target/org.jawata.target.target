@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target name="JAWATA Target Platform (Eclipse 2025-12)" sequenceNumber="6">
+<target name="JAWATA Target Platform (Eclipse 2026-06)" sequenceNumber="7">
     <!-- p2.base parameterizes the Eclipse download host (Sprint 21a, 2026-07-05).
          Default (canonical): https://download.eclipse.org - set in .mvn/maven.config.
          Outage fallback:     mvn ... -Dp2.base=https://ftp.fau.de/eclipse
@@ -8,16 +8,26 @@
          property automatically. p2 itself has NO metadata failover - mirrorsURL covers
          artifacts only - hence this build-level switch. -->
     <locations>
-        <!-- Eclipse 2025-12 Release (Sprint 22c, 2026-07-11: first deliberate train choice —
-             the 2024-09 pin was inherited from the initial JavaLens commit. 2026-06 (4.40)
-             was attempted first and REJECTED on evidence: JDT 4.40's search layer NPEs in
-             ProblemReporter.previewAPIUsed (null FieldBinding, unguarded even on master;
-             reported upstream) — JreTypeResolutionTest is the sentinel; re-attempt newer
-             trains when it is green there. 2025-12 (4.38) is upstream-proven, supports
-             Java 25 source (the Sprint-31/JATS requirement), and requires Java SE 21 —
-             the Java floor stays 21. -->
+        <!-- 22c (2026-07-11): LOCAL PATCHED BUNDLE for eclipse.jdt.core#5188 — the
+             official 3.46.0 compiler.batch with ONE null-guarded class swapped in
+             (higher qualifier -jawata5188 makes p2 prefer it over the train's copy).
+             Reproducible recipe + patched source: org.jawata.jdtpatch module.
+             DELETE this location + patched-bundles/ + the jdtpatch module when a train
+             with the upstream fix ships (sentinel: JreTypeResolutionTest). -->
+        <location path="org.jawata.target/patched-bundles" type="Directory"/>
+
+        <!-- Eclipse 2026-06 Release (Sprint 22c, 2026-07-11: first deliberate train choice —
+             the 2024-09 pin was inherited from the initial JavaLens commit. Decision trail:
+             2026-06 (4.40) hit eclipse.jdt.core#5188 (search-layer NPE in
+             ProblemReporter.previewAPIUsed — unguarded even on master; reported upstream by
+             us) → fell back to 2025-12 (4.38) → the SAME bug reproduced there (trigger
+             machinery exists since 4.35; our 2024-09 baseline predates it) → since the
+             org.jawata.jdtpatch fragment neutralizes it on any train, the newest stable
+             train stands. 4.40 requires Java SE 21 (floor stays 21) and parses Java 25/26
+             source (Sprint 31). Sentinel: JreTypeResolutionTest — drop the fragment when a
+             train with the upstream fix ships (4.41+). -->
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
-            <repository location="${system_property:p2.base}/releases/2025-12"/>
+            <repository location="${system_property:p2.base}/releases/2026-06"/>
 
             <!-- JDT Core - the heart of Java analysis -->
             <unit id="org.eclipse.jdt.core" version="0.0.0"/>
