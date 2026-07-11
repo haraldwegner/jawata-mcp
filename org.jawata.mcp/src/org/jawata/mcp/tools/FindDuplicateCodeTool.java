@@ -141,6 +141,15 @@ public class FindDuplicateCodeTool extends AbstractTool {
         properties.put("crossProject", Map.of(
             "type", "boolean",
             "description", "When false, group clones only within a single project. Default true."));
+        properties.put("limit", Map.of(
+            "type", "integer",
+            "description", "Max clone groups returned (default 20); groupCount always reflects the full set (v2.8.1)."));
+        properties.put("offset", Map.of(
+            "type", "integer",
+            "description", "Skip the first N groups (pagination; default 0) (v2.8.1)."));
+        properties.put("summary", Map.of(
+            "type", "boolean",
+            "description", "Counts only (groupCount/instanceCount), NO groups array — for large workspaces (v2.8.1). Default false."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }
@@ -200,14 +209,43 @@ public class FindDuplicateCodeTool extends AbstractTool {
                 -((List<?>) g.get("instances")).size())
                 .thenComparing(g -> (String) firstInstance(g).get("filePath")));
 
+            // v2.8.1 (dogfood 2026-07-11): the self-scan returned 105 groups
+            // as one 68k-char response — page like compile_workspace v2.7.1.
+            int totalGroups = groups.size();
+            int instanceCount = groups.stream()
+                .mapToInt(g -> ((List<?>) g.get("instances")).size()).sum();
+            boolean summary = getBooleanParam(arguments, "summary", false);
+
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "find_duplicate_code");
-            data.put("groupCount", groups.size());
-            data.put("groups", groups);
+            data.put("groupCount", totalGroups);
+            data.put("instanceCount", instanceCount);
+
+            if (summary) {
+                return ToolResponse.success(data, ResponseMeta.builder()
+                    .totalCount(totalGroups)
+                    .returnedCount(0)
+                    .build());
+            }
+
+            int limit = Math.max(1, getIntParam(arguments, "limit", 20));
+            int offset = Math.max(0, getIntParam(arguments, "offset", 0));
+            List<Map<String, Object>> page = offset >= totalGroups
+                ? List.of()
+                : groups.subList(offset, Math.min(offset + limit, totalGroups));
+            boolean truncated = offset > 0 || page.size() < totalGroups;
+            data.put("offset", offset);
+            data.put("limit", limit);
+            data.put("groups", page);
+            if (truncated) {
+                data.put("hint", "Page " + page.size() + " of " + totalGroups
+                    + " groups returned — advance with offset, or pass summary:true for counts only.");
+            }
 
             return ToolResponse.success(data, ResponseMeta.builder()
-                .totalCount(groups.size())
-                .returnedCount(groups.size())
+                .totalCount(totalGroups)
+                .returnedCount(page.size())
+                .truncated(truncated)
                 .build());
         } catch (Exception e) {
             log.warn("find_duplicate_code threw unexpectedly: {}", e.getMessage(), e);

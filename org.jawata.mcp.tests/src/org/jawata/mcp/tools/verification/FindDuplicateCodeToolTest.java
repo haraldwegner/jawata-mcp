@@ -185,6 +185,61 @@ class FindDuplicateCodeToolTest {
     }
 
     @Test
+    @DisplayName("v2.8.1 paging: limit/offset page the groups; groupCount always reflects the full set")
+    void paging_limitsAndOffsetsGroups() {
+        ObjectNode full = objectMapper.createObjectNode();
+        full.put("minTokens", 5);
+        ToolResponse rFull = tool.execute(full);
+        assertTrue(rFull.isSuccess(), "got: " + rFull.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dFull = (Map<String, Object>) rFull.getData();
+        int totalGroups = ((Number) dFull.get("groupCount")).intValue();
+        assertTrue(totalGroups >= 1, "fixture must yield at least one clone group");
+
+        // limit=1 → exactly one group returned, groupCount still the full total.
+        ObjectNode paged = objectMapper.createObjectNode();
+        paged.put("minTokens", 5);
+        paged.put("limit", 1);
+        ToolResponse rPaged = tool.execute(paged);
+        assertTrue(rPaged.isSuccess(), "got: " + rPaged.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dPaged = (Map<String, Object>) rPaged.getData();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> pagedGroups = (List<Map<String, Object>>) dPaged.get("groups");
+        assertEquals(1, pagedGroups.size(), "limit=1 must return one group");
+        assertEquals(totalGroups, ((Number) dPaged.get("groupCount")).intValue(),
+            "groupCount must reflect the FULL set, not the page");
+
+        // offset past the end → empty page, same full groupCount.
+        ObjectNode past = objectMapper.createObjectNode();
+        past.put("minTokens", 5);
+        past.put("offset", totalGroups);
+        ToolResponse rPast = tool.execute(past);
+        assertTrue(rPast.isSuccess(), "got: " + rPast.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dPast = (Map<String, Object>) rPast.getData();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> pastGroups = (List<Map<String, Object>>) dPast.get("groups");
+        assertTrue(pastGroups.isEmpty(), "offset past the end must return an empty page");
+        assertEquals(totalGroups, ((Number) dPast.get("groupCount")).intValue());
+    }
+
+    @Test
+    @DisplayName("v2.8.1 summary: counts only, NO groups array")
+    void summary_returnsCountsOnly() {
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("minTokens", 5);
+        args.put("summary", true);
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertTrue(((Number) data.get("groupCount")).intValue() >= 1);
+        assertNotNull(data.get("instanceCount"), "summary must carry instanceCount");
+        assertTrue(!data.containsKey("groups"), "summary must NOT carry the groups array");
+    }
+
+    @Test
     @DisplayName("clean-fixture invariant: even with no clones, the response shape is valid")
     void emptyResult_isStillValidShape() {
         ObjectNode args = objectMapper.createObjectNode();
