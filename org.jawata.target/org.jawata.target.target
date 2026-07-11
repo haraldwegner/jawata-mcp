@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target name="JAWATA Target Platform (Eclipse 2024-09)" sequenceNumber="4">
+<target name="JAWATA Target Platform (Eclipse 2026-06)" sequenceNumber="5">
     <!-- p2.base parameterizes the Eclipse download host (Sprint 21a, 2026-07-05).
          Default (canonical): https://download.eclipse.org - set in .mvn/maven.config.
          Outage fallback:     mvn ... -Dp2.base=https://ftp.fau.de/eclipse
@@ -8,9 +8,11 @@
          property automatically. p2 itself has NO metadata failover - mirrorsURL covers
          artifacts only - hence this build-level switch. -->
     <locations>
-        <!-- Eclipse 2024-09 Release -->
+        <!-- Eclipse 2026-06 Release (Sprint 22c, 2026-07-11: first deliberate train choice —
+             the 2024-09 pin was inherited from the initial JavaLens commit. 4.40 requires
+             Java SE 21 (verified against the official release notes); the Java floor stays 21. -->
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
-            <repository location="${system_property:p2.base}/releases/2024-09"/>
+            <repository location="${system_property:p2.base}/releases/2026-06"/>
 
             <!-- JDT Core - the heart of Java analysis -->
             <unit id="org.eclipse.jdt.core" version="0.0.0"/>
@@ -74,47 +76,55 @@
             <unit id="org.eclipse.m2e.maven.runtime" version="0.0.0"/>
         </location>
 
-        <!-- Gson - JSON serialization (auto-wrapped as OSGi bundle) -->
+        <!-- Gson - JSON serialization (auto-wrapped as OSGi bundle).
+             22c 2026-07-11: BUMPED 2.10.1 -> 2.14.0 (current stable, same minor line). -->
         <location includeDependencyDepth="none" includeSource="true" missingManifest="generate" type="Maven">
             <dependencies>
                 <dependency>
                     <groupId>com.google.code.gson</groupId>
                     <artifactId>gson</artifactId>
-                    <version>2.10.1</version>
+                    <version>2.14.0</version>
                 </dependency>
             </dependencies>
         </location>
 
-        <!-- Jackson - JSON processing (auto-wrapped as OSGi bundle) -->
+        <!-- Jackson - JSON processing (auto-wrapped as OSGi bundle).
+             22c 2026-07-11: BUMPED 2.16.1 -> 2.19.0 (current stable, same minor line). -->
         <location includeDependencyDepth="direct" includeSource="true" missingManifest="generate" type="Maven">
             <dependencies>
                 <dependency>
                     <groupId>com.fasterxml.jackson.core</groupId>
                     <artifactId>jackson-databind</artifactId>
-                    <version>2.16.1</version>
+                    <version>2.19.0</version>
                 </dependency>
             </dependencies>
         </location>
 
-        <!-- SLF4J Logging -->
+        <!-- SLF4J Logging.
+             22c 2026-07-11: BUMPED 2.0.9 -> 2.0.18 (current stable patch line;
+             2.1.0-alpha1 exists but is not stable — rejected). -->
         <location includeDependencyDepth="none" includeSource="true" missingManifest="generate" type="Maven">
             <dependencies>
                 <dependency>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-api</artifactId>
-                    <version>2.0.9</version>
+                    <version>2.0.18</version>
                 </dependency>
                 <dependency>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-simple</artifactId>
-                    <version>2.0.9</version>
+                    <version>2.0.18</version>
                 </dependency>
             </dependencies>
         </location>
 
         <!-- Sprint 21 (v2.0): H2 embedded DB — the local experience/knowledge store.
              Ships its own OSGi manifest (Bundle-SymbolicName: com.h2database); the
-             missingManifest="generate" is a harmless safety net. -->
+             missingManifest="generate" is a harmless safety net.
+             22c 2026-07-11: KEPT at 2.2.224 (2.3.232 is current) — the user-shared
+             AUTO_SERVER store is concurrently opened by deployed residents still on
+             2.2.224; mixed H2 versions on one live store are a real corruption/protocol
+             risk. Bump in a dedicated release once the whole fleet moves together. -->
         <location includeDependencyDepth="none" includeSource="true" missingManifest="generate" type="Maven">
             <dependencies>
                 <dependency>
@@ -125,7 +135,11 @@
             </dependencies>
         </location>
 
-        <!-- JUnit 5 from Eclipse releases (proper OSGi bundles) -->
+        <!-- JUnit 5 pinned to Eclipse 2024-09 (22c decision, 2026-07-11): trains from
+             2025-12 on ship JUnit 6, which Tycho 5.0.x's junit5 surefire provider cannot
+             run (requires junit-jupiter [5.0.0,6.0.0)) — same split upstream chose for
+             its 2025-12 upgrade. JDT comes from 2026-06 above; JUnit is independent of
+             the JDT version. Revisit with the Sprint-23 test-runner work. -->
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
             <repository location="${system_property:p2.base}/releases/2024-09"/>
             <unit id="junit-jupiter-api" version="0.0.0"/>
