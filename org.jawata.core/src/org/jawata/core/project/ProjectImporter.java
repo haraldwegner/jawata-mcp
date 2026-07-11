@@ -5,7 +5,6 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
@@ -126,23 +125,9 @@ public class ProjectImporter {
         // Build classpath entries
         List<IClasspathEntry> entries = new ArrayList<>();
 
-        // 1. Add JRE container (provides java.* classes).
-        //    22c (2026-07-11) — workaround for eclipse.jdt.core#5188: JDT's preview-API
-        //    warning machinery resolves the JDK-internal
-        //    jdk.internal.javac.PreviewFeature$Feature enum during search match locating
-        //    and NPEs (unguarded, pre-severity) when that package is not visible —
-        //    killing reference searches that touch preview-annotated Java 21+ APIs.
-        //    Exporting the package to the unnamed module makes the resolution succeed.
-        //    Remove when the upstream guard ships (sentinel: JreTypeResolutionTest).
+        // 1. Add JRE container (provides java.* classes)
         IPath jreContainerPath = JavaRuntime.getDefaultJREContainerEntry().getPath();
-        entries.add(JavaCore.newContainerEntry(
-            jreContainerPath,
-            null,
-            new IClasspathAttribute[] {
-                JavaCore.newClasspathAttribute(IClasspathAttribute.ADD_EXPORTS,
-                    "java.base/jdk.internal.javac=ALL-UNNAMED")
-            },
-            false));
+        entries.add(JavaCore.newContainerEntry(jreContainerPath));
 
         // 2. Create linked folders and add source entries
         addSourceEntries(entries, project, projectPath, workspaceManager);
