@@ -26,7 +26,7 @@ jobs:
     - name: p2 preflight — fall back to the FAU mirror if the Eclipse primary is down
       shell: bash
       run: |
-        if curl -sf --max-time 20 -o /dev/null https://download.eclipse.org/releases/2026-06/p2.index; then
+        if curl -sf --max-time 20 -o /dev/null https://download.eclipse.org/releases/2025-12/p2.index; then
           echo "Eclipse primary healthy — canonical p2.base"
         else
           echo "P2_BASE_FLAG=-Dp2.base=https://ftp.fau.de/eclipse" >> "$GITHUB_ENV"

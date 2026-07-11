@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?pde version="3.8"?>
-<target name="JAWATA Target Platform (Eclipse 2026-06)" sequenceNumber="5">
+<target name="JAWATA Target Platform (Eclipse 2025-12)" sequenceNumber="6">
     <!-- p2.base parameterizes the Eclipse download host (Sprint 21a, 2026-07-05).
          Default (canonical): https://download.eclipse.org - set in .mvn/maven.config.
          Outage fallback:     mvn ... -Dp2.base=https://ftp.fau.de/eclipse
@@ -8,11 +8,16 @@
          property automatically. p2 itself has NO metadata failover - mirrorsURL covers
          artifacts only - hence this build-level switch. -->
     <locations>
-        <!-- Eclipse 2026-06 Release (Sprint 22c, 2026-07-11: first deliberate train choice —
-             the 2024-09 pin was inherited from the initial JavaLens commit. 4.40 requires
-             Java SE 21 (verified against the official release notes); the Java floor stays 21. -->
+        <!-- Eclipse 2025-12 Release (Sprint 22c, 2026-07-11: first deliberate train choice —
+             the 2024-09 pin was inherited from the initial JavaLens commit. 2026-06 (4.40)
+             was attempted first and REJECTED on evidence: JDT 4.40's search layer NPEs in
+             ProblemReporter.previewAPIUsed (null FieldBinding, unguarded even on master;
+             reported upstream) — JreTypeResolutionTest is the sentinel; re-attempt newer
+             trains when it is green there. 2025-12 (4.38) is upstream-proven, supports
+             Java 25 source (the Sprint-31/JATS requirement), and requires Java SE 21 —
+             the Java floor stays 21. -->
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
-            <repository location="${system_property:p2.base}/releases/2026-06"/>
+            <repository location="${system_property:p2.base}/releases/2025-12"/>
 
             <!-- JDT Core - the heart of Java analysis -->
             <unit id="org.eclipse.jdt.core" version="0.0.0"/>
