@@ -39,11 +39,14 @@ public class SearchService {
     private final IJavaProject project;
     private final SearchEngine engine;
     private final IJavaSearchScope scope;
+    private final IJavaSearchScope sourceScope;
 
     public SearchService(IJavaProject project) {
         this.project = project;
         this.engine = new SearchEngine();
         this.scope = SearchEngine.createJavaSearchScope(new IJavaElement[]{ project });
+        this.sourceScope = SearchEngine.createJavaSearchScope(
+            new IJavaElement[]{ project }, IJavaSearchScope.SOURCES);
         log.info("SearchService initialized for project: {}", project.getElementName());
     }
 
@@ -67,6 +70,8 @@ public class SearchService {
         this.project = projects[0];
         this.engine = new SearchEngine();
         this.scope = SearchEngine.createJavaSearchScope((IJavaElement[]) projects);
+        this.sourceScope = SearchEngine.createJavaSearchScope(
+            (IJavaElement[]) projects, IJavaSearchScope.SOURCES);
         log.info("SearchService initialized with workspace scope of {} project(s)",
             projects.length);
     }
@@ -80,13 +85,27 @@ public class SearchService {
      * @return List of matching elements
      */
     public List<SearchMatch> searchSymbols(String pattern, Integer searchFor, int maxResults) throws CoreException {
-        // Convert glob to SearchPattern format
-        String searchPattern = pattern.replace("*", "*");  // Already compatible
+        return searchSymbolsIn(scope, pattern, searchFor, maxResults);
+    }
 
+    /**
+     * v2.8.1 (dogfood 2026-07-11): same symbol search restricted to SOURCE
+     * package-fragment roots. The full-scope search on a real workspace
+     * returns thousands of JRE/classpath binary types that can crowd every
+     * project-source hit out of a bounded result window — callers that want
+     * "the project's own code first" query this scope first and top up from
+     * the full scope.
+     */
+    public List<SearchMatch> searchSymbolsInSource(String pattern, Integer searchFor, int maxResults) throws CoreException {
+        return searchSymbolsIn(sourceScope, pattern, searchFor, maxResults);
+    }
+
+    private List<SearchMatch> searchSymbolsIn(IJavaSearchScope searchScope, String pattern,
+                                              Integer searchFor, int maxResults) throws CoreException {
         int searchForType = searchFor != null ? searchFor : IJavaSearchConstants.TYPE;
 
         SearchPattern jdtPattern = SearchPattern.createPattern(
-            searchPattern,
+            pattern,
             searchForType,
             IJavaSearchConstants.DECLARATIONS,
             SearchPattern.R_PATTERN_MATCH | SearchPattern.R_CASE_SENSITIVE
@@ -102,7 +121,7 @@ public class SearchService {
         engine.search(
             jdtPattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
-            scope,
+            searchScope,
             requestor,
             new NullProgressMonitor()
         );

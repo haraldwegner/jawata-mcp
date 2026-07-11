@@ -105,39 +105,38 @@ public class SearchSymbolsTool extends AbstractTool {
             // Convert kind to search type
             Integer searchFor = getSearchType(kind);
 
-            // Use SearchService for indexed search
-            List<SearchMatch> matches = service.getSearchService()
-                .searchSymbols(query, searchFor, offset + maxResults + 10);
+            // v2.8.1 (dogfood 2026-07-11): query the SOURCE scope first, then top
+            // up from the full scope. A bounded full-scope window on a real
+            // workspace fills with JRE/classpath types ("H*" → 40 binary hits)
+            // and the project's own classes never enter it — ranking after the
+            // fact can't fix what was never fetched.
+            int window = offset + maxResults + 10;
+            List<SearchMatch> matches = new ArrayList<>(service.getSearchService()
+                .searchSymbolsInSource(query, searchFor, window));
+            if (matches.size() < window) {
+                matches.addAll(service.getSearchService()
+                    .searchSymbols(query, searchFor, window));
+            }
 
             // Sprint 22a P2 rider: a bare (no-wildcard) query that finds nothing
             // retries as a substring match — "Recall" then finds ExperienceRecall,
             // "idget" finds Widget. Explicit wildcards are respected as given.
             if (matches.isEmpty() && query.indexOf('*') < 0 && query.indexOf('?') < 0) {
-                matches = service.getSearchService()
-                    .searchSymbols("*" + query + "*", searchFor, offset + maxResults + 10);
+                matches = new ArrayList<>(service.getSearchService()
+                    .searchSymbolsInSource("*" + query + "*", searchFor, window));
+                if (matches.size() < window) {
+                    matches.addAll(service.getSearchService()
+                        .searchSymbols("*" + query + "*", searchFor, window));
+                }
             }
 
-            // Convert matches to result format
+            // Convert the whole fetched window (bounded above by
+            // offset+maxResults+10) so ranking happens BEFORE pagination.
             List<Map<String, Object>> results = new ArrayList<>();
-            int skipped = 0;
-            int added = 0;
-
             for (SearchMatch match : matches) {
-                if (added >= maxResults) break;
-
-                if (skipped < offset) {
-                    skipped++;
-                    continue;
-                }
-
                 Map<String, Object> symbolInfo = createSymbolInfo(match, service);
-                if (symbolInfo != null) {
-                    // Filter by kind if specified
-                    if (kind != null && !matchesKind(symbolInfo, kind)) {
-                        continue;
-                    }
+                if (symbolInfo != null && (kind == null || matchesKind(symbolInfo, kind))) {
                     results.add(symbolInfo);
-                    added++;
                 }
             }
 
@@ -146,23 +145,33 @@ public class SearchSymbolsTool extends AbstractTool {
             // source (with line/column) when project B depends on project A's JAR.
             // Collapse each (kind, identity) group to its coordinate-bearing entry
             // when one exists.
-            int beforeDedupe = results.size();
             results = dedupeBySymbolIdentity(results);
-            int afterDedupe = results.size();
+
+            // v2.8.1 (dogfood 2026-07-11): project-source results rank before
+            // binary-classpath results — a Class search for "*Tool" on jawata-mcp
+            // itself listed JavacTool/JShellTool above the project's own classes.
+            // List.sort is stable: JDT relevance order survives within partitions.
+            results.sort(java.util.Comparator.comparingInt(r ->
+                Boolean.TRUE.equals(r.get("binary")) ? 1 : 0));
+
+            int total = results.size();
+            List<Map<String, Object>> page = offset >= total
+                ? List.of()
+                : results.subList(offset, Math.min(offset + maxResults, total));
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("query", query);
             if (kind != null) data.put("kind", kind);
-            data.put("results", results);
+            data.put("results", page);
             data.put("pagination", Map.of(
                 "offset", offset,
-                "returned", results.size(),
-                "hasMore", matches.size() > offset + beforeDedupe
+                "returned", page.size(),
+                "hasMore", offset + page.size() < total
             ));
 
             return ToolResponse.success(data, ResponseMeta.builder()
-                .returnedCount(results.size())
-                .truncated(results.size() == maxResults)
+                .returnedCount(page.size())
+                .truncated(page.size() == maxResults)
                 .suggestedNextTools(List.of(
                     "get_symbol_info at a result location for detailed info",
                     "get_type_members for type results",
@@ -208,11 +217,16 @@ public class SearchSymbolsTool extends AbstractTool {
                 }
             }
             if (anyWithCoords) {
+                // v2.8.1: the source-scope-first fetch can deliver the same
+                // source hit twice (source pass + full-scope top-up) — keep
+                // distinct coordinate-bearing entries only.
+                List<Map<String, Object>> kept = new ArrayList<>();
                 for (Map<String, Object> r : group) {
-                    if (hasCoordinates(r)) {
-                        deduped.add(r);
+                    if (hasCoordinates(r) && !kept.contains(r)) {
+                        kept.add(r);
                     }
                 }
+                deduped.addAll(kept);
             } else {
                 // No coordinate-bearing entry — keep one degraded representative.
                 deduped.add(group.get(0));
@@ -274,6 +288,18 @@ public class SearchSymbolsTool extends AbstractTool {
                 IPath location = match.getResource().getLocation();
                 if (location != null) {
                     info.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
+                }
+            }
+
+            // v2.8.1 (dogfood 2026-07-11): binary-classpath hits used to report
+            // an opaque workspace-handle path. Flag them and point at the
+            // readable archive (JAR / JMOD / jrt-fs) instead.
+            IJavaElement rootEl = javaElement.getAncestor(IJavaElement.PACKAGE_FRAGMENT_ROOT);
+            if (rootEl instanceof org.eclipse.jdt.core.IPackageFragmentRoot root && root.isArchive()) {
+                info.put("binary", true);
+                IPath archive = root.getPath();
+                if (archive != null) {
+                    info.put("filePath", archive.toOSString());
                 }
             }
 
