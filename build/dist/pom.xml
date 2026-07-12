@@ -62,6 +62,26 @@
                         </configuration>
                     </execution>
                     <execution>
+                        <id>tools</id>
+                        <phase>package</phase>
+                        <goals><goal>copy</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/dist/tools</outputDirectory>
+                            <stripVersion>false</stripVersion>
+                            <artifactItems>
+                                <!-- Sprint 23 D1: the forked-runner toolchain. The
+                                     console-standalone uber jar supplies launcher +
+                                     Jupiter 5.14 + Vintage engines (deliberately the
+                                     latest 1.x — 6.x is JUnit 6); our runner main
+                                     streams events to the parent; the TestNG engine
+                                     rides along for framework=testng projects. -->
+                                <artifactItem><groupId>org.junit.platform</groupId><artifactId>junit-platform-console-standalone</artifactId><version>1.14.4</version></artifactItem>
+                                <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.testrunner</artifactId><version>${project.version}</version></artifactItem>
+                                <artifactItem><groupId>org.junit.support</groupId><artifactId>testng-engine</artifactId><version>1.0.6</version></artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>bundles</id>
                         <phase>package</phase>
                         <goals><goal>copy</goal></goals>
@@ -205,6 +225,9 @@
                                         <file>${project.build.directory}/dist/bundles/com.github.weisj.jsvg_2.1.0.jar</file>
                                         <file>${project.build.directory}/dist/bundles/org.eclipse.jdt.core.compiler.batch_3.46.0.v20260528-0407-jawata5188.jar</file>
                                         <file>${project.build.directory}/dist/jawata.jar</file>
+                                        <file>${project.build.directory}/dist/tools/junit-platform-console-standalone-1.14.4.jar</file>
+                                        <file>${project.build.directory}/dist/tools/org.jawata.testrunner-${project.version}.jar</file>
+                                        <file>${project.build.directory}/dist/tools/testng-engine-1.0.6.jar</file>
                                     </files>
                                     <message>dist is INCOMPLETE — a carried/patched bundle did not reach target/dist/bundles (v2.9.2 failure class: silent copy from a missing directory)</message>
                                 </requireFilesExist>

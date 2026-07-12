@@ -1,5 +1,6 @@
 package com.example;
 
+import javax.annotation.processing.Generated;
 import java.util.Objects;
 
 /**
@@ -23,7 +24,7 @@ public class NullnessContracts {
 }
 
 /** Risky: a generated type — infer_contracts must emit NO contract here. */
-@Generated
+@Generated("fixture")
 class GeneratedHolder {
     String alsoNull() {
         return null;

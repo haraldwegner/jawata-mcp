@@ -1,7 +1,7 @@
 package com.example;
 
 /**
- * Sprint 19 fixture — refactor_to_command_dispatcher. Calculator.apply(int op)
+ * Sprint 19 fixture — refactor_to_command_dispatcher. CommandCalculator.apply(int op)
  * dispatches on a type-coded action (switch at 0-based line 23); each case mutates
  * the result field. refactor_to_command_dispatcher lifts the bodies into nested
  * Command classes selected by a switch-expression.
@@ -9,7 +9,7 @@ package com.example;
 public class CommandTargets {
 }
 
-class Calculator {
+class CommandCalculator {
     static final int ADD = 0;
     static final int SUB = 1;
     static final int MUL = 2;

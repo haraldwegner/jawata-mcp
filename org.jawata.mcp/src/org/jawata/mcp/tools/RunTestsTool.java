@@ -8,6 +8,8 @@ import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.mcp.execution.ForkedTestRunner;
+import org.jawata.mcp.execution.RunnerClasspath;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.junit.JUnitLaunchHelper;
@@ -32,26 +34,16 @@ import java.util.function.Supplier;
  * classpath (junit-jupiter-api → junit5; org.junit / junit-4.x →
  * junit4; testng → routed via JUnit 4 compat layer).</p>
  *
- * <p>Sprint 14 (v1.8.0) — bugs.md #1 full fix: plain Maven / Gradle / generic
- * Java projects (no PDE nature) used to NPE on {@code Bundle.getHeaders()}
- * inside the JDT JUnit launcher; the v1.7.1 workaround short-circuited them
- * with an {@code INVALID_PARAMETER} pointing at {@code mvn test}. The fix
- * lives in {@link JUnitLaunchHelper}: when the project lacks
- * {@code org.eclipse.pde.PluginNature}, the helper pre-computes the resolved
- * runtime classpath via {@code JavaRuntime} and pins it on the launch
- * configuration — JDT's launcher then uses our classpath directly and never
- * touches the (non-existent) Bundle for the project. The dispatch is gone
- * from this tool; Maven / Gradle / PDE all flow through the same launch
- * path.</p>
- *
- * <p>The three happy-path tests in {@link
- * org.jawata.mcp.tools.verification.RunTestsToolTest} are still
- * {@code @Disabled} because Tycho-surefire's headless test runtime doesn't
- * compile our sample-project fixtures (the forked test JVM needs the
- * fixture's classes on disk, and Tycho's test stage doesn't run javac on
- * {@code test-resources/sample-projects/.../src/test/java}). Production usage
- * via the manager → real workspace works. Full happy-path coverage lands
- * once the fixture-build pipeline is in. See {@code docs/upgrade-checklist.md}.</p>
+ * <p>Sprint 23 (D1) — the JDT-LTK launch path (historically: OSGi NPEs on
+ * plain Maven, no streaming, no headless fixture support) is replaced by the
+ * {@link ForkedTestRunner} execution spine: ONE runner JVM forked on the
+ * project's own compiled output + resolved classpath (project-supplied
+ * JUnit-platform jars filtered; the dist {@code tools/} console-standalone
+ * supplies launcher + engines), structured results streamed over an event
+ * file, full safe-execution contract (timeout, process-tree reaping, env
+ * allowlist, memory + concurrency bounds, honest
+ * {@code evidenceFinalized=false} on crash/kill/timeout). The project is
+ * built first and the run is REFUSED while compile errors exist.</p>
  */
 public class RunTestsTool extends AbstractTool {
 
@@ -69,8 +61,9 @@ public class RunTestsTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Run JUnit / TestNG tests via JDT-LTK and return parsed pass/fail/
-            skip results with stack traces for failures.
+            Run JUnit / TestNG tests in a forked runner JVM on the project's
+            own classpath and return parsed pass/fail/skip results with stack
+            traces for failures.
 
             USAGE:
               run_tests(scope={kind:"method", typeName:"com.example.FooTest", methodName:"testBar"})
@@ -96,15 +89,19 @@ public class RunTestsTool extends AbstractTool {
             - projectKey — optional. Restrict to a single loaded project.
 
             Result: { framework, projectsTested, summary{total, passed, failed,
-              skipped, timeMs, timedOut?}, failures[{testClass, testMethod,
-              status, message, stackTrace, durationMs}], stdoutTail, stderrTail }
+              skipped, aborted?, timeMs, timedOut?, evidenceFinalized,
+              evidenceNote?}, failures[{testClass, testMethod, status, message,
+              stackTrace, durationMs}], stdoutTail, stderrTail }
+            evidenceFinalized=false means the runner JVM died, was killed, or
+            timed out — the counts are the partial events seen, never a
+            fabricated total.
 
             Failure modes:
             - INVALID_PARAMETER — bad scope (no @Test method at position,
-              empty package, no test framework on classpath, or an unsupported
-              scope-field combination such as {filePath, methodName}).
-            - INTERNAL_ERROR — JUnit launch infrastructure failed (missing
-              target-platform bundle, etc.).
+              empty package, no test framework on classpath, an unsupported
+              scope-field combination such as {filePath, methodName}, compile
+              errors in the project, or the concurrent-session limit.
+            - INTERNAL_ERROR — the runner toolchain could not be launched.
             """;
     }
 
@@ -180,9 +177,6 @@ public class RunTestsTool extends AbstractTool {
         IJavaProject javaProject = loaded.javaProject();
 
         try {
-            JUnitLaunchHelper.LaunchRequest req = new JUnitLaunchHelper.LaunchRequest();
-            req.project = javaProject;
-
             String frameworkRaw = getStringParam(arguments, "framework", "auto");
             JUnitLaunchHelper.TestRunnerKind runner = FrameworkDetection.detect(frameworkRaw, javaProject);
             if (runner == null) {
@@ -190,22 +184,21 @@ public class RunTestsTool extends AbstractTool {
                     "Could not detect a JUnit/TestNG framework on the project's classpath. "
                         + "Set framework explicitly or add a test dependency.");
             }
-            req.runnerKind = runner;
 
+            ForkedTestRunner.Spec spec = new ForkedTestRunner.Spec();
             int timeout = getIntParam(arguments, "timeoutSeconds", 120);
-            req.timeoutSeconds = Math.min(600, Math.max(1, timeout));
-
+            spec.timeoutSeconds = Math.min(600, Math.max(1, timeout));
             if (arguments.has("vmArgs") && arguments.get("vmArgs").isArray()) {
-                arguments.get("vmArgs").forEach(n -> req.vmArgs.add(n.asText()));
+                arguments.get("vmArgs").forEach(n -> spec.vmArgs.add(n.asText()));
             }
 
             switch (kind) {
                 case "method" -> {
-                    ToolResponse error = configureMethodScope(req, scope, service);
+                    ToolResponse error = configureMethodScope(spec, scope, service);
                     if (error != null) return error;
                 }
                 case "class" -> {
-                    ToolResponse error = configureClassScope(req, scope, service);
+                    ToolResponse error = configureClassScope(spec, scope, service);
                     if (error != null) return error;
                 }
                 case "package" -> {
@@ -213,8 +206,7 @@ public class RunTestsTool extends AbstractTool {
                         return ToolResponse.invalidParameter("scope.packageName",
                             "packageName is required for kind='package'.");
                     }
-                    req.scope = JUnitLaunchHelper.Scope.PACKAGE;
-                    req.packageName = scope.get("packageName").asText();
+                    spec.selectPackages.add(scope.get("packageName").asText());
                 }
                 default -> {
                     return ToolResponse.invalidParameter("scope.kind",
@@ -222,8 +214,30 @@ public class RunTestsTool extends AbstractTool {
                 }
             }
 
-            JUnitLaunchHelper helper = new JUnitLaunchHelper();
-            JUnitLaunchHelper.Result r = helper.run(req, new NullProgressMonitor());
+            // Evidence needs compiled classes: build, and refuse honestly on
+            // compile errors instead of running tests against stale bytes.
+            String buildProblem = RunnerClasspath.buildAndCheck(javaProject, new NullProgressMonitor());
+            if (buildProblem != null) {
+                return ToolResponse.invalidParameter("project", buildProblem);
+            }
+
+            boolean testng = "testng".equalsIgnoreCase(frameworkRaw);
+            RunnerClasspath.Assembled assembled = RunnerClasspath.assemble(javaProject, testng);
+            if (assembled.isRefused()) {
+                return ToolResponse.invalidParameter("project", assembled.refusalReason);
+            }
+            spec.classpath = assembled.classpath;
+            org.eclipse.core.runtime.IPath loc = javaProject.getProject().getLocation();
+            if (loc != null) {
+                spec.workingDirectory = loc.toFile().toPath();
+            }
+
+            ForkedTestRunner.Result r;
+            try {
+                r = new ForkedTestRunner().run(spec);
+            } catch (ForkedTestRunner.SessionLimitException limit) {
+                return ToolResponse.invalidParameter("concurrency", limit.getMessage());
+            }
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "run_tests");
@@ -235,12 +249,21 @@ public class RunTestsTool extends AbstractTool {
             summary.put("passed", r.passed);
             summary.put("failed", r.failed);
             summary.put("skipped", r.skipped);
+            if (r.aborted > 0) summary.put("aborted", r.aborted);
             summary.put("timeMs", r.timeMs);
             if (r.timedOut) summary.put("timedOut", true);
+            summary.put("evidenceFinalized", r.evidenceFinalized);
+            if (!r.evidenceFinalized) {
+                summary.put("evidenceNote", r.timedOut
+                    ? "The run TIMED OUT and was reaped — counts below are the partial "
+                        + "events seen before the kill; evidence was NOT finalized."
+                    : "The runner JVM ended abnormally (exit " + r.exitCode + ") — counts "
+                        + "below are partial; evidence was NOT finalized.");
+            }
             data.put("summary", summary);
 
             List<Map<String, Object>> failures = new ArrayList<>();
-            for (JUnitLaunchHelper.CaseResult c : r.failures) {
+            for (ForkedTestRunner.CaseResult c : r.failures) {
                 Map<String, Object> f = new LinkedHashMap<>();
                 f.put("testClass", c.testClass);
                 f.put("testMethod", c.testMethod);
@@ -264,13 +287,12 @@ public class RunTestsTool extends AbstractTool {
         }
     }
 
-    private ToolResponse configureMethodScope(JUnitLaunchHelper.LaunchRequest req,
+    private ToolResponse configureMethodScope(ForkedTestRunner.Spec spec,
                                               JsonNode scope, IJdtService service)
             throws Exception {
         if (scope.has("typeName") && scope.has("methodName")) {
-            req.scope = JUnitLaunchHelper.Scope.METHOD;
-            req.typeName = scope.get("typeName").asText();
-            req.methodName = scope.get("methodName").asText();
+            spec.selectMethods.add(scope.get("typeName").asText()
+                + "#" + scope.get("methodName").asText());
             return null;
         }
         if (!scope.has("filePath") || !scope.has("line") || !scope.has("column")) {
@@ -299,18 +321,16 @@ public class RunTestsTool extends AbstractTool {
             return ToolResponse.invalidParameter("scope",
                 "Method has no declaring type (synthetic?).");
         }
-        req.scope = JUnitLaunchHelper.Scope.METHOD;
-        req.typeName = declaring.getFullyQualifiedName();
-        req.methodName = method.getElementName();
+        spec.selectMethods.add(declaring.getFullyQualifiedName()
+            + "#" + method.getElementName());
         return null;
     }
 
-    private ToolResponse configureClassScope(JUnitLaunchHelper.LaunchRequest req,
+    private ToolResponse configureClassScope(ForkedTestRunner.Spec spec,
                                              JsonNode scope, IJdtService service)
             throws Exception {
         if (scope.has("typeName") && !scope.get("typeName").asText().isBlank()) {
-            req.scope = JUnitLaunchHelper.Scope.CLASS;
-            req.typeName = scope.get("typeName").asText();
+            spec.selectClasses.add(scope.get("typeName").asText());
             return null;
         }
         if (!scope.has("filePath") || !scope.has("line") || !scope.has("column")) {
@@ -325,8 +345,7 @@ public class RunTestsTool extends AbstractTool {
             return ToolResponse.symbolNotFound(
                 "No type at " + filePath + ":" + line + ":" + column);
         }
-        req.scope = JUnitLaunchHelper.Scope.CLASS;
-        req.typeName = type.getFullyQualifiedName();
+        spec.selectClasses.add(type.getFullyQualifiedName());
         return null;
     }
 

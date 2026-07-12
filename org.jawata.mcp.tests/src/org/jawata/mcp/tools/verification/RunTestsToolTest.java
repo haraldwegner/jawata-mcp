@@ -11,7 +11,6 @@ import org.jawata.mcp.models.ErrorInfo;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.RunTestsTool;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -22,28 +21,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Sprint 12 (v1.6.0) — {@code run_tests} validation + (deferred) happy-path
- * coverage.
- *
- * <p>The three happy-path tests are {@code @Disabled} because Tycho-surefire's
- * headless test runtime doesn't compile our sample-project fixtures (the
- * forked test JVM needs the fixture's compiled classes on disk, and Tycho's
- * test stage doesn't run javac on
- * {@code test-resources/sample-projects/.../src/test/java}). Production usage
- * works (manager → real workspace → real test classpath); validation tests
- * below cover the input layer. Full happy-path coverage waits on a
- * fixture-build pipeline. See {@code docs/upgrade-checklist.md}.</p>
- *
- * <p>Sprint 14 (v1.8.0) — bugs.md #1 full fix: the v1.7.1 short-circuit that
- * pre-empted plain Maven / Gradle projects with an {@code INVALID_PARAMETER}
- * + {@code mvn test} workaround is gone. Plain Maven / Gradle now flow
- * through the same launch path as PDE, with an explicit pre-computed
- * classpath that avoids the JDT JUnit launcher's
- * {@code Bundle.getHeaders()} NPE. The
- * {@link #mavenProject_runtimeClasspathMementos_resolveWithoutNpe()} test
- * pins the indirect smoke (the classpath-computation step is exactly what
- * the fix delegates to); end-to-end JVM-spawning verification still waits
- * on the fixture-build pipeline.</p>
+ * Sprint 12 (v1.6.0) — {@code run_tests} validation; Sprint 23 (D1) — the
+ * happy-path tests are LIVE: the forked-runner spine compiles the fixture
+ * through JDT (the simple-maven pom now declares the Jupiter API) and runs
+ * its tests in a real forked JVM, so the three formerly-@Disabled tests
+ * execute end-to-end in the in-framework suite. Safe-execution proofs
+ * (timeout/reap, memory bound, env allowlist) live in
+ * {@link ForkedRunnerSafetyTest}.
  */
 class RunTestsToolTest {
 
@@ -219,14 +203,6 @@ class RunTestsToolTest {
     }
 
     @Test
-    @Disabled("Pending fixture-build pipeline: JUnit launching from the "
-        + "Tycho-surefire test runtime needs sample-project test classes "
-        + "compiled on disk for the forked JVM's classpath. The Sprint 14 / "
-        + "v1.8.0 bug #1 fix removed the OSGi NPE block (see "
-        + "mavenProject_runtimeClasspathMementos_resolveWithoutNpe above); "
-        + "end-to-end coverage waits on the fixture-build pipeline. "
-        + "Production usage via the manager works. See "
-        + "docs/upgrade-checklist.md.")
     @DisplayName("happy: methodScope on testAddition returns one passed result")
     void happy_methodScope_returnsPassed() {
         ObjectNode args = objectMapper.createObjectNode();
@@ -235,13 +211,17 @@ class RunTestsToolTest {
         scope.put("typeName", "com.example.SampleTest");
         scope.put("methodName", "testAddition");
         args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
+        java.util.Map<String, Object> summary = summaryOf(r);
+        assertEquals(1, summary.get("total"), "summary: " + summary);
+        assertEquals(1, summary.get("passed"), "summary: " + summary);
+        assertEquals(0, summary.get("failed"), "summary: " + summary);
+        assertEquals(Boolean.TRUE, summary.get("evidenceFinalized"), "summary: " + summary);
     }
 
     @Test
-    @Disabled("Pending fixture-build pipeline — see "
-        + "happy_methodScope_returnsPassed and docs/upgrade-checklist.md.")
     @DisplayName("happy: classScope on SampleTest returns mixed pass/fail results")
     void happy_classScope_returnsMixedResults() {
         ObjectNode args = objectMapper.createObjectNode();
@@ -249,13 +229,19 @@ class RunTestsToolTest {
         scope.put("kind", "class");
         scope.put("typeName", "com.example.SampleTest");
         args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
+        // SampleTest: 7 @Test = 4 passing + 1 deliberately failing + 2 @Disabled.
+        java.util.Map<String, Object> summary = summaryOf(r);
+        assertEquals(7, summary.get("total"), "summary: " + summary);
+        assertEquals(4, summary.get("passed"), "summary: " + summary);
+        assertEquals(1, summary.get("failed"), "summary: " + summary);
+        assertEquals(2, summary.get("skipped"), "summary: " + summary);
+        assertEquals(Boolean.TRUE, summary.get("evidenceFinalized"), "summary: " + summary);
     }
 
     @Test
-    @Disabled("Pending fixture-build pipeline — see "
-        + "happy_methodScope_returnsPassed and docs/upgrade-checklist.md.")
     @DisplayName("happy: packageScope on com.example collects all tests")
     void happy_packageScope_collectsAllTests() {
         ObjectNode args = objectMapper.createObjectNode();
@@ -263,7 +249,20 @@ class RunTestsToolTest {
         scope.put("kind", "package");
         scope.put("packageName", "com.example");
         args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
+        // The package holds exactly SampleTest — same totals as class scope.
+        java.util.Map<String, Object> summary = summaryOf(r);
+        assertEquals(7, summary.get("total"), "summary: " + summary);
+        assertEquals(4, summary.get("passed"), "summary: " + summary);
+        assertEquals(1, summary.get("failed"), "summary: " + summary);
+        assertEquals(2, summary.get("skipped"), "summary: " + summary);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<String, Object> summaryOf(ToolResponse r) {
+        java.util.Map<String, Object> data = (java.util.Map<String, Object>) r.getData();
+        return (java.util.Map<String, Object>) data.get("summary");
     }
 }

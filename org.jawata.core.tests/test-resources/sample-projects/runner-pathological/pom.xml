@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 23: fixture for the forked runner's SAFE-EXECUTION proofs — a
+     hanging test (timeout + process-tree reaping), a memory hog (the -Xmx
+     bound), and an environment probe (the cleared-env allowlist). Only ever
+     run through jawata's run_tests with explicit class scope; `mvn test` on
+     this fixture would hang by design. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>runner-pathological</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Runner Pathological Fixture</name>
+    <description>Safe-execution proof fixture for the Sprint 23 forked test runner</description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

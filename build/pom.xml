@@ -17,6 +17,7 @@
         <module>core</module>
         <module>mcp</module>
         <module>boot</module>
+        <module>testrunner</module>
         <module>tests-core</module>
         <module>tests-mcp</module>
         <module>dist</module>

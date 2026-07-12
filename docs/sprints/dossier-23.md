@@ -58,3 +58,61 @@ diff the REPO (releases + README), never the marketplace listing.
   agent-relevant axis, NO spec change; presented to Harald with the C0 report);
   (d) ✓. **C0 GREEN** — proceeding under the 2026-07-13 autocontinue overrule
   (stops only at C13, C14, or blocking failures).
+
+## C1 — Execution spine: run_tests on Maven (2026-07-13)
+
+### What shipped
+
+- **`build/testrunner`** (new module, `org.jawata.testrunner`): dependency-free forked
+  runner main — argfile in, JSON-lines events out over a FILE channel (stdout stays
+  the tests'), run-start/class-start/test-finish/run-finish, exit 0 = ran, 2 = infra.
+- **dist `tools/`**: junit-platform-console-standalone-1.14.4 + org.jawata.testrunner
+  + testng-engine-1.0.6 (all enforcer-gated); boot publishes `jawata.dist.root`.
+- **`org.jawata.mcp.execution`**: `ForkedTestRunner` (the §13 spine: cleared env +
+  allowlist LANG/LC_ALL/TZ, -Xmx512m default, -Djava.io.tmpdir=session, timeout →
+  process-TREE reap, bounded 1MB/100-line stream tails, 4-session semaphore, honest
+  `evidenceFinalized`) + `RunnerClasspath` (build-first + refuse-on-compile-errors;
+  tools-first classpath; project junit-platform/engine jars FILTERED — the surefire
+  pattern). `RunTestsTool` rewired onto the spine; the JDT-LTK path
+  (JUnitLaunchHelper) is now UNREFERENCED — deleted in the Stage-3 cleanup.
+- **Fixtures**: simple-maven was never actually COMPILABLE — no declared deps, yet
+  imports of Jupiter/Lombok/3 nullness families, two duplicate types (Calculator in
+  CommandTargets → CommandCalculator; Honorer in LspTargets → LspHonorer), a bare
+  `@Generated` (→ JDK `javax.annotation.processing.Generated("fixture")`), Lombok
+  blank finals (→ explicit constructor). Now compiles 0-error under the new build
+  gate. New `runner-pathological` fixture (HangingTest / MemoryHogTest /
+  EnvProbeTest) for the safety proofs.
+
+### Verification (expected vs actual)
+
+- 3 RunTestsToolTest @Disabled re-enabled + green with EXACT counts (method: 1/1
+  passed; class + package: total 7 = 4 passed + 1 failed + 2 skipped) —
+  **12/12 green** ✓.
+- Count oracle: `mvn test` on the fixture = Tests run 7, Failures 1, Skipped 2 —
+  **identical** to run_tests ✓.
+- §13 proofs (ForkedRunnerSafetyTest, green 3× consecutively): hanging test reaped
+  at timeout, NO orphan `org.jawata.testrunner.Main` process machine-wide,
+  `evidenceFinalized=false` + evidenceNote ✓; memory hog dies at the CHILD's -Xmx
+  (OOM is UNRECOVERABLE for the JUnit platform → either a FAILED result or an
+  honestly-unfinalized run; both accepted, OOM evidence required; server survives) ✓;
+  env allowlist proven by the PATH canary (EnvProbeTest passes ONLY under a cleared
+  env; server-side PATH presence asserted as precondition) ✓.
+- Full-suite gate: expected 1195 = 1193 passed + 2 skipped (3 re-enabled + 3 new
+  safety tests; remaining @Disabled: GenerateTestSkeletonToolTest L79 → Stage 2,
+  EncapsulateFieldToolTest L41 → Stage 5) · Actual: PENDING (run in flight).
+
+### Surprises
+
+- The simple-maven fixture had 16 latent compile errors — invisible for 20 sprints
+  because nothing ever COMPILED it (AST-only detectors). The new
+  build-before-run gate found them all on its first fire.
+- OOM unrecoverability (above) — the honest-evidence contract absorbed it cleanly.
+- PLAN ARITHMETIC CORRECTION: the plan's C4 exit reads "self Disabled-probe stays
+  5/5" — stale arithmetic (written against the pre-Stage-1 count). After Stage 1 the
+  probe correctly returns 2 (GenerateTestSkeletonToolTest, EncapsulateFieldToolTest);
+  after Stage 2, 1; C5's "returns 0" confirms the intent. The C4 gate is read as
+  "the probe returns exactly the remaining known sites".
+
+### C1 exit status
+
+- PENDING the full-suite gate (in flight); all focused gates green.

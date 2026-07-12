@@ -49,6 +49,11 @@ public final class JawataBoot {
         Path home = Path.of(System.getProperty("jawata.boot.home",
             Path.of(JawataBoot.class.getProtectionDomain().getCodeSource()
                 .getLocation().toURI()).getParent().toString()));
+        // Sprint 23: publish the dist root so in-framework code (the forked
+        // test-runner spine) can locate tools/ beside bundles/.
+        if (System.getProperty("jawata.dist.root") == null) {
+            System.setProperty("jawata.dist.root", home.toString());
+        }
         Path bundlesDir = home.resolve("bundles");
         if (!Files.isDirectory(bundlesDir)) {
             System.err.println("FATAL: no bundles/ directory beside the boot jar: " + bundlesDir);

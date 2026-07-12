@@ -30,8 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Sprint 19 — refactor_to_command_dispatcher via refactor_to_pattern. Fixture
- * CommandTargets: Calculator.apply(int op) switches at 0-based 23:8. Structure +
- * real compile check + undo.
+ * CommandTargets: CommandCalculator.apply(int op) switches at 0-based 23:8.
+ * Structure + real compile check + undo.
  */
 class RefactorToCommandDispatcherToolTest {
 
@@ -87,14 +87,14 @@ class RefactorToCommandDispatcherToolTest {
         assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
         Map<String, Object> data = getData(response);
         assertEquals(Boolean.TRUE, data.get("applied"));
-        assertEquals("CalculatorCommand", data.get("commandInterface"));
+        assertEquals("CommandCalculatorCommand", data.get("commandInterface"));
         assertNotNull(data.get("undoChangeId"));
 
         String onDisk = Files.readString(targetFile);
-        assertTrue(onDisk.contains("interface CalculatorCommand"), "command interface:\n" + onDisk);
-        assertTrue(onDisk.contains("class AddCommand implements CalculatorCommand"), "AddCommand:\n" + onDisk);
-        assertTrue(onDisk.contains("class DefaultCommand implements CalculatorCommand"), "DefaultCommand:\n" + onDisk);
-        assertTrue(onDisk.contains("CalculatorCommand __command = switch (op)"), "switch-expression dispatch:\n" + onDisk);
+        assertTrue(onDisk.contains("interface CommandCalculatorCommand"), "command interface:\n" + onDisk);
+        assertTrue(onDisk.contains("class AddCommand implements CommandCalculatorCommand"), "AddCommand:\n" + onDisk);
+        assertTrue(onDisk.contains("class DefaultCommand implements CommandCalculatorCommand"), "DefaultCommand:\n" + onDisk);
+        assertTrue(onDisk.contains("CommandCalculatorCommand __command = switch (op)"), "switch-expression dispatch:\n" + onDisk);
         assertTrue(onDisk.contains("case ADD -> new AddCommand()"), "ADD arm:\n" + onDisk);
         assertTrue(onDisk.contains("default -> new DefaultCommand()"), "default arm:\n" + onDisk);
         assertTrue(onDisk.contains("__command.execute();"), "executes selected command:\n" + onDisk);

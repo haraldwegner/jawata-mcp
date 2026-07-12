@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 23 Stage 1: the forked test-runner main. Ships in the dist tools/
+     directory and runs in the USER PROJECT's JVM (never our framework JVM) —
+     project classpath + the junit-platform-console-standalone jar supply
+     everything at runtime, so the launcher dependency is provided-scope and
+     the jar stays dependency-free. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.build</artifactId>
+        <version>2.9.2</version>
+    </parent>
+
+    <artifactId>org.jawata.testrunner</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.14.4</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
