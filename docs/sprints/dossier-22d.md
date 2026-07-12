@@ -109,6 +109,35 @@ selection), test-JVM boot extension, patched-artifact GAV substitution for tests
 CI pipeline swap. Plus the standing carry maintenance: 5 p2-wrapped jars re-checked
 per train (commonmark, org.junit, hamcrest, jsvg + the #5188 patch until 4.41).
 
+## THE SWITCH (Harald's verdict 2026-07-12: "if it works we do this immediately")
+
+Completed same-day on the branch — the head IS the plain build now:
+
+- **Tests without Tycho, full parity:** both test trees compile verbatim as OSGi
+  FRAGMENTS of their host bundles; a ~60-line in-framework JUnit launcher
+  (`SpikeTestMain`) + the boot module's `-runTests` mode replace tycho-surefire.
+  **First full run: 1179 = 1174 passed + 5 skipped, 0 failed — exact baseline parity**
+  (the 20-min wall-clock is the tests' own JDT work, not build overhead; parallel
+  local runs recorded as a Sprint-23 requirement).
+- **Drop-in dist:** `build/dist/target/dist/jawata.jar` boots exactly like the old
+  product jar (`java -jar jawata.jar -data <ws>`), session isolation included. ONE
+  universal dist (all five platform SWT fragments ship; Equinox resolves the match) —
+  replaces Tycho's five per-OS builds; release CI keeps the five asset names for
+  consumer compatibility (identical content). Known layout change: the macOS asset is
+  no longer a `Jawata.app` — same jawata-<tag>/jawata.jar layout as Linux.
+- **Tycho retired:** root `pom.xml` = plain aggregator → `build/`; removed: all Tycho
+  module poms, `org.jawata.product`, the `.target` file, `.mvn/maven.config`
+  (p2 mirror machinery — obsolete without p2), `build.properties` files,
+  `org.jawata.launcher` (superseded by boot). KEPT: `org.jawata.target/patched-bundles`
+  (the #5188 jar, now consumed by the dist assembly), the checked-in MANIFESTs
+  (the bundle identities), `org.jawata.jdtpatch` sources (the patch factory —
+  no longer in the reactor; its output is the committed jar, rebuilt one-off if ever
+  needed).
+- **CI swapped:** ci.yml + release.yml = plain Maven build + in-framework suite;
+  p2 preflight/mirror steps deleted.
+- **Switched-head verification:** root `mvn install` **10 s** → drop-in boots →
+  **43 tools** answer.
+
 ## Surprises
 
 1. m2e, gson, jdt.apt.core: bundled dead weight, never imported (target hygiene

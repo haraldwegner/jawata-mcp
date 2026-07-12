@@ -27,6 +27,9 @@
                 <configuration>
                     <archive>
                         <manifest><mainClass>org.jawata.boot.JawataBoot</mainClass></manifest>
+                        <!-- drop-in contract: `java -jar jawata.jar -data <ws>` exactly like
+                             the old launcher; the framework jar sits beside it in the dist -->
+                        <manifestEntries><Class-Path>org.eclipse.osgi-${v.osgi}.jar</Class-Path></manifestEntries>
                     </archive>
                 </configuration>
             </plugin>
