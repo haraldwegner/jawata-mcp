@@ -146,8 +146,40 @@ public final class JawataBoot {
             System.err.println("FATAL: org.jawata.mcp bundle not found");
             return 2;
         }
+        // Boot-side watchdog + stage markers: the LAST blind window (runner-class
+        // load/activation, before SpikeTestMain's own watchdog exists). Every
+        // stage prints; 5 idle minutes anywhere here → thread dump + halt(125).
+        final long[] bootStage = { System.currentTimeMillis() };
+        final String[] bootWhere = { "loading runner class (bundle activation)" };
+        Thread bootDog = new Thread(() -> {
+            while (true) {
+                try { Thread.sleep(30_000); } catch (InterruptedException e) { return; }
+                if (System.currentTimeMillis() - bootStage[0] > 300_000) {
+                    System.out.println("\n=== BOOT STALL: stuck in " + bootWhere[0] + " ===");
+                    Thread.getAllStackTraces().forEach((t, st) -> {
+                        System.out.println("--- thread: " + t.getName() + " (" + t.getState() + ")");
+                        for (StackTraceElement e : st) System.out.println("    at " + e);
+                    });
+                    System.out.flush();
+                    Runtime.getRuntime().halt(125);
+                }
+            }
+        }, "boot-watchdog");
+        bootDog.setDaemon(true);
+        bootDog.start();
+
+        System.out.println("stage: loading runner class"); System.out.flush();
         Class<?> main = mcp.loadClass("org.jawata.mcp.SpikeTestMain");
+        bootStage[0] = System.currentTimeMillis(); bootWhere[0] = "resolving run() method";
+        System.out.println("stage: runner class loaded"); System.out.flush();
         Method run = main.getMethod("run", String[].class);
+        bootStage[0] = System.currentTimeMillis();
+        bootWhere[0] = "runner init (SpikeTestMain static init / entering run)";
+        System.out.println("stage: invoking runner"); System.out.flush();
+        // disarm: the runner's own watchdog takes over at run() entry; the
+        // remaining unguarded slice is the reflective dispatch itself
+        // (SpikeTestMain has no static state) — localized by the marker above.
+        bootDog.interrupt();
         int failed = (int) run.invoke(null, (Object) classNames.toArray(new String[0]));
         EclipseStarter.shutdown();
         return failed;
