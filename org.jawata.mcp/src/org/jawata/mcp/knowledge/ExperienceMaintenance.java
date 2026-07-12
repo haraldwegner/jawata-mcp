@@ -27,6 +27,9 @@ import java.util.stream.Stream;
 public final class ExperienceMaintenance {
 
     private static final Logger log = LoggerFactory.getLogger(ExperienceMaintenance.class);
+
+    /** v2.9.1 (D2): minimum judged anchors before a zero-resolve pattern is called suspect. */
+    private static final int MASS_STALE_MIN_CHECKED = 3;
     private static final Pattern WIKILINK = Pattern.compile("\\[\\[([^\\]]+)\\]\\]");
     /** Relative markdown links to .md files — the MEMORY.md index convention. */
     private static final Pattern MD_LINK = Pattern.compile("\\]\\(([^)#?:]+\\.md)\\)");
@@ -433,6 +436,14 @@ public final class ExperienceMaintenance {
      * flagged {@code superseded} (dropped from recall) and reported. When no project is
      * loaded, resolution is skipped (nothing is flagged).
      *
+     * <p>v2.9.1 (dogfood D2) — mass-stale circuit breaker: when >= {@value
+     * #MASS_STALE_MIN_CHECKED} anchors are judged and NOT ONE resolves, the workspace is
+     * treated as broken evidence (empty or failed project load) rather than a codebase
+     * where everything vanished, and NO status is changed ({@code workspace_suspect} in
+     * the report). The post-22d root load came up with 0 source files and the startup
+     * auto-refresh superseded every self-anchored entry — absence of evidence is not
+     * evidence of absence.</p>
+     *
      * <p>Sprint 21a (item I): only {@code language=java} anchors are judged — a JDT
      * resolver can never see a Rust/TS anchor, so non-Java entries are opaque here
      * (reported as {@code non_java}, never superseded).</p>
@@ -441,6 +452,8 @@ public final class ExperienceMaintenance {
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> staled = new ArrayList<>();
         List<Map<String, Object>> cleared = new ArrayList<>();
+        List<StoredEntry> plannedStale = new ArrayList<>();
+        List<StoredEntry> plannedClear = new ArrayList<>();
         int checked = 0;
         int resolved = 0;
         int skipped = 0;
@@ -482,15 +495,29 @@ public final class ExperienceMaintenance {
             } else if (isAssertedAnchor(e)) {
                 // The author asserted this pointer (frontmatter `symbol:` or agent
                 // `record(symbol=…)` — the fact-map key in the frozen body) — an
-                // unresolvable assertion supersedes the entry, unchanged semantics.
-                store.setStatus(e.id(), ExperienceEntry.SUPERSEDED);
-                staled.add(Map.of("id", e.id(), "symbol", fqn));
+                // unresolvable assertion supersedes the entry (applied below, unless
+                // the breaker trips).
+                plannedStale.add(e);
             } else {
                 // Sprint 21e (item A): an AUTO anchor (column set, fact-map key absent
                 // — all section entries included) is CLEARED, never used to supersede:
                 // the lesson outlives its pointer. Backfill may re-anchor it later.
+                plannedClear.add(e);
+            }
+        }
+        boolean workspaceSuspect = checked >= MASS_STALE_MIN_CHECKED && resolved == 0
+            && !(plannedStale.isEmpty() && plannedClear.isEmpty());
+        if (workspaceSuspect) {
+            log.warn("refresh: {} anchors judged, ZERO resolved — workspace suspect, holding "
+                + "{} planned status changes", checked, plannedStale.size() + plannedClear.size());
+        } else {
+            for (StoredEntry e : plannedStale) {
+                store.setStatus(e.id(), ExperienceEntry.SUPERSEDED);
+                staled.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
+            }
+            for (StoredEntry e : plannedClear) {
                 store.updateSymbolAnchor(e.id(), null);
-                cleared.add(Map.of("id", e.id(), "symbol", fqn));
+                cleared.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
             }
         }
         report.put("checked", checked);
@@ -498,6 +525,10 @@ public final class ExperienceMaintenance {
         report.put("skipped", skipped);
         report.put("non_java", nonJava);
         report.put("staled", staled);
+        if (workspaceSuspect) {
+            report.put("workspace_suspect", true);
+            report.put("held", plannedStale.size() + plannedClear.size());
+        }
         if (foreign > 0) {
             report.put("foreign", foreign);
         }

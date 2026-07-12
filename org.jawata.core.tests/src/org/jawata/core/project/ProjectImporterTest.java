@@ -524,4 +524,31 @@ class ProjectImporterTest {
 
         assertEquals(2, count, ".classpath src=custom-src should be the source root");
     }
+
+    // ========== v2.9.1 (dogfood D1): nested aggregators + source-dir interpolation ==========
+
+    @Test
+    @DisplayName("countSourceFiles follows nested aggregators and ${project.basedir} source overrides")
+    void countSourceFiles_nestedAggregator() {
+        Path fixture = helper.getFixturePath("nested-aggregator");
+        assertEquals(1, importer.countSourceFiles(fixture),
+            "root -> mid -> leaf module recursion must reach the ${project.basedir}/../.. source override");
+    }
+
+    @Test
+    @DisplayName("findPackages sees packages behind nested module recursion")
+    void findPackages_nestedAggregator() {
+        Path fixture = helper.getFixturePath("nested-aggregator");
+        assertTrue(importer.findPackages(fixture).contains("com.example.nested"),
+            "package behind the nested source override must be discovered");
+    }
+
+    @Test
+    @DisplayName("parseClasspathOutput handles per-module appended lines and dedupes")
+    void parseClasspathOutput_multiModuleAppend() {
+        String sep = java.io.File.pathSeparator;
+        String content = "/repo/a.jar" + sep + "/repo/b.jar\n/repo/b.jar" + sep + "/repo/c.jar\n";
+        assertEquals(List.of("/repo/a.jar", "/repo/b.jar", "/repo/c.jar"),
+            ProjectImporter.parseClasspathOutput(content));
+    }
 }

@@ -251,4 +251,54 @@ class AnchorBackfillAndRefreshTest {
             }
         };
     }
+
+    // ========== v2.9.1 (dogfood D2): mass-stale circuit breaker ==========
+
+    @Test
+    @DisplayName("refresh: workspace where NOTHING resolves = suspect - breaker holds fire")
+    void refresh_massStale_workspaceSuspect_holdsFire() {
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            for (String fqn : List.of("com.a.A", "com.b.B", "com.c.C")) {
+                store.put(ExperienceEntry.of(
+                        SymbolFact.of("lesson", "anchored to " + fqn, Confidence.MEDIUM)
+                            .symbol(fqn).build())
+                    .status(ExperienceEntry.ACCEPTED)
+                    .build());
+            }
+
+            Map<String, Object> report =
+                new ExperienceMaintenance(store, fqn -> Boolean.FALSE).refresh();
+
+            assertEquals(Boolean.TRUE, report.get("workspace_suspect"),
+                "zero-of-three resolving must flag the WORKSPACE, not the knowledge: " + report);
+            assertTrue(((List<?>) report.get("staled")).isEmpty(), "nothing superseded");
+            for (String fqn : List.of("com.a.A", "com.b.B", "com.c.C")) {
+                assertEquals(ExperienceEntry.ACCEPTED, bySummary(store, "anchored to " + fqn).status(),
+                    fqn + " must survive a suspect workspace");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("refresh: one positive verdict disarms the breaker - genuine staleness still supersedes")
+    void refresh_massStale_onePositive_supersedesNormally() {
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            for (String fqn : List.of("com.a.A", "com.b.B", "com.c.C")) {
+                store.put(ExperienceEntry.of(
+                        SymbolFact.of("lesson", "anchored to " + fqn, Confidence.MEDIUM)
+                            .symbol(fqn).build())
+                    .status(ExperienceEntry.ACCEPTED)
+                    .build());
+            }
+
+            Map<String, Object> report = new ExperienceMaintenance(store,
+                fqn -> "com.a.A".equals(fqn) ? Boolean.TRUE : Boolean.FALSE).refresh();
+
+            assertFalse(report.containsKey("workspace_suspect"), "one positive = healthy workspace");
+            assertEquals(2, ((List<?>) report.get("staled")).size());
+            assertEquals(ExperienceEntry.ACCEPTED, bySummary(store, "anchored to com.a.A").status());
+            assertEquals(ExperienceEntry.SUPERSEDED, bySummary(store, "anchored to com.b.B").status());
+            assertEquals(ExperienceEntry.SUPERSEDED, bySummary(store, "anchored to com.c.C").status());
+        }
+    }
 }

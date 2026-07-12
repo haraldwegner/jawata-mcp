@@ -31,7 +31,6 @@ import java.io.InputStreamReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -252,15 +251,12 @@ public class ProjectImporter {
     private List<java.nio.file.Path> getAllSourcePaths(java.nio.file.Path projectPath) {
         List<java.nio.file.Path> sourcePaths = new ArrayList<>();
 
-        // First check the root project
-        addSourcePathsFromDirectory(projectPath, sourcePaths);
-
-        // If multi-module, also check each module
-        if (isMultiModuleProject(projectPath)) {
-            for (java.nio.file.Path modulePath : getModules(projectPath)) {
-                addSourcePathsFromDirectory(modulePath, sourcePaths);
-            }
-        }
+        // v2.9.1 (dogfood D1): module traversal is RECURSIVE — nested aggregators
+        // (root pom -> build/ aggregator -> leaf modules whose <sourceDirectory>
+        // points back into sibling bundle dirs, the post-22d jawata-mcp shape)
+        // yielded 0 sources under the old one-level walk, blinding the resident
+        // to its own code and cascading into the store's staleness pass.
+        collectSourcePaths(projectPath, sourcePaths, new HashSet<>(), 0);
 
         // For Bazel projects without standard source layout, scan for Java source directories
         if (sourcePaths.isEmpty() && detectBuildSystem(projectPath) == BuildSystem.BAZEL) {
@@ -282,6 +278,26 @@ public class ProjectImporter {
         }
 
         return sourcePaths;
+    }
+
+    /** Depth-first module traversal (cycle-safe via visited set, depth-capped). */
+    private void collectSourcePaths(java.nio.file.Path dir, List<java.nio.file.Path> sourcePaths,
+            Set<java.nio.file.Path> visited, int depth) {
+        if (depth > 10 || !visited.add(dir.toAbsolutePath().normalize())) {
+            return;
+        }
+        List<java.nio.file.Path> found = new ArrayList<>();
+        addSourcePathsFromDirectory(dir, found);
+        for (java.nio.file.Path src : found) {
+            if (!sourcePaths.contains(src)) {
+                sourcePaths.add(src);
+            }
+        }
+        if (isMultiModuleProject(dir)) {
+            for (java.nio.file.Path modulePath : getModules(dir)) {
+                collectSourcePaths(modulePath, sourcePaths, visited, depth + 1);
+            }
+        }
     }
 
     /**
@@ -477,19 +493,24 @@ public class ProjectImporter {
         }
     }
 
+    /** Per-module classpath file name — relative, so the reactor writes one per module. */
+    private static final String CP_FILE_NAME = "jawata-classpath.txt";
+
     private List<String> getMavenDependencies(java.nio.file.Path projectPath) {
+        // v2.9.1 (dogfood D1): the output file is RELATIVE — it resolves against each
+        // module's basedir, so a multi-module reactor writes one file per module.
+        // (An absolute path made every module OVERWRITE the same file and the last,
+        // dependency-less aggregator left it EMPTY — 0 classpath entries for the
+        // whole workspace; -Dmdep.appendOutput proved a no-op in plugin 3.7.1.)
+        // The per-module files are merged + deduped by parseClasspathOutput and
+        // deleted after reading; they live under target/, never in source dirs.
         List<String> jars = new ArrayList<>();
-        java.nio.file.Path cpFile = null;
-
         try {
-            // Create temp file in system temp directory, not in user's project
-            cpFile = Files.createTempFile("jawata-", ".classpath");
-
             String mvnCmd = isWindows() ? "mvn.cmd" : "mvn";
             ProcessBuilder pb = new ProcessBuilder(
                 mvnCmd,
                 "dependency:build-classpath",
-                "-Dmdep.outputFile=" + cpFile.toAbsolutePath(),
+                "-Dmdep.outputFile=target/" + CP_FILE_NAME,
                 "-q"
             );
             pb.directory(projectPath.toFile());
@@ -510,12 +531,19 @@ public class ProjectImporter {
                 return jars;
             }
 
-            if (process.exitValue() == 0 && Files.exists(cpFile)) {
-                String classpath = Files.readString(cpFile).trim();
-
-                if (!classpath.isEmpty()) {
-                    jars.addAll(Arrays.asList(classpath.split(File.pathSeparator)));
+            if (process.exitValue() == 0) {
+                StringBuilder merged = new StringBuilder();
+                try (Stream<java.nio.file.Path> walk = Files.walk(projectPath, 8)) {
+                    for (java.nio.file.Path f : walk
+                            .filter(pth -> CP_FILE_NAME.equals(pth.getFileName().toString()))
+                            .filter(pth -> pth.getParent() != null
+                                && "target".equals(pth.getParent().getFileName().toString()))
+                            .toList()) {
+                        merged.append(Files.readString(f)).append('\n');
+                        Files.deleteIfExists(f);
+                    }
                 }
+                jars.addAll(parseClasspathOutput(merged.toString()));
                 log.info("Got {} classpath entries from Maven", jars.size());
             } else {
                 log.warn("Maven classpath command failed with exit code: {}", process.exitValue());
@@ -523,18 +551,27 @@ public class ProjectImporter {
 
         } catch (Exception e) {
             log.error("Failed to get Maven classpath", e);
-        } finally {
-            // Always clean up temp file
-            if (cpFile != null) {
-                try {
-                    Files.deleteIfExists(cpFile);
-                } catch (Exception e) {
-                    log.trace("Could not delete temp classpath file: {}", e.getMessage());
-                }
-            }
         }
 
         return jars;
+    }
+
+    /**
+     * Parse {@code dependency:build-classpath} output: one line per reactor module
+     * (with {@code -Dmdep.appendOutput=true}), entries newline- and
+     * pathSeparator-delimited, deduped preserving order. Package-visible for tests.
+     */
+    static List<String> parseClasspathOutput(String content) {
+        java.util.LinkedHashSet<String> jars = new java.util.LinkedHashSet<>();
+        for (String line : content.split("\\R")) {
+            for (String piece : line.split(File.pathSeparator)) {
+                String trimmed = piece.trim();
+                if (!trimmed.isEmpty()) {
+                    jars.add(trimmed);
+                }
+            }
+        }
+        return new ArrayList<>(jars);
     }
 
     private List<String> getGradleDependencies(java.nio.file.Path projectPath) {
@@ -911,6 +948,12 @@ public class ProjectImporter {
             if (kids.getLength() > 0) {
                 String text = kids.item(0).getTextContent().trim();
                 if (!text.isEmpty()) {
+                    // v2.9.1 (dogfood D1): interpolate the basedir properties — real
+                    // poms write ${project.basedir}/../..; resolving the literal text
+                    // produced a path with a ${...} component that silently failed
+                    // the isDirectory filter.
+                    text = text.replace("${project.basedir}", pomDir.toString())
+                               .replace("${basedir}", pomDir.toString());
                     return Optional.of(pomDir.resolve(text).normalize());
                 }
             }
