@@ -17,6 +17,8 @@
     <dependencies>
         <!-- the framework itself rides the boot classpath, never bundles/ -->
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.osgi</artifactId><version>${v.osgi}</version></dependency>
+        <!-- harness code gets product discipline: plain surefire unit tests -->
+        <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.11.4</version><scope>test</scope></dependency>
     </dependencies>
 
     <build>

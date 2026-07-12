@@ -70,28 +70,14 @@ public final class JawataBoot {
         // Session isolation, ported in behaviour from JawataLauncher:
         // -data <base> becomes <base>/<uuid8>; the ORIGINAL base is published as
         // jawata.workspace.root; the session dir is deleted on shutdown.
-        List<String> modified = new ArrayList<>();
-        Path sessionPath = null;
-        for (int i = 0; i < args.size(); i++) {
-            if ("-data".equals(args.get(i)) && i + 1 < args.size()) {
-                Path basePath = Path.of(args.get(i + 1));
-                if (System.getProperty("jawata.workspace.root") == null) {
-                    System.setProperty("jawata.workspace.root", basePath.toAbsolutePath().toString());
-                }
-                sessionPath = basePath.resolve(UUID.randomUUID().toString().substring(0, 8));
-                Files.createDirectories(sessionPath);
-                final Path toClean = sessionPath;
-                Runtime.getRuntime().addShutdownHook(new Thread(() -> cleanupSession(toClean)));
-                modified.add("-data");
-                modified.add(sessionPath.toString());
-                i++;
-            } else {
-                modified.add(args.get(i));
-            }
-        }
-        if (sessionPath == null) {
+        SessionArgs session = isolateSession(args);
+        if (session.sessionPath == null) {
             System.err.println("Warning: No -data argument provided. Session isolation disabled.");
+        } else {
+            final Path toClean = session.sessionPath;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> cleanupSession(toClean)));
         }
+        List<String> modified = session.rewrittenArgs;
 
         Map<String, String> props = baseProps(home, bundlesDir, null);
         props.put("eclipse.application", "org.jawata.mcp.application");
@@ -118,24 +104,11 @@ public final class JawataBoot {
         EclipseStarter.setInitialProperties(props);
         BundleContext ctx = EclipseStarter.startup(new String[0], null);
 
-        List<String> classNames = new ArrayList<>();
-        try (Stream<Path> jars = Files.list(testBundles)) {
-            for (Path jar : jars.filter(p -> p.getFileName().toString().startsWith("org.jawata.")
-                    && p.getFileName().toString().endsWith(".jar")).toList()) {
-                try (JarFile jf = new JarFile(jar.toFile())) {
-                    jf.stream().map(java.util.jar.JarEntry::getName)
-                        .filter(n -> n.endsWith("Test.class") && !n.contains("$"))
-                        .map(n -> n.substring(0, n.length() - 6).replace('/', '.'))
-                        .forEach(classNames::add);
-                }
-            }
-        }
-        classNames.sort(String::compareTo);
         String filter = System.getProperty("jawata.test.filter");
         if (filter != null && !filter.isBlank()) {
-            classNames.removeIf(cn -> !cn.contains(filter));
             System.out.println("Filter '" + filter + "' active");
         }
+        List<String> classNames = discoverTestClasses(testBundles, filter);
         System.out.println("Discovered " + classNames.size() + " test classes");
 
         Bundle mcp = null;
@@ -185,6 +158,70 @@ public final class JawataBoot {
         return failed;
     }
 
+    // ---------------------------------------------------------- testable seams
+
+    /** Result of {@link #isolateSession}: the rewritten argv + the created session dir. */
+    static final class SessionArgs {
+        final List<String> rewrittenArgs;
+        final Path sessionPath;
+        SessionArgs(List<String> rewrittenArgs, Path sessionPath) {
+            this.rewrittenArgs = rewrittenArgs;
+            this.sessionPath = sessionPath;
+        }
+    }
+
+    /**
+     * Session isolation (JawataLauncher behaviour, verbatim): {@code -data <base>}
+     * becomes {@code <base>/<uuid8>} (dir created), the ORIGINAL base is published
+     * as {@code jawata.workspace.root} unless already set; all other args pass
+     * through untouched. Package-visible for unit tests.
+     */
+    static SessionArgs isolateSession(List<String> args) throws java.io.IOException {
+        List<String> modified = new ArrayList<>();
+        Path sessionPath = null;
+        for (int i = 0; i < args.size(); i++) {
+            if ("-data".equals(args.get(i)) && i + 1 < args.size()) {
+                Path basePath = Path.of(args.get(i + 1));
+                if (System.getProperty("jawata.workspace.root") == null) {
+                    System.setProperty("jawata.workspace.root", basePath.toAbsolutePath().toString());
+                }
+                sessionPath = basePath.resolve(UUID.randomUUID().toString().substring(0, 8));
+                Files.createDirectories(sessionPath);
+                modified.add("-data");
+                modified.add(sessionPath.toString());
+                i++;
+            } else {
+                modified.add(args.get(i));
+            }
+        }
+        return new SessionArgs(modified, sessionPath);
+    }
+
+    /**
+     * Test-class discovery: scan the org.jawata.* jars in {@code testBundles} for
+     * top-level {@code *Test.class} entries; apply the optional substring
+     * {@code filter}. Package-visible for unit tests.
+     */
+    static List<String> discoverTestClasses(Path testBundles, String filter) throws Exception {
+        List<String> classNames = new ArrayList<>();
+        try (Stream<Path> jars = Files.list(testBundles)) {
+            for (Path jar : jars.filter(p -> p.getFileName().toString().startsWith("org.jawata.")
+                    && p.getFileName().toString().endsWith(".jar")).toList()) {
+                try (JarFile jf = new JarFile(jar.toFile())) {
+                    jf.stream().map(java.util.jar.JarEntry::getName)
+                        .filter(n -> n.endsWith("Test.class") && !n.contains("$"))
+                        .map(n -> n.substring(0, n.length() - 6).replace('/', '.'))
+                        .forEach(classNames::add);
+                }
+            }
+        }
+        classNames.sort(String::compareTo);
+        if (filter != null && !filter.isBlank()) {
+            classNames.removeIf(cn -> !cn.contains(filter));
+        }
+        return classNames;
+    }
+
     // ------------------------------------------------------------------ common
 
     private static Map<String, String> baseProps(Path home, Path bundlesDir, Path extraBundles)
@@ -203,7 +240,8 @@ public final class JawataBoot {
         return props;
     }
 
-    private static String osgiBundlesList(Path dir) throws Exception {
+    /** Package-visible for unit tests. */
+    static String osgiBundlesList(Path dir) throws Exception {
         List<String> entries = new ArrayList<>();
         try (Stream<Path> jars = Files.list(dir)) {
             jars.filter(p -> p.getFileName().toString().endsWith(".jar"))
