@@ -27,7 +27,7 @@ jobs:
     # 22d: plain Maven build (Eclipse bundles from Maven Central; no Tycho, no p2).
     - name: Build
       shell: bash
-      run: mvn -B -f build/pom.xml install -DskipTests
+      run: mvn -B -f build/pom.xml install
 
     # The full suite runs in-framework (the tycho-surefire replacement): the boot
     # module starts Equinox, installs the test fragments, runs JUnit inside.

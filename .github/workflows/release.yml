@@ -26,7 +26,7 @@ jobs:
 
     # 22d: plain Maven build (Eclipse bundles from Maven Central; no Tycho, no p2).
     - name: Build
-      run: mvn -B -f build/pom.xml install -DskipTests
+      run: mvn -B -f build/pom.xml install
 
     - name: Test (in-framework)
       timeout-minutes: 75
