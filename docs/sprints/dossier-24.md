@@ -598,3 +598,51 @@ distinguishes `totalSeen` from `returned` for the same reason.
 | capturing logpoint | declares that it perturbs | `perturbs: true`, `suspendsTarget: true`; captured `iteration*2 + offset()` evaluated in the live frame; program NOT left suspended ✓ |
 | budget | stops itself, disowns the partial stream | stopped at 6; message says "not all of them"; program unaffected ✓ |
 | DevProbeTest | green | **4/4** ✓ |
+
+## C11 — D9: replay + invariant capture (2026-07-13)
+
+### What shipped
+
+`debug(action=replay)` — a generic descriptor: launch a program, declare what must
+ALWAYS be true, and stop at the FIRST moment it is not. The invariant is armed as its
+own **negation** on a conditional breakpoint, so the program runs at speed and stops
+only where it is actually broken. What comes back is the first violation — stack,
+locals, captured expressions — stored as an artifact with provenance. toolCount stays
+44.
+
+The thread is left SUSPENDED in the violation, so you investigate **from the moment it
+broke**, not backwards from the wreckage.
+
+### THE FIRST ONE, AND ONLY THE FIRST
+
+The fixture breaks `balance >= 0` at event 7 — and again at 8, and at 9. That is
+deliberate: it makes "the FIRST violation" a real assertion rather than a tautology.
+A capture at event 8 would be a capture of a program that was ALREADY wrong, which
+tells you little about why. The breakpoint is disarmed the instant it fires, so no
+later violation can be mistaken for the first: proven by `hitNumber == 1` and by the
+captured state (`event 7, amount 40, balance -40`).
+
+### THREE OUTCOMES, NEVER MERGED
+
+- **violated** → the capture, the artifact, the suspended thread.
+- **held** → the replay RAN OUT and the invariant held at every check. An answer.
+- **inconclusive** → no violation yet, but the program is STILL RUNNING. This is NOT
+  "the invariant held" — it is "we do not know", and it says so. (Proven against a
+  never-ending program: `programEnded: false`, conclusion says STILL RUNNING.)
+
+Plus: an invariant that cannot be EVALUATED (a name not in scope at that line) STOPS
+and reports the condition error — it is never silently treated as "not violated". A
+condition that quietly never matches looks exactly like a bug that never happens,
+which is the most expensive wrong answer a debugger can give.
+
+### Verification (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| exactly ONE capture at the first violation | event 7, not 8 or 9 | `event 7, amount 40, balance -40`; `hitNumber 1` ✓ |
+| suspended IN the violation | investigate from there | thread suspended in `apply`, stack readable ✓ |
+| artifact + provenance | what was checked, on what, when | manifest carries invariant / target / sessionId / createdMillis; `capture.json` on disk ✓ |
+| invariant HOLDS | reported as an answer | `violated: false`, `programEnded: true`, "held at every check" ✓ |
+| inconclusive ≠ pass | never dressed up as clean | `programEnded: false`, "STILL RUNNING … not yet" ✓ |
+| unevaluatable invariant | stops, blames the condition | `conditionError` + "not because it was true" ✓ |
+| ReplayInvariantTest | green | **5/5** (×2) ✓ |

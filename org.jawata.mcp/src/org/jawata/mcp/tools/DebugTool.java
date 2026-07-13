@@ -41,7 +41,7 @@ public class DebugTool extends AbstractTool {
         "wait", "threads", "snapshot", "evaluate", "step", "resume", "instances",
         "set_value", "force_return", "pop_frame", "redefine", "mutations",
         "probe_set", "probe_clear", "probe_list", "probe_read",
-        "artifacts", "artifact_delete");
+        "replay", "artifacts", "artifact_delete");
 
     private static final List<String> PROBE_KINDS =
         List.of("field_watch", "method_trace", "logpoint");
@@ -198,6 +198,22 @@ public class DebugTool extends AbstractTool {
             is a conclusion about a program you edited. `mutations` is how you (and whoever
             reads your report) can tell which is which — so use it, and say what you changed.
 
+            REPLAY WITH AN INVARIANT — the one that finds the bug for you:
+            - replay — launch a program, declare what must ALWAYS be true, and stop at the
+                       FIRST moment it is not. Needs: mainClass, classpath, invariant (a
+                       boolean Java expression), className + line (where to check it).
+                       Optional: capture (expressions to record), args, timeoutMillis.
+
+                       The invariant is armed as its own negation, so the program runs at
+                       speed and stops only when it is actually broken. What comes back is
+                       the FIRST violation — stack, locals, and your captured expressions —
+                       stored as an artifact with its provenance. The thread is left
+                       SUSPENDED right there, so you can snapshot, evaluate and step from
+                       the exact moment things went wrong, not from the wreckage afterwards.
+
+                       If the invariant HELD for the whole run, it says so — which is an
+                       answer, not a failure.
+
             ARTIFACTS: artifacts / artifact_delete — what a session left behind (replay
             captures, dumps), with provenance and an expiry. Explicit delete, because
             these get large.
@@ -274,8 +290,12 @@ public class DebugTool extends AbstractTool {
             "enum", List.of("in", "over", "out", "to_line"),
             "description", "step: which step."));
         properties.put("timeoutMillis", Map.of("type", "integer",
-            "description", "wait: how long to wait for a hit (default 5000, max 60000). A "
-                + "timeout is a normal answer — 'nothing yet' — not an error."));
+            "description", "wait: how long to BLOCK waiting for a hit (default 30000, max "
+                + "240000). A timeout is a normal answer — 'nothing yet' — not an error, and "
+                + "nothing is lost: the hit keeps the thread suspended until you collect it. "
+                + "replay: how long to run before giving up (default 60000); there, 'no "
+                + "violation yet, still running' is NOT the same answer as 'the invariant "
+                + "held', and the response says which it is."));
         properties.put("depth", Map.of("type", "integer",
             "description", "snapshot/instances: how deep to expand objects (default 3)."));
         properties.put("maxItems", Map.of("type", "integer",
@@ -298,6 +318,10 @@ public class DebugTool extends AbstractTool {
             "description", "probe_set kind=logpoint: expressions to evaluate at each pass. "
                 + "NOTE: capturing reads a frame, which STOPS the thread briefly — the probe "
                 + "reports perturbs:true. Without capture, nothing is stopped."));
+        properties.put("invariant", Map.of("type", "string",
+            "description", "replay: a boolean Java expression that must ALWAYS hold (e.g. "
+                + "\"balance >= 0\"). Armed as its own negation, so the program runs at speed "
+                + "and stops only where it is actually broken."));
         properties.put("budget", Map.of("type", "integer",
             "description", "probe_set: stop after this many events (default 1000). The probe "
                 + "then disables itself and says so — what you have is the first N, not all."));
@@ -339,6 +363,7 @@ public class DebugTool extends AbstractTool {
                 case "probe_clear" -> probeClear(arguments);
                 case "probe_list" -> probeList(arguments);
                 case "probe_read" -> probeRead(arguments);
+                case "replay" -> replay(arguments);
                 case "artifacts" -> listArtifacts();
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
@@ -728,6 +753,116 @@ public class DebugTool extends AbstractTool {
             .returnedCount(events.size())
             .steering("`totalSeen` is how many events the probe saw; `returned` is how many we "
                 + "kept. If they differ, this is a WINDOW on the stream, not the stream.")
+            .build());
+    }
+
+    /**
+     * Launch a replay, declare an invariant, and capture the FIRST moment it breaks.
+     *
+     * <p>The invariant is armed as its own negation on a conditional breakpoint: the program
+     * runs at speed and stops only where it is actually broken. That is the difference
+     * between "here is a log of everything that happened" and "here is the moment it went
+     * wrong, with the program still standing in it".</p>
+     */
+    private ToolResponse replay(JsonNode arguments) throws Exception {
+        String mainClass = getStringParam(arguments, "mainClass");
+        String classpath = getStringParam(arguments, "classpath");
+        String invariant = getStringParam(arguments, "invariant");
+        String className = getStringParam(arguments, "className");
+        Integer line = optionalInt(arguments, "line");
+
+        if (mainClass == null || classpath == null || invariant == null
+                || className == null || line == null) {
+            return ToolResponse.invalidParameter("invariant",
+                "replay needs mainClass, classpath, invariant (a boolean expression), and "
+                    + "className + line (where to check it).");
+        }
+
+        List<String> command = new ArrayList<>(List.of("-cp", classpath, mainClass));
+        command.addAll(stringList(arguments, "args"));
+        RuntimeSession session = sessions.launch(command, null, List.of());
+        DebugController debugger = debuggerOf(session);
+
+        // Armed as the NEGATION: we do not want every event, we want the broken one.
+        Map<String, Object> armed = debugger.setBreakpoint("conditional", className, line,
+            null, null, "!(" + invariant + ")", null);
+
+        debugger.resume(null);   // start the held program
+
+        long timeout = Math.min(MAX_WAIT_MILLIS,
+            Math.max(1_000, getIntParam(arguments, "timeoutMillis", 60_000)));
+        Optional<Map<String, Object>> violation = debugger.awaitHit(timeout);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sessionId", session.id);
+        result.put("invariant", invariant);
+        result.put("checkedAt", className + ":" + line);
+
+        if (violation.isEmpty()) {
+            // The invariant HELD (or the run did not reach a violation in time). Both are
+            // answers — and they are DIFFERENT answers, so we do not merge them.
+            boolean ended = !debugger.isLive();
+            result.put("violated", false);
+            result.put("programEnded", ended);
+            result.put("conclusion", ended
+                ? "The replay ran to completion and the invariant held at every check."
+                : "No violation within " + timeout + "ms, and the program is STILL RUNNING — "
+                    + "so this is not yet 'the invariant holds'. Wait longer, or check that "
+                    + "the invariant and its location are what you meant.");
+            return ToolResponse.success(result, ResponseMeta.builder()
+                .steering(ended
+                    ? "The invariant held. The session is still open if you want to look."
+                    : "Inconclusive, not clean — say so if you report it.")
+                .build());
+        }
+
+        // THE FIRST VIOLATION. Disarm at once: every later event would break it too, and a
+        // second capture would make "the first" a lie.
+        debugger.clearBreakpoint((String) armed.get("breakpointId"));
+
+        Map<String, Object> hit = violation.get();
+        long threadId = ((Number) hit.get("threadId")).longValue();
+
+        Map<String, Object> capture = new LinkedHashMap<>(hit);
+        capture.put("state", debugger.snapshot(threadId, 0,
+            getIntParam(arguments, "depth", JdiValues.DEFAULT_DEPTH),
+            JdiValues.DEFAULT_MAX_ITEMS, JdiValues.DEFAULT_MAX_BYTES));
+
+        Map<String, Object> captured = new LinkedHashMap<>();
+        for (String expression : stringList(arguments, "capture")) {
+            try {
+                captured.put(expression, debugger.evaluate(threadId, 0, expression).get("summary"));
+            } catch (DebugController.DebugException e) {
+                captured.put(expression, e.code + ": " + e.getMessage());
+            }
+        }
+        capture.put("captured", captured);
+
+        // Store it with its provenance — a capture whose origin is unknown is evidence of
+        // nothing.
+        String artifactId = artifacts.newArtifactId("replay");
+        Path dir = artifacts.createArtifactDir(artifactId);
+        Files.writeString(dir.resolve("capture.json"),
+            new com.fasterxml.jackson.databind.ObjectMapper()
+                .writerWithDefaultPrettyPrinter().writeValueAsString(capture));
+        artifacts.writeManifest(artifactId, Map.of(
+            "kind", "replay",
+            "sessionId", session.id,
+            "target", mainClass,
+            "invariant", invariant,
+            "checkedAt", className + ":" + line,
+            "violated", true,
+            "files", List.of("capture.json")));
+
+        result.put("violated", true);
+        result.put("firstViolation", capture);
+        result.put("artifactId", artifactId);
+        result.put("threadId", threadId);
+        return ToolResponse.success(result, ResponseMeta.builder()
+            .steering("This is the FIRST violation — the breakpoint was disarmed the moment it "
+                + "fired, so no later one can be mistaken for it. The thread is SUSPENDED "
+                + "right there: snapshot, evaluate and step from the moment it broke, rather "
+                + "than reasoning backwards from the wreckage. sessionId " + session.id + ".")
             .build());
     }
 
