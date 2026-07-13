@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -91,20 +92,42 @@ class DebugSessionSpineTest {
         assertEquals("launched", session.get("origin"));
         assertEquals("live", session.get("state"));
 
+        // A launched target is HELD before its first instruction, and a JVM that has not
+        // run cannot service an attach query. So at this moment its preset capabilities
+        // are genuinely UNKNOWN — and the report says unknown rather than false. Claiming
+        // "flightRecording: false" about a JVM launched WITH flight recording would be a
+        // lie of exactly the kind this report exists to prevent.
         @SuppressWarnings("unchecked")
-        Map<String, Object> capabilities = (Map<String, Object>) session.get("capabilities");
+        Map<String, Object> held = (Map<String, Object>) session.get("capabilities");
+        assertEquals(Boolean.TRUE, held.get("capabilitiesUnread"), "got: " + held);
         for (String capability : DevSimPreset.CAPABILITIES) {
-            assertTrue(capabilities.containsKey(capability),
-                "the report must name every preset capability, missing: " + capability
-                    + " in " + capabilities.keySet());
+            assertTrue(held.containsKey(capability),
+                "every preset capability is NAMED even when unknown: " + held.keySet());
+        }
+        assertNull(held.get("flightRecording"), "unknown, not false: " + held);
+        assertEquals(Boolean.TRUE, held.get("debug"),
+            "except the debug channel — we are talking over it right now");
+        // What the DEBUGGER can do comes over JDWP, so it IS readable while held.
+        assertTrue(held.containsKey("canRedefineClasses"), "got: " + held);
+        assertTrue(held.containsKey("canPopFrames"), "got: " + held);
+
+        // START it. Now it can answer, and the truth arrives.
+        ObjectNode resume = action("resume");
+        resume.put("sessionId", (String) session.get("sessionId"));
+        assertTrue(tool.execute(resume).isSuccess());
+
+        ObjectNode status = action("status");
+        status.put("sessionId", (String) session.get("sessionId"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> capabilities =
+            (Map<String, Object>) data(tool.execute(status)).get("capabilities");
+
+        for (String capability : DevSimPreset.CAPABILITIES) {
             assertEquals(Boolean.TRUE, capabilities.get(capability),
-                "a preset-launched JVM has " + capability + ": " + capabilities);
+                "a running preset-launched JVM has " + capability + ": " + capabilities);
         }
         assertEquals(Boolean.TRUE, capabilities.get("presetPrepared"));
-
-        // And what the DEBUGGER can do here — asked of the VM, never assumed.
-        assertTrue(capabilities.containsKey("canRedefineClasses"), "got: " + capabilities);
-        assertTrue(capabilities.containsKey("canPopFrames"), "got: " + capabilities);
+        assertNull(capabilities.get("capabilitiesUnread"), "no longer unread: " + capabilities);
     }
 
     @Test

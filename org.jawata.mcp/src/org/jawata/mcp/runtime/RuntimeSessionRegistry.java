@@ -45,7 +45,7 @@ public final class RuntimeSessionRegistry {
         Map<String, Object> capabilities = DevSimPreset.report(
             JvmTargets.systemProperties(pid), JvmTargets.jdiCapabilities(vm));
         return admit(new RuntimeSession(newId(), RuntimeSession.Origin.ATTACHED,
-            "pid " + pid, vm, null, capabilities));
+            "pid " + pid, vm, null, capabilities, pid));
     }
 
     /** Launch a JVM under the dev/sim preset and connect to it. */
@@ -65,10 +65,15 @@ public final class RuntimeSessionRegistry {
             throw e;
         }
         Process process = out[0];
+        // Do NOT ask a target that is held before its first instruction what it can do:
+        // the attach channel is serviced by the target itself, so the query cannot be
+        // answered — and the half-finished handshake leaves an .attach_pid file behind.
+        // The capabilities come back UNKNOWN (never false), and RuntimeSession re-reads
+        // them from the JVM the moment it is running and somebody asks.
         Map<String, Object> capabilities = DevSimPreset.report(
-            JvmTargets.systemProperties(process.pid()), JvmTargets.jdiCapabilities(vm));
+            Map.of(), JvmTargets.jdiCapabilities(vm));
         return admit(new RuntimeSession(newId(), RuntimeSession.Origin.LAUNCHED,
-            String.join(" ", command), vm, process, capabilities));
+            String.join(" ", command), vm, process, capabilities, process.pid()));
     }
 
     public Optional<RuntimeSession> get(String sessionId) {

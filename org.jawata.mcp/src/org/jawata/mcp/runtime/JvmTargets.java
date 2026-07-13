@@ -76,7 +76,10 @@ public final class JvmTargets {
             throws Exception {
         List<String> full = new ArrayList<>();
         full.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        full.addAll(DevSimPreset.jvmArgs());
+        // Held before its first instruction: the caller arms breakpoints, THEN starts it.
+        // See DevSimPreset#jvmArgsForLaunch — a launched target that is already running
+        // has already run past whatever you wanted to see.
+        full.addAll(DevSimPreset.jvmArgsForLaunch());
         if (extraJvmArgs != null) {
             full.addAll(extraJvmArgs);
         }

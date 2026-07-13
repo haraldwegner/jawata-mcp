@@ -12,19 +12,36 @@ package com.example.debug;
  */
 public final class DebugTarget {
 
-    /** Changes on every tick — the field a watchpoint watches. */
+    /** Changes on every tick — the field a WRITE watchpoint watches. */
     private static int lastSignal;
 
     /** Flipped by the debugger in the hypothesis-testing proofs (D7). */
     private static boolean tripped;
 
+    /** A deep graph, so a bounded object expansion has something to truncate. */
+    static Node graph;
+
+    /**
+     * Exactly this many, allocated once and never again — so "how many Widgets are
+     * live?" has a right answer the debugger can be checked against.
+     */
+    static final int WIDGET_COUNT = 25;
+    static final Widget[] WIDGETS = new Widget[WIDGET_COUNT];
+
     public static void main(String[] args) throws Exception {
+        graph = chain(12);
+        for (int i = 0; i < WIDGET_COUNT; i++) {
+            WIDGETS[i] = new Widget(i, "widget-" + i);
+        }
+
+        Node head = graph;                           // a LOCAL holding the deep graph
         int iteration = 0;
         while (true) {
             int signal = computeSignal(iteration);   // the named seam
-            lastSignal = signal;
+            lastSignal = signal;                     // the field WRITE
+            int echoed = echo();                     // the field READ
 
-            if (signal % 17 == 0) {
+            if (echoed % 17 == 0) {
                 try {
                     riskyStep(signal);               // the exception site
                 } catch (IllegalStateException expected) {
@@ -33,6 +50,9 @@ public final class DebugTarget {
             }
             if (tripped) {
                 System.out.println("tripped at iteration " + iteration);
+            }
+            if (head != null && head.value < 0) {
+                throw new AssertionError("unreachable; keeps 'head' live for the debugger");
             }
             spin();                                  // the hot loop
             Thread.sleep(25);
@@ -49,6 +69,59 @@ public final class DebugTarget {
 
     static int offset() {
         return 7;
+    }
+
+    /**
+     * Reads {@link #lastSignal}. Without a reader, a field-ACCESS watchpoint would
+     * never fire — and a test that hangs proves nothing at all.
+     */
+    static int echo() {
+        return lastSignal;
+    }
+
+    /** A method with arguments and a return value — what `evaluate` invokes. */
+    static int multiply(int a, int b) {
+        return a * b;
+    }
+
+    private static Node chain(int depth) {
+        Node head = null;
+        for (int i = depth; i >= 1; i--) {
+            Node node = new Node();
+            node.value = i;
+            node.label = "node-" + i;
+            node.next = head;
+            head = node;
+        }
+        return head;
+    }
+
+    /** A link in the deep graph — the thing a bounded expansion must stop walking. */
+    static final class Node {
+        int value;
+        String label;
+        Node next;
+
+        @Override
+        public String toString() {
+            return "Node(" + label + ")";
+        }
+    }
+
+    /** A type with a known, fixed population — the instances-of-type proof. */
+    static final class Widget {
+        final int id;
+        final String name;
+
+        Widget(int id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return "Widget(" + id + ")";
+        }
     }
 
     /** Throws every time it is called — the exception site. */

@@ -66,6 +66,31 @@ public final class DevSimPreset {
         return args;
     }
 
+    /**
+     * The preset, for a JVM <b>we</b> launch to debug — identical except that the
+     * program is held before its first instruction.
+     *
+     * <p>The difference matters and it is not cosmetic. {@link #jvmArgs()} prepares a
+     * JVM the HOST starts (a sim you will later attach to): there, {@code suspend=n} is
+     * the whole point — attaching must not change whether the program runs. But when
+     * the debugger itself launches the target, {@code suspend=n} means the program is
+     * already running by the time anyone can arm a breakpoint, so the first iterations
+     * are simply gone and a breakpoint on the first line of {@code main} can never be
+     * hit. That is not a debugger.</p>
+     *
+     * <p>So a launched target starts SUSPENDED, and the caller arms its breakpoints and
+     * then explicitly starts the program. This is what every IDE does, and it is what
+     * makes "run to the third iteration" mean the third — not the third one we happened
+     * to catch.</p>
+     */
+    public static List<String> jvmArgsForLaunch() {
+        List<String> args = new ArrayList<>(jvmArgs());
+        args.replaceAll(arg -> arg.startsWith("-agentlib:jdwp")
+            ? "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:0"
+            : arg);
+        return args;
+    }
+
     /** How a preset-prepared JVM identifies itself to us. */
     public static final String MARKER = "jawata.devsim.preset";
 
@@ -84,6 +109,28 @@ public final class DevSimPreset {
         // We are talking to it over JDWP, so the debug channel is present by
         // construction — no need to infer it from a flag.
         report.put("debug", true);
+
+        if (systemProperties.isEmpty()) {
+            // The target could not be asked. That happens for a JVM we launched and are
+            // still HOLDING before its first instruction: the attach channel is serviced
+            // by the target itself, and a target that has not run cannot service anything.
+            //
+            // So we say we do not know. Reporting `false` here would be a lie of exactly
+            // the kind this report exists to prevent — "flightRecording: false" on a JVM
+            // launched WITH flight recording. Unknown is not the same as absent, and the
+            // truth arrives the moment the program starts.
+            for (String capability : CAPABILITIES) {
+                report.putIfAbsent(capability, null);
+            }
+            report.put("presetPrepared", null);
+            report.put("capabilitiesUnread", true);
+            report.put("why", "the target has not run yet (held at start), so it cannot "
+                + "answer what it can do. Start it with debug(action=resume); these are "
+                + "read from the JVM itself the moment it can be asked.");
+            report.putAll(jdiCapabilities);
+            return report;
+        }
+
         report.put("flightRecording", hasFlightRecording(systemProperties));
         report.put("jmx", systemProperties.containsKey("com.sun.management.jmxremote"));
         report.put("nativeMemoryTracking", nmtEnabled(systemProperties));

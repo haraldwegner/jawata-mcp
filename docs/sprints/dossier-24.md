@@ -416,3 +416,72 @@ restriction.
 | discover | never offers the debugger itself | self excluded ✓ |
 | DebugSessionSpineTest | green | **6/6** ✓ |
 | Full suite | 1258 | **1258/1258** after one contention-flake rerun (RenameSymbolToolTest; 10/10 ×3 focused) ✓ |
+
+## C8 — D6: the interactive debugger (2026-07-13)
+
+### What shipped
+
+`org.jawata.mcp.runtime.debug`: **DebugController** (the JDI event pump — one
+thread owns the event queue for the session's life; seven breakpoint kinds;
+stepping; snapshots; the bounded instances query), **JdiEvaluator** (JDT parses the
+expression, JDI executes it against the live frame — including real method
+invocation in the target), **JdiValues** (bounded expansion that reports every
+bound that bites), **HeapHistogram** (the exact live count, when the enumeration
+cap bites). `debug` gains: breakpoint_set/clear/list · wait · threads · snapshot ·
+evaluate · step · resume · instances · artifacts · artifact_delete. toolCount
+stays **44** (all behind the one front door).
+
+### THE C7 GAP — disclosed, not absorbed
+
+C7's exit criteria included the artifact store (store/list/delete) and the async
+shape. **Neither was built, and the C7 summary did not say so.** Closed here:
+`RuntimeArtifactStore` (provenance manifest · expiry · explicit delete · an
+unmanifested directory is not an artifact) + 3 tests, and the `artifacts` /
+`artifact_delete` actions. Recorded because a checkpoint that quietly passes on an
+unmet criterion is the same failure this sprint's product exists to prevent.
+
+### THE FINDINGS — three, all caught by tests, all real
+
+**1. A launched target must start SUSPENDED.** With the host preset's `suspend=n`,
+the program is already running before a single breakpoint can be armed: a
+breakpoint on the first line of `main` can never hit, and "the third iteration"
+means "the third one we happened to catch". `DevSimPreset.jvmArgsForLaunch()` now
+uses `suspend=y`; the caller arms, then `debug(action=resume)` starts the program.
+The HOST preset keeps `suspend=n` — attaching to a running sim must not change
+whether it runs. (The event pump must also NOT resume the `VMStartEvent` set while
+the target is held: its policy is SUSPEND_ALL, so resuming it starts the program
+behind the caller's back.)
+
+**2. A held JVM cannot answer, so its capabilities are UNKNOWN — never false.**
+The attach channel is serviced by the target itself, and a target that has not run
+services nothing. The report came back `flightRecording: false, jmx: false,
+presetPrepared: false` — about a JVM launched WITH all of them. Reporting `false`
+for unknown is the same class of lie as reporting a cap as a count. Now: `null` +
+`capabilitiesUnread: true` + the reason, re-read the moment the program runs.
+
+**3. A "resume until suspendCount()==0" loop is a race that eats breakpoints.**
+`suspendCount()` is a VM round-trip, so the loop can observe a NEW suspension — the
+breakpoint that fired microseconds after the first resume — and resume it away.
+Symptom: `wait` returns a hit whose thread is already running again
+(`IncompatibleThreadStateException`, `state=SLEEPING, suspendCount=0`); steps land
+far past their target. An event set with an event-thread policy suspends once, so
+we release exactly once. The drain-to-zero loop is correct ONLY in teardown, and
+only after every request is deleted. Found because the error message was made to
+report the VM's own state — "it threw" is not a diagnosis.
+
+### Verification (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| 6 breakpoint kinds, field ACCESS and WRITE separate | each set→hit→inspect→step→resume | 7 kinds proven (line · method · conditional · hit_count · exception · field_access · field_write) ✓ |
+| conditional | passes over non-matching iterations | stops at `iteration == 4`, verified by evaluating it ✓ |
+| hit_count | the Nth, not the first | `hitCount=3` → `iteration == 2` exactly (deterministic: not one iteration ran before arming) ✓ |
+| exception | catches a SWALLOWED throw | caught at the throw site in `riskyStep`, with its message ✓ |
+| evaluate | incl. a method-invoking expression | `offset()` → 7, `multiply(6,7)` → 42, `iteration*2 + offset()` composed ✓ |
+| evaluate: honest refusal | unsupported form refused BY NAME | `iteration = 99` → `EVALUATION_UNSUPPORTED` ✓ |
+| paged object expansion | deep graph cut at the bound, and says so | 12-deep graph, depth=2 → `truncated` + the reason; depth=5 yields more ✓ |
+| instances-of-type | exact below cap, dump-backed above | Widget → 25 exact (live); String → exact count from the heap histogram, `pagingLimited` ✓ |
+| snapshot thread-state honesty | a RUNNING thread yields no stack | `stack: null` + `stackUnavailable`; asking anyway → `THREAD_NOT_SUSPENDED` ✓ |
+| deferred breakpoint | not-loaded ≠ never-binds | `bound: false` + `pending` + reason; binds on class load and hits ✓ |
+| DebugInteractiveTest | green | **13/13**, soaked **3×13/13** ✓ |
+| RuntimeArtifactStoreTest | green | **3/3** ✓ |

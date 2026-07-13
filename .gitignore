@@ -62,3 +62,6 @@ docs/REFACTORING_LESSONS_LEARNED.md
 # location) — the *.jar rule silently dropped it from 8b9f8eb; sentinel caught it on CI
 !org.jawata.target/patched-bundles/*.jar
 !org.jawata.target/carry-bundles/*.jar
+
+# JVM attach handshake litter (a target held at start never consumes it)
+.attach_pid*
