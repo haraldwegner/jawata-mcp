@@ -791,7 +791,7 @@ public final class DebugController implements AutoCloseable {
     public Map<String, Object> snapshot(long threadId, int frameIndex, int depth,
                                         int maxItems, int maxBytes) throws DebugException {
         requireLive();
-        ThreadReference thread = suspendedThread(threadId);
+        ThreadReference thread = readableThread(threadId);
 
         List<StackFrame> frames;
         try {
@@ -902,8 +902,9 @@ public final class DebugController implements AutoCloseable {
     public Map<String, Object> evaluate(long threadId, int frameIndex, String expression)
             throws DebugException {
         requireLive();
-        suspendedThread(threadId);   // the frame must be stopped or there is nothing to read
-        ThreadReference thread = suspended.get(threadId);
+        // The frame must be stopped AND readable — a force-returned frame is neither there
+        // nor evaluable, however stopped the thread is.
+        ThreadReference thread = readableThread(threadId);
         try {
             Value result = new JdiEvaluator(thread, frameIndex).evaluate(expression);
             Map<String, Object> evaluated = new LinkedHashMap<>();
@@ -1000,7 +1001,23 @@ public final class DebugController implements AutoCloseable {
      */
     private void resumeThread(ThreadReference thread) {
         suspended.remove(thread.uniqueID());
+        // The thread is moving, which is exactly what rebuilds JDI's cached stack — so
+        // whatever was stale about it no longer is.
+        staleStacks.remove(thread.uniqueID());
         thread.resume();
+    }
+
+    /** A thread whose stack we can actually READ — not merely one that is stopped. */
+    private ThreadReference readableThread(long threadId) throws DebugException {
+        ThreadReference thread = suspendedThread(threadId);
+        if (staleStacks.contains(threadId)) {
+            throw new DebugException("STACK_STALE_AFTER_FORCE_RETURN",
+                "This thread's frame was force-returned. The JVM has popped it, but JDI does "
+                    + "not rebuild its cached stack until the thread moves — so anything we "
+                    + "showed you now would be the method you just abandoned, which is no "
+                    + "longer there. Step once (debug(action=step, mode=over)), then read it.");
+        }
+        return thread;
     }
 
     private ThreadReference suspendedThread(long threadId) throws DebugException {
@@ -1012,6 +1029,302 @@ public final class DebugController implements AutoCloseable {
                     + "reading. Suspended right now: " + suspended.keySet());
         }
         return thread;
+    }
+
+    // --------------------------------------------------- D7: hypothesis testing
+
+    /**
+     * Every change we made to the target, in order.
+     *
+     * <p>This exists because a debugged program is no longer the program you started.
+     * Once a value has been overwritten or a frame popped, any conclusion drawn from what
+     * happens next is a conclusion about a program WE edited — and a session that cannot
+     * say what it changed cannot be trusted to report what it found.</p>
+     */
+    private final List<Map<String, Object>> mutations = new CopyOnWriteArrayList<>();
+
+    /**
+     * Threads whose cached stack JDI has not rebuilt yet (see {@link #forceReturn}). We
+     * would rather refuse to show a stack than show one that is no longer there.
+     */
+    private final java.util.Set<Long> staleStacks = java.util.concurrent.ConcurrentHashMap
+        .newKeySet();
+
+    public List<Map<String, Object>> mutations() {
+        return List.copyOf(mutations);
+    }
+
+    private Map<String, Object> recordMutation(String kind, Map<String, Object> detail) {
+        Map<String, Object> mutation = new LinkedHashMap<>(detail);
+        mutation.put("mutation", kind);
+        mutation.put("atMillis", System.currentTimeMillis());
+        mutation.put("mutationId", "mut-" + ids.incrementAndGet());
+        mutations.add(mutation);
+        appendToJournal(mutation);   // the watcher sees what we did, not only what it hit
+        return mutation;
+    }
+
+    /**
+     * "What if this value were X?" — overwrite a local or a field in the live program and
+     * let it run on.
+     */
+    public Map<String, Object> setValue(long threadId, int frameIndex, String name,
+                                        String expression) throws DebugException {
+        requireLive();
+        ThreadReference thread = suspendedThread(threadId);
+
+        // Evaluate FIRST: the expression may invoke a method, which resumes the thread and
+        // invalidates every frame we might be holding.
+        Value newValue;
+        try {
+            newValue = new JdiEvaluator(thread, frameIndex).evaluate(expression);
+        } catch (JdiEvaluator.EvalException e) {
+            throw new DebugException(e.code, e.getMessage());
+        }
+
+        StackFrame frame;
+        try {
+            frame = thread.frame(frameIndex);
+        } catch (Exception e) {
+            throw new DebugException("FRAME_OUT_OF_RANGE",
+                "frame " + frameIndex + " is not available: " + e.getMessage());
+        }
+
+        Object oldValue;
+        String target;
+        try {
+            LocalVariable local = localNamed(frame, name);
+            if (local != null) {
+                oldValue = JdiValues.summary(frame.getValue(local));
+                frame.setValue(local, newValue);
+                target = "local";
+            } else {
+                oldValue = setField(frame, name, newValue);
+                target = "field";
+            }
+        } catch (DebugException e) {
+            throw e;
+        } catch (com.sun.jdi.InvalidTypeException e) {
+            throw new DebugException("SET_VALUE_TYPE_MISMATCH",
+                "'" + expression + "' does not fit " + name + ": " + e.getMessage()
+                    + ". The JVM will not let a value of the wrong type into a slot — and "
+                    + "that refusal is protecting you.");
+        } catch (Exception e) {
+            throw new DebugException("SET_VALUE_FAILED",
+                "Cannot set " + name + ": " + e.getClass().getSimpleName() + ": "
+                    + e.getMessage());
+        }
+
+        return recordMutation("set_value", new LinkedHashMap<>(Map.of(
+            "target", target,
+            "name", name,
+            "from", String.valueOf(oldValue),
+            "to", String.valueOf(JdiValues.summary(newValue)),
+            "expression", expression,
+            "threadId", threadId)));
+    }
+
+    private LocalVariable localNamed(StackFrame frame, String name) {
+        try {
+            return frame.visibleVariableByName(name);
+        } catch (Exception e) {
+            return null;   // no local-variable table, or no such local — try a field next
+        }
+    }
+
+    /** @return the value that was there before. */
+    private Object setField(StackFrame frame, String name, Value newValue) throws Exception {
+        ObjectReference self = frame.thisObject();
+        if (self != null) {
+            Field field = self.referenceType().fieldByName(name);
+            if (field != null && !field.isStatic()) {
+                Object old = JdiValues.summary(self.getValue(field));
+                self.setValue(field, newValue);
+                return old;
+            }
+        }
+        ReferenceType declaring = frame.location().declaringType();
+        Field field = declaring.fieldByName(name);
+        if (field == null) {
+            throw new DebugException("SET_VALUE_UNKNOWN_NAME",
+                "'" + name + "' is not a visible local or field in this frame. (If it is a "
+                    + "local, the class may have been compiled without -g, which leaves no "
+                    + "local-variable table to write into.)");
+        }
+        if (!field.isStatic() || !(declaring instanceof ClassType classType)) {
+            throw new DebugException("SET_VALUE_UNREACHABLE_FIELD",
+                "'" + name + "' cannot be written from this frame.");
+        }
+        Object old = JdiValues.summary(declaring.getValue(field));
+        classType.setValue(field, newValue);
+        return old;
+    }
+
+    /**
+     * "What if this method had returned X?" — abandon the rest of the method and return the
+     * given value to its caller, right now.
+     */
+    public Map<String, Object> forceReturn(long threadId, String expression)
+            throws DebugException {
+        requireLive();
+        if (!vm.canForceEarlyReturn()) {
+            throw new DebugException("CAPABILITY_ABSENT",
+                "This JVM cannot force an early return (canForceEarlyReturn=false).");
+        }
+        ThreadReference thread = suspendedThread(threadId);
+
+        Value value;
+        try {
+            value = new JdiEvaluator(thread, 0).evaluate(expression);
+        } catch (JdiEvaluator.EvalException e) {
+            throw new DebugException(e.code, e.getMessage());
+        }
+
+        String abandoned;
+        try {
+            abandoned = thread.frame(0).location().method().name();
+            thread.forceEarlyReturn(value);
+        } catch (com.sun.jdi.InvalidTypeException e) {
+            throw new DebugException("FORCE_RETURN_TYPE_MISMATCH",
+                "'" + expression + "' is not the type this method returns: " + e.getMessage());
+        } catch (Exception e) {
+            throw new DebugException("FORCE_RETURN_FAILED",
+                "Cannot force a return: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+
+        // JDI QUIRK, and it would otherwise make us lie: forceEarlyReturn pops the frame in
+        // the VM but does NOT reset JDI's cached stack for the thread — so frames() keeps
+        // handing back the method we just abandoned. (popFrames DOES reset it; this one does
+        // not.) The cache is rebuilt only when the thread next moves. Rather than serve a
+        // frame that no longer exists, we mark the stack stale and refuse to read it until
+        // the thread has stepped or resumed.
+        staleStacks.add(threadId);
+
+        Map<String, Object> mutation = recordMutation("force_return", new LinkedHashMap<>(Map.of(
+            "method", abandoned,
+            "returned", String.valueOf(JdiValues.summary(value)),
+            "expression", expression,
+            "threadId", threadId,
+            "note", "The rest of " + abandoned + "() did NOT run — side effects included. The "
+                + "thread is suspended in the caller; step once before reading the stack.")));
+        suspended.put(thread.uniqueID(), thread);
+        return mutation;
+    }
+
+    /**
+     * "Let me try that again." — pop the frame, putting the thread back at the call site,
+     * about to make the call afresh.
+     */
+    public Map<String, Object> popFrame(long threadId, int frameIndex) throws DebugException {
+        requireLive();
+        if (!vm.canPopFrames()) {
+            throw new DebugException("CAPABILITY_ABSENT",
+                "This JVM cannot pop frames (canPopFrames=false).");
+        }
+        ThreadReference thread = suspendedThread(threadId);
+        String popped;
+        String landedIn;
+        try {
+            StackFrame frame = thread.frame(frameIndex);
+            popped = frame.location().method().name();
+            thread.popFrames(frame);
+            landedIn = thread.frame(0).location().method().name();
+        } catch (Exception e) {
+            throw new DebugException("POP_FRAME_FAILED",
+                "Cannot pop frame " + frameIndex + ": " + e.getClass().getSimpleName() + ": "
+                    + e.getMessage() + " (a native frame cannot be popped, and neither can "
+                    + "the bottom of the stack).");
+        }
+
+        Map<String, Object> mutation = recordMutation("pop_frame", new LinkedHashMap<>(Map.of(
+            "popped", popped,
+            "nowIn", landedIn,
+            "frameIndex", frameIndex,
+            "threadId", threadId,
+            "note", "The thread is back at the call site, about to call " + popped + "() again. "
+                + "ANY SIDE EFFECT IT ALREADY HAD IS STILL DONE — popping rewinds the stack, "
+                + "not the world.")));
+        suspended.put(thread.uniqueID(), thread);
+        return mutation;
+    }
+
+    /**
+     * "What if the code were different?" — replace a class's bytecode in the running JVM.
+     *
+     * <p>HotSpot allows method BODIES to change and nothing else. Adding or removing a
+     * method or field, or changing the hierarchy, is refused — and we pass that refusal on
+     * plainly instead of dressing it up as an internal error.</p>
+     */
+    public Map<String, Object> redefine(String className, byte[] bytecode) throws DebugException {
+        requireLive();
+        if (!vm.canRedefineClasses()) {
+            throw new DebugException("CAPABILITY_ABSENT",
+                "This JVM cannot redefine classes (canRedefineClasses=false).");
+        }
+        List<ReferenceType> types = vm.classesByName(className);
+        if (types.isEmpty()) {
+            throw new DebugException("TYPE_NOT_LOADED",
+                className + " is not loaded in the target — there is nothing to replace.");
+        }
+        ReferenceType type = types.get(0);
+        try {
+            vm.redefineClasses(Map.of(type, bytecode));
+        } catch (UnsupportedOperationException e) {
+            throw new DebugException("REDEFINE_SCHEMA_CHANGE_UNSUPPORTED",
+                "This JVM will only accept changed method BODIES. The new bytecode changes "
+                    + className + "'s shape — an added or removed method or field, a changed "
+                    + "signature, or a changed hierarchy" + (vm.canUnrestrictedlyRedefineClasses()
+                        ? "" : " — and this JVM cannot do that (canUnrestrictedlyRedefineClasses"
+                            + "=false)") + ". Restart the target with the new code instead.");
+        } catch (NoClassDefFoundError | VerifyError | ClassFormatError e) {
+            throw new DebugException("REDEFINE_REJECTED",
+                "The JVM rejected the new bytecode for " + className + ": "
+                    + e.getClass().getSimpleName() + ": " + e.getMessage()
+                    + " (is this the .class for that exact class?)");
+        } catch (Exception e) {
+            throw new DebugException("REDEFINE_FAILED",
+                "Redefining " + className + " failed: " + e.getClass().getSimpleName() + ": "
+                    + e.getMessage());
+        }
+
+        // Redefinition invalidates the old locations, so our breakpoints must be re-installed
+        // against the NEW class — otherwise they silently stop firing, which looks exactly
+        // like "the bug went away".
+        int reinstalled = reinstallBreakpointsFor(className);
+
+        return recordMutation("redefine", new LinkedHashMap<>(Map.of(
+            "class", className,
+            "bytes", bytecode.length,
+            "breakpointsReinstalled", reinstalled,
+            "note", "Methods already ON THE STACK keep running their old code until they are "
+                + "re-entered. The change takes effect on the next call.")));
+    }
+
+    private int reinstallBreakpointsFor(String className) {
+        List<ReferenceType> types = vm.classesByName(className);
+        if (types.isEmpty()) {
+            return 0;
+        }
+        int reinstalled = 0;
+        for (Bp bp : breakpoints.values()) {
+            if (!className.equals(bp.className) || bp.internal) {
+                continue;
+            }
+            try {
+                if (bp.request != null) {
+                    vm.eventRequestManager().deleteEventRequest(bp.request);
+                    bp.request = null;
+                }
+                bp.bound = false;
+                install(bp, types.get(0));
+                reinstalled++;
+            } catch (DebugException e) {
+                bp.pendingReason = "could not be re-installed after the class was redefined: "
+                    + e.getMessage();
+                log.warn("re-installing {} after redefine failed: {}", bp.id, e.getMessage());
+            }
+        }
+        return reinstalled;
     }
 
     // ------------------------------------------------------------ instances

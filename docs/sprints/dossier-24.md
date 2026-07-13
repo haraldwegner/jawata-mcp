@@ -485,3 +485,70 @@ report the VM's own state — "it threw" is not a diagnosis.
 | deferred breakpoint | not-loaded ≠ never-binds | `bound: false` + `pending` + reason; binds on class load and hits ✓ |
 | DebugInteractiveTest | green | **13/13**, soaked **3×13/13** ✓ |
 | RuntimeArtifactStoreTest | green | **3/3** ✓ |
+
+## C9 — D7: hypothesis testing (2026-07-13)
+
+### What shipped
+
+`debug` gains **set_value** (overwrite a local or a field), **force_return**
+(abandon a method and return a value to its caller now), **pop_frame** (put the
+thread back at the call site), **redefine** (replace a class's bytecode), and
+**mutations** (everything this session changed, in order). toolCount stays 44.
+
+Every mutation is proven by its EFFECT on the live program, never by the tool's own
+report of success: set_value → the program computes from the value WE put there
+(`iteration*2 + offset()` = 2007); force_return → main's local holds 999, a number
+`computeSignal` never produced; pop_frame → the thread really calls the method
+again; redefine → `offset()` returns 42 where it returned 7.
+
+### THE MUTATION LOG — because it is not the same program any more
+
+A debugged program is no longer the program you started, and a finding drawn after a
+mutation is a finding about a program WE edited. So the session records every change
+and `status` always discloses it (`mutationCount`, `programIsUnmodified`). A session
+that cannot say what it changed cannot be trusted to report what it found.
+
+### THE HONEST REFUSAL — a real one, not a synthetic one
+
+HotSpot hot-swaps method BODIES and nothing else. The test compiles a fixture with
+an ADDED METHOD and attempts to redefine: refused as
+`REDEFINE_SCHEMA_CHANGE_UNSUPPORTED`, saying what IS allowed and what to do instead
+(restart the target) — not a raw `UnsupportedOperationException` for the caller to
+decode.
+
+### THE FINDING — a JDI quirk that made the debugger lie
+
+**`forceEarlyReturn` pops the frame in the VM but does NOT reset JDI's cached
+stack** — `frames()` keeps handing back the method you just abandoned, complete with
+its old locals. (`popFrames` DOES reset the cache, so the two mutations behave
+differently and it is easy to assume both are fine.) The cache is rebuilt only when
+the thread next MOVES. A snapshot immediately after a forced return therefore showed
+a frame that no longer exists: a debugger telling a confident lie about where the
+program is.
+
+Fix: the thread's stack is marked stale after a forced return, and reading it
+(snapshot/evaluate) is REFUSED — `STACK_STALE_AFTER_FORCE_RETURN` — until the thread
+has stepped or resumed. We would rather refuse than serve a frame that is not there.
+Recorded in the experience store (5ee5b1ec).
+
+### ALSO — a genuinely flaky test, fixed rather than excused
+
+`ResolveOrRelocateTest` failed ~1 run in 6 even FOCUSED (not CPU contention). Its
+comment claimed to "let the Java model settle" after a rename, but it asserted
+immediately and raced JDT's asynchronous index rebuild. A test that conflates "the
+name is absent" with "the lookup could not complete yet" is flaky by construction —
+the same distinction the PRODUCT already gets right. Now waits, bounded, for the
+settled state it means to assert: 6/6 clean over six consecutive focused runs.
+
+### Verification (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| set_value (local) | the program computes from our value | `iteration`=1000 → `iteration*2+offset()`=2007 ✓ |
+| set_value (field) | a dead branch becomes live | `tripped` false → true ✓ |
+| force_return | caller receives OUR value | main's `signal` = 999 (would have been 7) ✓ |
+| pop_frame | the call happens again | `offset` re-entered from the same call site ✓ |
+| redefine | new body takes effect | `offset()` 7 → 42; breakpoints re-armed against the new class ✓ |
+| honest refusal | schema change refused by name | `REDEFINE_SCHEMA_CHANGE_UNSUPPORTED` + what to do ✓ |
+| mutation log | every change, in order, disclosed on status | 2 mutations, ordered; `programIsUnmodified: false` ✓ |
+| DebugMutateTest | green | **7/7** (×3) ✓ |

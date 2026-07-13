@@ -55,6 +55,30 @@ class ResolveOrRelocateTest {
         return args;
     }
 
+    /**
+     * Retry until the Java model has caught up with a mutation we just made, or give up.
+     *
+     * <p>JDT rebuilds its index asynchronously, so a query fired the instant a rename lands
+     * can miss the new name — not because the name is absent, but because the lookup could
+     * not yet succeed. Those are different facts, and a test that conflates them is flaky by
+     * construction. This waits for the settled state it means to assert.</p>
+     */
+    private boolean settles(java.util.function.Supplier<ToolResponse> query) {
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (query.get().isSuccess()) {
+                return true;
+            }
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
     @Test
     @DisplayName("a MOVED class: the old name answers with its new location, flagged as a correction")
     void movedClass_correctsInOneCall() {
@@ -94,10 +118,13 @@ class ResolveOrRelocateTest {
         assertTrue(rename.execute(renameArgs).isSuccess(), "the rename must land");
 
         FindRefsTool refs = new FindRefsTool(() -> service);
-        // Let the Java model settle after the mutation, the way a real agent's next
-        // dispatch does. Querying into a mid-rebuild window is a different test (and
-        // the product now refuses to claim "gone" from a lookup it could not complete).
-        assertTrue(refs.execute(refsBySymbol("com.example.Calculator#times")).isSuccess(),
+        // WAIT for the Java model to settle after the mutation — the way a real agent's
+        // next dispatch does. This used to assert immediately and merely SAY it had let
+        // the model settle, which raced JDT's index rebuild and failed roughly one run in
+        // six. Querying into a mid-rebuild window is a different test (and the product
+        // already refuses to claim "gone" from a lookup it could not complete) — so the
+        // wait belongs here, bounded and explicit.
+        assertTrue(settles(() -> refs.execute(refsBySymbol("com.example.Calculator#times"))),
             "the renamed member resolves once the model has settled");
 
         ToolResponse r = refs.execute(refsBySymbol("com.example.Calculator#multiply"));

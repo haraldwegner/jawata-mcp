@@ -12,6 +12,7 @@ import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.runtime.debug.DebugController;
 import org.jawata.mcp.runtime.debug.JdiValues;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -38,6 +39,7 @@ public class DebugTool extends AbstractTool {
         "discover", "launch", "attach", "status", "detach", "cancel",
         "breakpoint_set", "breakpoint_clear", "breakpoint_list",
         "wait", "threads", "snapshot", "evaluate", "step", "resume", "instances",
+        "set_value", "force_return", "pop_frame", "redefine", "mutations",
         "artifacts", "artifact_delete");
 
     private static final List<String> BREAKPOINT_KINDS = List.of(
@@ -155,6 +157,24 @@ public class DebugTool extends AbstractTool {
                          The thread runs; poll `wait` for where it lands.
             - resume   — one thread (threadId), or every suspended thread.
 
+            TESTING A HYPOTHESIS — changing the running program to see what happens:
+            - set_value    — overwrite a local or a field. Needs threadId, name, expression
+                             ("what if this were 0?").
+            - force_return — abandon the current method and return a value to its caller NOW.
+                             The rest of the method does not run — side effects included.
+            - pop_frame    — put the thread back at the call site, about to make the call
+                             again. Rewinds the STACK, not the world: side effects the frame
+                             already had are still done.
+            - redefine     — replace a class's bytecode (needs className + classFile). Method
+                             BODIES only — adding or removing a method or field is refused,
+                             plainly. Methods already on the stack keep their old code until
+                             re-entered.
+            - mutations    — everything this session changed, in order.
+
+            ONCE YOU MUTATE, IT IS NOT THE SAME PROGRAM. A conclusion drawn after a mutation
+            is a conclusion about a program you edited. `mutations` is how you (and whoever
+            reads your report) can tell which is which — so use it, and say what you changed.
+
             ARTIFACTS: artifacts / artifact_delete — what a session left behind (replay
             captures, dumps), with provenance and an expiry. Explicit delete, because
             these get large.
@@ -245,6 +265,10 @@ public class DebugTool extends AbstractTool {
             "description", "instances: page size (default 10, max 50)."));
         properties.put("artifactId", Map.of("type", "string",
             "description", "artifact_delete: which artifact to remove."));
+        properties.put("name", Map.of("type", "string",
+            "description", "set_value: the local or field to overwrite."));
+        properties.put("classFile", Map.of("type", "string",
+            "description", "redefine: path to the compiled .class with the new method bodies."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("action"));
@@ -274,6 +298,11 @@ public class DebugTool extends AbstractTool {
                 case "step" -> step(arguments);
                 case "resume" -> resume(arguments);
                 case "instances" -> instances(arguments);
+                case "set_value" -> setValue(arguments);
+                case "force_return" -> forceReturn(arguments);
+                case "pop_frame" -> popFrame(arguments);
+                case "redefine" -> redefine(arguments);
+                case "mutations" -> mutations(arguments);
                 case "artifacts" -> listArtifacts();
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
@@ -509,6 +538,91 @@ public class DebugTool extends AbstractTool {
             .build());
     }
 
+    private ToolResponse setValue(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        long threadId = longParam(arguments, "threadId", -1);
+        String name = getStringParam(arguments, "name");
+        String expression = getStringParam(arguments, "expression");
+        if (threadId < 0 || name == null || expression == null) {
+            return ToolResponse.invalidParameter("name",
+                "set_value needs threadId, name (a local or field), and expression (the new "
+                    + "value).");
+        }
+        Map<String, Object> mutation = debugger.setValue(threadId,
+            getIntParam(arguments, "frameIndex", 0), name, expression);
+        return ToolResponse.success(mutation, ResponseMeta.builder()
+            .steering("The program has been CHANGED. Whatever it does from here, it does as an "
+                + "edited program — say so when you report what you found. "
+                + "debug(action=mutations) lists everything this session changed.")
+            .build());
+    }
+
+    private ToolResponse forceReturn(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        long threadId = longParam(arguments, "threadId", -1);
+        String expression = getStringParam(arguments, "expression");
+        if (threadId < 0 || expression == null) {
+            return ToolResponse.invalidParameter("expression",
+                "force_return needs threadId and expression (the value to return).");
+        }
+        return ToolResponse.success(debugger.forceReturn(threadId, expression),
+            ResponseMeta.builder()
+                .steering("The rest of that method did NOT run. The thread is suspended in the "
+                    + "caller — snapshot it to see what the caller now believes.")
+                .build());
+    }
+
+    private ToolResponse popFrame(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        long threadId = longParam(arguments, "threadId", -1);
+        if (threadId < 0) {
+            return ToolResponse.invalidParameter("threadId",
+                "pop_frame needs the threadId of a SUSPENDED thread.");
+        }
+        return ToolResponse.success(
+            debugger.popFrame(threadId, getIntParam(arguments, "frameIndex", 0)),
+            ResponseMeta.builder()
+                .steering("The stack is rewound — the world is not. Anything that frame already "
+                    + "wrote, sent or printed has still happened.")
+                .build());
+    }
+
+    private ToolResponse redefine(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        String className = getStringParam(arguments, "className");
+        String classFile = getStringParam(arguments, "classFile");
+        if (className == null || classFile == null) {
+            return ToolResponse.invalidParameter("classFile",
+                "redefine needs className and classFile (a compiled .class holding the new "
+                    + "method bodies).");
+        }
+        Path file = Path.of(classFile);
+        if (!Files.isRegularFile(file)) {
+            return ToolResponse.invalidParameter("classFile",
+                "No such .class file: " + classFile);
+        }
+        return ToolResponse.success(debugger.redefine(className, Files.readAllBytes(file)),
+            ResponseMeta.builder()
+                .steering("Methods already on the stack keep their OLD code until they are "
+                    + "re-entered — so the change shows up on the next call, not this one.")
+                .build());
+    }
+
+    private ToolResponse mutations(JsonNode arguments) throws Exception {
+        List<Map<String, Object>> changed = debuggerOf(arguments).mutations();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("mutations", changed);
+        data.put("count", changed.size());
+        data.put("programIsUnmodified", changed.isEmpty());
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .returnedCount(changed.size())
+            .steering(changed.isEmpty()
+                ? "Nothing has been changed — what this program does, it does on its own."
+                : "This program has been EDITED " + changed.size() + " time(s). Any finding "
+                    + "from here on describes the edited program; report it that way.")
+            .build());
+    }
+
     private ToolResponse listArtifacts() {
         List<Map<String, Object>> all = artifacts.describeAll();
         Map<String, Object> data = new LinkedHashMap<>();
@@ -622,9 +736,17 @@ public class DebugTool extends AbstractTool {
         }
         // Opens the journal if it is not open yet: every path that hands back a session must
         // name its hit stream, or an agent that never called launch cannot find it.
-        debuggerOf(session.get());
+        DebugController debugger = debuggerOf(session.get());
         Map<String, Object> described = new LinkedHashMap<>(session.get().describe());
         described.put("hitStream", hitStreamOf(session.get()).toString());
+        // The session always discloses what it changed. A debugged program is no longer the
+        // program you started, and a status that hides that invites a false conclusion.
+        List<Map<String, Object>> changed = debugger.mutations();
+        described.put("mutationCount", changed.size());
+        described.put("programIsUnmodified", changed.isEmpty());
+        if (!changed.isEmpty()) {
+            described.put("mutations", changed);
+        }
         return ToolResponse.success(described, ResponseMeta.builder()
             .steering("Every hit is appended as one JSON line to `hitStream` — point a file "
                 + "monitor at it and each breakpoint wakes you, no polling.")
