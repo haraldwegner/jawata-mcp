@@ -34,8 +34,15 @@ public final class Landmarks {
 
     private static final Logger log = LoggerFactory.getLogger(Landmarks.class);
 
-    /** Enough to rank by; a landmark's exact reference count is not the point. */
-    private static final int REFERENCE_CAP = 200;
+    /**
+     * The search is bounded so ranking a large workspace stays cheap — but the
+     * bound must be high enough to DISCRIMINATE the types it exists to rank.
+     * Dogfood (v2.11.0, on jawata's own 506-source workspace) found a cap of 200
+     * saturating the top SIX types at once: the ordering among exactly the most
+     * load-bearing types was arbitrary, and "200" read as a count when it was a
+     * floor. A saturated count is now reported as such ({@code atLeast}).
+     */
+    private static final int REFERENCE_CAP = 2000;
 
     /** Keyed by project + its source-file count: a changed workspace recomputes. */
     private static final Map<String, List<Map<String, Object>>> CACHE = new ConcurrentHashMap<>();
@@ -92,6 +99,10 @@ public final class Landmarks {
                         type.getResource().getLocation().toOSString()));
                 }
                 landmark.put("references", references);
+                if (references >= REFERENCE_CAP) {
+                    // Honest: this is a floor, not a count — the search stopped here.
+                    landmark.put("atLeast", true);
+                }
                 landmarks.add(landmark);
             } catch (Exception e) {
                 log.debug("Ranking {} failed: {}", type.getElementName(), e.getMessage());

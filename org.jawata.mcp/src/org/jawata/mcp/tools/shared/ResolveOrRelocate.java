@@ -44,7 +44,16 @@ public final class ResolveOrRelocate {
 
     private static final int MAX_CANDIDATES = 3;
 
+    /** Below this, a "match" is just a shared `get`/`is` prefix — noise, not a lead. */
+    private static final int MIN_AFFINITY = 4;
+
     private ResolveOrRelocate() {
+    }
+
+    /** The type half of an FQN, or null when the name names no member. */
+    private static String typePart(String name) {
+        int hash = name.indexOf('#');
+        return hash < 0 ? null : name.substring(0, hash);
     }
 
     /**
@@ -52,8 +61,42 @@ public final class ResolveOrRelocate {
      * index can find it elsewhere, a plain not-found when it genuinely cannot.
      */
     public static ToolResponse miss(IJdtService service, String name, String scopeLabel) {
-        List<String> candidates = relocate(service, name);
+        // Resolve the type ONCE and let that single fact drive every branch. Doing it
+        // twice (here and inside relocate) let the two disagree — and when they did,
+        // we told the caller a type was "gone" while it sat right there. A claim about
+        // absence must rest on the same evidence as the search for a replacement.
+        String typePart = typePart(name);
+        boolean typeIsThere = typePart != null
+            && FqnResolver.resolveWorkspace(typePart, service).isPresent();
+
+        List<String> candidates = relocate(service, name, typePart, typeIsThere);
         if (candidates.isEmpty()) {
+            // Dogfood (v2.11.0): two different truths were being told as one.
+            //
+            // If the TYPE is still there and only the member is wrong, "gone, not
+            // moved" is simply false. And when no member is a CLOSE match, we do not
+            // know what the old one became — a member renamed to an unrelated word
+            // (multiply -> times) leaves no trace to follow. Claiming "Found: times"
+            // would be a guess wearing a fact's clothes. So: say the member is not
+            // there, and name the ones that ARE. The agent picks; we do not pretend.
+            if (typeIsThere) {
+                List<String> members = allMembers(service, typePart);
+                String has = members.isEmpty()
+                    ? ""
+                    : " It has: " + String.join(", ", members) + ".";
+                return ToolResponse.symbolNotFound(
+                    "'" + typePart + "' exists, but it has no member '" + member(name)
+                        + "' — the type did not move; that member is not on it." + has);
+            }
+            if (typePart != null) {
+                // A member form whose TYPE would not resolve. We know we could not
+                // find it; we do NOT know it is gone — a workspace mid-rebuild fails
+                // this lookup too. Claiming "gone" here would be asserting an absence
+                // we cannot prove, so state only what was actually observed.
+                return ToolResponse.symbolNotFound(
+                    "'" + name + "' did not resolve in " + scopeLabel + " scope: no type '"
+                        + typePart + "' was found, and nothing similarly named either.");
+            }
             return ToolResponse.symbolNotFound(
                 "'" + name + "' not found in " + scopeLabel + " scope, and nothing "
                     + "similarly named exists — it is gone, not moved.");
@@ -74,20 +117,30 @@ public final class ResolveOrRelocate {
      * first. Empty when the index knows nothing by that name.
      */
     public static List<String> relocate(IJdtService service, String name) {
+        String typePart = typePart(name);
+        String wholeType = typePart != null ? typePart : name;
+        boolean typeIsThere =
+            FqnResolver.resolveWorkspace(wholeType, service).isPresent();
+        return relocate(service, name, typePart, typeIsThere);
+    }
+
+    /** The same search, told what is already known about the type — never re-asking. */
+    private static List<String> relocate(IJdtService service, String name,
+                                         String typePart, boolean typeIsThere) {
         try {
             int hash = name.indexOf('#');
-            String typePart = hash < 0 ? name : name.substring(0, hash);
             String memberPart = hash < 0 ? null : name.substring(hash + 1);
             int paren = memberPart == null ? -1 : memberPart.indexOf('(');
             String memberName = paren < 0 ? memberPart : memberPart.substring(0, paren);
+            String wholeType = typePart != null ? typePart : name;
 
             // Did the TYPE move? (The common case: a class was moved or renamed.)
-            if (FqnResolver.resolveWorkspace(typePart, service).isEmpty()) {
-                return relocatedTypes(service, simpleName(typePart), memberName);
+            if (!typeIsThere) {
+                return relocatedTypes(service, simpleName(wholeType), memberName);
             }
-            // The type is there, so the MEMBER is what changed. Name its siblings —
-            // the agent picks the one it meant.
-            return siblingMembers(service, typePart, memberName);
+            // The type is there, so the MEMBER is what changed. Offer only members
+            // that are plausibly what was meant.
+            return siblingMembers(service, wholeType, memberName);
         } catch (Exception e) {
             log.debug("Relocation search for '{}' failed: {}", name, e.getMessage());
             return List.of();
@@ -120,7 +173,32 @@ public final class ResolveOrRelocate {
         return new ArrayList<>(found);
     }
 
-    /** The type is still there — say which members it actually has. */
+    /** Every member the type actually declares — a directory, not a guess. */
+    static List<String> allMembers(IJdtService service, String typeFqn) {
+        Optional<IJavaElement> typeEl = FqnResolver.resolveWorkspace(typeFqn, service);
+        if (typeEl.isEmpty() || !(typeEl.get() instanceof IType type)) {
+            return List.of();
+        }
+        List<String> members = new ArrayList<>();
+        try {
+            for (IMethod m : type.getMethods()) {
+                members.add(m.getElementName());
+            }
+            for (IField f : type.getFields()) {
+                members.add(f.getElementName());
+            }
+        } catch (Exception e) {
+            log.debug("Listing members of {} failed: {}", typeFqn, e.getMessage());
+        }
+        return members;
+    }
+
+    /**
+     * Members of a still-present type that are PLAUSIBLY the one that was meant —
+     * a typo, a near-name. Deliberately empty when nothing is close: a member
+     * renamed to an unrelated word leaves no trace, and a confident-sounding wrong
+     * answer is worse than an honest "not there, here is what is".
+     */
     private static List<String> siblingMembers(IJdtService service, String typeFqn,
                                                String memberName) {
         if (memberName == null || memberName.isBlank()) {
@@ -144,7 +222,23 @@ public final class ResolveOrRelocate {
         // Closest by name first — a rename usually keeps most of the word.
         siblings.sort((a, b) -> Integer.compare(
             distance(memberName, member(b)), distance(memberName, member(a))));
-        return siblings.size() > MAX_CANDIDATES ? siblings.subList(0, MAX_CANDIDATES) : siblings;
+
+        // Dogfood (v2.11.0): only offer members that are PLAUSIBLY what was meant.
+        // A typo'd `getLineNumberr` was correctly answered with `getLineNumber` —
+        // but `getPathUtils` and `getProjectRoot` rode along, sharing nothing but a
+        // "get" prefix. Noise dilutes a correction; a wrong suggestion is worse than
+        // one fewer suggestion.
+        int floor = Math.max(MIN_AFFINITY, memberName.length() / 2);
+        List<String> plausible = new ArrayList<>();
+        for (String sibling : siblings) {
+            if (distance(memberName, member(sibling)) >= floor) {
+                plausible.add(sibling);
+            }
+            if (plausible.size() >= MAX_CANDIDATES) {
+                break;
+            }
+        }
+        return plausible;
     }
 
     private static String member(String fqn) {

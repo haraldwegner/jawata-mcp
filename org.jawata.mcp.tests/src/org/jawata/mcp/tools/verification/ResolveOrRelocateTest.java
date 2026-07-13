@@ -84,8 +84,8 @@ class ResolveOrRelocateTest {
     }
 
     @Test
-    @DisplayName("a RENAMED member: the old name answers with the type's real members")
-    void renamedMember_namesTheSiblings() {
+    @DisplayName("a member renamed to an UNRELATED word: name the real members, do not guess")
+    void renamedMember_namesTheRealMembersWithoutGuessing() {
         RenameSymbolTool rename = new RenameSymbolTool(() -> service, cache);
         ObjectNode renameArgs = om.createObjectNode();
         renameArgs.put("symbol", "com.example.Calculator#multiply");
@@ -93,14 +93,25 @@ class ResolveOrRelocateTest {
         assertTrue(rename.execute(renameArgs).isSuccess(), "the rename must land");
 
         FindRefsTool refs = new FindRefsTool(() -> service);
+        // Let the Java model settle after the mutation, the way a real agent's next
+        // dispatch does. Querying into a mid-rebuild window is a different test (and
+        // the product now refuses to claim "gone" from a lookup it could not complete).
+        assertTrue(refs.execute(refsBySymbol("com.example.Calculator#times")).isSuccess(),
+            "the renamed member resolves once the model has settled");
+
         ToolResponse r = refs.execute(refsBySymbol("com.example.Calculator#multiply"));
 
         assertFalse(r.isSuccess());
-        assertEquals(ResolveOrRelocate.RELOCATED, r.getError().getCode(),
-            "a renamed member is a relocation too: " + r.getError());
-        String all = r.getError().getMessage() + " " + r.getError().getHint();
-        assertTrue(all.contains("com.example.Calculator#times"),
-            "the renamed member is offered: " + all);
+        // `multiply` -> `times` shares not one letter. Nothing in the index says the
+        // one BECAME the other, so claiming "Found: times" would be a guess wearing a
+        // fact's clothes. The honest answer: the member is not there, and these are
+        // the ones that are — the agent picks.
+        String message = r.getError().getMessage();
+        assertFalse(message.contains("gone, not moved"),
+            "the TYPE is right there — saying otherwise is false: " + message);
+        assertTrue(message.contains("no member 'multiply'"), "got: " + message);
+        assertTrue(message.contains("times"),
+            "the real members are named, so the agent can pick: " + message);
     }
 
     @Test
@@ -114,6 +125,44 @@ class ResolveOrRelocateTest {
             "nothing similar exists — do NOT dress this up as a relocation: " + r.getError());
         assertTrue(r.getError().getMessage().contains("gone, not moved"),
             "says so plainly: " + r.getError().getMessage());
+    }
+
+    @Test
+    @DisplayName("dogfood v2.11.0: a near-miss member offers ONLY plausible corrections")
+    void nearMissOffersNoNoise() {
+        // A typo'd member: the real one must lead, and unrelated members sharing
+        // nothing but a "get" prefix must NOT ride along. A wrong suggestion is
+        // worse than one fewer suggestion.
+        // A tool call first: relocate() reads the JDT index, which a dispatch refreshes.
+        FindRefsTool warm = new FindRefsTool(() -> service);
+        warm.execute(refsBySymbol("com.example.Calculator"));
+
+        List<String> candidates =
+            ResolveOrRelocate.relocate(service, "com.example.Calculator#getLastResultt");
+        assertFalse(candidates.isEmpty(), "the typo has an obvious intended target");
+        assertEquals("com.example.Calculator#getLastResult", candidates.get(0),
+            "the real member leads: " + candidates);
+        for (String candidate : candidates) {
+            assertTrue(candidate.toLowerCase().contains("lastresult"),
+                "no noise: every offer must be plausibly what was meant (getPathUtils and "
+                    + "friends share only a 'get' prefix), got: " + candidates);
+        }
+    }
+
+    @Test
+    @DisplayName("dogfood v2.11.0: the type exists but the member does not — say THAT, not 'gone'")
+    void typeExistsButMemberDoesNot() {
+        FindRefsTool refs = new FindRefsTool(() -> service);
+        ToolResponse r = refs.execute(refsBySymbol("com.example.Calculator#totallyUnrelatedXyz"));
+
+        assertFalse(r.isSuccess());
+        String message = r.getError().getMessage();
+        assertFalse(message.contains("gone, not moved"),
+            "the TYPE did not move — saying so would be false: " + message);
+        assertTrue(message.contains("com.example.Calculator") && message.contains("no member"),
+            "says what is actually true: " + message);
+        assertTrue(message.contains("It has:") && message.contains("add"),
+            "and names the members that DO exist: " + message);
     }
 
     @Test

@@ -200,3 +200,61 @@ touch commit metadata. Fixed forward: the git identity is now the
 `…@users.noreply.github.com` alias (all three repos inherit it; no local
 overrides). History is deliberately NOT rewritten — it would break every SHA,
 tag and release for an address already harvested.
+
+## C5 — Dogfood-in-anger → v2.11.1 (2026-07-13)
+
+Ten minutes of real use on jawata's own 506-source workspace, through the live
+resident on 2.11.0. **Two real findings that 1249 green tests could not see** —
+both because the fixtures are too small to expose them. This is the case for the
+dogfood-after-every-release rule (Harald, GATE 2).
+
+### What the live probes showed
+
+| Probe | Result |
+|---|---|
+| D3 teach line (`search_symbols FqnTarget`) | fired live: `Address this directly next time: symbol="org.jawata.mcp.tools.shared.FqnTarget"` ✓ |
+| D2 relocate (a GENUINE mistake: I guessed `tools.FieldsProjection`) | corrected to `tools.shared.FieldsProjection` in one call ✓ |
+| D2 relocate on a typo (`IJdtService#getLineNumberr`) | led with `getLineNumber` ✓ (but see F2) |
+| D1 outgoing-by-name (new in 2.11.0) | 13 callees for `FqnTarget#materializePosition` ✓ |
+| D1 `analyze(kind=method, symbol=…)` | resolved + 6 callers ✓ |
+| D1 `rename_symbol(symbol=…)` | worked **through a stale-schema client, no restart** ✓ |
+| D4 landmarks | ranked — **but see F1** |
+
+### F1 (real) — landmarks: a ranking that could not rank
+
+The top SIX types all reported exactly `200` — the reference cap. The ordering
+among precisely the types the feature exists to rank was arbitrary, and the
+number read as a count when it was a floor. Fixed: bound raised to 2000 (enough
+to discriminate) and a saturated count is now flagged `"atLeast": true` — a
+floor is never presented as a count.
+
+### F2 (real) — relocate: three truths were being told as one
+
+- **Typo** → confident correction, but noise rode along (`getPathUtils`,
+  `getProjectRoot` share only a `get` prefix with `getLineNumberr`). Now filtered
+  by name affinity: a wrong suggestion is worse than one fewer suggestion.
+- **Rename to an unrelated word** (`multiply` → `times`) → nothing in the index
+  links old to new, so "Found: times" would be a guess in a fact's clothes. Now:
+  the member is not there, and here are the ones that are — a directory, not a
+  claim. *(A naive affinity floor initially BROKE this case, which is what
+  surfaced the deeper design error: typo-correction and rename-tracking are
+  different problems and must not share one answer shape.)*
+- **Member missing from a type that still exists** → used to answer "gone, not
+  moved" while the type sat right there. Now says what is true.
+
+### F3 (positive, no action)
+
+The new name form works through EXISTING client sessions without a restart —
+better than the v2.11.0 schema-cache caveat predicted.
+
+### Verification (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| ResolveOrRelocateTest | + 2 dogfood cases | **6/6** ✓ |
+| KeyTeaching/Landmarks | + saturation honesty | **5/5** ✓ |
+| Touched-tool regressions | green | 56/56 ✓ |
+| Full suite | 1251 | **1251/1251** after one contention-flake rerun (GetProjectStructureToolTest; 3/3 focused — the known class) ✓ |
+
+Lesson recorded (experience store dbc242d9): a bounded count used for RANKING
+must not saturate; and never dress a guess as a fact.

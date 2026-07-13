@@ -131,6 +131,21 @@ class KeyTeachingAndLandmarksTest {
                 "descending by references: " + previous + " then " + current);
         }
         assertEquals(landmarks.size(), data(r).get("count"));
+
+        // Dogfood (v2.11.0): a count that hit the search bound is a FLOOR, not a
+        // count — it must say so. On jawata's own workspace a 200-cap saturated the
+        // top six types, making the ranking among the most load-bearing types
+        // arbitrary and the number a quiet lie.
+        for (Map<String, Object> landmark : landmarks) {
+            int references = (Integer) landmark.get("references");
+            if (references >= 2000) {
+                assertEquals(Boolean.TRUE, landmark.get("atLeast"),
+                    "a saturated count must be flagged as a floor: " + landmark);
+            } else {
+                assertNull(landmark.get("atLeast"),
+                    "an exact count must NOT claim to be a floor: " + landmark);
+            }
+        }
     }
 
     @Test
