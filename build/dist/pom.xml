@@ -82,6 +82,17 @@
                                      rides the forked runner's -javaagent (exec parsing lives
                                      in bundles/: org.jacoco.core + report) -->
                                 <artifactItem><groupId>org.jacoco</groupId><artifactId>org.jacoco.agent</artifactId><version>0.8.15</version><classifier>runtime</classifier></artifactItem>
+                                <!-- Sprint 23 D5: targeted mutation testing (opt-in) -->
+                                <artifactItem><groupId>org.pitest</groupId><artifactId>pitest</artifactId><version>1.25.7</version></artifactItem>
+                                <artifactItem><groupId>org.pitest</groupId><artifactId>pitest-entry</artifactId><version>1.25.7</version></artifactItem>
+                                <artifactItem><groupId>org.pitest</groupId><artifactId>pitest-command-line</artifactId><version>1.25.7</version></artifactItem>
+                                <artifactItem><groupId>org.pitest</groupId><artifactId>pitest-junit5-plugin</artifactId><version>1.2.3</version></artifactItem>
+                                <!-- the junit5 plugin needs the platform LAUNCHER at runtime;
+                                     projects' jupiter aggregates don't carry it -->
+                                <artifactItem><groupId>org.junit.platform</groupId><artifactId>junit-platform-launcher</artifactId><version>1.11.4</version></artifactItem>
+                                <!-- PIT's XML reporter needs commons-text (+lang3) -->
+                                <artifactItem><groupId>org.apache.commons</groupId><artifactId>commons-text</artifactId><version>1.12.0</version></artifactItem>
+                                <artifactItem><groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>3.14.0</version></artifactItem>
                             </artifactItems>
                         </configuration>
                     </execution>
@@ -235,6 +246,13 @@
                                         <file>${project.build.directory}/dist/tools/org.jawata.testrunner-${project.version}.jar</file>
                                         <file>${project.build.directory}/dist/tools/testng-engine-1.0.6.jar</file>
                                         <file>${project.build.directory}/dist/tools/org.jacoco.agent-0.8.15-runtime.jar</file>
+                                        <file>${project.build.directory}/dist/tools/pitest-1.25.7.jar</file>
+                                        <file>${project.build.directory}/dist/tools/pitest-entry-1.25.7.jar</file>
+                                        <file>${project.build.directory}/dist/tools/pitest-command-line-1.25.7.jar</file>
+                                        <file>${project.build.directory}/dist/tools/pitest-junit5-plugin-1.2.3.jar</file>
+                                        <file>${project.build.directory}/dist/tools/junit-platform-launcher-1.11.4.jar</file>
+                                        <file>${project.build.directory}/dist/tools/commons-text-1.12.0.jar</file>
+                                        <file>${project.build.directory}/dist/tools/commons-lang3-3.14.0.jar</file>
                                         <file>${project.build.directory}/dist/bundles/org.jacoco.core-0.8.15.jar</file>
                                         <file>${project.build.directory}/dist/bundles/org.jacoco.report-0.8.15.jar</file>
                                     </files>

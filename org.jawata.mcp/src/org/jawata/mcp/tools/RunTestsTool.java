@@ -123,6 +123,13 @@ public class RunTestsTool extends AbstractTool {
               run_tests(action="coverage_impacted_tests" [, symbols] [, diff])
                 → the smallest evidence-backed test set for a change.
 
+            Mutation (OPT-IN, always targeted, runtime-bounded):
+              run_tests(action="coverage_mutation", targetClasses=["com.example.Foo"]
+                [, targetTests] [, timeoutSeconds])
+                → killed/survived/timed-out/no-coverage; each SURVIVOR maps to
+                its symbol + line + a candidate missing-assertion location.
+                targetTests defaults to the attribution-derived exercising set.
+
             Inputs:
             - scope.kind — "method" | "class" | "package".
             - For kind="method": pass EXACTLY ONE of these combinations
@@ -242,6 +249,14 @@ public class RunTestsTool extends AbstractTool {
         properties.put("execFile", Map.of("type", "string",
             "description", "coverage_import: path to an external jacoco.exec (CI run); "
                 + "acceptance is gated by the class-id check."));
+        properties.put("targetClasses", Map.of("type", "array",
+            "items", Map.of("type", "string"),
+            "description", "coverage_mutation: the production classes to mutate "
+                + "(typically the CHANGED classes — mutation is always targeted)."));
+        properties.put("targetTests", Map.of("type", "array",
+            "items", Map.of("type", "string"),
+            "description", "coverage_mutation: the exercising test classes; omitted = "
+                + "derived from attribution evidence."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }
@@ -265,6 +280,9 @@ public class RunTestsTool extends AbstractTool {
             }
             case "coverage_import" -> {
                 return handleCoverageImport(service, arguments);
+            }
+            case "coverage_mutation" -> {
+                return handleCoverageMutation(service, arguments);
             }
             case "run", "start" -> { /* fall through to launch */ }
             default -> {
@@ -1176,6 +1194,116 @@ public class RunTestsTool extends AbstractTool {
         data.put("impactedTests", ranked);
         return ToolResponse.success(data, ResponseMeta.builder()
             .totalCount(ranked.size()).returnedCount(ranked.size()).build());
+    }
+
+    /** Stage 10 — targeted, opt-in, bounded mutation testing via PIT. */
+    private ToolResponse handleCoverageMutation(IJdtService service, JsonNode arguments) {
+        try {
+            java.util.List<String> targetClasses = new ArrayList<>();
+            if (arguments.has("targetClasses") && arguments.get("targetClasses").isArray()) {
+                arguments.get("targetClasses").forEach(n -> targetClasses.add(n.asText()));
+            } else {
+                String target = getStringParam(arguments, "target");
+                if (target != null && !target.isBlank()) {
+                    targetClasses.add(target.contains("#")
+                        ? target.substring(0, target.indexOf('#')) : target);
+                }
+            }
+            if (targetClasses.isEmpty()) {
+                return ToolResponse.invalidParameter("targetClasses",
+                    "coverage_mutation is TARGETED: pass targetClasses (or target) — "
+                        + "typically the changed class(es).");
+            }
+            java.util.List<String> targetTests = new ArrayList<>();
+            if (arguments.has("targetTests") && arguments.get("targetTests").isArray()) {
+                arguments.get("targetTests").forEach(n -> targetTests.add(n.asText()));
+            } else {
+                // Derive from attribution evidence: the test CLASSES that
+                // exercised the target classes.
+                for (String clazz : targetClasses) {
+                    for (String id : coverage.store().list()) {
+                        org.jawata.mcp.coverage.CoverageManifest m =
+                            coverage.store().readManifest(id).orElse(null);
+                        if (m == null || !m.attribution || !m.runFinalized) continue;
+                        Path classFile =
+                            org.jawata.mcp.coverage.CoverageAttribution.classFile(m, clazz);
+                        if (classFile == null) continue;
+                        for (Map.Entry<String, Path> seg
+                                : org.jawata.mcp.coverage.CoverageAttribution
+                                    .segments(coverage.store(), id).entrySet()) {
+                            if (org.jawata.mcp.coverage.CoverageAttribution.covers(
+                                    seg.getValue(), classFile, null)) {
+                                String testClass = seg.getKey().contains("#")
+                                    ? seg.getKey().substring(0, seg.getKey().indexOf('#'))
+                                    : seg.getKey();
+                                if (!targetTests.contains(testClass)) targetTests.add(testClass);
+                            }
+                        }
+                    }
+                }
+                if (targetTests.isEmpty()) {
+                    return ToolResponse.invalidParameter("targetTests",
+                        "No attributed tests found for " + targetClasses + " — pass "
+                            + "targetTests explicitly or run with attribution=true first.");
+                }
+            }
+
+            LoadedProject project = service.allProjects().stream().findFirst().orElse(null);
+            if (project == null) return ToolResponse.projectNotLoaded();
+            String buildProblem = RunnerClasspath.buildAndCheck(
+                project.javaProject(), new NullProgressMonitor());
+            if (buildProblem != null) {
+                return ToolResponse.invalidParameter("project", buildProblem);
+            }
+            java.util.List<String> sourceRoots = new ArrayList<>();
+            org.eclipse.core.resources.IWorkspaceRoot wsRoot =
+                org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot();
+            for (org.eclipse.jdt.core.IClasspathEntry entry
+                    : project.javaProject().getResolvedClasspath(true)) {
+                if (entry.getEntryKind() == org.eclipse.jdt.core.IClasspathEntry.CPE_SOURCE) {
+                    org.eclipse.core.resources.IResource res = wsRoot.findMember(entry.getPath());
+                    if (res != null && res.getLocation() != null) {
+                        sourceRoots.add(res.getLocation().toOSString());
+                    }
+                }
+            }
+
+            int timeout = Math.min(600, Math.max(30,
+                getIntParam(arguments, "timeoutSeconds", 300)));
+            org.jawata.mcp.coverage.MutationService.Result r =
+                new org.jawata.mcp.coverage.MutationService().run(
+                    project.javaProject(), targetClasses, targetTests, sourceRoots, timeout);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("operation", "run_tests");
+            data.put("action", "coverage_mutation");
+            data.put("targetClasses", targetClasses);
+            data.put("targetTests", targetTests);
+            data.put("timeMs", r.timeMs);
+            if (!r.ran) {
+                data.put("state", "no-result");
+                data.put("note", r.note);
+                data.put("stderrTail", r.stderrTail);
+                return ToolResponse.success(data, ResponseMeta.builder().build());
+            }
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("killed", r.killed);
+            summary.put("survived", r.survived);
+            summary.put("timedOutMutations", r.timedOutMutations);
+            summary.put("noCoverage", r.noCoverage);
+            data.put("summary", summary);
+            data.put("survivors", r.survivors);
+            if (r.survived > 0) {
+                data.put("note", "SURVIVING mutations = code changes no test noticed — each "
+                    + "survivor carries a candidate missing-assertion location.");
+            }
+            return ToolResponse.success(data, ResponseMeta.builder()
+                .totalCount(r.killed + r.survived + r.timedOutMutations + r.noCoverage)
+                .returnedCount(r.survivors.size()).build());
+        } catch (Exception e) {
+            log.warn("coverage_mutation failed: {}", e.getMessage(), e);
+            return ToolResponse.internalError(e);
+        }
     }
 
     private void attachPolicy(Map<String, Object> data, Double achievedPercent) {

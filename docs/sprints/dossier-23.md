@@ -459,3 +459,34 @@ diff the REPO (releases + README), never the marketplace listing.
 ### C9 exit status
 
 - **GREEN.**
+
+## C10 — Mutation testing (PIT, targeted, opt-in) (2026-07-13)
+
+### What shipped
+
+- dist tools/: pitest + pitest-entry + pitest-command-line 1.25.7,
+  pitest-junit5-plugin 1.2.3, junit-platform-launcher 1.11.4 (the plugin's
+  runtime need — the minion dies without it), commons-text/lang3 (the XML
+  reporter's need) — all enforcer-gated; two missing-dependency layers were
+  found EMPIRICALLY by the gate, plus the enforcer itself caught a
+  half-applied pom edit mid-stage.
+- `MutationService`: PIT CLI in a forked JVM on the UNFILTERED project
+  classpath (PIT drives the project's own engine), bounded (timeout →
+  process-tree reap, "no mutation claims"), XML report parsed → survivors
+  mapped to symbol + line + a candidate missing-assertion location.
+- `coverage_mutation` action: strictly opt-in; targetClasses required (always
+  targeted); targetTests defaults to the ATTRIBUTION-derived exercising set.
+
+### Verification (expected vs actual) — CoverageMutationTest 1/1 (×2 runs)
+
+- Weak fixture (executes-but-never-asserts): surviving mutation at EXACTLY
+  `com.example.cov.Weak#plus` with line + mutator + candidate-assertion text
+  naming the symbol ✓.
+- Well-tested method: mutants KILLED, no survivor hides in the
+  value-asserted method ✓.
+- Both runs within the declared bound ✓; coverage family regression green
+  (6/6 + 2/2 + 12/12) ✓.
+
+### C10 exit status
+
+- **GREEN.**
