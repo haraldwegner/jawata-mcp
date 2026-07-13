@@ -114,9 +114,13 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
             "newName", Map.of(
                 "type", "string",
                 "description", "New name for the symbol"
-            )
+            ),
+            "symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+                "type, method or field to rename (a LOCAL variable has no name form — "
+                    + "use the position)")
         ));
-        schema.put("required", List.of("filePath", "line", "column", "newName"));
+        // Sprint 24 (D1): position OR name form; only newName is always required.
+        schema.put("required", List.of("newName"));
         return withAutoApply(withProjectKey(schema));
     }
 

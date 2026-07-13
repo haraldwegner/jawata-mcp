@@ -86,13 +86,22 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool {
             "description", "Visibility for the field after encapsulation (default 'private')."));
         properties.put("generateJavadoc", Map.of("type", "boolean",
             "description", "Emit Javadoc stubs on the generated accessors (default false)."));
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "field to encapsulate"));
         schema.put("properties", properties);
-        schema.put("required", List.of("filePath", "line", "column"));
+        // Sprint 24 (D1): position OR name form.
+        schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): accept the name form — symbol=pkg.Type#field.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String filePathStr = getStringParam(arguments, "filePath");
         int line = getIntParam(arguments, "line", -1);
         int column = getIntParam(arguments, "column", -1);

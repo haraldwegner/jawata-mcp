@@ -102,13 +102,25 @@ public class ExtractTool extends AbstractTool {
         properties.put("members", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "superclass: optional method names to pull up (default: auto-discover the identical ones)."));
 
+        properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
+            "type to extract from (kinds interface/superclass; the range kinds "
+                + "method/variable/constant need their coordinates)"));
         schema.put("properties", properties);
-        schema.put("required", List.of("kind", "filePath"));
+        // Sprint 24 (D1): filePath OR typeName (the type-targeted kinds).
+        schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): the TYPE-targeted kinds (interface, superclass) accept
+        // typeName=pkg.Type; the range kinds (method/variable/constant) keep
+        // their coordinates — a statement range has no name.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);

@@ -77,6 +77,8 @@ public class MoveTool extends AbstractTool {
         properties.put("newPackageName", Map.of("type", "string", "description", "package: the new package name."));
         properties.put("updateReferences", Map.of("type", "boolean", "description", "Update all references (default true)."));
 
+        properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
+            "class to move (kind=class; kind=package uses packageName)"));
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
@@ -84,6 +86,13 @@ public class MoveTool extends AbstractTool {
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): kind=class accepts typeName=pkg.Type (kind=package is
+        // already name-based via packageName).
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);

@@ -29,6 +29,10 @@ public class AnalyzeTool extends AbstractTool {
     /** Kinds whose delegate reads its own {@code kind} param (aliased to subkind). */
     private static final List<String> SUBKIND_KINDS = List.of("javadocs", "naming", "nullness");
 
+    /** Sprint 24 (D1): the kinds whose target is a member at a position — these take symbol=. */
+    private static final List<String> POSITION_KINDS =
+        List.of("method", "control_flow", "data_flow", "change_impact", "symbol");
+
     private final AnalyzeFileTool file;
     private final AnalyzeTypeTool type;
     private final AnalyzeMethodTool method;
@@ -105,6 +109,9 @@ public class AnalyzeTool extends AbstractTool {
         properties.put("subkind", Map.of("type", "string", "description", "javadocs/naming/nullness: the analyzer's own variant (its `kind`)."));
         properties.put("scope", Map.of("type", "string", "description", "javadocs/naming/nullness: optional scope (package/type)."));
 
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "member to analyze (kinds method/control_flow/data_flow/change_impact/symbol; "
+                + "kind=type already takes typeName)"));
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withProjectKey(schema);
@@ -115,6 +122,17 @@ public class AnalyzeTool extends AbstractTool {
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
+        }
+        // Sprint 24 (D1): the POSITION-based kinds accept symbol=pkg.Type#member.
+        // Deliberately NOT the type/file/scope kinds: kind=type already takes
+        // typeName and answers for BINARY types, which have no source position —
+        // materializing one would break it.
+        if (POSITION_KINDS.contains(kind)) {
+            java.util.Optional<ToolResponse> nameForm =
+                org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+            if (nameForm.isPresent()) {
+                return nameForm.get();
+            }
         }
         JsonNode args = SUBKIND_KINDS.contains(kind) ? remapSubkind(arguments) : arguments;
         return switch (kind) {

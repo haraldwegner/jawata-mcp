@@ -151,8 +151,11 @@ public class ChangeMethodSignatureTool extends AbstractApplyingRefactoringTool {
                 + "changes; verify the result with compile_workspace."
         ));
 
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "method whose signature changes"));
         schema.put("properties", properties);
-        schema.put("required", List.of("filePath", "line", "column"));
+        // Sprint 24 (D1): position OR name form.
+        schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));
     }
 

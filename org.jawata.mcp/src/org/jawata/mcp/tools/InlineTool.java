@@ -68,13 +68,23 @@ public class InlineTool extends AbstractTool {
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
 
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "method to inline (kind=method only — a local variable has no name form)"));
         schema.put("properties", properties);
-        schema.put("required", List.of("kind", "filePath", "line", "column"));
+        // Sprint 24 (D1): position OR name form.
+        schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): kind=method accepts symbol=pkg.Type#method (a LOCAL
+        // variable has no name to address — kind=variable stays positional).
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);

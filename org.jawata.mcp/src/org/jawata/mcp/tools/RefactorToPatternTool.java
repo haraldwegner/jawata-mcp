@@ -151,13 +151,30 @@ public class RefactorToPatternTool extends AbstractTool {
         properties.put("idiom", Map.of("type", "string",
             "description", "replace_pattern_with_idiom: which idiom (default anonymous_to_lambda)."));
 
+        properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
+            "target type (kinds inline_singleton / replace_type_code_with_class / "
+                + "refactor_to_visitor)"));
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "target method (kind form_template_method); the switch- and range-targeted "
+                + "kinds keep their coordinates"));
         schema.put("properties", properties);
-        schema.put("required", List.of("kind", "filePath"));
+        // Sprint 24 (D1): filePath OR the name form (the symbol-targeted kinds).
+        schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): the type/method-targeted kinds (inline_singleton,
+        // replace_type_code_with_class, refactor_to_visitor, form_template_method)
+        // accept typeName=/symbol=; the statement-targeted kinds (refactor_to_state,
+        // refactor_to_command_dispatcher, compose_method, replace_pattern_with_idiom)
+        // keep their coordinates — a switch or a range has no name.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);

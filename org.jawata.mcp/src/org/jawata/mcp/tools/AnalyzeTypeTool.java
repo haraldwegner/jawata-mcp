@@ -255,7 +255,13 @@ public class AnalyzeTypeTool extends AbstractTool {
             info.put("exceptions", exceptionNames);
         }
 
-        info.put("line", service.getLineNumber(cu, method.getSourceRange().getOffset()));
+        // Sprint 24 (D1, dogfood-found): a BINARY type (java.util.ArrayList, any
+        // dependency class) has no compilation unit — it has members and a
+        // hierarchy, but no source lines. Reporting no line is honest; NPE-ing on
+        // a null cu made analyze(kind=type) unusable for every library type.
+        if (cu != null) {
+            info.put("line", service.getLineNumber(cu, method.getSourceRange().getOffset()));
+        }
         return info;
     }
 
@@ -270,7 +276,9 @@ public class AnalyzeTypeTool extends AbstractTool {
             info.put("enumConstant", true);
         }
 
-        info.put("line", service.getLineNumber(cu, field.getSourceRange().getOffset()));
+        if (cu != null) {
+            info.put("line", service.getLineNumber(cu, field.getSourceRange().getOffset()));
+        }
         return info;
     }
 

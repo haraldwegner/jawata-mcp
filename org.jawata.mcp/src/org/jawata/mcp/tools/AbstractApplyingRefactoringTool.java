@@ -92,6 +92,14 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): a caller who KNOWS the symbol addresses it by name —
+        // resolve that into the position the prepareChange paths already expect.
+        // Idempotent: an explicit position, or an already-materialized one, wins.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
         Preparation preparation;
         try {

@@ -92,13 +92,22 @@ public class MoveMethodTool extends AbstractRefactoringTool {
                 + "(optional when there is exactly one possible target)."));
         properties.put("keepDelegate", Map.of("type", "boolean",
             "description", "Leave a forwarding method on the original type (default false)."));
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "method to move"));
         schema.put("properties", properties);
-        schema.put("required", List.of("filePath", "line", "column"));
+        // Sprint 24 (D1): position OR name form.
+        schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): accept the name form — symbol=pkg.Type#method.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String filePathStr = getStringParam(arguments, "filePath");
         int line = getIntParam(arguments, "line", -1);
         int column = getIntParam(arguments, "column", -1);

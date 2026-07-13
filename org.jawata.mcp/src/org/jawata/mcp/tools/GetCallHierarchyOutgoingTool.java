@@ -90,14 +90,22 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
             "column", Map.of(
                 "type", "integer",
                 "description", "Zero-based column number"
-            )
+            ),
+            "symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty("method")
         ));
-        schema.put("required", List.of("filePath", "line", "column"));
+        // Sprint 24 (D1): either form — a position OR the name; validated at run time.
+        schema.put("required", List.of());
         return withProjectKey(schema);
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): accept the name form — symbol=pkg.Type#method.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String filePath = getStringParam(arguments, "filePath");
         if (filePath == null || filePath.isBlank()) {
             return ToolResponse.invalidParameter("filePath", "Required parameter missing");

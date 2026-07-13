@@ -113,13 +113,23 @@ public class GenerateTool extends AbstractTool {
         properties.put("newTypeName", Map.of("type", "string",
             "description", "copy_class: name for the cloned class (must not already exist in the package)."));
 
+        properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
+            "type to generate into"));
         schema.put("properties", properties);
-        schema.put("required", List.of("kind", "filePath", "line", "column"));
+        // Sprint 24 (D1): position OR name form.
+        schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): every generate kind targets a TYPE — address it by
+        // typeName=pkg.Type instead of a caret.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);

@@ -68,13 +68,22 @@ public class MoveInHierarchyTool extends AbstractTool {
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the member at the caret."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
 
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "member to pull up or push down"));
         schema.put("properties", properties);
-        schema.put("required", List.of("direction", "filePath", "line", "column"));
+        // Sprint 24 (D1): position OR name form.
+        schema.put("required", List.of("direction"));
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // Sprint 24 (D1): accept the name form — symbol=pkg.Type#member.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return nameForm.get();
+        }
         String direction = getStringParam(arguments, "direction");
         if (direction == null || direction.isBlank()) {
             return ToolResponse.invalidParameter("direction", "direction is required; one of " + DIRECTIONS);
