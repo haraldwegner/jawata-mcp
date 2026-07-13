@@ -165,3 +165,22 @@ for EVERY landmark, not just the top one — the D4 → D1 loop (orient, then go
 straight there) only closes if every offered name works. Recorded as a durable
 rule (experience store aebb1dad): any feature that hands an agent a name to
 reuse must verify that name resolves through the same path the agent will use.
+
+## C4 — RELEASE v2.11.0 (2026-07-13) — awaiting the word
+
+### Release gates (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| Suite, sharded (clean 2.11.0 build) | 1249/1249 | **1249/1249, 0 skipped, 160 s** ✓ |
+| Suite, serial (same build) | same totals | **1249/1249, 0 skipped** ✓ |
+| Clean-clone build (from f5cd144) | exit 0, complete dist | **exit 0**, jawata.jar + testrunner-2.11.0.jar ✓ |
+| Version sweep | no 2.10.0 left | 9 poms + 5 Bundle-Version manifests bumped; sweep clean ✓ |
+| toolCount | 43 unchanged (stream 1 adds no top-level tool) | 43 (landmarks is an `inspect` kind) ✓ |
+
+Release notes: `docs/release-notes/v2.11.0.md`. Commits: 48ea12e (C0) ·
+f88a2e9 (C1/D1) · b70bad6 (C2/D2) · 112b0cf (C3/D3+D4) · f5cd144 (release bump).
+
+⏸ **Awaiting Harald's release word.** On the word: push + tag → CI → fleet flip
+→ the release-day battery (live stream-1 probes on the resident) → Stage 5's
+dogfood-in-anger.
