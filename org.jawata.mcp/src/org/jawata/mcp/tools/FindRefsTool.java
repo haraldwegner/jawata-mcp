@@ -53,6 +53,7 @@ public class FindRefsTool extends AbstractTool {
                            "com.foo.Bar#method(int,java.lang.String)";
                            optional scope = workspace (default) | project.
             `query` is accepted as an alias for `symbol` (v2.8.1 back-compat).
+            PROJECTION: fields=["filePath","line"] keeps only those keys per result row.
 
             Requires load_project to be called first.
             """;
@@ -78,6 +79,8 @@ public class FindRefsTool extends AbstractTool {
         properties.put("query", Map.of("type", "string", "description",
             "Alias for 'symbol' (kept for back-compat with the pre-v2.8.1 description)."));
         properties.put("maxResults", Map.of("type", "integer", "description", "Optional result cap."));
+        properties.put("fields",
+            org.jawata.mcp.tools.shared.FieldsProjection.schemaProperty("result"));
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withProjectKey(schema);

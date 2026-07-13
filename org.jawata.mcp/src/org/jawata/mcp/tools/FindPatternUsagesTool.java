@@ -64,6 +64,7 @@ public class FindPatternUsagesTool extends AbstractTool {
 
             For each kind, query is the fully qualified name of the type or
             annotation. Optional maxResults caps the response (default 100).
+            PROJECTION: fields=["filePath","line"] keeps only those keys per row.
 
             Examples:
             - find_pattern_usages(kind="annotation", query="org.springframework.beans.factory.annotation.Autowired")
@@ -98,6 +99,8 @@ public class FindPatternUsagesTool extends AbstractTool {
         maxResults.put("type", "integer");
         maxResults.put("description", "Maximum results to return (default 100).");
         properties.put("maxResults", maxResults);
+        properties.put("fields",
+            org.jawata.mcp.tools.shared.FieldsProjection.schemaProperty("usage"));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind", "query"));
@@ -124,6 +127,14 @@ public class FindPatternUsagesTool extends AbstractTool {
                 "query (fully-qualified type or annotation name) is required");
         }
 
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
+
         try {
             IType type = service.findType(query);
             if (type == null) {
@@ -145,7 +156,8 @@ public class FindPatternUsagesTool extends AbstractTool {
             data.put("kind", kind);
             data.put("query", query);
             data.put("totalUsages", usages.size());
-            data.put("usages", usages);
+            data.put("usages",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(usages, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(usages.size())

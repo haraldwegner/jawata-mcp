@@ -108,6 +108,14 @@ public class FindMethodReferencesTool extends AbstractTool {
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         int maxResults = getIntParam(arguments, "maxResults", 100);
 
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
+
         try {
             // Sprint 14 Phase B.2 (bugs.md #12): FQN form via `symbol` wins.
             String symbol = getStringParam(arguments, "symbol");
@@ -157,7 +165,8 @@ public class FindMethodReferencesTool extends AbstractTool {
             data.put("methodName", method.getElementName());
             data.put("declaringType", method.getDeclaringType().getFullyQualifiedName());
             data.put("totalMethodReferences", methodRefs.size());
-            data.put("methodReferences", methodRefs);
+            data.put("methodReferences",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(methodRefs, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(methodRefs.size())

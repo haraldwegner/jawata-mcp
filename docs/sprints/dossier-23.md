@@ -566,7 +566,7 @@ diff the REPO (releases + README), never the marketplace listing.
 
 - **GREEN.**
 
-## C13 — Query-DSL decision matrix (2026-07-13) — AWAITING HARALD
+## C13 — Query-DSL decision matrix (2026-07-13) — DECIDED B + IMPLEMENTED
 
 ### Method
 
@@ -616,7 +616,41 @@ their documented one-line-per-hit output format.
   (~2×) for a NEW query language to design, document, teach and maintain —
   the evidence does not justify it.
 
-### C13 exit status
+### Decision (Harald, 2026-07-13)
 
-- Matrix presented — **PAUSED for Harald's decision** (the plan's mandatory
-  stop). Implementation of the chosen option follows the word.
+**Option B** — "So not due to additional coverage queries, then decision is B
+for sure." The `fields` per-row projection lands on the 5 list-heavy tools;
+NO pipe DSL. Rationale confirmed live: the redundancy is in the rows, not the
+query language, and coverage queries played no role (their responses are
+already summary-shaped).
+
+### Implementation (same day)
+
+- Shared helper `org.jawata.mcp.tools.shared.FieldsProjection`
+  (parse / project / schemaProperty): no `fields` param = full rows
+  (back-compatible); with `fields` = each row keeps exactly the requested
+  keys it carries, in the caller's order; keys a row lacks are skipped
+  silently (rows are heterogeneous by design); malformed `fields` (bare
+  string, empty array, non-string entry) = INVALID_PARAMETER, never a silent
+  full response. Projection is applied AFTER dedupe/rank/pagination, so
+  identity-dependent logic is untouched.
+- Wired into all delegates behind the 5 front doors: search_symbols;
+  find_references (references + implementations + method_references);
+  get_call_hierarchy (incoming + outgoing); find_pattern_usages;
+  get_diagnostics. `fields` declared in the 5 registered schemas +
+  one-line PROJECTION note in each description. 0 net new top-level tools.
+- Tests: `FieldsProjectionTest` (6) — helper semantics (order, skip-missing,
+  3 malformed rejections), live projection proofs on all five tools
+  (get_diagnostics on a REAL compiler-error row via the markers recipe),
+  back-compat full-rows, invalid-parameter path through the front door.
+
+### C13 exit — expected vs actual
+
+| Gate | Expected | Actual |
+|---|---|---|
+| Matrix in dossier | 10 asks measured | 10 measured (above) ✓ |
+| Harald's decision recorded | one of A/B/C | **B** (2026-07-13) ✓ |
+| Implementation green | adopted shaping green | FieldsProjectionTest 6/6 first run ✓ |
+| No regression on touched tools | existing batteries green | 73/73 across 10 filters (SearchSymbols 15, FindReferences 8, FindImplementations 8, FindMethodReferences 7, FindRefsQueryAlias 4, GetCallHierarchy 12, CallHierarchyFqn 2, FindPatternUsages 8, GetDiagnostics 6, LibSourceAndHierarchy 3) ✓ |
+
+- **GREEN.**

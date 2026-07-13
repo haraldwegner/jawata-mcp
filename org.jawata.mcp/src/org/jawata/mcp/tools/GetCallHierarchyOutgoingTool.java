@@ -113,6 +113,14 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
             return ToolResponse.invalidParameter("column", "Must be >= 0 (zero-based)");
         }
 
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
+
         try {
             Path path = Path.of(filePath);
 
@@ -164,7 +172,8 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
             data.put("declaringClass", declaringClass);
             data.put("signature", signature);
             data.put("totalCallees", callees.size());
-            data.put("callees", callees);
+            data.put("callees",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(callees, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(callees.size())

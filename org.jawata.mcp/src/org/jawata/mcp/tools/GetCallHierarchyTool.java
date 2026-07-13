@@ -49,6 +49,7 @@ public class GetCallHierarchyTool extends AbstractTool {
 
             The `incoming` direction also accepts an FQN member `symbol`
             (pkg.Type#method) instead of filePath/line/column.
+            PROJECTION: fields=["callerClass","line"] keeps only those keys per row.
 
             IMPORTANT: Uses ZERO-BASED coordinates.
 
@@ -88,6 +89,8 @@ public class GetCallHierarchyTool extends AbstractTool {
         properties.put("scope", Map.of(
             "type", "string",
             "description", "symbol form: 'workspace' (default) or 'project'."));
+        properties.put("fields",
+            org.jawata.mcp.tools.shared.FieldsProjection.schemaProperty("caller/callee"));
 
         schema.put("properties", properties);
         // filePath/line/column are validated per-delegate (a `symbol` replaces them for incoming).

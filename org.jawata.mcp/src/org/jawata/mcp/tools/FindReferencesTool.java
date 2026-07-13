@@ -102,6 +102,14 @@ public class FindReferencesTool extends AbstractTool {
         int maxResults = getIntParam(arguments, "maxResults", 100);
         maxResults = Math.min(Math.max(maxResults, 1), 1000);
 
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
+
         try {
             // Sprint 14 Phase B.2 (bugs.md #12 capability half): FQN form
             // wins when `symbol` is provided. Otherwise fall back to the
@@ -170,7 +178,8 @@ public class FindReferencesTool extends AbstractTool {
             }
 
             data.put("totalReferences", references.size());
-            data.put("references", references);
+            data.put("references",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(references, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(references.size())

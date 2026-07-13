@@ -87,6 +87,14 @@ public class GetCallHierarchyIncomingTool extends AbstractTool {
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         int maxResults = Math.min(Math.max(getIntParam(arguments, "maxResults", 50), 1), 500);
 
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
+
         try {
             // Sprint 22a P2-b: FQN member form wins when `symbol` is provided
             // (mirrors find_references); otherwise the position-based form.
@@ -169,7 +177,8 @@ public class GetCallHierarchyIncomingTool extends AbstractTool {
             data.put("declaringClass", declaringClass);
             data.put("signature", signature);
             data.put("totalCallers", callers.size());
-            data.put("callers", callers);
+            data.put("callers",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(callers, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(callers.size())

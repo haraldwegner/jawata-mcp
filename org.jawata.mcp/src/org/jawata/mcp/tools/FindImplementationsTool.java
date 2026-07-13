@@ -104,6 +104,14 @@ public class FindImplementationsTool extends AbstractTool {
         int maxResults = getIntParam(arguments, "maxResults", 100);
         maxResults = Math.min(Math.max(maxResults, 1), 1000);
 
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
+
         try {
             // Sprint 14 Phase B.2 (bugs.md #12): FQN form wins if `symbol`
             // is present. Existing position-based path otherwise.
@@ -191,7 +199,8 @@ public class FindImplementationsTool extends AbstractTool {
             }
 
             data.put("totalImplementations", implementations.size());
-            data.put("implementations", implementations);
+            data.put("implementations",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(implementations, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(implementations.size())

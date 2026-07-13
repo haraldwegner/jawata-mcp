@@ -53,6 +53,7 @@ public class GetDiagnosticsTool extends AbstractTool {
             OUTPUT: List of compilation errors and warnings with locations
 
             Useful for finding syntax errors, type mismatches, missing imports, etc.
+            PROJECTION: fields=["filePath","line","message"] keeps only those keys per row.
 
             Requires load_project to be called first.
             """;
@@ -74,7 +75,8 @@ public class GetDiagnosticsTool extends AbstractTool {
             "maxResults", Map.of(
                 "type", "integer",
                 "description", "Max diagnostics to return (default 100)"
-            )
+            ),
+            "fields", org.jawata.mcp.tools.shared.FieldsProjection.schemaProperty("diagnostic")
         ));
         schema.put("required", List.of());
         return withProjectKey(schema);
@@ -85,6 +87,14 @@ public class GetDiagnosticsTool extends AbstractTool {
         String filePath = getStringParam(arguments, "filePath");
         String severity = getStringParam(arguments, "severity", "all");
         int maxResults = getIntParam(arguments, "maxResults", 100);
+
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
 
         try {
             List<Map<String, Object>> diagnostics = new ArrayList<>();
@@ -132,7 +142,8 @@ public class GetDiagnosticsTool extends AbstractTool {
             data.put("errorCount", errorCount);
             data.put("warningCount", warningCount);
             data.put("filesChecked", filesChecked);
-            data.put("diagnostics", diagnostics);
+            data.put("diagnostics",
+                org.jawata.mcp.tools.shared.FieldsProjection.project(diagnostics, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(diagnostics.size())

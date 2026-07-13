@@ -55,6 +55,7 @@ public class SearchSymbolsTool extends AbstractTool {
             - search_symbols(query="get*", kind="Method")
 
             PAGINATION: Use offset parameter for large result sets
+            PROJECTION: fields=["name","filePath","line"] keeps only those keys per row
 
             IMPORTANT: Requires load_project to be called first.
             """;
@@ -80,7 +81,8 @@ public class SearchSymbolsTool extends AbstractTool {
             "offset", Map.of(
                 "type", "integer",
                 "description", "Skip first N results for pagination"
-            )
+            ),
+            "fields", org.jawata.mcp.tools.shared.FieldsProjection.schemaProperty("results")
         ));
         schema.put("required", List.of("query"));
         return withProjectKey(schema);
@@ -96,6 +98,14 @@ public class SearchSymbolsTool extends AbstractTool {
         String kind = getStringParam(arguments, "kind");
         int maxResults = getIntParam(arguments, "maxResults", 50);
         int offset = getIntParam(arguments, "offset", 0);
+
+        // Sprint 23 (C13 decision B): per-row projection, validated up front.
+        List<String> fields;
+        try {
+            fields = org.jawata.mcp.tools.shared.FieldsProjection.parse(arguments);
+        } catch (IllegalArgumentException e) {
+            return ToolResponse.invalidParameter("fields", e.getMessage());
+        }
 
         // Validate and cap values
         maxResults = Math.min(Math.max(maxResults, 1), 1000);
@@ -162,7 +172,7 @@ public class SearchSymbolsTool extends AbstractTool {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("query", query);
             if (kind != null) data.put("kind", kind);
-            data.put("results", page);
+            data.put("results", org.jawata.mcp.tools.shared.FieldsProjection.project(page, fields));
             data.put("pagination", Map.of(
                 "offset", offset,
                 "returned", page.size(),
