@@ -40,7 +40,11 @@ public class DebugTool extends AbstractTool {
         "breakpoint_set", "breakpoint_clear", "breakpoint_list",
         "wait", "threads", "snapshot", "evaluate", "step", "resume", "instances",
         "set_value", "force_return", "pop_frame", "redefine", "mutations",
+        "probe_set", "probe_clear", "probe_list", "probe_read",
         "artifacts", "artifact_delete");
+
+    private static final List<String> PROBE_KINDS =
+        List.of("field_watch", "method_trace", "logpoint");
 
     private static final List<String> BREAKPOINT_KINDS = List.of(
         "line", "method", "conditional", "hit_count", "exception",
@@ -171,6 +175,25 @@ public class DebugTool extends AbstractTool {
                              re-entered.
             - mutations    — everything this session changed, in order.
 
+            WATCHING WITHOUT STOPPING — probes (this is what you use on a live simulation,
+            where suspending the world is exactly what you cannot do):
+            - probe_set   — kind = field_watch (every read and write of a field) |
+                            method_trace (entry and exit, with the RETURN VALUE) |
+                            logpoint (a line, optionally capturing expressions).
+                            The program KEEPS RUNNING at full speed. Optional budget
+                            (default 1000 events), after which the probe stops itself and
+                            says so — a probe on a hot path would otherwise stream forever.
+            - probe_read  — the values it has streamed. They also land in `hitStream`, so a
+                            file monitor gets them as they happen.
+            - probe_list / probe_clear — as they read.
+
+            THE ONE HONEST CATCH: a JDI event carries only what the JVM puts in it. A field's
+            value and a method's return value are FREE — they ride in the event, and nothing
+            stops. But LOCALS can only be read from a stopped thread, so a logpoint with
+            `capture` DOES stop the thread — briefly, resuming itself at once. Such a probe
+            reports `perturbs: true`. If you are hunting a race, that matters: use
+            field_watch or method_trace, which never stop anything.
+
             ONCE YOU MUTATE, IT IS NOT THE SAME PROGRAM. A conclusion drawn after a mutation
             is a conclusion about a program you edited. `mutations` is how you (and whoever
             reads your report) can tell which is which — so use it, and say what you changed.
@@ -269,6 +292,15 @@ public class DebugTool extends AbstractTool {
             "description", "set_value: the local or field to overwrite."));
         properties.put("classFile", Map.of("type", "string",
             "description", "redefine: path to the compiled .class with the new method bodies."));
+        properties.put("probeId", Map.of("type", "string",
+            "description", "probe_clear / probe_read: which probe."));
+        properties.put("capture", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "probe_set kind=logpoint: expressions to evaluate at each pass. "
+                + "NOTE: capturing reads a frame, which STOPS the thread briefly — the probe "
+                + "reports perturbs:true. Without capture, nothing is stopped."));
+        properties.put("budget", Map.of("type", "integer",
+            "description", "probe_set: stop after this many events (default 1000). The probe "
+                + "then disables itself and says so — what you have is the first N, not all."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("action"));
@@ -303,6 +335,10 @@ public class DebugTool extends AbstractTool {
                 case "pop_frame" -> popFrame(arguments);
                 case "redefine" -> redefine(arguments);
                 case "mutations" -> mutations(arguments);
+                case "probe_set" -> probeSet(arguments);
+                case "probe_clear" -> probeClear(arguments);
+                case "probe_list" -> probeList(arguments);
+                case "probe_read" -> probeRead(arguments);
                 case "artifacts" -> listArtifacts();
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
@@ -620,6 +656,78 @@ public class DebugTool extends AbstractTool {
                 ? "Nothing has been changed — what this program does, it does on its own."
                 : "This program has been EDITED " + changed.size() + " time(s). Any finding "
                     + "from here on describes the edited program; report it that way.")
+            .build());
+    }
+
+    private ToolResponse probeSet(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        String kind = getStringParam(arguments, "kind");
+        if (kind == null || !PROBE_KINDS.contains(kind)) {
+            return ToolResponse.invalidParameter("kind", "probe_set needs a kind: " + PROBE_KINDS);
+        }
+        String className = getStringParam(arguments, "className");
+        if (className == null || className.isBlank()) {
+            return ToolResponse.invalidParameter("className",
+                "probe_set needs the fully-qualified class to watch.");
+        }
+        Map<String, Object> probe = debugger.setProbe(kind, className,
+            optionalInt(arguments, "line"), getStringParam(arguments, "method"),
+            getStringParam(arguments, "field"), stringList(arguments, "capture"),
+            optionalInt(arguments, "budget"));
+
+        return ToolResponse.success(probe, ResponseMeta.builder()
+            .steering(Boolean.TRUE.equals(probe.get("perturbs"))
+                ? "NOTE: this probe captures expressions, which means reading a frame, which "
+                    + "means STOPPING the thread — briefly, resuming itself at once, but it "
+                    + "perturbs. If you are hunting a race, prefer field_watch or "
+                    + "method_trace: they read what the event already carries and stop nothing."
+                : "The program keeps running at full speed — nothing is suspended. Read the "
+                    + "values with probe_read, or watch `hitStream` and be notified as they "
+                    + "stream.")
+            .build());
+    }
+
+    private ToolResponse probeClear(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        String probeId = getStringParam(arguments, "probeId");
+        if (probeId == null || probeId.isBlank()) {
+            return ToolResponse.invalidParameter("probeId", "probe_clear needs a probeId.");
+        }
+        if (!debugger.clearProbe(probeId)) {
+            return ToolResponse.symbolNotFound("No probe '" + probeId + "'.");
+        }
+        return ToolResponse.success(Map.of("probeId", probeId, "cleared", true),
+            ResponseMeta.builder().build());
+    }
+
+    private ToolResponse probeList(JsonNode arguments) throws Exception {
+        List<Map<String, Object>> all = debuggerOf(arguments).listProbes();
+        return ToolResponse.success(Map.of("probes", all, "count", all.size()),
+            ResponseMeta.builder().returnedCount(all.size()).build());
+    }
+
+    private ToolResponse probeRead(JsonNode arguments) throws Exception {
+        DebugController debugger = debuggerOf(arguments);
+        String probeId = getStringParam(arguments, "probeId");
+        List<Map<String, Object>> events = debugger.probeEvents(probeId);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("events", events);
+        data.put("returned", events.size());
+        // Say what this window IS. The probe may have seen far more than we kept.
+        debugger.listProbes().stream()
+            .filter(p -> probeId == null || probeId.equals(p.get("probeId")))
+            .findFirst()
+            .ifPresent(p -> {
+                data.put("totalSeen", p.get("events"));
+                if (Boolean.TRUE.equals(p.get("stopped"))) {
+                    data.put("probeStopped", p.get("stoppedReason"));
+                }
+            });
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .returnedCount(events.size())
+            .steering("`totalSeen` is how many events the probe saw; `returned` is how many we "
+                + "kept. If they differ, this is a WINDOW on the stream, not the stream.")
             .build());
     }
 

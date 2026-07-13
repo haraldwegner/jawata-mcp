@@ -552,3 +552,49 @@ settled state it means to assert: 6/6 clean over six consecutive focused runs.
 | honest refusal | schema change refused by name | `REDEFINE_SCHEMA_CHANGE_UNSUPPORTED` + what to do ✓ |
 | mutation log | every change, in order, disclosed on status | 2 mutations, ordered; `programIsUnmodified: false` ✓ |
 | DebugMutateTest | green | **7/7** (×3) ✓ |
+
+## C10 — D8: dev probes (2026-07-13)
+
+### What shipped
+
+`debug` gains **probe_set / probe_read / probe_list / probe_clear** — watchers that
+read a running program **without stopping it**. Kinds: `field_watch` (every read and
+write), `method_trace` (entry and exit, with the RETURN VALUE), `logpoint` (a line,
+optionally capturing expressions). Probe events stream to the same `hitStream`
+journal, so a file monitor is notified as they happen. toolCount stays 44.
+
+This is the capability that matters on a live simulation, where suspending the world
+is exactly what you cannot do. A breakpoint answers "what is the state HERE?" by
+stopping everything, which changes the timing of all that follows. A probe answers
+"what values flow through here?" at full speed.
+
+### THE HONEST CATCH — declared, not hidden
+
+A JDI event carries only what the JVM puts in it:
+
+- A field's value and a method's **return value ride in the event** — free, and
+  SUSPEND_NONE means nothing ever stops.
+- **Locals do not.** They can only be read from a stopped thread. So a logpoint with
+  `capture` DOES stop the thread — for microseconds, resuming itself at once — and it
+  reports **`perturbs: true`**. Calling that "non-suspending" would be a lie, and the
+  worst kind: one that silently shifts the timing of the very race you are hunting.
+  The steering points such a caller at `field_watch` / `method_trace`, which stop
+  nothing.
+
+### BOUNDED, AND SAYS SO
+
+A probe on a hot path would stream until the disk fills. Each has a budget (default
+1000); past it the probe disables itself and reports *"the FIRST N events, not all of
+them"* — a truncated stream must never read as the whole story. `probe_read`
+distinguishes `totalSeen` from `returned` for the same reason.
+
+### Verification (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| **THE PROOF** | values stream WHILE the loop keeps running | field values stream; main checked RUNNING **10× during the live stream** (a single check could get lucky); the stream keeps growing ✓ |
+| field_watch | reads AND writes, values from the event | both seen; writes carry `newValue`; `perturbs: false` ✓ |
+| method_trace | entry + exit + return value, no stop | `offset()` exit reports `returned: 7` without stopping anything ✓ |
+| capturing logpoint | declares that it perturbs | `perturbs: true`, `suspendsTarget: true`; captured `iteration*2 + offset()` evaluated in the live frame; program NOT left suspended ✓ |
+| budget | stops itself, disowns the partial stream | stopped at 6; message says "not all of them"; program unaffected ✓ |
+| DevProbeTest | green | **4/4** ✓ |

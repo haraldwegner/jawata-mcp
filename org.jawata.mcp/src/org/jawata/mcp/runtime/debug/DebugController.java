@@ -313,6 +313,12 @@ public final class DebugController implements AutoCloseable {
             installDeferred(prepared.referenceType());
             return true;    // installed; let the class carry on
         }
+        // A PROBE never holds the program — it reads what the event carries and lets it run.
+        Probe probe = probeFor(event.request());
+        if (probe != null) {
+            return handleProbe(probe, event);
+        }
+
         Bp bp = breakpointFor(event.request());
         if (bp == null) {
             return true;    // not ours
@@ -383,6 +389,14 @@ public final class DebugController implements AutoCloseable {
         }
         Object owner = request.getProperty("jawata.bp");
         return owner instanceof String id ? breakpoints.get(id) : null;
+    }
+
+    private Probe probeFor(EventRequest request) {
+        if (request == null) {
+            return null;
+        }
+        Object owner = request.getProperty("jawata.probe");
+        return owner instanceof String id ? probes.get(id) : null;
     }
 
     private static ThreadReference threadOf(Event event) {
@@ -658,14 +672,18 @@ public final class DebugController implements AutoCloseable {
     }
 
     private Field field(ReferenceType type, Bp bp) throws DebugException {
-        if (bp.fieldName == null) {
+        return field(type, bp.fieldName);
+    }
+
+    private Field field(ReferenceType type, String fieldName) throws DebugException {
+        if (fieldName == null) {
             throw new DebugException("BREAKPOINT_NEEDS_FIELD",
                 "A field watchpoint needs a field name.");
         }
-        Field field = type.fieldByName(bp.fieldName);
+        Field field = type.fieldByName(fieldName);
         if (field == null) {
             throw new DebugException("BREAKPOINT_UNKNOWN_FIELD",
-                type.name() + " has no field '" + bp.fieldName + "'.");
+                type.name() + " has no field '" + fieldName + "'.");
         }
         return field;
     }
@@ -1029,6 +1047,293 @@ public final class DebugController implements AutoCloseable {
                     + "reading. Suspended right now: " + suspended.keySet());
         }
         return thread;
+    }
+
+    // ------------------------------------------------------- D8: dev probes
+
+    /** Probes stream values out of a running program; they must never fill the heap. */
+    public static final int DEFAULT_PROBE_BUDGET = 1000;
+    private static final int MAX_PROBE_EVENTS_KEPT = 500;
+
+    private final Map<String, Probe> probes = new ConcurrentHashMap<>();
+    private final List<Map<String, Object>> probeEvents = new CopyOnWriteArrayList<>();
+
+    /**
+     * A watcher on a running program — <b>it does not stop it</b>.
+     *
+     * <p>This is the difference that matters on a live simulation: a breakpoint answers
+     * "what is the state HERE?" by stopping the world, which changes the timing of
+     * everything that follows. A probe answers "what values flow through here?" while the
+     * program keeps running at full speed.</p>
+     *
+     * <p>The catch, stated rather than hidden: a JDI event only carries what the JVM puts
+     * in it. A field watch carries the value, and a method exit carries the return value —
+     * those are FREE. But reading a frame's locals requires the thread to be stopped, so a
+     * logpoint that captures expressions DOES stop the thread — for microseconds, and it
+     * resumes itself immediately, but it perturbs. Such a probe declares
+     * {@code perturbs: true}, because a probe that quietly changed the timing of a race
+     * you were hunting would be worse than no probe at all.</p>
+     */
+    private static final class Probe {
+        final String id;
+        final String kind;
+        final String className;
+        final String describe;
+        final List<String> capture;
+        final boolean perturbs;
+        final int budget;
+        final AtomicInteger seen = new AtomicInteger();
+        final List<EventRequest> requests = new ArrayList<>();
+        volatile boolean stopped;
+        volatile String stoppedReason;
+
+        Probe(String id, String kind, String className, String describe, List<String> capture,
+              boolean perturbs, int budget) {
+            this.id = id;
+            this.kind = kind;
+            this.className = className;
+            this.describe = describe;
+            this.capture = capture;
+            this.perturbs = perturbs;
+            this.budget = budget;
+        }
+
+        Map<String, Object> report() {
+            Map<String, Object> described = new LinkedHashMap<>();
+            described.put("probeId", id);
+            described.put("kind", kind);
+            described.put("at", describe);
+            described.put("events", seen.get());
+            described.put("budget", budget);
+            described.put("perturbs", perturbs);
+            described.put("suspendsTarget", perturbs);
+            if (!capture.isEmpty()) {
+                described.put("capture", capture);
+            }
+            if (stopped) {
+                described.put("stopped", true);
+                described.put("stoppedReason", stoppedReason);
+            }
+            return described;
+        }
+    }
+
+    /**
+     * Watch a running program without stopping it.
+     *
+     * @param kind    field_watch | method_trace | logpoint
+     * @param capture logpoint only: expressions to evaluate at each pass (this is what makes
+     *                a logpoint perturbing — locals cannot be read from a running thread)
+     */
+    public Map<String, Object> setProbe(String kind, String className, Integer line,
+                                        String methodName, String fieldName,
+                                        List<String> capture, Integer budget)
+            throws DebugException {
+        requireLive();
+        List<ReferenceType> loaded = vm.classesByName(className);
+        if (loaded.isEmpty()) {
+            throw new DebugException("TYPE_NOT_LOADED",
+                className + " is not loaded yet. A probe watches a running program, so the "
+                    + "class has to be in it — start the program first, or break on it once.");
+        }
+        ReferenceType type = loaded.get(0);
+        List<String> captures = capture == null ? List.of() : List.copyOf(capture);
+        int bound = budget == null || budget <= 0 ? DEFAULT_PROBE_BUDGET : budget;
+        String id = "probe-" + ids.incrementAndGet();
+
+        EventRequestManager erm = vm.eventRequestManager();
+        Probe probe;
+        try {
+            switch (kind) {
+                case "field_watch" -> {
+                    Field field = field(type, fieldName);
+                    probe = new Probe(id, kind, className, className + "#" + fieldName,
+                        captures, false, bound);
+                    if (vm.canWatchFieldModification()) {
+                        probe.requests.add(erm.createModificationWatchpointRequest(field));
+                    }
+                    if (vm.canWatchFieldAccess()) {
+                        probe.requests.add(erm.createAccessWatchpointRequest(field));
+                    }
+                    if (probe.requests.isEmpty()) {
+                        throw new DebugException("CAPABILITY_ABSENT",
+                            "This JVM cannot watch fields at all.");
+                    }
+                }
+                case "method_trace" -> {
+                    if (methodName == null) {
+                        throw new DebugException("PROBE_NEEDS_METHOD",
+                            "method_trace needs a method name.");
+                    }
+                    probe = new Probe(id, kind, className, className + "#" + methodName + "()",
+                        captures, false, bound);
+                    com.sun.jdi.request.MethodEntryRequest entry = erm.createMethodEntryRequest();
+                    entry.addClassFilter(type);
+                    probe.requests.add(entry);
+                    com.sun.jdi.request.MethodExitRequest exit = erm.createMethodExitRequest();
+                    exit.addClassFilter(type);
+                    probe.requests.add(exit);
+                }
+                case "logpoint" -> {
+                    if (line == null) {
+                        throw new DebugException("PROBE_NEEDS_LINE", "A logpoint needs a line.");
+                    }
+                    List<Location> locations;
+                    try {
+                        locations = type.locationsOfLine(line);
+                    } catch (AbsentInformationException e) {
+                        throw new DebugException("BREAKPOINT_NO_LINE_TABLE",
+                            className + " was compiled without line numbers.");
+                    }
+                    if (locations.isEmpty()) {
+                        throw new DebugException("BREAKPOINT_NO_CODE_AT_LINE",
+                            "No executable code at " + className + ":" + line + ".");
+                    }
+                    // Capturing expressions means reading a frame, and a frame can only be
+                    // read while the thread is stopped. So THIS probe stops it — briefly, and
+                    // it resumes itself — and it says so.
+                    probe = new Probe(id, kind, className, className + ":" + line,
+                        captures, !captures.isEmpty(), bound);
+                    probe.requests.add(erm.createBreakpointRequest(locations.get(0)));
+                }
+                default -> throw new DebugException("PROBE_UNKNOWN_KIND",
+                    "Unknown probe kind '" + kind + "'. One of: field_watch, method_trace, "
+                        + "logpoint.");
+            }
+        } catch (DebugException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new DebugException("PROBE_FAILED",
+                "Cannot install the probe: " + e.getClass().getSimpleName() + ": "
+                    + e.getMessage());
+        }
+
+        for (EventRequest request : probe.requests) {
+            // SUSPEND_NONE is the whole point: the program runs on. A logpoint that captures
+            // expressions is the one exception, and it is flagged as perturbing.
+            request.setSuspendPolicy(probe.perturbs
+                ? EventRequest.SUSPEND_EVENT_THREAD : EventRequest.SUSPEND_NONE);
+            request.putProperty("jawata.probe", id);
+            request.enable();
+        }
+        probes.put(id, probe);
+        return probe.report();
+    }
+
+    /** @return true when the event set should be resumed (a probe never holds the program). */
+    private boolean handleProbe(Probe probe, Event event) {
+        if (probe.stopped) {
+            return true;
+        }
+        int seen = probe.seen.incrementAndGet();
+
+        Map<String, Object> streamed = new LinkedHashMap<>();
+        streamed.put("probeId", probe.id);
+        streamed.put("kind", probe.kind);
+        streamed.put("event", "probe");
+        streamed.put("sequence", seen);
+        streamed.put("atMillis", System.currentTimeMillis());
+
+        ThreadReference thread = threadOf(event);
+        if (thread != null) {
+            streamed.put("threadName", thread.name());
+            streamed.put("threadId", thread.uniqueID());
+        }
+        if (event instanceof LocatableEvent locatable) {
+            streamed.putAll(describeLocation(locatable.location()));
+        }
+
+        // What the EVENT carries is free — no frame, no stopping.
+        if (event instanceof WatchpointEvent watch) {
+            streamed.put("field", watch.field().name());
+            streamed.put("value", JdiValues.summary(watch.valueCurrent()));
+            if (event instanceof ModificationWatchpointEvent modified) {
+                streamed.put("access", "write");
+                streamed.put("newValue", JdiValues.summary(modified.valueToBe()));
+            } else {
+                streamed.put("access", "read");
+            }
+        }
+        if (event instanceof com.sun.jdi.event.MethodEntryEvent) {
+            streamed.put("trace", "entry");
+        }
+        if (event instanceof com.sun.jdi.event.MethodExitEvent exit) {
+            streamed.put("trace", "exit");
+            if (vm.canGetMethodReturnValues()) {
+                streamed.put("returned", JdiValues.summary(exit.returnValue()));
+            } else {
+                streamed.put("returned", null);
+                streamed.put("returnedUnavailable",
+                    "this JVM does not report method return values (canGetMethodReturnValues"
+                        + "=false)");
+            }
+        }
+
+        // And what it does NOT carry — locals — costs a stop. Only a capturing logpoint pays.
+        if (!probe.capture.isEmpty() && thread != null) {
+            Map<String, Object> captured = new LinkedHashMap<>();
+            for (String expression : probe.capture) {
+                try {
+                    captured.put(expression,
+                        JdiValues.summary(new JdiEvaluator(thread, 0).evaluate(expression)));
+                } catch (JdiEvaluator.EvalException e) {
+                    captured.put(expression, e.code + ": " + e.getMessage());
+                }
+            }
+            streamed.put("captured", captured);
+        }
+
+        appendToJournal(streamed);
+        probeEvents.add(streamed);
+        while (probeEvents.size() > MAX_PROBE_EVENTS_KEPT) {
+            probeEvents.remove(0);
+        }
+
+        if (seen >= probe.budget) {
+            // A probe on a hot path would otherwise stream until the disk fills. Stop, and
+            // SAY that the stream is not the whole story.
+            probe.stopped = true;
+            probe.stoppedReason = "budget of " + probe.budget + " events reached — the probe is "
+                + "off. The program went on running; what you have is the FIRST " + probe.budget
+                + " events, not all of them.";
+            for (EventRequest request : probe.requests) {
+                try {
+                    request.disable();
+                } catch (Exception e) {
+                    log.debug("disabling a spent probe failed: {}", e.getMessage());
+                }
+            }
+        }
+        return true;   // ALWAYS resume: a probe watches, it does not hold
+    }
+
+    public List<Map<String, Object>> listProbes() {
+        return probes.values().stream().map(Probe::report).toList();
+    }
+
+    public boolean clearProbe(String probeId) {
+        Probe probe = probes.remove(probeId);
+        if (probe == null) {
+            return false;
+        }
+        for (EventRequest request : probe.requests) {
+            try {
+                vm.eventRequestManager().deleteEventRequest(request);
+            } catch (Exception e) {
+                log.debug("clearing probe {} failed: {}", probeId, e.getMessage());
+            }
+        }
+        return true;
+    }
+
+    /** The values a probe has streamed — bounded, newest last. */
+    public List<Map<String, Object>> probeEvents(String probeId) {
+        if (probeId == null) {
+            return List.copyOf(probeEvents);
+        }
+        return probeEvents.stream()
+            .filter(e -> probeId.equals(e.get("probeId")))
+            .toList();
     }
 
     // --------------------------------------------------- D7: hypothesis testing
