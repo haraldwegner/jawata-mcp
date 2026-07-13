@@ -44,9 +44,23 @@ public class DebugTool extends AbstractTool {
         "line", "method", "conditional", "hit_count", "exception",
         "field_access", "field_write");
 
-    /** A poll that blocks forever is a hung agent; this is the ceiling. */
-    private static final long MAX_WAIT_MILLIS = 60_000;
-    private static final long DEFAULT_WAIT_MILLIS = 5_000;
+    /**
+     * How long {@code wait} may hold the call open.
+     *
+     * <p><b>Blocking IS the wait primitive.</b> An agent is only ever driven by tool
+     * results: nothing an MCP server pushes can re-invoke an agent that is not already
+     * in a turn. So "notify me when it hits" cannot exist — the call that waits is the
+     * call that returns the hit.</p>
+     *
+     * <p>The ceiling is set by the transport's idle window, not by us: an HTTP/SSE MCP
+     * server may hold a call open for about five minutes before the client aborts it as
+     * idle (stdio allows far longer). Four minutes leaves headroom. A wait that needs
+     * longer simply calls again — <b>and loses nothing</b>, because the breakpoint keeps
+     * the thread suspended until somebody resumes it. The program sits there waiting for
+     * you, which is precisely what a notification could not promise.</p>
+     */
+    private static final long MAX_WAIT_MILLIS = 240_000;
+    private static final long DEFAULT_WAIT_MILLIS = 30_000;
 
     private final RuntimeSessionRegistry sessions;
     private final RuntimeArtifactStore artifacts;
@@ -104,11 +118,22 @@ public class DebugTool extends AbstractTool {
             - breakpoint_list / breakpoint_clear — as they read.
 
             STOPPING AND LOOKING:
-            - wait     — the next breakpoint hit. Returns immediately if one is already
-                         waiting; otherwise waits up to timeoutMillis (default 5s, max
-                         60s). A timeout is NOT an error — it means nothing has hit yet;
-                         poll again. THE SESSION ID IS THE HANDLE: the tool never blocks
-                         you longer than you asked.
+            - wait     — BLOCK until the next breakpoint hit, and return it. Returns the
+                         instant it fires; if nothing fires, waits up to timeoutMillis
+                         (default 30s, max 240s) and then answers "nothing yet" — which is
+                         an answer, not an error.
+
+                         NOTHING IS EVER MISSED. A hit SUSPENDS the thread and leaves it
+                         suspended: the program stops and waits for you, indefinitely. So
+                         a wait that times out loses nothing — call again and the hit is
+                         still there. (This is why no push notification is needed, and why
+                         one would not help: an agent only ever runs on tool results.)
+
+                         WAITING FOR SOMETHING RARE — a condition that takes an hour, a
+                         bug that shows up on the ten-thousandth message? Hand the session
+                         to a SUBAGENT: it arms the breakpoints, starts the program, and
+                         loops `wait` in its own context while the main loop does other
+                         work. The sessionId is the whole handle it needs.
             - threads  — every thread and what it is doing. A RUNNING thread reports NO
                          stack and says why: a stack read from a running thread is a
                          race, not a reading.
@@ -357,9 +382,13 @@ public class DebugTool extends AbstractTool {
             data.put("waitedMillis", timeout);
             data.put("breakpointsArmed", debugger.listBreakpoints().size());
             data.put("targetAlive", debugger.isLive());
+            data.put("nothingLost", true);
             return ToolResponse.success(data, ResponseMeta.builder()
-                .steering("Nothing has hit in that window. Poll again, or check "
-                    + "breakpoint_list — a breakpoint showing bound:false has not armed yet.")
+                .steering("Nothing hit in that window — and nothing was lost: a hit suspends "
+                    + "the thread and holds it, so calling wait again picks it up whenever it "
+                    + "comes. If the condition is rare, hand this sessionId to a subagent and "
+                    + "let it wait. If it should have hit by now, check breakpoint_list — one "
+                    + "showing bound:false has not armed yet.")
                 .build());
         }
         Map<String, Object> data = new LinkedHashMap<>(hit.get());

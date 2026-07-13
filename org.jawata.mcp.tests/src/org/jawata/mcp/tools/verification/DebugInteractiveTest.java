@@ -533,6 +533,47 @@ class DebugInteractiveTest {
     }
 
     @Test
+    @DisplayName("the WAIT contract: a timed-out wait loses nothing, and a rare condition is "
+        + "still caught long after it fired")
+    void aTimedOutWaitLosesNothingAndTheHitKeepsWaiting() throws Exception {
+        // THIS IS THE CONTRACT THAT MAKES AN AGENT ABLE TO DEBUG AT ALL. No breakpoint hits
+        // the instant you arm it, and nothing an MCP server pushes can wake an agent — an
+        // agent only ever runs on tool results. So `wait` BLOCKS and returns the hit; and if
+        // it times out, the hit is not lost, because a hit SUSPENDS the thread and holds it.
+        // The program stops and waits for you. That is what a notification could never
+        // promise, and it is what lets a subagent come back later and still find its answer.
+
+        // A rare-ish condition: the iteration where the fixture throws (iteration 5).
+        arm("conditional", Map.of(
+            "line", lineOf("int doubled = iteration * 2;"),
+            "condition", "iteration == 5"));
+        go();
+
+        // A wait that is TOO SHORT to see it. This must not be an error, and must not
+        // consume anything.
+        ObjectNode tooShort = onSession("wait");
+        tooShort.put("timeoutMillis", 1);
+        ToolResponse nothingYet = tool.execute(tooShort);
+        assertTrue(nothingYet.isSuccess(), "a timeout is an ANSWER, not a failure");
+        assertEquals(Boolean.FALSE, data(nothingYet).get("hit"));
+        assertEquals(Boolean.TRUE, data(nothingYet).get("nothingLost"));
+
+        // Now go away and do something else entirely, well past the moment it fires.
+        Thread.sleep(3_000);
+
+        // Come back. The program is STOPPED where it stopped, and the hit is still there.
+        Map<String, Object> hit = awaitHit();
+        long threadId = ((Number) hit.get("threadId")).longValue();
+        assertEquals(5, ((Number) evaluate(threadId, "iteration")).intValue(),
+            "the hit we walked away from is exactly the one we come back to: " + hit);
+
+        // And it really is still suspended — the program did not run on without us.
+        Map<String, Object> frame = frameOf(snapshot(threadId, 1));
+        assertEquals("computeSignal", frame.get("method"),
+            "the thread waited for us, indefinitely: " + frame);
+    }
+
+    @Test
     @DisplayName("a breakpoint on a class that is not loaded is DEFERRED, not failed")
     void unloadedClassGivesADeferredBreakpoint() {
         ObjectNode args = onSession("breakpoint_set");
