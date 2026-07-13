@@ -192,6 +192,23 @@ public final class RunnerClasspath {
         return jars;
     }
 
+    /** Locate a single dist tools/ jar by filename prefix (e.g. the JaCoCo agent). */
+    public static Path toolJar(String prefix) throws IOException {
+        String override = System.getProperty("jawata.tools.dir");
+        Path toolsDir;
+        if (override != null && !override.isBlank()) {
+            toolsDir = Path.of(override);
+        } else {
+            String distRoot = System.getProperty("jawata.dist.root");
+            if (distRoot == null) {
+                throw new IllegalStateException("Neither jawata.tools.dir nor jawata.dist.root "
+                    + "is set — cannot locate " + prefix + "*.jar");
+            }
+            toolsDir = Path.of(distRoot).resolve("tools");
+        }
+        return findOne(toolsDir, prefix);
+    }
+
     private static Path findOne(Path dir, String prefix) throws IOException {
         try (Stream<Path> files = Files.list(dir)) {
             return files.filter(p -> p.getFileName().toString().startsWith(prefix)

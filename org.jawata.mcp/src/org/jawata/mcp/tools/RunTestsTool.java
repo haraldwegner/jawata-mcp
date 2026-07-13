@@ -52,6 +52,9 @@ public class RunTestsTool extends AbstractTool {
     private final org.jawata.mcp.execution.TestSessionRegistry sessions =
         new org.jawata.mcp.execution.TestSessionRegistry();
 
+    private final org.jawata.mcp.coverage.CoverageService coverage =
+        new org.jawata.mcp.coverage.CoverageService();
+
     public RunTestsTool(Supplier<IJdtService> serviceSupplier) {
         super(serviceSupplier);
     }
@@ -85,6 +88,21 @@ public class RunTestsTool extends AbstractTool {
                 process tree, returns the honest partial result (cancelled=true,
                 evidenceFinalized=false).
               action="run" (default) behaves synchronously as above.
+
+            Coverage evidence (JaCoCo on the same runner lifecycle):
+              run_tests(coverage=true, scope=...)              → coverageArtifactId
+              run_tests(action="coverage_report" [, artifactId]) → totals + provenance
+                (git revision + dirty fingerprint, selection, evidence kind,
+                completion status) + per-state histogram; STALE classes are
+                REFUSED, an unfinalized run reports unknown-run-failed, a run
+                with no exec data reports instrumentation-failure — counts are
+                never invented.
+              run_tests(action="coverage_uncovered", target="com.example.Foo#m")
+                → per-symbol states + uncovered/partly-covered lines + branch
+                gaps + links into the compiler-aware tools + a smallest-next-
+                action hint; same-FQN-in-two-bundles yields separate facts.
+              run_tests(action="coverage_artifacts") / (action="coverage_delete",
+                artifactId=...) manage stored artifacts explicitly.
 
             Inputs:
             - scope.kind — "method" | "class" | "package".
@@ -164,6 +182,18 @@ public class RunTestsTool extends AbstractTool {
             "description", "Launch descriptor: extra jar/dir paths appended to the runner "
                 + "classpath at RUNTIME only (e.g. plain-Java projects whose build model "
                 + "cannot declare them)."));
+        properties.put("coverage", Map.of("type", "boolean",
+            "description", "Collect JaCoCo coverage during this run (action=run/start); the "
+                + "response carries a coverageArtifactId for the coverage_* query actions."));
+        properties.put("evidenceKind", Map.of("type", "string",
+            "enum", List.of("unit", "integration", "system", "replay", "manual"),
+            "description", "Evidence classification recorded in the coverage artifact "
+                + "(default unit)."));
+        properties.put("artifactId", Map.of("type", "string",
+            "description", "Coverage artifact for the coverage_* actions (default: latest)."));
+        properties.put("target", Map.of("type", "string",
+            "description", "coverage_uncovered target: 'com.example.Foo' or "
+                + "'com.example.Foo#method'."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }
@@ -178,10 +208,16 @@ public class RunTestsTool extends AbstractTool {
             case "status", "cancel" -> {
                 return handleSessionAction(action, arguments);
             }
+            case "coverage_report", "coverage_uncovered", "coverage_artifacts",
+                 "coverage_delete" -> {
+                return handleCoverageAction(action, arguments);
+            }
             case "run", "start" -> { /* fall through to launch */ }
             default -> {
                 return ToolResponse.invalidParameter("action",
-                    "Must be 'run', 'start', 'status', or 'cancel'; got '" + action + "'.");
+                    "Must be run, start, status, cancel, coverage_report, "
+                        + "coverage_uncovered, coverage_artifacts, or coverage_delete; got '"
+                        + action + "'.");
             }
         }
         if (arguments == null || !arguments.has("scope") || !arguments.get("scope").isObject()) {
@@ -279,15 +315,44 @@ public class RunTestsTool extends AbstractTool {
             String frameworkLabel = frameworkRaw.equals("auto")
                 ? runnerKindToShortName(runner) : frameworkRaw;
 
+            // Sprint 23 D3: optional coverage collection on this run.
+            boolean withCoverage = arguments.has("coverage")
+                && arguments.get("coverage").asBoolean(false);
+            String evidenceKind = getStringParam(arguments, "evidenceKind", "unit");
+            String artifactId = null;
+            if (withCoverage) {
+                artifactId = coverage.mountCollector(spec);
+            }
+            final String covArtifact = artifactId;
+            final LoadedProject covProject = loaded;
+            final String covFramework = frameworkLabel;
+
             if ("start".equals(action)) {
                 org.jawata.mcp.execution.TestSessionRegistry.Session session = sessions.create();
                 session.frameworkLabel = frameworkLabel;
                 spec.eventConsumer = session::onEvent;
+                ForkedTestRunner.RunningSession running;
                 try {
-                    session.attach(new ForkedTestRunner().start(spec));
+                    running = new ForkedTestRunner().start(spec);
+                    session.attach(running);
                 } catch (ForkedTestRunner.SessionLimitException limit) {
                     sessions.remove(session.id);
                     return ToolResponse.invalidParameter("concurrency", limit.getMessage());
+                }
+                if (withCoverage) {
+                    // Finalize the artifact when the async run completes.
+                    Thread finalizer = new Thread(() -> {
+                        try {
+                            ForkedTestRunner.Result done = running.await();
+                            coverage.finalizeArtifact(covArtifact, covProject, spec, done,
+                                covFramework, evidenceKind);
+                        } catch (Exception e) {
+                            log.warn("coverage artifact {} not finalized: {}",
+                                covArtifact, e.getMessage());
+                        }
+                    }, "jawata-coverage-finalizer");
+                    finalizer.setDaemon(true);
+                    finalizer.start();
                 }
                 Map<String, Object> data = new LinkedHashMap<>();
                 data.put("operation", "run_tests");
@@ -295,6 +360,7 @@ public class RunTestsTool extends AbstractTool {
                 data.put("sessionId", session.id);
                 data.put("state", session.state());
                 data.put("framework", frameworkLabel);
+                if (withCoverage) data.put("coverageArtifactId", artifactId);
                 data.put("hint", "Poll run_tests(action=status, sessionId=…) for per-class "
                     + "progress; abort with action=cancel.");
                 return ToolResponse.success(data, ResponseMeta.builder().build());
@@ -306,11 +372,19 @@ public class RunTestsTool extends AbstractTool {
             } catch (ForkedTestRunner.SessionLimitException limit) {
                 return ToolResponse.invalidParameter("concurrency", limit.getMessage());
             }
+            if (withCoverage) {
+                coverage.finalizeArtifact(artifactId, loaded, spec, r, frameworkLabel, evidenceKind);
+            }
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "run_tests");
             data.put("framework", frameworkLabel);
             data.put("projectsTested", 1);
+            if (withCoverage) {
+                data.put("coverageArtifactId", artifactId);
+                data.put("coverageHint", "Query run_tests(action=coverage_report|"
+                    + "coverage_uncovered, artifactId=…) for the evidence.");
+            }
             appendResult(data, r);
 
             return ToolResponse.success(data, ResponseMeta.builder()
@@ -321,6 +395,272 @@ public class RunTestsTool extends AbstractTool {
             log.warn("run_tests threw unexpectedly: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /** Sprint 23 D3 — the coverage-evidence query surface. */
+    private ToolResponse handleCoverageAction(String action, JsonNode arguments) {
+        try {
+            org.jawata.mcp.coverage.CoverageStore store = coverage.store();
+            if ("coverage_artifacts".equals(action)) {
+                java.util.List<Map<String, Object>> items = new ArrayList<>();
+                for (String id : store.list()) {
+                    store.readManifest(id).ifPresent(m -> {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("artifactId", id);
+                        row.put("createdAt", m.createdAt);
+                        row.put("evidenceKind", m.evidenceKind);
+                        row.put("completionStatus", m.completionStatus);
+                        row.put("gitRevision", m.gitRevision);
+                        row.put("dirtyFingerprint", m.dirtyFingerprint);
+                        row.put("selection", selectionSummary(m));
+                        items.add(row);
+                    });
+                }
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("operation", "run_tests");
+                data.put("action", action);
+                data.put("artifacts", items);
+                return ToolResponse.success(data, ResponseMeta.builder()
+                    .totalCount(items.size()).returnedCount(items.size()).build());
+            }
+            if ("coverage_delete".equals(action)) {
+                String id = getStringParam(arguments, "artifactId");
+                if (id == null || id.isBlank()) {
+                    return ToolResponse.invalidParameter("artifactId",
+                        "artifactId is required for coverage_delete.");
+                }
+                boolean removed = store.delete(id);
+                coverage.evict(id);
+                if (!removed) {
+                    return ToolResponse.invalidParameter("artifactId",
+                        "Unknown coverage artifact '" + id + "'.");
+                }
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("operation", "run_tests");
+                data.put("action", action);
+                data.put("artifactId", id);
+                data.put("deleted", true);
+                return ToolResponse.success(data, ResponseMeta.builder().build());
+            }
+
+            // report / uncovered need a resolved artifact.
+            String id = getStringParam(arguments, "artifactId");
+            if (id == null || id.isBlank()) {
+                id = store.latest().orElse(null);
+                if (id == null) {
+                    return ToolResponse.invalidParameter("artifactId",
+                        "No coverage artifacts exist yet — run with coverage=true first.");
+                }
+            }
+            org.jawata.mcp.coverage.CoverageModel model = coverage.model(id);
+            if (model == null) {
+                return ToolResponse.invalidParameter("artifactId",
+                    "Unknown coverage artifact '" + id + "'.");
+            }
+
+            if ("coverage_report".equals(action)) {
+                return coverageReport(id, model);
+            }
+            String target = getStringParam(arguments, "target");
+            if (target == null || target.isBlank()) {
+                return ToolResponse.invalidParameter("target",
+                    "target is required for coverage_uncovered: 'com.example.Foo' or "
+                        + "'com.example.Foo#method'.");
+            }
+            return coverageUncovered(id, model, target);
+        } catch (Exception e) {
+            log.warn("coverage action {} failed: {}", action, e.getMessage(), e);
+            return ToolResponse.internalError(e);
+        }
+    }
+
+    private ToolResponse coverageReport(String id, org.jawata.mcp.coverage.CoverageModel model) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("operation", "run_tests");
+        data.put("action", "coverage_report");
+        data.put("artifactId", id);
+        org.jawata.mcp.coverage.CoverageManifest m = model.manifest;
+        Map<String, Object> provenance = new LinkedHashMap<>();
+        provenance.put("createdAt", m.createdAt);
+        provenance.put("gitRevision", m.gitRevision);
+        provenance.put("dirtyFingerprint", m.dirtyFingerprint);
+        provenance.put("evidenceKind", m.evidenceKind);
+        provenance.put("environment", m.environment);
+        provenance.put("jdkVersion", m.jdkVersion);
+        provenance.put("jacocoVersion", m.jacocoVersion);
+        provenance.put("framework", m.framework);
+        provenance.put("selection", selectionSummary(m));
+        provenance.put("completionStatus", m.completionStatus);
+        provenance.put("classRoots", m.classRoots);
+        data.put("provenance", provenance);
+        data.put("measurementBoundary", m.measurementBoundary);
+
+        if (!m.runFinalized) {
+            data.put("state", "unknown-run-failed");
+            data.put("note", "The producing run never finalized its evidence ("
+                + m.completionStatus + ") — no coverage claims can be made from this artifact.");
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+        if (model.instrumentationFailure) {
+            data.put("state", "instrumentation-failure");
+            data.put("note", "The run finished but produced NO execution data — the agent "
+                + "did not collect; coverage claims would be invented.");
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+
+        int linesCovered = 0, linesMissed = 0, branchesCovered = 0, branchesMissed = 0;
+        Map<String, Integer> states = new LinkedHashMap<>();
+        java.util.List<String> staleClasses = new ArrayList<>();
+        for (org.jawata.mcp.coverage.CoverageModel.ClassCov c : model.classes) {
+            states.merge(c.state.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'),
+                1, Integer::sum);
+            if (c.state == org.jawata.mcp.coverage.CoverageModel.State.STALE_BYTES) {
+                staleClasses.add(c.fqn);
+                continue;
+            }
+            linesCovered += c.linesCovered;
+            linesMissed += c.linesMissed;
+            branchesCovered += c.branchesCovered;
+            branchesMissed += c.branchesMissed;
+        }
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put("classes", model.classes.size());
+        totals.put("linesCovered", linesCovered);
+        totals.put("linesMissed", linesMissed);
+        totals.put("linePercent", percent(linesCovered, linesMissed));
+        totals.put("branchesCovered", branchesCovered);
+        totals.put("branchesMissed", branchesMissed);
+        totals.put("branchPercent", percent(branchesCovered, branchesMissed));
+        data.put("totals", totals);
+        data.put("stateHistogram", states);
+        if (!staleClasses.isEmpty()) {
+            data.put("staleClasses", staleClasses);
+            data.put("staleNote", "REFUSED for these classes: their CURRENT bytes differ "
+                + "from the measured bytes (class-id mismatch) — re-run with coverage "
+                + "to get truthful data.");
+        }
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .totalCount(model.classes.size()).returnedCount(model.classes.size()).build());
+    }
+
+    private ToolResponse coverageUncovered(String id,
+            org.jawata.mcp.coverage.CoverageModel model, String target) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("operation", "run_tests");
+        data.put("action", "coverage_uncovered");
+        data.put("artifactId", id);
+        data.put("target", target);
+        data.put("measurementBoundary", model.manifest.measurementBoundary);
+
+        if (!model.manifest.runFinalized) {
+            data.put("state", "unknown-run-failed");
+            data.put("note", "The producing run never finalized its evidence — no per-symbol "
+                + "claims can be made.");
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+        if (model.instrumentationFailure) {
+            data.put("state", "instrumentation-failure");
+            data.put("note", "No execution data was collected for this artifact.");
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+
+        String fqn = target.contains("#") ? target.substring(0, target.indexOf('#')) : target;
+        String methodName = target.contains("#") ? target.substring(target.indexOf('#') + 1) : null;
+
+        java.util.List<org.jawata.mcp.coverage.CoverageModel.ClassCov> facts = model.allOf(fqn);
+        if (facts.isEmpty()) {
+            data.put("state", "not-instrumented");
+            data.put("note", "No class '" + fqn + "' under the artifact's class roots — it was "
+                + "not part of the measured build output.");
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+        java.util.List<Map<String, Object>> perBundle = new ArrayList<>();
+        for (org.jawata.mcp.coverage.CoverageModel.ClassCov c : facts) {
+            Map<String, Object> fact = new LinkedHashMap<>();
+            fact.put("classRoot", c.classRoot);
+            if (c.state == org.jawata.mcp.coverage.CoverageModel.State.STALE_BYTES) {
+                fact.put("state", "stale-bytes");
+                fact.put("note", "REFUSED: current bytes differ from the measured bytes.");
+                perBundle.add(fact);
+                continue;
+            }
+            if (methodName == null) {
+                fact.put("state", c.state.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'));
+                java.util.List<Map<String, Object>> methods = new ArrayList<>();
+                for (org.jawata.mcp.coverage.CoverageModel.MethodCov mm : c.methods) {
+                    methods.add(methodDetail(mm));
+                }
+                fact.put("methods", methods);
+            } else {
+                org.jawata.mcp.coverage.CoverageModel.MethodCov mm = c.methods.stream()
+                    .filter(x -> x.name.equals(methodName)).findFirst().orElse(null);
+                if (mm == null) {
+                    fact.put("state",
+                        c.state == org.jawata.mcp.coverage.CoverageModel.State.NOT_INSTRUMENTED
+                            ? "not-instrumented" : "generated-or-excluded");
+                    fact.put("note", c.state
+                            == org.jawata.mcp.coverage.CoverageModel.State.NOT_INSTRUMENTED
+                        ? "The class never loaded in the measured run."
+                        : "No such method in the ANALYZED model — either it does not exist, "
+                            + "or JaCoCo's synthetic filters excluded it (bridges, generated "
+                            + "members): no line data is honest data.");
+                } else {
+                    fact.putAll(methodDetail(mm));
+                }
+            }
+            perBundle.add(fact);
+        }
+        data.put("facts", perBundle);
+        if (facts.size() > 1) {
+            data.put("bundleIdentityNote", "The FQN exists under " + facts.size()
+                + " class roots — each fact is keyed by its root; they are NOT merged.");
+        }
+
+        // Links into the compiler-aware tools, bound to this exact symbol.
+        Map<String, Object> links = new LinkedHashMap<>();
+        String symbol = methodName == null ? fqn : fqn + "#" + methodName;
+        links.put("callers", Map.of(
+            "tool", "get_call_hierarchy",
+            "args", Map.of("direction", "incoming", "symbol", symbol)));
+        links.put("implementations", Map.of(
+            "tool", "find_references",
+            "args", Map.of("kind", "implementations", "query", fqn)));
+        links.put("existingTests", model.manifest.selectClasses.isEmpty()
+            ? selectionSummary(model.manifest) : model.manifest.selectClasses);
+        data.put("links", links);
+        data.put("nextAction", "Smallest next step: write a test that calls " + symbol
+            + " directly (see 'links.callers' for where it is exercised from), then re-run "
+            + "with coverage=true and re-query this target.");
+        return ToolResponse.success(data, ResponseMeta.builder().build());
+    }
+
+    private static Map<String, Object> methodDetail(
+            org.jawata.mcp.coverage.CoverageModel.MethodCov m) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("method", m.name);
+        out.put("state", m.state.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'));
+        out.put("lines", m.firstLine + "-" + m.lastLine);
+        out.put("linesCovered", m.linesCovered);
+        out.put("linesMissed", m.linesMissed);
+        out.put("branchesCovered", m.branchesCovered);
+        out.put("branchesMissed", m.branchesMissed);
+        if (!m.uncoveredLines.isEmpty()) out.put("uncoveredLines", m.uncoveredLines);
+        if (!m.partlyCoveredLines.isEmpty()) out.put("partlyCoveredLines", m.partlyCoveredLines);
+        return out;
+    }
+
+    private static String percent(int covered, int missed) {
+        int total = covered + missed;
+        return total == 0 ? "n/a" : String.format(java.util.Locale.ROOT,
+            "%.1f%%", 100.0 * covered / total);
+    }
+
+    private static String selectionSummary(org.jawata.mcp.coverage.CoverageManifest m) {
+        java.util.List<String> parts = new ArrayList<>();
+        parts.addAll(m.selectClasses);
+        parts.addAll(m.selectMethods);
+        m.selectPackages.forEach(p -> parts.add(p + ".*"));
+        return String.join(", ", parts);
     }
 
     /** status/cancel on a previously started async session. */

@@ -324,3 +324,56 @@ diff the REPO (releases + README), never the marketplace listing.
 ### C6 exit status
 
 - **GREEN.**
+
+## C7 — Coverage core: collector + identity + report model (2026-07-13)
+
+### What shipped
+
+- dist: `tools/org.jacoco.agent-0.8.15-runtime.jar` (mounted as `-javaagent` on
+  the forked runner) + `bundles/org.jacoco.core|report` (exec parsing in the
+  server, resolved against our shipped ASM 9.10.1); all enforcer-gated.
+- `org.jawata.mcp.coverage`: `CoverageStore` (one dir per artifact under
+  `jawata.coverage.dir` → `jawata.workspace.root/.jawata/coverage`;
+  jacoco.exec + manifest.json; EXPLICIT delete), `CoverageManifest` (full
+  provenance: git revision + dirty fingerprint, class/source roots, selection,
+  framework, evidence kind, environment, versions, completion status, the
+  standing MEASUREMENT-BOUNDARY declaration), `CoverageModel` (exec matched
+  against CURRENT bytes; the 8 honest states; per-symbol index; (classRoot,
+  fqn) keying = bundle identity), `CoverageService` (mount/finalize/query,
+  4-model LRU).
+- Front door (0 new tools): run_tests `coverage=true` (sync + async — a
+  finalizer thread writes the manifest when an async run completes) + actions
+  `coverage_report` / `coverage_uncovered` / `coverage_artifacts` /
+  `coverage_delete`; uncovered findings carry LINKS bound to the exact symbol
+  (get_call_hierarchy incoming / find_references implementations / the
+  artifact's test selection) + a smallest-next-action hint.
+- New `coverage-target` fixture: hand-computed truth table (fully-covered,
+  fully-missed, 1-of-2 branches, an obtained-but-never-run lambda), plus
+  probes for every honest state (marker interface, enum boilerplate, never-
+  loaded class, child-JVM spawner, hanging test).
+
+### Verification (expected vs actual) — CoverageCoreTest 6/6, first full run
+
+- Hand-computed truth EXACT: alwaysCalled covered/0 missed; neverCalled
+  missed/0 covered; branchy 1+1 branches with partly-covered line; lambda =
+  real `lambda$` method on REAL source lines, honestly missed ✓.
+- Per-symbol lookup answers `uncovered(Covered#neverCalled)` with lines +
+  links + hint naming the symbol ✓.
+- ALL EIGHT states reachable: covered/missed (truth), non-executable
+  (CovMarker — classification fix found by the gate: code-free beats
+  never-loaded in precedence), generated-or-excluded (CovEnum#values),
+  not-instrumented (NeverLoaded), instrumentation-failure (empty exec),
+  stale-bytes (modify+rebuild → REFUSED, staleNote), unknown-run-failed
+  (timeout run → no claims) ✓.
+- Child-JVM honesty: ChildWork provably RAN in the child (test asserts its
+  output) yet the artifact declares the measurement boundary — never silently
+  zero ✓.
+- Same-FQN-two-roots = two separate facts keyed by root (bundle identity) ✓.
+- Provenance fields all present (git revision, dirty fingerprint, evidence
+  kind, environment, versions, selection, completion) ✓; explicit delete
+  removes and the artifact becomes unknown ✓.
+- Runner-family regression: 12/12 + 3/3 + 2/2 + 1/1 ✓.
+
+### C7 exit status
+
+- **GREEN.**

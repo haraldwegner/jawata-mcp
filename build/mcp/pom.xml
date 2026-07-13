@@ -25,6 +25,8 @@
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.text</artifactId><version>${v.text}</version></dependency>
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.jface.text</artifactId><version>${v.jface.text}</version></dependency>
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.ltk.core.refactoring</artifactId><version>${v.ltk}</version></dependency>
+        <dependency><groupId>org.jacoco</groupId><artifactId>org.jacoco.core</artifactId><version>0.8.15</version></dependency>
+        <dependency><groupId>org.jacoco</groupId><artifactId>org.jacoco.report</artifactId><version>0.8.15</version></dependency>
         <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><version>${v.h2}</version></dependency>
         <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${v.jackson}</version></dependency>
         <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>${v.slf4j}</version></dependency>

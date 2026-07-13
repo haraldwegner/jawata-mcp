@@ -78,6 +78,10 @@
                                 <artifactItem><groupId>org.junit.platform</groupId><artifactId>junit-platform-console-standalone</artifactId><version>1.14.4</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.testrunner</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.junit.support</groupId><artifactId>testng-engine</artifactId><version>1.0.6</version></artifactItem>
+                                <!-- Sprint 23 D3: the coverage collector — the runtime agent
+                                     rides the forked runner's -javaagent (exec parsing lives
+                                     in bundles/: org.jacoco.core + report) -->
+                                <artifactItem><groupId>org.jacoco</groupId><artifactId>org.jacoco.agent</artifactId><version>0.8.15</version><classifier>runtime</classifier></artifactItem>
                             </artifactItems>
                         </configuration>
                     </execution>
@@ -160,6 +164,8 @@
                                 <artifactItem><groupId>org.ow2.asm</groupId><artifactId>asm-analysis</artifactId><version>9.10.1</version></artifactItem>
                                 <artifactItem><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.variables</artifactId><version>3.6.800</version></artifactItem>
                                 <!-- third-party (all ship OSGi manifests) -->
+                                <artifactItem><groupId>org.jacoco</groupId><artifactId>org.jacoco.core</artifactId><version>0.8.15</version></artifactItem>
+                                <artifactItem><groupId>org.jacoco</groupId><artifactId>org.jacoco.report</artifactId><version>0.8.15</version></artifactItem>
                                 <artifactItem><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${v.jackson}</version></artifactItem>
                                 <artifactItem><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId><version>${v.jackson}</version></artifactItem>
                                 <artifactItem><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId><version>${v.jackson}</version></artifactItem>
@@ -228,6 +234,9 @@
                                         <file>${project.build.directory}/dist/tools/junit-platform-console-standalone-1.14.4.jar</file>
                                         <file>${project.build.directory}/dist/tools/org.jawata.testrunner-${project.version}.jar</file>
                                         <file>${project.build.directory}/dist/tools/testng-engine-1.0.6.jar</file>
+                                        <file>${project.build.directory}/dist/tools/org.jacoco.agent-0.8.15-runtime.jar</file>
+                                        <file>${project.build.directory}/dist/bundles/org.jacoco.core-0.8.15.jar</file>
+                                        <file>${project.build.directory}/dist/bundles/org.jacoco.report-0.8.15.jar</file>
                                     </files>
                                     <message>dist is INCOMPLETE — a carried/patched bundle did not reach target/dist/bundles (v2.9.2 failure class: silent copy from a missing directory)</message>
                                 </requireFilesExist>
