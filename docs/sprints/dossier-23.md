@@ -286,3 +286,41 @@ diff the REPO (releases + README), never the marketplace listing.
 ### C5 exit status
 
 - **GREEN.**
+
+## C6 — Fast local full suite (2026-07-13)
+
+### What shipped
+
+- Boot: `jawata.test.classlist` (explicit per-shard class list overrides
+  discovery+filter).
+- `build/run-suite.sh`: discovers test classes exactly like the boot, greedy-
+  balances shards by the C0 measured per-class timings (unknown classes get a
+  default), launches N pinned JVMs (`-XX:ActiveProcessorCount=fair-share`),
+  merges shard summaries, honest exit codes (any failure / missing summary).
+- **The actual win — a Maven-classpath CACHE in ProjectImporter** keyed by the
+  CONTENT HASH of every pom.xml in the tree: the same unchanged fixture pom
+  imported by ~150 tests paid a 2–5 s `mvn dependency:build-classpath`
+  shell-out EVERY time (~85% of suite cost, measured); now once per JVM. Any
+  pom edit changes the key; only exit-0 results cached; bounded (64).
+
+### Verification (expected vs actual) — the measurement trail
+
+| Run | Wall | Result |
+|---|---|---|
+| 4 shards, no cache | 965 s | 1204/1204 ✓ but > 880 s gate |
+| 6 shards, no cache | 1019 s | WORSE — contention, not shard count |
+| 4 shards, CPU-pinned | 989 s | pinning isn't the lever |
+| 4 shards + **classpath cache** | **160 s** | **1204/1204, 0 failed** ✓ |
+| serial + cache (totals oracle) | 328 s | **1204/1204, identical totals** ✓ |
+
+- Gate: wall ≤ 50% of the FROZEN Stage-0 baseline (1761 s) → **160 s = 9.1%** ✓;
+  the ~8-min stretch target beaten at 2:40. Dev-loop bonus: SERIAL is now 328 s.
+- Totals: 1204 = the C2-era 1197 + exactly the 7 tests added in Stages 3–5;
+  serial ≡ sharded ✓; 0 skipped (all five @Disabled live).
+- Contention flakes (C1 watch item): the 3 load-sensitive searches stayed GREEN
+  in every sharded run (4-way and 6-way deliberate load) — no hardening
+  required; the C1 event stands as a mixed-workload (builds + suite) artifact.
+
+### C6 exit status
+
+- **GREEN.**

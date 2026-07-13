@@ -122,12 +122,26 @@ public final class JawataBoot {
     }
 
     private static int runInFramework(BundleContext ctx, Path testBundles) throws Exception {
-        String filter = System.getProperty("jawata.test.filter");
-        if (filter != null && !filter.isBlank()) {
-            System.out.println("Filter '" + filter + "' active");
+        // Sprint 23 Stage 6: an explicit class list (one FQN per line, # = comment)
+        // overrides discovery+filter — the shard runner partitions the suite by
+        // measured per-class times and hands each JVM its slice.
+        String classListFile = System.getProperty("jawata.test.classlist");
+        List<String> classNames;
+        if (classListFile != null && !classListFile.isBlank()) {
+            classNames = Files.readAllLines(Path.of(classListFile)).stream()
+                .map(String::strip)
+                .filter(s -> !s.isEmpty() && !s.startsWith("#"))
+                .toList();
+            System.out.println("Class list: " + classNames.size()
+                + " test classes from " + classListFile);
+        } else {
+            String filter = System.getProperty("jawata.test.filter");
+            if (filter != null && !filter.isBlank()) {
+                System.out.println("Filter '" + filter + "' active");
+            }
+            classNames = discoverTestClasses(testBundles, filter);
+            System.out.println("Discovered " + classNames.size() + " test classes");
         }
-        List<String> classNames = discoverTestClasses(testBundles, filter);
-        System.out.println("Discovered " + classNames.size() + " test classes");
 
         Bundle mcp = null;
         for (Bundle b : ctx.getBundles()) {

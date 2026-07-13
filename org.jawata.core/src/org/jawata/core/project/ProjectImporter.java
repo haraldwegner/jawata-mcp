@@ -583,6 +583,34 @@ public class ProjectImporter {
         return resolveMavenCommand(projectPath, System.getenv("PATH"), known, isWindows());
     }
 
+    /**
+     * Sprint 23 (Stage 6): resolution cache keyed by the CONTENT of every
+     * pom.xml in the project tree. The mvn shell-out costs seconds; the same
+     * unchanged pom set (fixture suites, project re-loads) pays it once per
+     * JVM. Any pom edit changes the key; entries are absolute repository
+     * paths, location-independent. Bounded.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, List<String>>
+        MAVEN_CLASSPATH_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int MAVEN_CLASSPATH_CACHE_MAX = 64;
+
+    private static String pomTreeHash(java.nio.file.Path projectPath) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            try (Stream<java.nio.file.Path> walk = Files.walk(projectPath, 8)) {
+                for (java.nio.file.Path pom : walk
+                        .filter(p -> "pom.xml".equals(p.getFileName().toString()))
+                        .sorted()
+                        .toList()) {
+                    md.update(Files.readAllBytes(pom));
+                }
+            }
+            return java.util.HexFormat.of().formatHex(md.digest());
+        } catch (Exception e) {
+            return null; // unhashable tree → no caching, resolve fresh
+        }
+    }
+
     private List<String> getMavenDependencies(java.nio.file.Path projectPath) {
         // v2.9.1 (dogfood D1): the output file is RELATIVE — it resolves against each
         // module's basedir, so a multi-module reactor writes one file per module.
@@ -597,6 +625,14 @@ public class ProjectImporter {
             log.warn("No Maven executable found (checked project mvnw, PATH, MAVEN_HOME, known "
                 + "install dirs) — dependency classpath will be EMPTY and imports will not resolve");
             return jars;
+        }
+        String cacheKey = pomTreeHash(projectPath);
+        if (cacheKey != null) {
+            List<String> cached = MAVEN_CLASSPATH_CACHE.get(cacheKey);
+            if (cached != null) {
+                log.debug("Maven classpath served from cache ({} entries)", cached.size());
+                return new ArrayList<>(cached);
+            }
         }
         try {
             ProcessBuilder pb = new ProcessBuilder(
@@ -637,6 +673,9 @@ public class ProjectImporter {
                 }
                 jars.addAll(parseClasspathOutput(merged.toString()));
                 log.info("Got {} classpath entries from Maven", jars.size());
+                if (cacheKey != null && MAVEN_CLASSPATH_CACHE.size() < MAVEN_CLASSPATH_CACHE_MAX) {
+                    MAVEN_CLASSPATH_CACHE.put(cacheKey, List.copyOf(jars));
+                }
             } else {
                 log.warn("Maven classpath command failed with exit code: {}", process.exitValue());
             }
