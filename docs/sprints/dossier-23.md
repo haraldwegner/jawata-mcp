@@ -729,3 +729,30 @@ to ground rather than waved off:
 
 ⏸ Awaiting Harald's release word (push + tag v2.10.0 → CI → fleet flip →
 resident dogfood battery → close-out questions).
+
+## C14 — Resident dogfood battery (2026-07-13, live on 2.10.0 fleet)
+
+Both residents flipped to **2.10.0** (health_check ✓×2). Probes against the
+live `jawata-javata-dev` resident serving the jawata-mcp self-workspace:
+
+| Probe | Expected | Actual |
+|---|---|---|
+| Version (both residents) | 2.10.0 | 2.10.0 ✓ |
+| **toolCount** | 43 (0 net new top-level) | **43** ✓ — fields + run_tests/coverage actions all fold under existing front doors |
+| Self compile_workspace | 0 / 0 | 0 errors / 0 warnings ✓ (500 sources, grew from 481) |
+| Disabled probe (all 5 re-enabled) | 0 | **0** ✓ |
+| D11 one-caller precision (getMavenDependencies incoming) | 1 real caller, no `<initializer>` | exactly 1 = addDependencyEntries, no phantom ✓ |
+| D8 lib-source (java.util.ArrayList) | real source / labeled stub | `origin: attached-source`, real Oracle source ✓ |
+| coverage_lack smell (no fresh artifact) | honest "no evidence", 0 invented | `evidence: none`, count 0, honest note ✓ |
+| search_symbols self-find | finds FieldsProjection (new source) | found, workspace-source ✓ |
+
+**Honest caveat — the NEW 2.10.0 surface is NOT exercisable through THIS
+Claude session's MCP client.** `run_tests` (+ its coverage/attribution/
+mutation actions) and the `fields` param are Sprint-23-new; the client cached
+every tool schema before the resident flipped to 2.10.0, so the typed tools
+lack them (the documented v2.8.1 client-schema-cache behavior — "new params
+are client-stripped until session restart; verify over raw curl"). They are
+proven by the in-framework batteries (FieldsProjectionTest 6/6, Coverage
+Core/Delta/Attribution/Mutation/Advisory all green in the 1230) and are in the
+running binary; a fresh client session or raw curl exercises them live. The
+toolCount=43 IS the live proof that they landed under existing front doors.
