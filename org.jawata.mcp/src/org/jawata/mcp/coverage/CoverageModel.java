@@ -142,6 +142,9 @@ public final class CoverageModel {
                     clazz.state = State.NON_EXECUTABLE;
                 } else if (!executedClassNames.contains(cc.getName())) {
                     clazz.state = State.NOT_INSTRUMENTED;
+                    // Per-line detail still exists (everything uncovered) —
+                    // the delta needs it to classify changed lines honestly.
+                    fillDetail(cc, clazz);
                 } else {
                     clazz.state = classState(cc);
                     fillDetail(cc, clazz);

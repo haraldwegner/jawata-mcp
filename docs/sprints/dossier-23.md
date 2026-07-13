@@ -490,3 +490,46 @@ diff the REPO (releases + README), never the marketplace listing.
 ### C10 exit status
 
 - **GREEN.**
+
+## C11 — Advisory gate + coverage-lack smell (2026-07-13)
+
+### What shipped
+
+- `MechanicalChangeJournal`: session memory of files changed by the EXEMPT
+  mechanical tool class (the spec's parity-gated list: rename/extract/inline/
+  move/change_signature/organize/format/cleanup/refactoring/pattern/
+  duplicates/encapsulate/generate/…); fed centrally from ToolRegistry
+  dispatch (successful exempt tools' `filesModified`); suffix-boundary path
+  matching (refactor responses are project-relative, queries absolute).
+- Done-time advisory: `coverage_delta` puts a `meta.steering` COVERAGE
+  ADVISORY naming the exact uncovered changed lines — but ONLY for
+  behavioral changes; mechanically-transformed files stay silent (their row
+  data still shows the lines + an `exemptMechanicalTransform` mark — honest
+  data, no nagging). Tool-set steering wins over central injection by design.
+- `coverage_lack` smell kind (GATE-1 addition), registered in the quality
+  family (kind enum is catalog-projected — zero front-door edits): findings =
+  symbols with ZERO covered lines in the freshest FINALIZED artifact;
+  evidence + active threshold policy visible; stale classes excluded with a
+  note; absent/unusable evidence → honest zero-findings answer.
+- Model refinement found by the gate: not-instrumented classes now carry
+  per-line detail (all-uncovered) so the delta can classify their changed
+  lines instead of ignoring them.
+- NOTHING built for R1's escalation path (per the spec's Deferred section) —
+  it remains the C14 question.
+
+### Verification (expected vs actual) — CoverageAdvisoryTest 3/3
+
+- (a) BEHAVIORAL: a hand-added method → advisory fires with the class named
+  and exactly its 2 uncovered body lines counted ✓.
+- (b) MECHANICAL, with REAL discrimination: rename_symbol (through the
+  ToolRegistry — journal wiring end-to-end) on Flip#flip whose call sites
+  are UNCOVERED-changed executable lines (asserted ≥1 — without the
+  exemption the advisory WOULD fire) → NO advisory + exemption visible ✓.
+- Smell WITH fresh evidence: Covered#neverCalled is a finding, evidence +
+  threshold (v1) visible ✓; WITHOUT evidence: count 0, evidence "none",
+  honest note ✓.
+- Coverage family regression: 6/6 + 5/5 ✓.
+
+### C11 exit status
+
+- **GREEN.**

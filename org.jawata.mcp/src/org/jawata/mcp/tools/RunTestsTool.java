@@ -780,12 +780,17 @@ public class RunTestsTool extends AbstractTool {
         int changedExecutable = 0, coveredChanged = 0;
         java.util.List<String> uncoveredAll = new ArrayList<>();
         java.util.List<String> unstableAll = new ArrayList<>();
+        java.util.List<String> advisoryLines = new ArrayList<>();
+        Path repoRoot = Path.of(model.manifest.projectRoot);
         for (Map.Entry<String, java.util.Set<Integer>> e : diff.changedLinesByFile.entrySet()) {
             String path = e.getKey();
             if (!path.endsWith(".java") || e.getValue().isEmpty()) continue;
+            boolean mechanical = org.jawata.mcp.coverage.MechanicalChangeJournal
+                .isMechanicallyTouched(repoRoot.resolve(path).toString());
             org.jawata.mcp.coverage.CoverageModel.ClassCov clazz = classForPath(model, path);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("file", path);
+            if (mechanical) row.put("exemptMechanicalTransform", true);
             if (clazz == null) {
                 row.put("note", "no analyzed class maps to this file (new/removed/non-main)");
                 files.add(row);
@@ -822,6 +827,9 @@ public class RunTestsTool extends AbstractTool {
             if (!uncoveredL.isEmpty()) {
                 row.put("uncoveredChangedLines", uncoveredL);
                 uncoveredL.forEach(l -> uncoveredAll.add(clazz.fqn + ":" + l));
+                if (!mechanical) {
+                    uncoveredL.forEach(l -> advisoryLines.add(clazz.fqn + ":" + l));
+                }
             }
             if (!unstableHit.isEmpty()) {
                 row.put("unstableChangedLines", unstableHit);
@@ -848,8 +856,18 @@ public class RunTestsTool extends AbstractTool {
         data.put("totals", totals);
         attachPolicy(data, changedExecutable == 0 ? null
             : 100.0 * coveredChanged / changedExecutable);
-        return ToolResponse.success(data, ResponseMeta.builder()
-            .totalCount(files.size()).returnedCount(files.size()).build());
+        // Sprint 23 (D6) — the done-time advisory: BEHAVIORAL changed lines
+        // without coverage get named; mechanically-transformed files stay
+        // silent (their uncovered lines still appear in the row data).
+        ResponseMeta.Builder meta = ResponseMeta.builder()
+            .totalCount(files.size()).returnedCount(files.size());
+        if (!advisoryLines.isEmpty()) {
+            meta.steering("DONE-TIME COVERAGE ADVISORY: these CHANGED lines have NO test "
+                + "coverage: " + advisoryLines + " — new behavior needs a test; write or "
+                + "extend one (coverage_tests_covering shows what exercises the class), "
+                + "re-run with coverage=true, then re-check this delta.");
+        }
+        return ToolResponse.success(data, meta.build());
     }
 
     /** Stage 8 — regression vs a named baseline, blind to a rising global %. */

@@ -268,6 +268,16 @@ public class ToolRegistry {
                     log.warn("Post-project-mutation experience hook failed after {}", name, e);
                 }
             }
+            // Sprint 23 (D6): remember files changed by MECHANICAL transforms —
+            // the done-time coverage advisory exempts them (a rename needs no
+            // new test; NEW BEHAVIOR does).
+            if (response.isSuccess() && org.jawata.mcp.coverage.MechanicalChangeJournal
+                    .EXEMPT_TOOLS.contains(name)
+                    && response.getData() instanceof Map<?, ?> map
+                    && map.get("filesModified") instanceof List<?> files) {
+                files.forEach(f -> org.jawata.mcp.coverage.MechanicalChangeJournal
+                    .recordMechanical(String.valueOf(f)));
+            }
             // Sprint 22 (POST layer): central steering injection — every success
             // result names the next grounded step (see steeringFor).
             response.applySteering(steeringFor(name));
