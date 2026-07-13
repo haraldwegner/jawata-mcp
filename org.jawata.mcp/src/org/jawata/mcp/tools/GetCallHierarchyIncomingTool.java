@@ -113,8 +113,9 @@ public class GetCallHierarchyIncomingTool extends AbstractTool {
                 java.util.Optional<IJavaElement> resolved =
                     org.jawata.mcp.tools.fqn.FqnResolver.resolve(symbol, service, scope, projectKey);
                 if (resolved.isEmpty()) {
-                    return ToolResponse.symbolNotFound(
-                        "FQN '" + symbol + "' not found in " + scopeRaw + " scope");
+                    // Sprint 24 (D2): the miss carries its own correction.
+                    return org.jawata.mcp.tools.shared.ResolveOrRelocate.miss(
+                        service, symbol, scopeRaw);
                 }
                 if (!(resolved.get() instanceof IMethod m)) {
                     return ToolResponse.invalidParameter("symbol",

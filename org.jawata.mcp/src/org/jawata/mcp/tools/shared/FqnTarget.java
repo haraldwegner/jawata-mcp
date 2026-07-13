@@ -100,8 +100,10 @@ public final class FqnTarget {
         Optional<IJavaElement> resolved =
             FqnResolver.resolve(name, service, scope, text(args, "projectKey"));
         if (resolved.isEmpty()) {
-            return Optional.of(ToolResponse.symbolNotFound(
-                "Name '" + name + "' not found in " + scope.name().toLowerCase() + " scope."));
+            // Sprint 24 (D2): a stale memory repairs itself — the miss carries the
+            // correction. Never acted on: the caller re-issues with the right name.
+            return Optional.of(ResolveOrRelocate.miss(
+                service, name, scope.name().toLowerCase()));
         }
         return position(service, resolved.get(), name, args);
     }

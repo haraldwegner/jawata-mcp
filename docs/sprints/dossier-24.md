@@ -84,3 +84,45 @@ Fixed by omitting the line for members with no compilation unit — a binary has
 members and a hierarchy, just no source lines. Now `analyze(kind=type,
 typeName=java.util.ArrayList)` answers with its members. Recorded in the
 experience store (b6b42d6c).
+
+## C2 — D2: resolve-or-relocate (2026-07-13)
+
+### What shipped
+
+**`ResolveOrRelocate`** (shared): a name that no longer resolves is answered
+with the indexed correction in the SAME response — error code
+**`SYMBOL_RELOCATED`**, message naming the new location, hint telling the agent
+what to remember. Two shapes: a MOVED/renamed type (search the simple name,
+carry the `#member` suffix only when the member really exists on the new type),
+and a RENAMED member (the type is still there — name its real members, closest
+by name first). A name with nothing similar in the index gets an honest
+`SYMBOL_NOT_FOUND` — "it is gone, not moved" — never a dressed-up guess.
+
+**The correction is never acted on.** The call still fails. Silently
+retargeting a refactoring at a symbol the caller did not name would be far worse
+than a failed call; the agent re-issues once with the corrected name — one hop,
+and its memory is now right. That is precisely the human loop (look → miss →
+find → re-memorize), compressed into one call.
+
+Wired into all six name-resolution miss-sites: `FqnTarget` (so every tool D1
+made name-addressable inherits it) plus the five pre-existing `symbol=`
+consumers — find_references, find_implementations, find_method_references,
+find_field_writes, get_call_hierarchy(incoming).
+
+### Verification (expected vs actual)
+
+| Gate | Expected | Actual |
+|---|---|---|
+| ResolveOrRelocateTest | moved + renamed + genuinely-absent | **4/4** ✓ |
+| Moved class | old FQN → new location, flagged | `com.example.Calculator` → `SYMBOL_RELOCATED` naming `com.example.math.Calculator`; the corrected name then resolves ✓ |
+| Renamed member | old name → the type's real members | `#multiply` → offers `#times` ✓ |
+| Genuinely absent | honest not-found | `SYMBOL_NOT_FOUND` + "gone, not moved" ✓ |
+| Touched-tool regressions | green | **71/71** across 9 filters ✓ |
+
+### Note (test-honesty finding)
+
+`relocate()` reads the JDT INDEX, which a tool call refreshes on dispatch. A
+direct call to the helper immediately after a move (bypassing any tool) sees a
+stale index and finds nothing. In production the helper only ever runs INSIDE a
+tool call, so this is a test artifact — the battery now makes the tool call
+first, exactly as a caller would, rather than asserting against a stale index.

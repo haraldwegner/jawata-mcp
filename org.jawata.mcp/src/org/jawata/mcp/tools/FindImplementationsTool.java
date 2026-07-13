@@ -129,8 +129,9 @@ public class FindImplementationsTool extends AbstractTool {
                 String projectKey = getStringParam(arguments, "projectKey");
                 Optional<IJavaElement> resolved = FqnResolver.resolve(symbol, service, scope, projectKey);
                 if (resolved.isEmpty()) {
-                    return ToolResponse.symbolNotFound(
-                        "FQN '" + symbol + "' not found in " + scopeRaw + " scope");
+                    // Sprint 24 (D2): the miss carries its own correction.
+                    return org.jawata.mcp.tools.shared.ResolveOrRelocate.miss(
+                        service, symbol, scopeRaw);
                 }
                 element = resolved.get();
             } else {
