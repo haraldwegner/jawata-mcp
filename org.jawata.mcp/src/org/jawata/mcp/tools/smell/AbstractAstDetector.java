@@ -159,7 +159,15 @@ public abstract class AbstractAstDetector implements Detector {
         findings.sort(Comparator.comparingInt(
             (Finding f) -> SEVERITY_RANK.getOrDefault(f.severity(), 0)).reversed());
 
-        Map<String, Object> scan = new LinkedHashMap<>();
+        Map<String, Object> scan = buildScanReport(listed, examined, unreadable, unparseable, bindingsDead, degraded,
+				missed);
+        return Findings.toResponse(findings, scan,
+            steeringFor(findings.size(), examined, missed, degraded));
+    }
+
+	private Map<String, Object> buildScanReport(int listed, int examined, List<String> unreadable,
+			List<String> unparseable, List<String> bindingsDead, ScanDegradation degraded, int missed) {
+		Map<String, Object> scan = new LinkedHashMap<>();
         scan.put("filesListed", listed);
         scan.put("filesExamined", examined);
         if (missed > 0) {
@@ -179,9 +187,8 @@ public abstract class AbstractAstDetector implements Detector {
             scan.put("scanDegraded", true);
             scan.put("lookupFailures", degraded.notes());
         }
-        return Findings.toResponse(findings, scan,
-            steeringFor(findings.size(), examined, missed, degraded));
-    }
+		return scan;
+	}
 
     private String steeringFor(int found, int examined, int missed, ScanDegradation degraded) {
         if (missed > 0) {
