@@ -1422,3 +1422,36 @@ as a caller, using ONLY the symbol the profiler produced.
 | toolCount | 45 (unchanged — a test-only rider, no product surface) | **45** ✓ (verified live over the raw MCP endpoint) |
 | Suite SERIAL | green | **1362/1362** ✓ (wall 628s) |
 | Suite SHARDED | green | **1362/1362** ✓ (wall 338s) |
+
+### RELEASE v2.13.0 (2026-07-14, Harald: "Release now")
+
+Version bump 2.12.1 → 2.13.0 across all 14 pom.xml/MANIFEST.MF carriers (find-based
+sweep, `build/` force-added past the gitignore per the standing lesson); no hardcoded
+version literal in source — `McpProtocolHandler#serverVersion()` reads the OSGi bundle's
+own `Bundle-Version` at runtime, confirmed live (`serverInfo.version` → `"2.13.0"`) before
+committing. Full suite re-run on the version-bumped HEAD: serial 1362/1362 (wall unlogged),
+sharded 1362/1362 (wall 279s) — both green before the release commit.
+
+Release notes: `docs/release-notes/v2.13.0.md` (the GitHub Release body — `release.yml`
+picks up a matching `docs/release-notes/<tag>.md` file when present, falling back to
+auto-generated notes otherwise).
+
+Committed `c5c9ddf`; tagged `v2.13.0` (annotated); pushed `main` + the tag together
+(`git push --follow-tags`). The `Release` workflow (triggered by the `v*` tag push)
+completed **green in 10m21s** (run `29363245067`): build → in-framework test → package 5
+platform archives (linux-x64/arm64, macos-x64/arm64, win32-x64) → GitHub Release created
+with the notes file as its body.
+
+Published: **https://github.com/haraldwegner/jawata-mcp/releases/tag/v2.13.0**
+
+| Gate | Expected | Actual |
+|---|---|---|
+| Version bump complete, no stale references | 0 remaining `2.12.1` hits | **0** ✓ (14/14 files bumped) |
+| Live version report matches | `serverInfo.version` = `2.13.0` | ✓ (verified over the raw MCP endpoint) |
+| Suite on version-bumped HEAD | green, both modes | **1362/1362** ✓ serial + **1362/1362** ✓ sharded |
+| Release workflow (CI) | green | ✓ **10m21s**, all steps passed (one informational Node-20-deprecation annotation, no failure) |
+| GitHub Release published | tag + 5 platform archives + notes body | ✓ |
+
+**Fleet flip is Harald's manual step** (per the plan) — not yet done as of this record.
+The release-day battery (self probes, live debug attach, live profile on the resident's own
+JVM, toolCount 45 EXACT re-check) follows once the fleet is flipped.
