@@ -1,6 +1,7 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
@@ -12,9 +13,13 @@ import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.runtime.debug.DebugController;
 import org.jawata.mcp.runtime.profile.Jcmd;
 import org.jawata.mcp.runtime.profile.JfrParser;
+import org.jawata.mcp.runtime.profile.JmxClient;
 import org.jawata.mcp.runtime.profile.LatencyCalculator;
 import org.jawata.mcp.runtime.profile.ProfileParsers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.management.ObjectName;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -25,6 +30,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -50,9 +57,12 @@ import java.util.function.Supplier;
  */
 public class ProfileTool extends AbstractTool {
 
+    private static final Logger log = LoggerFactory.getLogger(ProfileTool.class);
+
     private static final List<String> ACTIONS = List.of(
         "threads", "deadlock", "histogram", "gc", "nmt", "heap_dump",
         "sample", "jfr_dump", "hotspots", "latency_seam",
+        "incident_arm", "incident_status", "incident_get", "jmx_read", "log_level",
         "artifacts", "artifact_delete");
 
     private static final int DEFAULT_STACK_FRAMES = 20;
@@ -76,6 +86,13 @@ public class ProfileTool extends AbstractTool {
     /** Below this many paired samples, p999 is a near-extrapolation, not a measurement. */
     private static final int MIN_SAMPLES_FOR_P999 = 200;
 
+    private static final int DEFAULT_JFR_SLICE_SECONDS = 15;
+    private static final int DEFAULT_LOG_SLICE_LINES = 200;
+    /** An armed incident is cheap in-memory state; still bounded, same discipline as sessions. */
+    private static final int MAX_ARMED_INCIDENTS = 50;
+
+    private final Map<String, ArmedIncident> incidents = new ConcurrentHashMap<>();
+
     private final RuntimeSessionRegistry sessions;
     private final RuntimeArtifactStore artifacts;
 
@@ -88,6 +105,28 @@ public class ProfileTool extends AbstractTool {
         super(serviceSupplier);
         this.sessions = sessions;
         this.artifacts = artifacts;
+    }
+
+    /**
+     * One {@code incident_arm} call's config, held between calls until the alarm file
+     * appears and the bundle is captured. Cheap (no JVM resources held) — the session
+     * itself is looked up fresh by id each time it is needed, never cached here.
+     */
+    private static final class ArmedIncident {
+        final String sessionId;
+        final Path alarmFile;
+        final Path logFile;
+        final boolean live;
+        final int jfrSliceSeconds;
+        volatile Map<String, Object> capturedSummary;
+
+        ArmedIncident(String sessionId, Path alarmFile, Path logFile, boolean live, int jfrSliceSeconds) {
+            this.sessionId = sessionId;
+            this.alarmFile = alarmFile;
+            this.logFile = logFile;
+            this.live = live;
+            this.jfrSliceSeconds = jfrSliceSeconds;
+        }
     }
 
     @Override
@@ -182,8 +221,39 @@ public class ProfileTool extends AbstractTool {
                            is VISIBLE, never asserted. `expectedIntervalMillis` — pass it
                            if you know the target's intended call rate; omitted, it is
                            INFERRED as the median gap between observed call starts.
-                           Below 200 paired samples, p999 is flagged as unreliable
+               Below 200 paired samples, p999 is flagged as unreliable
                            rather than reported as if it were not.
+
+            INCIDENT BUNDLE ON ALARM — one declared signal, one local bundle:
+            - incident_arm    — sessionId + alarmFile (a path the TARGET writes to when
+                           IT decides something is wrong — the target declares what,
+                           jawata only captures; same division as replay/D9). Optional
+                           logFile (the target's own app log, sliced into the bundle),
+                           live (heap-dump reachability, default true), jfrSliceSeconds
+                           (default 15 — how much of the continuous recording's recent
+                           past to keep). Returns immediately with an incidentId — this
+                           does NOT block, because an alarm's timing is exactly what you
+                           do not know in advance.
+            - incident_status — poll this. The FIRST call after the alarm file appears
+                           CAPTURES the bundle right there (JFR slice, thread dump, heap
+                           histogram, a heap dump, a log slice, a replay descriptor, and
+                           a summary naming the alarming symbol — SEVEN parts, all
+                           artifact-stored with provenance) and reports `bundleReady`.
+                           `fired: false` before that — an absence, not a failure.
+            - incident_get    — the full bundle, once `bundleReady`. Refused, honestly,
+                           if you ask before it exists.
+
+            DECLARED JMX READS + RUNTIME LOG CONTROL:
+            - jmx_read   — objectName + attribute: one MBean attribute, via the SAME
+                           local JMX the dev/sim preset already enables (no new
+                           capability, no authentication surface — loopback-only).
+            - log_level  — loggerName ("" = root) + level, via the platform Logging
+                           MBean. Optional expirySeconds: after that long, the level
+                           REVERTS to what it was before this call — read up front and
+                           restored automatically, on a background timer, so a
+                           diagnostic verbosity bump cannot outlive the reason you set
+                           it. Without expirySeconds, it is permanent until changed
+                           again — say so up front, do not assume.
 
             ARTIFACTS: artifacts / artifact_delete — heap dumps, JFR recordings (and
             anything debug produced) with provenance and an expiry; explicit delete,
@@ -219,8 +289,8 @@ public class ProfileTool extends AbstractTool {
                 + MAX_HISTOGRAM_LIMIT + "). hotspots: max rows (default " + DEFAULT_HOTSPOT_LIMIT
                 + ", max " + MAX_HOTSPOT_LIMIT + "). The true total is always reported too."));
         properties.put("live", Map.of("type", "boolean",
-            "description", "heap_dump: reachable objects only after a full GC (default "
-                + "true, smaller); false includes unreachable garbage too."));
+            "description", "heap_dump / incident_arm: reachable objects only after a full "
+                + "GC (default true, smaller); false includes unreachable garbage too."));
         properties.put("artifactId", Map.of("type", "string",
             "description", "artifact_delete: which artifact to remove. hotspots: which "
                 + "JFR artifact to rank (from action=sample or action=jfr_dump)."));
@@ -245,6 +315,30 @@ public class ProfileTool extends AbstractTool {
                 + "observed gap between call starts."));
         properties.put("offset", Map.of("type", "integer",
             "description", "hotspots: pagination offset (default 0)."));
+        properties.put("alarmFile", Map.of("type", "string",
+            "description", "incident_arm: the path the TARGET writes to when it declares "
+                + "an alarm. jawata watches for it; the target decides what and when."));
+        properties.put("logFile", Map.of("type", "string",
+            "description", "incident_arm: the target's own application log, if any — the "
+                + "last lines are sliced into the bundle. Omit if there is none."));
+        properties.put("jfrSliceSeconds", Map.of("type", "integer",
+            "description", "incident_arm: how much of the continuous recording's recent "
+                + "past to keep in the bundle (default " + DEFAULT_JFR_SLICE_SECONDS + ")."));
+        properties.put("incidentId", Map.of("type", "string",
+            "description", "incident_status / incident_get: the handle from action=incident_arm."));
+        properties.put("objectName", Map.of("type", "string",
+            "description", "jmx_read: the MBean's ObjectName (e.g. "
+                + "\"java.lang:type=Memory\")."));
+        properties.put("attribute", Map.of("type", "string",
+            "description", "jmx_read: the attribute to read."));
+        properties.put("loggerName", Map.of("type", "string",
+            "description", "log_level: the logger's name; \"\" (default) is the root logger."));
+        properties.put("level", Map.of("type", "string",
+            "description", "log_level: the new level (e.g. FINE, INFO, WARNING) — the "
+                + "java.util.logging.Level constant names."));
+        properties.put("expirySeconds", Map.of("type", "integer",
+            "description", "log_level: after this long, the level automatically REVERTS "
+                + "to what it was. Omitted: the change is permanent until set again."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("action"));
@@ -269,6 +363,11 @@ public class ProfileTool extends AbstractTool {
                 case "jfr_dump" -> jfrDump(arguments);
                 case "hotspots" -> hotspots(arguments);
                 case "latency_seam" -> latencySeam(service, arguments);
+                case "incident_arm" -> incidentArm(arguments);
+                case "incident_status" -> incidentStatus(arguments);
+                case "incident_get" -> incidentGet(arguments);
+                case "jmx_read" -> jmxRead(arguments);
+                case "log_level" -> logLevel(arguments);
                 case "artifacts" -> listArtifacts();
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
@@ -738,6 +837,354 @@ public class ProfileTool extends AbstractTool {
             + "be turned on after launch. Relaunch it without that flag (the dev/sim preset "
             + "enables it by default).");
         return data;
+    }
+
+    // --------------------------------------------------- D13: incident bundle on alarm
+
+    private ToolResponse incidentArm(JsonNode arguments) {
+        RuntimeSession session;
+        try {
+            session = sessionOf(arguments);
+        } catch (Jcmd.JcmdException e) {
+            return ToolResponse.invalidParameter("sessionId", e.getMessage());
+        }
+        String alarmFileParam = getStringParam(arguments, "alarmFile");
+        if (alarmFileParam == null || alarmFileParam.isBlank()) {
+            return ToolResponse.invalidParameter("alarmFile",
+                "incident_arm needs alarmFile — the path the TARGET writes to when it "
+                    + "declares an alarm.");
+        }
+        String logFileParam = getStringParam(arguments, "logFile");
+        boolean live = getBooleanParam(arguments, "live", true);
+        int jfrSliceSeconds = Math.max(1, getIntParam(arguments, "jfrSliceSeconds",
+            DEFAULT_JFR_SLICE_SECONDS));
+
+        if (incidents.size() >= MAX_ARMED_INCIDENTS) {
+            incidents.values().stream()
+                .filter(i -> i.capturedSummary != null)
+                .findFirst()
+                .ifPresent(done -> incidents.values().removeIf(v -> v == done));
+        }
+
+        String incidentId = "incident-" + UUID.randomUUID().toString().substring(0, 8);
+        incidents.put(incidentId, new ArmedIncident(session.id, Path.of(alarmFileParam),
+            logFileParam == null || logFileParam.isBlank() ? null : Path.of(logFileParam),
+            live, jfrSliceSeconds));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("incidentId", incidentId);
+        data.put("sessionId", session.id);
+        data.put("armed", true);
+        data.put("alarmFile", alarmFileParam);
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering("Non-blocking — poll profile(action=incident_status, incidentId=\""
+                + incidentId + "\"). The first poll after the alarm fires captures the bundle.")
+            .build());
+    }
+
+    private ToolResponse incidentStatus(JsonNode arguments) throws Exception {
+        ArmedIncident incident = armedIncidentOf(arguments);
+        if (incident == null) {
+            return ToolResponse.symbolNotFound(
+                "No armed incident '" + getStringParam(arguments, "incidentId") + "'.");
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("incidentId", getStringParam(arguments, "incidentId"));
+
+        if (incident.capturedSummary != null) {
+            data.put("fired", true);
+            data.put("bundleReady", true);
+            data.put("artifactId", incident.capturedSummary.get("artifactId"));
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+
+        if (!Files.exists(incident.alarmFile)) {
+            data.put("fired", false);
+            data.put("bundleReady", false);
+            return ToolResponse.success(data, ResponseMeta.builder()
+                .steering("No alarm yet — an absence, not a failure to look. Poll again.")
+                .build());
+        }
+
+        // THE ALARM JUST FIRED. Capture NOW, once, on this call — a second status poll
+        // must find `capturedSummary` already set and never re-capture.
+        java.util.Optional<RuntimeSession> session = sessions.get(incident.sessionId);
+        if (session.isEmpty()) {
+            return ToolResponse.error("SESSION_TARGET_GONE",
+                "The alarm fired, but session '" + incident.sessionId + "' is no longer open — "
+                    + "its process facts (threads, heap, JFR) cannot be captured after the fact.",
+                "Nothing to do — the window to capture this incident has passed.");
+        }
+        Map<String, Object> summary = captureIncidentBundle(session.get(), incident);
+        incident.capturedSummary = summary;
+
+        data.put("fired", true);
+        data.put("bundleReady", true);
+        data.put("artifactId", summary.get("artifactId"));
+        data.put("alarmSymbol", summary.get("alarmSymbol"));
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering("Bundle captured — profile(action=incident_get, incidentId=\""
+                + getStringParam(arguments, "incidentId") + "\") for all seven parts.")
+            .build());
+    }
+
+    private ToolResponse incidentGet(JsonNode arguments) {
+        ArmedIncident incident = armedIncidentOf(arguments);
+        if (incident == null) {
+            return ToolResponse.symbolNotFound(
+                "No armed incident '" + getStringParam(arguments, "incidentId") + "'.");
+        }
+        if (incident.capturedSummary == null) {
+            return ToolResponse.error("INCIDENT_NOT_FIRED",
+                "This incident has not fired yet — there is no bundle to return.",
+                "Poll profile(action=incident_status) until bundleReady:true.");
+        }
+        return ToolResponse.success(incident.capturedSummary, ResponseMeta.builder().build());
+    }
+
+    private ArmedIncident armedIncidentOf(JsonNode arguments) {
+        String incidentId = getStringParam(arguments, "incidentId");
+        if (incidentId == null || incidentId.isBlank()) {
+            return null;
+        }
+        return incidents.get(incidentId);
+    }
+
+    /**
+     * The seven parts, captured in one pass the instant an alarm fires: a JFR slice,
+     * a thread dump, a heap histogram, a heap dump, a log slice, a replay descriptor,
+     * and the summary tying them together — naming the alarming symbol the TARGET
+     * declared (jawata captures; it does not infer what went wrong).
+     */
+    private Map<String, Object> captureIncidentBundle(RuntimeSession session, ArmedIncident incident)
+            throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        Map<String, Object> alarmPayload;
+        try {
+            alarmPayload = json.readValue(incident.alarmFile.toFile(), Map.class);
+        } catch (Exception e) {
+            alarmPayload = Map.of("symbol", null,
+                "reason", "the alarm file could not be parsed as JSON: " + e.getMessage());
+        }
+
+        String artifactId = artifacts.newArtifactId("incident");
+        Path dir = artifacts.createArtifactDir(artifactId);
+        long pid = session.pid();
+
+        List<String> partsPresent = new ArrayList<>();
+        List<String> partsAbsent = new ArrayList<>();
+
+        // 1. JFR slice — the continuous recording's recent past, bounded by maxage.
+        Map<String, Object> jfrPart = new LinkedHashMap<>();
+        try {
+            String jfrResult = Jcmd.run(pid, "JFR.dump", "name=" + CONTINUOUS_RECORDING_NAME,
+                "maxage=" + incident.jfrSliceSeconds + "s", "filename=" + dir.resolve("jfr-slice.jfr"));
+            Map<String, Object> absent = flightRecorderAbsentReport(jfrResult);
+            if (absent != null || jfrResult.toLowerCase(java.util.Locale.ROOT).contains("no recordings")) {
+                jfrPart.put("present", false);
+                jfrPart.put("why", absent != null ? absent.get("why")
+                    : "no continuous recording named '" + CONTINUOUS_RECORDING_NAME + "' on this target");
+                partsAbsent.add("jfrSlice");
+            } else {
+                jfrPart.put("present", true);
+                jfrPart.put("file", "jfr-slice.jfr");
+                partsPresent.add("jfrSlice");
+            }
+        } catch (Jcmd.JcmdException e) {
+            jfrPart.put("present", false);
+            jfrPart.put("why", e.getMessage());
+            partsAbsent.add("jfrSlice");
+        }
+
+        // 2. Thread dump.
+        String threadRaw = Jcmd.run(pid, "Thread.print");
+        Files.writeString(dir.resolve("threads.txt"), threadRaw);
+        partsPresent.add("threadDump");
+
+        // 3. Heap histogram.
+        String histRaw = Jcmd.run(pid, "GC.class_histogram");
+        Map<String, Object> histogram = ProfileParsers.parseHistogram(histRaw, 50);
+        json.writerWithDefaultPrettyPrinter().writeValue(dir.resolve("histogram.json").toFile(), histogram);
+        partsPresent.add("heapHistogram");
+
+        // 4. Heap dump (configured: live or all, same contract as action=heap_dump).
+        Path heapFile = dir.resolve("heap.hprof");
+        if (incident.live) {
+            Jcmd.run(pid, "GC.heap_dump", heapFile.toString());
+        } else {
+            Jcmd.run(pid, "GC.heap_dump", "-all", heapFile.toString());
+        }
+        partsPresent.add("heapDump");
+
+        // 5. Log slice — the target's own application log, if it declared one.
+        Map<String, Object> logPart = new LinkedHashMap<>();
+        if (incident.logFile != null && Files.exists(incident.logFile)) {
+            List<String> allLines = Files.readAllLines(incident.logFile);
+            List<String> tail = allLines.subList(
+                Math.max(0, allLines.size() - DEFAULT_LOG_SLICE_LINES), allLines.size());
+            Files.write(dir.resolve("log-slice.txt"), tail);
+            logPart.put("present", true);
+            logPart.put("file", "log-slice.txt");
+            logPart.put("lines", tail.size());
+            partsPresent.add("logSlice");
+        } else {
+            logPart.put("present", false);
+            logPart.put("why", incident.logFile == null
+                ? "no logFile was configured on incident_arm" : "the configured logFile does not exist");
+            partsAbsent.add("logSlice");
+        }
+
+        // 6. Replay descriptor — what it takes to relaunch this scenario, not an automated
+        // replay (D9's replay/invariant capture is a distinct, JATS-scoped mechanism).
+        Map<String, Object> replayDescriptor = new LinkedHashMap<>();
+        replayDescriptor.put("sessionId", session.id);
+        replayDescriptor.put("target", session.target);
+        replayDescriptor.put("capturedAtMillis", System.currentTimeMillis());
+        json.writerWithDefaultPrettyPrinter()
+            .writeValue(dir.resolve("replay-descriptor.json").toFile(), replayDescriptor);
+        partsPresent.add("replayDescriptor");
+
+        // 7. Summary — the headline facts, INCLUDING the alarming symbol, in the response
+        // itself (never just a path the caller has to go open to find out what happened).
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("artifactId", artifactId);
+        summary.put("sessionId", session.id);
+        summary.put("alarmSymbol", alarmPayload.get("symbol"));
+        summary.put("alarmReason", alarmPayload.get("reason"));
+        summary.put("capturedAtMillis", System.currentTimeMillis());
+        summary.put("partsPresent", partsPresent);
+        if (!partsAbsent.isEmpty()) {
+            summary.put("partsAbsent", partsAbsent);
+        }
+        summary.put("jfr", jfrPart);
+        summary.put("log", logPart);
+        json.writerWithDefaultPrettyPrinter().writeValue(dir.resolve("summary.json").toFile(), summary);
+
+        artifacts.writeManifest(artifactId, Map.of(
+            "kind", "incident",
+            "sessionId", session.id,
+            "alarmSymbol", String.valueOf(alarmPayload.get("symbol")),
+            "partsPresent", partsPresent));
+
+        return summary;
+    }
+
+    // --------------------------------------------------- D13: declared JMX reads
+
+    private ToolResponse jmxRead(JsonNode arguments) throws Exception {
+        RuntimeSession session = sessionOf(arguments);
+        String objectNameParam = getStringParam(arguments, "objectName");
+        String attribute = getStringParam(arguments, "attribute");
+        if (objectNameParam == null || attribute == null) {
+            return ToolResponse.invalidParameter("attribute",
+                "jmx_read needs objectName + attribute.");
+        }
+
+        Object value;
+        try {
+            ObjectName objectName = new ObjectName(objectNameParam);
+            value = JmxClient.withConnection(session.pid(),
+                mbs -> mbs.getAttribute(objectName, attribute));
+        } catch (javax.management.InstanceNotFoundException e) {
+            return ToolResponse.error("MBEAN_NOT_FOUND",
+                "No MBean '" + objectNameParam + "' on this target.", null);
+        } catch (javax.management.AttributeNotFoundException e) {
+            return ToolResponse.error("ATTRIBUTE_NOT_FOUND",
+                "MBean '" + objectNameParam + "' has no attribute '" + attribute + "'.", null);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sessionId", session.id);
+        data.put("objectName", objectNameParam);
+        data.put("attribute", attribute);
+        data.put("value", summarizeJmxValue(value));
+        return ToolResponse.success(data, ResponseMeta.builder().build());
+    }
+
+    /** Best-effort structuring of an arbitrary MBean attribute value — never a bare toString(). */
+    private Object summarizeJmxValue(Object value) {
+        if (value == null || value instanceof String || value instanceof Number
+                || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof javax.management.openmbean.CompositeData composite) {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            for (String key : composite.getCompositeType().keySet()) {
+                fields.put(key, summarizeJmxValue(composite.get(key)));
+            }
+            return fields;
+        }
+        if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            List<Object> items = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                items.add(summarizeJmxValue(java.lang.reflect.Array.get(value, i)));
+            }
+            return items;
+        }
+        return value.toString();
+    }
+
+    // --------------------------------------------------- D13: runtime log-level control
+
+    private ToolResponse logLevel(JsonNode arguments) throws Exception {
+        RuntimeSession session = sessionOf(arguments);
+        String loggerName = getStringParam(arguments, "loggerName", "");
+        String level = getStringParam(arguments, "level");
+        if (level == null || level.isBlank()) {
+            return ToolResponse.invalidParameter("level", "log_level needs a level.");
+        }
+        Integer expirySeconds = optionalInt(arguments, "expirySeconds");
+        long pid = session.pid();
+
+        String previous = JmxClient.withConnection(pid, mbs -> (String) mbs.invoke(
+            JmxClient.LOGGING_MBEAN, "getLoggerLevel",
+            new Object[] {loggerName}, new String[] {"java.lang.String"}));
+        JmxClient.withConnection(pid, mbs -> {
+            mbs.invoke(JmxClient.LOGGING_MBEAN, "setLoggerLevel",
+                new Object[] {loggerName, level}, new String[] {"java.lang.String", "java.lang.String"});
+            return null;
+        });
+
+        if (expirySeconds != null && expirySeconds > 0) {
+            scheduleLogLevelRevert(pid, loggerName, previous, expirySeconds);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sessionId", session.id);
+        data.put("loggerName", loggerName);
+        data.put("previousLevel", previous);
+        data.put("newLevel", level);
+        if (expirySeconds != null) {
+            data.put("expirySeconds", expirySeconds);
+        }
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering(expirySeconds != null
+                ? "Will revert to '" + previous + "' automatically in " + expirySeconds + "s."
+                : "PERMANENT until set again — no expirySeconds was given.")
+            .build());
+    }
+
+    private void scheduleLogLevelRevert(long pid, String loggerName, String revertTo, int expirySeconds) {
+        Thread reverter = new Thread(() -> {
+            try {
+                Thread.sleep(expirySeconds * 1000L);
+                JmxClient.withConnection(pid, mbs -> {
+                    mbs.invoke(JmxClient.LOGGING_MBEAN, "setLoggerLevel",
+                        new Object[] {loggerName, revertTo},
+                        new String[] {"java.lang.String", "java.lang.String"});
+                    return null;
+                });
+                log.debug("log_level expiry: reverted {} to {}", loggerName, revertTo);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                log.warn("log_level expiry revert failed for {}: {}", loggerName, e.getMessage());
+            }
+        }, "jawata-log-level-revert");
+        reverter.setDaemon(true);
+        reverter.start();
     }
 
     private ToolResponse listArtifacts() {

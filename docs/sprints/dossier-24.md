@@ -1189,3 +1189,97 @@ have), rather than silently absorbed.
 | Suite SERIAL | green | **1345/1345** ✓ |
 | Suite SHARDED | green | **1345/1345** ✓ (wall 276s) |
 | toolCount | 45 (unchanged — new action on an existing tool) | **45** ✓ (verified live) |
+
+## C18 — D13: incident bundle on alarm (2026-07-14)
+
+### What shipped
+
+**`profile` actions: `incident_arm` / `incident_status` / `incident_get`
+(the three-action async shape D16 named) + `jmx_read` + `log_level`.** The
+alarm contract is generic and file-based: the TARGET decides something is
+wrong and writes a small JSON payload (`{"symbol": "...", "reason": "..."}`)
+to a path it was told about — jawata only watches for that file and
+captures; it never diagnoses what "wrong" means, matching R5's division of
+labor for replay (JATS owns semantics, jawata proves capture).
+
+- **`incident_arm`** takes `sessionId` + `alarmFile` (required) + optional
+  `logFile` / `live` / `jfrSliceSeconds` (default 15s), and returns an
+  `incidentId` IMMEDIATELY — non-blocking, because an alarm's timing is
+  exactly the one thing that cannot be scheduled for. Armed incidents are a
+  bounded in-memory map (`MAX_ARMED_INCIDENTS = 50`, same discipline as the
+  session registry), evicting an already-captured one if full.
+- **`incident_status`** is the poll. Before the alarm file exists it reports
+  `fired: false` honestly — an absence, not an error. The FIRST call after
+  the file appears captures the whole bundle right there and caches it on
+  the armed incident; every later poll (or a second `incident_status` call —
+  tested explicitly) returns the SAME cached `artifactId`, never re-captures.
+- **`incident_get`** hands back the cached summary, or refuses
+  `INCIDENT_NOT_FIRED` if asked before `bundleReady`.
+- **The seven-part capture** (`captureIncidentBundle`, reusing every prior
+  stage's machinery — no new capture mechanism invented): JFR slice
+  (`JFR.dump ... maxage=Ns` off the dev/sim preset's continuous recording),
+  thread dump, heap histogram (parsed via Stage 15's `ProfileParsers`), a
+  heap dump (`live`-configurable, same contract as `action=heap_dump`), a
+  log slice (last 200 lines of the target's own app log, if one was
+  declared), a replay descriptor (`{sessionId, target, capturedAtMillis}` —
+  relaunch information, explicitly NOT an automated replay; D9's
+  invariant-capture mechanism is the distinct, JATS-scoped thing that
+  actually replays), and a summary that NAMES the alarming symbol
+  (`alarmSymbol` / `alarmReason`, read straight from the target's own
+  payload) — returned INLINE in the tool response, not just written to a
+  path the caller has to go open. Each of the 7 is written under one
+  artifact directory and manifested via the shared `RuntimeArtifactStore`
+  (Stage 7). Any part that cannot be captured (no JFR recording, no
+  `logFile` configured) is reported absent WITH a reason in `partsAbsent` —
+  never silently dropped from the count.
+- **`jmx_read`**: `objectName` + `attribute` over the SAME local JMX
+  connection the dev/sim preset already enables (`JmxClient` — one
+  `VirtualMachine.attach` → `startLocalManagementAgent` → JMX connect →
+  read → always-disconnect, no new capability surface). `CompositeData`
+  values (e.g. `java.lang:type=Memory`'s `HeapMemoryUsage`) are flattened
+  into a plain `Map` recursively rather than returned as an opaque JMX
+  type; unknown MBean/attribute are refused by name (`MBEAN_NOT_FOUND` /
+  `ATTRIBUTE_NOT_FOUND`), not a generic exception.
+- **`log_level`**: reads the previous level via the platform Logging MBean's
+  `getLoggerLevel` operation before setting the new one, so the response
+  always carries a true `previousLevel`. With `expirySeconds`, a daemon
+  thread reconnects fresh after that long and reverts to the recorded
+  baseline automatically — a diagnostic verbosity bump cannot outlive the
+  reason it was set. Without `expirySeconds`, the change is permanent, and
+  the response says so rather than implying either way.
+- **New fixture**: `IncidentTarget.java` — writes its own app log every
+  iteration, and at iteration 15 writes the alarm JSON (naming
+  `com.example.debug.IncidentTarget#checkThreshold` as the culprit) plus an
+  `ALARM:` log line, so the log slice and the alarm payload can be checked
+  against each other.
+
+### One empirical correction during grounding, caught before it became a bug
+
+Probing the platform Logging MBean (`java.util.logging:type=Logging`)
+first assumed `getLoggerNames()` would be a JMX OPERATION (it is a
+no-arg method) — it failed live: `ReflectionException: No such operation:
+getLoggerNames`. The JMX Standard MBean convention makes a no-arg
+getter-shaped method an ATTRIBUTE, not an operation; re-probed as
+`mbs.getAttribute(logging, "LoggerNames")`, which worked (17 loggers, root
+`""`). `getLoggerLevel(String)` / `setLoggerLevel(String,String)` take
+parameters, so they correctly stay OPERATIONS — confirmed in the same
+corrected probe, including a full set → read-back → revert cycle
+(INFO→FINE→INFO). Caught by testing the live MBean before writing the
+product code around it, not by a failing unit test after the fact — the
+same grounding discipline as Stages 15–17, applied one step earlier this
+time.
+
+### Gates
+
+| Gate | Expected | Actual |
+|---|---|---|
+| IncidentBundleTest | all 7 parts present, summary NAMES the alarming symbol, log-level expiry reverts | **8/8** ✓ (stable ×3) |
+| incident_status idempotent (2nd poll after capture) | same artifactId, no re-capture | ✓ |
+| incident_get before fired | honest refusal (`INCIDENT_NOT_FIRED`) | ✓ |
+| jmx_read: scalar + CompositeData attribute | both structured | ✓ (`Runtime#Uptime`, `Memory#HeapMemoryUsage` flattened) |
+| jmx_read: unknown MBean | `MBEAN_NOT_FOUND` | ✓ |
+| log_level with expirySeconds | reverts to baseline automatically | ✓ (2s expiry, read back via a 2nd call's own `previousLevel`) |
+| Focused battery (Stage 6–18: session spine, interactive debug, mutate, dev probes, replay, closure, profiling floor, hotspots, latency + incident bundle) | green | **88/88** ✓ |
+| toolCount | 45 (unchanged — 5 new actions on the existing `profile` tool) | **45** ✓ (verified live over the raw MCP endpoint: `tools/list` → 45 names, `debug` + `profile` present; `profile`'s own `action` enum lists all 17 actions incl. the 5 new ones) |
+| Suite SERIAL | green | **1353/1353** ✓ (wall 490s) |
+| Suite SHARDED | green | **1353/1353** ✓ (wall 525s) |
