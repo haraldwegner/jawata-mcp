@@ -995,3 +995,66 @@ selection variable RETURNED (`Map<String, Object> scan = buildScanReport(...)`),
 23/23, FULL SUITE **1315/1315** — kept and committed (9dcdc98): the first refactoring of
 jawata's codebase performed BY jawata. detect() remains over threshold (~100 LOC > 60);
 further decomposition rides with the Sprint-25 migration. Store: 31934b12.
+
+# PHASE 3 — Dev/sim profiling & runtime evidence (→ v2.13.x)
+
+## C15 — D10: the profiling floor (2026-07-14)
+
+### What shipped
+
+Front door #2: **`profile`** — process-level diagnostics via `jcmd` (the JDK's own
+Dynamic-Attach diagnostic tool, shelled out to exactly the way `JvmTargets.launch`
+already shells out to `java`), against the SAME sessions `debug` opens. Six actions:
+`threads` / `deadlock` / `histogram` / `gc` / `nmt` / `heap_dump`, plus `artifacts` /
+`artifact_delete` sharing the Stage-7 `RuntimeArtifactStore` with `debug`.
+
+- **`Jcmd`** (`runtime/profile/`): the shell-out + timeout + honest failure wrapper.
+- **`ProfileParsers`**: turns jcmd's human-readable text into structured data —
+  `Thread.print` → threads + deadlock (from the SAME dump, so the two can never
+  disagree); `GC.class_histogram` → ranked, capped rows with TRUE totals alongside
+  (a capped list never reads as the whole heap); `GC.heap_info` → per-region
+  used/total; `VM.native_memory summary` → categories, or an honest
+  `enabled: false` + why when NMT was never turned on (it cannot be, after launch).
+- **`heap_dump`**: `live` (default true) dumps reachable objects only after a full
+  GC — the "bounded" default; `live: false` includes unreachable garbage. Stored via
+  the shared artifact store with provenance, never a bare path.
+- **A stated scope boundary, not glossed over**: `profile` requires a session from
+  `debug(action=launch|attach)` — reusing the Stage-7 spine rather than inventing a
+  second, jcmd-only attach path. `jcmd` itself needs no JDWP agent, but attaching a
+  SESSION still does; a plain non-debuggable JVM cannot be profiled today. Documented
+  in the tool's own class-level Javadoc.
+- **D16 (both front doors)**: the subagent hand-off clause now appears in `profile`'s
+  description too, sharing the same sessionId a subagent already knows how to hold.
+- **Fixture**: `DeadlockTarget.java` (debug-target project) — two daemon threads,
+  opposite lock order, a fixed 500ms hold so the deadlock forms deterministically
+  every run.
+
+### A real bug, caught by the discipline this sprint adopted (not a stock guess)
+
+Two failures on first run, both traced to source, neither explained by CPU
+contention or timing (per `feedback-diagnosis-discipline-no-stock-explanations`):
+
+1. **`DEADLOCK_HEADER` required a digit** (`\d+`). HotSpot's actual text is
+   *"Found **one** Java-level deadlock:"* — the count is spelled out for the
+   singular case (verified empirically with a 3-thread/1-cycle deadlock: still
+   "one", because HotSpot counts CYCLES, not participants). Fixed:
+   `(?:one|\d+)`.
+2. **The "which is held by" phrase is on its own line**, one below "waiting to
+   lock monitor ..." — never sharing a line with it, so a single-line regex could
+   never match. Fixed: matched independently, paired with the last thread header
+   seen; the second ("Java stack information for the threads listed above:")
+   section is explicitly excluded so it cannot re-add duplicate participants.
+
+Both root-caused from the RAW jcmd text (captured via a temporary diagnostic print,
+removed once identified) — not guessed at. Stable across 3 repeated runs after the fix.
+
+### Gates
+
+| Gate | Expected | Actual |
+|---|---|---|
+| ProfileFloorTest | green, deadlock summary NAMES both threads | **13/13** ✓ (stable ×3) |
+| Focused battery (+ DebugSessionSpineTest + DebugInteractiveTest, unaffected) | green | **36/36** ✓ |
+| D16 hand-off clause present in `profile` description | yes | ✓ |
+| toolCount | **45 EXACT** | verified live over the raw MCP endpoint: **45**, `debug` + `profile` both present ✓ |
+| Suite SERIAL | green | **1328/1328** ✓ |
+| Suite SHARDED | green | **1328/1328** ✓ (wall 305s) |

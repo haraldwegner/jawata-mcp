@@ -47,6 +47,7 @@ import org.jawata.mcp.tools.MoveInHierarchyTool;
 import org.jawata.mcp.tools.MoveMethodTool;
 import org.jawata.mcp.tools.MoveTool;
 import org.jawata.mcp.tools.OrganizeImportsTool;
+import org.jawata.mcp.tools.ProfileTool;
 import org.jawata.mcp.tools.ProjectTool;
 import org.jawata.mcp.tools.QuickFixTool;
 import org.jawata.mcp.tools.RefactorToPatternTool;
@@ -627,6 +628,11 @@ public class JawataApplication implements IApplication {
         // Sprint 24 (D5): the interactive debugger's front door. Dev/sim only —
         // production runs no agent and exposes no debug channel.
         toolRegistry.register(new DebugTool(() -> jdtService, runtimeSessions));
+
+        // Sprint 24 (D10): the profiling floor's front door — process-level
+        // diagnostics (threads/deadlock/heap/GC/native-memory) via jcmd, against
+        // the same sessions `debug` opens. toolCount 44 -> 45 (the budget's end state).
+        toolRegistry.register(new ProfileTool(() -> jdtService, runtimeSessions));
 
         // Sprint 14 Phase B.1 (v1.8.0): consolidated lifecycle tool.
         toolRegistry.register(new RefreshWorkspaceTool(() -> jdtService));
