@@ -965,6 +965,14 @@ Sprint-25 candidate.
 | Gate | Expected | Actual |
 |---|---|---|
 | Focused battery (extract/gate/rename/signature/inline/move/pull_up/plan/debug) | green | **60/60** ✓ |
-| Suite SERIAL (final HEAD) | green | _fill at gate_ |
-| Suite SHARDED | green | _fill at gate_ |
-| Clean-clone build | single-version 2.12.1 dist | _fill at gate_ |
+| Suite SERIAL (final HEAD) | green | **1315/1315** ✓ |
+| Suite SHARDED | green | **1315/1315** (wall 265s) ✓ |
+| Clean-clone build | single-version 2.12.1 dist | ✓ (core+mcp 2.12.1 only) |
+
+Plus the gate's first-sweep catches, fixed in the same patch: rename leaves the type's
+file behind (now renamed in-change) · change_method_signature's bare `/* TODO */`
+placeholder argument — a syntax error its own test asserted VERBATIM (now a typed zero
+value) · extract_interface generated an importless, non-compiling interface (now carries
+the source file's imports) · the created-file verification boundary (syntax-only,
+semantics proven transitively via the verified referencing files — the
+RefactorToVisitorToolTest harness-artifact comment, now a load-bearing design rule).
