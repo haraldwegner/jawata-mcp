@@ -700,7 +700,7 @@ fails if either drifts:
 | D17 | three statements, tool AND README | verbatim-checked, both ✓ |
 | DebugClosureTest | green | **7/7** ✓ |
 
-## C13 — RELEASE v2.12.0 prepared (2026-07-13) — ⏸ AWAITING THE WORD
+## C13 — RELEASE v2.12.0 prepared (2026-07-13) — released 2026-07-14, see the C13-c release record
 
 Version bumped 2.11.1 → 2.12.0 (poms + 3 manifests); release notes written
 (`docs/release-notes/v2.12.0.md`), including the carried F4 fix (the "It has:" member
@@ -895,3 +895,17 @@ limitation is a documented, user-visible contract with a runtime guard.
 | Targeted LazyClass churn experiment | pins or excludes | **30/30 clean — stimulus excluded** |
 | Suite SERIAL | 1311/1311 | **1311/1311** ✓ |
 | Suite SHARDED ×3 | clean ×3 | **1311/1311 · 1311/1311 · 1311/1311** ✓ (wall 260s/334s/267s) |
+
+### RELEASE RECORD — v2.12.0 published (2026-07-14, on Harald's word)
+
+The word came AFTER the C13-c fixes — the release ships the debugger AND the load-time
+reliability work in one. Protocol: notes updated (solution-framed per Harald: *"release
+notes only inform that a problem has been solved"* — the forensics stay in this dossier);
+README gains the one-JAWATA-per-tree known limitation (the package insert, present but
+not prominent); clean-clone build from HEAD green (single-version dist, 2.12.0 bundles +
+org.eclipse.jdt.debug, boot smoke green); pushed + tagged `v2.12.0` (00d1d4f); Release CI
+green (8m36s); release published. Suite gates ran on 1e0e9aa; 00d1d4f on top is docs-only.
+REMAINING: fleet flip (Harald's manual step) → then the release-day battery (self probes +
+ONE LIVE debug attach on the resident's own JVM + toolCount 44 EXACT check over the live
+endpoint). Harald's trust gate — jawata self-refactoring its own codebase — stands as the
+Stage-14 dogfood centerpiece.
