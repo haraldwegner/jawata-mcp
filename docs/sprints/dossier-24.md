@@ -1118,3 +1118,74 @@ tool output rather than guessed at — same discipline as C15:
 | toolCount | 45 (unchanged — new actions on an existing tool) | **45** ✓ (verified live over the raw MCP endpoint) |
 | Suite SERIAL | green | **1336/1336** ✓ |
 | Suite SHARDED | green | **1336/1336** ✓ (wall 286s) |
+
+## C17 — D12: latency at named seams (2026-07-14)
+
+### What shipped
+
+**`profile(action=latency_seam)`**: className+method resolved **against the
+workspace source via JDT** before the live JVM is ever touched (`SEAM_NOT_FOUND`
+is a compiler-accurate refusal, not a JDI error three steps later). Traces every
+call via the SAME non-suspending `method_trace` probe `debug` already uses (D8) —
+reused as-is, no new instrumentation mechanism invented. Reports p50/p99/p999
+TWICE: `raw` (measured) and `corrected` (coordinated-omission corrected), with
+millisecond resolution stated honestly (a JDI event timestamp, not a nanosecond
+instrument).
+
+- **`LatencyCalculator`** (`runtime/profile/`): the percentile math (nearest-rank)
+  and the coordinated-omission correction (Gil Tene's fix, as HdrHistogram
+  implements it — for an observed value against an expected inter-call gap,
+  backfill synthetic samples representing the delayed-but-real requests a
+  closed-loop caller's silence hid). `expectedIntervalMillis` is either supplied
+  or inferred as the MEDIAN observed gap between call starts (median, not mean —
+  robust to one collection-time hiccup).
+- **New fixture**: `LatencySeamTarget.java` — a CLOSED-LOOP caller (the easy,
+  common shape that suffers from coordinated omission) tracing a CPU-bound seam
+  with a controllable, deterministic injected tail (`-Djawata.latency.slowdown=
+  true`: 1 call in 50 pays an extra 50ms — comfortably past both the p99 and
+  p999 cutoffs, so both must move while p50 must not).
+- **Below 200 paired samples, p999 is flagged `p999Unreliable: true`** rather than
+  reported as if a handful of points were a stable measurement.
+
+### Two real bugs, both caught by grounding, neither dismissed as flaky
+
+**1. A floating-point boundary bug in the percentile math itself**, caught by a
+DETERMINISTIC unit test built to exercise exactly this edge (999 fast calls +
+one 500ms stall, hand-verified: raw p999 must land one index short of the single
+slow sample). `Math.ceil(99.9 / 100.0 * 1000)` computed `999.0000000000001` —
+`99.9` is not exactly representable in binary floating point, and the rounding
+error pushed `Math.ceil` one full index PAST the intended boundary, landing
+squarely on the one sample the test was built to keep OUT of p999. Fixed by
+switching to permille (parts-per-thousand) integers with pure integer
+ceiling-division — no `double` anywhere in the percentile index computation, so
+no representation error to land on either side of. This is exactly the
+[[feedback-diagnosis-discipline-no-stock-explanations]] discipline paying for
+itself on new code, not just old: the failing assertion's exact expected-vs-actual
+(`expected: <5> but was: <500>`) was read and traced to its root, not re-run or
+adjusted to match.
+
+**2. `setProbe`'s `method_trace` has no deferred-install** — unlike breakpoints
+(which already bind the moment a class loads), a probe armed immediately after
+`debug(action=resume)` reliably failed with `TYPE_NOT_LOADED`, because
+`resume()` does not wait for anything inside the target before returning, and
+the probed class (about to run `main()`) had not finished loading yet. A REAL
+capability gap in Stage 10's shipped code, found by this stage's actual usage —
+100% reproducible, not a timing flake. Fixed WITHOUT touching
+`DebugController` (already-shipped, already-tested): the retry is contained
+entirely in the new `ProfileTool` code — the exact same `setProbe` call,
+retried for up to 3s while the failure is specifically `TYPE_NOT_LOADED`. A
+class that genuinely never loads still fails, just not falsely, this fast.
+Disclosed as a known gap for a future stage/sprint to close at the source
+(extending probes to the same deferred-install machinery breakpoints already
+have), rather than silently absorbed.
+
+### Gates
+
+| Gate | Expected | Actual |
+|---|---|---|
+| LatencyCalculatorTest (pure math, no JVM) | exact hand-derived numbers | **4/4** ✓ |
+| LatencySeamTest | 50ms slowdown moves p99/p999, p50 unaffected | **5/5** ✓ (stable ×3) |
+| Focused battery (+ Stage 15/16 + ALL sibling debug/probe tests, checking for D8 regression) | green | **64/64** ✓ |
+| Suite SERIAL | green | **1345/1345** ✓ |
+| Suite SHARDED | green | **1345/1345** ✓ (wall 276s) |
+| toolCount | 45 (unchanged — new action on an existing tool) | **45** ✓ (verified live) |

@@ -1,21 +1,30 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSession;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
+import org.jawata.mcp.runtime.debug.DebugController;
 import org.jawata.mcp.runtime.profile.Jcmd;
 import org.jawata.mcp.runtime.profile.JfrParser;
+import org.jawata.mcp.runtime.profile.LatencyCalculator;
 import org.jawata.mcp.runtime.profile.ProfileParsers;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -43,7 +52,7 @@ public class ProfileTool extends AbstractTool {
 
     private static final List<String> ACTIONS = List.of(
         "threads", "deadlock", "histogram", "gc", "nmt", "heap_dump",
-        "sample", "jfr_dump", "hotspots",
+        "sample", "jfr_dump", "hotspots", "latency_seam",
         "artifacts", "artifact_delete");
 
     private static final int DEFAULT_STACK_FRAMES = 20;
@@ -58,6 +67,14 @@ public class ProfileTool extends AbstractTool {
     private static final int MAX_HOTSPOT_LIMIT = 200;
     /** The continuous recording DevSimPreset starts on every dev/sim launch. */
     private static final String CONTINUOUS_RECORDING_NAME = "jawata";
+
+    private static final int DEFAULT_LATENCY_SECONDS = 5;
+    private static final int MAX_LATENCY_SECONDS = 30;
+    private static final int LATENCY_POLL_MILLIS = 200;
+    /** Generous — a hot seam under load easily exceeds the shared probe ring's 500-event cap. */
+    private static final int LATENCY_PROBE_BUDGET = 200_000;
+    /** Below this many paired samples, p999 is a near-extrapolation, not a measurement. */
+    private static final int MIN_SAMPLES_FOR_P999 = 200;
 
     private final RuntimeSessionRegistry sessions;
     private final RuntimeArtifactStore artifacts;
@@ -138,6 +155,36 @@ public class ProfileTool extends AbstractTool {
                            maxPauseMillis instead of inventing an attribution JFR does
                            not provide.
 
+            LATENCY AT A NAMED SEAM:
+            - latency_seam — className + method: a JDT-RESOLVED seam (checked against
+                           the WORKSPACE source before touching the live JVM — a wrong
+                           name is refused with a compiler-accurate reason, not a JDI
+                           error three steps later). Traces every call via the SAME
+                           non-suspending method_trace probe `debug` uses (D8) — the
+                           program is never stopped — for `durationSeconds` (default 5,
+                           max 30; the call BLOCKS for it). Reports p50/p99/p999 TWICE:
+                           `raw` (measured) and `corrected` (coordinated-omission
+                           corrected — see below), millisecond resolution, stated as
+                           such (this is a JDI event timestamp, not a nanosecond
+                           instrument).
+
+                           WHY TWO SETS OF PERCENTILES: most latency measurements are
+                           CLOSED-LOOP — the next call starts only after the last one
+                           finishes (this is the easy thing to build, and it is what
+                           this stage's own fixture does). A closed-loop caller SKIPS
+                           the calls a real, open-loop caller would still have issued
+                           during a slow patch — so its raw trace under-reports its own
+                           tail, worse the slower the stall. `corrected` backfills the
+                           samples that silence hid (Gil Tene's fix, as HdrHistogram
+                           implements it: for an observed value v against the expected
+                           inter-call gap i, add phantom samples at v-i, v-2i, ... down
+                           to i). Both numbers are reported so the correction's effect
+                           is VISIBLE, never asserted. `expectedIntervalMillis` — pass it
+                           if you know the target's intended call rate; omitted, it is
+                           INFERRED as the median gap between observed call starts.
+                           Below 200 paired samples, p999 is flagged as unreliable
+                           rather than reported as if it were not.
+
             ARTIFACTS: artifacts / artifact_delete — heap dumps, JFR recordings (and
             anything debug produced) with provenance and an expiry; explicit delete,
             because these get large. Shares the store with `debug` — one place either
@@ -179,10 +226,23 @@ public class ProfileTool extends AbstractTool {
                 + "JFR artifact to rank (from action=sample or action=jfr_dump)."));
         properties.put("durationSeconds", Map.of("type", "integer",
             "description", "sample: how long to record (default " + DEFAULT_SAMPLE_SECONDS
-                + ", max " + MAX_SAMPLE_SECONDS + "). The call BLOCKS for this long."));
+                + ", max " + MAX_SAMPLE_SECONDS + "). latency_seam: how long to trace "
+                + "(default " + DEFAULT_LATENCY_SECONDS + ", max " + MAX_LATENCY_SECONDS
+                + "). Either call BLOCKS for this long."));
         properties.put("dimension", Map.of("type", "string",
             "enum", List.of("cpu", "alloc", "lock", "gc"),
             "description", "hotspots: which profile to rank by (default cpu)."));
+        properties.put("className", Map.of("type", "string",
+            "description", "latency_seam: the fully-qualified class (Outer$Inner for a "
+                + "nested one) declaring the seam method — JDT-resolved against the "
+                + "workspace source before the live JVM is touched."));
+        properties.put("method", Map.of("type", "string",
+            "description", "latency_seam: the seam method's name (no overload "
+                + "disambiguation — all overloads on the class are traced together)."));
+        properties.put("expectedIntervalMillis", Map.of("type", "integer",
+            "description", "latency_seam: the target's intended gap between calls, for "
+                + "the coordinated-omission correction. Omitted: inferred as the median "
+                + "observed gap between call starts."));
         properties.put("offset", Map.of("type", "integer",
             "description", "hotspots: pagination offset (default 0)."));
 
@@ -208,6 +268,7 @@ public class ProfileTool extends AbstractTool {
                 case "sample" -> sample(arguments);
                 case "jfr_dump" -> jfrDump(arguments);
                 case "hotspots" -> hotspots(arguments);
+                case "latency_seam" -> latencySeam(service, arguments);
                 case "artifacts" -> listArtifacts();
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
@@ -487,6 +548,179 @@ public class ProfileTool extends AbstractTool {
                     + "not just the returned rows."
                 : null)
             .build());
+    }
+
+    private ToolResponse latencySeam(IJdtService service, JsonNode arguments) throws Exception {
+        RuntimeSession session = sessionOf(arguments);
+        String className = getStringParam(arguments, "className");
+        String methodName = getStringParam(arguments, "method");
+        if (className == null || className.isBlank() || methodName == null || methodName.isBlank()) {
+            return ToolResponse.invalidParameter("method",
+                "latency_seam needs className + method.");
+        }
+
+        // JDT-RESOLVED SEAM: confirmed against the WORKSPACE SOURCE before the live JVM
+        // is ever touched — a wrong name is a compiler-accurate refusal here, not a JDI
+        // error three steps later after a probe install failed for an opaque reason.
+        IType type = service.findType(className);
+        boolean methodExists = type != null
+            && java.util.Arrays.stream(type.getMethods()).map(IMethod::getElementName)
+                .anyMatch(methodName::equals);
+        if (!methodExists) {
+            return ToolResponse.error("SEAM_NOT_FOUND",
+                "No method '" + methodName + "' found on '" + className
+                    + "' in the workspace source.",
+                "Check the class/method name; get_type_members or find_references can confirm it.");
+        }
+
+        int durationSeconds = Math.min(MAX_LATENCY_SECONDS,
+            Math.max(1, getIntParam(arguments, "durationSeconds", DEFAULT_LATENCY_SECONDS)));
+        Integer expectedIntervalParam = optionalInt(arguments, "expectedIntervalMillis");
+
+        // Reuses D8's method_trace probe AS IS (no changes to DebugController): it only
+        // class-filters, so entries/exits from OTHER methods in the same class arrive
+        // too — filtered out below by matching the event's own recorded method name.
+        DebugController debugger = session.debugger();
+        Map<String, Object> armed = armProbeWaitingForClassLoad(debugger, className, methodName);
+        String probeId = (String) armed.get("probeId");
+
+        // The shared probe-event ring (DebugController, D8) caps at 500 events total —
+        // a hot seam under load would blow past that in well under a second. Poll and
+        // accumulate into OUR OWN unbounded list instead of reading once at the end;
+        // "sequence" is monotonic per probe, so it is a safe de-dupe key across polls.
+        List<Map<String, Object>> collected = new ArrayList<>();
+        Set<Object> seenSequences = new HashSet<>();
+        long deadline = System.currentTimeMillis() + durationSeconds * 1000L;
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                drainNewEvents(debugger, probeId, seenSequences, collected);
+                Thread.sleep(LATENCY_POLL_MILLIS);
+            }
+            drainNewEvents(debugger, probeId, seenSequences, collected);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        } finally {
+            debugger.clearProbe(probeId);
+        }
+
+        collected.sort(java.util.Comparator.comparingLong(
+            e -> ((Number) e.get("sequence")).longValue()));
+
+        // Pair entry/exit PER THREAD with a stack — handles recursion/reentrancy safely,
+        // and events from OTHER methods (the class-filter's over-capture) are excluded
+        // by name before they ever reach the stack.
+        Map<Long, Deque<Long>> openByThread = new LinkedHashMap<>();
+        List<Long> latenciesMillis = new ArrayList<>();
+        List<Long> callStarts = new ArrayList<>();
+        for (Map<String, Object> event : collected) {
+            if (!methodName.equals(event.get("method"))) {
+                continue;
+            }
+            long threadId = ((Number) event.get("threadId")).longValue();
+            long atMillis = ((Number) event.get("atMillis")).longValue();
+            if ("entry".equals(event.get("trace"))) {
+                openByThread.computeIfAbsent(threadId, k -> new ArrayDeque<>()).push(atMillis);
+                callStarts.add(atMillis);
+            } else if ("exit".equals(event.get("trace"))) {
+                Deque<Long> stack = openByThread.get(threadId);
+                if (stack != null && !stack.isEmpty()) {
+                    long entryMillis = stack.pop();
+                    latenciesMillis.add(atMillis - entryMillis);
+                }
+            }
+        }
+
+        if (latenciesMillis.isEmpty()) {
+            return ToolResponse.error("NO_CALLS_OBSERVED",
+                "The probe was armed for " + durationSeconds + "s and captured zero completed "
+                    + "calls to " + className + "#" + methodName + ".",
+                "Confirm the target is actually calling this method during the window "
+                    + "(debug(action=status) shows whether the session is running).");
+        }
+
+        long expectedInterval = expectedIntervalParam != null
+            ? expectedIntervalParam
+            : LatencyCalculator.inferExpectedInterval(callStarts);
+
+        LatencyCalculator.Percentiles raw = LatencyCalculator.percentilesOf(latenciesMillis);
+        List<Long> corrected = LatencyCalculator.applyCoordinatedOmissionCorrection(
+            latenciesMillis, expectedInterval);
+        LatencyCalculator.Percentiles correctedPct = LatencyCalculator.percentilesOf(corrected);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sessionId", session.id);
+        data.put("seam", className + "#" + methodName);
+        data.put("durationSeconds", durationSeconds);
+        data.put("resolution", "milliseconds");
+        data.put("sampleCount", latenciesMillis.size());
+        data.put("expectedIntervalMillis", expectedInterval);
+        data.put("raw", Map.of("p50Millis", raw.p50(), "p99Millis", raw.p99(),
+            "p999Millis", raw.p999()));
+        data.put("corrected", Map.of("p50Millis", correctedPct.p50(), "p99Millis", correctedPct.p99(),
+            "p999Millis", correctedPct.p999(), "syntheticSamplesAdded",
+            corrected.size() - latenciesMillis.size()));
+        boolean p999Unreliable = latenciesMillis.size() < MIN_SAMPLES_FOR_P999;
+        if (p999Unreliable) {
+            data.put("p999Unreliable", true);
+        }
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering(p999Unreliable
+                ? "Only " + latenciesMillis.size() + " paired call(s) observed — p999 here is "
+                    + "close to an extrapolation from the single slowest sample, not a stable "
+                    + "measurement. Trace longer (raise durationSeconds) for a trustworthy p999."
+                : "`corrected` accounts for coordinated omission (see the tool description); "
+                    + "compare it against `raw` rather than reading either alone.")
+            .build());
+    }
+
+    /**
+     * Arm a method_trace probe, tolerating the window right after {@code resume()}
+     * where the target class has been told to run but has not finished LOADING yet.
+     *
+     * <p>{@code setProbe} has no deferred-install for probes (unlike breakpoints,
+     * which already bind the moment a class loads) — found live: immediately after
+     * {@code debug(action=resume)}, arming a probe on the very class whose {@code
+     * main()} is about to execute failed with {@code TYPE_NOT_LOADED} every time,
+     * because {@code resume()} does not wait for anything inside the target before
+     * returning. Rather than change Stage 10's shipped, already-tested {@code
+     * DebugController} for a gap only THIS caller has hit, the wait is contained
+     * here: retry the exact same call for up to 3s. A class that genuinely never
+     * loads still fails, just not falsely, this fast.</p>
+     */
+    private Map<String, Object> armProbeWaitingForClassLoad(DebugController debugger,
+                                                            String className, String methodName)
+            throws Exception {
+        long deadline = System.currentTimeMillis() + 3_000L;
+        while (true) {
+            try {
+                return debugger.setProbe("method_trace", className, null, methodName, null,
+                    List.of(), LATENCY_PROBE_BUDGET);
+            } catch (DebugController.DebugException e) {
+                if (!"TYPE_NOT_LOADED".equals(e.code) || System.currentTimeMillis() >= deadline) {
+                    throw e;
+                }
+                Thread.sleep(100);
+            }
+        }
+    }
+
+    private Integer optionalInt(JsonNode arguments, String field) {
+        JsonNode node = arguments.get(field);
+        return node == null || node.isNull() ? null : node.asInt();
+    }
+
+    /**
+     * Read only the probe events NOT already seen (by "sequence", monotonic per probe)
+     * and append them, in arrival order, to {@code collected}.
+     */
+    private void drainNewEvents(DebugController debugger, String probeId,
+                                Set<Object> seenSequences, List<Map<String, Object>> collected) {
+        for (Map<String, Object> event : debugger.probeEvents(probeId)) {
+            if (seenSequences.add(event.get("sequence"))) {
+                collected.add(event);
+            }
+        }
     }
 
     /**
