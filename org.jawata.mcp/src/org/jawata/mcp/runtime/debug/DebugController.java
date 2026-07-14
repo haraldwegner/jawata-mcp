@@ -187,7 +187,8 @@ public final class DebugController implements AutoCloseable {
         final Integer line;
         final String methodName;
         final String fieldName;
-        final String condition;
+        /** Not final: a condition whose invoke hangs is DROPPED so it is never re-invoked (T1.7). */
+        volatile String condition;
         final Integer hitCount;
         final boolean internal;
         final AtomicInteger hits = new AtomicInteger();
@@ -352,7 +353,10 @@ public final class DebugController implements AutoCloseable {
             // whole session, so we COUNT it and report it rather than let it be a mystery.
             bp.evaluations.incrementAndGet();
             try {
-                Value verdict = new JdiEvaluator(thread, 0).evaluate(bp.condition);
+                // OFF the pump thread, with a timeout — a condition that invokes a method
+                // which never returns must not wedge the one thread draining JDI's event
+                // queue for the rest of the session (Sprint-24 audit T1.7).
+                Value verdict = evaluateOffPump(thread, 0, bp.condition);
                 if (verdict instanceof com.sun.jdi.BooleanValue decision) {
                     if (!decision.value()) {
                         return true;    // not the occurrence you asked for — carry on
@@ -365,6 +369,15 @@ public final class DebugController implements AutoCloseable {
                 // We STOP on a broken condition rather than swallow it. A condition that
                 // silently never matches looks exactly like a bug that never happens.
                 bp.conditionError = e.code + ": " + e.getMessage();
+                if ("EVAL_TIMEOUT".equals(e.code)) {
+                    // A condition that hangs the invoke would hang on EVERY hit. Disable it —
+                    // the breakpoint becomes a plain stop — so we surface the problem once and
+                    // never re-invoke the stuck method. The message tells the user what to do.
+                    bp.condition = null;
+                    bp.conditionError = e.getMessage() + " The condition has been DROPPED (the "
+                        + "breakpoint now stops unconditionally); clear and re-arm with a "
+                        + "cheaper condition, or use kind=hit_count.";
+                }
             }
         }
 
@@ -499,6 +512,7 @@ public final class DebugController implements AutoCloseable {
     public void close() {
         running = false;
         pump.interrupt();
+        pumpEvaluators.shutdownNow();   // abandon any stuck condition/capture invoke
         try {
             // DISARM FIRST. If requests were still live, a thread could hit one while we
             // are letting the others go, and we would walk away from a JVM frozen at a
@@ -970,6 +984,68 @@ public final class DebugController implements AutoCloseable {
 
     // ------------------------------------------------------------- evaluate
 
+    /**
+     * How long a condition/capture evaluation may run before the event pump abandons it.
+     * Generous for a real expression; short next to "forever".
+     */
+    private static final long PUMP_EVAL_TIMEOUT_MILLIS = 5_000;
+
+    /**
+     * One bounded, daemon pool for evaluations that run DURING event handling (a conditional
+     * breakpoint's condition, a capturing logpoint's expressions). A cached pool, not a
+     * single thread: if one evaluation gets stuck on a blocked invoke, the next one must not
+     * queue behind it.
+     */
+    private final java.util.concurrent.ExecutorService pumpEvaluators =
+        java.util.concurrent.Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "jawata-pump-eval");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+    /**
+     * Evaluate an expression WITHOUT ever wedging the event pump.
+     *
+     * <p>A condition or a logpoint capture can invoke the target's own methods, and a method
+     * invocation blocks the JDI client thread until the invoked method returns. When that
+     * invocation was done ON THE EVENT PUMP — the single thread that drains JDI's event queue
+     * — and the invoked method did not return (it hit another armed breakpoint, or blocked on
+     * a lock a still-suspended thread holds), the pump was wedged for the rest of the session:
+     * every subsequent {@code wait} timed out forever, no hit ever arrived again. Sprint-24
+     * audit (T1.7).</p>
+     *
+     * <p>So the invocation runs on a worker with a bounded wait. If it does not return in
+     * time, the pump gives up and gets an {@code EVAL_TIMEOUT} — the session lives, and the
+     * caller decides what a timed-out evaluation means (a condition stops the breakpoint and
+     * disables itself; a capture records the timeout). The stuck worker is abandoned, not
+     * joined; it is one leaked thread on a genuinely pathological expression, not a dead
+     * session.</p>
+     */
+    private Value evaluateOffPump(ThreadReference thread, int frameIndex, String expression)
+            throws JdiEvaluator.EvalException {
+        java.util.concurrent.Future<Value> future =
+            pumpEvaluators.submit(() -> new JdiEvaluator(thread, frameIndex).evaluate(expression));
+        try {
+            return future.get(PUMP_EVAL_TIMEOUT_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            future.cancel(true);   // does not unblock a stuck JDI invoke, but stops us waiting
+            throw new JdiEvaluator.EvalException("EVAL_TIMEOUT",
+                "evaluation did not return within " + (PUMP_EVAL_TIMEOUT_MILLIS / 1000)
+                    + "s — it invoked target code that is not returning (a lock held by another "
+                    + "suspended thread, or a nested breakpoint).");
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof JdiEvaluator.EvalException evalException) {
+                throw evalException;
+            }
+            throw new JdiEvaluator.EvalException("EVAL_FAILED",
+                cause == null ? e.getMessage() : cause.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new JdiEvaluator.EvalException("EVAL_INTERRUPTED", "evaluation was interrupted");
+        }
+    }
+
     public Map<String, Object> evaluate(long threadId, int frameIndex, String expression)
             throws DebugException {
         requireLive();
@@ -1362,8 +1438,10 @@ public final class DebugController implements AutoCloseable {
             Map<String, Object> captured = new LinkedHashMap<>();
             for (String expression : probe.capture) {
                 try {
+                    // OFF the pump, bounded — a capture expression that invokes a
+                    // non-returning method must not wedge the event pump (Sprint-24 audit T1.7).
                     captured.put(expression,
-                        JdiValues.summary(new JdiEvaluator(thread, 0).evaluate(expression)));
+                        JdiValues.summary(evaluateOffPump(thread, 0, expression)));
                 } catch (JdiEvaluator.EvalException e) {
                     captured.put(expression, e.code + ": " + e.getMessage());
                 }
