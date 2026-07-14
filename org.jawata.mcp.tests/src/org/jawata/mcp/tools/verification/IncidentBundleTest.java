@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -177,6 +178,51 @@ class IncidentBundleTest {
         secondPoll.put("incidentId", incidentId);
         ToolResponse second = profile.execute(secondPoll);
         assertEquals(artifactId, data(second).get("artifactId"), "must not re-capture");
+    }
+
+    @Test
+    @DisplayName("a NON-JSON alarm still yields a bundle — the fallback must not crash the capture it exists to save")
+    void aNonJsonAlarmIsCapturedWithAnHonestReason() throws Exception {
+        // Sprint-24 audit (2026-07-14): the catch block written to tolerate an unparseable
+        // alarm file used Map.of(..., null, ...) — which THROWS on the null value. So a
+        // target that declared its alarm as plain text permanently WEDGED its own incident:
+        // every poll re-threw, the bundle was never captured, and the capture window (a live
+        // process, at the moment it is in trouble) was lost. The whole point of an incident
+        // bundle is that it survives a target behaving unexpectedly.
+        Path logFile = targetClasses.resolve("app-nonjson.log");
+        Path alarmFile = targetClasses.resolve("alarm-nonjson.txt");
+        String sessionId = launchAndResume("com.example.debug.DebugTarget", List.of());
+
+        ObjectNode arm = profileAction("incident_arm");
+        arm.put("sessionId", sessionId);
+        arm.put("alarmFile", alarmFile.toString());
+        arm.put("logFile", logFile.toString());
+        String incidentId = (String) data(profile.execute(arm)).get("incidentId");
+
+        // The target declares its alarm — but not in JSON. It is allowed to do that.
+        Files.writeString(alarmFile, "OVERLOAD: queue depth 40000\n");
+
+        ObjectNode statusArgs = profileAction("incident_status");
+        statusArgs.put("incidentId", incidentId);
+        ToolResponse r = profile.execute(statusArgs);
+        assertTrue(r.isSuccess(), "an unparseable alarm must NOT fail the capture: " + r.getError());
+        Map<String, Object> status = data(r);
+        assertEquals(Boolean.TRUE, status.get("fired"), "got: " + status);
+        assertEquals(Boolean.TRUE, status.get("bundleReady"),
+            "the bundle must still be captured — the process is in trouble NOW: " + status);
+
+        ObjectNode getArgs = profileAction("incident_get");
+        getArgs.put("incidentId", incidentId);
+        Map<String, Object> bundle = data(profile.execute(getArgs));
+        assertNull(bundle.get("alarmSymbol"),
+            "no symbol was declared, so none is invented: " + bundle);
+        assertTrue(String.valueOf(bundle.get("alarmReason")).contains("could not be parsed"),
+            "and the reason says plainly why, quoting the target's own words: " + bundle);
+
+        @SuppressWarnings("unchecked")
+        List<String> present = (List<String>) bundle.get("partsPresent");
+        assertTrue(present.contains("threadDump") && present.contains("heapDump"),
+            "the evidence is captured regardless of how the alarm was phrased: " + present);
     }
 
     @Test

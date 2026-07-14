@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -212,6 +213,68 @@ class NativeTriageTest {
     }
 
     // ========================================================== GdbAdapter.parseBacktrace (pure, no gdb needed)
+
+    @Test
+    @DisplayName("THE CORRELATION ITSELF: an hs_err symbol carries its +offset, a gdb function does not — they must still match")
+    void correlationMatchesAcrossTheOffsetSuffix() throws Exception {
+        // Sprint-24 audit (2026-07-14): this comparison was an exact Set.contains between
+        // hs_err's "Unsafe_PutInt+0xa4" and gdb's "Unsafe_PutInt" — so it could never be
+        // true. correlatedWithHsErr was false for every frame ever produced, and the one
+        // capability the optional adapter adds over the FREE hs_err baseline was dead code:
+        // no test touched it, and the release box had no gdb, so no live run touched it either.
+        // These are the two tools' REAL symbol spellings for the same frame.
+        Path hsErrFile = crashAndCaptureHsErr(false);
+        ObjectNode args = action("native_hs_err");
+        args.put("hsErrFile", hsErrFile.toString());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nativeFrames =
+            (List<Map<String, Object>>) data(profile.execute(args)).get("nativeFrames");
+
+        // Straight from OUR OWN parse of a real crash. HotSpot writes THREE shapes, all
+        // present in this very crash, and gdb spells every one of them differently:
+        //   Unsafe_PutInt+0xa4                                  → gdb: Unsafe_PutInt
+        //   JavaCalls::call_helper(JavaValue*, ...)+0x2da       → gdb: JavaCalls::call_helper
+        //   jni_invoke_static(JNIEnv_*, ...) [clone ...]+0x360  → gdb: jni_invoke_static
+        // The parameter list, the [clone] marker AND the +offset must all come off.
+        Set<String> hsErrSymbols = nativeFrames.stream()
+            .map(f -> (String) f.get("resolvedSymbol"))
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        assertFalse(hsErrSymbols.isEmpty(), "the crash resolved at least one native symbol");
+        assertTrue(hsErrSymbols.stream().anyMatch(s -> s.startsWith("Unsafe_PutInt+0x")),
+            "this crash really does resolve Unsafe_PutInt WITH an offset suffix — the suffix "
+                + "is the whole bug: " + hsErrSymbols);
+        assertTrue(hsErrSymbols.stream().anyMatch(s -> s.startsWith("JavaCalls::call_helper(")),
+            "…and a C++ frame WITH its full signature: " + hsErrSymbols);
+
+        assertEquals("Unsafe_PutInt", GdbAdapter.baseSymbolName("Unsafe_PutInt+0xa4"));
+        assertEquals("JavaCalls::call_helper", GdbAdapter.baseSymbolName(
+            "JavaCalls::call_helper(JavaValue*, methodHandle const&, JavaCallArguments*, JavaThread*)+0x2da"));
+        assertEquals("jni_invoke_static", GdbAdapter.baseSymbolName(
+            "jni_invoke_static(JNIEnv_*, JavaValue*, _jobject*) [clone .constprop.1]+0x360"));
+
+        // Exactly how gdb renders those same frames (bare function, args as VALUES).
+        List<Map<String, Object>> gdbThreads = GdbAdapter.parseBacktrace("""
+            Thread 1 (Thread 0x7f8a2c1a5740 (LWP 5001)):
+            #0  0x00007f8a2b3c4d5e in raise () from /lib/x86_64-linux-gnu/libc.so.6
+            #1  0x000055d1a2b3c4e6 in Unsafe_PutInt (env=0x7f8a1c0d5e30, obj=0x0) at /build/openjdk/src/hotspot/share/prims/unsafe.cpp:150
+            #2  0x000055d1a2912a2a in JavaCalls::call_helper (result=0x7ffc134fdc50, method=..., args=0x0) at /build/openjdk/src/hotspot/share/runtime/javaCalls.cpp:392
+            """);
+
+        int correlated = GdbAdapter.correlate(gdbThreads, hsErrSymbols);
+        assertEquals(2, correlated,
+            "BOTH frames the crash report also resolved must correlate — the plain C symbol "
+                + "across its +offset, and the C++ symbol across its signature AND offset");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> frames = (List<Map<String, Object>>) gdbThreads.get(0).get("frames");
+        assertEquals(Boolean.FALSE, frames.get(0).get("correlatedWithHsErr"),
+            "a frame hs_err did NOT resolve is honestly left unmarked: " + frames.get(0));
+        assertEquals(Boolean.TRUE, frames.get(1).get("correlatedWithHsErr"),
+            "the C symbol correlates: " + frames.get(1));
+        assertEquals(Boolean.TRUE, frames.get(2).get("correlatedWithHsErr"),
+            "the C++ symbol correlates: " + frames.get(2));
+    }
 
     @Test
     @DisplayName("GdbAdapter.parseBacktrace: the 'correlated evidence' path's parsing logic, proven without needing gdb installed")

@@ -14,10 +14,22 @@ import java.util.regex.Pattern;
  */
 public final class ProfileParsers {
 
-    // "main" #1 [1267604] prio=5 os_prio=0 cpu=29.21ms elapsed=1.24s tid=0x... nid=1267604 <status> [addr]
+    // JDK 21:  "main" #1 [1267604] prio=5 os_prio=0 cpu=29.21ms elapsed=1.24s tid=0x... nid=1267604 <status> [addr]
+    // JDK 21:  "Reference Handler" #9 [1267612] daemon prio=10 ... nid=1267612 <status> [addr]
+    // Legacy:  "Reference Handler" #2 daemon prio=10 os_prio=0 tid=0x... nid=0x1a2b in Object.wait()
+    //
+    // TWO wrong answers shipped in v2.13.0 because this pattern was written from memory
+    // instead of from the tool's real output (Sprint-24 audit, 2026-07-14):
+    //   1. `daemon` was expected right after the NAME. HotSpot prints it after `#<num>`
+    //      (and after the [ostid] bracket, on 21) in BOTH the modern and legacy formats —
+    //      so the flag was false for every daemon thread that ever passed through here.
+    //   2. `nid` was captured as \d+ (correct for 21, which prints it in DECIMAL) but then
+    //      parsed with radix 16 — so no reported thread id was any real thread. See
+    //      ProfileParsersTest, whose fixtures are real captured jcmd output.
+    // Both formats are now accepted, and the id is read in the base it was actually printed in.
     private static final Pattern THREAD_HEADER = Pattern.compile(
-        "^\"(?<name>[^\"]+)\"(?<daemon> daemon)? #(?<num>\\d+) .*?"
-            + "nid=(?<nid>\\d+) (?<status>[^\\[]+?)\\s*(\\[0x[0-9a-f]+])?$");
+        "^\"(?<name>[^\"]+)\" #(?<num>\\d+)(?: \\[(?<ostid>\\d+)])?(?<daemon> daemon)? .*?"
+            + "nid=(?<nid>0x[0-9a-fA-F]+|\\d+) (?<status>[^\\[]+?)\\s*(\\[0x[0-9a-f]+])?$");
     private static final Pattern STATE_LINE =
         Pattern.compile("^\\s*java\\.lang\\.Thread\\.State: (?<state>\\S+).*$");
     // HotSpot spells the count as a WORD for the singular case — "Found one
@@ -59,7 +71,7 @@ public final class ProfileParsers {
                 current = new LinkedHashMap<>();
                 current.put("name", header.group("name"));
                 current.put("daemon", header.group("daemon") != null);
-                current.put("id", Long.parseLong(header.group("nid"), 16));
+                current.put("id", parseThreadId(header.group("nid")));
                 current.put("statusLine", header.group("status").strip());
                 stack = new ArrayList<>();
                 current.put("stack", stack);
@@ -88,6 +100,18 @@ public final class ProfileParsers {
         result.put("threadCount", threads.size());
         result.put("deadlock", parseDeadlockSection(deadlockText));
         return result;
+    }
+
+    /**
+     * The OS thread id, in the base HotSpot actually printed it in: DECIMAL on JDK 21
+     * ({@code nid=1267604}), HEX on the legacy format ({@code nid=0x1a2b}). Reading a
+     * decimal nid as hex yields a number that is not a thread on any machine — the
+     * v2.13.0 bug this method exists to make impossible.
+     */
+    private static long parseThreadId(String nid) {
+        return nid.startsWith("0x") || nid.startsWith("0X")
+            ? Long.parseLong(nid.substring(2), 16)
+            : Long.parseLong(nid, 10);
     }
 
     /** The deadlock section alone, from a full {@code Thread.print} — or a fresh probe. */

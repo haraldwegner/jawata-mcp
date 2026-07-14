@@ -2,9 +2,11 @@ package org.jawata.mcp.runtime.profile;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -76,6 +78,77 @@ public final class GdbAdapter {
             throw new IllegalStateException(command + " timed out after " + timeoutSeconds + "s");
         }
         return output;
+    }
+
+    /**
+     * The bare function name, with any {@code +0x…} / {@code +N} offset suffix removed.
+     *
+     * <p>HotSpot writes a resolved native frame as {@code [libjvm.so+0xfc8ac4]
+     * Unsafe_PutInt+0xa4} — the symbol AND its offset into that symbol. gdb writes the
+     * same frame's function as bare {@code Unsafe_PutInt}. Comparing the two verbatim can
+     * never match, which is precisely what shipped in v2.13.0: {@code correlatedWithHsErr}
+     * was false for every frame, always, and {@code correlatedFrameCount} was permanently
+     * zero — the adapter's entire value-add over the free hs_err baseline was dead code
+     * that no test covered and no live run had ever exercised (gdb was absent on the
+     * release box). Sprint-24 audit; see {@code NativeTriageTest#correlation…}.</p>
+     */
+    public static String baseSymbolName(String symbol) {
+        if (symbol == null) {
+            return null;
+        }
+        // The three shapes HotSpot really writes (verified against a genuine crash):
+        //   Unsafe_PutInt+0xa4
+        //   JavaCalls::call_helper(JavaValue*, methodHandle const&, ...)+0x2da
+        //   jni_invoke_static(JNIEnv_*, ...) [clone .constprop.1]+0x360
+        // gdb prints the same three frames as the BARE function — Unsafe_PutInt,
+        // JavaCalls::call_helper, jni_invoke_static — because it renders the argument
+        // list separately (as values, not types). So the parameter list, the [clone]
+        // marker and the +offset all have to come off before the two can be compared.
+        String text = symbol.strip();
+        int cut = text.length();
+        int paren = text.indexOf('(');
+        if (paren >= 0) {
+            cut = Math.min(cut, paren);
+        }
+        int plus = text.indexOf('+');
+        if (plus >= 0) {
+            cut = Math.min(cut, plus);
+        }
+        int clone = text.indexOf(" [");
+        if (clone >= 0) {
+            cut = Math.min(cut, clone);
+        }
+        String base = text.substring(0, cut).strip();
+        return base.isEmpty() ? text : base;
+    }
+
+    /**
+     * Mark every frame the crash report ALSO resolved, comparing bare function names.
+     * Pure: text and structure in, structure and a count out — no process, no filesystem,
+     * so the correlation is provable on a machine with no debugger installed at all.
+     *
+     * @return how many frames correlated
+     */
+    @SuppressWarnings("unchecked")
+    public static int correlate(List<Map<String, Object>> threads, Set<String> hsErrSymbols) {
+        Set<String> hsErrBaseNames = new HashSet<>();
+        for (String symbol : hsErrSymbols) {
+            String base = baseSymbolName(symbol);
+            if (base != null && !base.isEmpty()) {
+                hsErrBaseNames.add(base);
+            }
+        }
+        int correlated = 0;
+        for (Map<String, Object> thread : threads) {
+            for (Map<String, Object> frame : (List<Map<String, Object>>) thread.get("frames")) {
+                boolean match = hsErrBaseNames.contains(baseSymbolName((String) frame.get("function")));
+                frame.put("correlatedWithHsErr", match);
+                if (match) {
+                    correlated++;
+                }
+            }
+        }
+        return correlated;
     }
 
     /**

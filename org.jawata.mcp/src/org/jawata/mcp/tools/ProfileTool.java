@@ -96,6 +96,8 @@ public class ProfileTool extends AbstractTool {
     private static final int ADAPTER_TIMEOUT_SECONDS = 30;
     /** An armed incident is cheap in-memory state; still bounded, same discipline as sessions. */
     private static final int MAX_ARMED_INCIDENTS = 50;
+    /** How much of a non-JSON alarm declaration we quote back in the bundle summary. */
+    private static final int MAX_DECLARED_TEXT_CHARS = 2_000;
 
     private final Map<String, ArmedIncident> incidents = new ConcurrentHashMap<>();
 
@@ -1010,12 +1012,24 @@ public class ProfileTool extends AbstractTool {
     private Map<String, Object> captureIncidentBundle(RuntimeSession session, ArmedIncident incident)
             throws Exception {
         ObjectMapper json = new ObjectMapper();
-        Map<String, Object> alarmPayload;
+        Map<String, Object> alarmPayload = new LinkedHashMap<>();
         try {
-            alarmPayload = json.readValue(incident.alarmFile.toFile(), Map.class);
+            Map<?, ?> parsed = json.readValue(incident.alarmFile.toFile(), Map.class);
+            parsed.forEach((k, v) -> alarmPayload.put(String.valueOf(k), v));
         } catch (Exception e) {
-            alarmPayload = Map.of("symbol", null,
-                "reason", "the alarm file could not be parsed as JSON: " + e.getMessage());
+            // The target is in trouble, not on trial: it may declare its alarm however it
+            // likes, and an unparseable declaration must never cost us the capture — the
+            // process is failing NOW and this is the only moment we get. Record what it
+            // actually said, bounded, and capture the evidence regardless.
+            //
+            // Map.of() REJECTS a null value (NullPointerException), so the original form of
+            // this very fallback crashed instead of falling back, and wedged the incident it
+            // exists to save — every later poll re-threw and no bundle was ever captured.
+            // Found by the Sprint-24 audit; see IncidentBundleTest#aNonJsonAlarmIsCaptured…
+            alarmPayload.put("symbol", null);
+            alarmPayload.put("reason",
+                "the alarm file could not be parsed as JSON: " + e.getMessage());
+            alarmPayload.put("declaredText", readBoundedText(incident.alarmFile));
         }
 
         String artifactId = artifacts.newArtifactId("incident");
@@ -1102,6 +1116,9 @@ public class ProfileTool extends AbstractTool {
         summary.put("sessionId", session.id);
         summary.put("alarmSymbol", alarmPayload.get("symbol"));
         summary.put("alarmReason", alarmPayload.get("reason"));
+        if (alarmPayload.get("declaredText") != null) {
+            summary.put("alarmDeclaredText", alarmPayload.get("declaredText"));
+        }
         summary.put("capturedAtMillis", System.currentTimeMillis());
         summary.put("partsPresent", partsPresent);
         if (!partsAbsent.isEmpty()) {
@@ -1111,13 +1128,31 @@ public class ProfileTool extends AbstractTool {
         summary.put("log", logPart);
         json.writerWithDefaultPrettyPrinter().writeValue(dir.resolve("summary.json").toFile(), summary);
 
-        artifacts.writeManifest(artifactId, Map.of(
-            "kind", "incident",
-            "sessionId", session.id,
-            "alarmSymbol", String.valueOf(alarmPayload.get("symbol")),
-            "partsPresent", partsPresent));
+        // A LinkedHashMap, not Map.of: the symbol is genuinely absent when the target did
+        // not name one, and String.valueOf(null) would write the LITERAL string "null" into
+        // the manifest — a fabricated symbol, findable by search. An absence stays an absence.
+        Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("kind", "incident");
+        manifest.put("sessionId", session.id);
+        if (alarmPayload.get("symbol") != null) {
+            manifest.put("alarmSymbol", alarmPayload.get("symbol"));
+        }
+        manifest.put("partsPresent", partsPresent);
+        artifacts.writeManifest(artifactId, manifest);
 
         return summary;
+    }
+
+    /** The target's own words when its alarm was not JSON — bounded, and never fatal to read. */
+    private static String readBoundedText(Path file) {
+        try {
+            String text = Files.readString(file);
+            return text.length() <= MAX_DECLARED_TEXT_CHARS
+                ? text.strip()
+                : text.substring(0, MAX_DECLARED_TEXT_CHARS).strip() + "… (truncated)";
+        } catch (Exception e) {
+            return "(the alarm file could not be read back: " + e.getMessage() + ")";
+        }
     }
 
     // --------------------------------------------------- D13: declared JMX reads
@@ -1339,16 +1374,9 @@ public class ProfileTool extends AbstractTool {
                     hsErrResolvedSymbols.add((String) frame.get("resolvedSymbol"));
                 }
             }
-            int correlatedCount = 0;
-            for (Map<String, Object> thread : threads) {
-                for (Map<String, Object> frame : (List<Map<String, Object>>) thread.get("frames")) {
-                    boolean correlated = hsErrResolvedSymbols.contains(frame.get("function"));
-                    frame.put("correlatedWithHsErr", correlated);
-                    if (correlated) {
-                        correlatedCount++;
-                    }
-                }
-            }
+            // hs_err spells a resolved frame "Unsafe_PutInt+0xa4"; gdb spells the same frame
+            // "Unsafe_PutInt". Comparing them verbatim (as v2.13.0 did) can never match.
+            int correlatedCount = GdbAdapter.correlate(threads, hsErrResolvedSymbols);
 
             data.put("correlated", true);
             data.put("corePath", corePath.toString());
