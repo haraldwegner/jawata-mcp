@@ -104,6 +104,24 @@ public final class DevSimPreset {
      */
     public static Map<String, Object> report(Map<String, String> systemProperties,
                                              Map<String, Boolean> jdiCapabilities) {
+        return report(systemProperties, jdiCapabilities, Map.of());
+    }
+
+    /**
+     * As {@link #report(Map, Map)}, but with capabilities GENUINELY DISCOVERED from the
+     * running target (via {@link CapabilityProbe}, i.e. jcmd) taking precedence over any
+     * marker inference. This is the honest path: for an attached — and therefore running —
+     * JVM, {@code flightRecording} / {@code nativeMemoryTracking} / {@code profilerReady} /
+     * {@code quietConsole} come from asking the JVM, so a JVM prepared WITHOUT our marker
+     * still reports what it can actually do. The marker survives only as {@code presetPrepared}
+     * and as a fallback when a probe could not answer. Sprint-24 audit (T2.7).
+     *
+     * @param discovered capabilities read from the target with jcmd; a key present here
+     *                   overrides the marker inference, a key absent falls back to it
+     */
+    public static Map<String, Object> report(Map<String, String> systemProperties,
+                                             Map<String, Boolean> jdiCapabilities,
+                                             Map<String, Boolean> discovered) {
         Map<String, Object> report = new LinkedHashMap<>();
 
         // We are talking to it over JDWP, so the debug channel is present by
@@ -131,15 +149,24 @@ public final class DevSimPreset {
             return report;
         }
 
-        report.put("flightRecording", hasFlightRecording(systemProperties));
+        boolean marker = Boolean.parseBoolean(systemProperties.getOrDefault(MARKER, "false"));
+
+        report.put("flightRecording", discovered.containsKey("flightRecording")
+            ? discovered.get("flightRecording")
+            : hasFlightRecording(systemProperties));
         report.put("jmx", systemProperties.containsKey("com.sun.management.jmxremote"));
-        report.put("nativeMemoryTracking", nmtEnabled(systemProperties));
-        report.put("profilerReady", systemProperties.containsKey("jdk.attach.allowAttachSelf")
-            || Boolean.parseBoolean(systemProperties.getOrDefault(MARKER, "false")));
-        report.put("quietConsole", Boolean.parseBoolean(
-            systemProperties.getOrDefault(MARKER, "false")));
-        report.put("presetPrepared", Boolean.parseBoolean(
-            systemProperties.getOrDefault(MARKER, "false")));
+        report.put("nativeMemoryTracking", discovered.containsKey("nativeMemoryTracking")
+            ? discovered.get("nativeMemoryTracking")
+            : nmtEnabled(systemProperties));
+        report.put("profilerReady", discovered.containsKey("profilerReady")
+            ? discovered.get("profilerReady")
+            : (systemProperties.containsKey("jdk.attach.allowAttachSelf") || marker));
+        report.put("quietConsole", discovered.containsKey("quietConsole")
+            ? discovered.get("quietConsole")
+            : marker);
+        // The marker is now ONLY what it honestly is: a mark that we prepared this JVM. It
+        // no longer stands in for the capabilities themselves.
+        report.put("presetPrepared", marker);
 
         // What the debugger itself can do here. Honest per-JVM: pop-frame and
         // hot-swap are NOT universal, and a session that pretends otherwise fails
@@ -149,14 +176,16 @@ public final class DevSimPreset {
     }
 
     private static boolean hasFlightRecording(Map<String, String> systemProperties) {
-        // A JVM launched with StartFlightRecording carries it; one that did not may
-        // still start a recording on demand, which phase 3 will exercise.
+        // Fallback only (a probe could not run): a JVM launched with StartFlightRecording
+        // carries a jdk.jfr* property; one that did not may still start a recording on demand.
         return systemProperties.keySet().stream()
             .anyMatch(k -> k.startsWith("jdk.jfr"))
             || Boolean.parseBoolean(systemProperties.getOrDefault(MARKER, "false"));
     }
 
     private static boolean nmtEnabled(Map<String, String> systemProperties) {
+        // Fallback only (a probe could not run). The genuine answer comes from
+        // CapabilityProbe (jcmd VM.native_memory summary); this marker read is the last resort.
         return Boolean.parseBoolean(systemProperties.getOrDefault(MARKER, "false"));
     }
 }

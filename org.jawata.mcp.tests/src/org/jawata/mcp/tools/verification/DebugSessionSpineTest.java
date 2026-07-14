@@ -252,6 +252,101 @@ class DebugSessionSpineTest {
     }
 
     @Test
+    @DisplayName("capabilities are DISCOVERED, not inferred from the marker: real NMT + no marker reports true")
+    void capabilitiesDiscoveredNotInferredFromMarker() throws Exception {
+        // A foreign JVM with REAL native-memory tracking, but WITHOUT the preset marker.
+        // The old report read nativeMemoryTracking off the -Djawata.devsim.preset marker
+        // ALONE, so this JVM — genuinely NMT-enabled — was reported nativeMemoryTracking:false:
+        // the exact lie the "read from the JVM, never assumed" report exists to prevent. Now it
+        // is discovered by ASKING the JVM (jcmd VM.native_memory summary). Sprint-24 audit (T2.7).
+        Process foreign = new ProcessBuilder(
+            Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:0",
+            "-XX:NativeMemoryTracking=summary",
+            "-cp", targetClasses.toString(), "com.example.debug.DebugTarget")
+            .redirectErrorStream(true)
+            .start();
+        try {
+            Thread.sleep(2000);
+            assertTrue(foreign.isAlive(), "the foreign JVM is running");
+
+            ObjectNode args = action("attach");
+            args.put("pid", foreign.pid());
+            ToolResponse attached = tool.execute(args);
+            assertTrue(attached.isSuccess(), "got: " + attached.getError());
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> capabilities =
+                (Map<String, Object>) data(attached).get("capabilities");
+
+            // No marker was passed — so a marker-inferred report would say NOT prepared AND,
+            // wrongly, NMT off. The genuine one says: not preset-prepared, but NMT really is on.
+            assertEquals(Boolean.FALSE, capabilities.get("presetPrepared"),
+                "no marker was passed: " + capabilities);
+            assertEquals(Boolean.TRUE, capabilities.get("nativeMemoryTracking"),
+                "discovered by asking the JVM, not inferred from the absent marker: " + capabilities);
+        } finally {
+            foreign.descendants().forEach(ProcessHandle::destroyForcibly);
+            foreign.destroyForcibly();
+            foreign.waitFor(10, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    @DisplayName("no recording left behind: a launched+detached JVM leaves no flight-recording dir")
+    void launchedSessionLeavesNoRecordingBehind() throws Exception {
+        // The preset runs a CONTINUOUS flight recording; a launched target is SIGKILLed on
+        // teardown, so no JVM shutdown hook runs to clean the recording repository. Unless WE
+        // own that dir and delete it, every launch+detach leaks JFR chunks forever. D5 claimed
+        // "no recording left behind" but nothing enforced it. We now pin the repository to a
+        // dir named jawata-jfr-repo-* and delete it on teardown. Sprint-24 audit (T2.6).
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
+        java.util.function.Supplier<java.util.Set<String>> repoDirs = () -> {
+            try (java.util.stream.Stream<Path> s = Files.list(tmp)) {
+                return s.filter(Files::isDirectory)
+                    .map(p -> p.getFileName().toString())
+                    .filter(n -> n.startsWith("jawata-jfr-repo-"))
+                    .collect(java.util.stream.Collectors.toSet());
+            } catch (Exception e) {
+                return java.util.Set.of();
+            }
+        };
+        java.util.Set<String> before = repoDirs.get();
+
+        ToolResponse launched = launchTarget();
+        assertTrue(launched.isSuccess(), "got: " + launched.getError());
+        String sessionId = (String) data(launched).get("sessionId");
+        long pid = ((Number) data(launched).get("pid")).longValue();
+
+        // Start it so the continuous recording actually spins up and writes into the repo.
+        ObjectNode resume = action("resume");
+        resume.put("sessionId", sessionId);
+        assertTrue(tool.execute(resume).isSuccess());
+        Thread.sleep(1500);
+
+        // A NEW repo dir appeared for this launch — the one we pinned.
+        java.util.Set<String> during = repoDirs.get();
+        during.removeAll(before);
+        assertFalse(during.isEmpty(), "the launched JVM must write into a repo dir WE pinned");
+
+        // Detach = kill it. The repo must be gone afterwards.
+        ObjectNode detach = action("detach");
+        detach.put("sessionId", sessionId);
+        assertTrue(tool.execute(detach).isSuccess());
+
+        long deadline = System.currentTimeMillis() + 15_000;
+        while (System.currentTimeMillis() < deadline
+                && ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+            Thread.sleep(200);
+        }
+        java.util.Set<String> after = repoDirs.get();
+        after.retainAll(during);
+        assertTrue(after.isEmpty(),
+            "the pinned recording repository must be deleted on teardown, but these survived: "
+                + after);
+    }
+
+    @Test
     @DisplayName("discover names the local JVMs, and never offers the debugger itself")
     void discoverExcludesOurselves() {
         ToolResponse r = tool.execute(action("discover"));

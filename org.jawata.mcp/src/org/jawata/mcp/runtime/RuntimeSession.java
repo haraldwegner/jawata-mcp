@@ -42,12 +42,20 @@ public final class RuntimeSession {
     private final Process process;
     private volatile Map<String, Object> capabilities;
     private final long attachedPid;
+    /** The flight-recording repository WE pinned for a launched JVM — deleted on teardown; null for attach. */
+    private final java.nio.file.Path jfrRepository;
 
     private volatile State state = State.LIVE;
     private volatile DebugController debugger;
 
     RuntimeSession(String id, Origin origin, String target, VirtualMachine vm,
                    Process process, Map<String, Object> capabilities, long attachedPid) {
+        this(id, origin, target, vm, process, capabilities, attachedPid, null);
+    }
+
+    RuntimeSession(String id, Origin origin, String target, VirtualMachine vm,
+                   Process process, Map<String, Object> capabilities, long attachedPid,
+                   java.nio.file.Path jfrRepository) {
         this.id = id;
         this.origin = origin;
         this.target = target;
@@ -55,6 +63,7 @@ public final class RuntimeSession {
         this.process = process;
         this.capabilities = capabilities;
         this.attachedPid = attachedPid;
+        this.jfrRepository = jfrRepository;
     }
 
     public VirtualMachine vm() {
@@ -103,7 +112,10 @@ public final class RuntimeSession {
         if (Boolean.TRUE.equals(capabilities.get("capabilitiesUnread")) && !awaitingStart()) {
             Map<String, String> properties = JvmTargets.systemProperties(pid());
             if (!properties.isEmpty()) {
-                capabilities = DevSimPreset.report(properties, JvmTargets.jdiCapabilities(vm));
+                // Now that it is running it can be ASKED (jcmd), not just inferred from the
+                // marker. This is where a launched target's real capabilities arrive. (T2.7)
+                capabilities = DevSimPreset.report(properties, JvmTargets.jdiCapabilities(vm),
+                    CapabilityProbe.probe(pid()));
             }
         }
         return capabilities;
@@ -186,5 +198,10 @@ public final class RuntimeSession {
         } else {
             state = State.DETACHED;
         }
+        // The flight-recording repository WE pinned for a launched JVM is ours to remove.
+        // We just SIGKILLed the JVM (destroyForcibly), so no shutdown hook ran and nothing
+        // else will ever clean its chunks — D5's "no recording left behind" depends on this.
+        // No-op for an attached session (jfrRepository is null). Sprint-24 audit (T2.6).
+        RuntimeSessionRegistry.deleteRecursively(jfrRepository);
     }
 }

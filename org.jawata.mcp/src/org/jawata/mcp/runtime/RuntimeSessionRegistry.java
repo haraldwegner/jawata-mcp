@@ -4,6 +4,7 @@ import com.sun.jdi.VirtualMachine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,8 +43,12 @@ public final class RuntimeSessionRegistry {
     public RuntimeSession attach(long pid) throws Exception {
         evictIfFull();
         VirtualMachine vm = JvmTargets.attach(pid);
+        // Ask the running target what it can actually do (jcmd), rather than infer it from
+        // our marker — an attached JVM is the normal case and it may have been prepared
+        // without our marker at all. Sprint-24 audit (T2.7).
         Map<String, Object> capabilities = DevSimPreset.report(
-            JvmTargets.systemProperties(pid), JvmTargets.jdiCapabilities(vm));
+            JvmTargets.systemProperties(pid), JvmTargets.jdiCapabilities(vm),
+            CapabilityProbe.probe(pid));
         return admit(new RuntimeSession(newId(), RuntimeSession.Origin.ATTACHED,
             "pid " + pid, vm, null, capabilities, pid));
     }
@@ -52,16 +57,31 @@ public final class RuntimeSessionRegistry {
     public RuntimeSession launch(List<String> command, Path workingDirectory,
                                  List<String> extraJvmArgs) throws Exception {
         evictIfFull();
+
+        // Pin the flight-recording repository to a dir WE own, so we know exactly where the
+        // continuous recording writes its chunks and can delete them on teardown. Without
+        // this, the preset's continuous JFR writes to a JVM-chosen dir under tmp that is
+        // cleaned only on an ORDERLY exit — and a launched target is SIGKILLed, so on every
+        // launch+detach the chunks were left behind, forever. D5's "no recording left behind"
+        // was unverified and plausibly false. Sprint-24 audit (T2.6).
+        Path jfrRepo = Files.createTempDirectory("jawata-jfr-repo-");
+        List<String> jvmArgs = new ArrayList<>();
+        jvmArgs.add("-XX:FlightRecorderOptions=repository=" + jfrRepo);
+        if (extraJvmArgs != null) {
+            jvmArgs.addAll(extraJvmArgs);
+        }
+
         Process[] out = new Process[1];
         VirtualMachine vm;
         try {
-            vm = JvmTargets.launch(command, workingDirectory, extraJvmArgs, out);
+            vm = JvmTargets.launch(command, workingDirectory, jvmArgs, out);
         } catch (Exception e) {
-            // A launch that failed halfway must not leave the JVM behind.
+            // A launch that failed halfway must not leave the JVM — or its repo — behind.
             if (out[0] != null) {
                 out[0].descendants().forEach(ProcessHandle::destroyForcibly);
                 out[0].destroyForcibly();
             }
+            deleteRecursively(jfrRepo);
             throw e;
         }
         Process process = out[0];
@@ -73,7 +93,25 @@ public final class RuntimeSessionRegistry {
         Map<String, Object> capabilities = DevSimPreset.report(
             Map.of(), JvmTargets.jdiCapabilities(vm));
         return admit(new RuntimeSession(newId(), RuntimeSession.Origin.LAUNCHED,
-            String.join(" ", command), vm, process, capabilities, process.pid()));
+            String.join(" ", command), vm, process, capabilities, process.pid(), jfrRepo));
+    }
+
+    /** Best-effort recursive delete of a launched session's JFR repository on teardown. */
+    static void deleteRecursively(Path dir) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (Exception ignored) {
+                    // A file we cannot delete is a best-effort miss, not a failure.
+                }
+            });
+        } catch (Exception ignored) {
+            // The dir may already be gone — fine.
+        }
     }
 
     public Optional<RuntimeSession> get(String sessionId) {
