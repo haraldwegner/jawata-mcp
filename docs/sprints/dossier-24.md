@@ -976,3 +976,10 @@ value) · extract_interface generated an importless, non-compiling interface (no
 the source file's imports) · the created-file verification boundary (syntax-only,
 semantics proven transitively via the verified referencing files — the
 RefactorToVisitorToolTest harness-artifact comment, now a load-bearing design rule).
+
+### RELEASE RECORD — v2.12.1 published (2026-07-14, on Harald's word)
+
+Pushed + tagged `v2.12.1` (f0d03c8); Release CI green (8m51s); release published.
+REMAINING for Stage-14 close: fleet flip (Harald) → release-day probes on the 2.12.1
+residents → the self-refactor RETRY (jawata's detector → extract on jawata's own source,
+this time on the JDT engine behind the verify gate — the trust-gate exercise completed).
