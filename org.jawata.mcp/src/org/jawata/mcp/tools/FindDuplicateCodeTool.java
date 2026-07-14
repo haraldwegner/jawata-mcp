@@ -187,12 +187,13 @@ public class FindDuplicateCodeTool extends AbstractTool {
         }
 
         try {
+            ScanReport report = new ScanReport();
             List<Map<String, Object>> groups;
             if (crossProject) {
                 // Pool every method into one bucket; group by normalized sequence.
                 Map<String, List<MethodFingerprint>> pool = new HashMap<>();
                 for (LoadedProject lp : projects) {
-                    collectFingerprints(pool, lp, service, minTokens);
+                    collectFingerprints(pool, lp, service, minTokens, report);
                 }
                 groups = buildGroups(pool);
             } else {
@@ -200,9 +201,15 @@ public class FindDuplicateCodeTool extends AbstractTool {
                 groups = new ArrayList<>();
                 for (LoadedProject lp : projects) {
                     Map<String, List<MethodFingerprint>> pool = new HashMap<>();
-                    collectFingerprints(pool, lp, service, minTokens);
+                    collectFingerprints(pool, lp, service, minTokens, report);
                     groups.addAll(buildGroups(pool));
                 }
+            }
+
+            // An empty answer from a scan that failed is not an answer.
+            Optional<ToolResponse> refusal = guardAgainstAnEmptyLie(groups, report);
+            if (refusal.isPresent()) {
+                return refusal.get();
             }
 
             groups.sort(Comparator.<Map<String, Object>>comparingInt(g ->
@@ -220,11 +227,16 @@ public class FindDuplicateCodeTool extends AbstractTool {
             data.put("operation", "find_duplicate_code");
             data.put("groupCount", totalGroups);
             data.put("instanceCount", instanceCount);
+            // WHAT WE ACTUALLY LOOKED AT. Without this, `groupCount: 0` is unreadable: it
+            // could mean "no duplicates" or "we examined nothing", and those are different
+            // facts. Now the caller can always tell which.
+            data.putAll(report.describe());
 
             if (summary) {
                 return ToolResponse.success(data, ResponseMeta.builder()
                     .totalCount(totalGroups)
                     .returnedCount(0)
+                    .steering(scanSteering(totalGroups, report))
                     .build());
             }
 
@@ -246,11 +258,30 @@ public class FindDuplicateCodeTool extends AbstractTool {
                 .totalCount(totalGroups)
                 .returnedCount(page.size())
                 .truncated(truncated)
+                .steering(scanSteering(totalGroups, report))
                 .build());
         } catch (Exception e) {
             log.warn("find_duplicate_code threw unexpectedly: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /** Never let a zero read as a clean bill of health without saying what was examined. */
+    private static String scanSteering(int groupCount, ScanReport report) {
+        if (report.incomplete()) {
+            return "PARTIAL: the scan FAILED on " + report.failures.size() + " project(s), so "
+                + "these results are what survived, not what exists. " + report.failures;
+        }
+        if (report.methodsExamined == 0) {
+            return "Nothing was examined — 0 methods in " + report.projectsScanned + " project(s). "
+                + "This is NOT 'no duplicate code'; there was nothing to compare. Check the "
+                + "projectKey and that the project has source roots.";
+        }
+        if (groupCount == 0) {
+            return "No duplicates among " + report.methodsExamined + " methods examined — and "
+                + "the scan was complete, so this really is an absence, not a failure to look.";
+        }
+        return null;
     }
 
     private static Map<String, Object> firstInstance(Map<String, Object> group) {
@@ -303,15 +334,59 @@ public class FindDuplicateCodeTool extends AbstractTool {
     }
 
     /**
+     * What the scan actually managed to look at.
+     *
+     * <p>This exists because the alternative is a lie. Walking a project can fail — a
+     * {@code JavaModelException} while the model is rebuilding, a classpath not yet
+     * resolved — and if that failure is swallowed, the pool comes back empty and the tool
+     * cheerfully reports "no duplicate code". But an empty result from a scan that never
+     * ran is not an absence; it is a <b>failure to look</b>, and the two must never be
+     * presented as the same fact. So the scan counts what it examined and keeps every
+     * failure, and the caller sees both.</p>
+     */
+    static final class ScanReport {
+        int projectsScanned;
+        int methodsExamined;
+        /** Methods whose source could not be read — silently dropped, until now. */
+        int methodsUnreadable;
+        final List<Map<String, Object>> failures = new ArrayList<>();
+
+        boolean incomplete() {
+            return !failures.isEmpty();
+        }
+
+        Map<String, Object> describe() {
+            Map<String, Object> described = new LinkedHashMap<>();
+            described.put("projectsScanned", projectsScanned);
+            described.put("methodsExamined", methodsExamined);
+            if (methodsUnreadable > 0) {
+                described.put("methodsUnreadable", methodsUnreadable);
+            }
+            if (incomplete()) {
+                described.put("scanIncomplete", true);
+                described.put("failures", failures);
+            }
+            return described;
+        }
+    }
+
+    /**
      * Reusable detection core for {@code replace_duplicates}: the pool of
      * method fingerprints keyed by normalized token sequence.
      */
     static Map<String, List<MethodFingerprint>> collectPool(IJdtService service,
                                                             Collection<LoadedProject> projects,
                                                             int minTokens) {
+        return collectPool(service, projects, minTokens, new ScanReport());
+    }
+
+    static Map<String, List<MethodFingerprint>> collectPool(IJdtService service,
+                                                            Collection<LoadedProject> projects,
+                                                            int minTokens,
+                                                            ScanReport report) {
         Map<String, List<MethodFingerprint>> pool = new HashMap<>();
         for (LoadedProject lp : projects) {
-            collectFingerprints(pool, lp, service, minTokens);
+            collectFingerprints(pool, lp, service, minTokens, report);
         }
         return pool;
     }
@@ -319,7 +394,8 @@ public class FindDuplicateCodeTool extends AbstractTool {
     private static void collectFingerprints(Map<String, List<MethodFingerprint>> sink,
                                             LoadedProject lp,
                                             IJdtService service,
-                                            int minTokens) {
+                                            int minTokens,
+                                            ScanReport report) {
         IJavaProject jp = lp.javaProject();
         try {
             for (IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
@@ -329,8 +405,13 @@ public class FindDuplicateCodeTool extends AbstractTool {
                     for (ICompilationUnit cu : pkg.getCompilationUnits()) {
                         for (IType type : cu.getAllTypes()) {
                             for (IMethod method : type.getMethods()) {
+                                report.methodsExamined++;
                                 MethodFingerprint fp = fingerprint(method, lp, service);
-                                if (fp != null && fp.tokenCount >= minTokens) {
+                                if (fp == null) {
+                                    report.methodsUnreadable++;
+                                    continue;
+                                }
+                                if (fp.tokenCount >= minTokens) {
                                     sink.computeIfAbsent(fp.normalizedSeq,
                                         k -> new ArrayList<>()).add(fp);
                                 }
@@ -339,10 +420,38 @@ public class FindDuplicateCodeTool extends AbstractTool {
                     }
                 }
             }
+            report.projectsScanned++;
         } catch (Exception e) {
-            log.debug("Error collecting fingerprints for project '{}': {}",
-                lp.projectKey(), e.getMessage());
+            // NOT swallowed. This used to be a debug log, and the result was that a project
+            // we could not read came back as a project with no duplicates in it.
+            log.warn("Scanning project '{}' for duplicates FAILED: {}: {}",
+                lp.projectKey(), e.getClass().getSimpleName(), e.getMessage());
+            report.failures.add(Map.of(
+                "project", String.valueOf(lp.projectKey()),
+                "error", e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage())));
         }
+    }
+
+    /**
+     * Refuse to answer "no duplicates" when we did not manage to look.
+     *
+     * @return an error response when the scan cannot support the answer, else empty
+     */
+    static Optional<ToolResponse> guardAgainstAnEmptyLie(List<Map<String, Object>> groups,
+                                                         ScanReport report) {
+        if (!report.incomplete()) {
+            return Optional.empty();
+        }
+        if (!groups.isEmpty()) {
+            return Optional.empty();   // partial, but it DID find things — reported with the flag
+        }
+        // Empty result + a failed scan. "No duplicates" would be a lie with a number on it.
+        return Optional.of(ToolResponse.error("SCAN_INCOMPLETE",
+            "The scan FAILED on " + report.failures.size() + " project(s), and found nothing in "
+                + "what it could read. This is NOT 'no duplicate code' — it is 'we could not "
+                + "look'. Failures: " + report.failures,
+            "The Java model may still be rebuilding. Run refresh_workspace (or compile_workspace) "
+                + "and try again; if it keeps failing, the project's classpath is broken."));
     }
 
     private static MethodFingerprint fingerprint(IMethod method, LoadedProject lp,

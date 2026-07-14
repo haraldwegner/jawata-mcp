@@ -733,3 +733,63 @@ leaves it whole**.
 group not found in: []") and did **not** reproduce — clean on a second full serial run and
 2× focused. Recorded as unexplained rather than explained away. If it returns, it is real
 order-dependence, not CPU contention.
+
+## C13-b — THE ONE-OFF WAS A REAL BUG (2026-07-14, Harald: "dig into")
+
+The `ReplaceDuplicatesToolTest` serial one-off was **not a flake**. Digging in found a
+shipped bug that has been lying quietly since the clone detector landed.
+
+### The bug
+
+`FindDuplicateCodeTool.collectFingerprints` caught `Exception` and logged it at **DEBUG**.
+So a project that could not be walked — a `JavaModelException` while the Java model
+rebuilds, an unresolved classpath — produced an **empty pool**, and the tool answered
+`groupCount: 0`: *"no duplicate code"*. A second swallow in `fingerprint()` silently
+dropped individual unreadable methods.
+
+`ReplaceDuplicatesTool` was worse. It re-scans to re-resolve a `groupId`, so a failed scan
+made it report **"No clone group with id X"** — telling the agent the group is *gone* when
+it had merely failed to look. An agent could reasonably conclude the duplicates had
+already been dealt with.
+
+**An empty result from a scan that never ran is not an absence. It is a failure to look.**
+This is the fourth instance of that exact bug class in this sprint, and the first one that
+was already in production.
+
+### The fix
+
+A `ScanReport` (`projectsScanned` / `methodsExamined` / `methodsUnreadable` / `failures[]`)
+threaded through the scan:
+
+- **Every response states what was examined**, so `groupCount: 0` can never be read as a
+  clean bill of health.
+- **An empty result from an incomplete scan is REFUSED** — `SCAN_INCOMPLETE`, saying in as
+  many words: *"this is NOT 'no duplicate code' — it is 'we could not look'"*.
+- **A partial scan that still found things** reports the findings AND the failure, rather
+  than discarding real results or presenting them as the whole truth.
+- **`replace_duplicates` distinguishes** "the group is really absent (scan complete: N
+  methods examined)" from "the scan failed — this does NOT mean it is gone".
+- The swallow is now a **WARN**, not a debug whisper.
+
+### Gates
+
+| Gate | Actual |
+|---|---|
+| Suite, SERIAL | **1305/1305 clean** ✓ |
+| Suite, sharded | 1304/1305 — one known-contention flake (`LongMethodDetectorTest`), **4/4 green focused ×3** |
+| DuplicateScanHonestyTest | **4/4** (×2) ✓ |
+
+Recorded in the experience store (b3be4e96).
+
+### THE OPEN QUESTION THIS RAISES
+
+Every member of the "known contention flake family" has the same shape: **a JDT query
+returns empty under load, and the tool reports the empty result as a finding.**
+`LongMethodDetectorTest` failed this run with "expected true but was false" — the detector
+found nothing. `GetTypeUsageSummaryToolTest`, `FindModernization`, `FeatureEnvy`,
+`MessageChains`, `GetProjectStructure` — all "the query came back empty".
+
+We have been calling that CPU contention and re-running until green. It may instead be the
+same honesty bug in several detectors: **a swallowed failure served as an absence.** If so,
+the flakes are not noise — they are the tools lying under load, and they would lie the same
+way on a big real workspace. **Flagged for Harald's decision.**

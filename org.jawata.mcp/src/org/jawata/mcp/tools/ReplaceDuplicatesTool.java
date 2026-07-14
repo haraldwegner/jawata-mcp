@@ -129,8 +129,9 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool {
         }
 
         // Re-resolve the group statelessly: same detection, match by stable id.
+        FindDuplicateCodeTool.ScanReport report = new FindDuplicateCodeTool.ScanReport();
         Map<String, List<MethodFingerprint>> pool =
-            FindDuplicateCodeTool.collectPool(service, projects, minTokens);
+            FindDuplicateCodeTool.collectPool(service, projects, minTokens, report);
         List<MethodFingerprint> bucket = null;
         for (Map.Entry<String, List<MethodFingerprint>> entry : pool.entrySet()) {
             if (entry.getValue().size() >= 2
@@ -139,12 +140,24 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool {
                 break;
             }
         }
+        if (bucket == null && report.incomplete()) {
+            // DO NOT say the group is gone. We did not manage to look for it, and telling an
+            // agent "no such group" would send it off to re-detect against a broken model —
+            // or, worse, to conclude the duplicates it saw a moment ago have been dealt with.
+            return Preparation.fail(ToolResponse.error("SCAN_INCOMPLETE",
+                "The re-scan FAILED on " + report.failures.size() + " project(s), so the group '"
+                    + cloneGroupId + "' could not be looked for. This does NOT mean it is gone. "
+                    + "Failures: " + report.failures,
+                "The Java model may still be rebuilding — run refresh_workspace and retry."));
+        }
         if (bucket == null) {
             return Preparation.fail(ToolResponse.invalidParameter("cloneGroupId",
-                "No clone group with id '" + cloneGroupId + "' under the given parameters. "
-                    + "Run find_duplicate_code with the SAME minTokens/projectKey/crossProject "
-                    + "and use a groupId from its output (the code may also have changed since "
-                    + "detection — ids hash the clone shape)."));
+                "No clone group with id '" + cloneGroupId + "' under the given parameters "
+                    + "(the scan was complete: " + report.methodsExamined + " methods examined "
+                    + "across " + report.projectsScanned + " project(s), so this is a real "
+                    + "absence). Run find_duplicate_code with the SAME "
+                    + "minTokens/projectKey/crossProject and use a groupId from its output — the "
+                    + "code may also have changed since detection, and ids hash the clone shape."));
         }
         if (!crossProject) {
             log.debug("crossProject=false accepted for parity with detection; "
