@@ -1455,3 +1455,48 @@ Published: **https://github.com/haraldwegner/jawata-mcp/releases/tag/v2.13.0**
 **Fleet flip is Harald's manual step** (per the plan) — not yet done as of this record.
 The release-day battery (self probes, live debug attach, live profile on the resident's own
 JVM, toolCount 45 EXACT re-check) follows once the fleet is flipped.
+
+### Release-day battery (fleet on 2.13.0, 2026-07-14)
+
+Fleet flipped by Harald (jawata-studio restarted onto `jawata-v2.13.0/jawata.jar`, both
+residents relaunched with the SAME stable `(port, token)` pair). Both residents confirmed
+live on `2.13.0`, toolCount **45 EXACT** — `jawata-javata-dev` (:8800) `Ready`/loaded
+immediately; `jawata-orb-strategy` (:8801) briefly `Loading project...` on cold start, as
+expected.
+
+Same client-schema-cache lesson as Stage 14 (v2.12.0): this session's own MCP tool cache
+predates `debug`/`profile`, so the battery ran over the **raw endpoint** against
+`jawata-javata-dev`, not through cached tool definitions.
+
+- `debug(action=discover)` — the resident's own JVM (pid visible in its own list) honestly
+  reported `debuggable: false`, structural reason, alongside every other same-user process
+  (Cursor's JDT LSP, two Gradle daemons, the SIBLING resident) — the safety rule holds on
+  the real deployed binary.
+- `debug(action=launch)` on `DebugTarget` — held before first instruction, exactly as
+  documented.
+- `breakpoint_set` at a not-yet-loaded class — correctly **deferred**
+  (`bound:false`, `pending:true`), matching Stage 8's deferred-install design.
+- `resume` → `wait` → the hit returned the pre-assembled `symbol` (`com.example.debug.
+  DebugTarget#computeSignal`), deferred breakpoint now bound.
+- `snapshot` — real 2-frame stack, real argument (`iteration=0`), honest `thisAbsent`
+  (static frame).
+- **`profile(action=threads)` on the SAME session** — 18 real OS threads (JDWP transport/
+  event threads, JFR threads, RMI, the works), with the `main` thread's `statusLine`
+  reading `"at breakpoint"` and its stack matching the debug snapshot exactly — `debug` and
+  `profile` agreeing on the same live state, over the real deployed binary, confirming one
+  session genuinely serves both doors.
+- `detach` — `closed: true`, `outcome: "terminated (we launched it)"`; the launched
+  process (a distinct PID from the resident) verified **REAPED** (`ps -p <pid>` empty)
+  within 2s.
+- Resident re-checked healthy afterward: `Ready`, project still loaded, toolCount still 45,
+  uptime undisturbed by the battery.
+
+| Gate | Expected | Actual |
+|---|---|---|
+| toolCount on both residents | 45 EXACT | **45 / 45** ✓ |
+| `discover` self-honesty | resident's own JVM `debuggable:false` | ✓ |
+| `launch` → deferred breakpoint → `resume` → `wait` | hit with pre-assembled symbol | ✓ |
+| `snapshot` | real frame/args | ✓ |
+| `profile` on the same session as `debug` | agrees with the debug-side suspended state | ✓ |
+| `detach` → process reaped | no orphan PID | ✓ (confirmed empty within 2s) |
+| Resident health post-battery | unaffected | ✓ (`Ready`, loaded, toolCount 45) |
