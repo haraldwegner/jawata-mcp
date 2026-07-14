@@ -55,7 +55,9 @@ class HotspotTest {
         int rc = javax.tools.ToolProvider.getSystemJavaCompiler().run(
             null, null, null, "-g", "-d", targetClasses.toString(),
             pkg.resolve("DebugTarget.java").toString(),
-            pkg.resolve("HotLoopTarget.java").toString());
+            pkg.resolve("HotLoopTarget.java").toString(),
+            pkg.resolve("WallTimeTarget.java").toString(),
+            pkg.resolve("LatencySeamTarget.java").toString());
         assertEquals(0, rc, "the hotspot fixtures must compile");
     }
 
@@ -179,6 +181,102 @@ class HotspotTest {
         assertNotNull(d.get("totalPauseMillis"), "got: " + d);
         assertNotNull(d.get("maxPauseMillis"), "got: " + d);
         assertFalse(d.containsKey("rows"), "GC has no per-method ranking to fabricate: " + d);
+    }
+
+    @Test
+    @DisplayName("wall dimension: a method that BLOCKS ranks above one that only burns CPU")
+    void wallDimensionRanksBlockingWallTimeNotJustCpu() throws Exception {
+        // Sprint-24 audit T2.1: the spec lists wall time as a ranking dimension beside
+        // cpu/alloc/lock/gc; v2.13.0 shipped the enum WITHOUT it, so dimension=wall was an
+        // "unknown dimension" error. WallTimeTarget spends most of its ELAPSED time blocked
+        // on a contended monitor in waitOnLock() and only a little CPU in burnCpu(). A CPU
+        // profile points at burnCpu; a genuine WALL profile must point at waitOnLock — that
+        // is where the wall clock goes, and it is invisible to CPU sampling (a blocked thread
+        // is not on the CPU).
+        String sessionId = launchAndResume("com.example.debug.WallTimeTarget");
+
+        ObjectNode sample = profileAction("sample");
+        sample.put("sessionId", sessionId);
+        sample.put("durationSeconds", 5);
+        String artifactId = (String) data(profile.execute(sample)).get("artifactId");
+
+        ObjectNode wall = profileAction("hotspots");
+        wall.put("artifactId", artifactId);
+        wall.put("dimension", "wall");
+        wall.put("limit", 20);
+        ToolResponse r = profile.execute(wall);
+        assertTrue(r.isSuccess(), "dimension=wall must be a real ranking, not 'unknown': " + r.getError());
+        Map<String, Object> d = data(r);
+
+        assertEquals("wall", d.get("dimension"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) d.get("rows");
+        assertFalse(rows.isEmpty(), "a running program has wall-time hotspots: " + d);
+
+        // Every row is ranked by ELAPSED milliseconds, not a sample count.
+        for (Map<String, Object> row : rows) {
+            assertNotNull(row.get("wallMillis"), "wall rows are ranked by milliseconds: " + row);
+            assertTrue(row.get("symbol").toString().contains("#"), "symbol-named: " + row);
+        }
+        assertNotNull(d.get("totalWallMillis"));
+        assertNotNull(d.get("samplingIntervalMillis"), "the measured on-CPU interval is disclosed");
+
+        int waitRank = rankOf(rows, "com.example.debug.WallTimeTarget#waitOnLock");
+        int burnRank = rankOf(rows, "com.example.debug.WallTimeTarget#burnCpu");
+        assertTrue(waitRank > 0,
+            "the BLOCKING method must appear in a wall-time ranking — it is where the elapsed "
+                + "time goes: " + rows);
+        assertTrue(burnRank < 0 || waitRank < burnRank,
+            "and it must rank ABOVE the CPU-only method (wall != CPU): waitOnLock@" + waitRank
+                + " vs burnCpu@" + burnRank + " — " + rows);
+    }
+
+    @Test
+    @DisplayName("call_counts: REAL per-method invocation counts, not relabeled sample counts")
+    void callCountsCountsActualCalls() throws Exception {
+        // Sprint-24 audit T2.2: D11 asks for call counts; v2.13.0 relabeled a hotspot's
+        // top-of-stack SAMPLE count as if it were one. LatencySeamTarget calls a cheap seam()
+        // ~200×/s — so over 3s the REAL call count is in the hundreds, while a CPU sample
+        // count of that same cheap, mostly-sleeping method would be a handful. This proves
+        // call_counts counts CALLS, not stack-top samples.
+        String sessionId = launchAndResume("com.example.debug.LatencySeamTarget");
+
+        ObjectNode args = profileAction("call_counts");
+        args.put("sessionId", sessionId);
+        args.put("className", "com.example.debug.LatencySeamTarget");
+        args.put("durationSeconds", 3);
+        ToolResponse r = profile.execute(args);
+        assertTrue(r.isSuccess(), "call_counts must be a real action, not unknown: " + r.getError());
+        Map<String, Object> d = data(r);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) d.get("rows");
+        assertFalse(rows.isEmpty(), "a running program calls methods: " + d);
+
+        long seamCalls = rows.stream()
+            .filter(row -> "com.example.debug.LatencySeamTarget#seam".equals(row.get("symbol")))
+            .mapToLong(row -> ((Number) row.get("calls")).longValue())
+            .findFirst().orElse(0);
+        assertTrue(seamCalls > 50,
+            "seam() is called ~200x/s — a REAL call count over 3s is in the hundreds, where a "
+                + "CPU-sample count of this cheap method would be a handful: got " + seamCalls
+                + " from " + rows);
+
+        for (Map<String, Object> row : rows) {
+            assertTrue(row.get("symbol").toString().startsWith("com.example.debug.LatencySeamTarget#"),
+                "every row is a symbol-named method of the class: " + row);
+            assertNotNull(row.get("calls"), "…ranked by real call count: " + row);
+        }
+        assertNotNull(d.get("totalCalls"));
+    }
+
+    private static int rankOf(List<Map<String, Object>> rows, String symbol) {
+        for (Map<String, Object> row : rows) {
+            if (symbol.equals(row.get("symbol"))) {
+                return ((Number) row.get("rank")).intValue();
+            }
+        }
+        return -1;
     }
 
     // ========================================================== jfr_dump (on-demand, mid-run)

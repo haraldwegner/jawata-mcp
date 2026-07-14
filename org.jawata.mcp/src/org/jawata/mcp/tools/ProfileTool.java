@@ -67,7 +67,7 @@ public class ProfileTool extends AbstractTool {
 
     private static final List<String> ACTIONS = List.of(
         "threads", "deadlock", "histogram", "gc", "nmt", "heap_dump",
-        "sample", "jfr_dump", "hotspots", "latency_seam",
+        "sample", "jfr_dump", "hotspots", "call_counts", "latency_seam",
         "incident_arm", "incident_status", "incident_get", "incident_disarm",
         "jmx_read", "log_level",
         "native_hs_err", "native_nmt", "native_handoff",
@@ -216,19 +216,34 @@ public class ProfileTool extends AbstractTool {
                            Flight Recorder is disabled — `enabled: false` + why, same
                            shape as `nmt`'s capability-absent report).
             - hotspots   — rank a JFR artifact's methods for `dimension` = cpu | alloc
-                           | lock | gc. cpu/alloc/lock are PER-METHOD rankings (the top
-                           stack frame of each sample) — symbol-named
+                           | wall | lock | gc. cpu/alloc/lock are PER-METHOD rankings (the
+                           top stack frame of each sample) — symbol-named
                            (`ClassName#methodName`, the same key get_call_hierarchy and
                            find_references take), paginated (`offset`/`limit`, default
                            20 max 200), with the TRUE total sample and method counts
                            reported alongside so a capped page never reads as the whole
                            picture. `samples` on each row is a SAMPLE count — how often
                            this method was caught on top of the stack — not an
-                           instrumented call count; said plainly, not implied. `gc` has
-                           no Java stack to rank a method BY (a GC pause is a fact about
-                           the collector), so it reports pauseCount/totalPauseMillis/
-                           maxPauseMillis instead of inventing an attribution JFR does
-                           not provide.
+                           instrumented call count; said plainly, not implied (for a real
+                           invocation count, action=call_counts). `wall` ranks by total
+                           ELAPSED MILLISECONDS per method (`wallMillis`): on-CPU time —
+                           each execution sample worth one MEASURED sampling interval —
+                           PLUS the real durations of time spent blocked on a monitor,
+                           parked, waiting, or in blocking I/O. It is a genuine wall-clock
+                           profile (where elapsed time goes), not lock-time renamed —
+                           `lock` alone is only monitor-enter. `gc` has no Java stack to
+                           rank a method BY (a GC pause is a fact about the collector), so
+                           it reports pauseCount/totalPauseMillis/maxPauseMillis instead
+                           of inventing an attribution JFR does not provide.
+
+            - call_counts — className + durationSeconds: TRUE per-method invocation counts
+                           for a class, via the same non-suspending method_trace probe D8
+                           provides — every method ENTRY counted, symbol-named, ranked. This
+                           is a real call count, distinct from a hotspot row's `samples`
+                           (which is how often a method was caught on top of the stack — a
+                           method called 10,000× at 1µs each is ~0 samples but 10,000 calls).
+                           Reports eventsLost / countsAreLowerBounds honestly when a very hot
+                           class outruns the event ring.
 
             LATENCY AT A NAMED SEAM:
             - latency_seam — className + method: a JDT-RESOLVED seam (checked against
@@ -380,8 +395,10 @@ public class ProfileTool extends AbstractTool {
                 + "(default " + DEFAULT_LATENCY_SECONDS + ", max " + MAX_LATENCY_SECONDS
                 + "). Either call BLOCKS for this long."));
         properties.put("dimension", Map.of("type", "string",
-            "enum", List.of("cpu", "alloc", "lock", "gc"),
-            "description", "hotspots: which profile to rank by (default cpu)."));
+            "enum", List.of("cpu", "alloc", "wall", "lock", "gc"),
+            "description", "hotspots: which profile to rank by (default cpu). cpu/alloc/lock "
+                + "rank by sample count; wall ranks by total elapsed milliseconds per method "
+                + "(on-CPU time plus time blocked/parked/in I/O); gc is a pause summary."));
         properties.put("className", Map.of("type", "string",
             "description", "latency_seam: the fully-qualified class (Outer$Inner for a "
                 + "nested one) declaring the seam method — JDT-resolved against the "
@@ -453,6 +470,7 @@ public class ProfileTool extends AbstractTool {
                 case "sample" -> sample(arguments);
                 case "jfr_dump" -> jfrDump(arguments);
                 case "hotspots" -> hotspots(arguments);
+                case "call_counts" -> callCounts(service, arguments);
                 case "latency_seam" -> latencySeam(service, arguments);
                 case "incident_arm" -> incidentArm(arguments);
                 case "incident_status" -> incidentStatus(arguments);
@@ -727,11 +745,13 @@ public class ProfileTool extends AbstractTool {
         if ("gc".equals(dimension)) {
             data = new LinkedHashMap<>(JfrParser.gcPauses(jfrFile));
             data.put("dimension", "gc");
+        } else if ("wall".equals(dimension)) {
+            data = new LinkedHashMap<>(JfrParser.wallHotspots(jfrFile, offset, limit));
         } else if (JfrParser.DIMENSION_EVENTS.containsKey(dimension)) {
             data = new LinkedHashMap<>(JfrParser.hotspots(jfrFile, dimension, offset, limit));
         } else {
             return ToolResponse.invalidParameter("dimension",
-                "Unknown dimension '" + dimension + "'. One of cpu, alloc, lock, gc.");
+                "Unknown dimension '" + dimension + "'. One of cpu, alloc, wall, lock, gc.");
         }
         data.put("artifactId", artifactId);
 
@@ -744,6 +764,101 @@ public class ProfileTool extends AbstractTool {
                     + "`limit` or page with `offset`; totalSamples above covers ALL of them, "
                     + "not just the returned rows."
                 : null)
+            .build());
+    }
+
+    /**
+     * TRUE per-method invocation counts for a class — how many times each method was actually
+     * CALLED in a window, via the same non-suspending method_trace probe D8 provides. This is
+     * the "call counts" D11 asks for, distinct from a hotspot's `samples` (which is how often
+     * a method was caught on top of the stack — a frequency signal, not a call count; a method
+     * called 10,000× at 1µs each yields ~0 samples). Both are honest; only this one counts calls.
+     */
+    private ToolResponse callCounts(IJdtService service, JsonNode arguments) throws Exception {
+        RuntimeSession session = sessionOf(arguments);
+        String className = getStringParam(arguments, "className");
+        if (className == null || className.isBlank()) {
+            return ToolResponse.invalidParameter("className",
+                "call_counts needs className — the class whose methods to count calls to.");
+        }
+        // JDT-resolve the class first — a wrong name is a compiler-accurate refusal, not a
+        // JDI error three steps later, same as latency_seam.
+        if (service.findType(className) == null) {
+            return ToolResponse.error("CLASS_NOT_FOUND",
+                "No class '" + className + "' in the workspace source.",
+                "Check the class name; search_symbols can confirm it.");
+        }
+        int durationSeconds = Math.min(MAX_LATENCY_SECONDS,
+            Math.max(1, getIntParam(arguments, "durationSeconds", DEFAULT_LATENCY_SECONDS)));
+
+        DebugController debugger = session.debugger();
+        // A method_trace probe is class-filtered (its method name is only a label), so ONE
+        // probe already reports entry/exit for EVERY method of the class; each event names its
+        // own method. Pass the class name as the label; count entries by the event's method.
+        Map<String, Object> armed = armProbeWaitingForClassLoad(debugger, className, className);
+        String probeId = (String) armed.get("probeId");
+
+        List<Map<String, Object>> collected = new ArrayList<>();
+        Set<Object> seenSequences = new HashSet<>();
+        long deadline = System.currentTimeMillis() + durationSeconds * 1000L;
+        Map<String, Object> probeReport;
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                drainNewEvents(debugger, probeId, seenSequences, collected);
+                Thread.sleep(LATENCY_POLL_MILLIS);
+            }
+            drainNewEvents(debugger, probeId, seenSequences, collected);
+            probeReport = debugger.probeReport(probeId).orElse(Map.of());
+        } finally {
+            debugger.clearProbe(probeId);
+        }
+
+        Map<String, Long> countsByMethod = new LinkedHashMap<>();
+        for (Map<String, Object> event : collected) {
+            if ("entry".equals(event.get("trace")) && event.get("method") != null) {
+                countsByMethod.merge(className + "#" + event.get("method"), 1L, Long::sum);
+            }
+        }
+
+        long maxSequence = collected.stream()
+            .mapToLong(e -> ((Number) e.get("sequence")).longValue()).max().orElse(0);
+        long eventsLost = Math.max(0, maxSequence - collected.size());
+        boolean budgetHit = Boolean.TRUE.equals(probeReport.get("stopped"));
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        countsByMethod.entrySet().stream()
+            .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+            .forEach(e -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("symbol", e.getKey());
+                row.put("calls", e.getValue());
+                rows.add(row);
+            });
+
+        if (rows.isEmpty()) {
+            return ToolResponse.error("NO_CALLS_OBSERVED",
+                "The probe was armed for " + durationSeconds + "s and observed zero calls to any "
+                    + "method of " + className + ".",
+                "Confirm the class is active during the window (debug(action=status)).");
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sessionId", session.id);
+        data.put("className", className);
+        data.put("durationSeconds", durationSeconds);
+        data.put("rows", rows);
+        data.put("totalCalls", rows.stream().mapToLong(r -> ((Number) r.get("calls")).longValue()).sum());
+        data.put("eventsLost", eventsLost);
+        if (budgetHit || eventsLost > 0) {
+            data.put("countsAreLowerBounds", true);
+        }
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering((budgetHit || eventsLost > 0)
+                ? "These are REAL invocation counts, but the probe " + (budgetHit ? "hit its budget"
+                    : "dropped " + eventsLost + " events from the ring") + " — so they are LOWER "
+                    + "BOUNDS, not exact. Shorten the window or count a less-hot class for exact counts."
+                : "REAL per-method invocation counts (every entry counted), not hotspot sample "
+                    + "counts. Each `calls` is how many times that method was actually called.")
             .build());
     }
 

@@ -32,11 +32,23 @@ import java.util.Map;
  */
 public final class JfrParser {
 
-    /** Dimension → the JFR event type it ranks by. */
+    /** Count-based dimensions → the JFR event type each ranks by. `wall` is duration-based (see below). */
     public static final Map<String, String> DIMENSION_EVENTS = Map.of(
         "cpu", "jdk.ExecutionSample",
         "alloc", "jdk.ObjectAllocationSample",
         "lock", "jdk.JavaMonitorEnter");
+
+    /**
+     * The duration-bearing JFR events that make up WALL-CLOCK time OFF the CPU — time the
+     * program was elapsing but not running: blocked on a monitor, parked, waiting, or in a
+     * blocking I/O call. Each carries a real {@code getDuration()}. On-CPU wall time is added
+     * from execution samples (see {@link #wallHotspots}). Together they are total elapsed
+     * time attributed per method — which is what "wall time" means, and what D11 lists as a
+     * ranking dimension beside cpu/alloc/lock/gc.
+     */
+    public static final List<String> WALL_BLOCKING_EVENTS = List.of(
+        "jdk.JavaMonitorEnter", "jdk.JavaMonitorWait", "jdk.ThreadPark",
+        "jdk.SocketRead", "jdk.SocketWrite", "jdk.FileRead", "jdk.FileWrite");
 
     private JfrParser() {
     }
@@ -98,6 +110,106 @@ public final class JfrParser {
             result.put("samplesWithoutStack", eventsWithoutStack);
         }
         return result;
+    }
+
+    /**
+     * Rank methods by total WALL-CLOCK time — elapsed time attributed per method whether the
+     * method was on the CPU or blocked. On-CPU time comes from execution samples, each worth
+     * one measured sampling interval; off-CPU time comes from the real durations of blocking
+     * and I/O events ({@link #WALL_BLOCKING_EVENTS}). This is a genuine wall-time profile, not
+     * lock-time renamed: a method that spends its wall clock parked, in a socket read, or
+     * simply running all show up, ranked by the milliseconds each accounts for.
+     */
+    public static Map<String, Object> wallHotspots(Path jfrFile, int offset, int limit)
+            throws IOException {
+        Map<String, Long> wallNanos = new LinkedHashMap<>();
+        List<Long> executionSampleTimesNanos = new ArrayList<>();
+        List<String> executionSampleSymbols = new ArrayList<>();
+        long blockingEvents = 0;
+        long eventsWithoutStack = 0;
+
+        try (RecordingFile rf = new RecordingFile(jfrFile)) {
+            while (rf.hasMoreEvents()) {
+                RecordedEvent event = rf.readEvent();
+                String type = event.getEventType().getName();
+                String symbol = topFrameSymbol(event);
+
+                if ("jdk.ExecutionSample".equals(type)) {
+                    // On-CPU: defer — attributed one MEASURED sampling interval each, once we
+                    // know the interval from the samples themselves (below).
+                    if (symbol == null) {
+                        eventsWithoutStack++;
+                        continue;
+                    }
+                    executionSampleTimesNanos.add(event.getStartTime().toEpochMilli() * 1_000_000L);
+                    executionSampleSymbols.add(symbol);
+                } else if (WALL_BLOCKING_EVENTS.contains(type)) {
+                    if (symbol == null) {
+                        eventsWithoutStack++;
+                        continue;
+                    }
+                    blockingEvents++;
+                    wallNanos.merge(symbol, event.getDuration().toNanos(), Long::sum);
+                }
+            }
+        }
+
+        // Each execution sample represents one sampling interval of on-CPU wall time. Measure
+        // the interval from the samples rather than assuming JFR's default (which the recording
+        // may have overridden): the median gap between consecutive sample timestamps.
+        long sampleIntervalNanos = medianGapNanos(executionSampleTimesNanos);
+        for (String symbol : executionSampleSymbols) {
+            wallNanos.merge(symbol, sampleIntervalNanos, Long::sum);
+        }
+
+        List<Map.Entry<String, Long>> ranked = new ArrayList<>(wallNanos.entrySet());
+        ranked.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = offset; i < ranked.size() && rows.size() < limit; i++) {
+            Map.Entry<String, Long> entry = ranked.get(i);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("rank", i + 1);
+            row.put("symbol", entry.getKey());
+            row.put("wallMillis", entry.getValue() / 1_000_000);
+            rows.add(row);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dimension", "wall");
+        result.put("rows", rows);
+        result.put("returnedRows", rows.size());
+        result.put("totalMethods", ranked.size());
+        result.put("totalWallMillis", wallNanos.values().stream().mapToLong(Long::longValue).sum() / 1_000_000);
+        result.put("onCpuSamples", executionSampleSymbols.size());
+        result.put("samplingIntervalMillis", sampleIntervalNanos / 1_000_000);
+        result.put("blockingEvents", blockingEvents);
+        result.put("truncated", offset + rows.size() < ranked.size());
+        if (eventsWithoutStack > 0) {
+            result.put("eventsWithoutStack", eventsWithoutStack);
+        }
+        return result;
+    }
+
+    /** The median gap between consecutive (unsorted) timestamps — robust to one hiccup. */
+    private static long medianGapNanos(List<Long> timestampsNanos) {
+        if (timestampsNanos.size() < 2) {
+            return 10_000_000L;   // no basis to measure — JFR's own default profiling period, 10ms
+        }
+        List<Long> sorted = new ArrayList<>(timestampsNanos);
+        sorted.sort(Long::compareTo);
+        List<Long> gaps = new ArrayList<>(sorted.size() - 1);
+        for (int i = 1; i < sorted.size(); i++) {
+            long gap = sorted.get(i) - sorted.get(i - 1);
+            if (gap > 0) {
+                gaps.add(gap);
+            }
+        }
+        if (gaps.isEmpty()) {
+            return 10_000_000L;
+        }
+        gaps.sort(Long::compareTo);
+        return gaps.get(gaps.size() / 2);
     }
 
     /** Total GC pause count and duration — a fact about the collector, not a call site. */
