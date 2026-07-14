@@ -1392,3 +1392,33 @@ stage would otherwise rediscover the hard way.
 | toolCount | 45 (unchanged — 3 new actions on the existing `profile` tool) | **45** ✓ (verified live over the raw MCP endpoint; `profile`'s action enum lists all 20 actions incl. the 3 new ones) |
 | Suite SERIAL | green | **1361/1361** ✓ (wall 573s) |
 | Suite SHARDED | green | **1361/1361** ✓ (wall 340s) |
+
+## C20 — D15: profile-side closure rider (2026-07-14)
+
+### What shipped
+
+**`ProfileClosureTest`** — the same claim `DebugClosureTest` (Stage 12)
+proved for a DEBUGGER fact, proved here for a PROFILER fact: a JFR hotspot
+ranking already carries a compiler-accurate symbol
+(`ClassName#methodName`, Stage 16's own convention) — that symbol goes
+STRAIGHT into `get_call_hierarchy` with no intermediate search. A search
+would only re-derive what the profiler just measured, and could rank
+something else entirely. No new product code — this stage is a proof, not
+a feature; D15's measure now covers BOTH runtime doors (debug side at C12,
+profile side here).
+
+Sequence: launch `HotLoopTarget` → `profile(action=sample,
+durationSeconds=3)` → `profile(action=hotspots, dimension=cpu, limit=1)` →
+the top row's `symbol` (`com.example.debug.HotLoopTarget#burnCpu`) handed
+directly to `GetCallHierarchyIncomingTool` → the compiler confirms `main`
+as a caller, using ONLY the symbol the profiler produced.
+
+### Gates
+
+| Gate | Expected | Actual |
+|---|---|---|
+| ProfileClosureTest | hotspot symbol resolves in get_call_hierarchy with no search | **1/1** ✓ (stable ×3) |
+| Focused battery (Stage 6–20: session spine → native triage → profile closure) | green | **97/97** ✓ |
+| toolCount | 45 (unchanged — a test-only rider, no product surface) | **45** ✓ (verified live over the raw MCP endpoint) |
+| Suite SERIAL | green | **1362/1362** ✓ (wall 628s) |
+| Suite SHARDED | green | **1362/1362** ✓ (wall 338s) |
