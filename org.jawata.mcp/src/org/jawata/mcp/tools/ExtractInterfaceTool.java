@@ -204,6 +204,24 @@ public class ExtractInterfaceTool extends AbstractApplyingRefactoringTool {
                 interfaceContent.append("package ").append(packageName).append(";\n\n");
             }
 
+            // v2.12.1 (C13-c): carry the source file's imports — the extracted
+            // signatures use simple names (`List<String> getItems()`), which only
+            // resolved in the original file because of ITS imports. Without them
+            // the generated interface did not compile (caught live by the
+            // compile-verify gate; the old test asserted content strings only).
+            // A superfluous import is harmless; a missing one is broken code.
+            org.eclipse.jdt.core.IImportDeclaration[] imports = cu.getImports();
+            for (org.eclipse.jdt.core.IImportDeclaration imp : imports) {
+                interfaceContent.append("import ")
+                    .append(org.eclipse.jdt.core.Flags.isStatic(imp.getFlags()) ? "static " : "")
+                    .append(imp.getElementName())
+                    .append(imp.isOnDemand() && !imp.getElementName().endsWith(".*") ? ".*" : "")
+                    .append(";\n");
+            }
+            if (imports.length > 0) {
+                interfaceContent.append("\n");
+            }
+
             // Interface declaration
             interfaceContent.append("public interface ").append(interfaceName).append(" {\n\n");
 

@@ -240,8 +240,22 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
         extras.put("symbolKind", symbolKind);
         extras.put("totalEdits", totalEdits);
         extras.put("filesAffected", editsByFile.size());
-        if (element instanceof IType) {
-            extras.put("note", "Renaming a type does not rename its file — verify with compile_workspace");
+
+        // v2.12.1 (C13-c): a type whose file bears its name gets the FILE renamed in
+        // the same change. It used to stay behind ("Greeting" in HelloWorld.java) —
+        // broken code with a note advising the caller to notice; the compile-verify
+        // gate now (rightly) refuses that state, so produce the correct one instead.
+        if (element instanceof IType type
+                && type.getCompilationUnit() != null
+                && (oldName + ".java").equals(type.getCompilationUnit().getElementName())
+                && type.getCompilationUnit().getResource() instanceof IFile unitFile) {
+            org.eclipse.ltk.core.refactoring.CompositeChange composite =
+                new org.eclipse.ltk.core.refactoring.CompositeChange("rename " + oldName);
+            composite.add(change);
+            composite.add(new org.eclipse.ltk.core.refactoring.resource.RenameResourceChange(
+                unitFile.getFullPath(), newName + ".java"));
+            change = composite;
+            extras.put("fileRenamed", oldName + ".java -> " + newName + ".java");
         }
         return Preparation.of(change, summary, extras);
     }

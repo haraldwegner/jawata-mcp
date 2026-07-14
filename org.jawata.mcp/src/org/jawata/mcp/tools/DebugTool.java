@@ -459,7 +459,8 @@ public class DebugTool extends AbstractTool {
     }
 
     private ToolResponse breakpointSet(JsonNode arguments) throws Exception {
-        DebugController debugger = debuggerOf(arguments);
+        // Parameter validation FIRST — it needs no session, and an invalid
+        // combination must be refused identically whether or not the session is live.
         String kind = getStringParam(arguments, "kind");
         if (kind == null || !BREAKPOINT_KINDS.contains(kind)) {
             return ToolResponse.invalidParameter("kind",
@@ -472,10 +473,37 @@ public class DebugTool extends AbstractTool {
         }
         Integer line = optionalInt(arguments, "line");
         Integer hitCount = optionalInt(arguments, "hitCount");
+        String method = getStringParam(arguments, "method");
+        String field = getStringParam(arguments, "field");
+        String condition = getStringParam(arguments, "condition");
 
+        // v2.12.1 (release-day dogfood): a kind whose defining parameter is missing must be
+        // REFUSED HERE. It used to be accepted and reported as a successful "pending"
+        // breakpoint with a misleading reason ("class not loaded yet") — an armed-looking
+        // breakpoint that could never bind, and a wait on it then claimed nothingLost:true.
+        if ("method".equals(kind) && (method == null || method.isBlank())) {
+            return ToolResponse.invalidParameter("method",
+                "breakpoint_set kind=method needs 'method' (the method to break on entry of). "
+                    + "Without it the breakpoint could never bind.");
+        }
+        if (("field_access".equals(kind) || "field_write".equals(kind))
+                && (field == null || field.isBlank())) {
+            return ToolResponse.invalidParameter("field",
+                "breakpoint_set kind=" + kind + " needs 'field' (the field to watch). "
+                    + "Without it the breakpoint could never bind.");
+        }
+        if ("conditional".equals(kind) && (condition == null || condition.isBlank())) {
+            return ToolResponse.invalidParameter("condition",
+                "breakpoint_set kind=conditional needs 'condition' (a boolean Java expression).");
+        }
+        if ("hit_count".equals(kind) && hitCount == null) {
+            return ToolResponse.invalidParameter("hitCount",
+                "breakpoint_set kind=hit_count needs 'hitCount' (stop on the Nth occurrence).");
+        }
+
+        DebugController debugger = debuggerOf(arguments);
         Map<String, Object> breakpoint = debugger.setBreakpoint(kind, className, line,
-            getStringParam(arguments, "method"), getStringParam(arguments, "field"),
-            getStringParam(arguments, "condition"), hitCount);
+            method, field, condition, hitCount);
 
         return ToolResponse.success(breakpoint, ResponseMeta.builder()
             .steering(Boolean.TRUE.equals(breakpoint.get("bound"))

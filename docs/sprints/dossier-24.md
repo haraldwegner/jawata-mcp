@@ -909,3 +909,62 @@ REMAINING: fleet flip (Harald's manual step) → then the release-day battery (s
 ONE LIVE debug attach on the resident's own JVM + toolCount 44 EXACT check over the live
 endpoint). Harald's trust gate — jawata self-refactoring its own codebase — stands as the
 Stage-14 dogfood centerpiece.
+
+## Stage 14 — dogfood-in-anger (2026-07-14, "dogfood") → v2.12.1
+
+### Release-day battery (fleet on 2.12.0)
+
+toolCount **44 EXACT** on both residents ✓ · workspace-health report live in health_check ✓
+· `debug` verified over the RAW endpoint (client schema-cache lesson): discover honestly
+reports the residents' own JVMs as NOT debuggable (no JDWP agent — the structural rule) ·
+launch → **held before first instruction** → deferred/bound breakpoint → hit returned with
+the pre-assembled `symbol` → snapshot (honest `thisAbsent` on a static frame, honest
+`localsUnavailable` naming the missing `-g`) → detach → **process REAPED** ✓.
+
+### The trust-gate exercise — and what it caught
+
+The self-refactor drove jawata's own detector (`long_method` flags
+`AbstractAstDetector.detect`, 121 LOC / CC 18 — code written by hand that same day) into
+`extract(kind=method)` on jawata's own source. **The extract produced NON-COMPILING code
+(a void method dropping `scan`, the call site still referencing it) and reported
+`applied: true`.** compile_workspace confirmed 1 error; **undo restored 0/0 cleanly** —
+the lifecycle half of the contract held, the validation half did not.
+
+Root cause (code + history, Harald's push corrected two wrong framings on the way): the
+generation-1 refactoring tools (rename/inline/change_signature/extract ×3) are hand-rolled
+text-edit generators — a faithful fossil of javalens's ORIGINAL contract ("returns
+structured text edits with previews — agent can review diffs before applying",
+`project_eclipse_mcp_enhancement.md`). Sprint 14b made tools APPLY their output; the
+heuristics inherited a responsibility they were never designed for. The Sprint-17+ tools
+(pull_up/push_down/move_method/encapsulate_field) already delegate to real JDT processors.
+
+**Harald's rulings:** fix `extract_method` + a universal compile-verify gate in v2.12.1;
+migrate the remaining gen-1 tools to their JDT engines in **Sprint 25** (requirement
+committed, f32abb4); concurrent-workspace safety already a **Sprint 28** requirement.
+
+### v2.12.1 contents (all findings from HOURS of dogfood, most caught BY the new gate)
+
+| Finding | Fix |
+|---|---|
+| extract_method generated garbage, reported success | JDT `ExtractMethodRefactoring` + `EXTRACT_REFUSED` carrying the engine's reasons; headless prefs init (the `ProjectScope.getNode` IAE) |
+| NO tool verified its own apply | compile-verify gate in `AbstractApplyingRefactoringTool`: new errors ⇒ auto-undo + `REFACTORING_BROKE_COMPILE` with compiler messages; success carries `compileVerified: true` |
+| change_method_signature legitimately leaves red bodies | `GateMode.REPORT`: type errors kept + LISTED (`introducedErrors`); syntax errors still refused |
+| change_method_signature emitted `/* TODO */` as a whole argument — **a syntax error its own test asserted verbatim** | typed zero-value placeholder (`/* TODO count */ 0`) — caught by the gate on first contact |
+| rename of a public type left the file name behind (documented broken output) | the file is renamed in the same change (`fileRenamed`), undo restores both — caught by the gate |
+| gate falsely verified binaries (171 `bin/**.class` swept into the delta by the file rename) | verification restricted to `.java`; renamed-away paths are not "unopenable" |
+| `breakpoint_set` accepted a method breakpoint without `method` as a successful "pending" that could never bind (+ misleading reason, + `nothingLost: true` overclaim downstream) | kind-specific parameter validation, refused at set time |
+| `Internal error: null` identified nothing (cost a live diagnosis) | internalError carries exception class + top frame |
+
+Disclosed, not fixed here: rename's per-file walk still swallows per-file parse failures
+(missed references, debug-logged) — dies with the Sprint-25 migration; unknown MCP params
+are silently ignored surface-wide (the `methodName`/`timeoutMillis` dogfood stumble) —
+Sprint-25 candidate.
+
+### Gates
+
+| Gate | Expected | Actual |
+|---|---|---|
+| Focused battery (extract/gate/rename/signature/inline/move/pull_up/plan/debug) | green | **60/60** ✓ |
+| Suite SERIAL (final HEAD) | green | _fill at gate_ |
+| Suite SHARDED | green | _fill at gate_ |
+| Clean-clone build | single-version 2.12.1 dist | _fill at gate_ |

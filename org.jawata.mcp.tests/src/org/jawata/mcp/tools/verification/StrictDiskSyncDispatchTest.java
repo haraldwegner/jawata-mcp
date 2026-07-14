@@ -140,7 +140,10 @@ class StrictDiskSyncDispatchTest {
         ToolResponse r = registry.callTool("rename_symbol", args);
         assertTrue(r.isSuccess(),
             "rename of a just-written external file must compute on the reconciled model; got: " + r.getError());
-        assertTrue(Files.readString(fresh).contains("RenamedFreshly"),
+        // v2.12.1 (C13-c): renaming a type whose file bears its name renames the FILE too.
+        Path renamed = fresh.getParent().resolve("RenamedFreshly.java");
+        assertTrue(Files.exists(renamed), "the type's file follows its new name");
+        assertTrue(Files.readString(renamed).contains("RenamedFreshly"),
             "the rename was applied to the externally created source");
     }
 

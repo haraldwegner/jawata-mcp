@@ -90,7 +90,15 @@ class RenameSymbolToolTest {
         assertNotNull(data.get("undoChangeId"));
         assertFalse(((List<?>) data.get("filesModified")).isEmpty());
 
-        String onDisk = Files.readString(helloWorldFile);
+        // v2.12.1 (C13-c): the FILE is renamed with the type — "Greeting" in
+        // HelloWorld.java was broken code with an advisory note, and the
+        // compile-verify gate rightly refused it.
+        assertEquals("HelloWorld.java -> Greeting.java", data.get("fileRenamed"));
+        Path greetingFile = helloWorldFile.getParent().resolve("Greeting.java");
+        assertFalse(Files.exists(helloWorldFile), "the old file name must be gone");
+        assertTrue(Files.exists(greetingFile), "the type's file must bear its new name");
+
+        String onDisk = Files.readString(greetingFile);
         assertTrue(onDisk.contains("class Greeting"), "class declaration must be renamed");
         assertTrue(onDisk.contains("public Greeting()"),
             "no-arg constructor must be renamed (bugs.md #13)");

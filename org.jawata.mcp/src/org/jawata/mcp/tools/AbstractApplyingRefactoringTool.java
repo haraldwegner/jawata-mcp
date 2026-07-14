@@ -90,6 +90,25 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
     protected abstract Preparation prepareChange(IJdtService service, JsonNode arguments)
         throws Exception;
 
+    /** How the compile-verify gate treats errors this tool's change introduced. */
+    protected enum GateMode {
+        /** Any introduced error → the change is undone and refused (the default). */
+        STRICT,
+        /**
+         * Introduced TYPE errors are kept but reported loudly
+         * ({@code compileVerified: false} + the error list) — for tools whose
+         * contract legitimately leaves follow-up work (a signature change leaves
+         * bodies and call sites to adapt). SYNTAX errors are never legitimate
+         * output and are undone+refused even here.
+         */
+        REPORT
+    }
+
+    /** Default STRICT; a tool whose semantics include follow-up edits overrides. */
+    protected GateMode compileGateMode() {
+        return GateMode.STRICT;
+    }
+
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         // THE GUARD. A refactoring rewrites references, and it finds them through the Java
@@ -150,12 +169,54 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
                 .build());
         }
 
+        // THE COMPILE-VERIFY GATE (v2.12.1). A refactoring that modified the code can
+        // check the code — advising the caller to run compile_workspace afterwards is
+        // how broken code gets left behind wearing "applied: true" (it happened, live,
+        // on this codebase: an extract-method wrote a dangling reference and reported
+        // success). Errors present BEFORE the change don't count against it; only
+        // messages the change INTRODUCED do — and then the change is UNDONE, not left
+        // for the caller to clean up.
+        Map<String, java.util.Set<String>> errorsBefore =
+            org.jawata.mcp.refactoring.CompileVerify.errorMessagesByFile(
+                service, ChangeEngine.affectedFilePaths(change, service));
+
         ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",
                 getName() + " failed: " + outcome.validationError(),
                 "No files were modified. Adjust the input or fix the workspace state and retry.");
+        }
+
+        List<String> introduced = org.jawata.mcp.refactoring.CompileVerify.introducedErrors(
+            errorsBefore,
+            org.jawata.mcp.refactoring.CompileVerify.errorMessagesByFile(
+                service, outcome.modifiedFilePaths()));
+        boolean anySyntax = introduced.stream().anyMatch(
+            m -> m.contains(org.jawata.mcp.refactoring.CompileVerify.SYNTAX_PREFIX));
+        boolean reportOnly = compileGateMode() == GateMode.REPORT && !anySyntax;
+        if (!introduced.isEmpty() && !reportOnly) {
+            boolean undone = false;
+            if (outcome.undoChange() != null) {
+                ChangeEngine.ApplyOutcome undoOutcome =
+                    ChangeEngine.perform(outcome.undoChange(), service);
+                undone = undoOutcome.validationError() == null;
+            }
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("introducedErrors", introduced);
+            detail.put("undone", undone);
+            detail.put("diff", diff);
+            return ToolResponse.error(
+                "REFACTORING_BROKE_COMPILE",
+                getName() + " produced code that does not compile ("
+                    + introduced.size() + " new error(s), e.g. " + introduced.get(0) + "). "
+                    + (undone
+                        ? "The change was UNDONE — no files remain modified."
+                        : "UNDO FAILED — the broken change IS on disk; restore from VCS."),
+                "The refactoring's transformation is wrong for this code shape. Do not retry "
+                    + "the identical call; report it. The workspace was "
+                    + (undone ? "left as it was." : "NOT restored — check git status."),
+                detail);
         }
 
         String undoChangeId = null;
@@ -169,6 +230,12 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         data.put("operation", getName());
         data.put("applied", true);
         data.put("filesModified", outcome.modifiedFilePaths());
+        data.put("compileVerified", introduced.isEmpty());
+        if (!introduced.isEmpty()) {
+            // REPORT mode: the change stands, but the follow-up work it created is
+            // named IN THE RESPONSE — never left for the caller to discover.
+            data.put("introducedErrors", introduced);
+        }
         data.put("diff", diff);
         data.put("undoChangeId", undoChangeId);
         data.put("summary", summary);
@@ -176,8 +243,14 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         return ToolResponse.success(data, ResponseMeta.builder()
             .totalCount(outcome.modifiedFilePaths().size())
             .returnedCount(outcome.modifiedFilePaths().size())
+            .steering(introduced.isEmpty() ? null
+                : "APPLIED, but the change leaves " + introduced.size() + " compiler error(s) "
+                    + "to fix (see introducedErrors) — that is this refactoring's contract "
+                    + "(bodies/call sites adapt AFTER a signature change). Fix them NOW or "
+                    + "undo_refactoring; do not leave the workspace red.")
             .suggestedNextTools(List.of(
-                "compile_workspace to verify the refactoring",
+                "compile_workspace to verify the whole workspace (this gate checked the "
+                    + "modified files only)",
                 "undo_refactoring with the undoChangeId if verification fails"))
             .build());
     }

@@ -279,8 +279,11 @@ class ChangeMethodSignatureToolTest {
         assertTrue(onDisk.contains("InterfaceExtractTarget(String name, int count)"),
             "constructor gains the second param, still a constructor:\n" + onDisk);
         assertFalse(onDisk.contains("void InterfaceExtractTarget"), "no return type on a constructor");
-        assertTrue(onDisk.contains("new InterfaceExtractTarget(name, /* TODO: count */)"),
-            "the `new` call site is rewritten with the added-arg placeholder:\n" + onDisk);
+        // v2.12.1 (C13-c): the placeholder must COMPILE — the old bare-comment
+        // form (`/* TODO: count */` as the whole argument) was a syntax error
+        // this very test used to assert verbatim.
+        assertTrue(onDisk.contains("new InterfaceExtractTarget(name, /* TODO count */ 0)"),
+            "the `new` call site is rewritten with a compiling added-arg placeholder:\n" + onDisk);
 
         String undoChangeId = (String) getData(response).get("undoChangeId");
         undoTool.execute(objectMapper.createObjectNode().put("undoChangeId", undoChangeId));

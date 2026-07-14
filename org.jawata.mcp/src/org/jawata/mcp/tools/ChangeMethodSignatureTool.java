@@ -52,6 +52,17 @@ public class ChangeMethodSignatureTool extends AbstractApplyingRefactoringTool {
 
     private static final Logger log = LoggerFactory.getLogger(ChangeMethodSignatureTool.class);
 
+    /**
+     * A signature change legitimately leaves bodies and call sites to adapt (a
+     * return-type change makes old {@code return} statements red BY DESIGN) —
+     * so introduced TYPE errors are kept and reported loudly rather than
+     * undone. SYNTAX errors still refuse: garbage is never a follow-up task.
+     */
+    @Override
+    protected GateMode compileGateMode() {
+        return GateMode.REPORT;
+    }
+
     private static final Set<String> RESERVED_WORDS = Set.of(
         "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
         "class", "const", "continue", "default", "do", "double", "else", "enum",
@@ -655,10 +666,27 @@ public class ChangeMethodSignatureTool extends AbstractApplyingRefactoringTool {
             } else if (newParam.defaultValue != null) {
                 newArgs.add(newParam.defaultValue);
             } else {
-                newArgs.add("/* TODO: " + newParam.name + " */");
+                // v2.12.1 (C13-c): the placeholder must COMPILE. A bare block comment
+                // as the argument (`new X(a, /* TODO */)`) is a syntax error by
+                // construction — the compile-verify gate caught it live. A typed
+                // zero-value with the TODO beside it marks the work AND parses.
+                newArgs.add("/* TODO " + newParam.name + " */ " + zeroValueFor(newParam.type));
             }
         }
         return newArgs;
+    }
+
+    /** The compiling zero value for a type — placeholder arguments must parse. */
+    private static String zeroValueFor(String type) {
+        return switch (type == null ? "" : type) {
+            case "boolean" -> "false";
+            case "byte", "short", "int" -> "0";
+            case "long" -> "0L";
+            case "char" -> "(char) 0";
+            case "float" -> "0f";
+            case "double" -> "0d";
+            default -> "null";
+        };
     }
 
     private boolean isValidJavaIdentifier(String name) {

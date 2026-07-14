@@ -74,10 +74,10 @@ class ExtractMethodToolTest {
         assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
         Map<String, Object> data = getData(response);
         assertEquals(Boolean.TRUE, data.get("applied"));
+        assertEquals(Boolean.TRUE, data.get("compileVerified"),
+            "an applied refactoring must have verified its own compile");
         assertEquals("calculateSum", data.get("methodName"));
-        assertNotNull(data.get("parameters"));
-        assertNotNull(data.get("returnType"));
-        assertNotNull(data.get("methodCall"));
+        assertNotNull(data.get("signature"), "the JDT engine reports the generated signature");
         assertNotNull(data.get("undoChangeId"));
 
         String onDisk = Files.readString(refactoringTargetFile);
@@ -89,6 +89,84 @@ class ExtractMethodToolTest {
             .put("undoChangeId", (String) data.get("undoChangeId")));
         assertTrue(undone.isSuccess(), () -> String.valueOf(undone.getError()));
         assertEquals(original, Files.readString(refactoringTargetFile));
+    }
+
+    // ========== C13-c / v2.12.1: the shape that broke the hand-rolled engine ==========
+
+    /**
+     * The exact dataflow that produced the Stage-14 failure: a variable DECLARED
+     * inside the selection, mutated only through METHOD CALLS (no assignment
+     * operator anywhere — the old heuristic only recognized {@code =}/{@code ++}),
+     * and used AFTER the selection. Written into this test's own fixture copy so
+     * the coordinates are exact and no shared fixture changes shape.
+     */
+    private Path writeDeclaredInSelectionShape() throws Exception {
+        Path file = helper.getTempDirectory()
+            .resolve("simple-maven/src/main/java/com/example/GreetCasual.java");
+        Files.writeString(file, """
+            package com.example;
+
+            import java.util.ArrayList;
+            import java.util.List;
+
+            public class GreetCasual {
+                public int reportSize(int n) {
+                    List<String> box = new ArrayList<>();
+                    for (int i = 0; i < n; i++) {
+                        box.add("x" + i);
+                    }
+                    return box.size();
+                }
+            }
+            """);
+        return file;
+    }
+
+    @Test
+    @DisplayName("a variable DECLARED in the selection, mutated only via method calls, used after — returned, not dropped (the Stage-14 self-refactor shape)")
+    void declaredInSelectionUsedAfter_isReturned() throws Exception {
+        Path file = writeDeclaredInSelectionShape();
+        // Selection = the declaration + the loop (0-based lines 7-10): `box` is
+        // declared inside, only `box.add(...)` mutates it, `return box.size()`
+        // uses it after. The hand-rolled engine generated a void method here
+        // (dropped variable, dangling reference, no compile) and reported success.
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", file.toString());
+        args.put("startLine", 7);
+        args.put("startColumn", 8);
+        args.put("endLine", 10);
+        args.put("endColumn", 9);
+        args.put("methodName", "fillBox");
+
+        ToolResponse response = tool.execute(args);
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
+        Map<String, Object> data = getData(response);
+        assertEquals(Boolean.TRUE, data.get("compileVerified"),
+            "the result must compile — verified by the tool itself, not the caller");
+        String onDisk = Files.readString(file);
+        assertTrue(onDisk.contains("fillBox("), "extracted method present");
+        assertTrue(onDisk.contains("box = fillBox(") || onDisk.contains("List<String> box = fillBox("),
+            "the declared-in-selection variable must come back out of the extracted method: " + onDisk);
+    }
+
+    @Test
+    @DisplayName("an untransformable selection is REFUSED with the engine's reason — never garbage")
+    void untransformableSelection_isRefused() throws Exception {
+        Path file = writeDeclaredInSelectionShape();
+        String original = Files.readString(file);
+        // Mid-statement, spanning partial tokens of two statements — not a set of
+        // complete statements; the engine must refuse and touch nothing.
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", file.toString());
+        args.put("startLine", 8);
+        args.put("startColumn", 13);
+        args.put("endLine", 9);
+        args.put("endColumn", 20);
+        args.put("methodName", "nonsense");
+
+        ToolResponse response = tool.execute(args);
+        assertFalse(response.isSuccess(), "must refuse, not generate");
+        assertEquals(original, Files.readString(file), "disk untouched");
     }
 
     // ========== Required Parameter Tests ==========

@@ -178,8 +178,14 @@ public class ToolResponse {
 
     /**
      * Create an internal error response from an exception.
+     *
+     * <p>Carries the exception CLASS and top frame — "Internal error: null"
+     * (an NPE's message) identifies nothing, and cost a live diagnosis
+     * exactly that way (C13-c).</p>
      */
     public static ToolResponse internalError(Throwable e) {
-        return error(ErrorInfo.internalError(e.getMessage()));
+        return error(ErrorInfo.internalError(e.getClass().getSimpleName()
+            + (e.getMessage() != null ? ": " + e.getMessage() : "")
+            + (e.getStackTrace().length > 0 ? " at " + e.getStackTrace()[0] : "")));
     }
 }
