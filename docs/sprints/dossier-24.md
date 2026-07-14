@@ -983,3 +983,15 @@ Pushed + tagged `v2.12.1` (f0d03c8); Release CI green (8m51s); release published
 REMAINING for Stage-14 close: fleet flip (Harald) → release-day probes on the 2.12.1
 residents → the self-refactor RETRY (jawata's detector → extract on jawata's own source,
 this time on the JDT engine behind the verify gate — the trust-gate exercise completed).
+
+### STAGE-14 CLOSE — the trust gate, both sides on the record (2026-07-14 evening)
+
+Fleet on 2.12.1 (healthy, toolCount 44). The retry: the IDENTICAL extraction the
+morning's hand-rolled engine botched — same file, same block, same coordinates
+(AbstractAstDetector.detect, the scan-report assembly), target chosen again by jawata's
+own long_method detector. Result on the JDT engine behind the gate: the declared-in-
+selection variable RETURNED (`Map<String, Object> scan = buildScanReport(...)`),
+`compileVerified: true` from the tool itself, workspace compile 0/0, detector battery
+23/23, FULL SUITE **1315/1315** — kept and committed (9dcdc98): the first refactoring of
+jawata's codebase performed BY jawata. detect() remains over threshold (~100 LOC > 60);
+further decomposition rides with the Sprint-25 migration. Store: 31934b12.
