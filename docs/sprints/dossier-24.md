@@ -1570,3 +1570,55 @@ run as part of this record. Ready whenever he runs it; does not block the close-
 | Honest-miss behavior under wrong targets | never fabricated | ✓ (3/3 honest `NO_CALLS_OBSERVED`) |
 | Dedicated instance torn down | no orphan | ✓ |
 | Findings | none blocking | **clean — recorded, no v2.13.1** |
+
+### Landscape re-diff (debugging/profiling, 2026-07-14)
+
+Following the standing per-sprint pattern (dossier-23's own Stage-0 landscape re-diff):
+checked both tracked competitors' current READMEs directly (not the Marketplace listing —
+the exact mistake corrected during Sprint 23) for any JVM debugging, profiling, or crash
+triage capability.
+
+| Competitor | Checked | Debug/profile capability found |
+|---|---|---|
+| **jdtbridge** (kaluchi) | README, 2026-07-14 | None. The only "debug" mention is "you debug by running the same command the agent ran" — CLI-invocation troubleshooting, not JVM debugging. No JDI, no breakpoints, no JFR, no crash-file parsing. |
+| **javalens-mcp** (pzalutski-pixel) | README, 2026-07-14 | None. The only "debug" hit is `JAVALENS_LOG_LEVEL=DEBUG`, a logging verbosity setting — not a capability. |
+
+Neither competitor has ANY of Sprint 24's streams 2–3 (interactive debugging,
+hypothesis-testing mutation, dev probes, replay/invariant capture, the profiling floor,
+symbol-named hotspots, latency seams, incident bundles, native triage). This sprint's
+`debug` + `profile` front doors are not a parity catch-up — they are new ground relative
+to both tracked competitors.
+
+## Sprint 24 close-out (2026-07-14)
+
+**Spec:** `jawata-enterprise/docs/sprints/jawata-mcp/sprint-24-dynamic-analysis.md` →
+**✅ DELIVERED**, D1–D18 as-built table committed (`489f12d` in jawata-enterprise).
+
+**toolCount across the sprint:** 43 (baseline, C0) → 44 (`debug` added, C7, verified live
+at the v2.12.0 release) → **45 (`profile` added, C15, verified live at the v2.13.0
+release and again at every subsequent checkpoint through C21)**. Every deliverable after
+C7/C15 landed as a NEW ACTION on one of the two existing front doors — never a new
+top-level tool. Confirmed exact, live, over the raw MCP endpoint, at every release.
+
+**Releases:** v2.11.0 (2026-07-13, phase 1, clean dogfood) · v2.12.0 → v2.12.1
+(2026-07-14, phase 2, one real product bug found in the load-time reliability family and
+fixed same-day) · v2.13.0 (2026-07-14, phase 3, Stage 21 dogfood clean, no v2.13.1).
+
+**Suite growth across the sprint:** 1230 (Sprint-23 baseline) → 1362 (this dossier's own
+final gate, C20/C21) — 132 new tests across 21 stages, every one green serial AND sharded
+at every checkpoint that touched it.
+
+**Open:** the GB10/aarch64 probe (Harald's own manual step) — does not block this
+close-out; a finding there ships as v2.13.1 under the same protocol as the other two
+phases if one is needed.
+
+**Memory + experience store:** 9 lessons/domain-facts recorded to the JAWATA experience
+store across Stages 17–21 (percentile-boundary math, JMX attribute-vs-operation
+convention, hs_err NMT section boundary, GdbAdapter LWP-regex ambiguity, gdb frame-shape
+gap, the mvn-pipeline-exit-code trap, the latency_seam workspace-scoping lesson — plus two
+carried from earlier stages), each anchored to the symbol it teaches about, recallable by
+any client. Claude Code's own auto-memory (`project-jawata-state.md`) updated to reflect
+Sprint 24 complete.
+
+Sprint 24 is DONE from this session's side. GB10 probe and any v2.13.1 that might follow
+from it are the only open threads, and neither blocks calling this sprint closed.
