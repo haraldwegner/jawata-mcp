@@ -37,6 +37,14 @@ public final class RuntimeArtifactStore {
     /** A week: long enough to finish an investigation, short enough not to fill a disk. */
     public static final long DEFAULT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000;
 
+    /**
+     * How long a manifest-less directory is left alone before it counts as an ABANDONED
+     * capture. A bundle being written right now has no manifest either (it is written last,
+     * so that a half-written bundle is never mistaken for evidence) — this window is what
+     * keeps the sweeper from deleting a capture out from under itself.
+     */
+    public static final long ORPHAN_GRACE_MILLIS = 60L * 60 * 1000;
+
     private final Path root;
 
     public RuntimeArtifactStore() {
@@ -66,6 +74,10 @@ public final class RuntimeArtifactStore {
     }
 
     public Path createArtifactDir(String artifactId) throws IOException {
+        // Housekeep on the way in, not only when someone happens to look: a session that
+        // stores artifacts for a week and never calls `artifacts` must still not fill a disk.
+        // (Swept BEFORE the new dir exists, so this can never touch the artifact being made.)
+        sweep();
         Path dir = root.resolve(artifactId);
         Files.createDirectories(dir);
         return dir;
@@ -121,8 +133,12 @@ public final class RuntimeArtifactStore {
         }
     }
 
-    /** Artifacts with their manifests and on-disk sizes — what a caller needs to decide what to delete. */
+    /**
+     * Artifacts with their manifests and on-disk sizes — what a caller needs to decide what
+     * to delete. Sweeps first: looking at the store is the moment its own promises come due.
+     */
     public List<Map<String, Object>> describeAll() {
+        sweep();
         List<Map<String, Object>> described = new ArrayList<>();
         for (String id : list()) {
             Map<String, Object> row = new LinkedHashMap<>(readManifest(id).orElse(Map.of()));
@@ -197,6 +213,66 @@ public final class RuntimeArtifactStore {
             }
         }
         return pruned;
+    }
+
+    /**
+     * Delete ABANDONED captures: directories with no manifest, older than the grace period.
+     *
+     * <p>{@link #list} deliberately ignores an unmanifested directory — it is not evidence,
+     * because nothing says what it is or where it came from. But that also made it
+     * unreachable: it could never be listed, never deleted by id (the caller never learned
+     * the id), and never expired (expiry lives in the manifest it does not have). A capture
+     * that died part-way through — jcmd failing at the heap dump, say — left its files,
+     * possibly gigabytes of them, on disk forever. Invisible is not the same as harmless.</p>
+     *
+     * <p>The grace period is what makes this safe: a capture in flight has no manifest
+     * either, and must never be swept out from under itself.</p>
+     */
+    public List<String> pruneOrphans() {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        long cutoff = System.currentTimeMillis() - ORPHAN_GRACE_MILLIS;
+        List<String> pruned = new ArrayList<>();
+        List<Path> orphans = new ArrayList<>();
+        try (Stream<Path> dirs = Files.list(root)) {
+            dirs.filter(Files::isDirectory)
+                .filter(d -> !Files.isRegularFile(d.resolve(MANIFEST_FILE)))
+                .forEach(orphans::add);
+        } catch (IOException e) {
+            log.warn("cannot scan runtime store {} for abandoned captures: {}", root, e.getMessage());
+            return List.of();
+        }
+        for (Path dir : orphans) {
+            try {
+                if (Files.getLastModifiedTime(dir).toMillis() < cutoff) {
+                    String id = dir.getFileName().toString();
+                    if (delete(id)) {
+                        pruned.add(id);
+                        log.info("swept an abandoned capture (no manifest, past the grace "
+                            + "period): {}", id);
+                    }
+                }
+            } catch (IOException e) {
+                log.warn("cannot age {}: {}", dir, e.getMessage());
+            }
+        }
+        return pruned;
+    }
+
+    /**
+     * The store's housekeeping, run whenever the store is USED (a new artifact arrives, or
+     * someone lists what is there). Expiry and abandoned-capture cleanup are promises this
+     * store makes in its own tool descriptions; a promise nothing ever executes is a lie
+     * with a delay fuse — see this class's own warning above, and the v2.13.0 audit that
+     * found {@code pruneExpired()} with no caller in the entire codebase.
+     *
+     * @return every id removed, expired and abandoned alike
+     */
+    public List<String> sweep() {
+        List<String> swept = new ArrayList<>(pruneExpired());
+        swept.addAll(pruneOrphans());
+        return swept;
     }
 
     public Path root() {

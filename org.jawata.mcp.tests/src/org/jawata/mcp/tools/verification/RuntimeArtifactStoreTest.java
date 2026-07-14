@@ -78,14 +78,18 @@ class RuntimeArtifactStoreTest {
     void expiryPrunesOnlyWhatIsPastIt() throws Exception {
         RuntimeArtifactStore store = new RuntimeArtifactStore(root);
 
+        // Both directories first: creating an artifact now SWEEPS the store (that is the
+        // T1.14 fix — housekeeping on ordinary use), so an already-expired artifact would
+        // be pruned by the very act of creating the next one. Manifests are written after,
+        // which is also the real order of events in a capture.
         String stale = store.newArtifactId("dump");
         store.createArtifactDir(stale);
+        String live = store.newArtifactId("dump");
+        store.createArtifactDir(live);
+
         store.writeManifest(stale, Map.of(
             "kind", "dump",
             "expiresMillis", System.currentTimeMillis() - 1_000));   // already past
-
-        String live = store.newArtifactId("dump");
-        store.createArtifactDir(live);
         store.writeManifest(live, Map.of("kind", "dump"));           // default TTL
 
         assertTrue(store.isExpired(stale));
@@ -106,5 +110,61 @@ class RuntimeArtifactStoreTest {
         assertTrue(store.list().isEmpty(),
             "without a manifest we cannot say what it is or where it came from — "
                 + "so we do not offer it as evidence");
+    }
+
+    @Test
+    @DisplayName("THE PRUNER ACTUALLY RUNS: an expired artifact is gone by ordinary use of the store")
+    void expiryIsEnforcedByNormalUseNotJustAvailable() throws Exception {
+        // Sprint-24 audit: pruneExpired() was correct code with NO production caller
+        // anywhere — expiry was metadata that never deleted anything, while the `artifacts`
+        // steering told the operator "expired ones are pruned". Week-old multi-GB heap dumps
+        // sat forever, and the operator, told pruning happened, never deleted them by hand.
+        RuntimeArtifactStore store = new RuntimeArtifactStore(root);
+
+        String stale = store.newArtifactId("dump");
+        store.createArtifactDir(stale);
+        store.writeManifest(stale, Map.of(
+            "kind", "dump", "expiresMillis", System.currentTimeMillis() - 1_000));
+        String live = store.newArtifactId("dump");
+        store.createArtifactDir(live);
+        store.writeManifest(live, Map.of("kind", "dump"));
+
+        // describeAll() is exactly what profile/debug(action=artifacts) calls. Simply
+        // LOOKING at the store must honour the expiry it advertises.
+        List<Map<String, Object>> described = store.describeAll();
+
+        assertEquals(1, described.size(), "the expired artifact must be gone: " + described);
+        assertEquals(live, described.get(0).get("artifactId"));
+        assertFalse(store.exists(stale), "and gone from disk, not merely hidden");
+        assertTrue(store.exists(live), "while one still inside its window is untouched");
+    }
+
+    @Test
+    @DisplayName("an ABANDONED capture is not leaked forever — invisible to list() is not invisible to the sweeper")
+    void anAbandonedCaptureIsSweptEventually() throws Exception {
+        // Sprint-24 audit: a capture that failed part-way (jcmd dies at the heap dump, say)
+        // left a dir with NO manifest. list() ignores it — correctly, it is not evidence —
+        // so it could never be listed, never be deleted by id (the caller never learns the
+        // id), and never be pruned by expiry (expiry lives in the manifest it does not
+        // have). A multi-GB heap.hprof could sit there until the disk filled.
+        RuntimeArtifactStore store = new RuntimeArtifactStore(root);
+
+        Path abandoned = root.resolve("incident-abandoned");
+        Files.createDirectories(abandoned);
+        Files.writeString(abandoned.resolve("heap.hprof"), "a very large truncated dump");
+        Files.setLastModifiedTime(abandoned,
+            java.nio.file.attribute.FileTime.fromMillis(
+                System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(2)));
+
+        Path inFlight = root.resolve("incident-in-flight");
+        Files.createDirectories(inFlight);   // a capture happening RIGHT NOW
+
+        List<String> swept = store.sweep();
+
+        assertTrue(swept.contains("incident-abandoned"), "the abandoned capture is swept: " + swept);
+        assertFalse(Files.exists(abandoned), "and its files are actually gone");
+        assertTrue(Files.exists(inFlight),
+            "but a capture still in progress is NEVER touched — the grace period exists "
+                + "precisely so a sweep cannot delete a bundle being written right now");
     }
 }

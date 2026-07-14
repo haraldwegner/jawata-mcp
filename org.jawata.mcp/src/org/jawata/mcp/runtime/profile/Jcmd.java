@@ -41,21 +41,44 @@ public final class Jcmd {
 
         try {
             Process process = new ProcessBuilder(full).redirectErrorStream(true).start();
+
+            // Drain on a SEPARATE thread, then wait with the timeout. Reading to EOF first
+            // (as v2.13.0 did) blocks until the child EXITS, so the 30s timeout below could
+            // only ever be reached by a jcmd that had already finished — while a jcmd wedged
+            // against a stopped or unresponsive target held every profiling-floor action
+            // (threads, deadlock, histogram, gc, nmt, heap_dump) open forever. Sprint-24 audit.
             StringBuilder out = new StringBuilder();
-            try (BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    out.append(line).append('\n');
+            Thread drain = new Thread(() -> {
+                try (BufferedReader reader =
+                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        synchronized (out) {
+                            out.append(line).append('\n');
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("jcmd {} output stream ended: {}", pid, e.getMessage());
                 }
-            }
+            }, "jawata-jcmd-drain");
+            drain.setDaemon(true);
+            drain.start();
+
             boolean finished = process.waitFor(30, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                throw new JcmdException(
-                    "jcmd " + pid + " " + String.join(" ", command) + " timed out after 30s");
+                process.waitFor(5, TimeUnit.SECONDS);
+                drain.join(2_000);
+                throw new JcmdException("jcmd " + pid + " " + String.join(" ", command)
+                    + " timed out after 30s and was killed — the target is not answering the "
+                    + "attach listener (stopped, wedged, or gone).");
             }
-            String output = out.toString();
+            drain.join(5_000);
+
+            String output;
+            synchronized (out) {
+                output = out.toString();
+            }
             if (process.exitValue() != 0) {
                 throw new JcmdException("jcmd " + pid + " " + String.join(" ", command)
                     + " failed (exit " + process.exitValue() + "): " + output.strip());

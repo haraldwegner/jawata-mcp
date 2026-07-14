@@ -256,6 +256,128 @@ class IncidentBundleTest {
     }
 
     @Test
+    @DisplayName("TWO pollers at the same instant capture exactly ONE bundle")
+    void concurrentPollsCaptureExactlyOnce() throws Exception {
+        // Sprint-24 audit: capturedSummary was a bare volatile with no lock, so two callers
+        // arriving together both passed the null check and both captured — two full bundles,
+        // TWO HEAP DUMPS against a JVM already in distress, and one artifactId orphaned when
+        // the second overwrote the first. And this is not an exotic case: the tool's own
+        // description tells you to hand the sessionId to a subagent for the watch, so a main
+        // agent and its subagent polling the same incident is the ADVERTISED usage.
+        Path alarmFile = targetClasses.resolve("alarm-concurrent.json");
+        String sessionId = launchAndResume("com.example.debug.DebugTarget", List.of());
+
+        ObjectNode arm = profileAction("incident_arm");
+        arm.put("sessionId", sessionId);
+        arm.put("alarmFile", alarmFile.toString());
+        String incidentId = (String) data(profile.execute(arm)).get("incidentId");
+
+        Files.writeString(alarmFile, "{\"symbol\":\"com.example.debug.DebugTarget#spin\","
+            + "\"reason\":\"concurrent poll drill\"}");
+
+        int pollers = 4;
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.List<java.util.concurrent.Future<ToolResponse>> results = new java.util.ArrayList<>();
+        java.util.concurrent.ExecutorService pool =
+            java.util.concurrent.Executors.newFixedThreadPool(pollers);
+        try {
+            for (int i = 0; i < pollers; i++) {
+                results.add(pool.submit(() -> {
+                    go.await();
+                    ObjectNode statusArgs = profileAction("incident_status");
+                    statusArgs.put("incidentId", incidentId);
+                    return profile.execute(statusArgs);
+                }));
+            }
+            go.countDown();
+
+            java.util.Set<Object> artifactIds = new java.util.HashSet<>();
+            for (java.util.concurrent.Future<ToolResponse> f : results) {
+                ToolResponse r = f.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                assertTrue(r.isSuccess(), "got: " + r.getError());
+                artifactIds.add(data(r).get("artifactId"));
+            }
+            assertEquals(1, artifactIds.size(),
+                "every poller must be handed the SAME one bundle: " + artifactIds);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        try (var dirs = Files.list(artifacts.root())) {
+            long bundles = dirs.filter(d -> d.getFileName().toString().startsWith("incident-")).count();
+            assertEquals(1, bundles, "and exactly one bundle exists on disk — not four");
+        }
+    }
+
+    @Test
+    @DisplayName("a FAILED capture leaves nothing behind — no invisible, unprunable directory")
+    void aFailedCaptureLeavesNoArtifactBehind() throws Exception {
+        // Sprint-24 audit: only the JFR part was failure-guarded. A jcmd failure at the
+        // thread dump / histogram / heap dump aborted the capture with the artifact dir
+        // already created and its manifest NOT yet written — so it was invisible to
+        // `artifacts` (no manifest = not evidence), undeletable by id (the caller never
+        // learned the id), and never expired (expiry lives in the manifest). One leak per
+        // failed poll, each potentially holding a partial multi-GB heap dump.
+        Path alarmFile = targetClasses.resolve("alarm-dead-target.json");
+        String sessionId = launchAndResume("com.example.debug.DebugTarget", List.of());
+        long pid = ((Number) data(debug.execute(
+            debugAction("status").put("sessionId", sessionId))).get("pid")).longValue();
+
+        ObjectNode arm = profileAction("incident_arm");
+        arm.put("sessionId", sessionId);
+        arm.put("alarmFile", alarmFile.toString());
+        String incidentId = (String) data(profile.execute(arm)).get("incidentId");
+
+        // The target dies — and only THEN does the alarm file appear. jcmd will fail.
+        ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
+        Thread.sleep(1500);
+        Files.writeString(alarmFile, "{\"symbol\":\"com.example.debug.DebugTarget#spin\"}");
+
+        ObjectNode statusArgs = profileAction("incident_status");
+        statusArgs.put("incidentId", incidentId);
+        ToolResponse r = profile.execute(statusArgs);
+        assertFalse(r.isSuccess(), "a capture against a dead target must FAIL, loudly: " + r.getData());
+
+        try (var dirs = Files.list(artifacts.root())) {
+            assertEquals(0, dirs.filter(d -> d.getFileName().toString().startsWith("incident-")).count(),
+                "and it must leave NO directory behind — not even an invisible one");
+        }
+    }
+
+    @Test
+    @DisplayName("the armed-incident bound is REAL: refuse rather than grow without limit")
+    void theArmedBoundIsEnforced() throws Exception {
+        // Sprint-24 audit: eviction only ever removed an ALREADY-CAPTURED incident, and then
+        // put() ran unconditionally — so with 50 armed watchers that had not fired (exactly
+        // the state a bound exists for) the map grew to 51, 52, … The "bounded, same
+        // discipline as sessions" claim was decorative.
+        String sessionId = launchAndResume("com.example.debug.DebugTarget", List.of());
+
+        ToolResponse last = null;
+        for (int i = 0; i < 60; i++) {
+            ObjectNode arm = profileAction("incident_arm");
+            arm.put("sessionId", sessionId);
+            arm.put("alarmFile", targetClasses.resolve("never-fires-" + i + ".json").toString());
+            last = profile.execute(arm);
+            if (!last.isSuccess()) {
+                break;
+            }
+        }
+        assertNotNull(last);
+        assertFalse(last.isSuccess(),
+            "arming past the bound must be REFUSED, not silently accepted: " + last.getData());
+        assertEquals("TOO_MANY_ARMED_INCIDENTS", last.getError().getCode());
+        assertTrue(last.getError().getHint().contains("incident_disarm"),
+            "and the refusal must be ACTIONABLE — say how to free a slot, or it is a dead "
+                + "end: " + last.getError().getHint());
+
+        // Disarming frees a slot — the refusal is actionable, not a dead end.
+        ObjectNode disarm = profileAction("incident_disarm");
+        disarm.put("incidentId", "incident-does-not-exist");
+        assertFalse(profile.execute(disarm).isSuccess(), "disarming nothing is an honest miss");
+    }
+
+    @Test
     @DisplayName("an unknown incidentId is an honest miss")
     void unknownIncidentIsHonestMiss() {
         ObjectNode statusArgs = profileAction("incident_status");

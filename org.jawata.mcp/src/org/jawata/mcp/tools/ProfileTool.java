@@ -64,7 +64,8 @@ public class ProfileTool extends AbstractTool {
     private static final List<String> ACTIONS = List.of(
         "threads", "deadlock", "histogram", "gc", "nmt", "heap_dump",
         "sample", "jfr_dump", "hotspots", "latency_seam",
-        "incident_arm", "incident_status", "incident_get", "jmx_read", "log_level",
+        "incident_arm", "incident_status", "incident_get", "incident_disarm",
+        "jmx_read", "log_level",
         "native_hs_err", "native_nmt", "native_handoff",
         "artifacts", "artifact_delete");
 
@@ -91,7 +92,10 @@ public class ProfileTool extends AbstractTool {
 
     private static final int DEFAULT_JFR_SLICE_SECONDS = 15;
     private static final int DEFAULT_LOG_SLICE_LINES = 200;
-    /** gdb and lldb both understand this flag; either is a valid native_handoff adapter. */
+    /**
+     * Either debugger is a valid native_handoff adapter — they are driven with their OWN
+     * argument shapes (they share none), and their own frame syntaxes are both parsed.
+     */
     private static final String DEFAULT_ADAPTER_COMMAND = "gdb";
     private static final int ADAPTER_TIMEOUT_SECONDS = 30;
     /** An armed incident is cheap in-memory state; still bounded, same discipline as sessions. */
@@ -250,6 +254,12 @@ public class ProfileTool extends AbstractTool {
                            `fired: false` before that — an absence, not a failure.
             - incident_get    — the full bundle, once `bundleReady`. Refused, honestly,
                            if you ask before it exists.
+            - incident_disarm — release a watch you no longer need. A bundle it already
+                           captured STAYS in the artifact store; only the watch goes away.
+                           The armed table is bounded, and when it is full of watches that
+                           have never fired, arming another is REFUSED rather than silently
+                           dropping one of the watches you already asked for — this is how
+                           you make room.
 
             DECLARED JMX READS + RUNTIME LOG CONTROL:
             - jmx_read   — objectName + attribute: one MBean attribute, via the SAME
@@ -364,7 +374,8 @@ public class ProfileTool extends AbstractTool {
             "description", "incident_arm: how much of the continuous recording's recent "
                 + "past to keep in the bundle (default " + DEFAULT_JFR_SLICE_SECONDS + ")."));
         properties.put("incidentId", Map.of("type", "string",
-            "description", "incident_status / incident_get: the handle from action=incident_arm."));
+            "description", "incident_status / incident_get / incident_disarm: the handle from "
+                + "action=incident_arm."));
         properties.put("objectName", Map.of("type", "string",
             "description", "jmx_read: the MBean's ObjectName (e.g. "
                 + "\"java.lang:type=Memory\")."));
@@ -415,6 +426,7 @@ public class ProfileTool extends AbstractTool {
                 case "incident_arm" -> incidentArm(arguments);
                 case "incident_status" -> incidentStatus(arguments);
                 case "incident_get" -> incidentGet(arguments);
+                case "incident_disarm" -> incidentDisarm(arguments);
                 case "jmx_read" -> jmxRead(arguments);
                 case "log_level" -> logLevel(arguments);
                 case "native_hs_err" -> nativeHsErr(arguments);
@@ -575,6 +587,9 @@ public class ProfileTool extends AbstractTool {
             "settings=profile", "duration=" + durationSeconds + "s", "filename=" + jfrFile);
         Map<String, Object> capabilityAbsent = flightRecorderAbsentReport(started);
         if (capabilityAbsent != null) {
+            // Nothing will ever be written here — do not leave an empty, manifest-less
+            // directory behind on every refused call (Sprint-24 audit).
+            artifacts.delete(artifactId);
             return ToolResponse.success(capabilityAbsent, ResponseMeta.builder()
                 .steering("Capability absent, not empty data — see `why`.")
                 .build());
@@ -911,11 +926,32 @@ public class ProfileTool extends AbstractTool {
         int jfrSliceSeconds = Math.max(1, getIntParam(arguments, "jfrSliceSeconds",
             DEFAULT_JFR_SLICE_SECONDS));
 
+        // A REAL bound. The old form evicted an already-captured incident if one happened to
+        // exist and then put() unconditionally — so 50 armed watchers that had never fired
+        // (precisely the state a bound exists for) grew to 51, 52, … Now: reclaim the slots
+        // whose bundles are already safely on disk, and if there are none, REFUSE — because
+        // the alternative, silently evicting a live watcher, is a watcher that stops watching
+        // without saying so, which is the worst answer available. Sprint-24 audit (T1.10).
         if (incidents.size() >= MAX_ARMED_INCIDENTS) {
-            incidents.values().stream()
-                .filter(i -> i.capturedSummary != null)
-                .findFirst()
-                .ifPresent(done -> incidents.values().removeIf(v -> v == done));
+            int reclaimed = 0;
+            for (Map.Entry<String, ArmedIncident> entry : new ArrayList<>(incidents.entrySet())) {
+                if (incidents.size() < MAX_ARMED_INCIDENTS) {
+                    break;
+                }
+                if (entry.getValue().capturedSummary != null && incidents.remove(entry.getKey()) != null) {
+                    reclaimed++;
+                }
+            }
+            log.debug("reclaimed {} captured incident slots", reclaimed);
+            if (incidents.size() >= MAX_ARMED_INCIDENTS) {
+                return ToolResponse.error("TOO_MANY_ARMED_INCIDENTS",
+                    MAX_ARMED_INCIDENTS + " incidents are armed and none has fired, so there is "
+                        + "no slot to reclaim. Arming another would mean silently dropping one "
+                        + "of the watches you already asked for.",
+                    "Release one you no longer need with profile(action=incident_disarm, "
+                        + "incidentId=…) — profile(action=artifacts) shows what has already "
+                        + "been captured.");
+            }
         }
 
         String incidentId = "incident-" + UUID.randomUUID().toString().substring(0, 8);
@@ -959,17 +995,26 @@ public class ProfileTool extends AbstractTool {
                 .build());
         }
 
-        // THE ALARM JUST FIRED. Capture NOW, once, on this call — a second status poll
-        // must find `capturedSummary` already set and never re-capture.
-        java.util.Optional<RuntimeSession> session = sessions.get(incident.sessionId);
-        if (session.isEmpty()) {
-            return ToolResponse.error("SESSION_TARGET_GONE",
-                "The alarm fired, but session '" + incident.sessionId + "' is no longer open — "
-                    + "its process facts (threads, heap, JFR) cannot be captured after the fact.",
-                "Nothing to do — the window to capture this incident has passed.");
+        // THE ALARM JUST FIRED. Capture exactly ONCE — even if several callers poll at the
+        // same instant, which is the ADVERTISED usage (this tool's own description tells you
+        // to hand the sessionId to a subagent for a long watch). Unsynchronized, both callers
+        // passed the null check and both captured: two bundles, two heap dumps against a JVM
+        // already in distress, one artifactId orphaned. Sprint-24 audit (T1.9).
+        Map<String, Object> summary;
+        synchronized (incident) {
+            if (incident.capturedSummary == null) {
+                java.util.Optional<RuntimeSession> session = sessions.get(incident.sessionId);
+                if (session.isEmpty()) {
+                    return ToolResponse.error("SESSION_TARGET_GONE",
+                        "The alarm fired, but session '" + incident.sessionId + "' is no longer "
+                            + "open — its process facts (threads, heap, JFR) cannot be captured "
+                            + "after the fact.",
+                        "Nothing to do — the window to capture this incident has passed.");
+                }
+                incident.capturedSummary = captureIncidentBundle(session.get(), incident);
+            }
+            summary = incident.capturedSummary;
         }
-        Map<String, Object> summary = captureIncidentBundle(session.get(), incident);
-        incident.capturedSummary = summary;
 
         data.put("fired", true);
         data.put("bundleReady", true);
@@ -995,6 +1040,31 @@ public class ProfileTool extends AbstractTool {
         return ToolResponse.success(incident.capturedSummary, ResponseMeta.builder().build());
     }
 
+    /** Release an armed watch — the way out of a full incident table, and of a watch you no longer want. */
+    private ToolResponse incidentDisarm(JsonNode arguments) {
+        String incidentId = getStringParam(arguments, "incidentId");
+        if (incidentId == null || incidentId.isBlank()) {
+            return ToolResponse.invalidParameter("incidentId",
+                "incident_disarm needs the incidentId from action=incident_arm.");
+        }
+        ArmedIncident removed = incidents.remove(incidentId);
+        if (removed == null) {
+            return ToolResponse.symbolNotFound("No armed incident '" + incidentId + "'.");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("incidentId", incidentId);
+        data.put("disarmed", true);
+        // Disarming never destroys evidence: a bundle already captured stays in the store.
+        if (removed.capturedSummary != null) {
+            data.put("capturedBundleRetained", removed.capturedSummary.get("artifactId"));
+        }
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering(removed.capturedSummary != null
+                ? "The watch is released; its captured bundle remains in the artifact store."
+                : "The watch is released. It had not fired, so there is nothing to keep.")
+            .build());
+    }
+
     private ArmedIncident armedIncidentOf(JsonNode arguments) {
         String incidentId = getStringParam(arguments, "incidentId");
         if (incidentId == null || incidentId.isBlank()) {
@@ -1011,6 +1081,24 @@ public class ProfileTool extends AbstractTool {
      */
     private Map<String, Object> captureIncidentBundle(RuntimeSession session, ArmedIncident incident)
             throws Exception {
+        String artifactId = artifacts.newArtifactId("incident");
+        try {
+            return captureIncidentBundleInto(artifactId, session, incident);
+        } catch (Exception e) {
+            // A capture that dies part-way (the target vanishes between the thread dump and
+            // the heap dump, say) used to leave its directory behind with no manifest: never
+            // listed, never deletable by id, never expired — an invisible, permanent leak,
+            // one per failed poll, potentially with a multi-GB heap.hprof inside. Clean up
+            // after ourselves and let the failure be the answer. Sprint-24 audit (T1.8).
+            if (artifacts.delete(artifactId)) {
+                log.debug("removed the partial capture {} after it failed", artifactId);
+            }
+            throw e;
+        }
+    }
+
+    private Map<String, Object> captureIncidentBundleInto(
+            String artifactId, RuntimeSession session, ArmedIncident incident) throws Exception {
         ObjectMapper json = new ObjectMapper();
         Map<String, Object> alarmPayload = new LinkedHashMap<>();
         try {
@@ -1032,7 +1120,6 @@ public class ProfileTool extends AbstractTool {
             alarmPayload.put("declaredText", readBoundedText(incident.alarmFile));
         }
 
-        String artifactId = artifacts.newArtifactId("incident");
         Path dir = artifacts.createArtifactDir(artifactId);
         long pid = session.pid();
 

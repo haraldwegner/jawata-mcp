@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -274,6 +275,85 @@ class NativeTriageTest {
             "the C symbol correlates: " + frames.get(1));
         assertEquals(Boolean.TRUE, frames.get(2).get("correlatedWithHsErr"),
             "the C++ symbol correlates: " + frames.get(2));
+    }
+
+    /** A stand-in debugger we fully control — the only way to prove the failure paths. */
+    private Path fakeAdapter(String name, String script) throws Exception {
+        Path adapter = Files.createTempFile(name, ".sh");
+        Files.writeString(adapter, "#!/bin/sh\n" + script);
+        assertTrue(adapter.toFile().setExecutable(true));
+        return adapter;
+    }
+
+    @Test
+    @DisplayName("a WEDGED adapter times out — it does not block the call forever")
+    void runBacktraceTimesOutOnAWedgedAdapter() throws Exception {
+        // Sprint-24 audit: runBacktrace called readAllBytes() — which blocks until the
+        // child closes stdout, i.e. until it EXITS — BEFORE waitFor(timeout). So the
+        // timeout could never fire on the one case it exists for: a debugger wedged on a
+        // huge or mismatched core, producing no output and never returning. The MCP call
+        // hung indefinitely. (Jcmd.run had the identical ordering, and the identical fate
+        // against a SIGSTOPped target — see the floor actions.)
+        Path wedged = fakeAdapter("wedged-adapter", "sleep 20\n");
+        Path anyPath = Files.createTempFile("core", ".dump");
+
+        long start = System.currentTimeMillis();
+        assertThrows(Exception.class,
+            () -> GdbAdapter.runBacktrace(wedged.toString(), anyPath, anyPath, 2),
+            "a wedged adapter must be abandoned, loudly");
+        long elapsedMillis = System.currentTimeMillis() - start;
+
+        assertTrue(elapsedMillis < 10_000,
+            "the 2s timeout must actually fire — it took " + elapsedMillis + "ms, which means "
+                + "we waited for the process instead of timing it out");
+    }
+
+    @Test
+    @DisplayName("a FAILING adapter is reported by name — never as an empty-but-successful backtrace")
+    void runBacktraceReportsANonZeroExit() throws Exception {
+        // The old code ignored the exit code entirely: gdb's error text was fed to the
+        // parser, matched nothing, and the tool answered `available: true, correlated:
+        // true, threads: []` — a silently empty result, the codebase's own documented
+        // deepest bug class.
+        Path failing = fakeAdapter("failing-adapter",
+            "echo 'gdb: could not open core file: No such file or directory' >&2\nexit 1\n");
+        Path anyPath = Files.createTempFile("core", ".dump");
+
+        Exception thrown = assertThrows(Exception.class,
+            () -> GdbAdapter.runBacktrace(failing.toString(), anyPath, anyPath, 10));
+        assertTrue(thrown.getMessage().contains("could not open core file"),
+            "the adapter's OWN words must reach the caller: " + thrown.getMessage());
+    }
+
+    @Test
+    @DisplayName("lldb is understood too — the schema says so, so it must be true")
+    void lldbTranscriptIsParsed() {
+        // The tool description and schema both claim "gdb and lldb both understand this
+        // flag". They do not: lldb takes neither -batch nor -ex, and does not load a core
+        // as a bare positional. The claim was false; rather than weaken it, lldb is now
+        // genuinely supported — its own argument shape AND its own frame syntax.
+        List<Map<String, Object>> threads = GdbAdapter.parseBacktrace("""
+            * thread #1, name = 'java', stop reason = signal SIGSEGV
+              * frame #0: 0x00007ffff7a42e97 libc.so.6`raise + 199
+                frame #1: 0x00007ffff6dc4e60 libjvm.so`Unsafe_PutInt(env=0x0, unsafe=0x0) + 164 at unsafe.cpp:150
+              thread #2, name = 'GC Thread#0'
+                frame #0: 0x00007ffff7a9c39a libpthread.so.0`__pthread_cond_wait + 511
+            """);
+
+        assertEquals(2, threads.size(), "got: " + threads);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> frames = (List<Map<String, Object>>) threads.get(0).get("frames");
+        assertEquals(2, frames.size(), "got: " + frames);
+        assertEquals("raise", frames.get(0).get("function"));
+        assertEquals("libc.so.6", frames.get(0).get("library"));
+        // lldb welds the arg list onto the symbol; the stored function is the bare name, so
+        // it correlates with hs_err exactly as a gdb frame does.
+        assertEquals("Unsafe_PutInt", frames.get(1).get("function"), "got: " + frames.get(1));
+        assertEquals("unsafe.cpp", frames.get(1).get("file"));
+        assertEquals(150, frames.get(1).get("line"));
+
+        assertEquals(1, GdbAdapter.correlate(threads, Set.of("Unsafe_PutInt+0xa4")),
+            "and an lldb frame correlates with the crash report the same way a gdb one does");
     }
 
     @Test
