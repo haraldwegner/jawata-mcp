@@ -482,8 +482,7 @@ public class FindDuplicateCodeTool extends AbstractTool {
             "The scan FAILED on " + report.failures.size() + " project(s), and found nothing in "
                 + "what it could read. This is NOT 'no duplicate code' — it is 'we could not "
                 + "look'. Failures: " + report.failures,
-            "The Java model may still be rebuilding. Run refresh_workspace (or compile_workspace) "
-                + "and try again; if it keeps failing, the project's classpath is broken."));
+            org.jawata.mcp.tools.shared.SourceScan.AGENT_CONTRACT));
     }
 
     private static MethodFingerprint fingerprint(IMethod method, LoadedProject lp,

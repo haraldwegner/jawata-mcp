@@ -92,6 +92,22 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+        // THE GUARD. A refactoring rewrites references, and it finds them through the Java
+        // model. A project the model cannot read contains, as far as this refactoring is
+        // concerned, NO references at all — so it would rewrite what it can see, report
+        // success, and leave every call site in the unreadable project pointing at a name
+        // that no longer exists. Broken code, reported as a clean refactor.
+        //
+        // That is a correctness fault, not a reporting one, so it is REFUSED and not merely
+        // warned about — a warning is a thing an agent routes around. There is deliberately
+        // no override flag: an override is simply the mechanism by which a guard gets
+        // bypassed. Read-only analysis still works; it just says what it could not examine.
+        java.util.Optional<ToolResponse> unhealthy =
+            org.jawata.mcp.tools.shared.WorkspaceHealth.refuseIfUnhealthy(service, getName());
+        if (unhealthy.isPresent()) {
+            return unhealthy.get();
+        }
+
         // Sprint 24 (D1): a caller who KNOWS the symbol addresses it by name —
         // resolve that into the position the prepareChange paths already expect.
         // Idempotent: an explicit position, or an already-materialized one, wins.

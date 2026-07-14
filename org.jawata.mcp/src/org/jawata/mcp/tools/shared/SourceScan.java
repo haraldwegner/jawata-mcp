@@ -56,6 +56,28 @@ public final class SourceScan {
     /** Enough to diagnose; not enough to drown the response. */
     private static final int MAX_LISTED_PATHS = 10;
 
+    /**
+     * What an agent must DO about this — and, just as importantly, what it must not do.
+     *
+     * <p>An error that an agent routes around is worse than no error at all. The obvious
+     * "helpful" reaction to "jawata cannot read your project" is to fall back to grep and
+     * carry on — which would bury a broken workspace under a pile of text matches and let it
+     * rot for weeks. The failure is the SIGNAL. It belongs to the human who owns the
+     * workspace, not to the agent's ingenuity.</p>
+     *
+     * <p>So: heal the one case that heals itself (a model mid-rebuild), and escalate the rest
+     * to the person who can actually fix it.</p>
+     */
+    public static final String AGENT_CONTRACT =
+        "WHAT TO DO: (1) The Java model may simply be mid-rebuild — run refresh_workspace and "
+            + "retry this call ONCE. (2) If it fails again, STOP and TELL THE USER: their "
+            + "workspace is unhealthy (a broken classpath, or a project that is registered but "
+            + "closed or missing — health_check names it). That is a configuration fault only "
+            + "they can fix. (3) DO NOT work around it — do not fall back to grep, and do not "
+            + "proceed as though the code were clean. A silent workaround hides exactly the "
+            + "fault this error exists to surface, and every later answer you give will be "
+            + "built on a project you could not read.";
+
     private final List<Path> files;
     private int examined;
     private final List<String> unresolvable = new ArrayList<>();
@@ -149,8 +171,7 @@ public final class SourceScan {
                 + unresolvable.size() + " unresolvable, " + unparseable.size() + " unparseable). "
                 + "Reporting no " + what + " would be a statement about code we never opened. "
                 + "Examples: " + firstFew(),
-            "The Java model may still be rebuilding, or the project's classpath is broken. Run "
-                + "refresh_workspace (or compile_workspace) and try again."));
+            AGENT_CONTRACT));
     }
 
     /** The scan facts, to be merged into any response. */

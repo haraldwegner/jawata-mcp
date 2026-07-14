@@ -86,6 +86,21 @@ public class ToolResponse {
     }
 
     /**
+     * An error that carries the DIAGNOSIS, not just the verdict.
+     *
+     * <p>A bare error code moves the mystery up one level: the caller now knows something is
+     * wrong and still has to go and find out what. When a refusal is caused by something in
+     * the USER's world — a broken project, a missing directory — the response must say which
+     * one, what is wrong with it, and what to do about it, so it can be fixed at a glance
+     * rather than investigated.</p>
+     */
+    public static ToolResponse error(String code, String message, String hint, Object data) {
+        ToolResponse response = error(new ErrorInfo(code, message, hint));
+        response.data = data;
+        return response;
+    }
+
+    /**
      * Create a project not loaded error.
      */
     public static ToolResponse projectNotLoaded() {

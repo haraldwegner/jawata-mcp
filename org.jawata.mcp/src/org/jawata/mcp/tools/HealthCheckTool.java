@@ -5,6 +5,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.WorkspaceHealth;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -62,12 +63,21 @@ public class HealthCheckTool implements Tool {
             Check server status and project state.
 
             USAGE: Call on startup to verify server is operational.
-            OUTPUT: Server status, project info if loaded, capabilities.
+            OUTPUT: Server status, project info, capabilities, and WORKSPACE HEALTH.
 
             WORKFLOW:
             1. Call health_check to verify server is running
             2. If no project loaded, call load_project next
             3. Use returned capabilities to understand available features
+
+            WORKSPACE HEALTH — read `workspace.healthy`. When it is false, one or more
+            projects cannot be READ (closed, deleted, or a broken classpath). Then:
+              • every whole-workspace analysis is incomplete — a tool reporting "nothing
+                found" may simply have been unable to look;
+              • REFACTORINGS ARE REFUSED, because a rename cannot see references in a project
+                it cannot read and would leave them silently broken.
+            Each unhealthy project carries a `remedy`. TELL THE USER — it is their workspace
+            and only they can fix it. Do not work around it, and do not fall back to grep.
             """;
     }
 
@@ -79,6 +89,7 @@ public class HealthCheckTool implements Tool {
         schema.put("required", List.of());
         return schema;
     }
+
 
     @Override
     public ToolResponse execute(JsonNode arguments) {
@@ -131,6 +142,7 @@ public class HealthCheckTool implements Tool {
         IJdtService service = serviceSupplier.get();
         if (service != null) {
             List<Map<String, Object>> projects = new ArrayList<>();
+            List<String> unhealthy = new ArrayList<>();
             String defaultKey = service.defaultProjectKey().orElse(null);
             for (LoadedProject lp : service.allProjects()) {
                 Map<String, Object> row = new LinkedHashMap<>();
@@ -138,12 +150,45 @@ public class HealthCheckTool implements Tool {
                 row.put("projectPath", lp.projectRoot().toString());
                 row.put("sourceFileCount", lp.sourceFileCount());
                 row.put("isDefault", lp.projectKey().equals(defaultKey));
+
                 projects.add(row);
             }
-            status.put("workspace", Map.of(
-                "projects", projects,
-                "projectCount", projects.size()
-            ));
+
+            // IS THIS WORKSPACE FIT TO BE USED? A project can be registered and yet be
+            // closed, or gone, or have a broken classpath. Every whole-workspace analysis
+            // then walks it, fails, and (until this sprint) reported an empty result as a
+            // finding — and a REFACTORING would rewrite references while blind to that
+            // project's call sites. It is the user's workspace and the user's fault to fix,
+            // so it is stated here, in the first call anyone makes, with the remedy attached.
+            List<WorkspaceHealth.Problem> problems = WorkspaceHealth.diagnose(service);
+            for (Map<String, Object> row : projects) {
+                String key = String.valueOf(row.get("projectKey"));
+                WorkspaceHealth.Problem p = problems.stream()
+                    .filter(x -> x.projectKey().equals(key)).findFirst().orElse(null);
+                row.put("healthy", p == null);
+                if (p != null) {
+                    row.put("problem", p.problem());
+                    row.put("remedy", p.remedy());
+                    unhealthy.add(p.projectKey() + ": " + p.problem());
+                }
+            }
+
+            Map<String, Object> workspace = new LinkedHashMap<>();
+            workspace.put("projects", projects);
+            workspace.put("projectCount", projects.size());
+            workspace.put("healthy", unhealthy.isEmpty());
+            if (!unhealthy.isEmpty()) {
+                workspace.put("unhealthyProjects", unhealthy);
+                workspace.put("warning", "This workspace has " + unhealthy.size() + " project(s) "
+                    + "that CANNOT BE READ. Every whole-workspace analysis will be incomplete, "
+                    + "and any tool reporting 'nothing found' may simply have been unable to "
+                    + "look. REFACTORINGS ARE REFUSED while this is true — a rename cannot see "
+                    + "references in a project it cannot read, so it would silently leave them "
+                    + "broken. Each project above carries its remedy. This is a configuration "
+                    + "fault for the workspace's owner to fix; it is not something an agent "
+                    + "should work around.");
+            }
+            status.put("workspace", workspace);
         }
 
         // Java/OS info

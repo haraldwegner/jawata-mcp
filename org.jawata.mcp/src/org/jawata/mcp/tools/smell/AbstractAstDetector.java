@@ -118,8 +118,7 @@ public abstract class AbstractAstDetector implements Detector {
                     + " (" + unreadable.size() + " unresolvable, " + unparseable.size()
                     + " unparseable). A result of 'no " + kind + " found' would be a statement "
                     + "about code we never opened. Examples: " + firstFew(unreadable, unparseable),
-                "The Java model may still be rebuilding, or the project's classpath is broken. "
-                    + "Run refresh_workspace (or compile_workspace) and try again.");
+                org.jawata.mcp.tools.shared.SourceScan.AGENT_CONTRACT);
         }
 
         findings.sort(Comparator.comparingInt(

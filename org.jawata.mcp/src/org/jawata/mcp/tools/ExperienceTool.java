@@ -391,18 +391,36 @@ public final class ExperienceTool implements Tool {
         String prefix = "jawata-fallback slip:";
         Map<String, Integer> tally = new LinkedHashMap<>();
         int total = 0;
+        int rejected = 0;
+        int unexplained = 0;
+
         for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
             String s = e.summary();
             if (s == null || !s.startsWith(prefix)) {
                 continue;
             }
-            String reason = s.substring(prefix.length()).strip();
-            if (reason.isEmpty()) {
-                reason = "(unspecified)";
+
+            // A REJECTED entry is one somebody has already judged to be junk. Counting it as
+            // a capability gap re-admits, through the back door, exactly what was thrown out.
+            if ("rejected".equalsIgnoreCase(String.valueOf(e.status()))) {
+                rejected++;
+                continue;
             }
+
+            String reason = s.substring(prefix.length()).strip();
+            // Strip the leading tool name ("Bash: …") to see whether a REASON was actually
+            // given. A row that says only which tool was used records that something happened
+            // and nothing about what — it is not a gap, it is a hole in the audit trail.
+            String withoutTool = reason.replaceFirst("^[A-Za-z_]+:\\s*", "").strip();
+            if (withoutTool.isEmpty()) {
+                unexplained++;
+                continue;
+            }
+
             tally.merge(reason, 1, Integer::sum);
             total++;
         }
+
         List<Map<String, Object>> gaps = new ArrayList<>();
         tally.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
@@ -412,10 +430,25 @@ public final class ExperienceTool implements Tool {
                 m.put("count", en.getValue());
                 gaps.add(m);
             });
+
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("totalFallbacks", total);
         data.put("distinctGaps", gaps.size());
         data.put("gaps", gaps);
+
+        // Say what was left OUT and why — a filtered list that does not admit to filtering is
+        // the same lie in a smaller frame.
+        if (rejected > 0) {
+            data.put("excludedRejected", rejected);
+        }
+        if (unexplained > 0) {
+            data.put("excludedUnexplained", unexplained);
+            data.put("unexplainedNote", unexplained + " recorded fallback(s) carry NO reason — "
+                + "the declaration was made but its text was lost (an old extractor bug). They "
+                + "are excluded from the gap list because they say nothing, and they are "
+                + "reported here so their absence is not itself a silence. New ones cannot "
+                + "occur: an unexplained declaration is now refused outright.");
+        }
         return ToolResponse.success(data);
     }
 
