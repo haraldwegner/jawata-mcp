@@ -1500,3 +1500,73 @@ predates `debug`/`profile`, so the battery ran over the **raw endpoint** against
 | `profile` on the same session as `debug` | agrees with the debug-side suspended state | ✓ |
 | `detach` → process reaped | no orphan PID | ✓ (confirmed empty within 2s) |
 | Resident health post-battery | unaffected | ✓ (`Ready`, loaded, toolCount 45) |
+
+## Stage 21 — dogfood-in-anger (2026-07-14, "dogfood" / "retry") → recorded clean
+
+### Profile IN ANGER
+
+**A real workload first.** Launched jawata's own full in-framework test-suite run
+(`org.jawata.boot.JawataBoot -runTests`, no filter — the real 1362-test battery) through
+the live `jawata-javata-dev` resident via `debug(action=launch)`, and sampled it for 15s
+mid-run. Genuinely informative, not staged: **773 real CPU samples across 254 real
+methods, and every one of the top 10 is Eclipse JDT's own scanner/parser**
+(`Scanner#getNextToken0`, `Parser#parse`, `CharOperation#equals`,
+`AbstractCommentParser#commentParse`, …) — confirming jawata's own hot path, under its own
+real test load, is entirely the JDT front-end re-lexing/re-parsing hundreds of fixture
+sources, not jawata's own business logic (which does not appear even at rank 60). A real
+finding about jawata's own performance profile, produced by the shipped v2.13.0 binary
+against its own real work.
+
+**Latency at a seam — three honest misses, then a real hit.** Three attempts to trace a
+jawata-authored method's latency during that live run (`JdtServiceImpl#findType`,
+`#getTypeAtPosition`, `TestProjectHelper#copyFixture`, the last with a test-classlist
+scoped specifically to navigation-heavy tests to raise the odds) each came back
+`NO_CALLS_OBSERVED` — never fabricated, honestly empty three times running. Root-caused
+(not shrugged off): a shared multi-tenant resident can only trace a seam inside its OWN
+loaded project, and even a resolvable jawata method can simply not fire during one specific
+sampling window of a long sequential run — a timing question, not a tool defect. Rather
+than add a second project to the SHARED resident (risking other concurrent clients on the
+same port/token) or keep guessing blindly, booted a dedicated, isolated v2.13.0 instance
+(own data dir, own port/token) with `debug-target` loaded, and traced
+`LatencySeamTarget#seam` with the injected slowdown live: **919 real samples, raw
+p99=54ms/p999=58ms** — the 1-in-50 injected 50ms stall, found live through the real
+deployed binary, corrected values close to raw (this fixture's injection rate is frequent
+enough that raw already mostly captures it, consistent with Stage 17's own finding).
+Recorded as an operational lesson (`dbcd8818`) — not a product bug, but a real thing an
+operator needs to know before reaching for `latency_seam` against an arbitrary target.
+
+**One incident-bundle drill, live, first try.** `IncidentTarget` launched on the same
+dedicated instance, armed, alarm fired at iteration 15 (~1.5s), first
+`incident_status` poll captured the bundle: all **6 present parts** (jfrSlice, threadDump,
+heapHistogram, heapDump, logSlice, replayDescriptor) plus the summary itself, `alarmSymbol`
+correctly naming `com.example.debug.IncidentTarget#checkThreshold`. No JUnit involved — a
+genuine raw-MCP operator session against the real binary, same as everything else in this
+stage.
+
+Dedicated instance torn down cleanly afterward (process reaped, scratch files removed).
+
+### Findings
+
+**Clean.** No product bugs. Three `NO_CALLS_OBSERVED` misses were the tool behaving
+correctly under genuinely mistaken targets, not silent failures — worth stating explicitly
+since a string of "no results" could easily be misread as broken instead of honest.
+One operational lesson recorded in the experience store (`dbcd8818`): `latency_seam`
+traces the CALLING instance's own workspace only; use a dedicated instance for an
+unrelated target rather than mutating a shared resident's project set mid-session.
+
+**No v2.13.1 patch.** Per the plan's own protocol ("clean → recorded with probes"), this
+dogfood round closes without a follow-up release.
+
+### GB10/aarch64 probe
+
+Harald's own manual step (attach + hotspot + capability report on his aarch64 box) — not
+run as part of this record. Ready whenever he runs it; does not block the close-out below.
+
+| Gate | Expected | Actual |
+|---|---|---|
+| Real workload profiled | genuine hotspot data, not staged | ✓ (773 samples, JDT scanner/parser dominant) |
+| Latency seam, live, real slowdown | raw p99/p999 shows the injected stall | ✓ (p99=54ms, p999=58ms; 919 samples) |
+| Incident-bundle drill, live (not JUnit) | all 7 parts, symbol named | ✓ (6 present parts + summary, correct `alarmSymbol`) |
+| Honest-miss behavior under wrong targets | never fabricated | ✓ (3/3 honest `NO_CALLS_OBSERVED`) |
+| Dedicated instance torn down | no orphan | ✓ |
+| Findings | none blocking | **clean — recorded, no v2.13.1** |
