@@ -1740,3 +1740,43 @@ Sprint 24 is now closed — for real this time: every deliverable at full body s
 the audit on the record, the patch shipped. Open threads: the fleet flip + release-day
 battery (imminent), and the GB10/aarch64 probe (Harald's manual step, non-blocking, ships
 as v2.13.2 if it finds anything).
+
+### Release-day battery (fleet on 2.13.1, 2026-07-15)
+
+Fleet flipped by Harald; both residents live on **2.13.1**, toolCount **45/45**,
+workspaces healthy (jawata-mcp 553 sources; orb 29/29 projects). Same schema-cache
+constraint as C20: this session's MCP client predates `debug`/`profile`, so those probes
+ran over the **raw endpoint** (Bearer token — one access-mechanics lesson below). The
+battery repeated the C20 flow AND live-proved the audit fixes on the deployed binary:
+
+| Probe | Expected | Actual |
+|---|---|---|
+| Schema: toolCount / `wall` dimension / `call_counts` / `domain_events` / `incident_disarm` | present on the deployed binary | **45**; dimension enum `[cpu, alloc, wall, lock, gc]`; all three new actions in the enum ✓ |
+| `discover` self-honesty | resident's own JVM `debuggable:false` | ✓ (pid 1308583, 5 JVMs listed) |
+| `launch` held + honest capabilities | `awaitingStart:true`, `capabilitiesUnread:true`, `flightRecording:null` (not false) | ✓ |
+| **T2.6 surface**: `recordingRepository` on launch | pinned repo path reported | ✓ `/tmp/jawata-jfr-repo-…283` |
+| Deferred method breakpoint → resume → wait | hit with pre-assembled symbol | ✓ `com.example.debug.DebugTarget#computeSignal`, main |
+| `snapshot(threadId)` | real stack/args; honest static-frame `this` | ✓ 2 frames (computeSignal:65 ← main:40), `iteration=0`, `thisAbsent` ✓ (bare `snapshot` refused with the remedy in the message — honest INVALID_PARAMETER) |
+| **T2.7 live**: capabilities re-read on the RUNNING target | all six discovered TRUE (jcmd, not marker) | ✓ all six true, `presetPrepared:true`, `capabilitiesUnread` cleared |
+| **T1.1 kill-shot**: `profile(threads)` id vs the OS | reported main id is a REAL tid of the target | ✓ id `1313861` exists in `/proc/1313859/task/`; `statusLine "at breakpoint"` agrees with the debug side (18 threads) |
+| `sample` 4s → **T2.1 live**: `hotspots dimension=wall` | ACCEPTED (v2.13.0: `invalidParameter "Unknown dimension"`) | ✓ accepted, `dimension:"wall"`, **0 rows — honest**: the target sat SUSPENDED at the breakpoint for the whole sample window, so nothing executed and nothing blocked; the wall RANKING on live workloads is suite-proven (HotspotTest cpu-vs-wall) |
+| `detach` | terminated (we launched it) + reaped | ✓ pid gone <3s |
+| **T2.6 live**: pinned JFR repo after teardown | deleted | ✓ dir verified present before detach, GONE after |
+| Resident health after battery | undisturbed | ✓ Ready / 2.13.1 / 45 tools / project loaded |
+
+Also proven in-session (cached schema sufficed): **T1.13** — a method search teaches the
+fully-qualified `org.jawata.mcp.runtime.profile.JfrParser#wallHotspots` (+ new
+`containingTypeQualified` row field); **experience store across the restart** — pre-flip
+lesson recalled by symbol with its pointer resolving against current code.
+
+**Access-mechanics lesson (cost: ~20 min of Harald's patience):** the resident's Bearer
+token is machine-managed (stable per-workspace `(port, token)` pair,
+`manager_service.rs:1396`), injected by Studio into MCP client configs — it is NOT
+visible in the Studio UI, NOT in `settings.json`, NOT on the resident's command line.
+The agent-side permission classifiers (correctly) refuse agent-driven credential
+extraction, and a mid-session `/mcp` reconnect does NOT refresh a running session's tool
+schemas. The working recipe for a raw-endpoint battery: the USER extracts the token from
+his own MCP client config (`~/.claude.json` → server entry → `headers.Authorization`)
+into `/tmp/jawata-token`; the battery reads it at call time, never echoes it, and deletes
+it afterwards. Next sprint should consider a first-class answer (e.g. a Studio "copy
+token" affordance or a localhost debug-battery mode).
