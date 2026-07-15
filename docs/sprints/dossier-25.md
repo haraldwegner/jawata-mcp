@@ -63,6 +63,22 @@ individually) — works today, loses the single fowler-family baseline diff; (c)
 v2.14.x product fix: family sweeps honor a per-call timeout budget or compute
 incrementally. The fowler BASELINE remains unsaved until one of these is chosen.
 
+### Stage −1 (prerequisites) — executed LATE, at Harald's prompt
+
+Honest record: the cold-start checklist was initially treated as satisfied by
+in-context authorship — Harald asked "have you done −1 prerequisites?" and the
+answer was PARTIALLY. Executed in full then: primer refreshed; the prescribed
+recalls run — `RecipeEngine#run` (the stale-buffer failure mode: LTK writes vs
+Openable buffer invalidation; step N+1 can parse pre-step-N content MID-TOKEN;
+Sprint-23 fix = close modified CUs after each step — DIRECTLY governs the Stage 1–3
+parity batteries), symptom "flaky test" (the ChangeEngine deferred-delta
+"filesModified: []" failure mode — ChangeEngine is the seam's host layer),
+`RuntimeSessionRegistry#launch` recorded earlier this session; the
+diagnosis-discipline memory read in full (its "surface at Sprint 25/26 drafting"
+destination is satisfied — the spec's D6 seat discipline encodes it); toolchain
+explicit (java 21.0.10 · maven 3.9.9 · cargo 1.95.0); BOTH residents re-checked at
+C0 time (2.13.1, toolCount 45, jawata-mcp 553 sources / orb 29/29 healthy).
+
 ### C0 exit vs plan
 
 | Exit criterion | Status |
