@@ -42,6 +42,7 @@ APPLIED-STAGED symbolKind=Method oldName=add newName=sum fileRenamed=-
      }
  
      /**
+
 --- a/src/test/java/com/example/SampleTest.java
 +++ b/src/test/java/com/example/SampleTest.java
 @@ -26,7 +26,7 @@
@@ -53,4 +54,3 @@ APPLIED-STAGED symbolKind=Method oldName=add newName=sum fileRenamed=-
          assert result == 5;
      }
  
-
