@@ -8,11 +8,15 @@
  *
  * SPDX-License-Identifier: EPL-2.0
  *
- * MODIFIED (org.jawata.jdtpatch, 2026-07-11): single change vs the R4_40 tag —
- * null-guard in previewAPIUsed(..) for
- * https://github.com/eclipse-jdt/eclipse.jdt.core/issues/5188 (search 'JAWATA PATCH').
- * This copy is shipped as an OSGi patch fragment on org.eclipse.jdt.core.compiler.batch
- * and is removed as soon as the upstream fix ships (sentinel: JreTypeResolutionTest).
+ * MODIFIED (org.jawata.jdtpatch): two changes vs the R4_40 tag, both in
+ * previewAPIUsed(..), both for
+ * https://github.com/eclipse-jdt/eclipse.jdt.core/issues/5188 (search 'JAWATA PATCH'):
+ * (1) 2026-07-11 — null-guard the getField(..) result (unresolved enum under MatchLocator);
+ * (2) 2026-07-15 — bail when a nested problem report closed this reporter mid-method and
+ *     nulled referenceContext (the second NPE, found upstream by jarthana while fixing (1)).
+ * This copy is compiled by the jdtpatch factory and shipped INSIDE the repacked
+ * org.eclipse.jdt.core.compiler.batch jar (org.jawata.target/patched-bundles/); it is
+ * removed as soon as the upstream fix ships (sentinel: JreTypeResolutionTest).
  *
  * Contributors:
  *     IBM Corporation - initial API and implementation
@@ -9600,6 +9604,14 @@ public void previewAPIUsed(Scope scope, int sourceStart, int sourceEnd, IBinaryA
 		}
 	}
 
+	// JAWATA PATCH #2 (org.jawata.jdtpatch, 2026-07-15) for
+	// https://github.com/eclipse-jdt/eclipse.jdt.core/issues/5188 (second NPE, found by
+	// jarthana): the getField(..) call above can trigger lazy resolution that fires a
+	// NESTED problem report, whose close() nulls this.referenceContext mid-method — so
+	// both the usesPreview write and handle(..) below would NPE. The nested report has
+	// already been made; skipping the preview-API problem for this one annotation is the
+	// safe degradation. Mirrors the upstream PR's second guard.
+	if (this.referenceContext == null) return;
 	int problemId = -1;
 	int severity = -1;
 	if (!this.options.enablePreviewFeatures) {
