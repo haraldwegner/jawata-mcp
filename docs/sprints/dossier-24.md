@@ -1705,3 +1705,38 @@ from it are the only open threads, and neither blocks calling this sprint closed
 > **v2.13.1** ships on his word. The lesson is recorded: the checkpoint gate must
 > enumerate the deliverable BODY, not its "Measure:" line, and the "no narrowing"
 > close-out must be produced by someone who did not write the stages.
+
+## v2.13.1 release record (2026-07-15) — the audit patch SHIPS, sprint closes for real
+
+Released on Harald's word ("So, since you are telling me all done -> Release!"),
+2026-07-15. Content = the entire post-close audit campaign: 16 Tier-1 defects fixed,
+8 Tier-2 clauses implemented (never amended), Tier-3 records corrected. Release notes:
+`docs/release-notes/v2.13.1.md` (candid about the audit, honesty note included).
+
+| Gate | Expected | Actual |
+|---|---|---|
+| Version bump | 14 carriers, one line each (2.13.0 → 2.13.1) | 14/14 ✓ (source-comment `2.13.0` references deliberately kept — they document what the broken version did) |
+| Local clean install | green | ✓ |
+| Clean-clone build (reproduces GH) | green on the release commit alone | ✓ (fresh clone of 44d4039, dist assembled) |
+| Suite pre-release | green serial AND sharded | **1394/1394 both** ✓ |
+| Push | main + tag | c5c9ddf..44d4039 (18 commits) + `v2.13.1` ✓ |
+| Release workflow (run 29398733760) | success — this IS the push-side test gate (`-runTests` + PIPESTATUS guard in release.yml; ci.yml is pull_request-only, so no separate CI run is expected — same pattern as v2.13.0/v2.12.1) | **success, 11m58s** ✓ |
+| GitHub Release | published, 5 assets | ✓ published (NOT left draft), all 5 assets (linux x64/arm64, macos x64/arm64, win32) |
+| toolCount | 45 unchanged | ✓ (verified statically pre-release; live re-check lands with the release-day battery) |
+| Fleet flip | Harald's step | ⏳ pending — battery on the deployed binary follows the flip |
+
+**Same-day upstream movement on #5188:** jarthana (JDT) analyzed the NPE and converged
+independently on the null guard we suggested at filing ("inclined to do the easiest here —
+guard with a null check"). Replied with the two facts only we hold (per the hold-the-fix
+stance: evidence + verification offer, no testcase until asked): (1) under MatchLocator the
+binding stays field-less even after the existing `resolveType` step, so the guard is
+correct, not merely easiest; (2) exactly that guard has run in our repacked
+`3.46.0-jawata5188` batch compiler under the full suite daily — no regressions
+(comment 4978414785; Harald 👍'd Jay's analysis himself). If the guard lands upstream, the
+repack retires at the next train — `JreTypeResolutionTest` is the sentinel gating removal
+of the patched bundle + jdtpatch module + Directory target location.
+
+Sprint 24 is now closed — for real this time: every deliverable at full body strength,
+the audit on the record, the patch shipped. Open threads: the fleet flip + release-day
+battery (imminent), and the GB10/aarch64 probe (Harald's manual step, non-blocking, ships
+as v2.13.2 if it finds anything).
