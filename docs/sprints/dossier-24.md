@@ -1738,8 +1738,11 @@ of the patched bundle + jdtpatch module + Directory target location.
 
 Sprint 24 is now closed — for real this time: every deliverable at full body strength,
 the audit on the record, the patch shipped. Open threads: the fleet flip + release-day
-battery (imminent), and the GB10/aarch64 probe (Harald's manual step, non-blocking, ships
-as v2.13.2 if it finds anything).
+battery (imminent), and the GB10/aarch64 probe — **re-scoped by Harald (2026-07-15) to
+Sprint 27 (client OS coverage)**: the box's known hazard is client-side (WebKitGTK
+DMABUF webview blackout on Grace, a Tauri/studio concern), so it belongs to the sprint
+that owns client/OS/arch coverage, not to this sprint's runtime deliverables. Sprint 24
+carries **no open threads**.
 
 ### Release-day battery (fleet on 2.13.1, 2026-07-15)
 
