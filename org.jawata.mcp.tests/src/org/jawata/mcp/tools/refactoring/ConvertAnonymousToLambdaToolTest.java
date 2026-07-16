@@ -74,12 +74,11 @@ class ConvertAnonymousToLambdaToolTest {
         assertNotNull(data.get("methodName"));
         assertNotNull(data.get("undoChangeId"));
 
-        String lambdaExpression = (String) data.get("lambdaExpression");
-        assertTrue(lambdaExpression.contains("->"), lambdaExpression);
-
+        // Sprint 25 (spec D1a item 4): JDT performs the real conversion rather than
+        // the old tool's synthesized `lambdaExpression` string — verify the on-disk
+        // rewrite (same pattern as inline_method's dropped `inlinedCode`).
         String onDisk = Files.readString(anonymousExamplesFile);
-        assertTrue(onDisk.contains(lambdaExpression.lines().findFirst().orElse("->")),
-            "lambda must be on disk");
+        assertTrue(onDisk.contains("->"), "a lambda must be on disk");
         assertNotEquals(original, onDisk);
 
         ToolResponse undone = undoTool.execute(objectMapper.createObjectNode()
@@ -94,8 +93,8 @@ class ConvertAnonymousToLambdaToolTest {
         ToolResponse response = tool.execute(args(33, 31)); // new Comparator<String>()
 
         assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
-        String lambda = (String) getData(response).get("lambdaExpression");
-        assertTrue(lambda.contains("->"), lambda);
+        String diff = (String) getData(response).get("diff");
+        assertTrue(diff.contains("->"), "conversion must produce a lambda:\n" + diff);
     }
 
     @Test
@@ -104,8 +103,8 @@ class ConvertAnonymousToLambdaToolTest {
         ToolResponse response = tool.execute(args(45, 55)); // Consumer<String>
 
         assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
-        String lambda = (String) getData(response).get("lambdaExpression");
-        assertTrue(lambda.contains("->"), lambda);
+        String diff = (String) getData(response).get("diff");
+        assertTrue(diff.contains("->"), "conversion must produce a lambda:\n" + diff);
     }
 
     @Test
@@ -114,9 +113,9 @@ class ConvertAnonymousToLambdaToolTest {
         ToolResponse response = tool.execute(args(98, 28)); // blockBodyExample()
 
         assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
-        String lambda = (String) getData(response).get("lambdaExpression");
-        assertTrue(lambda.contains("{") && lambda.contains("}"),
-            "block body must have braces: " + lambda);
+        String diff = (String) getData(response).get("diff");
+        assertTrue(diff.contains("->"), "conversion must produce a lambda:\n" + diff);
+        assertTrue(diff.contains("{"), "block body must have braces:\n" + diff);
     }
 
     @Test

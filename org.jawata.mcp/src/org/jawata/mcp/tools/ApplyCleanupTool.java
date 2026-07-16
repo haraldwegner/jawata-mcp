@@ -2,26 +2,14 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.core.resources.IFile;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.FieldDeclaration;
-import org.eclipse.jdt.core.dom.IBinding;
-import org.eclipse.jdt.core.dom.IVariableBinding;
-import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.jdt.core.dom.Modifier;
-import org.eclipse.jdt.core.dom.PostfixExpression;
-import org.eclipse.jdt.core.dom.PrefixExpression;
-import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
-import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
-import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
-import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
-import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
+import org.eclipse.jdt.internal.corext.fix.CleanUpConstants;
+import org.eclipse.jdt.internal.corext.fix.VariableDeclarationFixCore;
+import org.eclipse.jdt.internal.ui.fix.RedundantModifiersCleanUp;
+import org.eclipse.jdt.ui.cleanup.ICleanUpFix;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
@@ -57,14 +45,21 @@ import java.util.function.Supplier;
  *
  * <ul>
  *   <li>{@code add_final} — mark method/constructor parameters and local
- *       variable declarations {@code final} when they are never reassigned.
- *       Reassignment is detected by binding (not name), so shadowing can't
- *       produce a false positive that would break compilation.</li>
+ *       variable declarations {@code final} when they are never reassigned.</li>
  *   <li>{@code redundant_modifiers} — strip modifiers that are implicit on
  *       interface members ({@code public}/{@code abstract} on methods,
  *       {@code public}/{@code static}/{@code final} on fields,
  *       {@code public}/{@code static} on nested types).</li>
  * </ul>
+ *
+ * <p>Sprint 25 (spec D1a item 5): the per-file rewrites are computed by JDT's
+ * own clean-up engines — {@link VariableDeclarationFixCore} for add_final and
+ * {@link RedundantModifiersCleanUp} for redundant_modifiers, the same classes
+ * behind the IDE's Source → Clean Up (headless by design; jdt.ls runs them).
+ * They cover declaration forms the hand-rolled rewrite missed (catch and
+ * enhanced-for parameters; nested enums/records in interfaces). The
+ * {@code SourceScan} sweep shell with its honest missed-file reporting is
+ * unchanged.</p>
  *
  * <p>{@code filePath} scopes to one file; omit it to sweep the whole project.
  * A no-op (nothing to clean) returns {@code hasChanges: false} without touching
@@ -172,21 +167,16 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
             }
             scan.examined();
 
-            ASTRewrite rewrite = ASTRewrite.create(ast.getAST());
-            int edits = "add_final".equals(kind)
-                ? rewriteAddFinal(ast, rewrite)
-                : rewriteRedundantModifiers(ast, rewrite);
-            if (edits == 0) {
-                continue;
-            }
-            TextEdit edit = rewrite.rewriteAST();
-            if (!edit.hasChildren()) {
+            TextEdit edit = "add_final".equals(kind)
+                ? addFinalEdit(ast)
+                : redundantModifiersEdit(ast);
+            if (edit == null || (!edit.hasChildren() && edit.getLength() == 0)) {
                 continue;
             }
             List<TextEdit> list = new ArrayList<>();
             list.add(edit);
             editsByFile.put((IFile) cu.getResource(), list);
-            totalEdits += edits;
+            totalEdits += countLeafEdits(edit);
         }
 
         // "Nothing to clean up" is only sayable if we managed to read the code.
@@ -232,152 +222,50 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
     }
 
     /**
-     * Add {@code final} to parameters and local declarations whose binding is
-     * never written after declaration. Returns the number of declarations
-     * marked.
+     * add_final via JDT's {@link VariableDeclarationFixCore} — parameters and
+     * locals only (fields stay out of this kind's contract). Returns the file's
+     * rewrite edit, or {@code null} when nothing changes.
      */
-    private int rewriteAddFinal(CompilationUnit ast, ASTRewrite rewrite) {
-        Set<String> written = collectWrittenVariableKeys(ast);
-        int[] count = {0};
-        AST factory = ast.getAST();
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(SingleVariableDeclaration node) {
-                // Parameters (method/constructor/catch/enhanced-for). Only those
-                // directly owned by a method's parameter list are addressed here.
-                if (!(node.getParent() instanceof MethodDeclaration)) {
-                    return true;
-                }
-                if (Modifier.isFinal(node.getModifiers())) {
-                    return true;
-                }
-                if (isWritten(node.resolveBinding(), written)) {
-                    return true;
-                }
-                addFinal(rewrite, node, SingleVariableDeclaration.MODIFIERS2_PROPERTY, factory);
-                count[0]++;
-                return true;
-            }
-
-            @Override
-            public boolean visit(VariableDeclarationStatement node) {
-                if (Modifier.isFinal(node.getModifiers())) {
-                    return true;
-                }
-                // A statement can declare several fragments; final applies to all,
-                // so only add it when EVERY fragment is never reassigned.
-                for (Object f : node.fragments()) {
-                    VariableDeclarationFragment frag = (VariableDeclarationFragment) f;
-                    if (isWritten(frag.resolveBinding(), written)) {
-                        return true;
-                    }
-                }
-                addFinal(rewrite, node, VariableDeclarationStatement.MODIFIERS2_PROPERTY, factory);
-                count[0]++;
-                return true;
-            }
-        });
-        return count[0];
-    }
-
-    private static void addFinal(ASTRewrite rewrite, org.eclipse.jdt.core.dom.ASTNode node,
-                                 org.eclipse.jdt.core.dom.ChildListPropertyDescriptor prop,
-                                 AST factory) {
-        ListRewrite lr = rewrite.getListRewrite(node, prop);
-        lr.insertFirst(factory.newModifier(Modifier.ModifierKeyword.FINAL_KEYWORD), null);
-    }
-
-    private static boolean isWritten(IVariableBinding binding, Set<String> written) {
-        return binding == null || written.contains(binding.getKey());
-    }
-
-    /** Binding keys of every variable that is the target of a write (=, +=, ++, --). */
-    private Set<String> collectWrittenVariableKeys(CompilationUnit ast) {
-        Set<String> written = new HashSet<>();
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(Assignment node) {
-                recordIfVariable(node.getLeftHandSide(), written);
-                return true;
-            }
-
-            @Override
-            public boolean visit(PrefixExpression node) {
-                if (node.getOperator() == PrefixExpression.Operator.INCREMENT
-                        || node.getOperator() == PrefixExpression.Operator.DECREMENT) {
-                    recordIfVariable(node.getOperand(), written);
-                }
-                return true;
-            }
-
-            @Override
-            public boolean visit(PostfixExpression node) {
-                recordIfVariable(node.getOperand(), written);
-                return true;
-            }
-        });
-        return written;
-    }
-
-    private static void recordIfVariable(org.eclipse.jdt.core.dom.Expression target, Set<String> written) {
-        if (target instanceof SimpleName name) {
-            IBinding b = name.resolveBinding();
-            if (b instanceof IVariableBinding vb) {
-                written.add(vb.getKey());
-            }
-        }
+    private static TextEdit addFinalEdit(CompilationUnit ast) throws CoreException {
+        ICleanUpFix fix = VariableDeclarationFixCore.createCleanUp(
+            ast, /* addFinalFields */ false, /* addFinalParameters */ true,
+            /* addFinalLocals */ true);
+        return fix == null ? null : fix.createChange(new NullProgressMonitor()).getEdit();
     }
 
     /**
-     * Remove modifiers that are implicit on interface members. Returns the
-     * number of modifier tokens removed.
+     * redundant_modifiers via JDT's {@link RedundantModifiersCleanUp}. The
+     * engine's {@code createFix(CompilationUnit)} is protected — the private
+     * subclass below is the access path (same package-independent mechanism the
+     * IDE's clean-up runner uses through its public context API).
      */
-    private int rewriteRedundantModifiers(CompilationUnit ast, ASTRewrite rewrite) {
-        int[] count = {0};
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(TypeDeclaration node) {
-                if (!node.isInterface()) {
-                    return true;
-                }
-                for (MethodDeclaration m : node.getMethods()) {
-                    count[0] += removeModifiers(rewrite, m, m.modifiers(),
-                        MethodDeclaration.MODIFIERS2_PROPERTY,
-                        Modifier.ModifierKeyword.PUBLIC_KEYWORD,
-                        Modifier.ModifierKeyword.ABSTRACT_KEYWORD);
-                }
-                for (FieldDeclaration fd : node.getFields()) {
-                    count[0] += removeModifiers(rewrite, fd, fd.modifiers(),
-                        FieldDeclaration.MODIFIERS2_PROPERTY,
-                        Modifier.ModifierKeyword.PUBLIC_KEYWORD,
-                        Modifier.ModifierKeyword.STATIC_KEYWORD,
-                        Modifier.ModifierKeyword.FINAL_KEYWORD);
-                }
-                for (TypeDeclaration nested : node.getTypes()) {
-                    count[0] += removeModifiers(rewrite, nested, nested.modifiers(),
-                        TypeDeclaration.MODIFIERS2_PROPERTY,
-                        Modifier.ModifierKeyword.PUBLIC_KEYWORD,
-                        Modifier.ModifierKeyword.STATIC_KEYWORD);
-                }
-                return true;
-            }
-        });
-        return count[0];
+    private static TextEdit redundantModifiersEdit(CompilationUnit ast) throws CoreException {
+        ICleanUpFix fix = REDUNDANT_MODIFIERS.fixFor(ast);
+        return fix == null ? null : fix.createChange(new NullProgressMonitor()).getEdit();
     }
 
-    private static int removeModifiers(ASTRewrite rewrite, org.eclipse.jdt.core.dom.ASTNode owner,
-                                       List<?> modifiers,
-                                       org.eclipse.jdt.core.dom.ChildListPropertyDescriptor prop,
-                                       Modifier.ModifierKeyword... redundant) {
-        Set<Modifier.ModifierKeyword> toDrop = new HashSet<>(List.of(redundant));
-        ListRewrite lr = rewrite.getListRewrite(owner, prop);
-        int removed = 0;
-        for (Object o : modifiers) {
-            if (o instanceof Modifier mod && toDrop.contains(mod.getKeyword())) {
-                lr.remove(mod, null);
-                removed++;
-            }
+    private static final RedundantModifiersFixAccess REDUNDANT_MODIFIERS =
+        new RedundantModifiersFixAccess();
+
+    private static final class RedundantModifiersFixAccess extends RedundantModifiersCleanUp {
+        RedundantModifiersFixAccess() {
+            super(Map.of(CleanUpConstants.REMOVE_REDUNDANT_MODIFIERS, "true"));
         }
-        return removed;
+
+        ICleanUpFix fixFor(CompilationUnit unit) throws CoreException {
+            return createFix(unit);
+        }
+    }
+
+    /** Leaf text-edit count across an edit tree — reported as {@code editCount}. */
+    private static int countLeafEdits(TextEdit edit) {
+        if (!edit.hasChildren()) {
+            return 1;
+        }
+        int total = 0;
+        for (TextEdit child : edit.getChildren()) {
+            total += countLeafEdits(child);
+        }
+        return total;
     }
 }

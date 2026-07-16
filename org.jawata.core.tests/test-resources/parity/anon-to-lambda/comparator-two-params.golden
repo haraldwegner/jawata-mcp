@@ -2,7 +2,14 @@ APPLIED-STAGED interfaceType=Comparator<String> methodName=compare
 ---DIFF---
 --- a/src/main/java/com/example/AnonymousClassExamples.java
 +++ b/src/main/java/com/example/AnonymousClassExamples.java
-@@ -31,12 +31,7 @@
+@@ -1,6 +1,5 @@
+ package com.example;
+ 
+-import java.util.Comparator;
+ import java.util.List;
+ import java.util.ArrayList;
+ import java.util.Collections;
+@@ -31,12 +30,7 @@
       */
      public void comparatorExample() {
          List<String> list = new ArrayList<>();

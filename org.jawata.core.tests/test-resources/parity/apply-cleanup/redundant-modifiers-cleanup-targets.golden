@@ -1,4 +1,4 @@
-APPLIED-STAGED kind=redundant_modifiers editCount=5 filesChanged=1
+APPLIED-STAGED kind=redundant_modifiers editCount=10 filesChanged=1
 ---DIFF---
 --- a/src/main/java/com/example/CleanupTargets.java
 +++ b/src/main/java/com/example/CleanupTargets.java

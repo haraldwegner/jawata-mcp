@@ -1,4 +1,4 @@
-APPLIED-STAGED kind=add_final editCount=3 filesChanged=1
+APPLIED-STAGED kind=add_final editCount=12 filesChanged=1
 ---DIFF---
 --- a/src/main/java/com/example/CleanupTargets.java
 +++ b/src/main/java/com/example/CleanupTargets.java
