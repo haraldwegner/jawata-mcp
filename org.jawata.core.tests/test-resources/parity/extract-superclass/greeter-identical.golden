@@ -1,0 +1,33 @@
+APPLIED-STAGED newSuperclass=Greeter subclasses=[GreetFormal, GreetCasual] pulledUpMembers=[punctuation]
+---DIFF---
+--- a/src/main/java/com/example/GreetCasual.java
++++ b/src/main/java/com/example/GreetCasual.java
+@@ -1,11 +1,7 @@
+ package com.example;
+ 
+ /** Sprint 18 extract_superclass sibling B (shares an identical punctuation() with GreetFormal). */
+-public class GreetCasual {
+-
+-    public String punctuation() {
+-        return ".";
+-    }
++public class GreetCasual extends Greeter {
+ 
+     public String greet(String name) {
+         return "Hey " + name + punctuation();
+
+--- a/src/main/java/com/example/GreetFormal.java
++++ b/src/main/java/com/example/GreetFormal.java
+@@ -1,11 +1,7 @@
+ package com.example;
+ 
+ /** Sprint 18 extract_superclass sibling A (shares an identical punctuation() with GreetCasual). */
+-public class GreetFormal {
+-
+-    public String punctuation() {
+-        return ".";
+-    }
++public class GreetFormal extends Greeter {
+ 
+     public String greet(String name) {
+         return "Good day, " + name + punctuation();
