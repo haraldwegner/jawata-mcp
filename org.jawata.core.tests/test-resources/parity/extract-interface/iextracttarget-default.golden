@@ -1,0 +1,14 @@
+APPLIED-STAGED className=InterfaceExtractTarget interfaceName=IExtractTarget
+---DIFF---
+--- a/src/main/java/com/example/InterfaceExtractTarget.java
++++ b/src/main/java/com/example/InterfaceExtractTarget.java
+@@ -6,7 +6,7 @@
+  * Test fixture for extract interface tool.
+  * Contains public methods that can be extracted to interface.
+  */
+-public class InterfaceExtractTarget implements Comparable<InterfaceExtractTarget> {
++public class InterfaceExtractTarget implements Comparable<InterfaceExtractTarget>, IExtractTarget {
+ 
+     private String name;
+     private int value;
+
