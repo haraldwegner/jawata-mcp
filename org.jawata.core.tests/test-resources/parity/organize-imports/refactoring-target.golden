@@ -1,0 +1,19 @@
+APPLIED-STAGED totalImports=5 unusedImports=[]
+---DIFF---
+--- a/src/main/java/com/example/RefactoringTarget.java
++++ b/src/main/java/com/example/RefactoringTarget.java
+@@ -1,10 +1,10 @@
+ package com.example;
+ 
+-import java.util.List;
++import java.io.IOException;
+ import java.util.ArrayList;
+-import java.util.Map;
+ import java.util.HashMap;
+-import java.io.IOException;
++import java.util.List;
++import java.util.Map;
+ 
+ /**
+  * Test fixture for refactoring tools.
+

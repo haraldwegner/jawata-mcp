@@ -1,0 +1,18 @@
+APPLIED-STAGED variableName=trimmed usageCount=2
+---DIFF---
+--- a/src/main/java/com/example/RefactoringTarget.java
++++ b/src/main/java/com/example/RefactoringTarget.java
+@@ -24,9 +24,9 @@
+      */
+     public void processData(String input) {
+         // Variable to inline
+-        String trimmed = input.trim();
+-        System.out.println(trimmed);
+-        System.out.println(trimmed.length());
++        
++        System.out.println(input.trim());
++        System.out.println(input.trim().length());
+ 
+         // Expression to extract as variable
+         int result = input.length() * 2 + 10;
+
