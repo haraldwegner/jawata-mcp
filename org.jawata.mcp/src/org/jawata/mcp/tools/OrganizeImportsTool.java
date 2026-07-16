@@ -1,49 +1,50 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.IBinding;
-import org.eclipse.jdt.core.dom.ITypeBinding;
-import org.eclipse.jdt.core.dom.ImportDeclaration;
-import org.eclipse.jdt.core.dom.MarkerAnnotation;
-import org.eclipse.jdt.core.dom.NormalAnnotation;
-import org.eclipse.jdt.core.dom.QualifiedName;
-import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SimpleType;
-import org.eclipse.jdt.core.dom.SingleMemberAnnotation;
-import org.eclipse.core.resources.IFile;
+import org.eclipse.jdt.core.manipulation.OrganizeImportsOperation;
+import org.eclipse.jdt.core.search.TypeNameMatch;
+import org.eclipse.jface.text.Document;
 import org.eclipse.ltk.core.refactoring.Change;
-import org.eclipse.text.edits.ReplaceEdit;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Organize imports in a Java file.
- * Removes unused imports and sorts remaining imports.
  *
  * <p>Sprint 14b: auto-applies by default via
  * {@link AbstractApplyingRefactoringTool}. A file whose imports are already
  * organized short-circuits with {@code hasChanges: false} and no edit.</p>
+ *
+ * <p>Sprint 25 (spec D1a item 3): the work is done by JDT's own
+ * {@link OrganizeImportsOperation} — a PUBLIC manipulation API, the same engine
+ * behind the IDE's Source → Organize Imports and the jdt.ls language server.
+ * The original implementation removed-and-sorted only — and its unused-import
+ * detection had a proven defect: the reference walker visited the import
+ * declarations themselves, so every import marked itself "used" and nothing was
+ * ever removed. The JDT operation removes genuinely unused imports (including
+ * unused static imports), ADDS missing imports for unresolved simple names
+ * (ambiguous candidates are skipped headless — the jdt.ls pattern), and honors
+ * the project's configured import order and on-demand thresholds.</p>
  */
 public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
 
@@ -62,9 +63,11 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
     @Override
     public String getDescription() {
         return """
-            Organize imports in a Java file.
+            Organize imports in a Java file (JDT's own Organize Imports engine).
 
-            Removes unused imports and sorts remaining imports alphabetically.
+            Removes unused imports (including unused static imports), ADDS missing
+            imports for unresolved names (ambiguous candidates are skipped rather
+            than guessed), and sorts per the project's import-order configuration.
             Applies the change directly (default) and returns
             { filesModified, diff, undoChangeId, summary }; when imports are
             already organized, returns hasChanges: false without touching the
@@ -98,222 +101,88 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             return Preparation.fail(ToolResponse.invalidParameter("filePath", "Required"));
         }
 
-        {
-            Path path = Path.of(filePath);
-            ICompilationUnit cu = service.getCompilationUnit(path);
-            if (cu == null) {
-                return Preparation.fail(ToolResponse.fileNotFound(filePath));
-            }
-
-            // Parse to AST with bindings
-            ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
-            parser.setSource(cu);
-            parser.setResolveBindings(true);
-            parser.setBindingsRecovery(true);
-            CompilationUnit ast = (CompilationUnit) parser.createAST(null);
-
-            // Get current imports
-            @SuppressWarnings("unchecked")
-            List<ImportDeclaration> currentImports = ast.imports();
-
-            // Find all referenced types
-            Set<String> referencedTypes = findReferencedTypes(ast);
-
-            // Categorize imports
-            List<String> usedImports = new ArrayList<>();
-            List<String> unusedImports = new ArrayList<>();
-            List<String> staticImports = new ArrayList<>();
-            List<String> onDemandImports = new ArrayList<>();
-
-            for (ImportDeclaration imp : currentImports) {
-                String importName = imp.getName().getFullyQualifiedName();
-
-                if (imp.isStatic()) {
-                    staticImports.add(imp.toString().trim());
-                } else if (imp.isOnDemand()) {
-                    onDemandImports.add(importName + ".*");
-                } else {
-                    String simpleName = importName.substring(importName.lastIndexOf('.') + 1);
-                    if (referencedTypes.contains(simpleName) || referencedTypes.contains(importName)) {
-                        usedImports.add(importName);
-                    } else {
-                        unusedImports.add(importName);
-                    }
-                }
-            }
-
-            // Sort imports: java.* first, then javax.*, then others
-            List<String> sortedImports = sortImports(usedImports);
-
-            // Build organized import block
-            StringBuilder organizedImports = new StringBuilder();
-            String lastPrefix = "";
-
-            for (String imp : sortedImports) {
-                String prefix = getImportPrefix(imp);
-                if (!lastPrefix.isEmpty() && !prefix.equals(lastPrefix)) {
-                    organizedImports.append("\n");
-                }
-                organizedImports.append("import ").append(imp).append(";\n");
-                lastPrefix = prefix;
-            }
-
-            // Add on-demand imports
-            if (!onDemandImports.isEmpty()) {
-                if (organizedImports.length() > 0) {
-                    organizedImports.append("\n");
-                }
-                for (String imp : onDemandImports.stream().sorted().collect(Collectors.toList())) {
-                    organizedImports.append("import ").append(imp).append(";\n");
-                }
-            }
-
-            // Add static imports at the end
-            if (!staticImports.isEmpty()) {
-                if (organizedImports.length() > 0) {
-                    organizedImports.append("\n");
-                }
-                for (String imp : staticImports.stream().sorted().collect(Collectors.toList())) {
-                    if (!imp.endsWith(";")) {
-                        organizedImports.append(imp).append("\n");
-                    } else {
-                        organizedImports.append(imp.replace(";", ";\n"));
-                    }
-                }
-            }
-
-            // Calculate import range
-            int importStart = -1;
-            int importEnd = -1;
-            if (!currentImports.isEmpty()) {
-                importStart = currentImports.get(0).getStartPosition();
-                ImportDeclaration lastImport = currentImports.get(currentImports.size() - 1);
-                importEnd = lastImport.getStartPosition() + lastImport.getLength();
-            }
-
-            boolean hasChanges = !unusedImports.isEmpty() || needsSorting(currentImports, sortedImports);
-
-            if (!hasChanges || importStart < 0) {
-                // Already organized (or no import block) — success no-op.
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("operation", getName());
-                data.put("applied", false);
-                data.put("hasChanges", false);
-                data.put("filePath", service.getPathUtils().formatPath(path));
-                data.put("totalImports", currentImports.size());
-                data.put("unusedImports", unusedImports);
-                return Preparation.fail(ToolResponse.success(data, ResponseMeta.builder()
-                    .suggestedNextTools(List.of(
-                        "get_diagnostics to check for remaining issues"))
-                    .build()));
-            }
-
-            List<TextEdit> edits = new ArrayList<>();
-            edits.add(new ReplaceEdit(importStart, importEnd - importStart,
-                organizedImports.toString().trim()));
-
-            IFile file = (IFile) cu.getResource();
-            Change change = ChangeEngine.fromFileEdits("organize imports", Map.of(file, edits));
-
-            Map<String, Object> extras = new LinkedHashMap<>();
-            extras.put("filePath", service.getPathUtils().formatPath(path));
-            extras.put("hasChanges", true);
-            extras.put("totalImports", currentImports.size());
-            extras.put("usedImports", usedImports.size());
-            extras.put("unusedImports", unusedImports);
-            extras.put("organizedImportBlock", organizedImports.toString().trim());
-
-            String summary = "organize imports (" + unusedImports.size() + " unused removed)";
-            return Preparation.of(change, summary, extras);
+        Path path = Path.of(filePath);
+        ICompilationUnit cu = service.getCompilationUnit(path);
+        if (cu == null) {
+            return Preparation.fail(ToolResponse.fileNotFound(filePath));
         }
-    }
 
-    private Set<String> findReferencedTypes(CompilationUnit ast) {
-        Set<String> types = new HashSet<>();
+        HeadlessJdtConfig.ensureInitialized();
 
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(SimpleType node) {
-                types.add(node.getName().getFullyQualifiedName());
-                if (node.getName() instanceof SimpleName sn) {
-                    types.add(sn.getIdentifier());
-                }
-                return true;
-            }
+        // Parse with bindings — the operation resolves references to decide
+        // used/unused and to find candidates for missing imports.
+        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+        parser.setSource(cu);
+        parser.setResolveBindings(true);
+        parser.setBindingsRecovery(true);
+        CompilationUnit ast = (CompilationUnit) parser.createAST(null);
 
-            @Override
-            public boolean visit(SimpleName node) {
-                IBinding binding = node.resolveBinding();
-                if (binding instanceof ITypeBinding) {
-                    types.add(node.getIdentifier());
-                }
-                return true;
-            }
+        int totalImports = ast.imports().size();
 
-            @Override
-            public boolean visit(QualifiedName node) {
-                types.add(node.getFullyQualifiedName());
-                return true;
-            }
+        // Headless ambiguity policy: never guess between candidates — skip them
+        // (returning an empty choice), exactly what jdt.ls does without a UI.
+        OrganizeImportsOperation.IChooseImportQuery skipAmbiguous =
+            (openChoices, ranges) -> new TypeNameMatch[0];
+        OrganizeImportsOperation operation = new OrganizeImportsOperation(
+            cu, ast, /* ignoreLowerCaseNames */ true, /* save */ false,
+            /* allowSyntaxErrors */ true, skipAmbiguous);
 
-            @Override
-            public boolean visit(MarkerAnnotation node) {
-                types.add(node.getTypeName().getFullyQualifiedName());
-                return true;
-            }
+        TextEdit edit = operation.createTextEdit(new NullProgressMonitor());
+        int importsAdded = operation.getNumberOfImportsAdded();
+        int importsRemoved = operation.getNumberOfImportsRemoved();
+        boolean hasChanges = edit != null
+            && (edit.hasChildren() || edit.getLength() > 0 || importsAdded > 0 || importsRemoved > 0);
 
-            @Override
-            public boolean visit(NormalAnnotation node) {
-                types.add(node.getTypeName().getFullyQualifiedName());
-                return true;
-            }
-
-            @Override
-            public boolean visit(SingleMemberAnnotation node) {
-                types.add(node.getTypeName().getFullyQualifiedName());
-                return true;
-            }
-        });
-
-        return types;
-    }
-
-    private List<String> sortImports(List<String> imports) {
-        return imports.stream()
-            .sorted((a, b) -> {
-                int prefixCompare = getImportOrder(a) - getImportOrder(b);
-                if (prefixCompare != 0) return prefixCompare;
-                return a.compareTo(b);
-            })
-            .collect(Collectors.toList());
-    }
-
-    private int getImportOrder(String importName) {
-        if (importName.startsWith("java.")) return 0;
-        if (importName.startsWith("javax.")) return 1;
-        return 2;
-    }
-
-    private String getImportPrefix(String importName) {
-        if (importName.startsWith("java.")) return "java";
-        if (importName.startsWith("javax.")) return "javax";
-        int dot = importName.indexOf('.');
-        return dot > 0 ? importName.substring(0, dot) : importName;
-    }
-
-    private boolean needsSorting(List<ImportDeclaration> current, List<String> sorted) {
-        if (current.size() != sorted.size()) return true;
-
-        int sortedIndex = 0;
-        for (ImportDeclaration imp : current) {
-            if (imp.isStatic() || imp.isOnDemand()) continue;
-
-            String currentName = imp.getName().getFullyQualifiedName();
-            if (sortedIndex >= sorted.size() || !currentName.equals(sorted.get(sortedIndex))) {
-                return true;
-            }
-            sortedIndex++;
+        if (!hasChanges) {
+            // Already organized (or nothing to do) — success no-op, same shape as before.
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("operation", getName());
+            data.put("applied", false);
+            data.put("hasChanges", false);
+            data.put("filePath", service.getPathUtils().formatPath(path));
+            data.put("totalImports", totalImports);
+            data.put("importsAdded", 0);
+            data.put("importsRemoved", 0);
+            return Preparation.fail(ToolResponse.success(data, ResponseMeta.builder()
+                .suggestedNextTools(List.of(
+                    "get_diagnostics to check for remaining issues"))
+                .build()));
         }
-        return false;
+
+        // The organized import block, for the response: apply the edit to a copy
+        // of the source and collect the import lines.
+        String organizedImportBlock = "";
+        try {
+            Document preview = new Document(cu.getSource());
+            edit.copy().apply(preview);
+            List<String> importLines = new ArrayList<>();
+            for (String lineText : preview.get().split("\n", -1)) {
+                String trimmed = lineText.trim();
+                if (trimmed.startsWith("import ")) {
+                    importLines.add(trimmed);
+                }
+            }
+            organizedImportBlock = String.join("\n", importLines);
+        } catch (Exception e) {
+            log.debug("organized-import preview failed: {}", e.getMessage());
+        }
+
+        IFile file = (IFile) cu.getResource();
+        List<TextEdit> edits = new ArrayList<>();
+        edits.add(edit);
+        Change change = ChangeEngine.fromFileEdits("organize imports", Map.of(file, edits));
+
+        Map<String, Object> extras = new LinkedHashMap<>();
+        extras.put("filePath", service.getPathUtils().formatPath(path));
+        extras.put("hasChanges", true);
+        extras.put("totalImports", totalImports);
+        extras.put("importsAdded", importsAdded);
+        extras.put("importsRemoved", importsRemoved);
+        extras.put("organizedImportBlock", organizedImportBlock);
+
+        String summary = "organize imports (" + importsAdded + " added, "
+            + importsRemoved + " removed)";
+        log.debug("organize_imports via JDT OrganizeImportsOperation: {}", summary);
+        return Preparation.of(change, summary, extras);
     }
 }

@@ -105,6 +105,25 @@ class InlineVariableToolTest {
         assertFalse(response.isSuccess());
     }
 
+    @Test
+    @DisplayName("multi-variable declaration: inlining one fragment keeps its siblings (old-tool defect)")
+    void multiVariableDeclaration_siblingSurvives() throws Exception {
+        // Sprint 25 (spec D1a item 2): the pre-JDT tool deleted the WHOLE statement
+        // `int a = 1, b = 2;` when inlining `a`, losing `b`. JDT's InlineTempRefactoring
+        // removes exactly the inlined fragment; the compile gate double-checks.
+        Path file = helper.getTempDirectory()
+            .resolve("simple-maven/src/main/java/com/example/MultiVarInline.java");
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", file.toString());
+        args.put("line", 5);   // int a = 1, b = 2;
+        args.put("column", 12); // on `a`
+        ToolResponse response = tool.execute(args);
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
+        String onDisk = Files.readString(file);
+        assertTrue(onDisk.contains("b = 2"), "sibling variable b must survive:\n" + onDisk);
+        assertFalse(onDisk.contains("a = 1"), "the inlined fragment must be gone:\n" + onDisk);
+    }
+
     // ========== Required Parameter Tests ==========
 
     @Test
