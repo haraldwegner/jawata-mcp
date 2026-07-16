@@ -7,8 +7,8 @@ APPLIED-STAGED variableName=calculated variableType=int
  
          // Expression to extract as variable
 -        int result = input.length() * 2 + 10;
-+                int calculated = input.length() * 2 + 10;
-+int result = calculated;
++        int calculated = input.length() * 2 + 10;
++		int result = calculated;
          System.out.println(result);
  
          // Expression to extract as constant

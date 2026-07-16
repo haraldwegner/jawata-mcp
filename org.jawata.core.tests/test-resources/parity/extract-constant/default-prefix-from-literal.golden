@@ -2,17 +2,17 @@ APPLIED-STAGED constantName=DEFAULT_PREFIX constantType=String
 ---DIFF---
 --- a/src/main/java/com/example/RefactoringTarget.java
 +++ b/src/main/java/com/example/RefactoringTarget.java
-@@ -18,7 +18,9 @@
+@@ -12,7 +12,8 @@
+  */
+ public class RefactoringTarget {
  
-     // Constant candidate
-     private static final int MAX_SIZE = 100;
+-    // Field for rename testing
 +    private static final String DEFAULT_PREFIX = "PREFIX_";
++	// Field for rename testing
+     private String userName;
+     private int count;
  
-+
-     /**
-      * Method with extractable expressions.
-      */
-@@ -33,7 +35,7 @@
+@@ -33,7 +34,7 @@
          System.out.println(result);
  
          // Expression to extract as constant

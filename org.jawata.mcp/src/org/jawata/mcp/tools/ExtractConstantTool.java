@@ -2,32 +2,27 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
-import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.Expression;
-import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.ITypeBinding;
+import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.NodeFinder;
-import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.core.resources.IFile;
+import org.eclipse.jdt.internal.corext.refactoring.code.ExtractConstantRefactoring;
 import org.eclipse.ltk.core.refactoring.Change;
-import org.eclipse.text.edits.InsertEdit;
-import org.eclipse.text.edits.ReplaceEdit;
-import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
+import org.jawata.mcp.refactoring.CheckedChange;
+import org.jawata.mcp.refactoring.JdtRefactoringEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.refactoring.RefactoringEngine;
+import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,10 +34,22 @@ import java.util.function.Supplier;
  *
  * <p>Sprint 14b: auto-applies by default via
  * {@link AbstractApplyingRefactoringTool}.</p>
+ *
+ * <p>Sprint 25 (D1c): the extraction is computed by JDT's own
+ * {@link ExtractConstantRefactoring} (the IDE's Refactor → Extract Constant),
+ * driven through the {@link RefactoringEngine} seam. The original implementation
+ * string-built the {@code private static final} declaration and computed the
+ * insertion point by hand; the JDT engine places a correctly-formatted constant
+ * (respecting existing field order + formatting), replaces the selected
+ * occurrence, and REFUSES a selection it cannot extract (e.g. a non-constant
+ * expression). The v2.12.1 compile-verify gate stays wrapped around the applied
+ * change.</p>
  */
 public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractConstantTool.class);
+
+    private final RefactoringEngine engine = new JdtRefactoringEngine();
 
     private static final Set<String> RESERVED_WORDS = Set.of(
         "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
@@ -67,15 +74,16 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
     @Override
     public String getDescription() {
         return """
-            Extract an expression into a static final constant at class level.
+            Extract an expression into a static final constant at class level (JDT's own engine).
 
             Applies the extraction directly (default) and returns
-            { filesModified, diff, undoChangeId, summary }. Verify with
-            compile_workspace; revert with undo_refactoring(undoChangeId).
+            { filesModified, diff, undoChangeId, summary }, compile-verified on the
+            modified file. Revert with undo_refactoring(undoChangeId).
             Pass auto_apply: false to stage instead — returns { changeId, diff }.
 
-            USAGE: Select expression by providing start and end positions
-            OUTPUT: Modified file + unified diff + undo handle
+            USAGE: Select a constant expression by providing start and end positions
+            and a name. JDT REFUSES a selection it cannot extract — the refusal names
+            the reason.
 
             IMPORTANT: Uses ZERO-BASED coordinates.
 
@@ -134,11 +142,9 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
             return Preparation.fail(
                 ToolResponse.invalidParameter("positions", "All positions must be >= 0"));
         }
-
         if (constantName == null || constantName.isBlank()) {
             return Preparation.fail(ToolResponse.invalidParameter("constantName", "Required"));
         }
-
         if (!isValidConstantName(constantName)) {
             return Preparation.fail(
                 ToolResponse.invalidParameter("constantName", "Not a valid Java identifier"));
@@ -150,165 +156,63 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
             return Preparation.fail(ToolResponse.fileNotFound(filePath));
         }
 
-        // Parse to AST with bindings
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
         parser.setSource(cu);
         parser.setResolveBindings(true);
         parser.setBindingsRecovery(true);
         CompilationUnit ast = (CompilationUnit) parser.createAST(null);
 
-        // Calculate offsets
         int startOffset = ast.getPosition(startLine + 1, startColumn);
         int endOffset = ast.getPosition(endLine + 1, endColumn);
-
         if (startOffset < 0 || endOffset < 0 || startOffset >= endOffset) {
             return Preparation.fail(
                 ToolResponse.invalidParameter("positions", "Invalid selection range"));
         }
 
-        // Find the expression at this range
         NodeFinder finder = new NodeFinder(ast, startOffset, endOffset - startOffset);
         ASTNode coveredNode = finder.getCoveredNode();
         ASTNode coveringNode = finder.getCoveringNode();
-
-        Expression expression = null;
-        if (coveredNode instanceof Expression expr) {
-            expression = expr;
-        } else if (coveringNode instanceof Expression expr) {
-            expression = expr;
-        }
-
+        Expression expression = coveredNode instanceof Expression e ? e
+            : (coveringNode instanceof Expression e2 ? e2 : null);
         if (expression == null) {
             return Preparation.fail(
                 ToolResponse.invalidParameter("selection", "No extractable expression at selection"));
         }
-
-        // Get the type of the expression
         ITypeBinding typeBinding = expression.resolveTypeBinding();
         String typeName = typeBinding != null ? typeBinding.getName() : "Object";
-
-        // Handle primitive types - use wrapper class name for clarity
-        if (typeBinding != null && typeBinding.isPrimitive()) {
-            typeName = typeBinding.getName();
-        }
-
-        // Find the containing type declaration
-        AbstractTypeDeclaration containingType = findContainingType(expression);
-        if (containingType == null) {
-            return Preparation.fail(
-                ToolResponse.invalidParameter("selection", "Cannot find containing type"));
-        }
-
-        // Get expression text
         String expressionText = expression.toString();
 
-        // Build the constant declaration
-        String declaration = "private static final " + typeName + " " + constantName + " = " + expressionText + ";";
+        HeadlessJdtConfig.ensureInitialized();
+        ExtractConstantRefactoring refactoring =
+            new ExtractConstantRefactoring(cu, startOffset, endOffset - startOffset);
+        refactoring.setConstantName(constantName);
+        refactoring.setReplaceAllOccurrences(false);
+        refactoring.setVisibility(Modifier.ModifierKeyword.PRIVATE_KEYWORD.toString());
 
-        // Find insertion point - after existing constants/fields or at the beginning
-        int insertOffset = findConstantInsertionPoint(containingType, cu);
+        CheckedChange checked = engine.propose(refactoring, "extract constant " + constantName);
+        if (checked.isRefused()) {
+            return Preparation.fail(ToolResponse.error(
+                "EXTRACT_REFUSED",
+                "extract_constant refused this selection: " + checked.messages(),
+                "Select a constant expression (JDT's Extract Constant rules apply) and "
+                    + "retry. No files were modified."));
+        }
 
-        // Get indentation
-        String indent = getIndentation(cu, containingType);
-        String memberIndent = indent + "    ";
-
-        // Build JDT edits: constant declaration inserted at class level,
-        // expression replaced by the constant name.
-        List<TextEdit> edits = new ArrayList<>();
-        edits.add(new InsertEdit(insertOffset, memberIndent + declaration + "\n\n"));
-        edits.add(new ReplaceEdit(
-            expression.getStartPosition(), expression.getLength(), constantName));
-
-        IFile file = (IFile) cu.getResource();
-        Change change = ChangeEngine.fromFileEdits(
-            "extract constant " + constantName, Map.of(file, edits));
+        Change change = checked.change();
 
         Map<String, Object> extras = new LinkedHashMap<>();
         extras.put("filePath", service.getPathUtils().formatPath(path));
         extras.put("constantName", constantName);
         extras.put("constantType", typeName);
         extras.put("expressionText", expressionText);
-        extras.put("declaration", declaration);
-        extras.put("containingType", containingType.getName().getIdentifier());
+        if (checked.hasWarnings()) {
+            extras.put("warnings", checked.messages());
+        }
 
-        String summary = "extract constant " + declaration;
+        String summary = "extract constant private static final " + typeName + " "
+            + constantName + " = " + expressionText;
+        log.debug("extract_constant via JDT ExtractConstantRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
-    }
-
-    private AbstractTypeDeclaration findContainingType(ASTNode node) {
-        while (node != null) {
-            if (node instanceof AbstractTypeDeclaration type) {
-                return type;
-            }
-            node = node.getParent();
-        }
-        return null;
-    }
-
-    private int findConstantInsertionPoint(AbstractTypeDeclaration type, ICompilationUnit cu) {
-        // Try to insert after existing static final fields, or at the beginning of the class body
-        if (type instanceof TypeDeclaration td) {
-            @SuppressWarnings("unchecked")
-            List<BodyDeclaration> bodyDecls = td.bodyDeclarations();
-
-            int lastConstantEnd = -1;
-            for (BodyDeclaration decl : bodyDecls) {
-                if (decl instanceof FieldDeclaration fd) {
-                    int modifiers = fd.getModifiers();
-                    // Check if it's a static final field (constant)
-                    if ((modifiers & org.eclipse.jdt.core.dom.Modifier.STATIC) != 0 &&
-                        (modifiers & org.eclipse.jdt.core.dom.Modifier.FINAL) != 0) {
-                        lastConstantEnd = fd.getStartPosition() + fd.getLength();
-                    }
-                }
-            }
-
-            if (lastConstantEnd > 0) {
-                return lastConstantEnd + 1; // Insert after last constant
-            }
-
-            // No existing constants - insert at the beginning of the type body
-            // Find the opening brace
-            try {
-                String source = cu.getSource();
-                if (source != null) {
-                    int typeStart = type.getStartPosition();
-                    int bracePos = source.indexOf('{', typeStart);
-                    if (bracePos > 0) {
-                        return bracePos + 1; // Insert after opening brace
-                    }
-                }
-            } catch (JavaModelException e) {
-                log.debug("Error finding insertion point: {}", e.getMessage());
-            }
-        }
-
-        // Fallback: insert at the beginning of type body
-        return type.getStartPosition() + type.getLength();
-    }
-
-    private String getIndentation(ICompilationUnit cu, ASTNode node) {
-        try {
-            String source = cu.getSource();
-            if (source == null) return "";
-
-            int nodeStart = node.getStartPosition();
-            int lineStart = source.lastIndexOf('\n', nodeStart - 1) + 1;
-
-            StringBuilder indent = new StringBuilder();
-            for (int i = lineStart; i < nodeStart && i < source.length(); i++) {
-                char c = source.charAt(i);
-                if (c == ' ' || c == '\t') {
-                    indent.append(c);
-                } else {
-                    break;
-                }
-            }
-            return indent.toString();
-        } catch (JavaModelException e) {
-            log.debug("Error getting indentation: {}", e.getMessage());
-            return "    ";
-        }
     }
 
     private boolean isValidConstantName(String name) {
@@ -323,6 +227,6 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
                 return false;
             }
         }
-        return !RESERVED_WORDS.contains(name.toLowerCase());
+        return !RESERVED_WORDS.contains(name);
     }
 }
