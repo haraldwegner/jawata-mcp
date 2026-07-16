@@ -65,3 +65,7 @@ docs/REFACTORING_LESSONS_LEARNED.md
 
 # JVM attach handshake litter (a target held at start never consumes it)
 .attach_pid*
+
+# jawata per-workspace data (quality-sweep baselines, coverage + runtime
+# artifacts) — internal analysis state, never published
+.jawata/
