@@ -117,6 +117,100 @@ class GenerateGettersSettersToolTest {
             "expected setUserName skip warning; got: " + warnings);
     }
 
+    // ========== Sprint 25 (spec D1a item 1): styles + gaps ==========
+
+    @Test
+    @DisplayName("record style: getter is the property name itself — unusedField()")
+    void recordStyle_getterIsPropertyName() throws Exception {
+        ObjectNode args = unusedCodeArgs();
+        args.put("kind", "getters");
+        args.put("getterStyle", "record");
+        args.putArray("fields").add("unusedField");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) data.get("methodsAdded");
+        assertTrue(added.contains("unusedField"), "record-style accessor name expected: " + added);
+        String generated = (String) data.get("generatedSource");
+        assertTrue(generated.contains("public int unusedField()"),
+            "record-style accessor must be on disk:\n" + generated);
+        assertTrue(!generated.contains("public int getUnusedField()"),
+            "no classic getter may be generated in record style:\n" + generated);
+    }
+
+    @Test
+    @DisplayName("fluent style: setter returns the declaring type and ends with `return this;`")
+    void fluentStyle_setterReturnsThis() throws Exception {
+        ObjectNode args = unusedCodeArgs();
+        args.put("kind", "setters");
+        args.put("setterStyle", "fluent");
+        args.putArray("fields").add("unusedField");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String generated = (String) data.get("generatedSource");
+        assertTrue(generated.contains("public UnusedCode setUnusedField(int unusedField)"),
+            "fluent setter must return the declaring type:\n" + generated);
+        assertTrue(generated.contains("return this;"),
+            "fluent setter must end with `return this;` for chaining:\n" + generated);
+    }
+
+    @Test
+    @DisplayName("generateJavadoc: accessors carry @return / @param doc")
+    void javadoc_isEmittedOnDemand() throws Exception {
+        ObjectNode args = unusedCodeArgs();
+        args.put("generateJavadoc", true);
+        args.putArray("fields").add("unusedField");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String generated = (String) data.get("generatedSource");
+        assertTrue(generated.contains("@return the unusedField"),
+            "getter Javadoc expected:\n" + generated);
+        assertTrue(generated.contains("@param unusedField the unusedField to set"),
+            "setter Javadoc expected:\n" + generated);
+    }
+
+    @Test
+    @DisplayName("prefix-aware naming: with a field prefix configured, unusedField -> getField (JDT NamingConventions)")
+    void prefixAwareNaming_honorsProjectConventions() throws Exception {
+        // Configure a field prefix on the PROJECT (not the workspace — keeps the
+        // suite isolated): "unused" is treated as a prefix, so field unusedField
+        // has base name "field" and the classic getter becomes getField().
+        service.getJavaProject().setOption(
+            org.eclipse.jdt.core.JavaCore.CODEASSIST_FIELD_PREFIXES, "unused");
+
+        ObjectNode args = unusedCodeArgs();
+        args.put("kind", "getters");
+        args.putArray("fields").add("unusedField");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) data.get("methodsAdded");
+        assertTrue(added.contains("getField"),
+            "prefix-stripped getter name expected (unusedField -> getField): " + added);
+    }
+
+    private ObjectNode unusedCodeArgs() throws Exception {
+        IFile target = findFile("UnusedCode.java");
+        assertNotNull(target, "UnusedCode.java must be present in fixture");
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", target.getLocation().toFile().toPath().toString());
+        args.put("line", 7);
+        args.put("column", 4);
+        return args;
+    }
+
     private IFile findFile(String simpleName) throws Exception {
         AtomicReference<IFile> found = new AtomicReference<>();
         service.getJavaProject().getProject().accept(resource -> {

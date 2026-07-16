@@ -2,11 +2,13 @@ package org.jawata.mcp.tools.codegen;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.NamingConventions;
 import org.eclipse.jdt.core.Signature;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
@@ -16,11 +18,14 @@ import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
 import org.eclipse.jdt.core.dom.FieldAccess;
+import org.eclipse.jdt.core.dom.Javadoc;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.PrimitiveType;
 import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
+import org.eclipse.jdt.core.dom.TagElement;
+import org.eclipse.jdt.core.dom.TextElement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
@@ -96,6 +101,16 @@ public class GenerateGettersSettersTool extends AbstractTool {
             - fields — array of existing field names.
             - kind — "both" (default) | "getters" | "setters".
             - visibility — public (default) | protected | private | package.
+            - getterStyle — "classic" (default: getX()/isX()) | "record"
+              (property-named accessor in the record style: x()).
+            - setterStyle — "classic" (default: void) | "fluent" (returns this,
+              so calls chain builder-style: obj.setA(1).setB(2)).
+            - generateJavadoc — emit Javadoc on the generated accessors
+              (default false).
+
+            Accessor names honor the project's field prefix/suffix conventions
+            (JDT NamingConventions): with field prefix "f" configured, field
+            fName yields getName()/setName(...).
 
             Result:
               { operation, filePath, methodsAdded[], warnings[],
@@ -123,6 +138,17 @@ public class GenerateGettersSettersTool extends AbstractTool {
         properties.put("visibility", Map.of(
             "type", "string",
             "enum", List.of("public", "protected", "private", "package")));
+        properties.put("getterStyle", Map.of(
+            "type", "string",
+            "enum", List.of("classic", "record"),
+            "description", "classic = getX()/isX() (default); record = property-named accessor x()"));
+        properties.put("setterStyle", Map.of(
+            "type", "string",
+            "enum", List.of("classic", "fluent"),
+            "description", "classic = void (default); fluent = returns this for chaining"));
+        properties.put("generateJavadoc", Map.of(
+            "type", "boolean",
+            "description", "Emit Javadoc on the generated accessors (default false)"));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "fields"));
         return withAutoApply(withProjectKey(schema));
@@ -140,6 +166,9 @@ public class GenerateGettersSettersTool extends AbstractTool {
         int column = getIntParam(arguments, "column", 0);
         String kind = getStringParam(arguments, "kind", "both");
         String visibility = getStringParam(arguments, "visibility", "public");
+        String getterStyle = getStringParam(arguments, "getterStyle", "classic");
+        String setterStyle = getStringParam(arguments, "setterStyle", "classic");
+        boolean generateJavadoc = getBooleanParam(arguments, "generateJavadoc", false);
 
         boolean wantGetters = "both".equalsIgnoreCase(kind) || "getters".equalsIgnoreCase(kind);
         boolean wantSetters = "both".equalsIgnoreCase(kind) || "setters".equalsIgnoreCase(kind);
@@ -147,6 +176,15 @@ public class GenerateGettersSettersTool extends AbstractTool {
             return ToolResponse.invalidParameter("kind",
                 "kind must be one of 'both', 'getters', 'setters'; got '" + kind + "'");
         }
+        if (!List.of("classic", "record").contains(getterStyle)) {
+            return ToolResponse.invalidParameter("getterStyle",
+                "getterStyle must be 'classic' or 'record'; got '" + getterStyle + "'");
+        }
+        if (!List.of("classic", "fluent").contains(setterStyle)) {
+            return ToolResponse.invalidParameter("setterStyle",
+                "setterStyle must be 'classic' or 'fluent'; got '" + setterStyle + "'");
+        }
+        boolean fluentSetters = "fluent".equals(setterStyle);
 
         JsonNode fieldsNode = arguments.get("fields");
         if (!fieldsNode.isArray() || fieldsNode.isEmpty()) {
@@ -181,7 +219,15 @@ public class GenerateGettersSettersTool extends AbstractTool {
                         "Field '" + name + "' is not declared on " + type.getElementName() + ".");
                 }
                 String typeName = Signature.toString(field.getTypeSignature());
-                fieldInfos.add(new FieldInfo(name, typeName));
+                // Prefix/suffix-aware property name (JDT NamingConventions honors the
+                // project's configured field prefixes, e.g. fName -> name); with no
+                // conventions configured the base name IS the field name.
+                int variableKind = Flags.isStatic(field.getFlags())
+                    ? NamingConventions.VK_STATIC_FIELD
+                    : NamingConventions.VK_INSTANCE_FIELD;
+                String baseName = NamingConventions.getBaseName(
+                    variableKind, name, field.getJavaProject());
+                fieldInfos.add(new FieldInfo(name, typeName, baseName));
             }
 
             ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
@@ -203,15 +249,19 @@ public class GenerateGettersSettersTool extends AbstractTool {
             List<String> methodsAdded = new ArrayList<>();
             List<String> warnings = new ArrayList<>();
 
+            String declaringTypeName = typeDecl.getName().getIdentifier();
             for (FieldInfo fi : fieldInfos) {
-                String getterName = getterName(fi.name, fi.typeName);
-                String setterName = "set" + capitalize(fi.name);
+                String getterName = "record".equals(getterStyle)
+                    ? fi.baseName
+                    : classicGetterName(fi.baseName, fi.typeName);
+                String setterName = "set" + capitalize(fi.baseName);
 
                 if (wantGetters) {
                     if (methodAlreadyExists(type, getterName, 0)) {
                         warnings.add("Skipped getter '" + getterName + "' — already exists");
                     } else {
-                        bodyRewrite.insertLast(buildGetter(ast, fi, getterName, visibility), null);
+                        bodyRewrite.insertLast(
+                            buildGetter(ast, fi, getterName, visibility, generateJavadoc), null);
                         methodsAdded.add(getterName);
                     }
                 }
@@ -219,7 +269,9 @@ public class GenerateGettersSettersTool extends AbstractTool {
                     if (methodAlreadyExists(type, setterName, 1)) {
                         warnings.add("Skipped setter '" + setterName + "' — already exists");
                     } else {
-                        bodyRewrite.insertLast(buildSetter(ast, fi, setterName, visibility), null);
+                        bodyRewrite.insertLast(
+                            buildSetter(ast, fi, setterName, visibility, fluentSetters,
+                                declaringTypeName, generateJavadoc), null);
                         methodsAdded.add(setterName);
                     }
                 }
@@ -274,11 +326,17 @@ public class GenerateGettersSettersTool extends AbstractTool {
         }
     }
 
-    private static MethodDeclaration buildGetter(AST ast, FieldInfo fi, String getterName, String visibility) {
+    private static MethodDeclaration buildGetter(AST ast, FieldInfo fi, String getterName,
+                                                 String visibility, boolean withJavadoc) {
         MethodDeclaration getter = ast.newMethodDeclaration();
         getter.setName(ast.newSimpleName(getterName));
         getter.setReturnType2(buildType(ast, fi.typeName));
         applyVisibility(ast, getter, visibility);
+        if (withJavadoc) {
+            Javadoc jd = ast.newJavadoc();
+            addJavadocTag(jd, ast, "@return", "the " + fi.baseName);
+            getter.setJavadoc(jd);
+        }
 
         Block body = ast.newBlock();
         @SuppressWarnings("unchecked")
@@ -293,11 +351,25 @@ public class GenerateGettersSettersTool extends AbstractTool {
         return getter;
     }
 
-    private static MethodDeclaration buildSetter(AST ast, FieldInfo fi, String setterName, String visibility) {
+    private static MethodDeclaration buildSetter(AST ast, FieldInfo fi, String setterName,
+                                                 String visibility, boolean fluent,
+                                                 String declaringTypeName, boolean withJavadoc) {
         MethodDeclaration setter = ast.newMethodDeclaration();
         setter.setName(ast.newSimpleName(setterName));
-        setter.setReturnType2(ast.newPrimitiveType(PrimitiveType.VOID));
+        // Fluent (builder-style) setters return the declaring type and end with
+        // `return this;` so calls chain: obj.setA(1).setB(2).
+        setter.setReturnType2(fluent
+            ? ast.newSimpleType(ast.newSimpleName(declaringTypeName))
+            : ast.newPrimitiveType(PrimitiveType.VOID));
         applyVisibility(ast, setter, visibility);
+        if (withJavadoc) {
+            Javadoc jd = ast.newJavadoc();
+            addJavadocTag(jd, ast, "@param", fi.name + " the " + fi.baseName + " to set");
+            if (fluent) {
+                addJavadocTag(jd, ast, "@return", "this, for chaining");
+            }
+            setter.setJavadoc(jd);
+        }
 
         SingleVariableDeclaration param = ast.newSingleVariableDeclaration();
         param.setType(buildType(ast, fi.typeName));
@@ -316,20 +388,35 @@ public class GenerateGettersSettersTool extends AbstractTool {
         assign.setLeftHandSide(lhs);
         assign.setRightHandSide(ast.newSimpleName(fi.name));
         stmts.add(ast.newExpressionStatement(assign));
+        if (fluent) {
+            ReturnStatement chain = ast.newReturnStatement();
+            chain.setExpression(ast.newThisExpression());
+            stmts.add(chain);
+        }
         setter.setBody(body);
         return setter;
     }
 
-    private static String getterName(String fieldName, String typeName) {
+    @SuppressWarnings("unchecked")
+    private static void addJavadocTag(Javadoc jd, AST ast, String tagName, String text) {
+        TagElement tag = ast.newTagElement();
+        tag.setTagName(tagName);
+        TextElement textElement = ast.newTextElement();
+        textElement.setText(text);
+        tag.fragments().add(textElement);
+        jd.tags().add(tag);
+    }
+
+    private static String classicGetterName(String baseName, String typeName) {
         if ("boolean".equals(typeName) || "Boolean".equals(typeName)) {
             // Bean convention: avoid double "is" prefix.
-            if (fieldName.startsWith("is") && fieldName.length() > 2
-                && Character.isUpperCase(fieldName.charAt(2))) {
-                return fieldName;
+            if (baseName.startsWith("is") && baseName.length() > 2
+                && Character.isUpperCase(baseName.charAt(2))) {
+                return baseName;
             }
-            return "is" + capitalize(fieldName);
+            return "is" + capitalize(baseName);
         }
-        return "get" + capitalize(fieldName);
+        return "get" + capitalize(baseName);
     }
 
     private static String capitalize(String s) {
@@ -407,5 +494,5 @@ public class GenerateGettersSettersTool extends AbstractTool {
         return ast.newSimpleType(ast.newName(t));
     }
 
-    private record FieldInfo(String name, String typeName) {}
+    private record FieldInfo(String name, String typeName, String baseName) {}
 }
