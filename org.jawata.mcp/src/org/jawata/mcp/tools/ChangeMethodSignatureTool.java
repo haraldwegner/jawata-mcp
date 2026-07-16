@@ -66,7 +66,13 @@ import java.util.function.Supplier;
  * resolves the ripple across overrides, generics, and varargs, and inserts an
  * added parameter's default value at every call site. The {@code retargetCallsTo}
  * mode (rewrite callers to a DIFFERENT existing method — not a signature change)
- * has no JDT equivalent and stays a hand-rolled call-site rewrite.</p>
+ * stays OUR call-site rewrite BY DECISION (2026-07-16): JDT does ship an engine
+ * in this space — {@code ReplaceInvocationsRefactoring} in
+ * {@code org.eclipse.jdt.core.manipulation} — but it inlines the target's BODY
+ * into the callers rather than retargeting the call, and its own source admits
+ * unsupported cases (constructor invocations: "not yet"). Ours retargets by
+ * name and handles constructors; contributing that upstream is the Sprint-29
+ * contribution case.</p>
  */
 public class ChangeMethodSignatureTool extends AbstractApplyingRefactoringTool {
 
