@@ -5,7 +5,12 @@ builder onto an **atomic** design: JDT's `ChangeSignatureProcessor` for clean
 changes, with the retained hand-rolled apply-and-report editor as the REPORT
 fallback for coupled changes (a return-type change a value-returning body can't
 satisfy, or removing a parameter the body still uses). `retargetCallsTo` stays
-hand-rolled (no JDT equivalent). The composed *always-green* signature migration
+hand-rolled **by decision** — JDT's `ReplaceInvocationsRefactoring` exists but
+inlines the target's body rather than retargeting the call, and its own source
+admits constructor invocations are unsupported ("not yet"); ours retargets by
+name and covers constructors (decision record:
+`sprint-24-final-tool-overview.md` row 16; upstream-contribution case →
+Sprint 29). The composed *always-green* signature migration
 (extract → change → migrate → inline) is deferred to the architect seat (Stage 11)
 as a `refactoring(action=plan)` recipe — not baked into this atomic tool (audit
 decision, 2026-07-16).

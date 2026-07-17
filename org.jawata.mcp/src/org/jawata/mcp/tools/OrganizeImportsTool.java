@@ -42,9 +42,15 @@ import java.util.function.Supplier;
  * detection had a proven defect: the reference walker visited the import
  * declarations themselves, so every import marked itself "used" and nothing was
  * ever removed. The JDT operation removes genuinely unused imports (including
- * unused static imports), ADDS missing imports for unresolved simple names
- * (ambiguous candidates are skipped headless — the jdt.ls pattern), and honors
- * the project's configured import order and on-demand thresholds.</p>
+ * unused static imports) and honors the project's configured import order and
+ * on-demand thresholds.</p>
+ *
+ * <p>KNOWN LIMIT (v2.14.1, filed): the engine's ADD-missing-imports half is not
+ * usable headless yet — a file that needs an import added fails loudly with an
+ * NPE deep in JDT's headless import rewrite ({@code StringTokenizer(null)} on
+ * an unlocated preference; pre-existing, proven independent of our changes).
+ * Nothing is corrupted — the call errors before any edit. Ranked follow-up;
+ * record: {@code test-resources/parity/organize-imports/DIVERGENCES.md}.</p>
  */
 public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
 
@@ -65,9 +71,11 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         return """
             Organize imports in a Java file (JDT's own Organize Imports engine).
 
-            Removes unused imports (including unused static imports), ADDS missing
-            imports for unresolved names (ambiguous candidates are skipped rather
-            than guessed), and sorts per the project's import-order configuration.
+            Removes unused imports (including unused static imports) and sorts
+            per the project's import-order configuration.
+            KNOWN LIMIT (filed): adding MISSING imports is not available yet — a
+            file that needs an import added fails loudly (nothing is modified);
+            use quick_fix(action=suggest_imports) for adds until this is fixed.
             Applies the change directly (default) and returns
             { filesModified, diff, undoChangeId, summary }; when imports are
             already organized, returns hasChanges: false without touching the

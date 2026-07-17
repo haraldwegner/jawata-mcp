@@ -22,10 +22,10 @@ the "Removes unused imports" contract silently never executed. The tool only eve
 re-sorted.
 
 JDT's operation removes all four unused imports (only the used `java.util.List`
-remains), prunes unused static imports, ADDS missing imports for unresolved names
-(ambiguous candidates skipped headless — the jdt.ls pattern), and honors the
-project's import-order configuration instead of the old hardcoded
-java/javax/other ordering.
+remains), prunes unused static imports, and honors the project's import-order
+configuration instead of the old hardcoded java/javax/other ordering. (The
+engine's ADD-missing-imports half is NOT usable headless — see the KNOWN BUG
+section below.)
 
 ## Response-shape divergence (recorded)
 
@@ -33,13 +33,28 @@ The old `unusedImports` list (which, per the defect, was always empty) is replac
 by honest counts from the engine: `importsAdded` / `importsRemoved`. The
 `totalImports`, `hasChanges`, and `organizedImportBlock` keys are unchanged.
 
-## Add-missing + prune-unused-static (spec D1a item 3, recorded v2.14.1)
+## Spec D1a item 3 — HALF-met: prune proven, add-missing is a KNOWN BUG (v2.14.1)
 
-The OLD tool could only remove-and-sort; it never added a missing import nor
-pruned an unused STATIC import. The JDT `OrganizeImportsOperation` does both:
-an unambiguous used type with no import is ADDED, an unused static import is
-PRUNED. Class (1), JDT wins. Proven by
-`OrganizeImportsToolTest#addsMissingImport_andPrunesUnusedStatic` against the
-`ImportOrganizeTargets` fixture (uses `AtomicInteger` unimported + an unused
-`import static java.lang.Math.PI`). This closes the D1a-3 measure ("a file with
-a missing and an unused-static import comes out correct").
+*[Correction, 2026-07-17 (external-audit F1): an earlier version of this
+section claimed the full D1a-3 measure closed by a test
+(`addsMissingImport_andPrunesUnusedStatic`) that does not exist — it was
+written before the add path failed and never revised. This section is the
+honest record.]*
+
+**Prune-unused-static: PROVEN.** The OLD tool never pruned an unused STATIC
+import; the JDT engine does. Class (1), JDT wins. Proven by
+`OrganizeImportsToolTest#prunesUnusedStaticImport` against the
+`ImportOrganizeTargets` fixture (an unused `import static java.lang.Math.PI`,
+deliberately requiring NO added import).
+
+**KNOWN BUG (filed v2.14.1): add-missing-import NPEs headless.** A file that
+needs an import ADDED fails with an NPE deep in JDT's headless import rewrite —
+`StringTokenizer(null)` on an unlocated null preference. PRE-EXISTING: fails
+identically with the v2.14.1 formatter change disabled (exoneration recorded).
+The failure is LOUD (the call errors before any edit; nothing is corrupted).
+The null preference was not pinpointed by reading `OrganizeImportsOperation`,
+`JavaPreferencesSettings`, or `CodeStyleConfiguration`; locating and seeding it
+in `HeadlessJdtConfig` is the ranked follow-up. Until then the D1a-3 measure
+("a file with a missing and an unused-static import comes out correct") is
+HALF-met — the gap is recorded here and in the tool's own description/Javadoc
+(release call: Harald, 2026-07-16; disposition in dossier-25 §C7).
