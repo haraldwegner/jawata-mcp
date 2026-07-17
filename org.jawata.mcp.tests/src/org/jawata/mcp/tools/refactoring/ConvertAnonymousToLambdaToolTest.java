@@ -152,6 +152,24 @@ class ConvertAnonymousToLambdaToolTest {
         assertFalse(response.isSuccess());
     }
 
+    @Test
+    @DisplayName("records the field-in-anonymous outcome: refused, disk untouched (spec D1a item 4)")
+    void refusesAnonymousClassWithField() throws Exception {
+        // Sprint 25 (spec D1a item 4): the OLD tool silently dropped a field
+        // declared in the anonymous class and produced broken output; a lambda
+        // has no instance state, so the JDT engine (LambdaExpressionsFixCore)
+        // cannot convert it and REFUSES. The `new Runnable()` in fieldInAnonymous
+        // is at 0-based 142:21; the anon declares `private int calls`.
+        String original = Files.readString(anonymousExamplesFile);
+
+        ToolResponse response = tool.execute(args(142, 21));
+
+        assertFalse(response.isSuccess(),
+            "an anonymous class with a field cannot become a lambda — must refuse");
+        assertEquals(original, Files.readString(anonymousExamplesFile),
+            "a refusal must not touch disk");
+    }
+
     // ========== Required Parameter Tests ==========
 
     @Test

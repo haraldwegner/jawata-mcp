@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -81,6 +82,40 @@ class GenerateGettersSettersToolTest {
             "generated source must declare getUnusedField; got:\n" + generated);
         assertTrue(generated.contains("public void setUnusedField(int unusedField)"),
             "generated source must declare setUnusedField; got:\n" + generated);
+
+        // v2.14.1 finding #5, tier 4: the fixture project has no formatter
+        // config, so the config-less default applies — SPACES, not JDT's
+        // built-in tab default. No leading tab anywhere.
+        assertFalse(generated.lines().anyMatch(l -> l.startsWith("\t")),
+            "generated code must not indent with tabs (config-less default = spaces):\n"
+                + generated);
+        assertTrue(generated.contains("    public int getUnusedField()"),
+            "the generated accessor must be space-indented:\n" + generated);
+    }
+
+    @Test
+    @DisplayName("indentChar=tab override forces tab indentation (v2.14.1 #5 tier 1)")
+    void indentCharOverride_forcesTabs() throws Exception {
+        IFile target = findFile("UnusedCode.java");
+        assertNotNull(target);
+
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", target.getLocation().toFile().toPath().toString());
+        args.put("line", 7);
+        args.put("column", 4);
+        args.put("indentChar", "tab");
+        args.putArray("fields").add("unusedField");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> "must succeed; got: " + r.getError());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String generated = (String) data.get("generatedSource");
+        // The explicit override wins over the config-less spaces default: the
+        // generated accessor is tab-indented.
+        assertTrue(generated.contains("\tpublic int getUnusedField()"),
+            "indentChar=tab must produce a tab-indented accessor:\n" + generated);
     }
 
     @Test

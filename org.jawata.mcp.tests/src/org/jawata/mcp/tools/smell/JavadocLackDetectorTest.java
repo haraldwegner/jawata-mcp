@@ -63,7 +63,7 @@ class JavadocLackDetectorTest {
     }
 
     @Test
-    @DisplayName("exact fixture counts: the 8 undocumented public-API members, nothing else")
+    @DisplayName("exact fixture counts: the 15 undocumented public-API members, nothing else")
     void exactFixtureCounts() {
         ObjectNode args = kindArgs();
         args.put("filePath", "src/main/java/com/example/" + FIXTURE);
@@ -74,16 +74,26 @@ class JavadocLackDetectorTest {
             .collect(Collectors.toSet());
 
         Set<String> expected = Set.of(
-            "JavadocLackTargets#JavadocLackTargets",
+            "JavadocLackTargets#JavadocLackTargets",      // the seed ctor (non-trivial)
             "JavadocLackTargets#undocumentedField",
+            "JavadocLackTargets#firstFragment",           // multi-fragment declaration,
+            "JavadocLackTargets#secondFragment",          // one finding per fragment
             "JavadocLackTargets#undocumentedMethod",
             "JavadocLackTargets#protectedUndoc",
+            "JavadocLackTargets#issue",                   // NOT an accessor ("is" prefix over-match)
             "JavadocLackTargets.DocumentedNested#nestedUndoc",
             "JavadocLackTargets.NestedApi",
             "JavadocLackTargets.NestedApi#implicitlyPublic",
+            "JavadocLackTargets.NestedApi.ImplicitlyPublicNested",  // implicitly public (JLS)
+            "JavadocLackTargets.NestedApi.ImplicitlyPublicNested#hidden",
+            "JavadocLackTargets.Marker",
+            "JavadocLackTargets.Marker#value",            // annotation member
             "JavadocLackTargets.Level#HIGH");
         assertEquals(expected, symbols, "the enumeration must be EXACT");
-        assertEquals(8, findings(data).size());
+        // 15, not 16: the EMPTY constructor is trivial-exempt while the seed
+        // constructor (same symbol) counts — the size pins the distinction the
+        // symbol set cannot.
+        assertEquals(15, findings(data).size());
 
         // The deliberate skips must hold (they are inside `expected` by absence,
         // but name the load-bearing ones explicitly):

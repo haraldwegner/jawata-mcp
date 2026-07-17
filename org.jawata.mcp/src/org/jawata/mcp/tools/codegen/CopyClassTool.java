@@ -163,8 +163,10 @@ public class CopyClassTool extends AbstractTool {
             for (SimpleName n : toRename) {
                 rewrite.replace(n, a.newSimpleName(newName), null);
             }
-            TextEdit edits = rewrite.rewriteAST();
             Document doc = new Document(cu.getSource());
+            TextEdit edits = rewrite.rewriteAST(doc,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
+                    cu, getStringParam(arguments, "indentChar", null)));
             edits.apply(doc);
             String newSource = doc.get();
 

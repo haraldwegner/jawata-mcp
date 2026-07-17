@@ -210,9 +210,11 @@ public class OverrideMethodsTool extends AbstractTool {
                 methodsAdded.add(match.getElementName());
             }
 
-            TextEdit edits = rewrite.rewriteAST();
             String original = cu.getSource();
             Document doc = new Document(original);
+            TextEdit edits = rewrite.rewriteAST(doc,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
+                    cu, getStringParam(arguments, "indentChar", null)));
             edits.apply(doc);
             String newSource = doc.get();
 

@@ -55,6 +55,14 @@ public final class HeadlessJdtConfig {
             new org.eclipse.jdt.internal.core.manipulation.MembersOrderPreferenceCacheCommon()
                 .install();
 
+            // NOTE (v2.14.1 #5): the formatter tab-char DEFAULT for generated
+            // code is NOT set here. A JavaCore.setOptions default did not
+            // propagate to the code-generating rewrites headless, so the
+            // load-bearing fix lives at the call site — see
+            // org.jawata.mcp.tools.shared.FormatterOptions, which resolves the
+            // tab char per rewrite (indentChar override > project config >
+            // spaces default) and is passed to ASTRewrite.rewriteAST(doc, opts).
+
             // Code-template store: without one, CodeGeneration.get*BodyContent
             // returns null and SelfEncapsulateFieldRefactoring's fallback path
             // hits an upstream bug (a bare Assignment added where a Statement

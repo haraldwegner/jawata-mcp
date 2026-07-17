@@ -33,3 +33,14 @@ interface) pass unchanged against the engine. Response-shape divergence, recorde
 the old synthesized `lambdaExpression` string is gone (JDT performs the real
 rewrite); tests assert the diff/on-disk lambda — the same pattern as
 inline_method's dropped `inlinedCode`.
+
+## Field-in-anonymous case (spec D1a item 4, recorded v2.14.1)
+
+The OLD hand-rolled tool silently DROPPED a field declared in the anonymous
+class and emitted a lambda anyway — broken output (a lambda has no instance
+state). The JDT engine (`LambdaExpressionsFixCore.createConvertToLambdaFix`)
+correctly REFUSES: null fix → CONVERT_REFUSED, disk untouched. Class (3), JDT
+wins. Proven by `ConvertAnonymousToLambdaToolTest#refusesAnonymousClassWithField`
+against the `fieldInAnonymous()` fixture (a `private int calls` inside a
+`Runnable`). This closes the D1a-4 measure ("the field case no longer produces
+broken output — refused, recorded").

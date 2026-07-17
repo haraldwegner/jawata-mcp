@@ -424,7 +424,9 @@ public class ChangeMethodSignatureTool extends AbstractApplyingRefactoringTool {
         };
     }
 
-    // ===================== retarget (hand-rolled — no JDT equivalent) =====================
+    // ===== retarget (hand-rolled BY DECISION — JDT's ReplaceInvocationsRefactoring =====
+    // ===== inlines the body instead of retargeting and can't do constructors; see the =====
+    // ===== class javadoc + Sprint-29 upstream case) =====================================
 
     private Preparation prepareRetarget(IJdtService service, IMethod method,
                                         String retargetCallsTo) throws Exception {

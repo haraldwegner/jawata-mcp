@@ -67,7 +67,7 @@ public class GenerateTool extends AbstractTool {
 
             Kinds (all ZERO-BASED coordinates on a caret in the target type):
             - constructor      — a constructor. Needs: fields[]. Optional: visibility, callSuper.
-            - getters_setters  — accessors. Needs: fields[]. Optional: accessorKind (get|set|both, default both), visibility.
+            - getters_setters  — accessors. Needs: fields[]. Optional: accessorKind (getters|setters|both, default both), visibility, getterStyle (classic|record), setterStyle (classic|fluent), generateJavadoc.
             - equals_hashcode  — equals() + hashCode(). Needs: fields[].
             - tostring         — toString(). Needs: fields[]. Optional: style.
             - test_skeleton    — a test class for the type. Optional: framework, includePrivateMethods.
@@ -103,7 +103,7 @@ public class GenerateTool extends AbstractTool {
             "description", "constructor/getters_setters/equals_hashcode/tostring: field names to include."));
         properties.put("visibility", Map.of("type", "string", "description", "constructor/getters_setters: member visibility (e.g. public)."));
         properties.put("callSuper", Map.of("type", "string", "description", "constructor: whether to call super (auto|true|false)."));
-        properties.put("accessorKind", Map.of("type", "string", "enum", List.of("get", "set", "both"),
+        properties.put("accessorKind", Map.of("type", "string", "enum", List.of("getters", "setters", "both"),
             "description", "getters_setters: which accessors to generate (default both)."));
         properties.put("style", Map.of("type", "string", "description", "tostring: rendering style."));
         properties.put("framework", Map.of("type", "string", "description", "test_skeleton: test framework (e.g. junit5)."));
@@ -112,6 +112,9 @@ public class GenerateTool extends AbstractTool {
             "description", "override_methods: specific method names to override (default all overridable)."));
         properties.put("newTypeName", Map.of("type", "string",
             "description", "copy_class: name for the cloned class (must not already exist in the package)."));
+        properties.put("indentChar", Map.of("type", "string", "enum", List.of("space", "tab"),
+            "description", "Override the indentation of generated code. Default: match the target "
+                + "project's formatter config (.settings/.editorconfig), else spaces. Rarely needed."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "type to generate into"));
@@ -148,13 +151,20 @@ public class GenerateTool extends AbstractTool {
     }
 
     /**
-     * Map the public {@code accessorKind} onto the delegate's {@code kind} param
-     * (get/set/both), since our discriminator already occupies {@code kind}.
+     * Map the public {@code accessorKind} onto the delegate's {@code kind} param,
+     * since our discriminator already occupies {@code kind}. The delegate speaks
+     * getters/setters/both; the legacy get/set values are translated rather than
+     * rejected (v2.14.1 — the untranslated pass-through made the published schema
+     * unusable: the schema said get/set, the validator demanded getters/setters).
      */
     private JsonNode remapAccessorKind(JsonNode arguments) {
         ObjectNode copy = (ObjectNode) arguments.deepCopy();
         String accessor = getStringParam(arguments, "accessorKind", "both");
-        copy.put("kind", accessor);
+        copy.put("kind", switch (accessor) {
+            case "get" -> "getters";
+            case "set" -> "setters";
+            default -> accessor;
+        });
         copy.remove("accessorKind");
         return copy;
     }

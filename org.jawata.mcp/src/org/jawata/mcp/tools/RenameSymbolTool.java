@@ -144,9 +144,21 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
 
     @Override
     protected Preparation prepareChange(IJdtService service, JsonNode arguments) throws Exception {
+        // Sprint 24 (D1) name form: symbol="pkg.Type#member" resolves to a
+        // position IN PLACE, so the position path below proceeds untouched. The
+        // schema has advertised this since v2.13.x but it was never wired here —
+        // passing symbol= without filePath failed "filePath Required", making the
+        // whole-symbol-refactoring steering false (v2.14.1 audit finding #3).
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return Preparation.fail(nameForm.get());
+        }
+
         String filePath = getStringParam(arguments, "filePath");
         if (filePath == null || filePath.isBlank()) {
-            return Preparation.fail(ToolResponse.invalidParameter("filePath", "Required"));
+            return Preparation.fail(ToolResponse.invalidParameter("filePath",
+                "Required — pass filePath+line+column, or symbol=\"pkg.Type#member\"."));
         }
 
         int line = getIntParam(arguments, "line", -1);

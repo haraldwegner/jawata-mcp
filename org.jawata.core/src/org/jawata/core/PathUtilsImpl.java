@@ -23,7 +23,11 @@ public class PathUtilsImpl implements IPathUtils {
 
     @Override
     public String formatPath(Path path) {
-        Path normalizedPath = path.toAbsolutePath().normalize();
+        // A RELATIVE input is resolved against the PROJECT ROOT, never the process
+        // CWD — toAbsolutePath() would resolve it against the CWD (the AppImage
+        // mount on a packaged resident), and startsWith(projectRoot) would then
+        // fail and leak the mount path into the response (v2.14.1 audit finding).
+        Path normalizedPath = (path.isAbsolute() ? path : projectRoot.resolve(path)).normalize();
 
         String result;
         if (useAbsolutePaths) {

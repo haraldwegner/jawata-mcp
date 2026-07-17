@@ -277,9 +277,15 @@ public class GenerateGettersSettersTool extends AbstractTool {
                 }
             }
 
-            TextEdit edits = rewrite.rewriteAST();
             String original = cu.getSource();
             Document doc = new Document(original);
+            // Generated accessors match the target file's indentation (v2.14.1
+            // #5): the no-arg rewriteAST() ignores formatter options and emits
+            // JDT's tab default. FormatterOptions resolves the tab char by
+            // precedence — indentChar override > project config > spaces default.
+            TextEdit edits = rewrite.rewriteAST(doc,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
+                    cu, getStringParam(arguments, "indentChar", null)));
             edits.apply(doc);
             String newSource = doc.get();
 

@@ -32,3 +32,14 @@ java/javax/other ordering.
 The old `unusedImports` list (which, per the defect, was always empty) is replaced
 by honest counts from the engine: `importsAdded` / `importsRemoved`. The
 `totalImports`, `hasChanges`, and `organizedImportBlock` keys are unchanged.
+
+## Add-missing + prune-unused-static (spec D1a item 3, recorded v2.14.1)
+
+The OLD tool could only remove-and-sort; it never added a missing import nor
+pruned an unused STATIC import. The JDT `OrganizeImportsOperation` does both:
+an unambiguous used type with no import is ADDED, an unused static import is
+PRUNED. Class (1), JDT wins. Proven by
+`OrganizeImportsToolTest#addsMissingImport_andPrunesUnusedStatic` against the
+`ImportOrganizeTargets` fixture (uses `AtomicInteger` unimported + an unused
+`import static java.lang.Math.PI`). This closes the D1a-3 measure ("a file with
+a missing and an unused-static import comes out correct").

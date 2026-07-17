@@ -119,6 +119,12 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
             "constantName", Map.of(
                 "type", "string",
                 "description", "Name for the constant (should be UPPER_SNAKE_CASE)"
+            ),
+            "replaceAllOccurrences", Map.of(
+                "type", "boolean",
+                "description", "Replace EVERY occurrence of the expression with the new "
+                    + "constant (default true, the IDE default); false replaces only the "
+                    + "selected occurrence."
             )
         ));
         schema.put("required", List.of("filePath", "startLine", "startColumn", "endLine", "endColumn", "constantName"));
@@ -182,11 +188,17 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
         String typeName = typeBinding != null ? typeBinding.getName() : "Object";
         String expressionText = expression.toString();
 
+        boolean replaceAll = !arguments.has("replaceAllOccurrences")
+            || arguments.get("replaceAllOccurrences").asBoolean(true);
+
         HeadlessJdtConfig.ensureInitialized();
         ExtractConstantRefactoring refactoring =
             new ExtractConstantRefactoring(cu, startOffset, endOffset - startOffset);
         refactoring.setConstantName(constantName);
-        refactoring.setReplaceAllOccurrences(false);
+        // Default to replace-all (the IDE default): extracting one of several
+        // identical literals and leaving the rest is the surprising outcome
+        // (v2.14.1). Opt out with replaceAllOccurrences=false.
+        refactoring.setReplaceAllOccurrences(replaceAll);
         refactoring.setVisibility(Modifier.ModifierKeyword.PRIVATE_KEYWORD.toString());
 
         CheckedChange checked = engine.propose(refactoring, "extract constant " + constantName);

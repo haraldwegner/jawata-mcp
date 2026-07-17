@@ -79,6 +79,21 @@ class PathUtilsImplTest {
         assertFalse(formatted.contains("\\"), "Should convert backslashes");
     }
 
+    @Test
+    @DisplayName("formatPath resolves a RELATIVE input against the project root, not the CWD")
+    void formatPath_resolvesRelativeAgainstProjectRoot() {
+        // v2.14.1 audit finding: a relative filePath must resolve against the
+        // project root. toAbsolutePath() would resolve it against the process
+        // CWD (the AppImage mount on a packaged resident) and leak that path.
+        String formatted = pathUtils.formatPath(
+            Path.of("src/main/java/com/example/Calculator.java"));
+
+        assertEquals("src/main/java/com/example/Calculator.java", formatted,
+            "a relative input must come back project-relative, never CWD-resolved");
+        assertFalse(formatted.startsWith("/"),
+            "must not leak an absolute (CWD/mount) path: " + formatted);
+    }
+
     // ========== getProjectRoot Tests ==========
 
     @Test

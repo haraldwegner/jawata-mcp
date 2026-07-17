@@ -34,14 +34,16 @@ import java.util.List;
  */
 public final class JavadocLackDetector extends AbstractAstDetector {
 
+    /** Declares the kind, its contract and its skip rules to the catalog base. */
     public JavadocLackDetector() {
         super("javadoc_lack",
             "Undocumented PUBLIC API — public/protected types (exported enclosing chain) and "
                 + "their public/protected methods, constructors, fields, enum constants and "
                 + "annotation members carrying NO Javadoc. Interface/annotation members count "
-                + "as public. Skips @Override methods (doc inherited) and trivial "
-                + "single-statement get/is/set accessors. threshold: unused. The Sprint-25 "
-                + "documentation ratchet counts these findings.",
+                + "as public. Skips what a documentation pass should not chase: @Override "
+                + "methods (doc inherited), trivial single-statement get/is/set accessors, and "
+                + "trivial constructors (empty, or a single delegation/assignment statement) — "
+                + "so the documentation ratchet counts substance. threshold: unused.",
             0);
     }
 
@@ -57,7 +59,16 @@ public final class JavadocLackDetector extends AbstractAstDetector {
 
     private void walkType(AbstractTypeDeclaration td, String enclosing,
                           CompilationUnit ast, String filePath, List<Finding> out) {
-        if (!isExported(td.getModifiers())) {
+        walkType(td, enclosing, ast, filePath, out, false);
+    }
+
+    private void walkType(AbstractTypeDeclaration td, String enclosing,
+                          CompilationUnit ast, String filePath, List<Finding> out,
+                          boolean implicitlyExported) {
+        // A type nested in an interface or annotation is implicitly public (JLS)
+        // regardless of its declared modifiers — v2.14.1, audit finding: the
+        // modifier-only check silently dropped that population.
+        if (!implicitlyExported && !isExported(td.getModifiers())) {
             return; // nothing inside a non-exported type is public API
         }
         String typeName = enclosing.isEmpty()
@@ -83,7 +94,7 @@ public final class JavadocLackDetector extends AbstractAstDetector {
         for (Object o : td.bodyDeclarations()) {
             BodyDeclaration bd = (BodyDeclaration) o;
             if (bd instanceof AbstractTypeDeclaration nested) {
-                walkType(nested, typeName, ast, filePath, out);
+                walkType(nested, typeName, ast, filePath, out, membersImplicitlyPublic);
                 continue;
             }
             boolean exported = membersImplicitlyPublic || isExported(bd.getModifiers());
@@ -91,7 +102,7 @@ public final class JavadocLackDetector extends AbstractAstDetector {
                 continue;
             }
             if (bd instanceof MethodDeclaration m) {
-                if (hasOverrideAnnotation(m) || isTrivialAccessor(m)) {
+                if (hasOverrideAnnotation(m) || isTrivialAccessor(m) || isTrivialConstructor(m)) {
                     continue;
                 }
                 String symbol = typeName + "#" + m.getName().getIdentifier();
@@ -146,15 +157,55 @@ public final class JavadocLackDetector extends AbstractAstDetector {
         return false;
     }
 
-    /** get/is with no params or set with one param, and a single-statement body. */
+    /**
+     * get/is with no params or set with one param, and a single-statement body.
+     * The prefix must be a real accessor prefix — followed by an uppercase
+     * letter or nothing — so {@code issue()}, {@code isolate()} or
+     * {@code settle(x)} are NOT skipped (v2.14.1, audit finding: the bare
+     * startsWith over-matched).
+     */
     private static boolean isTrivialAccessor(MethodDeclaration m) {
         if (m.isConstructor() || m.getBody() == null || m.getBody().statements().size() != 1) {
             return false;
         }
         String name = m.getName().getIdentifier();
         int params = m.parameters().size();
-        boolean getter = params == 0 && (name.startsWith("get") || name.startsWith("is"));
-        boolean setter = params == 1 && name.startsWith("set");
+        boolean getter = params == 0 && (hasAccessorPrefix(name, "get") || hasAccessorPrefix(name, "is"));
+        boolean setter = params == 1 && hasAccessorPrefix(name, "set");
         return getter || setter;
+    }
+
+    private static boolean hasAccessorPrefix(String name, String prefix) {
+        if (!name.startsWith(prefix)) {
+            return false;
+        }
+        return name.length() == prefix.length()
+            || Character.isUpperCase(name.charAt(prefix.length()));
+    }
+
+    /**
+     * Empty, or a single delegation ({@code super(...)}/{@code this(...)}) or
+     * assignment statement — the DI-plumbing shape whose only possible Javadoc
+     * restates the signature (ratchet decision, 2026-07-16). Constructors with
+     * real bodies still count.
+     */
+    private static boolean isTrivialConstructor(MethodDeclaration m) {
+        if (!m.isConstructor() || m.getBody() == null) {
+            return false;
+        }
+        List<?> statements = m.getBody().statements();
+        if (statements.isEmpty()) {
+            return true;
+        }
+        if (statements.size() != 1) {
+            return false;
+        }
+        Object only = statements.get(0);
+        if (only instanceof org.eclipse.jdt.core.dom.SuperConstructorInvocation
+                || only instanceof org.eclipse.jdt.core.dom.ConstructorInvocation) {
+            return true;
+        }
+        return only instanceof org.eclipse.jdt.core.dom.ExpressionStatement es
+            && es.getExpression() instanceof org.eclipse.jdt.core.dom.Assignment;
     }
 }

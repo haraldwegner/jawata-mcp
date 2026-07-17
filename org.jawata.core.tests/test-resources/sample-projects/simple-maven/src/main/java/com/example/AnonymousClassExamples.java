@@ -132,4 +132,23 @@ public class AnonymousClassExamples {
             }
         };
     }
+
+    /**
+     * Anonymous Runnable that declares a FIELD — a lambda has no instance state,
+     * so the engine cannot convert it (Sprint 25 spec D1a item 4: the old tool
+     * silently dropped the field and produced broken output; the JDT engine
+     * refuses). The `new Runnable()` is on the line below.
+     */
+    public void fieldInAnonymous() {
+        Runnable r = new Runnable() {
+            private int calls = 0;
+
+            @Override
+            public void run() {
+                calls++;
+                System.out.println("run #" + calls);
+            }
+        };
+        r.run();
+    }
 }

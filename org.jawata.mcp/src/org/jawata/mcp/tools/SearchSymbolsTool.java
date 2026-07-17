@@ -236,8 +236,10 @@ public class SearchSymbolsTool extends AbstractTool {
             }
             return "Address this directly next time: symbol=\"" + address + "\" — the name is "
                 + "the stable key (it survives file moves; a position does not), and every "
-                + "reading tool and whole-symbol refactoring accepts it. Remember it instead "
-                + "of searching again.";
+                + "reading tool and whole-symbol refactoring (rename_symbol, extract, "
+                + "find_references, get_call_hierarchy, …) accepts it. Or feed this row's "
+                + "line/column straight to a refactoring tool — both are ZERO-BASED, no "
+                + "arithmetic. Remember it instead of searching again.";
         }
         return null;
     }

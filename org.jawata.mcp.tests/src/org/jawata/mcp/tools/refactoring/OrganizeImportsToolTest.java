@@ -37,6 +37,7 @@ class OrganizeImportsToolTest {
     private ObjectMapper objectMapper;
     private Path refactoringTargetFile;
     private Path calculatorFile;
+    private Path importOrganizeFile;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -49,6 +50,8 @@ class OrganizeImportsToolTest {
             .resolve("simple-maven/src/main/java/com/example/RefactoringTarget.java");
         calculatorFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/Calculator.java");
+        importOrganizeFile = helper.getTempDirectory()
+            .resolve("simple-maven/src/main/java/com/example/ImportOrganizeTargets.java");
     }
 
     @SuppressWarnings("unchecked")
@@ -95,6 +98,37 @@ class OrganizeImportsToolTest {
             assertEquals(Boolean.FALSE, data.get("applied"));
             assertEquals(original, Files.readString(refactoringTargetFile));
         }
+    }
+
+    // ========== Capability: prune unused-static import (spec D1a item 3) ==========
+
+    @Test
+    @DisplayName("prunes an unused static import (JDT engine)")
+    void prunesUnusedStaticImport() throws Exception {
+        // Sprint 25 (spec D1a item 3): the OLD tool never pruned an unused
+        // STATIC import; the JDT engine does. The add-missing-import half of the
+        // measure is filed separately (NPEs in JDT's headless import rewrite —
+        // see parity/organize-imports/DIVERGENCES.md); this fixture requires no
+        // added import, so it exercises the prune capability cleanly.
+        String original = Files.readString(importOrganizeFile);
+        assertTrue(original.contains("import static java.lang.Math.PI;"),
+            "fixture must ship the unused static import");
+
+        ToolResponse response = tool.execute(args(importOrganizeFile));
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
+        Map<String, Object> data = getData(response);
+        assertEquals(Boolean.TRUE, data.get("hasChanges"));
+        assertEquals(Boolean.TRUE, data.get("applied"));
+
+        String onDisk = Files.readString(importOrganizeFile);
+        assertFalse(onDisk.contains("import static java.lang.Math.PI;"),
+            "the unused static import must be PRUNED:\n" + onDisk);
+
+        // Undo restores byte-for-byte.
+        ToolResponse undone = undoTool.execute(objectMapper.createObjectNode()
+            .put("undoChangeId", (String) data.get("undoChangeId")));
+        assertTrue(undone.isSuccess(), () -> String.valueOf(undone.getError()));
+        assertEquals(original, Files.readString(importOrganizeFile));
     }
 
     // ========== File with No Imports Test ==========

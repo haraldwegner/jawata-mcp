@@ -238,9 +238,11 @@ public class GenerateConstructorTool extends AbstractTool {
             bodyRewrite.insertLast(ctor, null);
 
             // Apply the edits back to the CU's source.
-            TextEdit edits = rewrite.rewriteAST();
             String original = cu.getSource();
             Document doc = new Document(original);
+            TextEdit edits = rewrite.rewriteAST(doc,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
+                    cu, getStringParam(arguments, "indentChar", null)));
             edits.apply(doc);
             String newSource = doc.get();
 
