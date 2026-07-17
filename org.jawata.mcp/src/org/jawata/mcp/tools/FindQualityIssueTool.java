@@ -327,11 +327,17 @@ public class FindQualityIssueTool extends AbstractTool {
                         if (r.isSuccess()) {
                             r = paginateFamily(r, arguments);
                         }
-                    } catch (RuntimeException e) {
+                    } catch (Throwable e) {
+                        // v3.0.1 (audit F3): Throwable, not RuntimeException — an
+                        // Error must not leave the session forever "running".
                         r = ToolResponse.internalError(
                             "async sweep '" + id + "' failed: " + e.getMessage());
                     }
-                    session.cancelled = session.cancelRequested.get();
+                    // v3.0.1 (audit F1): cancelled = the loop actually stopped
+                    // early. A cancel that landed during the LAST detector left a
+                    // COMPLETE result — labeling it partial was contradictory.
+                    session.cancelled = session.cancelRequested.get()
+                        && session.kindsDone.get() < session.kindsTotal;
                     session.result = r;
                     session.finished = true;
                 }, "jawata-sweep-" + id);
