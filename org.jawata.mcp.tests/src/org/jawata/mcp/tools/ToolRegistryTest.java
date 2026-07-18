@@ -55,6 +55,34 @@ class ToolRegistryTest {
             "a tap failure is the tap's problem, never the caller's");
     }
 
+    @Test
+    @DisplayName("Sprint 26 D1: watch findings COMPOSE with the tool's steering, never replace it")
+    void watchFindings_composeWithSteering() throws Exception {
+        registry.setWatchEngine(new org.jawata.mcp.learn.WatchEngine(
+            (kind, path) -> "bugs".equals(kind)
+                ? org.jawata.mcp.models.ToolResponse.success(java.util.Map.of("findings",
+                    java.util.List.of(java.util.Map.of(
+                        "kind", "bugs", "filePath", path, "line", 4, "message", "seeded smell"))))
+                : org.jawata.mcp.models.ToolResponse.success(
+                    java.util.Map.of("findings", java.util.List.of())),
+            null));
+        // A mutating mock whose response carries filesModified — the delta source.
+        registry.register(new MockTool("rename_symbol", "mutates") {
+            @Override
+            public org.jawata.mcp.models.ToolResponse execute(JsonNode arguments) {
+                return org.jawata.mcp.models.ToolResponse.success(
+                    java.util.Map.of("filesModified", java.util.List.of("Seeded.java")));
+            }
+        });
+        var response = registry.callTool("rename_symbol", objectMapper.readTree("{}"), "s1");
+        String steering = response.getMeta().getSteering();
+        assertNotNull(steering);
+        assertTrue(steering.contains("Grounded next step"), "the tool's own steering survives");
+        assertTrue(steering.contains("ARCHITECT WATCH"), "the watch block is appended");
+        assertTrue(steering.contains("design fix or bandage?"), "the architect's question rides");
+        assertTrue(steering.contains("seeded smell"));
+    }
+
     // ========== Registration Tests ==========
 
     @Test

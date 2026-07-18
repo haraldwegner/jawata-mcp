@@ -100,6 +100,8 @@ public class JawataApplication implements IApplication {
     // Sprint 21 (v2.0): the local experience/knowledge store — workspace-scoped H2,
     // opened at start()/closed at stop(). Backs the ExperienceAdvisor + store tools.
     private ExperienceStore experienceStore;
+    /** Sprint 26: kept for the watch engine's detector binding. */
+    private FindQualityIssueTool findQualityIssueTool;
     /** Sprint 21b (item D): held for the automatic post-project-load refresh. */
     private ExperienceTool experienceTool;
     private McpProtocolHandler protocolHandler;
@@ -158,10 +160,21 @@ public class JawataApplication implements IApplication {
         // of use). Rides the store's H2 file; a non-H2 (degraded) store means
         // ledger-only tapping, stated in the log.
         if (experienceStore instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
+            org.jawata.mcp.knowledge.LearnerEventStore learnerEvents =
+                new org.jawata.mcp.knowledge.LearnerEventStore(h2);
             toolRegistry.setEventTap(new org.jawata.mcp.learn.EventTap(
-                new org.jawata.mcp.learn.SessionLedger(),
-                new org.jawata.mcp.knowledge.LearnerEventStore(h2)));
-            log.info("Learner event tap wired (session ledger + learner_event store)");
+                new org.jawata.mcp.learn.SessionLedger(), learnerEvents));
+            // D1: the automatic architect — detectors bound to the quality
+            // tool's own single-file path (no second detector surface).
+            toolRegistry.setWatchEngine(new org.jawata.mcp.learn.WatchEngine(
+                (kind, filePath) -> {
+                    com.fasterxml.jackson.databind.node.ObjectNode args =
+                        new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+                    args.put("kind", kind);
+                    args.put("filePath", filePath);
+                    return findQualityIssueTool.execute(args);
+                }, learnerEvents));
+            log.info("Learner event tap + watch engine wired");
         } else {
             toolRegistry.setEventTap(new org.jawata.mcp.learn.EventTap(
                 new org.jawata.mcp.learn.SessionLedger(), null));
@@ -621,7 +634,9 @@ public class JawataApplication implements IApplication {
         // implementations the parametric tools delegate to; they're no
         // longer registered as user-facing MCP tools.
         toolRegistry.register(new FindPatternUsagesTool(() -> jdtService));
-        toolRegistry.register(new FindQualityIssueTool(() -> jdtService));
+        FindQualityIssueTool qualityTool = new FindQualityIssueTool(() -> jdtService);
+        toolRegistry.register(qualityTool);
+        this.findQualityIssueTool = qualityTool;
         // Sprint 22a P2-a: literal-content search (net-new front door #2).
         toolRegistry.register(new FindStringLiteralsTool(() -> jdtService));
         // find_method_references now via find_references(kind=method_references).

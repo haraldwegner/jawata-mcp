@@ -51,6 +51,24 @@ public class ToolResponse {
     }
 
     /**
+     * Sprint 26: APPEND a steering block — composes with (never replaces) the
+     * tool's own steering line. Used by the watch engine and the server-side
+     * checks; no-op on errors and blank blocks.
+     */
+    public void appendSteering(String block) {
+        if (!success || block == null || block.isBlank()) {
+            return;
+        }
+        if (meta == null) {
+            meta = ResponseMeta.builder().steering(block).build();
+            return;
+        }
+        String current = meta.getSteering();
+        meta.setSteering(current == null || current.isBlank()
+            ? block : current + "\n" + block);
+    }
+
+    /**
      * Create a successful response with data and optional metadata.
      */
     public static ToolResponse success(Object data) {

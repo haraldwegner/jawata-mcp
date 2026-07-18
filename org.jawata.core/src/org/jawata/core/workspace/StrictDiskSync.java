@@ -39,14 +39,26 @@ import java.util.function.Supplier;
  */
 public class StrictDiskSync {
 
-    /** Per-call outcome, for the dispatch log + the workspace-scope benchmark. */
+    /** Per-call outcome, for the dispatch log + the workspace-scope benchmark.
+     * Sprint 26: {@code refreshedPaths} carries WHICH source files changed
+     * (bounded to {@link #MAX_REPORTED_PATHS}) — the watch engine's delta. */
     public record SyncReport(boolean skipped, int newProjects, int refreshedFiles,
                              int builtProjects, long scanNanos, long totalNanos,
-                             boolean fullBuild) {
+                             boolean fullBuild, java.util.List<String> refreshedPaths) {
+        public SyncReport(boolean skipped, int newProjects, int refreshedFiles,
+                          int builtProjects, long scanNanos, long totalNanos,
+                          boolean fullBuild) {
+            this(skipped, newProjects, refreshedFiles, builtProjects, scanNanos,
+                totalNanos, fullBuild, java.util.List.of());
+        }
+
         public boolean reconciled() {
             return newProjects > 0 || refreshedFiles > 0;
         }
     }
+
+    /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */
+    public static final int MAX_REPORTED_PATHS = 50;
 
     /**
      * Sprint 22a P2-d — the build kind is decided per sync pass, not a constant.
@@ -106,6 +118,7 @@ public class StrictDiskSync {
         NullProgressMonitor monitor = new NullProgressMonitor();
         Set<IProject> toBuild = new LinkedHashSet<>();
         int refreshed = 0;
+        java.util.List<String> refreshedPaths = new java.util.ArrayList<>();
 
         for (Path root : scan.newRoots()) {
             LoadedProject lp = byRoot.get(root);
@@ -116,13 +129,23 @@ public class StrictDiskSync {
             }
         }
         for (Path p : scan.changed()) {
-            refreshed += refreshExisting(byRoot, p, toBuild, monitor);
+            int r = refreshExisting(byRoot, p, toBuild, monitor);
+            refreshed += r;
+            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS
+                    && p.toString().endsWith(".java")) {
+                refreshedPaths.add(p.toString());
+            }
         }
         for (Path p : scan.deleted()) {
             refreshed += refreshExisting(byRoot, p, toBuild, monitor);
         }
         for (Path p : scan.added()) {
-            refreshed += refreshAdded(byRoot, p, toBuild, monitor);
+            int r = refreshAdded(byRoot, p, toBuild, monitor);
+            refreshed += r;
+            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS
+                    && p.toString().endsWith(".java")) {
+                refreshedPaths.add(p.toString());
+            }
         }
         // Structure changes (added/deleted files): the JAVA MODEL caches each source
         // root's package-fragment children, and this headless runtime does not
@@ -160,7 +183,8 @@ public class StrictDiskSync {
         }
         recordRedState(toBuild);
         return new SyncReport(false, scan.newRoots().size(), refreshed, toBuild.size(),
-            scan.durationNanos(), System.nanoTime() - t0, full);
+            scan.durationNanos(), System.nanoTime() - t0, full,
+            java.util.List.copyOf(refreshedPaths));
     }
 
     /** Changed or deleted: refresh exactly the file handle (deletion drops it from the model). */

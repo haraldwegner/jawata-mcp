@@ -53,6 +53,9 @@ public class ToolRegistry {
     /** Sprint 26: the learner event tap — null until the application wires it. */
     private org.jawata.mcp.learn.EventTap eventTap;
 
+    /** Sprint 26 (D1): the watch engine — null until the application wires it. */
+    private org.jawata.mcp.learn.WatchEngine watchEngine;
+
     /** Install the post-project-mutation hook (Sprint 21e). Null = no hook (tests). */
     public void setProjectsMutatedHook(Runnable hook) {
         this.projectsMutatedHook = hook;
@@ -251,9 +254,11 @@ public class ToolRegistry {
         // editor) BEFORE the tool computes anything, so every answer reflects the
         // CURRENT tree. Failure = WARN and proceed (availability over freshness on a
         // guard crash ONLY — never a switch; correctness is not configurable).
+        java.util.List<String> syncDelta = java.util.List.of();
         if (diskSync != null) {
             try {
                 StrictDiskSync.SyncReport sync = diskSync.syncBeforeCall();
+                syncDelta = sync.refreshedPaths();
                 if (sync.reconciled()) {
                     log.info("Strict disk sync before {}: {} new project(s), {} file(s) reconciled,"
                             + " {} project(s) built in {}ms",
@@ -299,6 +304,11 @@ public class ToolRegistry {
             // effect of use). Tap failures are the tap's own concern (loud
             // there); they never fail the tool call.
             tap(sessionId, name, arguments, response);
+            // Sprint 26 (D1): the automatic architect — the delta (hand edits
+            // seen by the pre-call disk sync + files this call modified) runs
+            // through the watch engine; NEW findings ride the answer. Never
+            // on the quality tool itself (recursion) and never fatally.
+            watch(sessionId, name, syncDelta, response);
             return response;
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
@@ -316,6 +326,30 @@ public class ToolRegistry {
             tap(sessionId, name, arguments, error);
             return error;
         }
+    }
+
+    /** Sprint 26 (D1): runs the watch engine over the call's delta. */
+    private void watch(String sessionId, String name, java.util.List<String> syncDelta,
+            ToolResponse response) {
+        if (watchEngine == null || "find_quality_issue".equals(name)) {
+            return;
+        }
+        try {
+            java.util.List<String> delta = new java.util.ArrayList<>(syncDelta);
+            if (response.getData() instanceof Map<?, ?> map
+                    && map.get("filesModified") instanceof List<?> files) {
+                files.forEach(f -> delta.add(String.valueOf(f)));
+            }
+            watchEngine.watch(sessionId, delta)
+                .ifPresent(response::appendSteering);
+        } catch (Exception e) {
+            log.error("Watch engine failed after {} — findings for this delta were lost", name, e);
+        }
+    }
+
+    /** Sprint 26 (D1): install the watch engine (application wiring). */
+    public void setWatchEngine(org.jawata.mcp.learn.WatchEngine engine) {
+        this.watchEngine = engine;
     }
 
     /** Sprint 26: forwards the outcome to the event tap; never fails the call. */
