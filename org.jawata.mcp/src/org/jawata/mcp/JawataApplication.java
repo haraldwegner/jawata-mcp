@@ -153,6 +153,22 @@ public class JawataApplication implements IApplication {
         experienceStore = openExperienceStore();
         registerTools();
 
+        // Sprint 26: the event tap — every tool outcome becomes a learner
+        // label as a side effect of the call (D7: training is a side effect
+        // of use). Rides the store's H2 file; a non-H2 (degraded) store means
+        // ledger-only tapping, stated in the log.
+        if (experienceStore instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
+            toolRegistry.setEventTap(new org.jawata.mcp.learn.EventTap(
+                new org.jawata.mcp.learn.SessionLedger(),
+                new org.jawata.mcp.knowledge.LearnerEventStore(h2)));
+            log.info("Learner event tap wired (session ledger + learner_event store)");
+        } else {
+            toolRegistry.setEventTap(new org.jawata.mcp.learn.EventTap(
+                new org.jawata.mcp.learn.SessionLedger(), null));
+            log.warn("Learner event tap running LEDGER-ONLY — no persistent store"
+                + " (degraded experience store); the label stream is not persisted");
+        }
+
         // Initialize protocol handler
         protocolHandler = new McpProtocolHandler(toolRegistry);
 

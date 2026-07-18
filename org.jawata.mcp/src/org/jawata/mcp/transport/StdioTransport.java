@@ -43,6 +43,9 @@ public class StdioTransport implements Transport {
      * <p>Per-message dispatch errors are logged and swallowed — the loop
      * survives a single bad message (preserves pre-Stage-3 behaviour).
      */
+    /** Sprint 26: one MCP session per stdio process — minted once. */
+    private final String stdioSessionId = "stdio-" + java.util.UUID.randomUUID();
+
     @Override
     public void run(MessageHandler handler) throws IOException {
         log.debug("StdioTransport: entering message loop");
@@ -50,7 +53,7 @@ public class StdioTransport implements Transport {
         while (!closed && (line = readMessage()) != null) {
             log.debug("Received: {}", line);
             try {
-                String response = handler.handle(line);
+                String response = handler.handle(line, stdioSessionId);
                 if (response != null) {
                     writeMessage(response);
                     log.debug("Sent: {}", response);

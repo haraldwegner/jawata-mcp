@@ -29,6 +29,32 @@ class ToolRegistryTest {
         objectMapper = new ObjectMapper();
     }
 
+    // ========== Sprint 26: session threading + event tap ==========
+
+    @Test
+    @DisplayName("callTool threads the session id into the event tap; errors are tapped too")
+    void callTool_threadsSessionIntoTap() throws Exception {
+        org.jawata.mcp.learn.SessionLedger ledger = new org.jawata.mcp.learn.SessionLedger();
+        registry.setEventTap(new org.jawata.mcp.learn.EventTap(ledger, null));
+        registry.register(new MockTool("ok_tool", "answers"));
+        registry.callTool("ok_tool", objectMapper.readTree("{}"), "session-A");
+        assertEquals(1, ledger.calls("session-A").size(), "the call is ledgered under its session");
+        assertTrue(ledger.calls("session-A").get(0).ok());
+        // The 2-arg overload keys the "local" session (in-process callers).
+        registry.callTool("ok_tool", objectMapper.readTree("{}"));
+        assertEquals(1, ledger.calls("local").size());
+        // A tap failure never fails the tool call.
+        registry.setEventTap(new org.jawata.mcp.learn.EventTap(ledger, null) {
+            @Override
+            public void onCall(String s, String n, JsonNode a,
+                    org.jawata.mcp.models.ToolResponse r) {
+                throw new IllegalStateException("tap boom");
+            }
+        });
+        assertTrue(registry.callTool("ok_tool", objectMapper.readTree("{}"), "s").isSuccess(),
+            "a tap failure is the tap's problem, never the caller's");
+    }
+
     // ========== Registration Tests ==========
 
     @Test

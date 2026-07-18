@@ -36,6 +36,14 @@ public class McpProtocolHandler {
      * Returns null for notifications (no response required).
      */
     public String processMessage(String jsonMessage) {
+        return processMessage(jsonMessage, "local");
+    }
+
+    /**
+     * Sprint 26: the session-scoped entry — {@code sessionId} comes from the
+     * transport and flows to the tool registry (ledger + learner events).
+     */
+    public String processMessage(String jsonMessage, String sessionId) {
         try {
             JsonRpcMessage request = objectMapper.readValue(jsonMessage, JsonRpcMessage.class);
 
@@ -49,7 +57,7 @@ public class McpProtocolHandler {
 
             // Handle request
             if (request.isRequest()) {
-                return handleRequest(request);
+                return handleRequest(request, sessionId);
             }
 
             // Handle notification (no response needed)
@@ -79,7 +87,7 @@ public class McpProtocolHandler {
         }
     }
 
-    private String handleRequest(JsonRpcMessage request) {
+    private String handleRequest(JsonRpcMessage request, String sessionId) {
         String method = request.getMethod();
         Object id = request.getId();
         JsonNode params = request.getParams();
@@ -91,7 +99,7 @@ public class McpProtocolHandler {
                 case "initialize" -> handleInitialize(params);
                 case "initialized" -> handleInitialized();
                 case "tools/list" -> handleToolsList();
-                case "tools/call" -> handleToolsCall(params);
+                case "tools/call" -> handleToolsCall(params, sessionId);
                 case "shutdown" -> handleShutdown();
                 default -> throw new MethodNotFoundException("Method not found: " + method);
             };
@@ -266,7 +274,8 @@ public class McpProtocolHandler {
     /**
      * Handle tools/call - execute a tool.
      */
-    private Object handleToolsCall(JsonNode params) throws InvalidParamsException, MethodNotFoundException {
+    private Object handleToolsCall(JsonNode params, String sessionId)
+            throws InvalidParamsException, MethodNotFoundException {
         if (params == null) {
             throw new InvalidParamsException("Missing params");
         }
@@ -282,7 +291,7 @@ public class McpProtocolHandler {
         log.debug("Calling tool: {} with arguments: {}", toolName, arguments);
 
         try {
-            Object toolResult = toolRegistry.callTool(toolName, arguments);
+            Object toolResult = toolRegistry.callTool(toolName, arguments, sessionId);
 
             // MCP expects content array format for tool results
             Map<String, Object> result = new LinkedHashMap<>();

@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 4;
+    static final int LATEST = 5;
 
     private SchemaMigrations() {
     }
@@ -85,6 +85,9 @@ final class SchemaMigrations {
         }
         if (from < 4) {
             migrateToV4(conn);
+        }
+        if (from < 5) {
+            migrateToV5(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -207,6 +210,37 @@ final class SchemaMigrations {
                 + " WHERE package_name = 'org.goja' OR package_name LIKE 'org.goja.%'");
             s.execute("UPDATE experience_link SET target = " + rewrite.formatted("target")
                 + " WHERE target LIKE 'org.goja.%'");
+        }
+    }
+
+    /**
+     * v5 (Sprint 26): the injector's learning layer — {@code learner_event}, the
+     * continuous label stream (one row per immediate signal: a tool error, an
+     * undo, a mechanical touch, a gate call, a compile-failure after a touched
+     * file), session-scoped; and {@code learner_state}, each learner's
+     * serialized model + rolling record. Sibling tables on the same store file
+     * so learner data inherits the store's per-workspace provenance, backup and
+     * privacy boundary (local only — nothing crosses).
+     */
+    private static void migrateToV5(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("CREATE TABLE IF NOT EXISTS learner_event ("
+                + "id IDENTITY PRIMARY KEY, "
+                + "ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                + "session_id VARCHAR(64), "
+                + "kind VARCHAR(40) NOT NULL, "
+                + "tool VARCHAR(80), "
+                + "detail_json CLOB, "
+                + "workspace_id VARCHAR(80), "
+                + "project_id VARCHAR(80))");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_learner_event_kind"
+                + " ON learner_event(kind)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_learner_event_session"
+                + " ON learner_event(session_id)");
+            s.execute("CREATE TABLE IF NOT EXISTS learner_state ("
+                + "learner VARCHAR(60) PRIMARY KEY, "
+                + "state_json CLOB, "
+                + "updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         }
     }
 

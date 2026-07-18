@@ -117,7 +117,7 @@ class StdioTransportTest {
 
         try (StdioTransport transport = new StdioTransport(
                 new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out)) {
-            transport.run(msg -> "{\"jsonrpc\":\"2.0\",\"result\":\"ok\"}");
+            transport.run((msg, session) -> "{\"jsonrpc\":\"2.0\",\"result\":\"ok\"}");
         }
 
         String written = out.toString(StandardCharsets.UTF_8);
@@ -134,7 +134,7 @@ class StdioTransportTest {
 
         try (StdioTransport transport = new StdioTransport(
                 new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out)) {
-            transport.run(msg -> null);
+            transport.run((msg, session) -> null);
         }
 
         assertTrue(out.toString(StandardCharsets.UTF_8).isEmpty(),
@@ -152,7 +152,7 @@ class StdioTransportTest {
 
         try (StdioTransport transport = new StdioTransport(
                 new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out)) {
-            transport.run(msg -> {
+            transport.run((msg, session) -> {
                 if (msg.contains("\"bad\"")) {
                     throw new RuntimeException("simulated dispatch failure");
                 }

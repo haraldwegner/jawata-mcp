@@ -86,6 +86,25 @@ class SchemaMigrationsTest {
     }
 
     @Test
+    void v5_creates_the_learner_tables(@TempDir Path dir) throws Exception {
+        // Sprint 26: the injector's learning layer rides the same store file.
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            LearnerEventStore learner = new LearnerEventStore(store);
+            learner.append(new org.jawata.mcp.learn.LearnerEvent(
+                "s1", org.jawata.mcp.learn.LearnerEvent.KIND_TOOL_ERROR, "compile_workspace",
+                "{\"error\":true}"));
+            learner.saveState("edit-switch", "{\"w\":[0.1]}");
+            assertEquals(1, learner.totalEvents(), "the event landed");
+            assertEquals("{\"w\":[0.1]}", learner.loadState("edit-switch").orElseThrow());
+            assertEquals(0, learner.failedWrites(), "no silent drops");
+        }
+        assertEquals("1", scalar(dir, "SELECT COUNT(*) FROM learner_event"),
+            "learner_event persisted on the store file");
+        assertEquals("1", scalar(dir, "SELECT COUNT(*) FROM learner_state"),
+            "learner_state persisted on the store file");
+    }
+
+    @Test
     void fresh_store_lands_at_latest_with_facet_columns(@TempDir Path dir) throws Exception {
         String id;
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {

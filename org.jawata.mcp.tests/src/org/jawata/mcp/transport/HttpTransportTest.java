@@ -32,9 +32,40 @@ class HttpTransportTest {
     private static final String TOKEN = "test-token-deadbeef-cafef00d";
 
     @Test
+    @DisplayName("Sprint 26: Mcp-Session-Id is honored when sent, minted when absent, echoed always")
+    void sessionId_honoredMintedEchoed() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> seen =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        try (TestServer server = new TestServer((msg, session) -> {
+            seen.set(session);
+            return "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}";
+        })) {
+            // Client-supplied id is honored + echoed.
+            HttpRequest withId = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("Mcp-Session-Id", "client-session-42")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}"))
+                .build();
+            HttpResponse<String> r1 = HttpClient.newHttpClient()
+                .send(withId, HttpResponse.BodyHandlers.ofString());
+            assertEquals("client-session-42", seen.get(), "handler receives the client's id");
+            assertEquals("client-session-42",
+                r1.headers().firstValue("Mcp-Session-Id").orElseThrow(), "echoed back");
+            // Absent id: one is minted and echoed.
+            HttpResponse<String> r2 = post(server.port(), TOKEN,
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"x\"}");
+            String minted = r2.headers().firstValue("Mcp-Session-Id").orElseThrow();
+            assertTrue(minted.startsWith("http-"), "minted id has the transport prefix");
+            assertEquals(minted, seen.get(), "the handler saw the minted id");
+        }
+    }
+
+    @Test
     @DisplayName("respondsToHealthCheckOverHttp — POST /mcp dispatches and returns 200")
     void respondsToHealthCheckOverHttp() throws Exception {
-        try (TestServer server = new TestServer(msg ->
+        try (TestServer server = new TestServer((msg, session) ->
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}")) {
             HttpResponse<String> resp = post(server.port(), TOKEN,
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"health_check\"}");
@@ -51,7 +82,7 @@ class HttpTransportTest {
     @DisplayName("handlerReceivesInboundBody — verifies the raw JSON-RPC reaches the dispatcher")
     void handlerReceivesInboundBody() throws Exception {
         final String[] capturedBody = new String[1];
-        try (TestServer server = new TestServer(msg -> {
+        try (TestServer server = new TestServer((msg, session) -> {
             capturedBody[0] = msg;
             return "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}";
         })) {
@@ -65,7 +96,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("missingTokenReturns401 — POST without Authorization → 401, empty body")
     void missingTokenReturns401() throws Exception {
-        try (TestServer server = new TestServer(msg -> {
+        try (TestServer server = new TestServer((msg, session) -> {
             throw new AssertionError("handler should not be invoked when auth fails");
         })) {
             HttpResponse<String> resp = postNoAuth(server.port(),
@@ -79,7 +110,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("wrongTokenReturns401")
     void wrongTokenReturns401() throws Exception {
-        try (TestServer server = new TestServer(msg -> {
+        try (TestServer server = new TestServer((msg, session) -> {
             throw new AssertionError("handler should not be invoked when auth fails");
         })) {
             HttpResponse<String> resp = post(server.port(), "not-the-real-token",
@@ -91,7 +122,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("malformedJsonReturns400 — bad body → 400")
     void malformedJsonReturns400() throws Exception {
-        try (TestServer server = new TestServer(msg -> {
+        try (TestServer server = new TestServer((msg, session) -> {
             throw new AssertionError("handler should not be invoked on bad JSON");
         })) {
             HttpResponse<String> resp = post(server.port(), TOKEN, "this { is not json");
@@ -102,7 +133,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("emptyBodyReturns400")
     void emptyBodyReturns400() throws Exception {
-        try (TestServer server = new TestServer(msg -> {
+        try (TestServer server = new TestServer((msg, session) -> {
             throw new AssertionError("handler should not be invoked on empty body");
         })) {
             HttpResponse<String> resp = post(server.port(), TOKEN, "");
@@ -113,7 +144,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("nonPostMethodReturns405 — GET /mcp → 405")
     void nonPostMethodReturns405() throws Exception {
-        try (TestServer server = new TestServer(msg -> "")) {
+        try (TestServer server = new TestServer((msg, session) -> "")) {
             HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp"))
                 .header("Authorization", "Bearer " + TOKEN)
@@ -128,7 +159,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("notificationReturns204 — handler returns null → 204 (no content)")
     void notificationReturns204() throws Exception {
-        try (TestServer server = new TestServer(msg -> null)) {
+        try (TestServer server = new TestServer((msg, session) -> null)) {
             HttpResponse<String> resp = post(server.port(), TOKEN,
                 "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\"}");
             assertEquals(204, resp.statusCode());
@@ -138,7 +169,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("autoPortAllocatedWhenZero — requesting port=0 binds ephemeral OS-assigned")
     void autoPortAllocatedWhenZero() throws Exception {
-        try (TestServer server = new TestServer(msg -> "")) {
+        try (TestServer server = new TestServer((msg, session) -> "")) {
             int p = server.port();
             assertTrue(p > 0 && p < 65536,
                 "expected OS-assigned ephemeral port, got: " + p);
@@ -151,7 +182,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("readyLineEmittedToStdout — exactly one READY url=... token=... line")
     void readyLineEmittedToStdout() throws Exception {
-        try (TestServer server = new TestServer(msg -> "")) {
+        try (TestServer server = new TestServer((msg, session) -> "")) {
             int p = server.port();
             String captured = server.capturedStdout();
             String expected = "READY url=http://127.0.0.1:" + p + " token=" + TOKEN;
@@ -167,7 +198,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("tokenNotInStdoutBeyondReadyLine — security: no leak elsewhere on stdout")
     void tokenNotInStdoutBeyondReadyLine() throws Exception {
-        try (TestServer server = new TestServer(msg -> "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}")) {
+        try (TestServer server = new TestServer((msg, session) -> "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}")) {
             // Exercise a few requests so dispatch paths run.
             post(server.port(), TOKEN, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"a\"}");
             post(server.port(), TOKEN, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"b\"}");
@@ -198,7 +229,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("sseRequiresAuth — GET /mcp/events without Authorization → 401")
     void sseRequiresAuth() throws Exception {
-        try (TestServer server = new TestServer(msg -> "")) {
+        try (TestServer server = new TestServer((msg, session) -> "")) {
             HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp/events"))
                 .GET()
@@ -212,7 +243,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("sseNonGetReturns405 — POST /mcp/events → 405")
     void sseNonGetReturns405() throws Exception {
-        try (TestServer server = new TestServer(msg -> "")) {
+        try (TestServer server = new TestServer((msg, session) -> "")) {
             HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp/events"))
                 .header("Authorization", "Bearer " + TOKEN)
@@ -227,7 +258,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("sseEmitsReadyEvent — initial event on subscription is `ready`")
     void sseEmitsReadyEvent() throws Exception {
-        try (TestServer server = new TestServer(msg -> "")) {
+        try (TestServer server = new TestServer((msg, session) -> "")) {
             try (SseClient client = SseClient.open(server.port(), TOKEN)) {
                 assertEquals(200, client.statusCode());
                 assertEquals("text/event-stream; charset=utf-8",
@@ -243,7 +274,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("heartbeatFiresPeriodically — short interval produces several heartbeats")
     void heartbeatFiresPeriodically() throws Exception {
-        try (TestServer server = new TestServer(msg -> "", Duration.ofMillis(50))) {
+        try (TestServer server = new TestServer((msg, session) -> "", Duration.ofMillis(50))) {
             try (SseClient client = SseClient.open(server.port(), TOKEN)) {
                 // Consume the initial `ready` event.
                 SseFrame ready = client.readFrame(Duration.ofSeconds(2));
@@ -269,7 +300,7 @@ class HttpTransportTest {
     @DisplayName("sendEventBroadcastsToSubscribers — transport.sendEvent reaches subscribed client")
     void sendEventBroadcastsToSubscribers() throws Exception {
         // Long heartbeat so the test doesn't race with heartbeat frames.
-        try (TestServer server = new TestServer(msg -> "", Duration.ofSeconds(30))) {
+        try (TestServer server = new TestServer((msg, session) -> "", Duration.ofSeconds(30))) {
             try (SseClient client = SseClient.open(server.port(), TOKEN)) {
                 // Consume `ready`
                 SseFrame ready = client.readFrame(Duration.ofSeconds(2));
@@ -288,7 +319,7 @@ class HttpTransportTest {
     @Test
     @DisplayName("subscribersRemovedOnDisconnect — closing client drops it from broadcast set")
     void subscribersRemovedOnDisconnect() throws Exception {
-        try (TestServer server = new TestServer(msg -> "", Duration.ofSeconds(30))) {
+        try (TestServer server = new TestServer((msg, session) -> "", Duration.ofSeconds(30))) {
             try (SseClient client = SseClient.open(server.port(), TOKEN)) {
                 client.readFrame(Duration.ofSeconds(2));  // ready
             }

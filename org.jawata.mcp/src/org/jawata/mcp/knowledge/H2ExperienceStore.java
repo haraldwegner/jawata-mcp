@@ -51,6 +51,16 @@ public final class H2ExperienceStore implements ExperienceStore {
      * down under us (Sprint 21b: a {@code compact} on ANY attached resident closes the
      * database for ALL of them; the peers must reconnect, not die).
      */
+    /**
+     * Sprint 26: the learner tables (schema v5) live on this same store file;
+     * {@link LearnerEventStore} shares the connection AND this instance as its
+     * lock (every access synchronizes on the store object, exactly as the
+     * store's own methods do), so the two writers never interleave.
+     */
+    Connection sharedConnection() {
+        return live();
+    }
+
     private Connection live() {
         try {
             if (conn == null || conn.isClosed() || !conn.isValid(1)) {
@@ -239,6 +249,11 @@ public final class H2ExperienceStore implements ExperienceStore {
     @Override
     public String provenanceWorkspaceId() {
         return workspaceId;
+    }
+
+    /** Sprint 26: the learner event rows carry the same provenance. */
+    String provenanceProjectId() {
+        return projectId;
     }
 
     @Override

@@ -66,6 +66,11 @@ public final class MechanicalChangeJournal {
     }
 
     /** Test seam: forget everything. */
+    /** Sprint 26 (event tap): whether any mechanical touches are pending. */
+    public static boolean hasEntries() {
+        return !TOUCHED.isEmpty();
+    }
+
     public static void clear() {
         TOUCHED.clear();
     }

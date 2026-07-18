@@ -34,6 +34,12 @@ public interface Transport extends AutoCloseable {
      */
     @FunctionalInterface
     interface MessageHandler {
-        String handle(String message);
+        /**
+         * Sprint 26: {@code sessionId} identifies the MCP session — parsed
+         * from (or minted for) the {@code Mcp-Session-Id} header per HTTP
+         * request, minted once per stdio process. It keys the per-session
+         * ledger and the learner event stream.
+         */
+        String handle(String message, String sessionId);
     }
 }

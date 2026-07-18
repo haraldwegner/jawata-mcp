@@ -50,6 +50,9 @@ public class ToolRegistry {
      *  store's refresh + anchor backfill see the new project set. Null = no hook. */
     private Runnable projectsMutatedHook;
 
+    /** Sprint 26: the learner event tap — null until the application wires it. */
+    private org.jawata.mcp.learn.EventTap eventTap;
+
     /** Install the post-project-mutation hook (Sprint 21e). Null = no hook (tests). */
     public void setProjectsMutatedHook(Runnable hook) {
         this.projectsMutatedHook = hook;
@@ -224,6 +227,16 @@ public class ToolRegistry {
      * @throws ToolNotFoundException if the tool is not registered
      */
     public ToolResponse callTool(String name, JsonNode arguments) throws ToolNotFoundException {
+        return callTool(name, arguments, "local");
+    }
+
+    /**
+     * Sprint 26: the session-scoped entry — {@code sessionId} is minted by the
+     * transport (per HTTP request header {@code Mcp-Session-Id}, or once per
+     * stdio process) and keys the ledger + the learner event stream.
+     */
+    public ToolResponse callTool(String name, JsonNode arguments, String sessionId)
+            throws ToolNotFoundException {
         Tool tool = tools.get(name);
         if (tool == null) {
             String hint = aliasHint(name);
@@ -281,10 +294,17 @@ public class ToolRegistry {
             // Sprint 22 (POST layer): central steering injection — every success
             // result names the next grounded step (see steeringFor).
             response.applySteering(steeringFor(name));
+            // Sprint 26: the event tap — every outcome becomes a learner label
+            // as a side effect of the call itself (D7: training is a side
+            // effect of use). Tap failures are the tap's own concern (loud
+            // there); they never fail the tool call.
+            tap(sessionId, name, arguments, response);
             return response;
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
-            return ToolResponse.internalError(e);
+            ToolResponse error = ToolResponse.internalError(e);
+            tap(sessionId, name, arguments, error);
+            return error;
         } catch (Error err) {
             // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
             // pathological scan) escaped every catch(Exception), killed the
@@ -292,8 +312,27 @@ public class ToolRegistry {
             // per-request boundary — answer structurally for ANY Throwable; the
             // request already failed, dying with it helps nobody.
             log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
-            return ToolResponse.internalError(err);
+            ToolResponse error = ToolResponse.internalError(err);
+            tap(sessionId, name, arguments, error);
+            return error;
         }
+    }
+
+    /** Sprint 26: forwards the outcome to the event tap; never fails the call. */
+    private void tap(String sessionId, String name, JsonNode arguments, ToolResponse response) {
+        if (eventTap == null) {
+            return;
+        }
+        try {
+            eventTap.onCall(sessionId, name, arguments, response);
+        } catch (Exception e) {
+            log.error("Event tap failed after {} — the label stream missed this outcome", name, e);
+        }
+    }
+
+    /** Sprint 26: install the learner event tap (application wiring). */
+    public void setEventTap(org.jawata.mcp.learn.EventTap tap) {
+        this.eventTap = tap;
     }
 
     /**

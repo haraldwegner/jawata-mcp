@@ -238,7 +238,17 @@ public class HttpTransport implements Transport {
                     return;
                 }
 
-                String response = handler.handle(body);
+                // Sprint 26: session identity — honor the client's
+                // Mcp-Session-Id, mint one when absent, echo it back so the
+                // client can carry it forward. Keys the per-session ledger
+                // and the learner event stream.
+                String sessionId = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
+                if (sessionId == null || sessionId.isBlank()) {
+                    sessionId = "http-" + java.util.UUID.randomUUID();
+                }
+                exchange.getResponseHeaders().add("Mcp-Session-Id", sessionId);
+
+                String response = handler.handle(body, sessionId);
                 if (response != null) {
                     byte[] respBytes = response.getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().add("Content-Type", "application/json");
