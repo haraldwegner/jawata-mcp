@@ -45,6 +45,8 @@ class DebugAmbiguousClassTest {
     private DebugTool tool;
     private ObjectMapper om;
     private String sessionId;
+    private Path scratchClasses;
+    private Path scratchRedef;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -54,28 +56,69 @@ class DebugAmbiguousClassTest {
         om = new ObjectMapper();
 
         Path pkg = service.getProjectRoot().resolve("src/main/java/com/example/debug");
-        Path classes = Files.createTempDirectory("jawata-ambiguous-");
+        scratchClasses = Files.createTempDirectory("jawata-ambiguous-");
         assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(
-            null, null, null, "-g", "-d", classes.toString(),
+            null, null, null, "-g", "-d", scratchClasses.toString(),
             pkg.resolve("DoubleLoadTarget.java").toString(),
             pkg.resolve("DoubleLoaded.java").toString()),
             "the double-load fixtures must compile");
 
         ObjectNode launch = action("launch");
         launch.put("mainClass", TARGET);
-        launch.put("classpath", classes.toString());
+        launch.put("classpath", scratchClasses.toString());
         ToolResponse launched = tool.execute(launch);
         assertTrue(launched.isSuccess(), "got: " + launched.getError());
         sessionId = (String) data(launched).get("sessionId");
 
         assertTrue(tool.execute(onSession("resume")).isSuccess());
-        // Give the target a moment to load its second copy of DoubleLoaded.
-        Thread.sleep(1500);
+        awaitBothCopiesLoaded();
+    }
+
+    /**
+     * The target loads its second {@code DoubleLoaded} copy on its own schedule, then
+     * idles forever holding both. A fixed sleep raced that load under machine pressure
+     * (TYPE_NOT_LOADED, 2026-07-19); instead poll the ambiguity guard itself — the
+     * moment {@code instances} refuses with TYPE_AMBIGUOUS, the state every test here
+     * needs (two live copies) provably exists.
+     */
+    private void awaitBothCopiesLoaded() throws Exception {
+        ObjectNode probe = onSession("instances");
+        probe.put("className", AMBIGUOUS);
+        long deadline = System.currentTimeMillis() + 30_000;
+        String last = "(no probe answered)";
+        while (System.currentTimeMillis() < deadline) {
+            ToolResponse r = tool.execute(probe);
+            if (!r.isSuccess() && "TYPE_AMBIGUOUS".equals(r.getError().getCode())) {
+                return;
+            }
+            last = r.isSuccess() ? "one copy loaded so far"
+                : r.getError().getCode() + ": " + r.getError().getMessage();
+            Thread.sleep(200);
+        }
+        throw new AssertionError(
+            "the target never reached the two-loader state within 30s — last probe: " + last);
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         sessions.closeAll();
+        deleteRecursively(scratchClasses);
+        deleteRecursively(scratchRedef);
+    }
+
+    private static void deleteRecursively(Path root) throws Exception {
+        if (root == null || !Files.exists(root)) {
+            return;
+        }
+        try (var walk = Files.walk(root)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.delete(p);
+                } catch (Exception ignored) {
+                    // scratch cleanup is best-effort; the dirs live under /tmp
+                }
+            });
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -115,16 +158,16 @@ class DebugAmbiguousClassTest {
     void redefineRefusesAnAmbiguousClass() throws Exception {
         // A real .class of the ambiguous type (its own compiled form is fine — we never get
         // as far as applying it; the ambiguity is caught first, on the target's two loaders).
-        Path classes = Files.createTempDirectory("jawata-ambiguous-redef-");
+        scratchRedef = Files.createTempDirectory("jawata-ambiguous-redef-");
         Path pkg = helper.getService().getProjectRoot()
             .resolve("src/main/java/com/example/debug");
         assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(
-            null, null, null, "-g", "-d", classes.toString(),
+            null, null, null, "-g", "-d", scratchRedef.toString(),
             pkg.resolve("DoubleLoaded.java").toString()));
 
         ObjectNode args = onSession("redefine");
         args.put("className", AMBIGUOUS);
-        args.put("classFile", classes.resolve("com/example/debug/DoubleLoaded.class").toString());
+        args.put("classFile", scratchRedef.resolve("com/example/debug/DoubleLoaded.class").toString());
         ToolResponse r = tool.execute(args);
 
         assertFalse(r.isSuccess(), "redefining a coin-flip copy must be refused: " + r.getData());
