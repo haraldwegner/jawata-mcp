@@ -33,7 +33,10 @@ public final class ExperienceTool implements Tool {
     private static final List<String> KINDS =
         List.of("record", "recall", "primer", "list", "load", "reseed", "refresh",
             "wipe", "promote", "export", "import", "prune", "dedup", "compact", "stats",
-            "fallback_report");
+            "fallback_report",
+            // Sprint 26: the learning layer's client surface (/train, /memorize's
+            // status sibling) — kinds on this door, never a new tool.
+            "train", "learner_status");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -42,6 +45,14 @@ public final class ExperienceTool implements Tool {
     private final ExperienceStore store;
     private final ExperienceRetrieval retrieval;
     private final ExperienceMaintenance maintenance;
+
+    /** Sprint 26: the learning layer behind kind=train/learner_status (nullable). */
+    private org.jawata.mcp.learn.LearnerService learnerService;
+
+    /** Sprint 26: application wiring for the learner kinds. */
+    public void setLearnerService(org.jawata.mcp.learn.LearnerService service) {
+        this.learnerService = service;
+    }
 
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store) {
         this(serviceSupplier, store, List::of);
@@ -270,6 +281,20 @@ public final class ExperienceTool implements Tool {
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(store.stats());
             case "fallback_report" -> fallbackReport();
+            // Sprint 26: the learning layer's client surface — /train and the
+            // status report ride the store's own door (no new tool).
+            case "train" -> learnerService != null
+                ? ToolResponse.success(learnerService.train())
+                : ToolResponse.error("LEARNERS_UNAVAILABLE",
+                    "The learning layer is not wired (degraded store?)",
+                    "Check the resident log; the experience store must be H2-backed.")
+            ;
+            case "learner_status" -> learnerService != null
+                ? ToolResponse.success(learnerService.status())
+                : ToolResponse.error("LEARNERS_UNAVAILABLE",
+                    "The learning layer is not wired (degraded store?)",
+                    "Check the resident log; the experience store must be H2-backed.")
+            ;
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };

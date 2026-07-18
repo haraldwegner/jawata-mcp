@@ -164,6 +164,10 @@ public class JawataApplication implements IApplication {
                 new org.jawata.mcp.knowledge.LearnerEventStore(h2);
             toolRegistry.setEventTap(new org.jawata.mcp.learn.EventTap(
                 new org.jawata.mcp.learn.SessionLedger(), learnerEvents));
+            // D2/D3: the seven learners behind experience(kind=train|learner_status).
+            org.jawata.mcp.learn.LearnerService learnerService =
+                new org.jawata.mcp.learn.LearnerService(learnerEvents);
+            experienceTool.setLearnerService(learnerService);
             // D1: the automatic architect — detectors bound to the quality
             // tool's own single-file path (no second detector surface).
             toolRegistry.setWatchEngine(new org.jawata.mcp.learn.WatchEngine(
