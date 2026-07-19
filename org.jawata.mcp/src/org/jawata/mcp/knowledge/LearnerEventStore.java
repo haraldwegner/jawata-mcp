@@ -37,27 +37,70 @@ public final class LearnerEventStore {
         this.store = store;
     }
 
-    /** Appends one event. Never throws — failure is logged + counted (loud, visible). */
+    /** Write attempts per event before a drop is declared (v3.2.1, dogfood #3). */
+    static final int WRITE_ATTEMPTS = 3;
+
+    /** A retryable SQL operation. */
+    interface SqlOp {
+        void run() throws Exception;
+    }
+
+    /**
+     * v3.2.1 (dogfood #3): run {@code op}, retrying up to {@code attempts}
+     * times; {@code onRetry} runs between attempts (the caller invalidates the
+     * suspect connection there, so the retry acquires a FRESH one). The live
+     * fleet was dropping ~40% of events on single-attempt writes — a statement
+     * can die mid-write on a connection that acquisition-time validation still
+     * blessed (auto-server handoff, lock timeout against a peer resident).
+     */
+    static void withRetry(int attempts, SqlOp op, Runnable onRetry) throws Exception {
+        Exception last = null;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                op.run();
+                return;
+            } catch (Exception e) {
+                last = e;
+                if (attempt < attempts) {
+                    log.info("learner-store write failed (attempt {}/{}), retrying on a"
+                        + " fresh connection: {}", attempt, attempts, e.getMessage());
+                    onRetry.run();
+                    try {
+                        Thread.sleep(100L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                }
+            }
+        }
+        throw last;
+    }
+
+    /** Appends one event. Never throws — a failure surviving all retries is
+     *  logged + counted (loud, visible). */
     public void append(LearnerEvent event) {
         synchronized (store) {
             try {
-                Connection conn = store.sharedConnection();
-                try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO learner_event (session_id, kind, tool, detail_json,"
-                        + " workspace_id, project_id) VALUES (?, ?, ?, ?, ?, ?)")) {
-                    ps.setString(1, event.sessionId());
-                    ps.setString(2, event.kind());
-                    ps.setString(3, event.tool());
-                    ps.setString(4, event.detailJson());
-                    ps.setString(5, store.provenanceWorkspaceId());
-                    ps.setString(6, store.provenanceProjectId());
-                    ps.executeUpdate();
-                }
+                withRetry(WRITE_ATTEMPTS, () -> {
+                    Connection conn = store.sharedConnection();
+                    try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO learner_event (session_id, kind, tool, detail_json,"
+                            + " workspace_id, project_id) VALUES (?, ?, ?, ?, ?, ?)")) {
+                        ps.setString(1, event.sessionId());
+                        ps.setString(2, event.kind());
+                        ps.setString(3, event.tool());
+                        ps.setString(4, event.detailJson());
+                        ps.setString(5, store.provenanceWorkspaceId());
+                        ps.setString(6, store.provenanceProjectId());
+                        ps.executeUpdate();
+                    }
+                }, store::invalidateSharedConnection);
             } catch (Exception e) {
                 failedWrites.incrementAndGet();
-                log.error("LEARNER EVENT DROPPED ({} total) — kind={} tool={}: the label"
-                    + " stream is incomplete until this is fixed",
-                    failedWrites.get(), event.kind(), event.tool(), e);
+                log.error("LEARNER EVENT DROPPED after {} attempts ({} total) — kind={}"
+                    + " tool={}: the label stream is incomplete until this is fixed",
+                    WRITE_ATTEMPTS, failedWrites.get(), event.kind(), event.tool(), e);
             }
         }
     }
@@ -105,22 +148,24 @@ public final class LearnerEventStore {
         }
     }
 
-    /** Persists a learner's state. Loud on failure, like {@link #append}. */
+    /** Persists a learner's state. Retries + loud on final failure, like {@link #append}. */
     public void saveState(String learner, String stateJson) {
         synchronized (store) {
             try {
-                Connection conn = store.sharedConnection();
-                try (PreparedStatement ps = conn.prepareStatement(
-                    "MERGE INTO learner_state (learner, state_json, updated)"
-                        + " KEY (learner) VALUES (?, ?, CURRENT_TIMESTAMP)")) {
-                    ps.setString(1, learner);
-                    ps.setString(2, stateJson);
-                    ps.executeUpdate();
-                }
+                withRetry(WRITE_ATTEMPTS, () -> {
+                    Connection conn = store.sharedConnection();
+                    try (PreparedStatement ps = conn.prepareStatement(
+                        "MERGE INTO learner_state (learner, state_json, updated)"
+                            + " KEY (learner) VALUES (?, ?, CURRENT_TIMESTAMP)")) {
+                        ps.setString(1, learner);
+                        ps.setString(2, stateJson);
+                        ps.executeUpdate();
+                    }
+                }, store::invalidateSharedConnection);
             } catch (Exception e) {
                 failedWrites.incrementAndGet();
-                log.error("LEARNER STATE WRITE FAILED ({} total) for {}",
-                    failedWrites.get(), learner, e);
+                log.error("LEARNER STATE WRITE FAILED after {} attempts ({} total) for {}",
+                    WRITE_ATTEMPTS, failedWrites.get(), learner, e);
             }
         }
     }

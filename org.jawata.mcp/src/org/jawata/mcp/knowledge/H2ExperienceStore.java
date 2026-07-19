@@ -61,6 +61,20 @@ public final class H2ExperienceStore implements ExperienceStore {
         return live();
     }
 
+    /** v3.2.1 (dogfood #3): force the NEXT {@link #sharedConnection()} to reopen —
+     *  a statement that failed mid-write may sit on a connection {@code isValid}
+     *  still blesses (auto-server handoff, lock-timeout aftermath). */
+    void invalidateSharedConnection() {
+        try {
+            if (conn != null && !conn.isClosed()) {
+                conn.close();
+            }
+        } catch (SQLException e) {
+            log.debug("closing a suspect connection failed (ignored): {}", e.getMessage());
+        }
+        conn = null;
+    }
+
     private Connection live() {
         try {
             if (conn == null || conn.isClosed() || !conn.isValid(1)) {

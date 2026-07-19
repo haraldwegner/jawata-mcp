@@ -30,4 +30,5 @@ public record LearnerEvent(String sessionId, String kind, String tool, String de
     public static final String KIND_EDIT_OBSERVED = "edit_observed";
     /** Pending edits were resolved by their consequence (a gate outcome or an undo). */
     public static final String KIND_EDIT_RESOLVED = "edit_resolved";
+    // Dogfood probe 2026-07-19: this comment exercises the live edit feed.
 }
