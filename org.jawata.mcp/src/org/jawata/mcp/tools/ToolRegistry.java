@@ -59,6 +59,15 @@ public class ToolRegistry {
     /** Sprint 26 (D4/D5): the server-side checks — null until wired. */
     private org.jawata.mcp.learn.ServerChecks serverChecks;
 
+    /** v3.2.1 (dogfood #1): supplier of the degraded-store notice — non-null
+     *  return = the store is degraded and EVERY answer must say so. */
+    private java.util.function.Supplier<String> storeNotice;
+
+    /** v3.2.1: install the degraded-store notice supplier (application wiring). */
+    public void setStoreNotice(java.util.function.Supplier<String> notice) {
+        this.storeNotice = notice;
+    }
+
     /** Sprint 26: install the server-side checks (application wiring). */
     public void setServerChecks(org.jawata.mcp.learn.ServerChecks checks) {
         this.serverChecks = checks;
@@ -327,6 +336,19 @@ public class ToolRegistry {
                     }
                 } catch (Exception e) {
                     log.error("Server checks failed after {}", name, e);
+                }
+            }
+            // v3.2.1 (dogfood #1): a degraded store announces itself on EVERY
+            // answer — a degraded result presented as normal is the recorded
+            // top-bug class; nobody should have to NOTICE a missing file size.
+            if (storeNotice != null) {
+                try {
+                    String degraded = storeNotice.get();
+                    if (degraded != null) {
+                        response.appendSteering(degraded);
+                    }
+                } catch (Exception e) {
+                    log.error("Store-notice supplier failed after {}", name, e);
                 }
             }
             return response;

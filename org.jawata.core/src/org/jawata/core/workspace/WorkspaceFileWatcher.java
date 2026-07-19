@@ -19,6 +19,7 @@ import java.nio.file.WatchService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -339,7 +340,17 @@ public class WorkspaceFileWatcher implements AutoCloseable {
      * project-paths list. Adds new ones, removes gone ones. Existing
      * projects that are still listed are left untouched.
      */
+    /** v3.2.1 (dogfood #2): per-project load failures of the LAST pass — path -> error.
+     *  A swallowed load failure left a silently empty workspace on 2026-07-19. */
+    private volatile Map<String, String> lastLoadFailures = Map.of();
+
+    /** The last pass's per-project load failures (empty when all loaded). */
+    public Map<String, String> loadFailures() {
+        return lastLoadFailures;
+    }
+
     private void applyDiff(List<Path> desired) {
+        Map<String, String> failures = new LinkedHashMap<>();
         // Map currently-loaded projects: absolute root -> projectKey.
         Map<Path, String> currentByRoot = new HashMap<>();
         for (LoadedProject loaded : service.allProjects()) {
@@ -359,6 +370,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
                         loaded++;
                     } catch (Exception e) {
                         log.warn("Failed to loadProject {}: {}", p, e.getMessage());
+                        failures.put(p.toString(), String.valueOf(e.getMessage()));
                     }
                 } else {
                     try {
@@ -367,6 +379,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
                         loaded++;
                     } catch (Exception e) {
                         log.warn("Failed to addProject {}: {}", p, e.getMessage());
+                        failures.put(p.toString(), String.valueOf(e.getMessage()));
                     }
                 }
             }
@@ -383,5 +396,6 @@ public class WorkspaceFileWatcher implements AutoCloseable {
                 }
             }
         }
+        lastLoadFailures = Map.copyOf(failures);
     }
 }

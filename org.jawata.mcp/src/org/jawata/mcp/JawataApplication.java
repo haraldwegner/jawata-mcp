@@ -2,6 +2,7 @@ package org.jawata.mcp;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -154,6 +155,11 @@ public class JawataApplication implements IApplication {
         // resident) must not kill the server — degrade to in-memory and say so.
         experienceStore = openExperienceStore();
         registerTools();
+
+        // v3.2.1 (dogfood #1): while the store is degraded, EVERY answer says so.
+        if (experienceStore instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r) {
+            toolRegistry.setStoreNotice(r::notice);
+        }
 
         // Sprint 26: the event tap — every tool outcome becomes a learner
         // label as a side effect of the call (D7: training is a side effect
@@ -341,28 +347,42 @@ public class JawataApplication implements IApplication {
         Path workspaceRoot = resolveWorkspaceRoot(dataDir);
         String mode = System.getProperty("jawata.experience.store", "shared").trim();
         try {
-            H2ExperienceStore store = switch (mode) {
-                case "memory" -> H2ExperienceStore.openMemory();
-                case "workspace" -> H2ExperienceStore.open(workspaceRoot);
-                case "", "shared" -> H2ExperienceStore.openShared();
-                default -> H2ExperienceStore.openAt(Path.of(mode));
-            };
-            Path workspaceJson = workspaceRoot != null
-                    && Files.isRegularFile(workspaceRoot.resolve("workspace.json"))
-                ? workspaceRoot.resolve("workspace.json")
-                : findWorkspaceJson(dataDir);
-            if (workspaceJson != null) {
-                String[] prov = readProvenance(workspaceJson);
-                store.setProvenance(prov[0], prov[1]);
-            }
-            // One-time sweep: pre-21a stores stranded in session-isolation dirs (item A).
-            store.recoverOrphans(workspaceRoot);
-            return store;
+            return openRealStore(mode, dataDir, workspaceRoot);
         } catch (Exception e) {
+            // v3.2.1 (dogfood #1): the old path handed back a BARE in-memory
+            // store — a silent, sticky degrade the user had to NOTICE (the
+            // 2026-07-19 fleet flip served 367 seed entries as if they were
+            // the DB). Now the fallback announces itself on every answer,
+            // retries the real open in the background, and replays the
+            // degraded window on recovery.
             log.error("Experience store unavailable ({}); continuing with a NON-PERSISTENT "
-                + "in-memory store", e.getMessage());
-            return H2ExperienceStore.openMemory();
+                + "in-memory store — recovery retries in the background", e.getMessage());
+            return new org.jawata.mcp.knowledge.RecoveringExperienceStore(
+                String.valueOf(e.getMessage()),
+                () -> openRealStore(mode, dataDir, workspaceRoot),
+                30_000);
         }
+    }
+
+    /** The real (persistent) open — shared by first attempt and background recovery. */
+    private H2ExperienceStore openRealStore(String mode, Path dataDir, Path workspaceRoot) {
+        H2ExperienceStore store = switch (mode) {
+            case "memory" -> H2ExperienceStore.openMemory();
+            case "workspace" -> H2ExperienceStore.open(workspaceRoot);
+            case "", "shared" -> H2ExperienceStore.openShared();
+            default -> H2ExperienceStore.openAt(Path.of(mode));
+        };
+        Path workspaceJson = workspaceRoot != null
+                && Files.isRegularFile(workspaceRoot.resolve("workspace.json"))
+            ? workspaceRoot.resolve("workspace.json")
+            : findWorkspaceJson(dataDir);
+        if (workspaceJson != null) {
+            String[] prov = readProvenance(workspaceJson);
+            store.setProvenance(prov[0], prov[1]);
+        }
+        // One-time sweep: pre-21a stores stranded in session-isolation dirs (item A).
+        store.recoverOrphans(workspaceRoot);
+        return store;
     }
 
     /**
@@ -518,8 +538,28 @@ public class JawataApplication implements IApplication {
             watcher.start();  // synchronous initial load + arm watcher thread
             this.jdtService = service;
             this.workspaceWatcher = watcher;
-            loadingState = ProjectLoadingState.LOADED;
-            log.info("Workspace loaded; watcher armed for live updates");
+            // v3.2.1 (dogfood #2): a workspace whose EVERY project failed to
+            // load is a FAILED load, not a healthy empty one — the 2026-07-19
+            // flip served 'Ready/healthy' with 0 projects while the real error
+            // (an uninstalled bumped dependency) sat in the log. Health must
+            // carry the diagnosis + remedy.
+            Map<String, String> failures = watcher.loadFailures();
+            if (service.allProjects().isEmpty() && !failures.isEmpty()) {
+                loadingState = ProjectLoadingState.FAILED;
+                var first = failures.entrySet().iterator().next();
+                loadingError = "all " + failures.size() + " workspace project(s) FAILED to "
+                    + "load — first: " + first.getKey() + ": " + first.getValue()
+                    + ". Remedy: fix the cause (e.g. run the project's build once so "
+                    + "dependencies resolve), then reload via load_project or restart.";
+                log.error("Workspace auto-load: {}", loadingError);
+            } else {
+                loadingState = ProjectLoadingState.LOADED;
+                if (!failures.isEmpty()) {
+                    log.warn("Workspace loaded PARTIALLY — {} project(s) failed: {}",
+                        failures.size(), failures);
+                }
+                log.info("Workspace loaded; watcher armed for live updates");
+            }
         } catch (Exception e) {
             log.error("Failed to load workspace from workspace.json: {}", e.getMessage(), e);
             loadingState = ProjectLoadingState.FAILED;

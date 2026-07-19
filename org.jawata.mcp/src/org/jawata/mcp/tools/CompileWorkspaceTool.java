@@ -190,6 +190,17 @@ public class CompileWorkspaceTool extends AbstractTool {
             projects = service.allProjects();
         }
 
+        // v3.2.1 (dogfood #2): compiling an EMPTY workspace used to answer
+        // success/0 errors/0 compiled — a clean-looking no-op that read as a
+        // green build while the workspace had silently failed to load. An
+        // empty workspace is a refusal with the reason, never a green answer.
+        if (projects.isEmpty()) {
+            return ToolResponse.error("NO_PROJECTS_LOADED",
+                "No projects are loaded — nothing was compiled, so this is NOT a green build.",
+                "Check health_check (a failed workspace auto-load reports its cause there), "
+                    + "then load_project the intended tree.");
+        }
+
         try {
             int errorCount = 0;
             int warningCount = 0;

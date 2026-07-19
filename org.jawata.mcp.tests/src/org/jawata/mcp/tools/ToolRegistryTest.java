@@ -83,6 +83,23 @@ class ToolRegistryTest {
         assertTrue(steering.contains("seeded smell"));
     }
 
+    @Test
+    @DisplayName("v3.2.1: a degraded store's notice rides EVERY answer, and clears on recovery")
+    void storeNotice_ridesEveryAnswerWhileDegraded() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> notice =
+            new java.util.concurrent.atomic.AtomicReference<>("STORE DEGRADED: fallback");
+        registry.setStoreNotice(notice::get);
+        registry.register(new MockTool("ok_tool", "answers"));
+        var r1 = registry.callTool("ok_tool", objectMapper.readTree("{}"), "s");
+        assertTrue(r1.getMeta().getSteering().contains("STORE DEGRADED"),
+            "while degraded, every answer says so");
+        notice.set(null); // recovery
+        var r2 = registry.callTool("ok_tool", objectMapper.readTree("{}"), "s");
+        assertTrue(r2.getMeta() == null || r2.getMeta().getSteering() == null
+                || !r2.getMeta().getSteering().contains("STORE DEGRADED"),
+            "after recovery the notice is gone");
+    }
+
     // ========== Registration Tests ==========
 
     @Test
