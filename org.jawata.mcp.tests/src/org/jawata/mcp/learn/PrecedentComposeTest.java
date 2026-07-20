@@ -1,18 +1,17 @@
 package org.jawata.mcp.learn;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.mcp.knowledge.H2ExperienceStore;
-import org.jawata.mcp.knowledge.ToolExperienceStore;
-import org.jawata.mcp.models.ToolResponse;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+
+import org.jawata.mcp.knowledge.H2ExperienceStore;
+import org.jawata.mcp.knowledge.ToolExperienceStore;
+import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 26a D2 (C2): the weighted composer, the target key, and the baseline
