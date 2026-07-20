@@ -136,7 +136,12 @@ public final class H2ExperienceStore implements ExperienceStore {
         Path base = storeDir.resolve("experience");
         // H2 forbids DB_CLOSE_ON_EXIT together with AUTO_SERVER — the auto-server owns the
         // database lifecycle (we still close() explicitly at stop()).
-        String url = "jdbc:h2:file:" + base.toAbsolutePath() + ";AUTO_SERVER=TRUE";
+        // F1 (Sprint-26 audit): LOCK_TIMEOUT raised from H2's 1s default to 10s so a
+        // cross-resident write that contends on a shared row (two residents MERGE the
+        // same learner_state key over the auto-server socket) WAITS for the peer's tiny
+        // transaction instead of failing fast and dropping the event.
+        String url = "jdbc:h2:file:" + base.toAbsolutePath()
+            + ";AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000";
         // v2.2.4: a runtime swap restarts residents seconds apart — the dying peer's lock
         // file is "recently modified" and H2 refuses the open. That is TRANSIENT; retry
         // before the caller degrades to a silent, non-persistent in-memory store.

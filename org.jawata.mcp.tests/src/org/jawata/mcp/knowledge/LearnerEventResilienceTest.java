@@ -75,4 +75,73 @@ class LearnerEventResilienceTest {
         assertEquals("state-2", events.loadState("edit-switch").orElseThrow());
         assertEquals(0, events.failedWrites());
     }
+
+    /**
+     * F1 (Sprint-26 audit): the LIVE condition the v3.2.1 fix never exercised —
+     * TWO residents (separate store instances, separate locks) writing the
+     * shared AUTO_SERVER file concurrently, contending on the same
+     * {@code learner_state} key. Connection-reopen retry alone does not survive
+     * lock contention; this reproduces the drop and gates the real cure.
+     */
+    @Test
+    @DisplayName("F1: two concurrent residents on the shared file drop no writes")
+    void concurrent_residents_do_not_drop_writes() throws Exception {
+        java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("jawata-f1-");
+        H2ExperienceStore r1 = H2ExperienceStore.openAt(dir);
+        H2ExperienceStore r2 = H2ExperienceStore.openAt(dir);
+        LearnerEventStore e1 = new LearnerEventStore(r1);
+        LearnerEventStore e2 = new LearnerEventStore(r2);
+        final int n = 150;
+        Runnable w1 = () -> {
+            for (int i = 0; i < n; i++) {
+                e1.append(new LearnerEvent("r1", "gate_call", "compile_workspace", "{}"));
+                e1.saveState("edit-switch", "r1-" + i);
+            }
+        };
+        Runnable w2 = () -> {
+            for (int i = 0; i < n; i++) {
+                e2.append(new LearnerEvent("r2", "gate_call", "compile_workspace", "{}"));
+                e2.saveState("edit-switch", "r2-" + i);
+            }
+        };
+        Thread t1 = new Thread(w1, "resident-1");
+        Thread t2 = new Thread(w2, "resident-2");
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+        long dropped = e1.failedWrites() + e2.failedWrites();
+        long total = e1.totalEvents();
+        r1.close();
+        r2.close();
+        assertEquals(0, dropped, "concurrent residents dropped " + dropped + " writes");
+        assertEquals(2 * n, total, "every appended event is on the shared file");
+    }
+
+    /**
+     * F1 (Sprint-26 audit): the drops are cross-PROCESS — a write issued while a
+     * peer resident restarts fails until the shared auto-server socket is back
+     * (seconds). This reproduces the mechanism (a write that stays unavailable
+     * for ~1s): the OLD 3-attempt ~0.3s budget gives up inside the window; the
+     * shipped {@link LearnerEventStore#WRITE_ATTEMPTS}=8 budget outlasts it.
+     */
+    @Test
+    @DisplayName("F1: the retry budget outlasts a multi-second store outage")
+    void retry_budget_outlasts_a_restart_window() {
+        java.util.function.Supplier<LearnerEventStore.SqlOp> failsFor1s = () -> {
+            long start = System.currentTimeMillis();
+            return () -> {
+                if (System.currentTimeMillis() - start < 1000L) {
+                    throw new java.sql.SQLException("store unavailable — peer restarting");
+                }
+            };
+        };
+        // The old budget (3 attempts, ~0.3s) drops the event inside the window.
+        assertThrows(Exception.class,
+            () -> LearnerEventStore.withRetry(3, failsFor1s.get(), () -> { }));
+        // The shipped budget waits the restart out.
+        assertDoesNotThrow(
+            () -> LearnerEventStore.withRetry(LearnerEventStore.WRITE_ATTEMPTS,
+                failsFor1s.get(), () -> { }));
+    }
 }

@@ -37,8 +37,14 @@ public final class LearnerEventStore {
         this.store = store;
     }
 
-    /** Write attempts per event before a drop is declared (v3.2.1, dogfood #3). */
-    static final int WRITE_ATTEMPTS = 3;
+    /**
+     * Write attempts per event before a drop is declared. F1 (Sprint-26 audit):
+     * widened 3 → 8 with exponential-capped backoff (see {@link #withRetry}) so the
+     * total retry window (~4.5s) OUTLASTS a peer resident's restart — the shared
+     * auto-server socket is unavailable for the seconds a peer JVM takes to come
+     * back, and the old ~0.3s budget gave up inside that window.
+     */
+    static final int WRITE_ATTEMPTS = 8;
 
     /** A retryable SQL operation. */
     interface SqlOp {
@@ -66,7 +72,10 @@ public final class LearnerEventStore {
                         + " fresh connection: {}", attempt, attempts, e.getMessage());
                     onRetry.run();
                     try {
-                        Thread.sleep(100L * attempt);
+                        // Exponential backoff capped at 1s: 100,200,400,800,1000,1000,1000
+                        // ≈ 4.5s total over 8 attempts — long enough to outlast a peer
+                        // resident's restart, bounded so the request thread never hangs.
+                        Thread.sleep(Math.min(100L * (1L << (attempt - 1)), 1000L));
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         throw e;
