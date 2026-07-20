@@ -250,7 +250,8 @@ final class SchemaMigrations {
     /**
      * v6 (Sprint 26a, D2): the experience loop's capture lane —
      * {@code tool_experience}, one row per SELECTIVE outcome-bearing event (a
-     * mutate's compile result, a tool error, a fallback). {@code situation} is
+     * mutate's compile result, or a tool error; a jawata-fallback is captured
+     * studio-side as a {@code failure_mode} entry, not here). {@code situation} is
      * the keyword-rich key baseline retrieval matches on (Sprint 27 adds an
      * embedding column beside it). A sibling table on the same store file, so it
      * inherits the store's per-workspace provenance, backup and privacy boundary

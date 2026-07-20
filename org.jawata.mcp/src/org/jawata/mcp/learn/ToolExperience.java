@@ -4,9 +4,12 @@ package org.jawata.mcp.learn;
  * One captured tool-usage outcome (Sprint 26a, D2): the atom the experience
  * loop stores and retrieves — "in this situation, this tool had this outcome".
  * SELECTIVE by construction: only outcome-bearing events become a
- * {@code ToolExperience} (a mutate's compile result, a tool error, a fallback).
- * A routine successful read/search never produces one — the tool always
- * answers, so it carries no experience.
+ * {@code ToolExperience} (a mutate's compile result, or a tool error). A
+ * routine successful read/search never produces one — the tool always answers,
+ * so it carries no experience. A jawata-fallback is captured studio-side as a
+ * {@code failure_mode} entry (which the retriever also reads), NOT at this tap —
+ * {@link #OUTCOME_FALLBACK} exists for that cross-lane value, and no code path
+ * writes it into {@code tool_experience}.
  *
  * @param sessionId  the MCP session the event belongs to ({@code null} → "local")
  * @param situation  a keyword-rich description of what was happening (tool +

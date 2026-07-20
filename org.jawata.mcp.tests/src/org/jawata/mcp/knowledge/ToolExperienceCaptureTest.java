@@ -47,6 +47,7 @@ class ToolExperienceCaptureTest {
         assertEquals(1, rows.size());
         assertEquals("rename_symbol", rows.get(0).tool());
         assertEquals(ToolExperience.OUTCOME_COMPILED, rows.get(0).outcome());
+        assertEquals("s1", rows.get(0).sessionId(), "rows carry their session");
         assertTrue(rows.get(0).situation().contains("com.foo.Bar#baz"),
             "situation carries the salient arg for keyword retrieval");
         store.close();
