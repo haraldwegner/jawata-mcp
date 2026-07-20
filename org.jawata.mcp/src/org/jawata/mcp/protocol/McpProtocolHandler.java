@@ -170,13 +170,24 @@ public class McpProtocolHandler {
      * Kept tight (a long instruction is ignored) and pinned to the real tool surface.
      */
     static final String SERVER_INSTRUCTIONS = """
-        JAWATA is compiler-accurate Java analysis + refactoring. For ANY Java semantic or structural task, use JAWATA FIRST — not grep/rg and not a hand-edit:
-        - Find a symbol -> search_symbols; callers/usages -> find_references / get_call_hierarchy.
-        - Understand a type (members, hierarchy) -> analyze / inspect; jump to a definition -> go_to_definition.
-        - Compile / errors -> compile_workspace + get_diagnostics.
-        - Rename (updates ALL references) -> rename_symbol; move / extract / change signature -> move / extract / change_method_signature.
-        - Duplicate a class -> generate(kind=copy_class); any structural change -> refactoring(action=plan) then apply_plan (parity-gated, reversible).
-        grep over .java misses/overmatches symbols and a hand-edit misses references. Use grep only for non-Java / non-semantic text (build files, configs, logs).""";
+        JAWATA is compiler-accurate Java analysis + refactoring. For ANY Java semantic, structural, or runtime task, use JAWATA FIRST — not grep/rg, not a hand-edit, not a hand-rolled stopwatch, not debug-logging. HOW to drive each family, and the reflex each replaces:
+
+        FIND / UNDERSTAND (grep misses/overmatches symbols):
+        - Find a symbol -> search_symbols; callers/usages -> find_references / get_call_hierarchy; type members/hierarchy -> analyze / inspect; a definition -> go_to_definition.
+        - Address symbols by fully-qualified name ('com.foo.Bar#method'); coordinates are 0-based; pass fields=[...] to trim large result rows.
+
+        CHANGE (a hand-edit misses references):
+        - Rename (updates ALL references) -> rename_symbol; move / extract / change a signature -> move / extract / change_method_signature; duplicate a class -> generate(kind=copy_class); any structural change -> refactoring(action=plan) then apply_plan.
+        - STAGE before you apply: pass auto_apply=false to get the diff + a changeId, review it, THEN apply — every change is compile-verified and reversible via undo. A large or structural edit is flagged for architect review.
+        - Compile / errors -> compile_workspace + get_diagnostics (the outcome gate).
+
+        DIAGNOSE AT RUNTIME (adding debug-logging edits production code — the tool needs ZERO code change):
+        - A bug / bad value / NPE -> debug: launch or attach, set a breakpoint or a probe (probe_set kind=logpoint, also field_watch / method_trace / conditional) and read LIVE values while the program keeps running. Hand-adding System.out/logger lines to diagnose is unnecessary and touches production code — debug gives the value without editing a line.
+
+        MEASURE AT RUNTIME (a hand-rolled stopwatch edits production code — the tool needs ZERO code change):
+        - Performance / a hotspot / latency -> profile: sample the running JVM and it names the hotspot as a symbol (hotspots / latency_seam / call_counts). A hand-added System.nanoTime/currentTimeMillis timer is unnecessary and touches production code — profile measures at runtime with none.
+
+        grep is a FALLBACK ONLY — non-Java / non-semantic text (build files, configs, logs).""";
 
     /**
      * Handle initialize request - MCP handshake.
