@@ -47,12 +47,14 @@ public final class ExperienceTool implements Tool {
     private final ExperienceRetrieval retrieval;
     private final ExperienceMaintenance maintenance;
 
-    /** Sprint 26: the learning layer behind kind=train/learner_status (nullable). */
-    private org.jawata.mcp.learn.LearnerService learnerService;
+    /** Sprint 26a D4: the experience loop's capture lane, for the honest
+     *  learner_status count (the edit-switch model that train/status once drove
+     *  is retired). Nullable (degraded store). */
+    private org.jawata.mcp.knowledge.ToolExperienceStore toolExperienceStore;
 
-    /** Sprint 26: application wiring for the learner kinds. */
-    public void setLearnerService(org.jawata.mcp.learn.LearnerService service) {
-        this.learnerService = service;
+    /** Sprint 26a: application wiring for the retired-learner status kinds. */
+    public void setToolExperienceStore(org.jawata.mcp.knowledge.ToolExperienceStore store) {
+        this.toolExperienceStore = store;
     }
 
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store) {
@@ -282,68 +284,46 @@ public final class ExperienceTool implements Tool {
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(store.stats());
             case "fallback_report" -> fallbackReport();
-            // Sprint 26: the learning layer's client surface — /train and the
-            // status report ride the store's own door (no new tool).
-            case "train" -> learnerService != null
-                ? ToolResponse.success(learnerService.train())
-                : ToolResponse.error("LEARNERS_UNAVAILABLE",
-                    "The learning layer is not wired (degraded store?)",
-                    "Check the resident log; the experience store must be H2-backed.")
-            ;
-            case "learner_status" -> learnerService != null
-                ? ToolResponse.success(learnerService.status())
-                : ToolResponse.error("LEARNERS_UNAVAILABLE",
-                    "The learning layer is not wired (degraded store?)",
-                    "Check the resident log; the experience store must be H2-backed.")
-            ;
-            // Sprint 26 C7: the edit feed's front half. The observer hook posts a
-            // .java edit's before/after; the SESSION correlation (pending →
-            // consequence label) happens at the event tap, which sees this same
-            // call with its session id — this tool stays session-blind and only
-            // validates + answers the edit switch's advice.
-            case "observe_edit" -> observeEdit(args);
+            // Sprint 26a D4: the injector's ML learner models are RETIRED. These
+            // kinds stay VALID and answer HONESTLY (they say retired — never an
+            // empty-result lie), pointing to what replaced them: the experience
+            // loop (kind=recall) + the deterministic architect-involvement gate.
+            case "train" -> ToolResponse.success(retiredLearnerReport(
+                "Nothing to train. The edit-switch model was retired in Sprint 26a;"
+                    + " the experience loop captures tool outcomes automatically (no"
+                    + " training step), and retrieval is baseline keyword recall"
+                    + " (Sprint 27 upgrades it to embeddings)."));
+            case "learner_status" -> ToolResponse.success(retiredLearnerReport(
+                "The injector's ML learner models were retired in Sprint 26a. The"
+                    + " experience loop (capture→retrieve→surface) and the"
+                    + " deterministic architect-involvement gate replace them."));
+            // Sprint 26a D4: observe_edit is retired — the experience loop captures
+            // edit→compile outcomes automatically at the tool choke. Kept VALID and
+            // honest so any lingering caller gets a clean answer, not an error.
+            case "observe_edit" -> ToolResponse.success(retiredLearnerReport(
+                "observe_edit is retired. Edit outcomes are captured automatically"
+                    + " by the experience loop at the tool choke — no manual observe"
+                    + " step is needed."));
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
     }
 
-    /** Sprint 26 C7: validate an observed edit and answer the edit switch's advice. */
-    private ToolResponse observeEdit(JsonNode args) {
-        if (learnerService == null) {
-            return ToolResponse.error("LEARNERS_UNAVAILABLE",
-                "The learning layer is not wired (degraded store?)",
-                "Check the resident log; the experience store must be H2-backed.");
-        }
-        String before = text(args, "before");
-        String after = text(args, "after");
-        if ((before == null || before.isBlank()) && (after == null || after.isBlank())) {
-            return ToolResponse.invalidParameter("before/after",
-                "observe_edit needs the edit's before and/or after fragment");
-        }
-        String b = before == null ? "" : before;
-        String a = after == null ? "" : after;
-        Boolean rule = args.has("ruleStructural") ? args.path("ruleStructural").asBoolean() : null;
-        boolean ruleVerdict = rule != null ? rule
-            : org.jawata.mcp.learn.FeatureVector.ruleSaysStructural(
-                org.jawata.mcp.learn.FeatureVector.extract(b, a));
-        org.jawata.mcp.learn.Learner.Advice advice = learnerService.adviseEdit(b, a, ruleVerdict);
+    /** Sprint 26a D4: the honest retired-learner report — SAYS retired, names
+     *  what replaced the models, and carries the live experience-loop capture
+     *  count (never an empty-result lie). */
+    private Map<String, Object> retiredLearnerReport(String note) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("observed", true);
-        out.put("structural", advice.positive());
-        out.put("modelDecided", advice.modelDecided());
-        out.put("note", advice.note());
-        // The hook path (C7): the observer correlates edit → gate outcome in ITS
-        // OWN session (a hook's HTTP post cannot share the agent's MCP session),
-        // so it delivers the edit ALREADY LABELED: outcome=clean|failed. Labeled
-        // edits train immediately; unlabeled ones go pending at the event tap.
-        String outcome = text(args, "outcome");
-        if (outcome != null && !outcome.isBlank()) {
-            boolean clean = "clean".equals(outcome);
-            learnerService.observeEdit(b, a, !clean, ruleVerdict);
-            out.put("labeled", true);
-            out.put("actualStructural", !clean);
+        out.put("status", "retired");
+        out.put("models", List.of());
+        out.put("note", note);
+        out.put("replacedBy", List.of(
+            "the experience loop (experience kind=recall over captured tool outcomes)",
+            "the deterministic architect-involvement gate"));
+        if (toolExperienceStore != null) {
+            out.put("capturedExperiences", toolExperienceStore.count());
         }
-        return ToolResponse.success(out);
+        return out;
     }
 
     private ToolResponse load(JsonNode args) {

@@ -10,12 +10,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The event tap (Sprint 26, D7's wiring): sits at the ToolRegistry choke point
- * — the one place every tool outcome converges — and turns outcomes into
- * {@link LearnerEvent}s AS A SIDE EFFECT of normal work. No manual step
- * anywhere: an agent that compiles, reverts, or breaks something has already
- * fed the learners. Also feeds the {@link SessionLedger} the server-side
- * checks read.
+ * The event tap (Sprint 26; Sprint 26a): sits at the ToolRegistry choke point —
+ * the one place every tool outcome converges. It feeds the {@link SessionLedger}
+ * the server-side checks read, drives the {@link ToolExperienceRecorder}
+ * (the D2 experience loop's selective capture — the real edit-outcome capture),
+ * and records {@link LearnerEvent} telemetry (tool errors, undos, gate calls).
+ * The edit-switch model that once trained on these events is retired in Sprint
+ * 26a (D4); the events remain as cheap telemetry, and the experience loop is the
+ * live capture.
  */
 public class EventTap {
 
@@ -26,21 +28,13 @@ public class EventTap {
     private final SessionLedger ledger;
     private final LearnerEventStore events;
 
-    /** Sprint 26 C7: the pending-edit correlator — null until the application wires it. */
-    private LearnerService learnerService;
-
     /** Sprint 26a D2: the experience-loop capture — null until the application
-     *  wires it (and independent of the learner service, which D4 retires). */
+     *  wires it (the real edit-outcome capture that replaces the retired edit switch). */
     private ToolExperienceRecorder toolExperience;
 
     public EventTap(SessionLedger ledger, LearnerEventStore events) {
         this.ledger = ledger;
         this.events = events;
-    }
-
-    /** Sprint 26 C7: install the learner service the edit feed resolves through. */
-    public void setLearnerService(LearnerService service) {
-        this.learnerService = service;
     }
 
     /** Sprint 26a D2: install the experience-loop recorder (selective capture). */
@@ -70,39 +64,10 @@ public class EventTap {
                 "{\"error\":true}"));
             return;
         }
-        // The edit feed's FIRST half (C7): an observed .java edit arrives via
-        // experience(kind=observe_edit) — session-aware here at the tap, so
-        // the tool itself stays session-blind. Held pending until its
-        // consequence.
-        if ("experience".equals(name) && arguments != null
-                && "observe_edit".equals(arguments.path("kind").asText(""))
-                && learnerService != null) {
-            String outcome = arguments.path("outcome").asText("");
-            if (!outcome.isBlank()) {
-                // The hook path: the observer correlated the consequence in its
-                // own (client) session and delivered the edit already labeled —
-                // the tool trained it; here it is journaled as both halves.
-                events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_EDIT_OBSERVED, name,
-                    "{\"labeled\":true}"));
-                events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_EDIT_RESOLVED, name,
-                    "{\"resolved\":1,\"clean\":" + "clean".equals(outcome) + "}"));
-            } else {
-                Boolean rule = arguments.has("ruleStructural")
-                    ? arguments.path("ruleStructural").asBoolean() : null;
-                learnerService.pendingEdit(sessionId,
-                    arguments.path("before").asText(""),
-                    arguments.path("after").asText(""), rule);
-                events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_EDIT_OBSERVED, name,
-                    "{\"pending\":" + learnerService.pendingCount(sessionId) + "}"));
-            }
-        }
         if ("refactoring".equals(name) && arguments != null
                 && arguments.path("action").asText("").startsWith("undo")) {
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_UNDO, name,
                 "{\"action\":\"" + arguments.path("action").asText() + "\"}"));
-            // The edit feed's SECOND half: an undo is the strongest
-            // structural-mishandled consequence for everything pending.
-            resolvePending(sessionId, false, name);
         }
         if (filesModified > 0 && MechanicalChangeJournal.EXEMPT_TOOLS.contains(name)) {
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_MECHANICAL_TOUCH, name,
@@ -112,29 +77,15 @@ public class EventTap {
             long errorCount = errorCount(response);
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_GATE_CALL, name,
                 "{\"errors\":" + errorCount + "}"));
-            // The compile-after-touch label: a failing gate while mechanically
-            // touched files are pending marks the touch suspect — the
-            // immediate revert-class signal the learners train on.
+            // A failing gate while mechanically-touched files are pending marks
+            // the touch suspect — retained as telemetry. The edit switch that
+            // once trained on this signal is retired (D4); the experience loop
+            // captures the real edit→compile outcome into tool_experience.
             if (errorCount > 0 && MechanicalChangeJournal.hasEntries()) {
                 events.append(new LearnerEvent(sessionId,
                     LearnerEvent.KIND_COMPILE_AFTER_TOUCH_FAIL, name,
                     "{\"errors\":" + errorCount + "}"));
             }
-            // The edit feed's SECOND half: the gate outcome IS the label for
-            // every edit pending in this session.
-            resolvePending(sessionId, errorCount == 0, name);
-        }
-    }
-
-    /** Resolves pending edits with their consequence label and journals the count. */
-    private void resolvePending(String sessionId, boolean cleanOutcome, String tool) {
-        if (learnerService == null) {
-            return;
-        }
-        int resolved = learnerService.resolvePending(sessionId, cleanOutcome);
-        if (resolved > 0) {
-            events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_EDIT_RESOLVED, tool,
-                "{\"resolved\":" + resolved + ",\"clean\":" + cleanOutcome + "}"));
         }
     }
 

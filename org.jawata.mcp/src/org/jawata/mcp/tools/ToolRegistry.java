@@ -62,6 +62,9 @@ public class ToolRegistry {
     /** Sprint 26a (D2): the weighted precedent push's retrieval seam (nullable). */
     private org.jawata.mcp.learn.PrecedentRetriever precedentRetriever;
 
+    /** Sprint 26a (D3b): the deterministic architect-involvement gate (nullable). */
+    private org.jawata.mcp.learn.ArchitectGate architectGate;
+
     /** v3.2.1 (dogfood #1): supplier of the degraded-store notice — non-null
      *  return = the store is degraded and EVERY answer must say so. */
     private java.util.function.Supplier<String> storeNotice;
@@ -333,7 +336,10 @@ public class ToolRegistry {
             // seen by the pre-call disk sync + files this call modified) runs
             // through the watch engine; NEW findings ride the answer. Never
             // on the quality tool itself (recursion) and never fatally.
-            watch(sessionId, name, syncDelta, response);
+            boolean smellFound = watch(sessionId, name, syncDelta, response);
+            // Sprint 26a (D3b): the architect-involvement gate — smell (above) |
+            // signature/hierarchy | large edit → involve the architect.
+            architectGate(name, arguments, response, smellFound);
             // Sprint 26 (D4/D5/D3): the server-side enforcement lane.
             if (serverChecks != null && eventTap != null) {
                 try {
@@ -410,11 +416,12 @@ public class ToolRegistry {
         this.precedentRetriever = retriever;
     }
 
-    /** Sprint 26 (D1): runs the watch engine over the call's delta. */
-    private void watch(String sessionId, String name, java.util.List<String> syncDelta,
+    /** Sprint 26 (D1): runs the watch engine over the call's delta. Returns
+     *  whether a smell finding was produced — the D3b gate's smell trigger. */
+    private boolean watch(String sessionId, String name, java.util.List<String> syncDelta,
             ToolResponse response) {
         if (watchEngine == null || "find_quality_issue".equals(name)) {
-            return;
+            return false;
         }
         try {
             java.util.List<String> delta = new java.util.ArrayList<>(syncDelta);
@@ -422,11 +429,39 @@ public class ToolRegistry {
                     && map.get("filesModified") instanceof List<?> files) {
                 files.forEach(f -> delta.add(String.valueOf(f)));
             }
-            watchEngine.watch(sessionId, delta)
-                .ifPresent(response::appendSteering);
+            java.util.Optional<String> findings = watchEngine.watch(sessionId, delta);
+            findings.ifPresent(response::appendSteering);
+            return findings.isPresent();
         } catch (Exception e) {
             log.error("Watch engine failed after {} — findings for this delta were lost", name, e);
+            return false;
         }
+    }
+
+    /**
+     * Sprint 26a (D3b): the architect-involvement gate — the deterministic rule
+     * (smell | signature/hierarchy | over the LoC threshold) that replaces the
+     * retired edit-switch. Appends the review steer; a plain edit passes silent.
+     * Never fails the call.
+     */
+    private void architectGate(String name, JsonNode arguments, ToolResponse response,
+            boolean smellFound) {
+        if (architectGate == null) {
+            return;
+        }
+        try {
+            String steer = architectGate.evaluate(name, arguments, response, smellFound);
+            if (steer != null) {
+                response.appendSteering(steer);
+            }
+        } catch (Exception e) {
+            log.error("Architect gate failed after {}", name, e);
+        }
+    }
+
+    /** Sprint 26a D3b: install the deterministic architect-involvement gate. */
+    public void setArchitectGate(org.jawata.mcp.learn.ArchitectGate gate) {
+        this.architectGate = gate;
     }
 
     /** Sprint 26 (D1): install the watch engine (application wiring). */

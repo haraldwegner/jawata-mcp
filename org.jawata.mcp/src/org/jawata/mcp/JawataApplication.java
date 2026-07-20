@@ -183,6 +183,10 @@ public class JawataApplication implements IApplication {
             // through the baseline keyword retriever (Sprint 27 → embeddings).
             toolRegistry.setPrecedentRetriever(
                 new org.jawata.mcp.learn.KeywordPrecedentRetriever(toolExperienceStore));
+            // Sprint 26a D3b: the deterministic architect-involvement gate — the
+            // rule that replaces the retired edit-switch model.
+            toolRegistry.setArchitectGate(new org.jawata.mcp.learn.ArchitectGate(
+                org.jawata.mcp.learn.ArchitectGate.DEFAULT_LOC_THRESHOLD));
             toolRegistry.setEventTap(eventTap);
             // D4/D5/D3: the server-side lane — defects file into the store.
             org.jawata.mcp.learn.ServerChecks serverChecks =
@@ -199,14 +203,11 @@ public class JawataApplication implements IApplication {
                     });
             toolRegistry.setServerChecks(serverChecks);
             sessionLedger.setEvictionListener(serverChecks::onSessionEvicted);
-            // D2/D3: the seven learners behind experience(kind=train|learner_status).
-            org.jawata.mcp.learn.LearnerService learnerService =
-                new org.jawata.mcp.learn.LearnerService(learnerEvents);
-            experienceTool.setLearnerService(learnerService);
-            // C7: the consequence-labeled edit feed — observe_edit registers
-            // pending at the tap (session-aware); the session's next gate
-            // outcome or undo resolves the TRUE label into the edit switch.
-            eventTap.setLearnerService(learnerService);
+            // Sprint 26a D4: the edit-switch model is RETIRED (the deterministic
+            // architect gate + the experience loop replace it). experience(kind=
+            // train|learner_status|observe_edit) report the retired state honestly,
+            // with the live experience-loop capture count.
+            experienceTool.setToolExperienceStore(toolExperienceStore);
             // D1: the automatic architect — detectors bound to the quality
             // tool's own single-file path (no second detector surface).
             toolRegistry.setWatchEngine(new org.jawata.mcp.learn.WatchEngine(
