@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 6;
+    static final int LATEST = 7;
 
     private SchemaMigrations() {
     }
@@ -91,6 +91,9 @@ final class SchemaMigrations {
         }
         if (from < 6) {
             migrateToV6(conn);
+        }
+        if (from < 7) {
+            migrateToV7(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -273,6 +276,34 @@ final class SchemaMigrations {
                 + " ON tool_experience(tool)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_tool_experience_outcome"
                 + " ON tool_experience(outcome)");
+        }
+    }
+
+    /**
+     * v7 (Sprint 27, D2): the semantic-recall lane — an embedding vector and the
+     * identity that produced it, on BOTH the knowledge entries and the
+     * {@code tool_experience} rows.
+     *
+     * <p>Purely additive: existing rows get NULLs, which is the honest state
+     * ("not embedded yet") and is what the backfill looks for. Nothing already
+     * stored is rewritten, so a v6 store keeps working exactly as before if the
+     * embedder never runs.</p>
+     *
+     * <p>{@code embedder_identity} is stored beside every vector rather than
+     * once for the database, because a store outlives model changes: vectors
+     * from different identities must be distinguishable per row so the stale
+     * ones can be found and re-embedded, and so a comparison across identities
+     * can be REFUSED rather than silently producing a meaningless score.</p>
+     */
+    private static void migrateToV7(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS embedding BLOB");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS embedder_identity VARCHAR(128)");
+            s.execute("CREATE INDEX IF NOT EXISTS ix_entry_embedder ON experience_entry(embedder_identity)");
+            s.execute("ALTER TABLE tool_experience ADD COLUMN IF NOT EXISTS embedding BLOB");
+            s.execute("ALTER TABLE tool_experience ADD COLUMN IF NOT EXISTS embedder_identity VARCHAR(128)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_tool_experience_embedder"
+                + " ON tool_experience(embedder_identity)");
         }
     }
 

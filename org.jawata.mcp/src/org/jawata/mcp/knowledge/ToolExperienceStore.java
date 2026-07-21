@@ -41,8 +41,9 @@ public final class ToolExperienceStore {
                     Connection conn = store.sharedConnection();
                     try (PreparedStatement ps = conn.prepareStatement(
                         "INSERT INTO tool_experience (session_id, situation, tool, outcome,"
-                            + " detail_json, workspace_id, project_id)"
-                            + " VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                            + " detail_json, workspace_id, project_id, embedding,"
+                            + " embedder_identity)"
+                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                         ps.setString(1, e.sessionId());
                         ps.setString(2, e.situation());
                         ps.setString(3, e.tool());
@@ -50,6 +51,14 @@ public final class ToolExperienceStore {
                         ps.setString(5, e.detailJson());
                         ps.setString(6, store.provenanceWorkspaceId());
                         ps.setString(7, store.provenanceProjectId());
+                        // Sprint 27 D2: the situation IS this lane's meaning —
+                        // it is the key precedent retrieval matches on. A null
+                        // vector keeps the row keyword-reachable (v3.3.1
+                        // behaviour) and the backfill embeds it later.
+                        float[] vector = EmbeddingService.shared().embed(e.situation());
+                        ps.setBytes(8, EmbeddingService.toBytes(vector));
+                        ps.setString(9, vector == null
+                            ? null : EmbeddingService.shared().identityKey());
                         ps.executeUpdate();
                     }
                 }, store::invalidateSharedConnection);
