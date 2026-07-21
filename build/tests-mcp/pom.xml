@@ -28,6 +28,17 @@
 
     <build>
         <sourceDirectory>${project.basedir}/../../org.jawata.mcp.tests/src</sourceDirectory>
+        <!-- Sprint 27: the embed goldens travel INSIDE the test fragment, so the
+             parity gate reads them off the classpath instead of guessing a
+             filesystem path (the sample-projects fixtures still use
+             -Djawata.test.fixtures; those are whole projects, not data files). -->
+        <resources>
+            <resource>
+                <directory>${project.basedir}/../../org.jawata.mcp.tests/test-resources</directory>
+                <targetPath>test-resources</targetPath>
+                <includes><include>embed-goldens/*.json</include></includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>

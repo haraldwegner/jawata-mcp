@@ -39,8 +39,29 @@
                 <directory>${project.basedir}/../../org.jawata.mcp</directory>
                 <includes><include>plugin.xml</include></includes>
             </resource>
+            <!-- Sprint 27 D1: the owned embedder's bundled resources (WordPiece
+                 vocabulary now; model weights at Stage 2). They land at the jar
+                 root so the tokenizer reads /embed/vocab.txt off its own
+                 classloader - the PRODUCT never fetches anything. -->
+            <resource>
+                <directory>${project.basedir}/../../org.jawata.mcp/resources</directory>
+            </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- Sprint 27 D1: VectorApiMatMul references the incubating
+                         Vector API, so it must be on the module path to COMPILE.
+                         Runtime is separate and optional: MatMuls loads it
+                         reflectively, so a JVM launched without the flag simply
+                         runs the scalar backend. -->
+                    <compilerArgs>
+                        <arg>--add-modules</arg><arg>jdk.incubator.vector</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
