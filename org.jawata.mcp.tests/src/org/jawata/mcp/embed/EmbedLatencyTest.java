@@ -63,6 +63,41 @@ class EmbedLatencyTest {
             + e.backend() + ")");
     }
 
+    /**
+     * The WRITE-path cost, which is a different number from the cue cost and was
+     * initially conflated with it.
+     *
+     * <p>A cue is a handful of tokens; a stored entry is summary + details, whose
+     * median runs to hundreds of characters and often fills the 256-token window.
+     * Transformer cost grows with sequence length (attention is quadratic in it),
+     * so embedding a real entry costs multiples of embedding a cue. Recording the
+     * two separately is what stops "p50 29 ms" being read as the price of
+     * indexing a corpus — it is not, by a wide margin.</p>
+     */
+    @Test
+    void the_long_entry_write_path_is_measured_separately_from_the_short_cue_path() {
+        MiniLmEmbedder e = MiniLmEmbedder.bundled();
+        String sentence = "the broker confirmation arrived after the slot had already "
+            + "been reused which routed the stale callback to the wrong algorithm ";
+        String medium = sentence.repeat(3);      // ~a typical entry
+        String full = sentence.repeat(12);       // saturates the 256-token window
+
+        for (String s : new String[] {medium, full}) {
+            for (int i = 0; i < 4; i++) {
+                e.embed(s);
+            }
+            long[] samples = new long[10];
+            for (int i = 0; i < samples.length; i++) {
+                long t0 = System.nanoTime();
+                e.embed(s);
+                samples[i] = (System.nanoTime() - t0) / 1_000_000;
+            }
+            Arrays.sort(samples);
+            System.out.printf("[latency] WRITE-path %5d chars  backend=%s p50=%dms%n",
+                s.length(), e.backend(), samples[samples.length / 2]);
+        }
+    }
+
     @Test
     void the_scalar_degrade_path_is_measured_on_the_SAME_workload() {
         // The flagless path is what ships by default, so its cost must be known

@@ -121,8 +121,13 @@ public final class ExperienceRetrieval {
         // side and badly by meaning, while a paraphrase is the reverse (C0
         // measured both). Experience that the fit gate did not admit is offered
         // as capped, labeled ANALOGY — never as fact.
+        // One semantic scan serves BOTH uses below: tie-breaking the fit set's
+        // ordering, and nominating analogies. (Brute-force cosine scans the
+        // store either way; scanning once is just not paying twice.)
+        Map<String, Double> meaning = meaningScores(q);
+
         List<ExperienceAnalogies.Analogy> analogies =
-            analogies(q, fitting, turnedAwayExperience);
+            analogies(q, fitting, turnedAwayExperience, meaning);
 
         if (fitting.isEmpty()) {
             if (analogies.isEmpty()) {
@@ -169,11 +174,22 @@ public final class ExperienceRetrieval {
         String memberToken = q.hasSymbol() && q.symbol().indexOf('#') >= 0
             ? q.symbol().substring(q.symbol().indexOf('#') + 1)
             : null;
+        // Sprint 27 (R1 iteration 1): meaning breaks TIES — and only ties. The
+        // 21c ordering contract (specificity › member affinity › confidence)
+        // ranks first, untouched. But a bare type-name cue can leave the whole
+        // fit set TIED on all three (same specificity, no member token, same
+        // confidence, loaded the same day), and then the old final key —
+        // insertion timestamp — decided the WINNER by file-load order. An
+        // arbitrary tail loses to an informed one: meaning ranks within the
+        // tie, recency only after that. Nothing is added or removed by this;
+        // it is purely which of the same entries comes first.
         fitting.sort(Comparator
             .comparingInt(StoredEntry::specificity).reversed()
             .thenComparing(Comparator.comparingInt(
                 (StoredEntry e) -> memberAffinity(e, memberToken)).reversed())
             .thenComparing(Comparator.comparingInt(StoredEntry::confidenceRank).reversed())
+            .thenComparing(Comparator.comparingDouble(
+                (StoredEntry e) -> meaning.getOrDefault(e.id(), 0.0)).reversed())
             .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
 
         boolean capped = fitting.size() > MAX_TERMINAL;
@@ -213,15 +229,36 @@ public final class ExperienceRetrieval {
      * degrade path, and leaves recall behaving exactly as it did before
      * semantic retrieval existed.</p>
      */
+    /**
+     * One brute-force semantic scan for this cue: every scored id, unfloored.
+     * Empty when there is no index, it is unavailable, or the cue is blank —
+     * the degrade path, in which the tie-break above simply contributes 0s and
+     * the ordering falls back to recency exactly as before this sprint.
+     */
+    private Map<String, Double> meaningScores(RecallQuery q) {
+        if (index == null || !index.available()) {
+            return Map.of();
+        }
+        String cue = cueText(q);
+        if (cue.isBlank()) {
+            return Map.of();
+        }
+        Map<String, Double> scores = new LinkedHashMap<>();
+        for (EmbeddingIndex.Hit h : index.nearestEntries(cue, Integer.MAX_VALUE, 0.0)) {
+            scores.put(h.id(), h.score());
+        }
+        return scores;
+    }
+
     private List<ExperienceAnalogies.Analogy> analogies(RecallQuery q,
                                                        List<StoredEntry> alreadyReturned,
-                                                       List<StoredEntry> turnedAway) {
+                                                       List<StoredEntry> turnedAway,
+                                                       Map<String, Double> meaning) {
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (StoredEntry e : alreadyReturned) {
             seen.add(e.id());                 // never say the same thing twice
         }
         List<StoredEntry> pool = new ArrayList<>();
-        Map<String, Double> scores = new LinkedHashMap<>();
         for (StoredEntry e : turnedAway) {
             if (seen.add(e.id())) {
                 pool.add(e);
@@ -229,33 +266,40 @@ public final class ExperienceRetrieval {
         }
 
         // The UNION: meaning nominates alongside keyword, never instead of it.
-        // With no index (or an unavailable one) this contributes nothing and
-        // the keyword half still answers - the degrade path, intact.
-        if (index != null && index.available()) {
-            String cue = cueText(q);
-            if (!cue.isBlank()) {
-                List<String> ids = new ArrayList<>();
-                for (EmbeddingIndex.Hit h : index.nearestEntries(cue)) {
-                    scores.put(h.id(), h.score());
-                    if (seen.add(h.id())) {
-                        ids.add(h.id());
-                    }
-                }
-                for (StoredEntry e : store.byIds(ids)) {
-                    // A FACT that failed its address gate must NOT reappear
-                    // here - that would smuggle an unverified statement about
-                    // code past the gate that exists to stop it.
-                    if (KnowledgeKind.of(e).isExperience()) {
-                        pool.add(e);
-                    }
-                }
+        // Nomination applies the K + floor volume caps to the full scan taken
+        // above; with no index the map is empty and the keyword half still
+        // answers - the degrade path, intact.
+        List<String> ids = new ArrayList<>();
+        int k = 0;
+        for (Map.Entry<String, Double> h : topByScore(meaning)) {
+            if (k >= EmbeddingIndex.DEFAULT_K
+                    || h.getValue() < EmbeddingIndex.NOMINATION_FLOOR) {
+                break;
+            }
+            k++;
+            if (seen.add(h.getKey())) {
+                ids.add(h.getKey());
+            }
+        }
+        for (StoredEntry e : store.byIds(ids)) {
+            // A FACT that failed its address gate must NOT reappear here -
+            // that would smuggle an unverified statement about code past the
+            // gate that exists to stop it.
+            if (KnowledgeKind.of(e).isExperience()) {
+                pool.add(e);
             }
         }
         if (pool.isEmpty()) {
             return List.of();
         }
-        return ExperienceAnalogies.rank(pool, q, scores,
+        return ExperienceAnalogies.rank(pool, q, meaning,
             ExperienceAnalogies.DEFAULT_CAP, jdt);
+    }
+
+    private static List<Map.Entry<String, Double>> topByScore(Map<String, Double> scores) {
+        List<Map.Entry<String, Double>> sorted = new ArrayList<>(scores.entrySet());
+        sorted.sort(Map.Entry.<String, Double>comparingByValue().reversed());
+        return sorted;
     }
 
     /** The text a cue is embedded as — its words, in the order a human would say them. */
