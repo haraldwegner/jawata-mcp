@@ -6,10 +6,10 @@
  "sample_n": 900,
  "rng_seed": 27,
  "latency_ms_reference_python": {
-  "single_p50": 32.2,
-  "single_p95": 44.6,
-  "batched_per_entry": 15.81,
-  "corpus_total_s": 32.5
+  "single_p50": 29.0,
+  "single_p95": 156.1,
+  "batched_per_entry": 16.57,
+  "corpus_total_s": 34.0
  },
  "corpus_export_sha256": "1ca66fcc62361d347c194de5b35d38fad786643e33e6ba80c2d087d92cf83743",
  "keyword_provenance": "transcribed from live experience(kind=recall) runs 2026-07-21; not reproduced by this script",
@@ -203,6 +203,11 @@
    "cue": "algomanager broker-confirm cleanup",
    "expect": "8932f5b6",
    "keyword_result": "hit"
+  },
+  {
+   "cue": "purple elephant quantum sandwich protocol",
+   "expect": null,
+   "keyword_result": "miss (correct)"
   }
  ],
  "designated": {

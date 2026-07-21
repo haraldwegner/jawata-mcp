@@ -137,7 +137,9 @@ CALIB = [
 CONTROLS = [("blank tauri webview on linux", "7646de22", "hit"),
             ("broker_position_drift on short position", "d20ce2c6", "hit"),
             ("cosine threshold", "fef49c17", "hit"),
-            ("algomanager broker-confirm cleanup", "8932f5b6", "hit")]
+            ("algomanager broker-confirm cleanup", "8932f5b6", "hit"),
+            # NEGATIVE control: a cue about nothing must return nothing.
+            ("purple elephant quantum sandwich protocol", None, "miss (correct)")]
 # PROVENANCE (audit N-6): both `keyword_baseline` above and the control
 # outcomes here are TRANSCRIBED from live runs of the production recall path
 # (experience(kind=recall, ...)) executed 2026-07-21 against this same corpus.
