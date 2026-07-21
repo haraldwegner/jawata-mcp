@@ -63,6 +63,19 @@ public interface ExperienceStore extends AutoCloseable {
      */
     List<StoredEntry> query(RecallQuery query);
 
+    /**
+     * Sprint 27 D2: fetch entries by id, preserving the given ORDER — that order
+     * is the meaning nominator's ranking. Missing ids are skipped, so the result
+     * may be shorter than the input.
+     *
+     * <p>Declared on the interface rather than reached for by casting the
+     * concrete type: the resident wraps the real store in
+     * {@link RecoveringExperienceStore}, so an {@code instanceof} check against
+     * the H2 class would silently fail in production and semantic recall would
+     * be dead everywhere except tests.</p>
+     */
+    List<StoredEntry> byIds(List<String> ids);
+
     /** Update an entry's curation status; returns true when a row changed. */
     boolean setStatus(String id, String status);
 

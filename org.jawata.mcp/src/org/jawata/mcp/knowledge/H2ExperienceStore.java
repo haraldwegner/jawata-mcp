@@ -335,8 +335,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                     "INSERT INTO experience_entry"
                     + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                     + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
-                    + "workspace_id,project_id,language,source_hash) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "workspace_id,project_id,language,source_hash,embedding,embedder_identity) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -358,6 +358,18 @@ public final class H2ExperienceStore implements ExperienceStore {
                 String lang = entry.language();
                 ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
                 ps.setString(19, sourceHash);
+                // Sprint 27 D2: embed on write. The vector is what the entry
+                // MEANS, so it is derived from the same text a reader would see
+                // (summary + details), not the summary alone - C0 measured a
+                // summary-only index scoring true paraphrases down at noise
+                // level. A null vector is a legitimate state: the embedder may
+                // be absent or disabled, and the row must still land and stay
+                // keyword-reachable. The backfill picks it up later.
+                float[] vector = EmbeddingService.shared().embed(
+                    EmbeddingService.textOf(str(factMap.get("summary")),
+                                            str(entry.toMap().get("details"))));
+                ps.setBytes(20, EmbeddingService.toBytes(vector));
+                ps.setString(21, vector == null ? null : EmbeddingService.shared().identityKey());
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
@@ -631,6 +643,48 @@ public final class H2ExperienceStore implements ExperienceStore {
             }
         }
         return symptoms;
+    }
+
+    /**
+     * Sprint 27 D2: fetch entries by id, for the semantic nominator — it returns
+     * ids and scores, and the fit rules need the rows themselves.
+     *
+     * <p>Order follows the ids given, because that order IS the ranking. Ids
+     * that no longer exist are skipped silently: a nominator working from
+     * vectors can legitimately name a row deleted since, and that is a smaller
+     * set, never a wrong answer.</p>
+     */
+    @Override
+    public synchronized List<StoredEntry> byIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        Map<String, StoredEntry> found = new LinkedHashMap<>();
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        try (PreparedStatement ps = live().prepareStatement(
+                "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE id IN (" + placeholders + ")")) {
+            for (int i = 0; i < ids.size(); i++) {
+                ps.setString(i + 1, ids.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    StoredEntry e = mapRow(rs);
+                    found.put(e.id(), e);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("byIds lookup FAILED; semantic nomination contributes nothing"
+                + " for this cue rather than a partial list", e);
+            return List.of();
+        }
+        List<StoredEntry> ordered = new ArrayList<>();
+        for (String id : ids) {
+            StoredEntry e = found.get(id);
+            if (e != null) {
+                ordered.add(e);
+            }
+        }
+        return ordered;
     }
 
     @Override

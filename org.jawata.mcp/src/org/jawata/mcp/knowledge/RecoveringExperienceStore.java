@@ -165,6 +165,11 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public List<StoredEntry> byIds(List<String> ids) {
+        return delegate.byIds(ids);
+    }
+
+    @Override
     public boolean setStatus(String id, String status) {
         synchronized (lock) {
             return delegate.setStatus(id, status);

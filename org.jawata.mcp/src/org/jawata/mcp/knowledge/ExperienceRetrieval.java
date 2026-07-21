@@ -43,6 +43,8 @@ public final class ExperienceRetrieval {
     public static final String RESULT_MATCH = "match";
     public static final String RESULT_ABSENCE = "absence";
     public static final String RESULT_PRIMER = "primer";
+    /** Sprint 27: nothing passed the gate, but comparable experience exists. */
+    public static final String RESULT_ANALOGY = "analogy";
 
     /** Domain-layer entry types + scope kinds — the always-relevant knowledge the primer pushes.
      *  v2.2.3: widened with the standing how-to-work types a real memory corpus maps to
@@ -56,10 +58,19 @@ public final class ExperienceRetrieval {
 
     private final ExperienceStore store;
     private final Supplier<IJdtService> jdt;
+    /** Sprint 27: the meaning nominator. NULL is the supported degrade state —
+     *  with no index this class behaves exactly as it did in v3.3.1. */
+    private final EmbeddingIndex index;
 
     public ExperienceRetrieval(ExperienceStore store, Supplier<IJdtService> jdt) {
+        this(store, jdt, null);
+    }
+
+    public ExperienceRetrieval(ExperienceStore store, Supplier<IJdtService> jdt,
+                               EmbeddingIndex index) {
         this.store = store;
         this.jdt = jdt;
+        this.index = index;
     }
 
     /** Terminal recall — a {@code match} document with the fit set, or an {@code absence}. */
@@ -75,17 +86,61 @@ public final class ExperienceRetrieval {
         }
 
         List<StoredEntry> candidates = store.query(q);
+
+        // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
+        // pipeline (Harald's ruling, 2026-07-21).
+        //
+        // The signed ontology is about ADMISSION: scope containment must never
+        // DELETE experience learned elsewhere. It is not a licence to bypass
+        // the retrieval pipeline itself — Sprints 21c/21e earned nine
+        // behaviours inside it (return the answering SECTION rather than its
+        // whole file, prefer the more specific scope, never drop recorded
+        // entries as family duplicates, match symptom words non-adjacently, …)
+        // and every one applies to experience. Routing experience around them
+        // deletes all nine, and caps at 2 what today returns up to 5 — a cue
+        // would come back with LESS than before. So:
+        //
+        //   • the gate still decides what counts as a confirmed FIT, unchanged;
+        //   • it no longer EXCLUDES anything — experience it turns away is
+        //     offered below as capped, labeled analogy, together with whatever
+        //     meaning nomination finds.
+        //
+        // The gate stops excluding; it only routes.
         List<StoredEntry> fitting = new ArrayList<>();
+        List<StoredEntry> turnedAwayExperience = new ArrayList<>();
         for (StoredEntry e : candidates) {
             if (fits(e, q)) {
                 fitting.add(e);
+            } else if (KnowledgeKind.of(e).isExperience()) {
+                turnedAwayExperience.add(e);
             }
         }
+        // Sprint 27 D2 — the SECOND nominator. Keyword gathered `candidates`
+        // above; meaning gathers its own, and the two are a UNION, never a
+        // replacement: an FQN cue is answered deterministically by the keyword
+        // side and badly by meaning, while a paraphrase is the reverse (C0
+        // measured both). Experience that the fit gate did not admit is offered
+        // as capped, labeled ANALOGY — never as fact.
+        List<ExperienceAnalogies.Analogy> analogies =
+            analogies(q, fitting, turnedAwayExperience);
+
         if (fitting.isEmpty()) {
-            out.put("result", RESULT_ABSENCE);
-            out.put("reason", candidates.isEmpty() ? "no candidates" : "no candidate fit the cue's scope");
-            out.put("message", "No known knowledge for this cue.");
+            if (analogies.isEmpty()) {
+                out.put("result", RESULT_ABSENCE);
+                out.put("reason", candidates.isEmpty() ? "no candidates" : "no candidate fit the cue's scope");
+                out.put("message", "No known knowledge for this cue.");
+                out.put("entries", List.of());
+                return out;
+            }
+            // Not an absence: nothing is asserted about this cue, but comparable
+            // experience exists. Said in its own words so a caller can never
+            // read an analogy as a gated fact.
+            out.put("result", RESULT_ANALOGY);
+            out.put("count", 0);
             out.put("entries", List.of());
+            out.put("analogies", ExperienceAnalogies.toMaps(analogies));
+            out.put("message", "No established fact for this cue — "
+                + analogies.size() + " comparable experience(s) below; judge whether they transfer.");
             return out;
         }
 
@@ -135,7 +190,90 @@ public final class ExperienceRetrieval {
             log.info("recall fit set capped {} -> {} for cue {}", fitting.size(), MAX_TERMINAL, cueMap(q));
         }
         out.put("entries", entries);
+        if (!analogies.isEmpty()) {
+            out.put("analogies", ExperienceAnalogies.toMaps(analogies));
+        }
         return out;
+    }
+
+    /**
+     * Meaning-nominated EXPERIENCE that the fit gate did not already admit.
+     *
+     * <p>Two exclusions carry the ontology, and both matter:</p>
+     * <ul>
+     *   <li><b>Facts are never offered as analogies.</b> A fact that failed the
+     *       address gate has failed, and must stay failed — routing it here
+     *       would smuggle an unverified statement about code past the very gate
+     *       that exists to stop it.</li>
+     *   <li><b>Nothing already returned is repeated.</b> The same entry in both
+     *       lists would spend the agent's context twice to say one thing.</li>
+     * </ul>
+     *
+     * <p>With no index, or an unavailable one, this returns empty — which is the
+     * degrade path, and leaves recall behaving exactly as it did before
+     * semantic retrieval existed.</p>
+     */
+    private List<ExperienceAnalogies.Analogy> analogies(RecallQuery q,
+                                                       List<StoredEntry> alreadyReturned,
+                                                       List<StoredEntry> turnedAway) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (StoredEntry e : alreadyReturned) {
+            seen.add(e.id());                 // never say the same thing twice
+        }
+        List<StoredEntry> pool = new ArrayList<>();
+        Map<String, Double> scores = new LinkedHashMap<>();
+        for (StoredEntry e : turnedAway) {
+            if (seen.add(e.id())) {
+                pool.add(e);
+            }
+        }
+
+        // The UNION: meaning nominates alongside keyword, never instead of it.
+        // With no index (or an unavailable one) this contributes nothing and
+        // the keyword half still answers - the degrade path, intact.
+        if (index != null && index.available()) {
+            String cue = cueText(q);
+            if (!cue.isBlank()) {
+                List<String> ids = new ArrayList<>();
+                for (EmbeddingIndex.Hit h : index.nearestEntries(cue)) {
+                    scores.put(h.id(), h.score());
+                    if (seen.add(h.id())) {
+                        ids.add(h.id());
+                    }
+                }
+                for (StoredEntry e : store.byIds(ids)) {
+                    // A FACT that failed its address gate must NOT reappear
+                    // here - that would smuggle an unverified statement about
+                    // code past the gate that exists to stop it.
+                    if (KnowledgeKind.of(e).isExperience()) {
+                        pool.add(e);
+                    }
+                }
+            }
+        }
+        if (pool.isEmpty()) {
+            return List.of();
+        }
+        return ExperienceAnalogies.rank(pool, q, scores,
+            ExperienceAnalogies.DEFAULT_CAP, jdt);
+    }
+
+    /** The text a cue is embedded as — its words, in the order a human would say them. */
+    static String cueText(RecallQuery q) {
+        if (q == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String part : new String[] {q.symptom(), q.operation(), q.symbol(),
+                                         q.packageName(), q.externalSystem()}) {
+            if (part != null && !part.isBlank()) {
+                if (sb.length() > 0) {
+                    sb.append(' ');
+                }
+                sb.append(part.trim());
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -199,7 +337,35 @@ public final class ExperienceRetrieval {
             }
             sb.append(renderEntryLine(e));
         }
+        // Sprint 27: analogies render BELOW the gated facts and are visibly
+        // different in kind — advisory framing, basis and provenance in words,
+        // and never a similarity number (a score in the text invites treating
+        // it as authority, which is precisely what an analogy is not).
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> analogies =
+            (List<Map<String, Object>>) result.getOrDefault("analogies", List.of());
+        for (Map<String, Object> a : analogies) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(renderAnalogyLine(a));
+        }
         return sb.toString();
+    }
+
+    /** One analogy line: what it was, why it surfaced, where it was learned. */
+    static String renderAnalogyLine(Map<String, Object> a) {
+        StringBuilder sb = new StringBuilder("In a similar situation: ");
+        sb.append(san(a.get("summary")));
+        Object basis = a.get("basis");
+        sb.append("  [");
+        sb.append(basis instanceof List<?> l ? String.join("; ",
+            l.stream().map(String::valueOf).toList()) : san(basis));
+        Object prov = a.get("provenance");
+        if (prov != null) {
+            sb.append("; ").append(san(prov));
+        }
+        return sb.append(']').toString();
     }
 
     /** Sprint 21a (item G): render a curation list as flat lines ({@code list} format=text). */
@@ -359,11 +525,25 @@ public final class ExperienceRetrieval {
         m.put("status", e.status());       // current column status (body_json is frozen at insert)
         m.putAll(e.body());
         m.put("status", e.status());       // ...and win over the frozen body value
+        // Sprint 27 D2: say WHICH kind this is, so nothing reads as a verified
+        // statement about code unless it actually is one.
+        KnowledgeKind kind = KnowledgeKind.of(e);
+        m.put("kind", kind.isFact() ? "fact" : "experience");
         // Item I: only Java anchors are JDT-resolvable; a non-Java pointer stays a plain
         // FQN in the body rather than being presented with a misleading "stale" flag.
         if (e.isJavaResolvable()) {
             Map<String, Object> pointer = resolvePointer(e.symbolFqn());
             if (pointer != null) {
+                if (kind.isExperience() && Boolean.TRUE.equals(pointer.get("stale"))) {
+                    // For EXPERIENCE the anchor is provenance, not a criterion:
+                    // the code being gone says nothing about whether the lesson
+                    // still holds. Flagging it "stale" would tell the agent to
+                    // discount knowledge that is still true — the exact error
+                    // the ontology exists to prevent. A FACT keeps its stale
+                    // flag, because there the address IS the claim.
+                    pointer.remove("stale");
+                    pointer.put("note", "learned here; the symbol no longer exists");
+                }
                 m.put("resolved_pointer", pointer);
             }
         }
