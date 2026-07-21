@@ -409,7 +409,31 @@ public final class ExperienceRetrieval {
         if (prov != null) {
             sb.append("; ").append(san(prov));
         }
-        return sb.append(']').toString();
+        sb.append(']');
+        // Sprint 27 D4: the dispatch facts of a past seat run, on the line the
+        // analogy already occupies — no second surface, no new command.
+        Object dispatch = a.get("dispatch");
+        if (dispatch instanceof Map<?, ?> d) {
+            sb.append("  (").append(renderDispatch(d)).append(')');
+        }
+        return sb.toString();
+    }
+
+    /** Flat form of the {@code dispatch} block — seat, verdict, outcome, in that order. */
+    static String renderDispatch(Map<?, ?> d) {
+        StringBuilder sb = new StringBuilder("past run: seat ");
+        Object seat = d.get("seat");
+        sb.append(seat == null ? "unnamed" : san(seat));
+        Object target = d.get("target");
+        if (target != null) {
+            sb.append(" on ").append(san(target));
+        }
+        sb.append(" — human verdict: ").append(san(d.get("human_verdict")));
+        Object outcome = d.get("outcome");
+        if (outcome != null) {
+            sb.append(" — outcome: ").append(san(outcome));
+        }
+        return sb.toString();
     }
 
     /** Sprint 21a (item G): render a curation list as flat lines ({@code list} format=text). */
@@ -437,6 +461,13 @@ public final class ExperienceRetrieval {
         Object status = e.get("status");
         if (status != null) {
             sb.append(" (").append(san(status)).append(')');
+        }
+        // Sprint 27 D4: for a seat run the dispatch facts REPLACE the raw
+        // journal blob — a truncated JSON string is where the seat and the
+        // verdict used to go to die.
+        Object dispatch = e.get("dispatch");
+        if (dispatch instanceof Map<?, ?> d) {
+            return sb.append(" — ").append(renderDispatch(d)).toString();
         }
         Object details = e.get("details");
         if (details != null) {
@@ -573,6 +604,13 @@ public final class ExperienceRetrieval {
         // statement about code unless it actually is one.
         KnowledgeKind kind = KnowledgeKind.of(e);
         m.put("kind", kind.isFact() ? "fact" : "experience");
+        // Sprint 27 D4: a seat run reached by a scoped cue (operation="seat:x")
+        // states the same dispatch facts the analogy path states — the facts
+        // must not depend on WHICH nominator found the run.
+        Map<String, Object> dispatch = DispatchRecall.toMap(DispatchRecall.of(e));
+        if (dispatch != null) {
+            m.put("dispatch", dispatch);
+        }
         // Item I: only Java anchors are JDT-resolvable; a non-Java pointer stays a plain
         // FQN in the body rather than being presented with a misleading "stale" flag.
         if (e.isJavaResolvable()) {

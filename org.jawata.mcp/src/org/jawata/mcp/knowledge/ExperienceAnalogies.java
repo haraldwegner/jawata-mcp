@@ -131,25 +131,11 @@ public final class ExperienceAnalogies {
     }
 
     /**
-     * Render analogies for injection: advisory framing, basis and provenance in
-     * words, and NO similarity number anywhere.
+     * Structured form for the MCP answer. Text rendering lives in
+     * {@link ExperienceRetrieval#renderAnalogyLine} and reads THIS map — one
+     * rendering path, so the ontology's rules (basis in words, provenance, no
+     * similarity number) cannot hold on one path and quietly lapse on another.
      */
-    public static List<String> render(List<Analogy> analogies) {
-        List<String> lines = new ArrayList<>();
-        for (Analogy a : analogies) {
-            StringBuilder sb = new StringBuilder("In a similar situation: ");
-            sb.append(oneLine(a.entry().summary()));
-            sb.append("  [").append(String.join("; ", a.basis()));
-            if (a.provenance() != null) {
-                sb.append("; ").append(a.provenance());
-            }
-            sb.append(']');
-            lines.add(sb.toString());
-        }
-        return lines;
-    }
-
-    /** Structured form for the MCP answer, mirroring {@link #render}. */
     public static List<Map<String, Object>> toMaps(List<Analogy> analogies) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Analogy a : analogies) {
@@ -160,6 +146,13 @@ public final class ExperienceAnalogies {
             m.put("basis", a.basis());                 // words, never a score
             if (a.provenance() != null) {
                 m.put("provenance", a.provenance());
+            }
+            // Sprint 27 D4 — dispatch recall rides the analogy carrier: seat,
+            // human verdict and outcome, still framed as an analogy because a
+            // past run is evidence, not the rule.
+            Map<String, Object> dispatch = DispatchRecall.toMap(DispatchRecall.of(a.entry()));
+            if (dispatch != null) {
+                m.put("dispatch", dispatch);
             }
             m.put("framing", "analogy — judge whether it transfers");
             out.add(m);
@@ -196,11 +189,4 @@ public final class ExperienceAnalogies {
         return pkg != null && !pkg.isBlank() && symbol.startsWith(pkg + ".");
     }
 
-    private static String oneLine(String s) {
-        if (s == null) {
-            return "";
-        }
-        String one = s.replaceAll("\\s+", " ").trim();
-        return one.length() <= 180 ? one : one.substring(0, 177) + "...";
-    }
 }

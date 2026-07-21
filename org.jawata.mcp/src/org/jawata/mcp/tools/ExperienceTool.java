@@ -627,8 +627,9 @@ public final class ExperienceTool implements Tool {
         data.put("stored", true);
         // Sprint 27 D5 — write-path dedup. The entry is STORED either way (a
         // dedup that can lose knowledge is worse than a duplicate); when its
-        // meaning near-duplicates an existing entry (>= 0.92, the C0-derived
-        // conservative threshold), the response FLAGS it with a merge/drop
+        // meaning near-duplicates an existing entry (>= DEDUP_THRESHOLD, C0-
+        // derived and Stage-6 re-derived from hand labels), the response FLAGS
+        // it with a merge/drop
         // proposal. The human decides; nothing is automatic. The C0
         // measurement found 23 byte-identical pairs in the live store - this
         // is the hook that would have caught every one at admission.
@@ -645,7 +646,8 @@ public final class ExperienceTool implements Tool {
                     for (var hit : index.nearestEntries(
                             org.jawata.mcp.knowledge.EmbeddingService.textOf(
                                 args.path("summary").asText(""),
-                                args.path("details").asText(null)), 2, 0.92)) {
+                                args.path("details").asText(null)), 2,
+                            org.jawata.mcp.knowledge.EmbeddingIndex.DEDUP_THRESHOLD)) {
                         if (!hit.id().equals(id)) {
                             data.put("duplicate_of", hit.id());
                             data.put("duplicate_note", "this entry near-duplicates an"

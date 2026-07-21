@@ -43,6 +43,19 @@ public final class EmbeddingIndex {
     /** C0-derived volume cap. NOT a relevance threshold — see the class note. */
     public static final double NOMINATION_FLOOR = 0.15;
 
+    /**
+     * D5's write-path dedup line, RE-DERIVED at Stage 6 from 84 hand-labeled
+     * corpus pairs ({@code dedup-labels.json}): every pair at or above it is a
+     * true duplicate (measured precision 1.000), and the highest-scoring pair
+     * that is NOT a duplicate sits at 0.8970 — a real margin rather than the
+     * conservative guess C0 could only make from one content pair.
+     *
+     * <p>What this line does NOT claim: coverage. It proposes 3 of the 40
+     * labeled duplicate pairs. Dedup here is deliberately high-precision and
+     * low-recall, because D5 only proposes and a human confirms.</p>
+     */
+    public static final double DEDUP_THRESHOLD = 0.92;
+
     private final H2ExperienceStore store;
     private final EmbeddingService embeddings;
 
