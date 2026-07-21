@@ -33,6 +33,14 @@ public final class RecoveringExperienceStore implements ExperienceStore {
 
     private final Object lock = new Object();
     private volatile ExperienceStore delegate;
+
+    /** Sprint 27 D5: the current delegate — lets a caller that needs the
+     *  CONCRETE store (the embedding index reads its connection) reach it
+     *  through the wrapper instead of an {@code instanceof} check that is
+     *  false in production (the C4-F1 lesson, kept fixed). */
+    public ExperienceStore currentDelegate() {
+        return delegate;
+    }
     private volatile String notice;
     private final String reason;
     private final Thread retryThread;

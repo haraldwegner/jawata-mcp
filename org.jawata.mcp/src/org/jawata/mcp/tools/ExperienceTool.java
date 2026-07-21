@@ -625,6 +625,43 @@ public final class ExperienceTool implements Tool {
         data.put("id", id);
         data.put("status", entry.status());
         data.put("stored", true);
+        // Sprint 27 D5 — write-path dedup. The entry is STORED either way (a
+        // dedup that can lose knowledge is worse than a duplicate); when its
+        // meaning near-duplicates an existing entry (>= 0.92, the C0-derived
+        // conservative threshold), the response FLAGS it with a merge/drop
+        // proposal. The human decides; nothing is automatic. The C0
+        // measurement found 23 byte-identical pairs in the live store - this
+        // is the hook that would have caught every one at admission.
+        try {
+            // Unwrap the resident's recovery wrapper first - a bare instanceof
+            // against the H2 class is FALSE in production (the C4-F1 lesson).
+            var concrete = store instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r
+                ? r.currentDelegate() : store;
+            if (concrete instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
+                org.jawata.mcp.knowledge.EmbeddingService svc =
+                    org.jawata.mcp.knowledge.EmbeddingService.shared();
+                if (svc.available()) {
+                    var index = new org.jawata.mcp.knowledge.EmbeddingIndex(h2, svc);
+                    for (var hit : index.nearestEntries(
+                            org.jawata.mcp.knowledge.EmbeddingService.textOf(
+                                args.path("summary").asText(""),
+                                args.path("details").asText(null)), 2, 0.92)) {
+                        if (!hit.id().equals(id)) {
+                            data.put("duplicate_of", hit.id());
+                            data.put("duplicate_note", "this entry near-duplicates an"
+                                + " existing one - consider MERGING into it (promote/"
+                                + "edit the older entry) or DROPPING this one (prune)."
+                                + " Stored regardless; nothing was lost.");
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            // Stored and unflagged is the honest degrade; say so IN the response
+            // rather than a log nobody reads.
+            data.put("dedup_check", "failed: " + e.getMessage());
+        }
         return ToolResponse.success(data);
     }
 
