@@ -62,6 +62,12 @@ public class ToolRegistry {
     /** Sprint 26a (D2): the weighted precedent push's retrieval seam (nullable). */
     private org.jawata.mcp.learn.PrecedentRetriever precedentRetriever;
 
+    /** v3.3.1 (D2 enforcement): the surfaced negative precedents awaiting a written
+     *  justification. Instantiated by DEFAULT — the signed D2 body says the steer is
+     *  "enforced-by-default", so enforcement may not depend on optional wiring. */
+    private org.jawata.mcp.learn.PrecedentLedger precedentLedger =
+        new org.jawata.mcp.learn.PrecedentLedger();
+
     /** Sprint 26a (D3b): the deterministic architect-involvement gate (nullable). */
     private org.jawata.mcp.learn.ArchitectGate architectGate;
 
@@ -294,6 +300,18 @@ public class ToolRegistry {
             }
         }
 
+        // v3.3.1 (D2 enforcement): LEVY the justification-cost. If a negative
+        // precedent for this (tool, target) was already surfaced in this session,
+        // using the tool anyway costs a written reason — refused BEFORE dispatch,
+        // because the signed D2 body says the steer is "not an optional hint the
+        // agent may ignore". v3.3.0 worded the cost but never charged it.
+        ToolResponse unpaid = precedentCharge(sessionId, name, arguments);
+        if (unpaid != null) {
+            return unpaid;
+        }
+        // A paid override is a meta-argument of the CHOKE, not of the tool.
+        arguments = withoutOverride(arguments);
+
         try {
             ToolResponse response = tool.execute(arguments);
             long duration = System.currentTimeMillis() - startTime;
@@ -326,7 +344,7 @@ public class ToolRegistry {
             // call is working on, what did tools do in similar cases before?
             // Runs BEFORE the tap so it reflects PAST experience, not this call's
             // own outcome; appended, never replacing the tool's own line.
-            precedent(name, arguments, response);
+            precedent(sessionId, name, arguments, response);
             // Sprint 26: the event tap — every outcome becomes a learner label
             // as a side effect of the call itself (D7: training is a side
             // effect of use). Tap failures are the tap's own concern (loud
@@ -391,7 +409,8 @@ public class ToolRegistry {
      * steer (never replacing the tool's own line). No retriever, no target, or
      * no clear signal → silent. Never fails the call.
      */
-    private void precedent(String name, JsonNode arguments, ToolResponse response) {
+    private void precedent(String sessionId, String name, JsonNode arguments,
+            ToolResponse response) {
         if (precedentRetriever == null) {
             return;
         }
@@ -402,18 +421,91 @@ public class ToolRegistry {
             }
             java.util.List<org.jawata.mcp.learn.ToolExperience> hits =
                 precedentRetriever.retrieve(target, 20);
-            String steer = org.jawata.mcp.learn.PrecedentSteer.compose(name, hits);
-            if (steer != null) {
-                response.appendSteering(steer);
+            org.jawata.mcp.learn.PrecedentSteer.Verdict verdict =
+                org.jawata.mcp.learn.PrecedentSteer.evaluate(name, hits);
+            if (verdict.steer() != null) {
+                response.appendSteering(verdict.steer());
+            }
+            // v3.3.1: a NEGATIVE precedent was just SURFACED — remember it, so a
+            // later use of that tool on this target owes the written justification
+            // the steer just named. Charging a cost for a warning never shown
+            // would be enforcement by ambush.
+            if (verdict.warnedTool() != null && precedentLedger != null) {
+                precedentLedger.warn(sessionId, verdict.warnedTool(), target);
             }
         } catch (Exception e) {
             log.error("Precedent push failed after {}", name, e);
         }
     }
 
+    /**
+     * v3.3.1 (D2 enforcement): the justification-cost, levied. Returns the refusal
+     * when a SURFACED negative precedent for this {@code (tool, target)} is still
+     * unpaid, else {@code null}.
+     *
+     * <p>Fails OPEN on any internal error: a broken charge must never block real
+     * work. It also never charges for a warning that was not actually shown —
+     * enforcement by ambush would be worse than no enforcement.</p>
+     */
+    private ToolResponse precedentCharge(String sessionId, String name, JsonNode arguments) {
+        if (precedentLedger == null) {
+            return null;
+        }
+        try {
+            String target = org.jawata.mcp.learn.ToolExperienceRecorder.target(name, arguments);
+            if (target == null || target.isBlank()
+                    || !precedentLedger.isOutstanding(sessionId, name, target)) {
+                return null;
+            }
+            String reason = justification(arguments);
+            if (reason != null) {
+                // Paid. The agent MAY defect from precedent — it may not defect
+                // SILENTLY. Clear the charge so the reason is owed only once.
+                precedentLedger.clear(sessionId, name, target);
+                log.info("Precedent defection on {} for target {} justified: {}",
+                    name, target, reason);
+                return null;
+            }
+            return ToolResponse.error("PRECEDENT_UNJUSTIFIED",
+                "`" + name + "` was reverted or errored on " + target + " in a case like this,"
+                    + " and that precedent was already surfaced to you. Using it anyway costs"
+                    + " a written justification.",
+                "Prefer what worked before; or re-call with precedentOverride=\"<one line:"
+                    + " why this case is different>\". The reason is logged with the call.");
+        } catch (Exception e) {
+            log.error("Precedent charge failed before {} — proceeding UNCHARGED", name, e);
+            return null;
+        }
+    }
+
+    /** The written justification carried by the call, or {@code null} when absent/blank. */
+    private static String justification(JsonNode arguments) {
+        if (arguments == null || !arguments.hasNonNull("precedentOverride")) {
+            return null;
+        }
+        String reason = arguments.get("precedentOverride").asText("").trim();
+        return reason.isEmpty() ? null : reason;
+    }
+
+    /** Strips the choke's meta-argument so no tool ever sees it in its own schema. */
+    private static JsonNode withoutOverride(JsonNode arguments) {
+        if (arguments instanceof com.fasterxml.jackson.databind.node.ObjectNode obj
+                && obj.has("precedentOverride")) {
+            com.fasterxml.jackson.databind.node.ObjectNode copy = obj.deepCopy();
+            copy.remove("precedentOverride");
+            return copy;
+        }
+        return arguments;
+    }
+
     /** Sprint 26a D2: the swappable retrieval seam (Sprint 27 → embeddings). */
     public void setPrecedentRetriever(org.jawata.mcp.learn.PrecedentRetriever retriever) {
         this.precedentRetriever = retriever;
+    }
+
+    /** v3.3.1: install the precedent ledger (application wiring / tests). */
+    public void setPrecedentLedger(org.jawata.mcp.learn.PrecedentLedger ledger) {
+        this.precedentLedger = ledger;
     }
 
     /** Sprint 26 (D1): runs the watch engine over the call's delta. Returns

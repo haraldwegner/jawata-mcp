@@ -39,8 +39,31 @@ public final class PrecedentSteer {
      * @return a steer block to append, or {@code null} when there is no clear signal
      */
     public static String compose(String currentTool, List<ToolExperience> precedents) {
+        return evaluate(currentTool, precedents).steer();
+    }
+
+    /**
+     * v3.3.1: the composed steer PLUS the tool a NEGATIVE precedent warned about
+     * ({@code null} when the signal is positive or absent). The choke needs the
+     * latter to charge the justification-cost on a later defection — a cost can
+     * only be charged for a warning that was actually surfaced.
+     *
+     * @param steer      the block to append, or {@code null}
+     * @param warnedTool the tool warned against, or {@code null}
+     */
+    public record Verdict(String steer, String warnedTool) {
+        /** No clear signal — nothing to surface, nothing to charge. */
+        public static final Verdict NONE = new Verdict(null, null);
+    }
+
+    /**
+     * @param currentTool the tool that just answered (context for the steer; may be null)
+     * @param precedents  the retrieved rows for the current target
+     * @return the verdict; {@link Verdict#NONE} when there is no clear signal
+     */
+    public static Verdict evaluate(String currentTool, List<ToolExperience> precedents) {
         if (precedents == null || precedents.isEmpty()) {
-            return null;
+            return Verdict.NONE;
         }
         // Per tool: [good, bad] where good = compiled, bad = reverted|error.
         Map<String, int[]> byTool = new LinkedHashMap<>();
@@ -68,16 +91,16 @@ public final class PrecedentSteer {
             }
         }
         if (bestNeg >= 1) {
-            return "⚠ PRECEDENT — `" + bestNegTool + "` was reverted/errored "
+            return new Verdict("⚠ PRECEDENT — `" + bestNegTool + "` was reverted/errored "
                 + bestNeg + "× in a case like this. Prefer what worked before, or if"
                 + " you use it here, note why (defecting from precedent costs a one-line"
-                + " justification, like a jawata-fallback)." + howTo(bestNegTool);
+                + " justification, like a jawata-fallback)." + howTo(bestNegTool), bestNegTool);
         }
         if (bestPos >= POSITIVE_THRESHOLD) {
-            return "PRECEDENT — `" + bestPosTool + "` worked in " + bestPos
-                + " similar case(s); reach for it here." + howTo(bestPosTool);
+            return new Verdict("PRECEDENT — `" + bestPosTool + "` worked in " + bestPos
+                + " similar case(s); reach for it here." + howTo(bestPosTool), null);
         }
-        return null;
+        return Verdict.NONE;
     }
 
     /**
