@@ -134,10 +134,17 @@ CALIB = [
 ]
 # Literal controls: cues quoting a STORED symptom string. They license the
 # reading that a keyword "miss" above is a true absence, not a broken tool.
-CONTROLS = [("blank tauri webview on linux", "7646de22"),
-            ("broker_position_drift on short position", "d20ce2c6"),
-            ("cosine threshold", "fef49c17"),
-            ("algomanager broker-confirm cleanup", "8932f5b6")]
+CONTROLS = [("blank tauri webview on linux", "7646de22", "hit"),
+            ("broker_position_drift on short position", "d20ce2c6", "hit"),
+            ("cosine threshold", "fef49c17", "hit"),
+            ("algomanager broker-confirm cleanup", "8932f5b6", "hit")]
+# PROVENANCE (audit N-6): both `keyword_baseline` above and the control
+# outcomes here are TRANSCRIBED from live runs of the production recall path
+# (experience(kind=recall, ...)) executed 2026-07-21 against this same corpus.
+# This script does NOT drive MCP, so these are recorded observations, not
+# values it reproduces. Re-verify by re-running the cues through the tool.
+KEYWORD_PROVENANCE = ("transcribed from live experience(kind=recall) runs "
+                      "2026-07-21; not reproduced by this script")
 
 def row_of(prefix):
     for k, i in enumerate(ids):
@@ -180,12 +187,18 @@ for ci, cv in enumerate(CE):
 SAMPLE_N = 900
 s = rng.choice(len(rows), size=min(SAMPLE_N, len(rows)), replace=False)
 S = E[s]; M = S @ S.T; np.fill_diagonal(M, -1)
-identical, distinct = [], []
+# One row per sampled entry means MUTUAL nearest neighbours appear twice; count
+# UNORDERED pairs so "pairs" means pairs (audit N-4).
+seen_pairs, identical, distinct = set(), [], []
 for a in range(len(s)):
     b = int(np.argmax(M[a])); sc = float(M[a][b])
     if sc < 0.78:
         continue
     ia, ib = ids[s[a]], ids[s[b]]
+    key = tuple(sorted((ia, ib)))
+    if key in seen_pairs:
+        continue
+    seen_pairs.add(key)
     rec = {"score": round(sc, 4), "a": ia, "b": ib,
            "a_summary": summ[ia], "b_summary": summ[ib]}
     (identical if texts[s[a]] == texts[s[b]] else distinct).append(rec)
@@ -204,8 +217,10 @@ report = {
      "single_p95": round(singles[int(.95*len(singles))], 1),
      "batched_per_entry": round(1000*bulk/len(texts), 2),
      "corpus_total_s": round(bulk, 1)},
+ "corpus_export_sha256": hashlib.sha256(open(EXPORT, "rb").read()).hexdigest(),
+ "keyword_provenance": KEYWORD_PROVENANCE,
  "calibration": results,
- "controls": [{"cue": c, "expect": e} for c, e in CONTROLS],
+ "controls": [{"cue": c, "expect": e, "keyword_result": r} for c, e, r in CONTROLS],
  "designated": {
      "n": len(designated_scores), "min": round(min(designated_scores), 4),
      "median": round(statistics.median(designated_scores), 4),
@@ -226,7 +241,7 @@ report = {
                 "0.85-0.90": (.85, .90), "0.90-0.95": (.90, .95),
                 "0.95-1.00": (.95, 1.01)}.items()},
      "labeled_pairs_distinct_text": sorted(distinct, key=lambda p: -p["score"]),
-     "labeled_pairs_identical_text": identical[:20]},
+     "labeled_pairs_identical_text": sorted(identical, key=lambda p: -p["score"])},
  "derived": {
      "nomination_floor": 0.15,
      "nomination_floor_basis": ("below the observed designated minimum; the "
