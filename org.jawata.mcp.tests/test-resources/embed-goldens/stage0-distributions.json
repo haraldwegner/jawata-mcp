@@ -1,0 +1,176 @@
+{
+ "model": "sentence-transformers/all-MiniLM-L6-v2",
+ "dim": 384,
+ "corpus_entries": 2054,
+ "embedded_text": "summary + details",
+ "latency_ms": {
+  "single_p50": 43.1,
+  "single_p95": 124.1,
+  "batched_per_entry": 25.03,
+  "corpus_total_s": 51.4
+ },
+ "calibration": [
+  {
+   "cue": "the position monitor alarms about a mismatch whenever we bet against a stock",
+   "class": "domain-prose",
+   "designated": "d20ce2c6",
+   "score": 0.4271,
+   "rank": 3,
+   "top1_id": "6ee44e12",
+   "top1_score": 0.4646,
+   "top1_is_designated": false
+  },
+  {
+   "cue": "we discarded the order record before the exchange acknowledged it and a later message went to the wrong place",
+   "class": "domain-prose",
+   "designated": "8932f5b6",
+   "score": 0.2703,
+   "rank": 203,
+   "top1_id": "5d48ce19",
+   "top1_score": 0.5001,
+   "top1_is_designated": false
+  },
+  {
+   "cue": "never cancel before broker confirms",
+   "class": "21c-carried",
+   "designated": "5e07e60f",
+   "score": 0.5596,
+   "rank": 4,
+   "top1_id": "b217d3c3",
+   "top1_score": 0.5995,
+   "top1_is_designated": false
+  },
+  {
+   "cue": "browser window comes up empty",
+   "class": "21c-carried",
+   "designated": "7646de22",
+   "score": 0.2856,
+   "rank": 1,
+   "top1_id": "7646de22",
+   "top1_score": 0.2856,
+   "top1_is_designated": true
+  },
+  {
+   "cue": "the app starts but nothing paints inside the frame",
+   "class": "code-symptom",
+   "designated": "7646de22",
+   "score": 0.3889,
+   "rank": 1,
+   "top1_id": "7646de22",
+   "top1_score": 0.3889,
+   "top1_is_designated": true
+  },
+  {
+   "cue": "how close should two vectors be before we call them the same thing",
+   "class": "process-prose",
+   "designated": "fef49c17",
+   "score": 0.2083,
+   "rank": 1,
+   "top1_id": "fef49c17",
+   "top1_score": 0.2083,
+   "top1_is_designated": true
+  },
+  {
+   "cue": "OrderProcessor#getAllPositions",
+   "class": "short-target",
+   "designated": "d20ce2c6",
+   "score": 0.1852,
+   "rank": 306,
+   "top1_id": "4a00eeaa",
+   "top1_score": 0.44,
+   "top1_is_designated": false
+  },
+  {
+   "cue": "AlgoManager",
+   "class": "short-target",
+   "designated": "8932f5b6",
+   "score": 0.3787,
+   "rank": 3,
+   "top1_id": "932a563f",
+   "top1_score": 0.4095,
+   "top1_is_designated": false
+  }
+ ],
+ "designated": {
+  "n": 8,
+  "min": 0.1852,
+  "p05": 0.1932,
+  "median": 0.3321,
+  "max": 0.5596,
+  "rank1_count": 3,
+  "rank_le_12": 6
+ },
+ "unrelated": {
+  "n": 3199,
+  "median": 0.0554,
+  "p95": 0.2608,
+  "p99": 0.3651,
+  "max": 0.5829
+ },
+ "near_duplicate_pairs_ge_0.80": {
+  "count": 92,
+  "min_score": 0.8022,
+  "examples": [
+   {
+    "score": 1.0,
+    "a": "fc555874",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "eff059e7",
+    "b": "fc555874"
+   },
+   {
+    "score": 1.0,
+    "a": "dcdb887e",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "b392cae2",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "b257f8bf",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "86e659a6",
+    "b": "fc555874"
+   },
+   {
+    "score": 1.0,
+    "a": "852b2b95",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "5b13b09f",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "501aadac",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "39d7765a",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "1ce8b004",
+    "b": "0232869a"
+   },
+   {
+    "score": 1.0,
+    "a": "0232869a",
+    "b": "fc555874"
+   }
+  ]
+ }
+}
