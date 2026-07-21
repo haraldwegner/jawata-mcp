@@ -421,10 +421,30 @@ public class ToolRegistry {
             }
             java.util.List<org.jawata.mcp.learn.ToolExperience> hits =
                 precedentRetriever.retrieve(target, 20);
+            // Sprint 27 D3 — the two tiers. The retriever may now gather
+            // meaning-near captures from OTHER targets; only IDENTITY hits
+            // (situation contains THIS target) may warn and charge — that is
+            // v3.3.1's behaviour, unchanged. Similar-but-not-identical cases
+            // become ONE advisory line: they inform, they never arm the ledger.
+            java.util.List<org.jawata.mcp.learn.ToolExperience> identity = new java.util.ArrayList<>();
+            org.jawata.mcp.learn.ToolExperience similar = null;
+            for (org.jawata.mcp.learn.ToolExperience h : hits) {
+                if (org.jawata.mcp.learn.IdentityMatch.matches(h, target)) {
+                    identity.add(h);
+                } else if (similar == null) {
+                    similar = h;               // capped top-1, the plan constant
+                }
+            }
             org.jawata.mcp.learn.PrecedentSteer.Verdict verdict =
-                org.jawata.mcp.learn.PrecedentSteer.evaluate(name, hits);
+                org.jawata.mcp.learn.PrecedentSteer.evaluate(name, identity);
             if (verdict.steer() != null) {
                 response.appendSteering(verdict.steer());
+            }
+            if (similar != null) {
+                response.appendSteering("Similar past case (a DIFFERENT target — "
+                    + "advisory only, judge the transfer): `" + similar.tool() + "` "
+                    + ("compiled".equals(similar.outcome()) ? "worked" : similar.outcome())
+                    + " in: " + similar.situation());
             }
             // v3.3.1: a NEGATIVE precedent was just SURFACED — remember it, so a
             // later use of that tool on this target owes the written justification

@@ -179,10 +179,14 @@ public class JawataApplication implements IApplication {
                 new org.jawata.mcp.knowledge.ToolExperienceStore(h2);
             eventTap.setToolExperienceRecorder(
                 new org.jawata.mcp.learn.ToolExperienceRecorder(toolExperienceStore));
-            // Sprint 26a D2: the weighted precedent push reads the SAME lane
-            // through the baseline keyword retriever (Sprint 27 → embeddings).
+            // Sprint 27 D3: the seam swap this interface was built for — the
+            // semantic retriever gathers keyword ∪ meaning-near captures. The
+            // identity/advisory split lives at the choke (IdentityMatch); a
+            // broken embedder degrades this to exactly the keyword baseline.
             toolRegistry.setPrecedentRetriever(
-                new org.jawata.mcp.learn.KeywordPrecedentRetriever(toolExperienceStore));
+                new org.jawata.mcp.learn.EmbeddingPrecedentRetriever(toolExperienceStore,
+                    new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
+                        org.jawata.mcp.knowledge.EmbeddingService.shared())));
             // Sprint 26a D3b: the deterministic architect-involvement gate — the
             // rule that replaces the retired edit-switch model.
             toolRegistry.setArchitectGate(new org.jawata.mcp.learn.ArchitectGate(

@@ -71,6 +71,43 @@ public final class ToolExperienceStore {
         }
     }
 
+    /** Sprint 27 D3: rows by numeric id, in the given order (the nominator's
+     *  ranking); missing ids are skipped. Empty on failure — the caller's
+     *  keyword half still answers, so a lookup failure narrows, never lies. */
+    public List<ToolExperience> byIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        synchronized (store) {
+            java.util.Map<String, ToolExperience> found = new java.util.LinkedHashMap<>();
+            String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+            try (PreparedStatement ps = store.sharedConnection().prepareStatement(
+                    "SELECT id, session_id, situation, tool, outcome, detail_json"
+                    + " FROM tool_experience WHERE id IN (" + placeholders + ")")) {
+                for (int i = 0; i < ids.size(); i++) {
+                    ps.setLong(i + 1, Long.parseLong(ids.get(i)));
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        found.put(rs.getString(1), new ToolExperience(rs.getString(2),
+                            rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6)));
+                    }
+                }
+            } catch (Exception e) {
+                log.error("tool_experience byIds failed", e);
+                return List.of();
+            }
+            List<ToolExperience> ordered = new java.util.ArrayList<>();
+            for (String id : ids) {
+                ToolExperience e = found.get(id);
+                if (e != null) {
+                    ordered.add(e);
+                }
+            }
+            return ordered;
+        }
+    }
+
     /** Total captured rows; {@code -1} on a failed query — a failure is never a clean zero. */
     public long count() {
         synchronized (store) {
