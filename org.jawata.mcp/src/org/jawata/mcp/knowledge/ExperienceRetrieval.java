@@ -65,8 +65,34 @@ public final class ExperienceRetrieval {
      *  either way, because a counter must never change what it counts. */
     private QualityLedger quality;
 
+    /**
+     * Retrieval over {@code store}, WITH meaning-based nomination whenever the
+     * store can carry it.
+     *
+     * <p>v3.4.1: this constructor used to pass {@code null} for the index, which
+     * made every one of the three production call sites keyword-only while every
+     * test — each wiring the index by hand — passed. The index is now derived
+     * from the store ({@link EmbeddingIndex#forStore}), so recall is semantic by
+     * DEFAULT and a caller cannot forget it. A store that cannot carry an index
+     * still degrades to exactly the keyword behaviour.</p>
+     */
     public ExperienceRetrieval(ExperienceStore store, Supplier<IJdtService> jdt) {
-        this(store, jdt, null);
+        this(store, jdt, EmbeddingIndex.forStore(store));
+    }
+
+    /**
+     * Retrieval with meaning-based nomination DELIBERATELY OFF — the pre-Sprint-27
+     * behaviour, for the degrade tests and for the calibration gate's keyword arm.
+     *
+     * <p>It exists so that "no semantic nomination" is something a caller STATES.
+     * Before v3.4.1 it was merely implied by picking the shorter constructor, which
+     * is how three production sites turned the feature off without anyone deciding
+     * to — and how a test could measure keyword-vs-semantic while both arms were
+     * secretly the same.</p>
+     */
+    public static ExperienceRetrieval keywordOnly(ExperienceStore store,
+            Supplier<IJdtService> jdt) {
+        return new ExperienceRetrieval(store, jdt, null);
     }
 
     public ExperienceRetrieval(ExperienceStore store, Supplier<IJdtService> jdt,

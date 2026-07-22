@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 7;
+    static final int LATEST = 8;
 
     private SchemaMigrations() {
     }
@@ -94,6 +94,9 @@ final class SchemaMigrations {
         }
         if (from < 7) {
             migrateToV7(conn);
+        }
+        if (from < 8) {
+            migrateToV8(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -304,11 +307,32 @@ final class SchemaMigrations {
             s.execute("ALTER TABLE tool_experience ADD COLUMN IF NOT EXISTS embedder_identity VARCHAR(128)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_tool_experience_embedder"
                 + " ON tool_experience(embedder_identity)");
-            // Sprint 27 D6 — the quality ledger's persistence rides v7 (no v8).
-            // One narrow table: a counter name and its count. Deliberately NOT
-            // an event log — 27's boundary is read-only measurement, and a
-            // per-event table would invite exactly the analysis Sprint 33 is
-            // supposed to decide on evidence rather than inherit as machinery.
+        }
+    }
+
+    /**
+     * v3.4.1 — the quality ledger's counter table.
+     *
+     * <p>It was originally added INSIDE {@link #migrateToV7}, on the reasoning
+     * that the ledger needed no schema epoch of its own. That reasoning was
+     * wrong in a way only an existing store reveals: the ladder runs a rung
+     * only when {@code from < n}, so a store ALREADY at v7 — which is every
+     * store any Sprint-27 build had opened — never re-ran v7 and therefore
+     * never got the table. The ledger then recorded nothing, for exactly the
+     * stores that had history worth measuring.</p>
+     *
+     * <p>The rule this cost us: <b>additive DDL added to an already-released
+     * migration reaches new databases only.</b> Changing an existing rung
+     * changes what a FRESH install gets; reaching installed bases needs a new
+     * rung. Always.</p>
+     *
+     * <p>One narrow table: a counter name and its count. Deliberately NOT an
+     * event log — 27's boundary is read-only measurement, and a per-event table
+     * would invite exactly the analysis Sprint 33 is meant to decide on
+     * evidence rather than inherit as machinery.</p>
+     */
+    private static void migrateToV8(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
             s.execute("CREATE TABLE IF NOT EXISTS quality_counter ("
                 + "name VARCHAR(160) PRIMARY KEY, count BIGINT NOT NULL DEFAULT 0)");
         }

@@ -53,6 +53,50 @@ class EmbeddingStoreTest {
         }
     }
 
+    /**
+     * v3.4.1 — THE SHIPPED DEFECT, reproduced.
+     *
+     * <p>v3.4.0 created {@code quality_counter} inside the v7 step. The ladder
+     * runs a step only when {@code from < n}, so a store ALREADY at v7 — every
+     * store any Sprint-27 build had opened, including the live one — never re-ran
+     * v7 and never got the table. Its quality ledger then recorded nothing at all,
+     * for precisely the stores with history worth measuring.</p>
+     *
+     * <p>This test stands a store at v7 WITHOUT the table, exactly as the released
+     * build left it, and requires the migration to repair it.</p>
+     */
+    @Test
+    void a_store_already_at_v7_still_gains_the_counter_table() throws Exception {
+        H2ExperienceStore store = H2ExperienceStore.openMemory();
+        try {
+            java.sql.Connection c = store.sharedConnection();
+            // Recreate the released build's end state: v7, no counter table.
+            try (java.sql.Statement s = c.createStatement()) {
+                s.execute("DROP TABLE IF EXISTS quality_counter");
+                s.execute("DELETE FROM schema_version");
+                s.execute("INSERT INTO schema_version VALUES (7)");
+            }
+            assertEquals(7, SchemaMigrations.detectVersion(c), "precondition: at v7");
+
+            QualityLedger before = new QualityLedger(store);
+            before.fired(QualityLedger.SURFACE_PRIMER);
+            assertTrue(before.counters().keySet().iterator().next().startsWith("(unavailable"),
+                "precondition: this is the v3.4.0 symptom — the ledger cannot record");
+
+            Map<String, Object> report = SchemaMigrations.migrate(c, null);
+            assertEquals(true, report.get("migrated"), "a v7 store has somewhere to go");
+            assertEquals(SchemaMigrations.LATEST, report.get("to"));
+
+            QualityLedger after = new QualityLedger(store);
+            after.fired(QualityLedger.SURFACE_PRIMER);
+            assertEquals(1L, after.counters().get("fired.primer"),
+                "an EXISTING store must gain the table — additive DDL bolted into an "
+                + "already-released migration step reaches new databases only");
+        } finally {
+            store.close();
+        }
+    }
+
     @Test
     void the_v7_columns_exist_on_both_lanes_and_migration_is_idempotent() throws Exception {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
@@ -62,7 +106,12 @@ class EmbeddingStoreTest {
             Map<String, Object> again = SchemaMigrations.migrate(store.sharedConnection(), null);
             assertEquals(false, again.get("migrated"), "a current store re-migrates to nothing");
             assertEquals(SchemaMigrations.LATEST, again.get("to"));
-            assertEquals(7, SchemaMigrations.LATEST, "v7 is the semantic-recall lane");
+            // v3.4.1: this used to read assertEquals(7, LATEST) — it pinned the
+            // schema NUMBER while claiming to check the semantic-recall lane, so
+            // adding a rung broke it for no behavioural reason. The lane is the
+            // COLUMNS; assert those and let the ladder grow.
+            assertTrue(SchemaMigrations.LATEST >= 7,
+                "the semantic-recall lane arrived at v7 and never goes away");
 
             for (String table : List.of("experience_entry", "tool_experience")) {
                 try (Statement s = store.sharedConnection().createStatement();

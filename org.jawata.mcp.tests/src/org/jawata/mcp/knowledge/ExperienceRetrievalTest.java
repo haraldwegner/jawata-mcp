@@ -162,7 +162,13 @@ class ExperienceRetrievalTest {
         putSymbol("reference", "the webview initializes fine on wayland", null);
         // Only one of the two cue tokens appears — a loose ANY-match would return this;
         // the fit gate must not.
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null));
+        // v3.4.1: asked of the KEYWORD gate, which is what "all tokens, not any"
+        // is a rule of. Under the full union the entry comes back as a labeled
+        // analogy ("in a similar situation..."), because a blank webview and a
+        // webview that initializes fine ARE related — the gate still refuses it
+        // as an answer, which is the property this test protects.
+        ExperienceRetrieval keyword = ExperienceRetrieval.keywordOnly(store, () -> null);
+        Map<String, Object> r = keyword.recall(new RecallQuery(null, null, null, "blank webview", null));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"));
     }
 
@@ -199,8 +205,15 @@ class ExperienceRetrievalTest {
     void rejected_entries_are_excluded() {
         String id = putSymbol("lesson", "obsolete note", "com.a.Foo");
         store.setStatus(id, ExperienceEntry.REJECTED);
+        // Deliberately the FULL production configuration, not keyword-only.
+        // v3.4.0 filtered rejected and superseded entries out of the keyword
+        // query and nowhere else; the moment meaning nomination was actually
+        // wired in (v3.4.1), refused knowledge started coming back as "in a
+        // similar situation...". A rejected entry is one a human looked at and
+        // said no to. It may not return by ANY path.
         Map<String, Object> r = retrieval.recall(new RecallQuery("com.a.Foo", null, null, null, null));
-        assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"));
+        assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"),
+            "a rejected entry must not resurface as an analogy either");
     }
 
     @Test

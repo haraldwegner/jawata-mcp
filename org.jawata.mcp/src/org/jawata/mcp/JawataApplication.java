@@ -207,6 +207,18 @@ public class JawataApplication implements IApplication {
                 new org.jawata.mcp.learn.EmbeddingPrecedentRetriever(toolExperienceStore,
                     new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
                         org.jawata.mcp.knowledge.EmbeddingService.shared())));
+            // v3.4.1: EMBED WHAT IS ALREADY THERE. Entries written from now on are
+            // embedded as they are stored, but a store that predates this build —
+            // which is every real one — holds thousands of rows with no vector, and
+            // meaning-based recall simply cannot see them. v3.4.0 shipped with this
+            // call existing, tested, and made by nobody: recall by meaning was
+            // therefore inert on every corpus that mattered.
+            //
+            // Bounded and on a daemon thread: embedding ~2000 entries takes minutes,
+            // and start-up must not wait for it. Each pass takes a batch and the
+            // next start takes the next, so a large store converges over a few
+            // restarts while staying keyword-reachable throughout.
+            startEmbeddingBackfill(h2);
             // Sprint 26a D3b: the deterministic architect-involvement gate — the
             // rule that replaces the retired edit-switch model.
             toolRegistry.setArchitectGate(new org.jawata.mcp.learn.ArchitectGate(
@@ -283,6 +295,54 @@ public class JawataApplication implements IApplication {
      * non-manager-spawned JVM (Cursor, Claude Code, etc.) saw an empty
      * project list.
      */
+    /**
+     * v3.4.1: give the already-stored entries their vectors, in the background.
+     *
+     * <p>How many per pass is a trade: too few and a large store takes many
+     * restarts to become searchable; too many and the resident spends minutes of
+     * CPU on start-up. {@code BATCH} embeds roughly a thousand entries, which is
+     * a few minutes on the scalar path and well under one with the Vector API —
+     * and it runs at low priority off the start-up path either way.</p>
+     *
+     * <p>Progress is LOGGED with the remaining count, because a store that is
+     * half-embedded answers half the questions it should, and a silent partial
+     * state is indistinguishable from a broken one.</p>
+     */
+    private void startEmbeddingBackfill(org.jawata.mcp.knowledge.H2ExperienceStore h2) {
+        final int batch = 1000;
+        Thread t = new Thread(() -> {
+            try {
+                org.jawata.mcp.knowledge.EmbeddingIndex index =
+                    new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
+                        org.jawata.mcp.knowledge.EmbeddingService.shared());
+                if (!index.available()) {
+                    log.info("Embedding backfill skipped — no embedder; recall stays"
+                        + " keyword-only for this run");
+                    return;
+                }
+                long start = System.currentTimeMillis();
+                int done = index.backfill(batch);
+                long remaining = index.totalCount("experience_entry")
+                    - index.embeddedCount("experience_entry");
+                if (done > 0) {
+                    log.info("Embedding backfill: {} row(s) in {} ms; {} still without"
+                        + " a vector (picked up on the next start)",
+                        done, System.currentTimeMillis() - start, Math.max(0, remaining));
+                } else {
+                    log.info("Embedding backfill: nothing to do — every row has a"
+                        + " current vector");
+                }
+            } catch (Exception e) {
+                // Never fatal: a store without vectors still answers by keyword.
+                log.warn("Embedding backfill FAILED ({}); stored entries keep their"
+                    + " keyword reachability and the next start retries", e.toString());
+            }
+        }, "jawata-embedding-backfill");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
+    }
+
     private void autoLoadProjects() {
         Path dataDir = resolveDataDir();
         if (dataDir != null) {

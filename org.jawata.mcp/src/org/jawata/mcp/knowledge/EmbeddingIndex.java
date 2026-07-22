@@ -71,6 +71,41 @@ public final class EmbeddingIndex {
         this.embeddings = embeddings;
     }
 
+    /**
+     * The index for a store, or {@code null} when that store cannot carry one.
+     *
+     * <p><b>Why this exists (v3.4.1).</b> v3.4.0 shipped with meaning-based
+     * recall present, tested and completely INERT: every production site built
+     * {@link ExperienceRetrieval} through the constructor that takes no index,
+     * because wiring it was the caller's job and three callers forgot. Every
+     * test passed — each test wired it explicitly. The capability existed and
+     * never ran.</p>
+     *
+     * <p>So the index is no longer something a caller must remember to supply.
+     * It is derived FROM THE STORE, here, once — which means a new call site
+     * cannot be born unwired, and the failure mode cannot recur by omission.</p>
+     *
+     * <p>Handles the production shape: the resident's store is wrapped by
+     * {@link RecoveringExperienceStore}, so a bare {@code instanceof} against
+     * the concrete store is false in production — the C4-F1 lesson, kept
+     * fixed.</p>
+     */
+    public static EmbeddingIndex forStore(ExperienceStore store) {
+        ExperienceStore concrete = store instanceof RecoveringExperienceStore r
+            ? r.currentDelegate() : store;
+        if (!(concrete instanceof H2ExperienceStore h2)) {
+            return null;             // in-memory/degraded: keyword only, as designed
+        }
+        try {
+            EmbeddingService svc = EmbeddingService.shared();
+            return svc.available() ? new EmbeddingIndex(h2, svc) : null;
+        } catch (RuntimeException e) {
+            log.warn("meaning-based recall is UNAVAILABLE for this store ({});"
+                + " recall falls back to keyword/alias matching", e.getMessage());
+            return null;
+        }
+    }
+
     /** One nominated row and the score that ranked it. */
     public record Hit(String id, double score) {
     }
@@ -103,8 +138,16 @@ public final class EmbeddingIndex {
             return List.of();                 // unavailable or blank cue - not "nothing matched"
         }
         List<Hit> hits = new ArrayList<>();
+        // v3.4.1: the SAME status exclusion the keyword path applies
+        // (H2ExperienceStore.query). A rejected entry is knowledge someone
+        // looked at and refused; a superseded one has been replaced. Neither
+        // may come back — and until the index was actually wired into recall,
+        // nothing here filtered them, because nothing here was ever consulted.
+        // The tool_experience lane carries no status column, hence the guard.
+        String statusFilter = "experience_entry".equals(table)
+            ? " AND status NOT IN ('rejected', 'superseded')" : "";
         String sql = "SELECT " + idColumn + ", embedding FROM " + table
-            + " WHERE embedding IS NOT NULL AND embedder_identity = ?";
+            + " WHERE embedding IS NOT NULL AND embedder_identity = ?" + statusFilter;
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
             ps.setString(1, embeddings.identityKey());
             try (ResultSet rs = ps.executeQuery()) {

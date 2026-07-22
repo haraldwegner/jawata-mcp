@@ -299,7 +299,12 @@ class ExperienceMaintenanceTest {
                 + "after the fence\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
 
-        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+        // v3.4.1: keyword-only ON PURPOSE. The subject is the HARVESTER —
+        // whether a word inside a ``` fence became a symptom row — so the
+        // question belongs to the keyword/symptom index. Under the full union
+        // an unrelated word still finds the one stored entry as a labeled
+        // analogy, which is correct and a different question entirely.
+        ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(store, () -> null);
         assertEquals(ExperienceRetrieval.RESULT_MATCH,
             retrieval.recall(new RecallQuery(null, null, null, "dmabuf renderer disable", null)).get("result"));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE,

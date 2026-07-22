@@ -32,7 +32,7 @@ class SemanticRecallTest {
         store = H2ExperienceStore.openMemory();
         svc = EmbeddingService.shared();
         semantic = new ExperienceRetrieval(store, () -> null, new EmbeddingIndex(store, svc));
-        keywordOnly = new ExperienceRetrieval(store, () -> null);
+        keywordOnly = ExperienceRetrieval.keywordOnly(store, () -> null);
     }
 
     @AfterEach

@@ -104,7 +104,7 @@ class CalibrationGateTest {
                 missing.isEmpty() ? "" : " — MISSING " + missing);
 
             ExperienceRetrieval union = new ExperienceRetrieval(store, () -> null, index);
-            ExperienceRetrieval keyword = new ExperienceRetrieval(store, () -> null);
+            ExperienceRetrieval keyword = ExperienceRetrieval.keywordOnly(store, () -> null);
 
             int passed = 0;
             int keywordPassed = 0;
