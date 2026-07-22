@@ -34,8 +34,10 @@ import org.jawata.core.IJdtService;
  */
 public final class ExperienceAnalogies {
 
-    /** How many analogies may reach the agent's context per cue. */
-    public static final int DEFAULT_CAP = 2;
+    // Sprint 27a D1: the old DEFAULT_CAP of two lived here and is gone. How many
+    // entries reach the agent is AnalogyPolicy.MAX_NOMINEES now — one authority,
+    // derived rather than assumed. The fixed two was the flaw: it hid a correct
+    // third answer and padded a thin cue to two.
 
     private ExperienceAnalogies() {
     }

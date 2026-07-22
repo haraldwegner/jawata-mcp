@@ -321,21 +321,24 @@ public final class ExperienceRetrieval {
 
         // The UNION: meaning nominates alongside keyword, never instead of it.
         //
-        // Sprint 27a D1 - the POLICY decides which of the meaning-nominated
-        // entries are worth saying, replacing the fixed floor-and-cap that used
-        // to stand here. It judges each score against THIS cue's own
-        // background, so a nonsense cue - whose profile is flat - yields
-        // nothing, and a real cue yields as many as genuinely stand out rather
-        // than a constant two. EmbeddingIndex.NOMINATION_FLOOR keeps its
-        // original and different job (a volume cap for fact nomination) and no
-        // longer decides what an agent is told.
+        // Sprint 27a D1 - the meaning half NOMINATES and does not judge. The
+        // policy returns the nearest few above a junk floor; whether any of
+        // them actually answers this cue is the reading agent's call, which is
+        // why they must be rendered as nominees and never as vouched answers.
+        // Measurement killed the alternative: no statistic over the score
+        // profile separates a real cue from a nonsense one (a nonsense control
+        // outscores a correct answer by 2x), and the relative margin tried
+        // first did not survive a change of corpus size. See AnalogyPolicy.
+        //
+        // EmbeddingIndex.NOMINATION_FLOOR keeps its original and different job
+        // (a volume cap for fact nomination) and does not decide this.
         //
         // The keyword half is deliberately NOT subject to the policy: with no
-        // embedder the profile is empty and the policy would abstain on
-        // everything, which would turn the degrade path into silence. Keyword
-        // analogies must survive exactly as they did in v3.3.1.
+        // embedder the profile is empty and nothing would be nominated at all,
+        // which would turn the degrade path into silence. Keyword analogies
+        // must survive exactly as they did in v3.3.1.
         List<String> ids = new ArrayList<>();
-        for (String id : AnalogyPolicy.speak(meaning)) {
+        for (String id : AnalogyPolicy.nominate(meaning)) {
             if (seen.add(id)) {
                 ids.add(id);
             }
@@ -351,10 +354,10 @@ public final class ExperienceRetrieval {
         if (pool.isEmpty()) {
             return List.of();
         }
-        // The ceiling is the policy's, not a fixed two: how many are SAID is
-        // decided above by how many stood out.
+        // The ceiling is the policy's, not a fixed two - the cap of two is what
+        // hid a correct third answer.
         return ExperienceAnalogies.rank(pool, q, meaning,
-            AnalogyPolicy.MAX_SPOKEN, jdt);
+            AnalogyPolicy.MAX_NOMINEES, jdt);
     }
 
     /** The text a cue is embedded as — its words, in the order a human would say them. */

@@ -198,8 +198,10 @@ class SemanticRecallTest {
         }
         Map<String, Object> r = semantic.recall(symptom(
             "we acted before the exchange acknowledged the cancellation"));
-        assertTrue(analogies(r).size() <= ExperienceAnalogies.DEFAULT_CAP,
-            "at most " + ExperienceAnalogies.DEFAULT_CAP + " analogies may reach the agent");
+        // The cap is AnalogyPolicy's. It used to be a fixed two, which is the
+        // flaw D1 removed — a correct third answer was being hidden by it.
+        assertTrue(analogies(r).size() <= AnalogyPolicy.MAX_NOMINEES,
+            "at most " + AnalogyPolicy.MAX_NOMINEES + " analogies may reach the agent");
     }
 
     @Test
@@ -240,6 +242,113 @@ class SemanticRecallTest {
         Map<String, Object> miss = keywordOnly.recall(symptom("something entirely unrelated"));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, miss.get("result"),
             "and an honest absence stays an absence");
+    }
+
+    // --- Sprint 27a C2: what the store vouches for, and what it merely offers ---------
+
+    /**
+     * The blocking honesty check, in the form the 2026-07-22 design ruling
+     * leaves possible.
+     *
+     * <p>The signed spec asked for "nonsense returns nothing". Measurement
+     * refuted that as buildable: nonsense scores 0.18–0.41 against a real
+     * corpus because it is made of real words, and no rule over the score
+     * profile separates it from a genuine question (see
+     * {@link AnalogyPolicyDerivationTest}). What survives, and is asserted
+     * here: <b>the store never VOUCHES for an answer to a question it cannot
+     * answer.</b> Nominees may come back — they are the nearest entries and the
+     * agent judges them — but they arrive labelled as analogies, never as
+     * matched facts.</p>
+     */
+    @Test
+    void a_question_the_store_cannot_answer_gets_no_vouched_answer() {
+        if (!svc.available()) {
+            return;
+        }
+        putExperience("never act before the broker confirms the cancel",
+            "the confirmation is the only safe trigger", null);
+        putExperience("the webview paints blank under the DMABUF compositor",
+            "disabling the compositor path restores painting", null);
+
+        Map<String, Object> r = semantic.recall(symptom(
+            "the marzipan barometer disputes tuesday's velvet inventory"));
+
+        // RESULT_ANALOGY is the machine-readable form of exactly this: nothing
+        // passed the gate, comparable entries are offered. It is the honest
+        // label here — MATCH would be a claim the store cannot support, and
+        // ABSENCE would hide that nominees came back.
+        assertEquals(ExperienceRetrieval.RESULT_ANALOGY, r.get("result"),
+            "the store must not claim a MATCH for a question nothing answers");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> vouched =
+            (List<Map<String, Object>>) r.getOrDefault("entries", List.of());
+        assertTrue(vouched.isEmpty(),
+            "nothing may be vouched for here — the exact path found nothing, and "
+            + "the meaning path is not entitled to promote its nominees: " + vouched);
+
+        // Whatever the meaning path DOES offer must read as an offer.
+        for (Map<String, Object> a : analogies(r)) {
+            assertEquals("analogy — judge whether it transfers", a.get("framing"),
+                "a nominee must be labelled as one — with silence no longer "
+                + "available, this label is what carries the honesty: " + a);
+            assertNotNull(a.get("basis"), "and it must say WHY it was nominated");
+        }
+    }
+
+    /**
+     * The spec's D2 measure gets its own probe rather than being inferred from
+     * the front-door check: a novel question reaching recall through the
+     * DISPATCH path must likewise produce nothing vouched.
+     */
+    @Test
+    void a_novel_question_through_dispatch_gets_no_vouched_answer() {
+        if (!svc.available()) {
+            return;
+        }
+        store.put(ExperienceEntry.of(
+            SymbolFact.of("lesson", "the javadoc seat proposed docs that compiled clean",
+                Confidence.MEDIUM).details("doclint reported nothing").build())
+            .operation("seat:javadocs").build());
+
+        Map<String, Object> r = semantic.recall(
+            new RecallQuery(null, null, "seat:nothing-like-this-has-ever-run", null, null));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> vouched =
+            (List<Map<String, Object>>) r.getOrDefault("entries", List.of());
+        assertTrue(vouched.isEmpty(),
+            "dispatch recall must not vouch for a past run that does not exist: " + vouched);
+        for (Map<String, Object> a : analogies(r)) {
+            assertEquals("analogy — judge whether it transfers", a.get("framing"),
+                "a dispatch-decorated nominee is still a nominee: " + a);
+        }
+    }
+
+    /**
+     * The recall half of the ruling: a weak but correct match must be
+     * DELIVERED. Under the retired margin rule this cue was silenced, which is
+     * the failure Harald's asymmetry ruling names — missing an experience we
+     * already hold is the expensive error, discarding a nominee costs a glance.
+     */
+    @Test
+    void a_weak_but_correct_match_is_delivered_rather_than_withheld() {
+        if (!svc.available()) {
+            return;
+        }
+        String target = putExperience(
+            "cosine bands must never swap jobs: parity is not dedup is not retrieval",
+            "parity sits at 0.999, dedup near 0.9, retrieval is the broad band", null);
+        for (int i = 0; i < 12; i++) {
+            putExperience("unrelated background lesson number " + i,
+                "about build ordering and nothing else, case " + i, null);
+        }
+
+        Map<String, Object> r = semantic.recall(symptom(
+            "how close should two vectors be before we call them the same thing"));
+
+        assertTrue(analogies(r).stream().anyMatch(a -> target.equals(a.get("id"))),
+            "the correct entry must reach the agent even when its score is low — "
+            + "silence here is the expensive error, not a safe default");
     }
 
     @Test

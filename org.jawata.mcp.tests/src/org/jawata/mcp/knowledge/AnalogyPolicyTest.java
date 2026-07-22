@@ -3,7 +3,6 @@ package org.jawata.mcp.knowledge;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,94 +11,107 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Sprint 27a Stage 1 — the analogy policy, tested against the Stage-0 DERIVED
- * cases (dossier-27a "Stage 0 evidence"; raw numbers in
+ * Sprint 27a Stage 1 — the analogy policy, tested against the Stage-0 MEASURED
+ * profiles (dossier-27a "Stage 0 evidence"; raw numbers in
  * {@code test-resources/embed-goldens/stage0-27a-profiles.json}).
  *
- * <p>The cases below replay measured profiles: a real cue's best answer stands
- * clear of that cue's own background, a nonsense cue's does not. The policy is
- * PURE — it decides from the profile alone, so these tests need no store, no
- * embedder and no rendering.</p>
+ * <p>The design ruling these tests pin (Harald, 2026-07-22): the meaning path
+ * NOMINATES and does not judge. So most of what an earlier version of this file
+ * asserted — abstention when nothing "stands out" — is deliberately inverted
+ * here, and the inversion is itself pinned: a rule that decides relevance from
+ * the shape of the score profile was measured and did not work
+ * ({@link AnalogyPolicy} carries the numbers).</p>
+ *
+ * <p>The policy is PURE — it decides from the profile alone, so these tests
+ * need no store, no embedder and no rendering.</p>
  */
 class AnalogyPolicyTest {
 
-    /** Build a profile whose median is 0 and whose leaders sit at the given offsets. */
+    /** A profile with the given leaders over 200 background entries at 0.0. */
     private static Map<String, Double> profile(double... leaders) {
         Map<String, Double> m = new LinkedHashMap<>();
         for (int i = 0; i < leaders.length; i++) {
             m.put("lead-" + i, leaders[i]);
         }
-        // 200 background entries at 0.0 dominate the median, as a real corpus does
         for (int i = 0; i < 200; i++) {
             m.put("bg-" + i, 0.0);
         }
         return m;
     }
 
-    // --- the derived cases, replayed -------------------------------------------------
+    // --- measured profiles, replayed -------------------------------------------------
 
     @Test
-    void cue06_peaked_profile_speaks_three() {
-        // measured: top1/2/3 minus median = 0.387 / 0.318 / 0.311
+    void a_strong_cue_nominates_its_three_nearest() {
+        // cue-06 as measured: 0.3890 / 0.3197 / 0.3110
         assertEquals(List.of("lead-0", "lead-1", "lead-2"),
-            AnalogyPolicy.speak(profile(0.387, 0.318, 0.311)));
+            AnalogyPolicy.nominate(profile(0.3890, 0.3197, 0.3110)));
     }
 
     @Test
-    void cue02_only_the_leader_stands_out() {
-        // measured: 0.294 / 0.268 / 0.257 — only the first clears 0.283
-        assertEquals(List.of("lead-0"), AnalogyPolicy.speak(profile(0.294, 0.268, 0.257)));
+    void a_weak_but_correct_cue_is_still_delivered() {
+        // cue-07 as measured: 0.2084 / 0.2036 / 0.2015. Its rank-1 entry is the
+        // CORRECT answer. An earlier margin rule silenced this cue; under the
+        // asymmetry ruling — missing what we already hold is the expensive
+        // error — it must be delivered and left to the agent to judge.
+        assertEquals(List.of("lead-0", "lead-1", "lead-2"),
+            AnalogyPolicy.nominate(profile(0.2084, 0.2036, 0.2015)));
     }
 
     @Test
-    void cue01_two_stand_out() {
-        // measured: 0.308 / 0.284 / 0.270
+    void a_nonsense_cue_is_also_delivered_because_geometry_cannot_tell() {
+        // ctl-non-1 "purple elephant quantum sandwich protocol": top1 0.3478 —
+        // HIGHER than cue-07's correct answer above. That overlap is why the
+        // store does not judge relevance; the nominees are labelled and the
+        // reading agent discards them.
+        assertEquals(3, AnalogyPolicy.nominate(profile(0.3478, 0.31, 0.29)).size());
+    }
+
+    // --- the floor: one-sided junk rejection -----------------------------------------
+
+    @Test
+    void entries_below_the_junk_floor_are_dropped() {
+        // Two above, one below: only the two survive.
         assertEquals(List.of("lead-0", "lead-1"),
-            AnalogyPolicy.speak(profile(0.308, 0.284, 0.270)));
+            AnalogyPolicy.nominate(profile(0.42, 0.11, 0.09)));
     }
 
     @Test
-    void cue07_the_accepted_miss_abstains() {
-        // measured: 0.215 / 0.210 / 0.207 — the one calibration cue the SPEAK
-        // RATE (11 of 12) loses. Not the frozen bar, which is a ranking measure
-        // this policy cannot move.
-        assertEquals(List.of(), AnalogyPolicy.speak(profile(0.215, 0.210, 0.207)));
+    void a_cue_with_nothing_above_the_floor_yields_nothing() {
+        // The genuinely off-corpus case the floor exists for: the store holds
+        // nothing even in the neighbourhood.
+        assertEquals(List.of(), AnalogyPolicy.nominate(profile(0.08, 0.04, 0.01)));
     }
 
     @Test
-    void nonsense_control_abstains() {
-        // ctl-non-1 "purple elephant quantum sandwich protocol": 0.235 / 0.207 / 0.181
-        assertEquals(List.of(), AnalogyPolicy.speak(profile(0.235, 0.207, 0.181)));
-    }
-
-    @Test
-    void plausible_but_absent_abstains() {
-        // ctl-abs-1 (a Kubernetes question this corpus cannot answer): 0.2707 top1
-        assertEquals(List.of(), AnalogyPolicy.speak(profile(0.2707, 0.26, 0.25)));
+    void the_floor_is_absolute_and_does_not_move_with_the_corpus() {
+        // THE property the previous rule lacked, and the direct cause of the C2
+        // regression: a margin measured against the cue's own background moved
+        // when the corpus changed, silencing real cues on a smaller sample.
+        // Same leader, wildly different backgrounds, same verdict.
+        Map<String, Double> lowBg = new LinkedHashMap<>();
+        Map<String, Double> highBg = new LinkedHashMap<>();
+        lowBg.put("top", 0.40);
+        highBg.put("top", 0.40);
+        for (int i = 0; i < 100; i++) {
+            lowBg.put("b" + i, 0.05);
+            highBg.put("b" + i, 0.30);
+        }
+        assertEquals(List.of("top"), AnalogyPolicy.nominate(lowBg));
+        assertEquals(List.of("top", "b0", "b1"), AnalogyPolicy.nominate(highBg));
     }
 
     // --- structural guarantees --------------------------------------------------------
 
     @Test
-    void never_speaks_more_than_three_however_many_stand_out() {
-        assertEquals(3, AnalogyPolicy.speak(profile(0.9, 0.8, 0.7, 0.6, 0.5)).size());
+    void never_nominates_more_than_three_however_many_qualify() {
+        assertEquals(3, AnalogyPolicy.nominate(profile(0.9, 0.8, 0.7, 0.6, 0.5)).size());
     }
 
     @Test
-    void an_empty_profile_abstains_rather_than_failing() {
-        assertEquals(List.of(), AnalogyPolicy.speak(Map.of()));
-        assertEquals(List.of(), AnalogyPolicy.speak(null));
-    }
-
-    @Test
-    void a_flat_profile_abstains_however_high_the_absolute_scores() {
-        // THE point of the design: absolute score is not evidence. Everything at
-        // 0.8 means nothing stands out, so nothing is said.
-        Map<String, Double> flat = new LinkedHashMap<>();
-        for (int i = 0; i < 50; i++) {
-            flat.put("e" + i, 0.8);
-        }
-        assertEquals(List.of(), AnalogyPolicy.speak(flat));
+    void an_empty_profile_yields_nothing_rather_than_failing() {
+        assertEquals(List.of(), AnalogyPolicy.nominate(Map.of()));
+        assertEquals(List.of(), AnalogyPolicy.nominate(null));
     }
 
     @Test
@@ -110,33 +122,17 @@ class AnalogyPolicyTest {
         for (int i = 0; i < 50; i++) {
             m.put("bg" + i, 0.0);
         }
-        assertEquals(List.of("alpha", "zebra"), AnalogyPolicy.speak(m));
+        assertEquals(List.of("alpha", "zebra"), AnalogyPolicy.nominate(m));
         // and repeatedly — no iteration-order dependence
         for (int i = 0; i < 20; i++) {
-            assertEquals(List.of("alpha", "zebra"), AnalogyPolicy.speak(m));
+            assertEquals(List.of("alpha", "zebra"), AnalogyPolicy.nominate(m));
         }
     }
 
     @Test
-    void the_margin_is_the_derived_one_and_says_where_it_came_from() {
-        assertEquals(0.283, AnalogyPolicy.STANDOUT_MARGIN, 1e-9);
-        assertEquals(3, AnalogyPolicy.MAX_SPOKEN);
-    }
-
-    @Test
-    void the_background_is_the_cue_s_own_median_not_a_global_constant() {
-        // Same absolute leader, different backgrounds: the high-background cue
-        // must abstain even though its top score is identical.
-        Map<String, Double> lowBg = new LinkedHashMap<>();
-        Map<String, Double> highBg = new LinkedHashMap<>();
-        lowBg.put("top", 0.40);
-        highBg.put("top", 0.40);
-        for (int i = 0; i < 100; i++) {
-            lowBg.put("b" + i, 0.05);
-            highBg.put("b" + i, 0.30);
-        }
-        assertEquals(List.of("top"), AnalogyPolicy.speak(lowBg));
-        assertEquals(List.of(), AnalogyPolicy.speak(highBg));
+    void the_constants_are_the_ruled_ones() {
+        assertEquals(0.10, AnalogyPolicy.JUNK_FLOOR, 1e-9);
+        assertEquals(3, AnalogyPolicy.MAX_NOMINEES);
     }
 
     /**

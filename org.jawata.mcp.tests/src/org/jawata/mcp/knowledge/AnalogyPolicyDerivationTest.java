@@ -10,23 +10,23 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
 
 import org.junit.jupiter.api.Test;
 
 /**
- * Sprint 27a Stage 1 — the PIN: {@link AnalogyPolicy#STANDOUT_MARGIN} must keep
+ * Sprint 27a Stage 1 — the PIN: {@link AnalogyPolicy}'s two constants must keep
  * following from the committed evidence.
  *
- * <p>Without this, the constant is only checked against itself. Here it is
+ * <p>Without this they are only checked against themselves. Here they are
  * re-derived from {@code stage0-27a-profiles.json} — the measured profiles of
  * the 12 frozen calibration cues, 4 positive controls and 9 nonsense /
  * plausible-but-absent controls over a 2,040-entry snapshot of the live
- * corpus. Change the constant, or change the data, and this fails.</p>
+ * corpus. Change a constant, or change the data, and this fails.</p>
  *
  * <p>It also pins the NEGATIVE result, which is the load-bearing half of the
- * design: no absolute-score rule can do this job. That claim is asserted here
- * against the same data rather than only argued in prose.</p>
+ * design: no rule over the score profile can decide relevance. That claim is
+ * asserted here against the data rather than only argued in prose — it is the
+ * reason the meaning path nominates instead of judging.</p>
  */
 class AnalogyPolicyDerivationTest {
 
@@ -35,22 +35,23 @@ class AnalogyPolicyDerivationTest {
     /** One measured cue profile. */
     private record Row(String id, double top1, double top2, double top3, double median,
                        double p99, double mean, double sd,
-                       boolean top1InAccept, int designatedRank) {
+                       boolean top1InAccept, int designatedRank, double designatedScore) {
         boolean calibration() {
-            return id.startsWith("cue-");
+            return id.startsWith("cue-") && !id.equals("cue-para");
         }
 
-        boolean positiveControl() {
-            return id.startsWith("ctl-pos");
-        }
-
-        /** Nonsense or plausible-but-absent: the policy should stay silent. */
+        /** Nonsense or plausible-but-absent: nothing here legitimately answers. */
         boolean mustAbstain() {
             return id.startsWith("ctl-non") || id.startsWith("ctl-abs");
         }
 
-        double standOut() {
-            return top1 - median;
+        /**
+         * Whether K nominees carry a legitimate answer for this cue: either the
+         * winner is in the frozen accept set, or the designated entry is inside
+         * the first K.
+         */
+        boolean servedAt(int k) {
+            return top1InAccept || (designatedRank > 0 && designatedRank <= k);
         }
     }
 
@@ -67,15 +68,14 @@ class AnalogyPolicyDerivationTest {
                     n.get("p99").asDouble(), n.get("mean").asDouble(),
                     n.get("sd").asDouble(),
                     n.get("top1_in_accept").asBoolean(),
-                    n.get("designated_rank").asInt()));
+                    n.get("designated_rank").asInt(),
+                    n.get("designated_score").asDouble()));
             }
         }
         return out;
     }
 
-    /** Rebuild a profile the policy can decide on: the three leaders over a flat
-     *  background at the cue's measured median (so the lower median comes out
-     *  exactly at that value). */
+    /** The three measured leaders over a flat background at the cue's median. */
     private static Map<String, Double> profileOf(Row r) {
         Map<String, Double> m = new LinkedHashMap<>();
         m.put("t1", r.top1());
@@ -87,56 +87,98 @@ class AnalogyPolicyDerivationTest {
         return m;
     }
 
+    // --- the floor -------------------------------------------------------------------
+
+    /**
+     * The floor is a fence in an empty field: it must sit well below anything
+     * that has ever been an answer, so that corpus composition cannot push an
+     * answer under it. This is the property the retired margin rule lacked —
+     * it sat BETWEEN two overlapping populations, and moved when the corpus did.
+     */
     @Test
-    void the_committed_margin_still_holds_the_frozen_contract() throws Exception {
+    void the_junk_floor_sits_far_below_every_answer_ever_measured() throws Exception {
         List<Row> rows = rows();
         assertEquals(26, rows.size(), "the committed profile set changed shape");
 
-        List<String> calibrationSpoken = new ArrayList<>();
-        List<String> positiveSpoken = new ArrayList<>();
-        List<String> wronglySpoken = new ArrayList<>();
-        for (Row r : rows) {
-            if (r.id().equals("cue-para")) {
-                continue;              // criterion (c)'s cue, asserted separately
-            }
-            boolean spoke = !AnalogyPolicy.speak(profileOf(r)).isEmpty();
-            if (r.calibration() && spoke) {
-                calibrationSpoken.add(r.id());
-            }
-            if (r.positiveControl() && spoke) {
-                positiveSpoken.add(r.id());
-            }
-            if (r.mustAbstain() && spoke) {
-                wronglySpoken.add(r.id());
+        double weakestAnswer = rows.stream().filter(r -> r.designatedRank() > 0)
+            .mapToDouble(Row::designatedScore).min().orElseThrow();
+        assertEquals(0.2084, weakestAnswer, 1e-4,
+            "the weakest correct answer moved from cue-07's 0.2084");
+        assertTrue(AnalogyPolicy.JUNK_FLOOR < weakestAnswer / 2,
+            "the floor (" + AnalogyPolicy.JUNK_FLOOR + ") must keep at least a "
+            + "factor-of-two margin below the weakest answer ever measured ("
+            + weakestAnswer + "); closer than that and it is a fitted boundary "
+            + "again, not a junk guard");
+    }
+
+    /**
+     * Said out loud so it cannot be mistaken for a working filter: on the
+     * measured set the floor never fires. Nonsense questions score 0.18–0.41
+     * because they are built from real words, so NOTHING is removed by it here.
+     *
+     * <p>Honesty about a question the store cannot answer is therefore carried
+     * entirely by LABELLING and by the reading agent — never by this constant.
+     * If this test ever starts failing because a control fell below the floor,
+     * that is a real change in what the store holds, and the dossier's claim
+     * about how honesty is achieved has to be revisited.</p>
+     */
+    @Test
+    void the_floor_removes_nothing_on_the_measured_set_and_that_is_recorded()
+            throws Exception {
+        List<String> anythingDropped = new ArrayList<>();
+        for (Row r : rows()) {
+            if (AnalogyPolicy.nominate(profileOf(r)).size() < AnalogyPolicy.MAX_NOMINEES) {
+                anythingDropped.add(r.id() + "@" + r.top3());
             }
         }
+        assertEquals(List.of(), anythingDropped,
+            "the floor now removes something on the measured set — re-read "
+            + "AnalogyPolicy.JUNK_FLOOR's contract and update dossier-27a: "
+            + anythingDropped);
 
-        // A SPEAK RATE — how often the policy says something. This is NOT the
-        // frozen bar; an earlier version of this test called it that, which is
-        // self-marking (a rule that always speaks scores 12/12 on it). The
-        // frozen contract is asserted separately below.
-        assertEquals(11, calibrationSpoken.size(),
-            "the SPEAK RATE moved from the recorded 11/12 — re-derive and record "
-            + "the change in dossier-27a before touching the constant");
-
-        // A positive control that goes silent is a straight regression.
-        assertEquals(4, positiveSpoken.size(),
-            "a positive control fell silent: " + positiveSpoken);
-
-        // The committed nonsense control is the spec's BLOCKING check.
-        assertFalse(wronglySpoken.contains("ctl-non-1"),
-            "the committed nonsense control 'purple elephant quantum sandwich "
-            + "protocol' must return nothing — this is D1's blocking measure");
-
-        // TRACKED DEFECT, not an allowance. Two controls still answer, and at
-        // C2 they become BLOCKING — the strict reading, taken deliberately: if
-        // a control that should stay silent speaks, that is signal, not
-        // something to excuse. This assertion is a countdown to zero; a THIRD
-        // failure means the rule has drifted and must be re-derived.
-        assertEquals(2, wronglySpoken.size(),
-            "controls wrongly answered changed from the recorded 2 (ctl-non-2, "
-            + "ctl-non-6): " + wronglySpoken);
+        double lowestTopScore = rows().stream().mapToDouble(Row::top1).min().orElseThrow();
+        assertEquals(0.1818, lowestTopScore, 1e-4,
+            "the weakest top score of any cue moved from ctl-non-5's 0.1818");
+        assertTrue(lowestTopScore > AnalogyPolicy.JUNK_FLOOR,
+            "even the weakest cue clears the floor — this is why the floor is a "
+            + "guard for the off-corpus case and not a nonsense filter");
     }
+
+    // --- the count ---------------------------------------------------------------------
+
+    /**
+     * K is the SMALLEST value that serves everything within reach — and pinning
+     * it means showing that a larger K would buy nothing. On the measured set
+     * three nominees serve ten of twelve cues, and so do four, six, eleven and
+     * twelve: the next cue only arrives at rank 23, which no context-affordable
+     * K reaches.
+     */
+    @Test
+    void three_nominees_serve_everything_a_larger_k_would() throws Exception {
+        List<Row> cal = rows().stream().filter(Row::calibration).toList();
+        assertEquals(12, cal.size(), "the calibration set is no longer 12 cues");
+
+        int atK = (int) cal.stream().filter(r -> r.servedAt(AnalogyPolicy.MAX_NOMINEES)).count();
+        assertEquals(10, atK,
+            "K=" + AnalogyPolicy.MAX_NOMINEES + " serves " + atK + " of 12; the "
+            + "recorded figure is 10 (missing cue-09, symptom-shaped and D3's, "
+            + "and cue-11, an FQN the exact index path answers)");
+
+        for (int k : new int[] {4, 6, 11, 12}) {
+            int bigger = (int) cal.stream().filter(r -> r.servedAt(k)).count();
+            assertEquals(atK, bigger,
+                "K=" + k + " now serves " + bigger + " where K="
+                + AnalogyPolicy.MAX_NOMINEES + " serves " + atK + " — a larger K "
+                + "would buy recall, which under the asymmetry ruling means K "
+                + "should rise. Re-derive.");
+        }
+        // And one nominee would NOT do: the cap must genuinely be doing work.
+        assertEquals(9, (int) cal.stream().filter(r -> r.servedAt(1)).count(),
+            "a single nominee served a different number than the recorded 9 — "
+            + "the case for showing more than one has changed");
+    }
+
+    // --- the frozen contract, and what the policy cannot move --------------------------
 
     /**
      * THE FROZEN CONTRACT, which no test asserted until the plan audit found it
@@ -156,7 +198,7 @@ class AnalogyPolicyDerivationTest {
         List<String> pass = new ArrayList<>();
         List<String> fail = new ArrayList<>();
         for (Row r : rows()) {
-            if (!r.calibration() || r.id().equals("cue-para")) {
+            if (!r.calibration()) {
                 continue;
             }
             (r.top1InAccept() && r.designatedRank() <= 12 ? pass : fail).add(r.id());
@@ -177,7 +219,7 @@ class AnalogyPolicyDerivationTest {
      * Stage-0 criterion (c) — the spec's third D1 measure: "the
      * percentage-paraphrase case ... returns the ratchet lesson". It does NOT,
      * and this pins the failure rather than leaving the criterion unaddressed
-     * as it was until the C0 audit found it missing. The policy SPEAKS here;
+     * as it was until the C0 audit found it missing. The nominees ARE delivered;
      * what fails is WHO WINS, which is ranking and therefore D3's to fix.
      */
     @Test
@@ -190,72 +232,27 @@ class AnalogyPolicyDerivationTest {
             + "lesson. Update the dossier and turn this into the positive gate.");
         assertEquals(28, para.designatedRank(),
             "the ratchet lesson's rank for the paraphrase cue moved from 28");
-        assertFalse(AnalogyPolicy.speak(profileOf(para)).isEmpty(),
-            "the policy should still SPEAK here — the defect is ranking, not silence");
+        assertFalse(AnalogyPolicy.nominate(profileOf(para)).isEmpty(),
+            "nominees must still be delivered here — the defect is ranking, and "
+            + "silence would hide it rather than fix it");
     }
 
-    @Test
-    void the_margin_sits_inside_a_genuinely_empty_band() throws Exception {
-        List<Row> rows = rows();
-        // Computed WITHOUT reference to the margin. The first version filtered
-        // by STANDOUT_MARGIN and then asserted the margin lay between the
-        // results — true by construction, incapable of failing. The second
-        // took the WIDEST gap, which picks 0.1879…0.2150 because cue-07 sits
-        // there; that is the ONE calibration cue the frozen bar permits us to
-        // lose, and it is named here rather than silently skipped.
-        //
-        // The real band: bounded above by the lowest cue that must speak AND
-        // is not the permitted loss, below by the highest control beneath it.
-        final String permittedLoss = "cue-07";
-        double lowestSpoken = rows.stream()
-            .filter(r -> !r.mustAbstain() && !r.id().equals(permittedLoss))
-            .mapToDouble(Row::standOut).min().orElseThrow();
-        double highestSilent = rows.stream()
-            .filter(Row::mustAbstain)
-            .mapToDouble(Row::standOut).filter(v -> v < lowestSpoken)
-            .max().orElseThrow();
-        assertEquals(0.2945, lowestSpoken, 1e-4,
-            "the lowest cue that must speak moved (was cue-02 at 0.2945)");
-        assertEquals(0.2707, highestSilent, 1e-4,
-            "the highest silenced control below it moved (was ctl-abs-1 at 0.2707)");
-        assertTrue(AnalogyPolicy.STANDOUT_MARGIN > highestSilent
-                && AnalogyPolicy.STANDOUT_MARGIN < lowestSpoken,
-            "the margin must sit strictly INSIDE the widest empty band ("
-                + highestSilent + " … " + lowestSpoken + "), never on an edge");
-
-        // No cue may sit inside the band — that is what makes it empty.
-        for (Row r : rows) {
-            double v = r.standOut();
-            assertFalse(v > highestSilent && v < lowestSpoken,
-                "the band is no longer empty: " + r.id() + " at " + v);
-        }
-        // cue-07, the permitted loss, must still sit BELOW the band — if it
-        // ever rose into or above it, the rule would no longer be losing the
-        // cue we accepted losing, and the 11/12 speak rate would be a different
-        // trade than the one recorded.
-        double permitted = rows.stream().filter(r -> r.id().equals(permittedLoss))
-            .mapToDouble(Row::standOut).findFirst().orElseThrow();
-        assertTrue(permitted < highestSilent,
-            "cue-07 no longer sits below the band (" + permitted + ") — the "
-            + "accepted 1-of-12 loss has changed character; re-derive");
-        // And it is the MIDPOINT, so the rule is not fitted to either edge.
-        assertEquals((highestSilent + lowestSpoken) / 2, AnalogyPolicy.STANDOUT_MARGIN, 0.002,
-            "the margin should be the band's midpoint, not a value tuned to a data point");
-    }
+    // --- the negative result the whole design rests on ---------------------------------
 
     @Test
-    void no_absolute_score_rule_can_do_this_job() throws Exception {
+    void no_rule_over_the_score_profile_can_decide_relevance() throws Exception {
         List<Row> rows = rows();
-        // For each candidate statistic, the BEST any threshold can do while
-        // holding the frozen contract (>=11/12 calibration AND 4/4 positive).
-        // Every one of these must fail to beat the shape rule's 7 of 9.
+        // For each candidate statistic: the weakest cue that must be answered
+        // versus the strongest control that must not. If the first is not below
+        // the second the populations have separated and a threshold WOULD work.
         record Candidate(String name, java.util.function.ToDoubleFunction<Row> f) {}
         List<Candidate> candidates = List.of(
             new Candidate("top1",        Row::top1),
             new Candidate("z-score",     r -> (r.top1() - r.mean()) / r.sd()),
             new Candidate("gap-to-next", r -> r.top1() - r.top2()),
             new Candidate("top1/p99",    r -> r.top1() / r.p99()),
-            new Candidate("top1-p99",    r -> r.top1() - r.p99()));
+            new Candidate("top1-p99",    r -> r.top1() - r.p99()),
+            new Candidate("top1-median", r -> r.top1() - r.median()));
 
         for (Candidate c : candidates) {
             double realMin = rows.stream().filter(r -> !r.mustAbstain())
@@ -278,39 +275,7 @@ class AnalogyPolicyDerivationTest {
             && (r.top1() - r.mean()) / r.sd() >= (weakest.top1() - weakest.mean()) / weakest.sd()
             && r.top1() - r.top2() >= weakest.top1() - weakest.top2());
         assertTrue(dominated,
-            "the dominance finding no longer holds — an absolute rule may now be "
+            "the dominance finding no longer holds — a threshold rule may now be "
             + "possible, and AnalogyPolicy's justification needs revisiting");
-    }
-
-    @Test
-    void the_count_rule_shows_more_than_the_old_fixed_cap_of_two() throws Exception {
-        TreeSet<Integer> counts = new TreeSet<>();
-        int showingThree = 0;
-        for (Row r : rows()) {
-            if (r.mustAbstain()) {
-                // The two tracked failures are pinned at the EXACT number of
-                // wrong analogies they emit today. The old "<= 3" allowance was
-                // vacuous: the rule could have degraded to 3 and 3 while the
-                // "countdown to zero" comment read unchanged.
-                int allowed = switch (r.id()) {
-                    case "ctl-non-2" -> 2;
-                    case "ctl-non-6" -> 1;
-                    default -> 0;
-                };
-                assertEquals(allowed, AnalogyPolicy.speak(profileOf(r)).size(),
-                    "control " + r.id() + " changed how much it wrongly says");
-                continue;
-            }
-            int n = AnalogyPolicy.speak(profileOf(r)).size();
-            counts.add(n);
-            if (n == 3) {
-                showingThree++;
-            }
-        }
-        assertTrue(counts.contains(1) && counts.contains(3),
-            "the count must ADAPT — a fixed number is the flaw this replaces; saw " + counts);
-        assertTrue(showingThree >= 8,
-            "expected most real cues to show three now that the cap of two is gone; "
-            + "saw " + showingThree);
     }
 }
