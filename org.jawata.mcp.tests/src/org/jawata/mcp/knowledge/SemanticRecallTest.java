@@ -62,6 +62,20 @@ class SemanticRecallTest {
         return (List<Map<String, Object>>) r.getOrDefault("analogies", List.of());
     }
 
+    /**
+     * ABORT, not return, when the embedder is unavailable.
+     *
+     * <p>A bare {@code return} is recorded by JUnit as a PASS, which makes a
+     * gate that never ran indistinguishable from one that held —
+     * {@link CalibrationGateTest} prints "NOT RUN" for exactly this reason. The
+     * older tests in this file still use the bare return; the C2 gates must
+     * not, because they are the ones being called blocking.</p>
+     */
+    private void requireEmbedder() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "embedder unavailable — this C2 gate did NOT run: " + svc.unavailableReason());
+    }
+
     @Test
     void a_paraphrase_reaches_experience_that_keyword_recall_cannot_find() {
         if (!svc.available()) {
@@ -123,10 +137,16 @@ class SemanticRecallTest {
         }
         putExperience("the webview renders blank on linux",
             "the DMABUF compositor path fails silently on some drivers", null);
-        // Cue chosen from a MEASURED score, not from intuition: against this
-        // entry "the window comes up empty" scores 0.1177 — genuinely below the
-        // derived 0.15 floor, so it is correctly nominated by nothing. (A useful
-        // demonstration that the floor is not vacuous.) This cue scores 0.2653.
+        // Cue chosen from a MEASURED score, not from intuition: this cue scores
+        // 0.2653 against the entry above, so an analogy genuinely surfaces and
+        // the assertions below have something to inspect.
+        //
+        // This comment used to add that a weaker phrasing (0.1177) fell below
+        // "the derived 0.15 floor" and so demonstrated the floor was not
+        // vacuous. Both halves are now wrong: the analogy path's floor is
+        // AnalogyPolicy.JUNK_FLOOR = 0.10, so 0.1177 would be nominated — and
+        // the C2 measurement records that the floor fires on nothing in the
+        // corpus at all. The floor is a guard, not a filter; see AnalogyPolicy.
         Map<String, Object> r = semantic.recall(
             symptom("the app starts but nothing paints inside the frame"));
         // The precondition asserts the RESULT, not merely that some text came
@@ -262,9 +282,7 @@ class SemanticRecallTest {
      */
     @Test
     void a_question_the_store_cannot_answer_gets_no_vouched_answer() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         putExperience("never act before the broker confirms the cancel",
             "the confirmation is the only safe trigger", null);
         putExperience("the webview paints blank under the DMABUF compositor",
@@ -302,26 +320,45 @@ class SemanticRecallTest {
      */
     @Test
     void a_novel_question_through_dispatch_gets_no_vouched_answer() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
+        // A seeded PAST RUN in the runner's own shape, so the dispatch
+        // decorator has something to attach and the probe cannot pass by
+        // finding nothing at all.
         store.put(ExperienceEntry.of(
-            SymbolFact.of("lesson", "the javadoc seat proposed docs that compiled clean",
-                Confidence.MEDIUM).details("doclint reported nothing").build())
+            SymbolFact.of(DispatchRecall.SEAT_RUN_TYPE,
+                "seat javadocs on PurityCheck: accepted (javadocs-1)", Confidence.MEDIUM)
+            .details("{\"schema\":1,\"ts\":1750000000,\"runId\":\"javadocs-1\","
+                + "\"seat\":\"javadocs\",\"target\":\"PurityCheck\","
+                + "\"work\":\"documented five undocumented members\","
+                + "\"humanVerdict\":\"accepted\",\"outcome\":\"applied unchanged\"}")
+            .build())
             .operation("seat:javadocs").build());
 
         Map<String, Object> r = semantic.recall(
-            new RecallQuery(null, null, "seat:nothing-like-this-has-ever-run", null, null));
+            new RecallQuery(null, null, "seat:javadoc-like-work-never-run-before", null, null));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> vouched =
             (List<Map<String, Object>>) r.getOrDefault("entries", List.of());
         assertTrue(vouched.isEmpty(),
             "dispatch recall must not vouch for a past run that does not exist: " + vouched);
+
+        // The labelling half must not hold vacuously: something has to have come
+        // back for "it came back labelled" to mean anything. The C2 audit found
+        // the first version of this probe iterating a list it never required to
+        // be non-empty.
+        assertFalse(analogies(r).isEmpty(),
+            "precondition: the seeded past run must surface as a nominee, or this "
+            + "probe proves nothing about how nominees are labelled");
+        boolean sawDispatch = false;
         for (Map<String, Object> a : analogies(r)) {
             assertEquals("analogy — judge whether it transfers", a.get("framing"),
                 "a dispatch-decorated nominee is still a nominee: " + a);
+            sawDispatch |= a.containsKey("dispatch");
         }
+        assertTrue(sawDispatch,
+            "and the dispatch decoration must actually be on it — otherwise this "
+            + "is the front-door check under another name");
     }
 
     /**
@@ -332,9 +369,7 @@ class SemanticRecallTest {
      */
     @Test
     void a_weak_but_correct_match_is_delivered_rather_than_withheld() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         String target = putExperience(
             "cosine bands must never swap jobs: parity is not dedup is not retrieval",
             "parity sits at 0.999, dedup near 0.9, retrieval is the broad band", null);

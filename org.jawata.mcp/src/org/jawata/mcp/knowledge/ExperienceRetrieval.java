@@ -267,23 +267,6 @@ public final class ExperienceRetrieval {
     }
 
     /**
-     * Meaning-nominated EXPERIENCE that the fit gate did not already admit.
-     *
-     * <p>Two exclusions carry the ontology, and both matter:</p>
-     * <ul>
-     *   <li><b>Facts are never offered as analogies.</b> A fact that failed the
-     *       address gate has failed, and must stay failed — routing it here
-     *       would smuggle an unverified statement about code past the very gate
-     *       that exists to stop it.</li>
-     *   <li><b>Nothing already returned is repeated.</b> The same entry in both
-     *       lists would spend the agent's context twice to say one thing.</li>
-     * </ul>
-     *
-     * <p>With no index, or an unavailable one, this returns empty — which is the
-     * degrade path, and leaves recall behaving exactly as it did before
-     * semantic retrieval existed.</p>
-     */
-    /**
      * One brute-force semantic scan for this cue: every scored id, unfloored.
      * Empty when there is no index, it is unavailable, or the cue is blank —
      * the degrade path, in which the tie-break above simply contributes 0s and
@@ -304,6 +287,23 @@ public final class ExperienceRetrieval {
         return scores;
     }
 
+    /**
+     * Meaning-nominated EXPERIENCE that the fit gate did not already admit.
+     *
+     * <p>Two exclusions carry the ontology, and both matter:</p>
+     * <ul>
+     *   <li><b>Facts are never offered as analogies.</b> A fact that failed the
+     *       address gate has failed, and must stay failed — routing it here
+     *       would smuggle an unverified statement about code past the very gate
+     *       that exists to stop it.</li>
+     *   <li><b>Nothing already returned is repeated.</b> The same entry in both
+     *       lists would spend the agent's context twice to say one thing.</li>
+     * </ul>
+     *
+     * <p>With no index, or an unavailable one, this returns empty — which is the
+     * degrade path, and leaves recall behaving exactly as it did before
+     * semantic retrieval existed.</p>
+     */
     private List<ExperienceAnalogies.Analogy> analogies(RecallQuery q,
                                                        List<StoredEntry> alreadyReturned,
                                                        List<StoredEntry> turnedAway,

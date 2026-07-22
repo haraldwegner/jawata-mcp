@@ -40,6 +40,10 @@ class CalibrationGateTest {
     private static final String CORPUS_PROPERTY = "jawata.embed.corpus";
     private static final String ACCEPT_SETS = "/test-resources/embed-goldens/accept-sets.json";
     private static final int BAR = 10;
+    /** The frozen contract's nomination window: the designated entry must be inside it. */
+    private static final int FROZEN_K = 12;
+    /** C2 clause (i): the meaning path alone, by the frozen contract. */
+    private static final int EMBEDDINGS_ALONE_BAR = 9;
 
     @Test
     void the_calibration_cues_are_answered_from_the_real_corpus() throws Exception {
@@ -108,6 +112,8 @@ class CalibrationGateTest {
 
             int passed = 0;
             int keywordPassed = 0;
+            int embeddingsPassed = 0;
+            List<String> embeddingsFailing = new ArrayList<>();
             List<String> rows = new ArrayList<>();
             for (JsonNode cue : accept.get("cues")) {
                 String text = cue.get("cue").asText();
@@ -119,6 +125,21 @@ class CalibrationGateTest {
                 Map<String, Object> kwAnswer = keyword.recall(query(cue, text));
                 boolean semantic = winnerIsAcceptable(unionAnswer, ok);
                 boolean kw = winnerIsAcceptable(kwAnswer, ok);
+
+                // THE EMBEDDINGS-ONLY ARM, and the frozen contract's second
+                // half. The C2 gate is written as "embeddings alone >=9/12 AND
+                // union >=10/12" precisely so the symbol path cannot mask a
+                // meaning regression — cue-11 is already union-only. Until the
+                // C2 audit, only the union was ever measured, so the clause was
+                // satisfied by a number that could not see what it guards
+                // against. This scores the meaning ranking directly, and checks
+                // BOTH halves the contract names: winner acceptable, AND the
+                // designated entry inside K.
+                if (embeddingsAlonePasses(index, text, ok, cue.get("designated").asText())) {
+                    embeddingsPassed++;
+                } else {
+                    embeddingsFailing.add(cue.path("id").asText());
+                }
                 if (!semantic || !kw) {
                     // DIAGNOSIS (C4 investigation): show what each arm actually
                     // returned, so a fixture defect cannot masquerade as a
@@ -140,9 +161,14 @@ class CalibrationGateTest {
                         ? text.substring(0, 56) + "…" : text));
             }
             rows.forEach(System.out::println);
-            System.out.printf("[E2 GATE] semantic %d/%d · keyword %d/%d · bar %d%n",
-                passed, accept.get("cues").size(), keywordPassed,
-                accept.get("cues").size(), BAR);
+            System.out.printf("[E2 GATE] semantic %d/%d · embeddings-alone %d/%d · "
+                + "keyword %d/%d · bar %d%n",
+                passed, accept.get("cues").size(),
+                embeddingsPassed, accept.get("cues").size(),
+                keywordPassed, accept.get("cues").size(), BAR);
+            if (!embeddingsFailing.isEmpty()) {
+                System.out.println("[E2 GATE] embeddings-alone failing: " + embeddingsFailing);
+            }
 
             assertTrue(passed >= BAR,
                 "E2: semantic recall answered " + passed + " of "
@@ -151,6 +177,13 @@ class CalibrationGateTest {
             assertTrue(passed > keywordPassed,
                 "E2: semantic (" + passed + ") must strictly beat keyword ("
                 + keywordPassed + ") — otherwise the sprint bought nothing.");
+            assertTrue(embeddingsPassed >= EMBEDDINGS_ALONE_BAR,
+                "E2 clause (i): the MEANING path alone answered " + embeddingsPassed
+                + " of " + accept.get("cues").size() + " by the frozen contract "
+                + "(winner in accept_set AND designated within K=" + FROZEN_K + "); "
+                + "the bar is " + EMBEDDINGS_ALONE_BAR + ". Gating only the union "
+                + "would let the symbol path mask exactly this. Failing: "
+                + embeddingsFailing);
         } finally {
             store.close();
         }
@@ -186,6 +219,30 @@ class CalibrationGateTest {
             break;                            // only the WINNER counts
         }
         return false;
+    }
+
+    /**
+     * The frozen contract measured on the MEANING RANKING ALONE — no keyword,
+     * no symbol path: the winner must be in the accept set AND the designated
+     * entry must sit inside the top {@link #FROZEN_K}.
+     *
+     * <p>This reads the ranking straight off the index rather than through
+     * {@code recall()}, because every {@code recall()} answer is a union by
+     * construction. A union-only number cannot fail when the symbol path
+     * carries a cue the embeddings lost, which is the masking the C2 clause
+     * was written to prevent.</p>
+     */
+    private static boolean embeddingsAlonePasses(EmbeddingIndex index, String cueText,
+                                                 Set<String> acceptable, String designated) {
+        List<EmbeddingIndex.Hit> ranked = index.nearestEntries(cueText, FROZEN_K, 0.0);
+        if (ranked.isEmpty()) {
+            return false;
+        }
+        String winner = ranked.get(0).id();
+        boolean winnerOk = acceptable.stream().anyMatch(winner::startsWith);
+        boolean designatedInWindow = ranked.stream()
+            .anyMatch(h -> h.id().startsWith(designated));
+        return winnerOk && designatedInWindow;
     }
 
     /** The first three ranked ids of an answer (entries then analogies), for diagnosis. */

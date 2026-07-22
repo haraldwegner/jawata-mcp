@@ -96,10 +96,14 @@ public final class AnalogyPolicy {
     /**
      * The nearest entries worth putting in front of the agent for one cue.
      *
-     * <p>These are <b>nominees, not answers</b>: callers must render them as
-     * "closest by meaning — judge whether it fits", never as something the
-     * store vouches for. What the store does vouch for comes from the exact
-     * index path, which returns one answer or none.</p>
+     * <p>These are <b>nominees, not answers</b>: callers must render them
+     * through the analogy carrier, which frames every one of them as
+     * {@code "analogy — judge whether it transfers"} and states its basis in
+     * words — never as something the store vouches for. What the store does
+     * vouch for comes from the exact index path, which returns one answer or
+     * none. (Naming the actual string matters: an earlier version of this
+     * javadoc mandated wording that appeared in no caller and no test, so the
+     * contract could not be checked.)</p>
      *
      * <p>An empty result means the store holds nothing even in the
      * neighbourhood of this cue — not that a lookup failed.</p>

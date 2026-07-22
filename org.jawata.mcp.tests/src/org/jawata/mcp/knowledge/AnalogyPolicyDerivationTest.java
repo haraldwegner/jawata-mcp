@@ -46,12 +46,21 @@ class AnalogyPolicyDerivationTest {
         }
 
         /**
-         * Whether K nominees carry a legitimate answer for this cue: either the
-         * winner is in the frozen accept set, or the designated entry is inside
-         * the first K.
+         * READING A (the accept-set reading — Harald's frozen option A): K
+         * nominees carry a LEGITIMATE answer, because the winner is itself in
+         * the frozen accept set, or the designated entry is inside the first K.
          */
         boolean servedAt(int k) {
             return top1InAccept || (designatedRank > 0 && designatedRank <= k);
+        }
+
+        /**
+         * READING B (the designated reading): K nominees carry THE CANONICAL
+         * entry. Stricter — a cue whose rank-1 winner is an accepted answer but
+         * whose designated entry sits deeper counts as unserved here.
+         */
+        boolean designatedWithin(int k) {
+            return designatedRank > 0 && designatedRank <= k;
         }
     }
 
@@ -147,35 +156,69 @@ class AnalogyPolicyDerivationTest {
     // --- the count ---------------------------------------------------------------------
 
     /**
-     * K is the SMALLEST value that serves everything within reach — and pinning
-     * it means showing that a larger K would buy nothing. On the measured set
-     * three nominees serve ten of twelve cues, and so do four, six, eleven and
-     * twelve: the next cue only arrives at rank 23, which no context-affordable
-     * K reaches.
+     * K under BOTH readings of "served", because they disagree and the
+     * disagreement is the whole argument.
+     *
+     * <p><b>Reading A, the accept-set reading</b> (Harald's frozen option A —
+     * the accept sets exist precisely to say that several entries legitimately
+     * answer a cue): K=3 serves ten of twelve, and so do 4, 6, 11 and 12. The
+     * next cue only arrives at rank 23. On this reading a larger K buys
+     * literally nothing.</p>
+     *
+     * <p><b>Reading B, the designated reading</b> (the single canonical entry
+     * must arrive): K=3 serves seven, K=4 eight, K=6 nine, K=11 ten. On this
+     * reading a larger K buys three more cues — and under the asymmetry ruling
+     * ("failing to use an experience we already hold is the expensive error")
+     * that argues for K=11.</p>
+     *
+     * <p>The shipped K=3 rests on reading A. That is a CHOICE between two
+     * defensible readings, not a fact, and it is pinned here with both numbers
+     * visible so it cannot be mistaken for the latter. The C2 audit caught the
+     * earlier version of this test computing only reading A while the dossier
+     * claimed both — and computing only A also made the "a larger K would buy
+     * recall" failure branch unfirable, since A is flat from 3 to 22.</p>
      */
     @Test
-    void three_nominees_serve_everything_a_larger_k_would() throws Exception {
+    void k_is_pinned_under_both_readings_of_served() throws Exception {
         List<Row> cal = rows().stream().filter(Row::calibration).toList();
         assertEquals(12, cal.size(), "the calibration set is no longer 12 cues");
 
-        int atK = (int) cal.stream().filter(r -> r.servedAt(AnalogyPolicy.MAX_NOMINEES)).count();
-        assertEquals(10, atK,
-            "K=" + AnalogyPolicy.MAX_NOMINEES + " serves " + atK + " of 12; the "
-            + "recorded figure is 10 (missing cue-09, symptom-shaped and D3's, "
-            + "and cue-11, an FQN the exact index path answers)");
+        // The shipped value itself — the earlier pin held for any K in 3..22.
+        assertEquals(3, AnalogyPolicy.MAX_NOMINEES,
+            "MAX_NOMINEES moved; both readings below must be re-argued, and the "
+            + "choice between them is Harald's");
 
+        // READING A — flat from 3 upward, which is why it cannot argue for more.
+        assertEquals(10, (int) cal.stream().filter(r -> r.servedAt(3)).count(),
+            "reading A at K=3 moved from the recorded 10 (missing cue-09, "
+            + "symptom-shaped and D3's, and cue-11, an FQN the exact path answers)");
         for (int k : new int[] {4, 6, 11, 12}) {
-            int bigger = (int) cal.stream().filter(r -> r.servedAt(k)).count();
-            assertEquals(atK, bigger,
-                "K=" + k + " now serves " + bigger + " where K="
-                + AnalogyPolicy.MAX_NOMINEES + " serves " + atK + " — a larger K "
-                + "would buy recall, which under the asymmetry ruling means K "
-                + "should rise. Re-derive.");
+            assertEquals(10, (int) cal.stream().filter(r -> r.servedAt(k)).count(),
+                "reading A at K=" + k + " moved from the recorded 10");
         }
-        // And one nominee would NOT do: the cap must genuinely be doing work.
         assertEquals(9, (int) cal.stream().filter(r -> r.servedAt(1)).count(),
             "a single nominee served a different number than the recorded 9 — "
             + "the case for showing more than one has changed");
+
+        // READING B — rises with K, and that is the open question, recorded
+        // rather than hidden. If these numbers move, the K decision reopens.
+        assertEquals(7, (int) cal.stream().filter(r -> r.designatedWithin(3)).count(),
+            "reading B at K=3 moved from the recorded 7");
+        assertEquals(8, (int) cal.stream().filter(r -> r.designatedWithin(4)).count(),
+            "reading B at K=4 moved from the recorded 8");
+        assertEquals(9, (int) cal.stream().filter(r -> r.designatedWithin(6)).count(),
+            "reading B at K=6 moved from the recorded 9");
+        assertEquals(10, (int) cal.stream().filter(r -> r.designatedWithin(11)).count(),
+            "reading B at K=11 moved from the recorded 10");
+
+        // The three cues where the readings disagree, named — these are exactly
+        // what a larger K would additionally deliver.
+        List<String> disagree = cal.stream()
+            .filter(r -> r.servedAt(3) && !r.designatedWithin(3))
+            .map(Row::id).toList();
+        assertEquals(List.of("cue-02", "cue-04", "cue-08"), disagree,
+            "the cues whose canonical entry K=3 does not reach changed; the K "
+            + "decision was recorded against exactly these three");
     }
 
     // --- the frozen contract, and what the policy cannot move --------------------------
