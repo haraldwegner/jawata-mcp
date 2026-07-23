@@ -29,14 +29,23 @@ public class GetJavadocTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(GetJavadocTool.class);
 
-    private static final Pattern PARAM_PATTERN = Pattern.compile("@param\\s+(\\w+)\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern RETURN_PATTERN = Pattern.compile("@return\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern THROWS_PATTERN = Pattern.compile("@throws\\s+(\\S+)\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern SEE_PATTERN = Pattern.compile("@see\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern SINCE_PATTERN = Pattern.compile("@since\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern DEPRECATED_PATTERN = Pattern.compile("@deprecated\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern AUTHOR_PATTERN = Pattern.compile("@author\\s+(.+?)(?=@|$)", Pattern.DOTALL);
-    private static final Pattern VERSION_PATTERN = Pattern.compile("@version\\s+(.+?)(?=@|$)", Pattern.DOTALL);
+    // jawata-mcp#8: Javadoc BLOCK tags only ever start a line. Anchoring the
+    // boundary detection to a line start (MULTILINE ^) means an '@' that lives
+    // mid-line — inside an inline tag, or in prose like "{@code @param}" — is
+    // never mistaken for a block-tag boundary. Descriptions span until the next
+    // line-anchored block tag or the end (DOTALL lets '.' cross newlines).
+    private static final int TAG_FLAGS = Pattern.DOTALL | Pattern.MULTILINE;
+    /** A block tag at a line start — the summary/tags boundary and each tag's terminator. */
+    private static final Pattern BLOCK_TAG = Pattern.compile("^[ \\t]*@\\w", Pattern.MULTILINE);
+    private static final String TAG_END = "(?=^[ \\t]*@|\\z)";
+    private static final Pattern PARAM_PATTERN = Pattern.compile("^[ \\t]*@param\\s+(\\w+)\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern RETURN_PATTERN = Pattern.compile("^[ \\t]*@return\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern THROWS_PATTERN = Pattern.compile("^[ \\t]*@throws\\s+(\\S+)\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern SEE_PATTERN = Pattern.compile("^[ \\t]*@see\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern SINCE_PATTERN = Pattern.compile("^[ \\t]*@since\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern DEPRECATED_PATTERN = Pattern.compile("^[ \\t]*@deprecated\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern AUTHOR_PATTERN = Pattern.compile("^[ \\t]*@author\\s+(.*?)" + TAG_END, TAG_FLAGS);
+    private static final Pattern VERSION_PATTERN = Pattern.compile("^[ \\t]*@version\\s+(.*?)" + TAG_END, TAG_FLAGS);
 
     public GetJavadocTool(Supplier<IJdtService> serviceSupplier) {
         super(serviceSupplier);
@@ -182,28 +191,23 @@ public class GetJavadocTool extends AbstractTool {
             .replaceAll("(?m)^\\s*\\*\\s?", "")
             .trim();
 
-        // jawata-mcp#8: render inline tags ({@link}, {@code}, …) to plain text
-        // BEFORE any @-boundary detection. Their embedded '@' was being read as a
-        // block-tag start, so a summary or a @param description was truncated at
-        // the first '{' — e.g. "... which is why {" cut off "{@link ...} throws".
-        cleaned = renderInlineTags(cleaned);
-
-        // Extract summary (everything before first @tag)
-        int firstTag = cleaned.indexOf("@");
+        // jawata-mcp#8: split at the first LINE-ANCHORED block tag, with inline
+        // tags still intact, so a mid-line '@' — inside an inline tag, or in
+        // prose like "{@code @param}" — is never mistaken for a block-tag
+        // boundary (which would truncate the summary and mint a bogus @param).
+        // Inline tags are rendered to plain text only for what is displayed.
+        Matcher boundary = BLOCK_TAG.matcher(cleaned);
         String summary;
         String tagSection;
-
-        if (firstTag > 0) {
-            summary = cleaned.substring(0, firstTag).trim();
-            tagSection = cleaned.substring(firstTag);
-        } else if (firstTag == 0) {
-            summary = "";
-            tagSection = cleaned;
+        if (boundary.find()) {
+            summary = cleaned.substring(0, boundary.start());
+            tagSection = cleaned.substring(boundary.start());
         } else {
             summary = cleaned;
             tagSection = "";
         }
 
+        summary = renderInlineTags(summary).trim();
         if (!summary.isEmpty()) {
             data.put("summary", summary);
         }
@@ -214,7 +218,7 @@ public class GetJavadocTool extends AbstractTool {
         while (paramMatcher.find()) {
             Map<String, String> param = new LinkedHashMap<>();
             param.put("name", paramMatcher.group(1).trim());
-            param.put("description", paramMatcher.group(2).trim());
+            param.put("description", renderInlineTags(paramMatcher.group(2)).trim());
             params.add(param);
         }
         if (!params.isEmpty()) {
@@ -224,7 +228,7 @@ public class GetJavadocTool extends AbstractTool {
         // Parse @return
         Matcher returnMatcher = RETURN_PATTERN.matcher(tagSection);
         if (returnMatcher.find()) {
-            data.put("returns", returnMatcher.group(1).trim());
+            data.put("returns", renderInlineTags(returnMatcher.group(1)).trim());
         }
 
         // Parse @throws
@@ -233,7 +237,7 @@ public class GetJavadocTool extends AbstractTool {
         while (throwsMatcher.find()) {
             Map<String, String> throwsEntry = new LinkedHashMap<>();
             throwsEntry.put("type", throwsMatcher.group(1).trim());
-            throwsEntry.put("description", throwsMatcher.group(2).trim());
+            throwsEntry.put("description", renderInlineTags(throwsMatcher.group(2)).trim());
             throwsList.add(throwsEntry);
         }
         if (!throwsList.isEmpty()) {
@@ -244,7 +248,7 @@ public class GetJavadocTool extends AbstractTool {
         List<String> seeList = new ArrayList<>();
         Matcher seeMatcher = SEE_PATTERN.matcher(tagSection);
         while (seeMatcher.find()) {
-            seeList.add(seeMatcher.group(1).trim());
+            seeList.add(renderInlineTags(seeMatcher.group(1)).trim());
         }
         if (!seeList.isEmpty()) {
             data.put("see", seeList);
@@ -253,20 +257,20 @@ public class GetJavadocTool extends AbstractTool {
         // Parse @since
         Matcher sinceMatcher = SINCE_PATTERN.matcher(tagSection);
         if (sinceMatcher.find()) {
-            data.put("since", sinceMatcher.group(1).trim());
+            data.put("since", renderInlineTags(sinceMatcher.group(1)).trim());
         }
 
         // Parse @deprecated
         Matcher deprecatedMatcher = DEPRECATED_PATTERN.matcher(tagSection);
         if (deprecatedMatcher.find()) {
-            data.put("deprecated", deprecatedMatcher.group(1).trim());
+            data.put("deprecated", renderInlineTags(deprecatedMatcher.group(1)).trim());
         }
 
         // Parse @author
         List<String> authors = new ArrayList<>();
         Matcher authorMatcher = AUTHOR_PATTERN.matcher(tagSection);
         while (authorMatcher.find()) {
-            authors.add(authorMatcher.group(1).trim());
+            authors.add(renderInlineTags(authorMatcher.group(1)).trim());
         }
         if (!authors.isEmpty()) {
             data.put("authors", authors);
@@ -275,7 +279,7 @@ public class GetJavadocTool extends AbstractTool {
         // Parse @version
         Matcher versionMatcher = VERSION_PATTERN.matcher(tagSection);
         if (versionMatcher.find()) {
-            data.put("version", versionMatcher.group(1).trim());
+            data.put("version", renderInlineTags(versionMatcher.group(1)).trim());
         }
     }
 

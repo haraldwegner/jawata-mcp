@@ -109,6 +109,36 @@ class GetJavadocToolTest {
             "the {@code} content must render into the description: " + modelDesc);
     }
 
+    @Test
+    @DisplayName("jawata-mcp#8: prose {@code @param} does not truncate the summary or mint a bogus @param")
+    @SuppressWarnings("unchecked")
+    void inlineTagContainingAnAtIsNotABlockTag() throws Exception {
+        Path projectPath = helper.getFixturePath("simple-maven");
+        String recordPath = projectPath
+            .resolve("src/main/java/com/example/RecordPlainDoc.java").toString();
+
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", recordPath);
+        args.put("line", 10);    // 0-based: `public record RecordPlainDoc(...)`
+        args.put("column", 16);  // on the type name
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> "refused: " + (r.getError() != null ? r.getError().getMessage() : "?"));
+        Map<String, Object> data = getData(r);
+        assertEquals(Boolean.TRUE, data.get("hasDocumentation"));
+
+        String summary = (String) data.get("summary");
+        assertNotNull(summary);
+        // The `{@code @param}` in the prose must NOT terminate the summary — the
+        // sentence after it (ending "... ZERO") must survive.
+        assertTrue(summary.contains("ZERO"),
+            "the summary must survive the inline @-bearing tag: " + summary);
+        assertFalse(summary.contains("{"), "inline tags render, no stray brace: " + summary);
+        // And it must NOT be parsed as a real @param — the record documents none.
+        assertNull(data.get("params"),
+            "a prose {@code @param} must not be read as a block tag: " + data.get("params"));
+    }
+
     @Test @DisplayName("requires filePath, line, column parameters")
     void requiresParameters() {
         ObjectNode noFile = objectMapper.createObjectNode();

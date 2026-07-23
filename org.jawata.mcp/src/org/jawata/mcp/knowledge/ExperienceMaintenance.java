@@ -922,9 +922,12 @@ public final class ExperienceMaintenance {
 
     /**
      * Sprint 21c (item A): harvest the body's cue-dense structure — headings (all
-     * levels), {@code **bold**} phrases, {@code `backticked`} terms and
-     * {@code [[wikilink]]} names — as keyword phrases for the symptom index. Fenced
-     * {@code ```} blocks are code, not cues. Deduplicated after normalization; phrases
+     * levels), {@code **bold**} phrases, {@code [[wikilink]]} names and quoted
+     * error strings — as keyword phrases for the symptom index. Fenced
+     * {@code ```} blocks are code, not cues. jawata-mcp#7: inline {@code `code`}
+     * spans are deliberately NOT harvested (a backticked token is tool/artifact
+     * content, and a bare word survives admission as prose — the body carries it,
+     * and BM25 reads the body since D9). Deduplicated after normalization; phrases
      * capped to the VARCHAR(512) symptom column.
      */
     static List<String> harvestKeywords(String body) {
