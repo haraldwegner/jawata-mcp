@@ -350,10 +350,8 @@ public class JawataApplication implements IApplication {
         int done;
         while (!interrupted.getAsBoolean() && (done = index.backfill(batch)) > 0) {
             total += done;
-            long remaining = Math.max(0, index.totalCount("experience_entry")
-                - index.embeddedCount("experience_entry"));
             log.info("Embedding backfill: +{} this pass ({} total), {} remaining",
-                done, total, remaining);
+                done, total, index.remainingUnembedded());
         }
         return total;
     }
@@ -373,14 +371,15 @@ public class JawataApplication implements IApplication {
                 long start = System.currentTimeMillis();
                 int total = reconcileEmbeddings(index, batch,
                     () -> Thread.currentThread().isInterrupted());
-                // MEASURED, not assumed. The loop exits when a pass embeds
-                // nothing — which means no WRITABLE row remains, NOT that zero
-                // rows remain: a row whose text embeds to null (blank, or an
-                // embedder failure already logged) stays selected and is skipped
-                // every pass. So read the real delta and only say CONVERGED when
-                // it is actually zero; otherwise name what is stuck.
-                long remaining = Math.max(0, index.totalCount("experience_entry")
-                    - index.embeddedCount("experience_entry"));
+                // MEASURED, not assumed, and across BOTH reconciled tables. The
+                // loop exits when a pass embeds nothing — which means no WRITABLE
+                // row remains, NOT that zero rows remain: a row whose text embeds
+                // to null (blank, or an embedder failure already logged) stays
+                // selected and is skipped every pass. remainingUnembedded()
+                // reads experience_entry AND tool_experience, and returns -1
+                // ("could not look") rather than a misleading 0 on a read
+                // failure — so CONVERGED is claimed only on a measured zero.
+                long remaining = index.remainingUnembedded();
                 if (Thread.currentThread().isInterrupted()) {
                     log.info("Embedding backfill interrupted at shutdown after {} row(s);"
                         + " {} remaining, resumed from the smaller delta next start",
@@ -388,6 +387,9 @@ public class JawataApplication implements IApplication {
                 } else if (remaining == 0) {
                     log.info("Embedding backfill CONVERGED: {} row(s) in {} ms; 0 remaining",
                         total, System.currentTimeMillis() - start);
+                } else if (remaining < 0) {
+                    log.warn("Embedding backfill: {} row(s) embedded, but the remaining"
+                        + " count could not be read — NOT asserting convergence", total);
                 } else if (total > 0) {
                     log.info("Embedding backfill: {} row(s) in {} ms; {} still unembedded"
                         + " (their text embeds to null — not retried by looping)",

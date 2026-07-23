@@ -76,6 +76,29 @@ class BackfillConvergenceTest {
             "the delta must be CLOSED — zero remaining, not one batch's worth left");
     }
 
+    /**
+     * Sprint 27a C3b (audit F-new) — the remaining count spans BOTH reconciled
+     * tables and only reads zero when the store is genuinely converged.
+     *
+     * <p>The terminal "CONVERGED … 0 remaining" log reads
+     * {@link EmbeddingIndex#remainingUnembedded()}, not one table. This pins
+     * that it reflects unembedded rows before reconciling and reads zero after —
+     * so a converged store cannot be reported as stuck, nor a stuck one as
+     * converged.</p>
+     */
+    @Test
+    void remaining_unembedded_reflects_the_delta_and_reaches_zero() throws Exception {
+        seedUnembedded(120);
+        assertTrue(index.remainingUnembedded() >= 120,
+            "before reconciling, the store-wide remaining count sees the unembedded rows");
+
+        JawataApplication.reconcileEmbeddings(index, 100, () -> false);
+
+        assertEquals(0, index.remainingUnembedded(),
+            "after convergence the store-wide count is zero — the value the "
+            + "CONVERGED log asserts, measured not hardcoded");
+    }
+
     @Test
     void it_stops_at_delta_zero_and_does_not_spin() throws Exception {
         seedUnembedded(120);

@@ -301,6 +301,30 @@ public final class EmbeddingIndex {
         }
     }
 
+    /**
+     * Rows still without a current-identity vector across EVERY table
+     * {@link #backfill} reconciles — {@code experience_entry} AND
+     * {@code tool_experience}.
+     *
+     * <p>Reporting only one table would let the loop print "0 remaining" while
+     * the other still held unembedded rows (a null-text row stays selected and
+     * is skipped each pass). Returns {@code -1} — "unknown, NOT zero" — if any
+     * underlying count hit its {@code -1} sentinel, so a failed read can never
+     * be mistaken for a closed delta.</p>
+     */
+    public long remainingUnembedded() {
+        long remaining = 0;
+        for (String table : new String[] {"experience_entry", "tool_experience"}) {
+            long total = totalCount(table);
+            long embedded = embeddedCount(table);
+            if (total < 0 || embedded < 0) {
+                return -1;                        // could not look — not "converged"
+            }
+            remaining += Math.max(0, total - embedded);
+        }
+        return remaining;
+    }
+
     /** Total rows in the table, for reporting coverage as a fraction rather than a count. */
     public long totalCount(String table) {
         // NOTE: the connection is SHARED and must never be closed here - it is
