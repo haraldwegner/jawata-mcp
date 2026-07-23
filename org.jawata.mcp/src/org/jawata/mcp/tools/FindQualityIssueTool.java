@@ -324,9 +324,12 @@ public class FindQualityIssueTool extends AbstractTool {
                                 && !session.cancelRequested.get()) {
                             r = applyBaseline(service, family, baseline, r);
                         }
-                        if (r.isSuccess()) {
-                            r = paginateFamily(r, arguments);
-                        }
+                        // jawata-mcp#6 (Sprint 27a Stage 8): store UNSHAPED.
+                        // Shaping (summary/limit/offset) happens at STATUS time
+                        // with the RETRIEVING call's own arguments — shaping
+                        // here froze the start call's view into every later
+                        // retrieval, so status ignored summary:true and burst
+                        // the client limit while advising the opposite.
                     } catch (Throwable e) {
                         // v3.0.1 (audit F3): Throwable, not RuntimeException — an
                         // Error must not leave the session forever "running".
@@ -372,9 +375,14 @@ public class FindQualityIssueTool extends AbstractTool {
                     return ToolResponse.success(data,
                         ResponseMeta.builder().totalCount(1).returnedCount(1).build());
                 }
-                // Finished (or cancelled): wrap the FULL result with the session
-                // envelope; repeatable retrieval is the point of the feature.
+                // Finished (or cancelled): shape the stored result with THIS
+                // call's summary/limit/offset (jawata-mcp#6 — status honors
+                // them exactly as run does), then wrap the session envelope;
+                // repeatable retrieval is the point of the feature.
                 ToolResponse r = session.result;
+                if (r != null && r.isSuccess()) {
+                    r = paginateFamily(r, arguments);
+                }
                 if (r != null && r.isSuccess() && r.getData() instanceof Map<?, ?> raw) {
                     Map<String, Object> data = new LinkedHashMap<>();
                     data.put("sweepId", session.id);

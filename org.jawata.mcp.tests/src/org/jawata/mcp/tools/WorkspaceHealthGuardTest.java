@@ -137,4 +137,50 @@ class WorkspaceHealthGuardTest {
         assertNotNull(rows.get(0).get("remedy"));
         assertEquals("rename_symbol", diagnosis.get("refused"));
     }
+
+    /**
+     * jawata-mcp#4 (Sprint 27a Stage 8) — the false-green trap: a project with
+     * an UNRESOLVED BUILD PATH stays open, registered and walkable, but the
+     * Java builder refuses to run, so every compile gate answers 0 errors —
+     * which reads as "clean" and means "was never compiled". The M2 workspace
+     * had twenty such projects, all reported healthy, every refactor loop
+     * passing vacuously. The contract: health names it with a remedy,
+     * get_diagnostics says COULD NOT COMPILE and never a bare zero, and the
+     * refactoring guard refuses.
+     */
+    @Test
+    @DisplayName("a broken BUILD PATH is unhealthy, gates say could-not-compile, refactorings refuse")
+    void aBrokenBuildPathIsNeverAGreenGate() throws Exception {
+        org.eclipse.jdt.core.IJavaProject jp =
+            service.allProjects().iterator().next().javaProject();
+        org.eclipse.jdt.core.IClasspathEntry[] cp = jp.getRawClasspath();
+        org.eclipse.jdt.core.IClasspathEntry[] broken =
+            java.util.Arrays.copyOf(cp, cp.length + 1);
+        broken[cp.length] = org.eclipse.jdt.core.JavaCore.newLibraryEntry(
+            new org.eclipse.core.runtime.Path("/nonexistent/missing-lib.jar"), null, null);
+        jp.setRawClasspath(broken, null);
+        jp.getProject().build(
+            org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, null);
+
+        // 1. HEALTH: named, explained, remedied — not healthy:true.
+        List<WorkspaceHealth.Problem> problems = WorkspaceHealth.diagnose(service);
+        assertFalse(problems.isEmpty(), "an unbuildable project must be diagnosed");
+        assertTrue(problems.get(0).problem().contains("BUILD PATH"),
+            "the diagnosis names the build path: " + problems.get(0).problem());
+        assertTrue(problems.get(0).problem().contains("VACUOUS"),
+            "and says what a 0-error gate on it would mean: " + problems.get(0).problem());
+        assertNotNull(problems.get(0).remedy());
+
+        // 2. THE GATE: get_diagnostics must say COULD NOT COMPILE, never bare 0.
+        GetDiagnosticsTool diag = new GetDiagnosticsTool(() -> service);
+        Map<String, Object> d = data(diag.execute(om.createObjectNode()));
+        assertNotNull(d.get("couldNotCompile"),
+            "the response carries the could-not-compile block: " + d);
+        assertTrue(((Number) d.get("errorCount")).intValue() > 0,
+            "an unbuildable project can never contribute errorCount 0: " + d);
+
+        // 3. THE GUARD: reference-rewriting refuses, per the documented contract.
+        assertTrue(WorkspaceHealth.refuseIfUnhealthy(service, "rename_symbol").isPresent(),
+            "the refactoring guard fires on a broken build path");
+    }
 }

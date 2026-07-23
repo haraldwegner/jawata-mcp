@@ -138,6 +138,25 @@ public class GetDiagnosticsTool extends AbstractTool {
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
+            // jawata-mcp#4 (Sprint 27a Stage 8): a gate that could not look
+            // must SAY so, never answer green. On an unbuildable project the
+            // reconcile reports 0 problems because NOTHING was compiled — the
+            // exact state that read as "compiles clean" on the M2 workspace.
+            // Each health problem counts as an ERROR so no caller can gate on
+            // a vacuous zero.
+            List<org.jawata.mcp.tools.shared.WorkspaceHealth.Problem> unbuildable =
+                org.jawata.mcp.tools.shared.WorkspaceHealth.diagnose(service);
+            if (!unbuildable.isEmpty()) {
+                List<Map<String, Object>> rows = new ArrayList<>();
+                for (var p : unbuildable) {
+                    rows.add(p.describe());
+                }
+                data.put("couldNotCompile", rows);
+                data.put("couldNotCompileWarning", "0 diagnostics on the project(s) above"
+                    + " means NOT COMPILED, not clean — they cannot be built, so this gate"
+                    + " could not look. Fix each per its remedy, then refresh_workspace.");
+                errorCount += unbuildable.size();
+            }
             data.put("totalDiagnostics", diagnostics.size());
             data.put("errorCount", errorCount);
             data.put("warningCount", warningCount);

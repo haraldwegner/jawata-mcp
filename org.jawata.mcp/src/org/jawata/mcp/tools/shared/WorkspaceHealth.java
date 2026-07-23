@@ -35,7 +35,7 @@ public final class WorkspaceHealth {
 
     /** One thing wrong with one project, and what to do about it. */
     public record Problem(String projectKey, String projectPath, String problem, String remedy) {
-        Map<String, Object> describe() {
+        public Map<String, Object> describe() {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("projectKey", projectKey);
             row.put("projectPath", projectPath);
@@ -100,6 +100,29 @@ public final class WorkspaceHealth {
             // It is open and present. Can we actually walk it? This is the check that catches
             // a broken classpath — the state in which everything "works" and finds nothing.
             jp.getPackageFragmentRoots();
+            // jawata-mcp#4 (Sprint 27a Stage 8): a project can pass every check
+            // above and still be UNBUILDABLE — an unresolved build path leaves
+            // the project open and walkable while the Java builder REFUSES to
+            // run, so get_diagnostics answers 0 errors ("compiles clean") when
+            // the truth is "was never compiled". JDT records exactly this state
+            // as BUILDPATH_PROBLEM markers; a gate that could not look must say
+            // so, never answer green.
+            org.eclipse.core.resources.IMarker[] buildPath = jp.getProject().findMarkers(
+                org.eclipse.jdt.core.IJavaModelMarker.BUILDPATH_PROBLEM_MARKER, true,
+                org.eclipse.core.resources.IResource.DEPTH_INFINITE);
+            for (org.eclipse.core.resources.IMarker m : buildPath) {
+                if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY, -1)
+                        == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+                    return new Problem(key, path,
+                        "its BUILD PATH is broken: " + m.getAttribute(
+                            org.eclipse.core.resources.IMarker.MESSAGE,
+                            "unresolved build path entry")
+                        + " — the Java builder refuses to run, so a 0-error compile"
+                        + " gate on this project is VACUOUS (nothing was compiled)",
+                        "Fix the build path entry the message names, then "
+                            + "refresh_workspace(projectKey=\"" + key + "\").");
+                }
+            }
             return null;
         } catch (Exception e) {
             return new Problem(key, path,

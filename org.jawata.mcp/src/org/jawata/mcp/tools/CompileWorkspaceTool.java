@@ -273,6 +273,24 @@ public class CompileWorkspaceTool extends AbstractTool {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "compile_workspace");
             data.put("projectsCompiled", compiled);
+            // jawata-mcp#4 (Sprint 27a Stage 8): an UNBUILDABLE project may
+            // contribute zero compile markers because the builder refused to
+            // run — a green gate that never looked. Say so loudly and count
+            // each such project as an error, so 0/0 always means "compiled
+            // clean" and never "could not compile".
+            List<org.jawata.mcp.tools.shared.WorkspaceHealth.Problem> unbuildable =
+                org.jawata.mcp.tools.shared.WorkspaceHealth.diagnose(service);
+            if (!unbuildable.isEmpty()) {
+                List<Map<String, Object>> rows = new ArrayList<>();
+                for (var p : unbuildable) {
+                    rows.add(p.describe());
+                }
+                data.put("couldNotCompile", rows);
+                data.put("couldNotCompileWarning", "The project(s) above CANNOT be"
+                    + " built — their compile results here are vacuous, not clean."
+                    + " Fix each per its remedy, then refresh_workspace.");
+                errorCount += unbuildable.size();
+            }
             data.put("errorCount", errorCount);
             data.put("warningCount", warningCount);
 
@@ -341,12 +359,28 @@ public class CompileWorkspaceTool extends AbstractTool {
         if (resource == null) return true;
         org.eclipse.core.runtime.IPath location = resource.getLocation();
         if (location == null) return true;
-        String pathStr = location.toString();
-        boolean inTest = pathStr.contains("/src/test/") || pathStr.contains("\\src\\test\\");
-        boolean inMain = pathStr.contains("/src/main/") || pathStr.contains("\\src\\main\\");
-        // Project-level markers (no main/test designation) always surface,
-        // regardless of scope — they're cross-cutting (missing classpath,
-        // broken manifest, etc.).
+        String projectName = resource.getProject() == null
+            ? "" : resource.getProject().getName();
+        return matchesScope(location.toString(), projectName, scope);
+    }
+
+    /**
+     * jawata-mcp#9 (Sprint 27a Stage 8): main-vs-test from BOTH conventions.
+     * The Maven path convention alone misclassifies PDE bundle layouts — a
+     * test FRAGMENT like {@code org.jawata.mcp.tests} keeps its sources
+     * directly under {@code src/}, so path segments said "neither" and both
+     * scopes returned the SAME set on jawata's own repository. The
+     * bundle-name convention is the other half: a {@code *.tests} project IS
+     * the test half. Project-level markers (no source designation) stay
+     * cross-cutting, visible in both scopes.
+     */
+    static boolean matchesScope(String pathStr, String projectName, String scope) {
+        if ("both".equals(scope)) return true;
+        boolean mavenTest = pathStr.contains("/src/test/") || pathStr.contains("\\src\\test\\");
+        boolean testBundle = projectName.endsWith(".tests");
+        boolean inTest = mavenTest || testBundle;
+        boolean mavenMain = pathStr.contains("/src/main/") || pathStr.contains("\\src\\main\\");
+        boolean inMain = !inTest && (mavenMain || pathStr.endsWith(".java"));
         if (!inTest && !inMain) return true;
         return "test".equals(scope) ? inTest : inMain;
     }

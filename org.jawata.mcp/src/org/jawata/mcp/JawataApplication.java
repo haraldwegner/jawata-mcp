@@ -286,10 +286,10 @@ public class JawataApplication implements IApplication {
         CompletableFuture.runAsync(this::autoLoadProjects);
 
         // Run the main message loop (starts immediately, doesn't wait for project load)
-        runMessageLoop(transportConfig);
+        Object exit = runMessageLoop(transportConfig);
 
         log.info("JAWATA MCP Server stopped");
-        return IApplication.EXIT_OK;
+        return exit;
     }
 
     /**
@@ -988,7 +988,10 @@ public class JawataApplication implements IApplication {
         toolRegistry.register(experienceTool);
     }
 
-    private void runMessageLoop(TransportConfig config) {
+    /** jawata-mcp#2: the exit code for a port the resident could not bind. */
+    static final Integer EXIT_PORT_BIND = 13;
+
+    private Object runMessageLoop(TransportConfig config) {
         // Sprint 14a Stage 3: transport.run(handler) drives the I/O loop
         // internally. Stdio loops on its read/write pair; HTTP runs the
         // JDK HttpServer until close() signals shutdown. activeTransport
@@ -998,10 +1001,34 @@ public class JawataApplication implements IApplication {
             this.activeTransport = transport;
             transport.run(protocolHandler::processMessage);
         } catch (Exception e) {
+            // jawata-mcp#2 (Sprint 27a Stage 8): a resident that cannot BIND
+            // must fail LOUDLY and NON-ZERO — a failed start reported as a
+            // clean exit is the lie class this product exists to prevent, and
+            // it left jawata-studio rendering "exited unexpectedly (status 0)"
+            // with nothing to diagnose. stderr, not SLF4J: the dist ships no
+            // logger binding, so a log line here is silence.
+            java.net.BindException bind = causeOf(e, java.net.BindException.class);
+            if (bind != null) {
+                System.err.println("FATAL: cannot bind port " + config.getPort()
+                    + " — " + bind.getMessage()
+                    + " (is another resident already listening on it?)");
+                return EXIT_PORT_BIND;
+            }
             log.error("Error in message loop", e);
         } finally {
             this.activeTransport = null;
         }
+        return IApplication.EXIT_OK;
+    }
+
+    /** The first cause of the given type in the chain, or null. */
+    private static <T extends Throwable> T causeOf(Throwable t, Class<T> type) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (type.isInstance(c)) {
+                return type.cast(c);
+            }
+        }
+        return null;
     }
 
     /**

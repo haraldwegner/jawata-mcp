@@ -147,4 +147,40 @@ class FindQualityIssueAsyncTest {
         Map<String, Object> b = data(tool.execute(run));
         assertEquals(a.get("count"), b.get("count"));
     }
+
+    /**
+     * jawata-mcp#6 (Sprint 27a Stage 8): status must honor summary/limit/offset
+     * exactly as run does — the M2 sweep returned 100 FULL findings (over the
+     * client limit) while advising "use summary:true", because the worker froze
+     * the START call's shaping into every retrieval.
+     */
+    @Test
+    @DisplayName("status honors the RETRIEVING call's summary/limit/offset, not the start call's")
+    void asyncSweep_statusHonorsTheRetrievingCallsShaping() throws Exception {
+        ObjectNode start = objectMapper.createObjectNode();
+        start.put("action", "start");
+        start.put("family", "quality");
+        String sweepId = (String) data(tool.execute(start)).get("sweepId");
+        awaitFinished(sweepId);
+
+        // summary:true on STATUS → counts only, NO findings array.
+        ObjectNode summary = objectMapper.createObjectNode();
+        summary.put("action", "status");
+        summary.put("sweepId", sweepId);
+        summary.put("summary", true);
+        Map<String, Object> s = data(tool.execute(summary));
+        assertEquals("finished", s.get("state"));
+        assertNull(s.get("findings"), "summary:true must drop the findings array: " + s.keySet());
+        assertNotNull(s.get("byKind"), "and carry the counts-by-kind block");
+
+        // limit on STATUS → that page, with honest truncation bookkeeping.
+        ObjectNode paged = objectMapper.createObjectNode();
+        paged.put("action", "status");
+        paged.put("sweepId", sweepId);
+        paged.put("limit", 1);
+        Map<String, Object> p = data(tool.execute(paged));
+        assertEquals(1, ((java.util.List<?>) p.get("findings")).size(),
+            "limit:1 must page to one finding");
+        assertNotNull(p.get("count"), "the FULL total stays visible beside the page");
+    }
 }
