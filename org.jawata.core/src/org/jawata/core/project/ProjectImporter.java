@@ -8,6 +8,8 @@ import org.eclipse.core.runtime.Path;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.launching.IVMInstall;
+import org.eclipse.jdt.launching.IVMInstallType;
 import org.eclipse.jdt.launching.JavaRuntime;
 import org.gradle.tooling.GradleConnector;
 import org.gradle.tooling.ProjectConnection;
@@ -121,6 +123,14 @@ public class ProjectImporter {
             org.jawata.core.workspace.WorkspaceManager workspaceManager) throws CoreException {
         IJavaProject javaProject = JavaCore.create(project);
 
+        // jawata-mcp#3: a synthesized workspace can start with NO default VM
+        // registered (observed on macOS: defaultVM=""). Then the JRE container
+        // below is UNBOUND — "Unbound classpath container: Default System
+        // Library" — and NO java.* type resolves anywhere, cascading into
+        // build-path errors on every project. Bind the running JVM as the
+        // default before building the classpath so the container can resolve.
+        ensureDefaultVm();
+
         // Build classpath entries
         List<IClasspathEntry> entries = new ArrayList<>();
 
@@ -146,6 +156,52 @@ public class ProjectImporter {
 
         log.info("Configured Java project with {} classpath entries", entries.size());
         return javaProject;
+    }
+
+    /** The stable id under which we register the running JVM (jawata-mcp#3). */
+    private static final String RUNNING_JVM_ID = "jawata-running-jvm";
+    private static final String STANDARD_VM_TYPE =
+        "org.eclipse.jdt.internal.launching.StandardVMType";
+
+    /**
+     * Ensure the workspace has a default VM so {@code JRE_CONTAINER} binds
+     * (jawata-mcp#3). No-op when one is already registered (the ordinary case);
+     * otherwise register the JVM this process runs on ({@code java.home}) and
+     * make it the default. Best-effort — a failure is logged, never fatal, so a
+     * project still loads (degraded) rather than not at all.
+     */
+    private static void ensureDefaultVm() {
+        try {
+            if (JavaRuntime.getDefaultVMInstall() != null) {
+                return; // a default VM is already present — nothing to bind
+            }
+            java.io.File javaHome = new java.io.File(System.getProperty("java.home", ""));
+            IVMInstallType stdType = JavaRuntime.getVMInstallType(STANDARD_VM_TYPE);
+            if (stdType == null || !javaHome.isDirectory()) {
+                log.warn("jawata-mcp#3: no default VM and cannot register one "
+                    + "(type={}, java.home={}); JRE_CONTAINER may stay unbound", stdType, javaHome);
+                return;
+            }
+            IVMInstall vm = stdType.findVMInstall(RUNNING_JVM_ID);
+            if (vm == null) {
+                for (IVMInstall existing : stdType.getVMInstalls()) {
+                    if (javaHome.equals(existing.getInstallLocation())) {
+                        vm = existing;
+                        break;
+                    }
+                }
+            }
+            if (vm == null) {
+                vm = stdType.createVMInstall(RUNNING_JVM_ID);
+                vm.setName("jawata running JVM");
+                vm.setInstallLocation(javaHome);
+            }
+            JavaRuntime.setDefaultVMInstall(vm, new NullProgressMonitor());
+            log.info("jawata-mcp#3: registered the running JVM as the default VM: {}", javaHome);
+        } catch (Exception e) {
+            log.warn("jawata-mcp#3: could not register a default VM ({}: {}); "
+                + "JRE_CONTAINER may stay unbound", e.getClass().getSimpleName(), e.getMessage());
+        }
     }
 
     /**

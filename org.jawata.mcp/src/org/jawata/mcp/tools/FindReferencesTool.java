@@ -202,29 +202,39 @@ public class FindReferencesTool extends AbstractTool {
         try {
             Map<String, Object> info = new LinkedHashMap<>();
 
-            // File path
-            if (match.getResource() != null) {
-                IPath location = match.getResource().getLocation();
-                if (location != null) {
-                    info.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
-                }
+            // The compilation unit enclosing the match — the source of BOTH the
+            // file path and the line/column, so they can never disagree.
+            Object element = match.getElement();
+            ICompilationUnit cu = element instanceof IJavaElement javaElement
+                ? (ICompilationUnit) javaElement.getAncestor(IJavaElement.COMPILATION_UNIT)
+                : null;
+
+            // jawata-mcp#5: a TYPE reference's match.getResource() could resolve to
+            // the JDT project CONTAINER (a directory) instead of the .java file,
+            // yielding a "reference" with a cache-dir path and no line. Prefer the
+            // compilation unit's own file; fall back to the match resource only
+            // when there is no source CU.
+            IPath location = null;
+            if (cu != null && cu.getResource() != null) {
+                location = cu.getResource().getLocation();
+            }
+            if (location == null && match.getResource() != null) {
+                location = match.getResource().getLocation();
+            }
+            if (location != null) {
+                info.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
             }
 
-            // Get ICompilationUnit for line/column calculation
-            Object element = match.getElement();
-            if (element instanceof IJavaElement javaElement) {
-                ICompilationUnit cu = (ICompilationUnit) javaElement.getAncestor(IJavaElement.COMPILATION_UNIT);
-                if (cu != null) {
-                    int refLine = service.getLineNumber(cu, match.getOffset());
-                    int refColumn = service.getColumnNumber(cu, match.getOffset());
-                    info.put("line", refLine);
-                    info.put("column", refColumn);
+            if (cu != null) {
+                int refLine = service.getLineNumber(cu, match.getOffset());
+                int refColumn = service.getColumnNumber(cu, match.getOffset());
+                info.put("line", refLine);
+                info.put("column", refColumn);
 
-                    // Get context line
-                    String context = service.getContextLine(cu, match.getOffset());
-                    if (!context.isEmpty()) {
-                        info.put("context", context);
-                    }
+                // Get context line
+                String context = service.getContextLine(cu, match.getOffset());
+                if (!context.isEmpty()) {
+                    info.put("context", context);
                 }
             }
 

@@ -83,6 +83,34 @@ class FindReferencesToolTest {
         }
     }
 
+    /**
+     * jawata-mcp#5: EVERY type-reference row must carry a .java file and a line —
+     * never the JDT project container directory with no line. The row's file now
+     * comes from the compilation unit (consistent with the line), so a reference
+     * you cannot click is impossible. On this healthy workspace it holds; the
+     * synthesized-workspace degradation is verified at the macOS dogfood.
+     */
+    @Test
+    @DisplayName("jawata-mcp#5: type-reference rows carry a .java file and a line, never a directory")
+    void typeReferences_everyRowHasFileAndLine() {
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", calculatorPath);
+        args.put("line", 5);
+        args.put("column", 13);
+
+        Map<String, Object> data = getData(tool.execute(args));
+        List<Map<String, Object>> references = getReferences(data);
+        assertNotNull(references);
+        assertFalse(references.isEmpty(), "Calculator has references");
+        for (Map<String, Object> ref : references) {
+            Object filePath = ref.get("filePath");
+            assertNotNull(filePath, "a reference must carry a file path");
+            assertTrue(filePath.toString().endsWith(".java"),
+                "the file path is a .java source file, not a container directory: " + filePath);
+            assertNotNull(ref.get("line"), "a reference must carry a line: " + ref);
+        }
+    }
+
     @Test
     @DisplayName("Method references returns symbol with containingType")
     void methodReferences_returnsSymbolWithContainingType() {

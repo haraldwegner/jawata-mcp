@@ -333,6 +333,29 @@ class ProjectImporterTest {
         assertTrue(hasJre, "Classpath should contain JRE container");
     }
 
+    /**
+     * jawata-mcp#3: after configuration a default VM MUST exist and the JRE
+     * container MUST bind — otherwise no java.* type resolves anywhere (the
+     * macOS "Unbound classpath container" cascade). Here a default VM already
+     * exists, so this pins the invariant; the register-when-absent branch is
+     * verified at the macOS dogfood.
+     */
+    @Test
+    @DisplayName("configureJavaProject binds a default VM so the JRE container resolves")
+    void configureJavaProject_bindsDefaultVmSoJreResolves() throws CoreException {
+        IProject project = workspaceManager.createLinkedProject("vm-test", mavenFixturePath);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager);
+
+        assertNotNull(org.eclipse.jdt.launching.JavaRuntime.getDefaultVMInstall(),
+            "a default VM must be registered so JRE_CONTAINER is not unbound");
+
+        IClasspathEntry[] resolved = javaProject.getResolvedClasspath(true);
+        boolean jreLibrariesPresent = Arrays.stream(resolved)
+            .anyMatch(e -> e.getEntryKind() == IClasspathEntry.CPE_LIBRARY);
+        assertTrue(jreLibrariesPresent,
+            "the bound JRE container must contribute library entries (java.* resolves)");
+    }
+
     @Test
     @DisplayName("configureJavaProject should add source folders")
     void configureJavaProject_addsSourceFolders() throws CoreException {
