@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -92,6 +93,77 @@ class ExperienceAdvisorTest {
         assertEquals(1L, ledger.counters().get("silent.choke_advisory"),
             "an abstain must increment the surface's silent counter — without it, "
             + "a surface that never speaks is indistinguishable from one never used");
+    }
+
+    /**
+     * Sprint 27a C3 — the degrade probe for the pre-advice surface, embedder OFF.
+     *
+     * <p>The advisor here is built keyword-only (the two-arg constructor, {@code
+     * index == null}), which is exactly the embedder-off shape. It must still
+     * vouch a fitting precedent by keyword — pre-advice never goes dark because
+     * the model did not load.</p>
+     */
+    @Test
+    void pre_advice_degrades_to_keyword_when_the_embedder_is_off() {
+        // `advisor` is the no-index (keyword-only) one from setUp.
+        store.put(ExperienceEntry.of(
+            SymbolFact.of("failure_mode", "compose_method rolled back on a recursive body",
+                Confidence.HIGH).symbol("com.example.OrderService").build())
+            .operation("compose_method").build());
+
+        List<String> advice = advisor.adviseBefore("compose_method", "com.example.OrderService");
+        assertEquals(1, advice.size(),
+            "with no embedder the pre-advice surface must still answer by keyword");
+        assertTrue(advice.get(0).contains("compose_method rolled back"));
+    }
+
+    /**
+     * Sprint 27a C3 — a lesson keyword recall CANNOT reach surfaces through the
+     * pre-advice surface by MEANING.
+     *
+     * <p>The lesson is anchored to a DIFFERENT symbol and a DIFFERENT operation
+     * than the cue, so neither the symbol nor the operation keyword criterion
+     * admits it — a keyword-only advisor returns nothing. The index-bearing
+     * advisor reaches it because the cue and the lesson mean the same thing.
+     * Runs only with a real embedder; aborts (not passes) without one.</p>
+     */
+    @Test
+    void a_meaning_only_lesson_reaches_pre_advice() {
+        EmbeddingService svc = EmbeddingService.shared();
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "no embedder — the meaning path cannot be exercised in this run");
+        EmbeddingIndex index = new EmbeddingIndex((H2ExperienceStore) store, svc);
+        ExperienceAdvisor meaningAdvisor = new ExperienceAdvisor(store, () -> null, index);
+
+        // A hazard about renaming across modules, anchored to an UNRELATED
+        // symbol and operation, phrased WITHOUT the cue's tokens.
+        String target = store.put(ExperienceEntry.of(
+            SymbolFact.of("failure_mode",
+                "moving a type between packages left stale compiled classes that hid the break",
+                Confidence.HIGH).symbol("com.example.legacy.Mover").build())
+            .operation("move_class").build());
+        for (int pass = 0; pass < 50 && index.backfill(100) > 0; pass++) {
+            continue;                        // embed what we just stored
+        }
+
+        // The cue: a rename on a different symbol. Keyword cannot bridge
+        // rename_symbol/Renamer to move_class/Mover; meaning can.
+        List<String> keywordOnly = advisor.adviseBefore(
+            "rename_symbol", "com.example.app.Renamer");
+        assertTrue(keywordOnly.isEmpty(),
+            "precondition: keyword recall must NOT reach this lesson, or the test "
+            + "proves nothing about the meaning path — got " + keywordOnly);
+
+        List<String> byMeaning = meaningAdvisor.adviseBefore(
+            "rename_symbol", "com.example.app.Renamer");
+        assertFalse(byMeaning.isEmpty(),
+            "the meaning path must reach a semantically-near lesson the keyword "
+            + "path cannot");
+        assertTrue(byMeaning.stream().anyMatch(a -> a.contains("stale compiled classes")),
+            "and it must be THAT lesson: " + byMeaning);
+        assertTrue(byMeaning.get(0).contains("judge whether it transfers"),
+            "labelled as an analogy, never a vouched fact: " + byMeaning.get(0));
+        assertNotNull(target);
     }
 
     @Test
