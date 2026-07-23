@@ -42,14 +42,9 @@ class StatsEmbeddingCoverageTest {
         store.close();
     }
 
-    private boolean embedderAvailable() {
-        boolean up = EmbeddingService.shared().available();
-        if (!up) {
-            System.out.println("StatsEmbeddingCoverageTest: NOT RUN — no embedder"
-                + " (the coverage block asserts nothing in this run)");
-        }
-        return up;
-    }
+    // C6 audit F1: ABORT, not return — a returned "pass" that asserted nothing
+    // is the hollow-green shape; a skip must report as SKIPPED (the
+    // BackfillConvergenceTest convention).
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> stats() {
@@ -70,9 +65,9 @@ class StatsEmbeddingCoverageTest {
     /** The two states the plan's C6 exit names, driven through the tool. */
     @Test
     void stats_shows_n_of_total_during_backfill_and_total_of_total_after() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            EmbeddingService.shared().available(),
+            "no embedder available — the coverage assertions cannot run");
         // Seed THROUGH the tool, as an IMPORT: a live record embeds on write,
         // but a restored backup does not — the backfill owns its coverage.
         // That is exactly the real n-of-total state (a restore, or an

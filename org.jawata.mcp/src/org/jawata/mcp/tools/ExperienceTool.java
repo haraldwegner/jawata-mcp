@@ -356,7 +356,9 @@ public final class ExperienceTool implements Tool {
                 out.put("embedding", embedding);
             }
         } catch (RuntimeException e) {
-            out.put("embedding", java.util.Map.of("error", e.getMessage()));
+            // String.valueOf: Map.of rejects nulls, and a null-message
+            // exception must not turn the safety net into the failure (C6 F2).
+            out.put("embedding", java.util.Map.of("error", String.valueOf(e.getMessage())));
         }
         return out;
     }

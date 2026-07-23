@@ -356,6 +356,12 @@ public class JawataApplication implements IApplication {
         return total;
     }
 
+    /** Stage 6 (C6 F3): the -1 "could not look" sentinel renders as
+     *  "unknown" in the coverage log, matching the stats block. */
+    private static String coverageFigure(long count) {
+        return count < 0 ? "unknown" : String.valueOf(count);
+    }
+
     private void startEmbeddingBackfill(org.jawata.mcp.knowledge.H2ExperienceStore h2) {
         final int batch = 1000;
         Thread t = new Thread(() -> {
@@ -386,14 +392,16 @@ public class JawataApplication implements IApplication {
                         total, remaining);
                 } else if (remaining == 0) {
                     // Stage 6: completion states COVERAGE (total/total), not
-                    // just this run's row count.
-                    long entries = index.totalCount("experience_entry");
-                    long toolRows = index.totalCount("tool_experience");
+                    // just this run's row count. The -1 "could not look"
+                    // sentinel renders as "unknown", matching the stats block
+                    // (C6 F3).
                     log.info("Embedding backfill CONVERGED: {} row(s) in {} ms; 0 remaining"
                         + " — coverage {}/{} entries, {}/{} tool rows",
                         total, System.currentTimeMillis() - start,
-                        index.embeddedCount("experience_entry"), entries,
-                        index.embeddedCount("tool_experience"), toolRows);
+                        coverageFigure(index.embeddedCount("experience_entry")),
+                        coverageFigure(index.totalCount("experience_entry")),
+                        coverageFigure(index.embeddedCount("tool_experience")),
+                        coverageFigure(index.totalCount("tool_experience")));
                 } else if (remaining < 0) {
                     log.warn("Embedding backfill: {} row(s) embedded, but the remaining"
                         + " count could not be read — NOT asserting convergence", total);
