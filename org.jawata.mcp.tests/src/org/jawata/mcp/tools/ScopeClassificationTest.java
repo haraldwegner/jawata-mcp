@@ -54,6 +54,17 @@ class ScopeClassificationTest {
         assertTrue(CompileWorkspaceTool.matchesScope(PROJECT_LEVEL, "org.jawata.mcp", "test"));
     }
 
+    /** C8 audit F4, pinned: the bundle-name rule wins for a tests bundle's
+     *  project-level markers too — the problem affects only the test half,
+     *  and the default scope is 'both'. */
+    @Test
+    @DisplayName("a *.tests bundle's project-level markers classify TEST, not cross-cut")
+    void testsBundleProjectLevelMarkersAreTestScope() {
+        String manifest = "/repo/org.jawata.mcp.tests/META-INF/MANIFEST.MF";
+        assertTrue(CompileWorkspaceTool.matchesScope(manifest, "org.jawata.mcp.tests", "test"));
+        assertFalse(CompileWorkspaceTool.matchesScope(manifest, "org.jawata.mcp.tests", "main"));
+    }
+
     /** The issue's own acceptance line: the two scopes DIFFER on jawata's layout. */
     @Test
     @DisplayName("scope=main and scope=test classify jawata's own layout differently")
