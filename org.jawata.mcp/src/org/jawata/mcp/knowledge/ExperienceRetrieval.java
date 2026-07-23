@@ -53,8 +53,12 @@ public final class ExperienceRetrieval {
     private static final java.util.Set<String> DOMAIN_TYPES = java.util.Set.of(
         "domain_fact", "domain_concept", "bounded_context", "invariant", "ubiquitous_language",
         "user", "feedback", "naming_convention", "api_contract", "convention");
+    // jawata-mcp#7: a memory-file SECTION (the load channel's scope_kind) is
+    // standing how-to-work knowledge — the primer's job. Untyped CLAUDE.md
+    // sections default to type "note", so without this scope the whole loaded
+    // corpus reached the always-on layer as NOTHING (the reporter's unblock).
     private static final java.util.Set<String> DOMAIN_SCOPES = java.util.Set.of(
-        "bounded_context", "domain_concept");
+        "bounded_context", "domain_concept", "section");
 
     private final ExperienceStore store;
     private final Supplier<IJdtService> jdt;

@@ -37,7 +37,8 @@ public final class ExperienceMaintenance {
     // Sprint 21c (item A): the cue-dense body structure the symptom matcher never saw.
     private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+(.+)$");
     private static final Pattern BOLD = Pattern.compile("\\*\\*([^*\\n]+)\\*\\*");
-    private static final Pattern CODE_SPAN = Pattern.compile("`([^`\\n]+)`");
+    /** jawata-mcp#7: managed-block delimiters and any other HTML comment. */
+    private static final Pattern HTML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
     /** C4 live-gate finding: quoted error strings ("Lock file recently modified") are
      *  THE classic symptom cue and lived only in prose details — harvest them too. */
     private static final Pattern QUOTED = Pattern.compile("\"([^\"\\n]{3,80})\"");
@@ -151,6 +152,10 @@ public final class ExperienceMaintenance {
         record Item(Path file, int depth) {}
         java.util.ArrayDeque<Item> queue = new java.util.ArrayDeque<>();
         java.util.Set<Path> seen = new java.util.HashSet<>();
+        // jawata-mcp#7: two byte-identical files (e.g. ~/.claude/CLAUDE.md and
+        // ~/CLAUDE.md) are idempotent per SOURCE PATH but double-ingested the
+        // same knowledge under two source refs. Dedup by CONTENT across the run.
+        java.util.Set<String> seenContent = new java.util.HashSet<>();
 
         for (Path root : roots) {
             if (Files.isDirectory(root)) {
@@ -184,6 +189,7 @@ public final class ExperienceMaintenance {
         int keywordCapped = 0;
         int keywordsSuppressed = 0;
         int anchored = 0;
+        int duplicateContent = 0;
         long bytes = 0;
         // Sprint 21e (item A): one resolver per load run — its token memo spans the run
         // but never outlives project loads/removals.
@@ -235,10 +241,26 @@ public final class ExperienceMaintenance {
             // churn grew the MVStore file on every load). Links are still followed —
             // an unchanged index can point at new files.
             String hash = sourceHash(content);
+            boolean firstOccurrence = seenContent.add(hash);
             if (store.sourceUnchanged(sourceRef, hash)) {
                 unchanged++;
-                List<Path> unchangedTargets = resolveLinks(doc, f.getParent(), rootDirs);
-                for (Path t : unchangedTargets) {
+                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
+                    Path norm = t.toAbsolutePath().normalize();
+                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                        queue.add(new Item(norm, item.depth() + 1));
+                        linked++;
+                    }
+                }
+                continue;
+            }
+            // jawata-mcp#7: another file this run already carried byte-identical
+            // content — ingest it once, follow its links, but do not mint a
+            // second family of rows for the same knowledge.
+            if (!firstOccurrence) {
+                duplicateContent++;
+                skipped.add(Map.of("source", f.toString(),
+                    "reason", "duplicate-content — byte-identical to an already-ingested file this run"));
+                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
                     Path norm = t.toAbsolutePath().normalize();
                     if (!seen.contains(norm) && item.depth() < maxDepth) {
                         queue.add(new Item(norm, item.depth() + 1));
@@ -360,6 +382,9 @@ public final class ExperienceMaintenance {
         report.put("skipped", skipped);
         if (keywordCapped > 0) {
             report.put("keyword_capped", keywordCapped);
+        }
+        if (duplicateContent > 0) {
+            report.put("duplicate_content", duplicateContent);
         }
         // Sprint 27a D10: the route/skip report — a silent drop is this
         // project's recorded deepest bug class, so the suppression count is
@@ -775,7 +800,11 @@ public final class ExperienceMaintenance {
             body.append(lines[i]).append('\n');
         }
 
-        String bodyStr = body.toString();
+        // jawata-mcp#7: strip HTML-comment markers (the jawata-studio managed-block
+        // delimiters `<!-- jawata-studio:claude:start -->` and any other `<!-- … -->`)
+        // BEFORE splitting/harvesting, so a marker can never become an entry's
+        // summary, details or symptom.
+        String bodyStr = HTML_COMMENT.matcher(body.toString()).replaceAll("");
         List<String> links = wikilinks(bodyStr);
         // Item C: relative markdown links (the MEMORY.md "- [Title](file.md)" index style).
         List<String> fileLinks = new ArrayList<>();
@@ -918,7 +947,12 @@ public final class ExperienceMaintenance {
             }
             prose.append(line).append('\n');
         }
-        for (Pattern p : List.of(BOLD, CODE_SPAN, WIKILINK, QUOTED)) {
+        // jawata-mcp#7: inline code spans (`grep`, `.java`, `claude`) are
+        // deliberately NOT harvested as cues. A backticked token is tool/artifact
+        // content, and a bare-word span survives admission as prose — that was
+        // the poison ("recall(symptom=\"grep\") returned a whole section"). The
+        // body still carries it verbatim, and BM25 reads the body (D9).
+        for (Pattern p : List.of(BOLD, WIKILINK, QUOTED)) {
             Matcher m = p.matcher(prose);
             while (m.find()) {
                 addKeyword(out, seen, m.group(1));

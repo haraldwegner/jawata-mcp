@@ -85,7 +85,7 @@ class ExperienceMaintenanceTest {
             throws IOException {
         writeMemory(dir, "renders-blank-on-aarch64.md",
             "name: renders-blank-on-aarch64\ndescription: the view renders blank on aarch64\ntype: lesson",
-            "The `WidgetRenderer.paint()` call fails; see docs/render-notes.md for the trace.\n"
+            "Pass **--no-verify** to reproduce and inspect \"src/main/Renderer.java\" for the trace.\n"
             + "\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n");
 
         Map<String, Object> report = maint(fqn -> null).load(dir);
@@ -93,7 +93,7 @@ class ExperienceMaintenanceTest {
         assertTrue(report.containsKey("keywords_suppressed"),
             "the route/skip report is PRESENT: " + report);
         assertTrue((int) report.get("keywords_suppressed") >= 2,
-            "the backticked code term and the heading were suppressed: " + report);
+            "the misplaced harvested shapes (a bold --flag and a quoted path) were suppressed: " + report);
 
         java.util.List<String> allSymptoms = new java.util.ArrayList<>();
         for (StoredEntry e : store.all()) {
@@ -379,9 +379,10 @@ class ExperienceMaintenanceTest {
     void harvest_caps_keywords_per_entry_and_reports_it(@TempDir Path dir) throws IOException {
         // Sprint 21c (item A): 30/entry is a runaway backstop — hitting it is REPORTED.
         // Headingless on purpose: the cap is per ENTRY, and a headingless file is one entry.
+        // jawata-mcp#7: bold prose phrases (a harvested cue source), not code spans.
         StringBuilder body = new StringBuilder("prose with many terms: ");
         for (int i = 0; i < 40; i++) {
-            body.append("`unique term number ").append(i).append("` and ");
+            body.append("**unique term number ").append(i).append("** and ");
         }
         writeMemory(dir, "big.md", "name: big\ndescription: cap fixture\ntype: lesson", body.toString());
 
@@ -610,5 +611,59 @@ class ExperienceMaintenanceTest {
         Map<String, Object> report = maint(fqn -> null).wipe();
         assertEquals(2L, report.get("removed"));
         assertEquals(0L, store.count());
+    }
+
+    /**
+     * jawata-mcp#7: the CLAUDE.md ingest defects, four in one fixture — an
+     * untyped memory file with managed-block markers, inline code spans, two
+     * heading sections, and a byte-identical sibling.
+     */
+    @Test
+    void load_ingest_is_clean_reaches_primer_and_dedupes_identical_files(@TempDir Path dir)
+            throws IOException {
+        String md = "<!-- jawata-studio:claude:start -->\n"
+            + "# Working rules\n\n"
+            + "Use `grep` only as a fallback. Prefer `claude` tools and `sed` sparingly.\n\n"
+            + "## Parallel execution\n\n"
+            + "Run independent operations in parallel when they do not depend on each other.\n"
+            + "<!-- jawata-studio:claude:end -->\n";
+        Files.writeString(dir.resolve("CLAUDE.md"), md);
+        Files.writeString(dir.resolve("CLAUDE-copy.md"), md);   // byte-identical sibling
+
+        Map<String, Object> report = maint(fqn -> null).load(dir);
+
+        // Symptom 3: the identical sibling is ingested ONCE, and the skip is reported.
+        assertEquals(1, report.get("loaded"), "the byte-identical copy is not a second ingest");
+        assertEquals(1, report.get("duplicate_content"), "the copy is reported as duplicate content");
+
+        List<StoredEntry> all = store.all();
+        for (StoredEntry e : all) {
+            String summary = e.summary() == null ? "" : e.summary();
+            Object details = e.body() == null ? null : e.body().get("details");
+            String detailStr = details == null ? "" : details.toString();
+            List<String> symptoms = e.symptoms() == null ? List.of() : e.symptoms();
+
+            // Symptom 4: no managed-block marker survives into any field.
+            assertFalse(summary.contains("jawata-studio") || detailStr.contains("jawata-studio")
+                    || symptoms.stream().anyMatch(s -> s.contains("jawata-studio")),
+                "a marker leaked into an entry: " + e.summary() + " / " + symptoms);
+
+            // Symptom 2: no inline code span became a recall cue.
+            for (String cue : List.of("grep", "claude", "sed")) {
+                assertFalse(symptoms.stream().anyMatch(s -> s.equalsIgnoreCase(cue)),
+                    "a code span poisoned the symptom index: " + cue + " in " + symptoms);
+            }
+        }
+
+        // Symptom 1: the sections reach the always-on primer (scope_kind=section).
+        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+        Map<String, Object> primer = retrieval.primer(20);
+        assertEquals(ExperienceRetrieval.RESULT_PRIMER, primer.get("result"),
+            "loaded sections must reach the primer, not starve it");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entries = (List<Map<String, Object>>) primer.get("entries");
+        List<String> summaries = entries.stream().map(m -> String.valueOf(m.get("summary"))).toList();
+        assertTrue(summaries.contains("Working rules") && summaries.contains("Parallel execution"),
+            "both section headings are domain nodes in the primer: " + summaries);
     }
 }
