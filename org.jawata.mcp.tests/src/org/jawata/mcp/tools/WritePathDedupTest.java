@@ -258,6 +258,16 @@ class WritePathDedupTest {
         // Both classes present, or the labels prove nothing about a threshold.
         assertTrue(duplicatesInSet > 0 && duplicatesInSet < pairs.size(),
             "the labeled set must contain both duplicates and non-duplicates");
+        // Sprint 27a C5 — the replay matches the RECORDED operating point, not
+        // merely "precision holds": Stage 0's R3 verdict (dossier-27a) is
+        // precision 1.000 at recall 3 of 40, the possible band REJECTED as not
+        // defensible. If the labels or the threshold ever drift, the recorded
+        // claim and the shipped behaviour part ways — and this fails.
+        assertEquals(40, duplicatesInSet,
+            "the recorded label set holds 40 hand-labeled duplicates");
+        assertEquals(3, proposed,
+            "the shipped band proposes exactly the recorded 3 of 40 (recall 7.5%,"
+            + " precision 1.000) — the corrected-notes-only branch, no second band");
     }
 
     @Test
