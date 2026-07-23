@@ -88,6 +88,35 @@ class BackfillConvergenceTest {
         assertEquals(0, again, "a closed delta embeds nothing and the loop ends");
     }
 
+    /**
+     * Sprint 27a C3b — the loop exits on a REAL thread interrupt, through the
+     * EXACT supplier production passes.
+     *
+     * <p>The other interrupt test injects its own {@code BooleanSupplier}; this
+     * one uses {@code () -> Thread.currentThread().isInterrupted()} — the literal
+     * lambda {@code startEmbeddingBackfill} hands the loop — and sets the
+     * interrupt flag before entering, so a regression in that supplier (or in
+     * how the loop reads it) fails here. Without this the shutdown clause is
+     * reasoned-only, the shape that shipped v3.4.0 inert.</p>
+     */
+    @Test
+    void the_production_interrupt_supplier_ends_the_loop() throws Exception {
+        seedUnembedded(250);
+        Thread.currentThread().interrupt();          // the shutdown signal
+        try {
+            int embedded = JawataApplication.reconcileEmbeddings(index, 100,
+                () -> Thread.currentThread().isInterrupted());   // production's own supplier
+            assertEquals(0, embedded,
+                "an already-interrupted thread must embed nothing — the loop checks "
+                + "the supplier BEFORE the first pass");
+            assertTrue(index.totalCount("experience_entry")
+                - index.embeddedCount("experience_entry") >= 250,
+                "and the delta is untouched, left for the next start");
+        } finally {
+            Thread.interrupted();                    // clear, so the flag never leaks
+        }
+    }
+
     @Test
     void an_interrupt_ends_the_loop_early_with_a_resumable_partial() throws Exception {
         seedUnembedded(250);

@@ -373,15 +373,28 @@ public class JawataApplication implements IApplication {
                 long start = System.currentTimeMillis();
                 int total = reconcileEmbeddings(index, batch,
                     () -> Thread.currentThread().isInterrupted());
+                // MEASURED, not assumed. The loop exits when a pass embeds
+                // nothing — which means no WRITABLE row remains, NOT that zero
+                // rows remain: a row whose text embeds to null (blank, or an
+                // embedder failure already logged) stays selected and is skipped
+                // every pass. So read the real delta and only say CONVERGED when
+                // it is actually zero; otherwise name what is stuck.
+                long remaining = Math.max(0, index.totalCount("experience_entry")
+                    - index.embeddedCount("experience_entry"));
                 if (Thread.currentThread().isInterrupted()) {
                     log.info("Embedding backfill interrupted at shutdown after {} row(s);"
-                        + " the next start resumes from the smaller delta", total);
-                } else if (total > 0) {
+                        + " {} remaining, resumed from the smaller delta next start",
+                        total, remaining);
+                } else if (remaining == 0) {
                     log.info("Embedding backfill CONVERGED: {} row(s) in {} ms; 0 remaining",
                         total, System.currentTimeMillis() - start);
+                } else if (total > 0) {
+                    log.info("Embedding backfill: {} row(s) in {} ms; {} still unembedded"
+                        + " (their text embeds to null — not retried by looping)",
+                        total, System.currentTimeMillis() - start, remaining);
                 } else {
-                    log.info("Embedding backfill: nothing to do — every row has a"
-                        + " current vector");
+                    log.info("Embedding backfill: nothing embeddable — every row either has"
+                        + " a current vector or embeds to null");
                 }
             } catch (Exception e) {
                 // Never fatal: a store without vectors still answers by keyword.
@@ -996,13 +1009,24 @@ public class JawataApplication implements IApplication {
     @Override
     public void stop() {
         log.info("Stop requested");
-        // Sprint 27a Stage 3b: end the reconciliation loop rather than let the
-        // store close under it. It is a daemon, so the JVM would not wait — but
-        // an interrupt lets it log where it stopped and leave a clean smaller
-        // delta, instead of failing mid-embed against a closing store.
+        // Sprint 27a Stage 3b: end the reconciliation loop.
+        //
+        // The interrupt is observed BETWEEN passes, not mid-pass — a pass embeds
+        // up to a full batch (minutes at batch 1000), and this does not wait it
+        // out. So a bounded join gives an in-flight pass a moment to notice and
+        // return, but if it does not, the store closes under it and that pass's
+        // final write fails with a caught SQLException. That is safe, not clean:
+        // every row committed before the close persists (H2 autocommit), so the
+        // next start resumes from a smaller delta and loses nothing. The loop
+        // itself always exits — on the interrupt at the next pass boundary.
         Thread backfill = embeddingBackfillThread;
         if (backfill != null) {
             backfill.interrupt();
+            try {
+                backfill.join(2000);          // a moment, not the whole pass
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
             embeddingBackfillThread = null;
         }
         Transport t = activeTransport;
