@@ -419,7 +419,19 @@ final class SchemaMigrations {
             String hay = ((e.summary() == null ? "" : e.summary()) + " " + details).toLowerCase();
             java.util.List<String> absent = new java.util.ArrayList<>();
             for (String item : misplaced) {
-                String key = item.replace("`", "").strip().toLowerCase();
+                // EDGE backticks only (C4b audit F2): the body keeps its inner
+                // backticks, so removing them from the key manufactures false
+                // absents — measured 555 vs the derivation's 176 on identical
+                // data. This mirrors derive_admission.py's rule exactly; the
+                // accepted 11→10 cost was measured on that shape.
+                String key = item.strip();
+                while (key.startsWith("`")) {
+                    key = key.substring(1);
+                }
+                while (key.endsWith("`")) {
+                    key = key.substring(0, key.length() - 1);
+                }
+                key = key.strip().toLowerCase();
                 if (!key.isEmpty() && !hay.contains(key)) {
                     absent.add(item);
                 }
@@ -438,11 +450,22 @@ final class SchemaMigrations {
                 ps.setString(2, e.id());
                 ps.executeUpdate();
             }
+            // Collision guard (C4b audit F7b): a kept item and a misplaced one
+            // can NORMALIZE to the same row ("FooBar" and "foobar" share
+            // "foobar") — deleting it would take the kept item's row with it.
+            java.util.Set<String> keptNormalized = new java.util.HashSet<>();
+            for (String item : kept) {
+                keptNormalized.add(H2ExperienceStore.normalize(item));
+            }
             try (PreparedStatement ps = conn.prepareStatement(
                     "DELETE FROM experience_symptom WHERE entry_id = ? AND symptom = ?")) {
                 for (String item : misplaced) {
+                    String norm = H2ExperienceStore.normalize(item);
+                    if (keptNormalized.contains(norm)) {
+                        continue;
+                    }
                     ps.setString(1, e.id());
-                    ps.setString(2, H2ExperienceStore.normalize(item));
+                    ps.setString(2, norm);
                     ps.addBatch();
                 }
                 for (int n : ps.executeBatch()) {

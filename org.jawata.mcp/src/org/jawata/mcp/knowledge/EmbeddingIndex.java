@@ -165,7 +165,7 @@ public final class EmbeddingIndex {
         String sql = "SELECT " + idColumn + ", embedding FROM " + table
             + " WHERE embedding IS NOT NULL AND embedder_identity = ?" + statusFilter;
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
-            ps.setString(1, embeddings.identityKey());
+            ps.setString(1, currentIdentity(table));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     float[] v = EmbeddingService.fromBytes(rs.getBytes(2));
@@ -226,12 +226,15 @@ public final class EmbeddingIndex {
         }
         List<Pending> pending = new ArrayList<>();
         // D3 MEASUREMENT ARM (Sprint 27a Stage 4b): -Djawata.embed.symptoms=true
-        // folds the entry's symptom prose into the embedded text. Measurement
-        // only — a fresh gate corpus per run, so no identity mixing; production
-        // adoption (if Harald rules it) replaces this flag with the identity-v2
-        // bump so live vectors can never mix compositions.
+        // folds the entry's symptom prose into the embedded text. The arm
+        // carries its OWN identity suffix (C4b audit F3): a different text
+        // composition may never write under the shipped composition's
+        // identity, in either flag direction — otherwise a store touched with
+        // the flag on would keep mixed vectors that self-heal can never see.
+        // currentIdentity() applies the same suffix on every read and count.
         boolean withSymptoms = "experience_entry".equals(table)
             && Boolean.getBoolean("jawata.embed.symptoms");
+        String identity = currentIdentity(table);
         String symptomsSelect = withSymptoms
             ? ", (SELECT LISTAGG(s.symptom, '; ') FROM experience_symptom s"
                 + " WHERE s.entry_id = " + table + "." + idColumn + ")"
@@ -242,7 +245,7 @@ public final class EmbeddingIndex {
             + " WHERE embedding IS NULL OR embedder_identity IS NULL"
             + " OR embedder_identity <> ? LIMIT " + max;
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(select)) {
-            ps.setString(1, embeddings.identityKey());
+            ps.setString(1, identity);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String details = detailsColumn == null
@@ -272,7 +275,7 @@ public final class EmbeddingIndex {
             }
             try (PreparedStatement ps = store.sharedConnection().prepareStatement(update)) {
                 ps.setBytes(1, EmbeddingService.toBytes(v));
-                ps.setString(2, embeddings.identityKey());
+                ps.setString(2, identity);
                 ps.setString(3, p.id());
                 ps.executeUpdate();
                 done++;
@@ -304,11 +307,22 @@ public final class EmbeddingIndex {
         }
     }
 
+    /** The identity vectors are written, read and counted under. The D3
+     *  measurement arm ({@code -Djawata.embed.symptoms}, experience_entry
+     *  only) carries its own suffix so mixed text compositions can never
+     *  share an identity, in either flag direction (C4b audit F3). */
+    private String currentIdentity(String table) {
+        return "experience_entry".equals(table)
+            && Boolean.getBoolean("jawata.embed.symptoms")
+            ? embeddings.identityKey() + "+symptoms-arm"
+            : embeddings.identityKey();
+    }
+
     /** How many rows carry a vector of the current identity — the honest coverage number. */
     public long embeddedCount(String table) {
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(
                 "SELECT COUNT(*) FROM " + table + " WHERE embedder_identity = ?")) {
-            ps.setString(1, embeddings.identityKey());
+            ps.setString(1, currentIdentity(table));
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rs.getLong(1) : 0L;
             }

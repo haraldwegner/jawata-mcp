@@ -81,6 +81,8 @@ class AdmissionGateTest {
             assertFalse(resp.isSuccess(), "symptom shaped as " + shape.getKey()
                 + " must be refused: " + shape.getValue());
             String msg = resp.getError().getMessage();
+            assertTrue(msg.contains("symptom"),
+                "the message names the FIELD: " + msg);
             assertTrue(msg.contains(shape.getValue()),
                 "the message names the offending value: " + msg);
             assertTrue(msg.contains("RULE:"), "the message states the rule: " + msg);

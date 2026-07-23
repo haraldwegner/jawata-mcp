@@ -14,18 +14,19 @@
 # so the derivation is re-runnable and pinned.
 #
 # Classification (derived 2026-07-23 from export sha 96b128af…, 2080 entries,
-# 17077 symptom items — counts in dossier-27a):
+# 17077 symptom items — the FINAL per-shape counts, matching this script's own
+# output and dossier-27a's pinned table; total misplaced 10091 on 1293 rows):
 #   MISPLACED (moved by the clean; refused-with-redirect at admission):
-#     path      — filesystem/glob/URL-ish references            (observed 1195)
+#     path      — filesystem/glob/URL-ish references            (observed 1218)
 #     flag      — command-line switches                         (observed   49)
 #     heading   — section headers: '#'-prefixed or ':'-suffixed (observed 1436)
-#     code      — symbols, dotted identifiers, calls, backticks (observed ~5655)
-#     id        — bare hashes / numeric ids                     (observed ~419)
-#     tag       — hyphenated slug tags (memory-file names etc.) (observed ~449)
+#     code      — symbols, dotted identifiers, calls, backticks (observed 5508)
+#     id        — bare hashes / numeric ids                     (observed  296)
+#     tag       — hyphen/underscore slug tags                   (observed 1584)
 #   KEPT (legitimate symptom content):
-#     prose     — multi-word natural-language observations      (observed ~6163)
+#     prose     — multi-word natural-language observations      (observed 5024)
 #     word      — a single plain word ("deadlock"): ambiguous but harmless and
-#                 load-bearing for keyword matching             (observed ~1614)
+#                 load-bearing for keyword matching             (observed 1962)
 #
 # The Java admission gate mirrors these rules; its fixtures are INVENTED
 # lookalikes of each class — no corpus row is copied into the repo.
