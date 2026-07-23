@@ -96,9 +96,23 @@ def main():
             rows_touched += 1
             if out_path:
                 body['symptoms'] = kept
-                note = "[artifacts] moved from symptoms by admission clean: " \
-                    + "; ".join(moved)
-                body['details'] = ((body.get('details') or '') + "\n" + note).strip()
+                # v2 (measured, 2026-07-23): the 21c harvest DUPLICATED body
+                # content into symptom rows — 98.3% of misplaced items already
+                # occur verbatim in summary/details. Appending them back (v1)
+                # re-poisoned the embedded text and shifted BM25 stats on
+                # 1,293 rows: embeddings-alone fell 9->8 (cue-05) and
+                # words-alone 4->3. So: an item already present in the body is
+                # simply REMOVED from symptoms (nothing is lost — it is
+                # already where it belongs); only genuinely absent items are
+                # moved, under a minimal marker.
+                hay = ((e.get('summary') or '') + ' '
+                       + (body.get('details') or '')).lower()
+                absent = [s for s in moved
+                          if s.strip('`').strip().lower() not in hay]
+                if absent:
+                    note = "[artifacts] " + "; ".join(absent)
+                    body['details'] = ((body.get('details') or '')
+                                       + "\n" + note).strip()
                 e['body'] = body
         summary = (e.get('summary') or '').strip()
         if summary and HEADING_SUMMARY_RE.match(summary):

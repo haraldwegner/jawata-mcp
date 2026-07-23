@@ -256,4 +256,69 @@ class SchemaMigrationsTest {
         }
         assertFalse(Files.exists(dir.resolve("jawata-experience")), "no file artifacts for in-memory");
     }
+
+    /**
+     * Sprint 27a D10 (Harald: "Clean for sure!", then option A on the measured
+     * cost) — v9, the retroactive admission clean. Misplaced-shaped symptom
+     * rows are removed; an item already present in the body is simply dropped
+     * (nothing lost — it is already where it belongs); a genuinely absent item
+     * is MOVED into details under the [artifacts] marker; prose and plain
+     * words stay; the entry row itself is untouched; the framework's
+     * pre-migration backup zip is the ruled snapshot; a second open migrates
+     * nothing (run-once by version).
+     */
+    @Test
+    void v9_admission_clean_routes_misplaced_symptoms_once_behind_a_backup(@TempDir Path dir)
+            throws Exception {
+        createV1Fixture(dir, "e1");
+        try (Connection c = connect(dir); Statement s = c.createStatement()) {
+            // Faithful store shape: the ORIGINAL wording lives in body_json;
+            // the table carries alias-NORMALIZED rows (lower/trim/collapse) —
+            // which is exactly why the clean classifies the originals: a
+            // lowercased CamelCase symbol is indistinguishable from a word.
+            s.execute("UPDATE experience_entry SET"
+                + " body_json = '{\"details\":\"see client-app/docs/feed.md for the trace\","
+                + "\"symptoms\":[\"client-app/docs/feed.md\",\"--enable-verbose\",\"Fix:\","
+                + "\"the gaps appeared right at the open\",\"deadlock\"]}'"
+                + " WHERE id = 'e1'");
+            s.execute("INSERT INTO experience_symptom VALUES"
+                + " ('e1', 'client-app/docs/feed.md'),"
+                + " ('e1', '--enable-verbose'),"
+                + " ('e1', 'fix:'),"
+                + " ('e1', 'the gaps appeared right at the open'),"
+                + " ('e1', 'deadlock')");
+        }
+
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1L, store.count(), "the entry row is untouched by the clean");
+        }
+        assertEquals("2", scalar(dir, "SELECT COUNT(*) FROM experience_symptom WHERE entry_id = 'e1'"),
+            "only prose and the plain word remain as symptom rows");
+        assertEquals("1", scalar(dir, "SELECT COUNT(*) FROM experience_symptom"
+            + " WHERE entry_id = 'e1' AND symptom = 'the gaps appeared right at the open'"),
+            "prose kept");
+        assertEquals("1", scalar(dir, "SELECT COUNT(*) FROM experience_symptom"
+            + " WHERE entry_id = 'e1' AND symptom = 'deadlock'"), "plain word kept");
+        String body = scalar(dir, "SELECT body_json FROM experience_entry WHERE id = 'e1'");
+        assertTrue(body.contains("[artifacts]"), "absent items moved under the MARKER: " + body);
+        assertTrue(body.contains("--enable-verbose") && body.contains("Fix:"),
+            "the two absent items are IN details — moved, not deleted: " + body);
+        assertFalse(body.substring(body.indexOf("[artifacts]")).contains("feed.md"),
+            "the path already present in the body is dropped, not duplicated: " + body);
+        assertFalse(body.contains("\"client-app/docs/feed.md\""),
+            "body_json's own symptom list is rewritten too — a backup restore"
+            + " must not reintroduce the junk: " + body);
+        assertTrue(Files.exists(dir.resolve("jawata-experience")
+                .resolve("experience-pre-migration-v1.zip")),
+            "the pre-clean snapshot (the framework's backup zip) exists");
+
+        // Run-once: a second open finds LATEST, migrates nothing, changes nothing.
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1L, store.count());
+        }
+        assertEquals("2", scalar(dir, "SELECT COUNT(*) FROM experience_symptom WHERE entry_id = 'e1'"),
+            "second open moves 0 — the clean ran once");
+        assertEquals(String.valueOf(SchemaMigrations.LATEST),
+            scalar(dir, "SELECT version FROM schema_version"));
+    }
 }

@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 8;
+    static final int LATEST = 9;
 
     private SchemaMigrations() {
     }
@@ -97,6 +97,9 @@ final class SchemaMigrations {
         }
         if (from < 8) {
             migrateToV8(conn);
+        }
+        if (from < 9) {
+            migrateToV9(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -336,6 +339,122 @@ final class SchemaMigrations {
             s.execute("CREATE TABLE IF NOT EXISTS quality_counter ("
                 + "name VARCHAR(160) PRIMARY KEY, count BIGINT NOT NULL DEFAULT 0)");
         }
+    }
+
+    /**
+     * v9 — Sprint 27a D10, the retroactive admission clean (Harald's rulings:
+     * "Clean for sure!", then option A after the pre-execution measurement —
+     * the 11→10 calibration cost accepted; dossier-27a).
+     *
+     * <p>Symptom rows whose shape the derived classifier
+     * ({@link AdmissionPolicy}, mirroring the committed
+     * {@code embed-goldens/derive_admission.py}) marks MISPLACED — paths,
+     * flags, headings, code symbols, bare ids, tag slugs, the Sprint-21c
+     * keyword harvest's residue — are removed from {@code experience_symptom}.
+     * Nothing is deleted from the store's knowledge: 98.3% of these items
+     * occur verbatim in the entry's summary/details already (the harvest was
+     * duplication by construction); the genuinely absent rest is appended to
+     * the entry's details under an {@code [artifacts]} marker. Prose and
+     * single plain words stay. Summaries are NOT rewritten (that is
+     * authorship). Mechanism choice recorded in dossier-27a: a migration rung
+     * reaches every store exactly once with no invocation to remember, and
+     * the framework's pre-migration {@code BACKUP TO} zip is the ruled
+     * pre-clean snapshot.</p>
+     */
+    private static void migrateToV9(Connection conn) throws SQLException {
+        // The symptom TABLE holds alias-NORMALIZED rows (lower/trim/collapse),
+        // which destroys the camelCase evidence the CODE shape needs; the
+        // ORIGINAL wording lives in body_json. So: classify the ORIGINALS
+        // (exact parity with the measured clean, derive_admission.py), map
+        // each misplaced original to its normalized table row for deletion,
+        // and rewrite body_json's own symptom list — otherwise a
+        // backup-restore would reintroduce the junk the clean removed.
+        com.fasterxml.jackson.databind.ObjectMapper json =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+        record Entry(String id, String summary, String bodyJson) {
+        }
+        java.util.List<Entry> entries = new java.util.ArrayList<>();
+        try (Statement s = conn.createStatement();
+                ResultSet rs = s.executeQuery(
+                    "SELECT id, summary, body_json FROM experience_entry")) {
+            while (rs.next()) {
+                entries.add(new Entry(rs.getString(1), rs.getString(2), rs.getString(3)));
+            }
+        }
+        int misplacedItems = 0;
+        int entriesTouched = 0;
+        int dropped = 0;
+        int moved = 0;
+        int rowsDeleted = 0;
+        for (Entry e : entries) {
+            com.fasterxml.jackson.databind.node.ObjectNode body;
+            try {
+                body = e.bodyJson() == null || e.bodyJson().isBlank()
+                    ? json.createObjectNode()
+                    : (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(e.bodyJson());
+            } catch (java.io.IOException | ClassCastException ex) {
+                log.warn("admission clean: entry {} body_json unreadable — symptoms kept", e.id());
+                continue;
+            }
+            if (!(body.get("symptoms") instanceof com.fasterxml.jackson.databind.node.ArrayNode originals)
+                    || originals.isEmpty()) {
+                continue;
+            }
+            java.util.List<String> kept = new java.util.ArrayList<>();
+            java.util.List<String> misplaced = new java.util.ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode n : originals) {
+                String item = n.asText();
+                if (AdmissionPolicy.misplaced(AdmissionPolicy.classify(item))) {
+                    misplaced.add(item);
+                } else {
+                    kept.add(item);
+                }
+            }
+            if (misplaced.isEmpty()) {
+                continue;
+            }
+            entriesTouched++;
+            misplacedItems += misplaced.size();
+            String details = body.path("details").asText("");
+            String hay = ((e.summary() == null ? "" : e.summary()) + " " + details).toLowerCase();
+            java.util.List<String> absent = new java.util.ArrayList<>();
+            for (String item : misplaced) {
+                String key = item.replace("`", "").strip().toLowerCase();
+                if (!key.isEmpty() && !hay.contains(key)) {
+                    absent.add(item);
+                }
+            }
+            com.fasterxml.jackson.databind.node.ArrayNode keptArr = body.putArray("symptoms");
+            kept.forEach(keptArr::add);
+            if (!absent.isEmpty()) {
+                body.put("details", (details + "\n[artifacts] "
+                    + String.join("; ", absent)).strip());
+                moved += absent.size();
+            }
+            dropped += misplaced.size() - absent.size();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE experience_entry SET body_json = ? WHERE id = ?")) {
+                ps.setString(1, body.toString());
+                ps.setString(2, e.id());
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM experience_symptom WHERE entry_id = ? AND symptom = ?")) {
+                for (String item : misplaced) {
+                    ps.setString(1, e.id());
+                    ps.setString(2, H2ExperienceStore.normalize(item));
+                    ps.addBatch();
+                }
+                for (int n : ps.executeBatch()) {
+                    rowsDeleted += Math.max(0, n);
+                }
+            }
+        }
+        log.info("admission clean (v9): {} misplaced symptom item(s) on {} entr(ies) — "
+            + "{} already present in the body (row removed), {} moved into details "
+            + "under [artifacts]; {} normalized table row(s) deleted; prose and plain "
+            + "words kept; summaries untouched",
+            misplacedItems, entriesTouched, dropped, moved, rowsDeleted);
     }
 
     private static void writeVersion(Connection conn, int version) throws SQLException {

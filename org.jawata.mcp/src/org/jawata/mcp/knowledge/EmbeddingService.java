@@ -144,6 +144,33 @@ public final class EmbeddingService {
         return s + " " + d;
     }
 
+    /**
+     * D3 measurement arm (Sprint 27a Stage 4b): summary + symptom prose +
+     * details. Reaches production ONLY if Harald adopts on the cleaned-data
+     * numbers; until then the 2-arg form above is the shipped composition.
+     */
+    public static String textOf(String summary, String details, java.util.List<String> symptoms) {
+        StringBuilder sb = new StringBuilder();
+        append(sb, summary);
+        if (symptoms != null) {
+            for (String s : symptoms) {
+                append(sb, s);
+            }
+        }
+        append(sb, details);
+        return sb.toString();
+    }
+
+    private static void append(StringBuilder sb, String part) {
+        String p = part == null ? "" : part.trim();
+        if (!p.isEmpty()) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(p);
+        }
+    }
+
     /** Little-endian float32 blob — the on-disk vector form. */
     public static byte[] toBytes(float[] v) {
         if (v == null) {

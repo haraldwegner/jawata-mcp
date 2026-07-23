@@ -225,8 +225,20 @@ public final class EmbeddingIndex {
         record Pending(String id, String text) {
         }
         List<Pending> pending = new ArrayList<>();
+        // D3 MEASUREMENT ARM (Sprint 27a Stage 4b): -Djawata.embed.symptoms=true
+        // folds the entry's symptom prose into the embedded text. Measurement
+        // only — a fresh gate corpus per run, so no identity mixing; production
+        // adoption (if Harald rules it) replaces this flag with the identity-v2
+        // bump so live vectors can never mix compositions.
+        boolean withSymptoms = "experience_entry".equals(table)
+            && Boolean.getBoolean("jawata.embed.symptoms");
+        String symptomsSelect = withSymptoms
+            ? ", (SELECT LISTAGG(s.symptom, '; ') FROM experience_symptom s"
+                + " WHERE s.entry_id = " + table + "." + idColumn + ")"
+            : "";
         String select = "SELECT " + idColumn + ", " + textColumn
-            + (detailsColumn == null ? "" : ", " + detailsColumn) + " FROM " + table
+            + (detailsColumn == null ? "" : ", " + detailsColumn) + symptomsSelect
+            + " FROM " + table
             + " WHERE embedding IS NULL OR embedder_identity IS NULL"
             + " OR embedder_identity <> ? LIMIT " + max;
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(select)) {
@@ -235,8 +247,13 @@ public final class EmbeddingIndex {
                 while (rs.next()) {
                     String details = detailsColumn == null
                         ? null : detailsOf(rs.getString(3));
+                    String symptoms = withSymptoms
+                        ? rs.getString(detailsColumn == null ? 3 : 4) : null;
                     pending.add(new Pending(rs.getString(1),
-                        EmbeddingService.textOf(rs.getString(2), details)));
+                        symptoms == null || symptoms.isBlank()
+                            ? EmbeddingService.textOf(rs.getString(2), details)
+                            : EmbeddingService.textOf(rs.getString(2), details,
+                                List.of(symptoms))));
                 }
             }
         } catch (SQLException e) {

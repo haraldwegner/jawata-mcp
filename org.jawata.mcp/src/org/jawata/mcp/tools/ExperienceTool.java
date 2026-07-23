@@ -238,7 +238,10 @@ public final class ExperienceTool implements Tool {
 
         props.put("type", Map.of("type", "string",
             "description", "record: entry type (domain_fact / lesson / failure_mode / api_contract / naming_convention / ...)."));
-        props.put("summary", Map.of("type", "string", "description", "record: one-line summary (required)."));
+        props.put("summary", Map.of("type", "string", "description",
+            "record: ONE judgeable sentence of experience — what was learned, stated so a"
+            + " later reader can judge whether it transfers. Not a heading, not a title"
+            + " (a heading-shaped summary is refused)."));
         props.put("confidence", Map.of("type", "string", "enum", List.of("low", "medium", "high"),
             "description", "record: default medium."));
         props.put("symbol", Map.of("type", "string",
@@ -250,12 +253,18 @@ public final class ExperienceTool implements Tool {
             "description", "record: scope packages."));
         props.put("symbols", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: scope symbols."));
-        props.put("details", Map.of("type", "string", "description", "record: longer detail."));
+        props.put("details", Map.of("type", "string", "description",
+            "record: the longer story — including artifacts: paths, flags, ids and code"
+            + " references live HERE, not in symptoms."));
         props.put("operation", Map.of("type", "string", "description", "record: operation this entry relates to."));
         props.put("scope_kind", Map.of("type", "string",
             "description", "record: symbol|package|operation|symptom|external_system|..."));
         props.put("symptoms", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "record: observed symptoms (alias-normalized)."));
+            "description", "record: how the problem LOOKED — each item a prose observation"
+                + " in words. NOT paths, flags, tags, code symbols or headings (refused"
+                + " with a redirect): artifacts belong in 'details', symbols in"
+                + " 'symbol'/'symbols', tool output in the tool lane, which the tools"
+                + " record themselves."));
         props.put("links", Map.of("type", "array",
             "items", Map.of("type", "object"),
             "description", "record: typed edges [{rel: handled_by|fixed_by|detected_by|supersedes, target}]."));
@@ -622,6 +631,17 @@ public final class ExperienceTool implements Tool {
         }
         if (summary == null || summary.isBlank()) {
             return ToolResponse.invalidParameter("summary", "record requires a 'summary'");
+        }
+        // Sprint 27a D10 — admission ROUTING: a record shaped like the wrong
+        // KIND (tool artifacts standing as experience prose) is refused with a
+        // teaching redirect, at the one call every agent uses. New writes only;
+        // importEntries/restore round-trip untouched. Patterns: AdmissionPolicy
+        // (derived from the observed misplaced content — dossier-27a).
+        var admission = org.jawata.mcp.knowledge.AdmissionPolicy.check(
+            summary, strings(args, "symptoms"));
+        if (admission.isPresent()) {
+            return ToolResponse.invalidParameter(
+                admission.get().field(), admission.get().message());
         }
 
         SymbolFact.Builder fb = SymbolFact.of(type, summary, confidence(text(args, "confidence")));

@@ -69,3 +69,4 @@ docs/REFACTORING_LESSONS_LEARNED.md
 # jawata per-workspace data (quality-sweep baselines, coverage + runtime
 # artifacts) — internal analysis state, never published
 .jawata/
+__pycache__/

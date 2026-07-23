@@ -71,6 +71,55 @@ class ExperienceMaintenanceTest {
         assertEquals(1L, store.count(), "re-load replaces, not duplicates");
     }
 
+    /**
+     * Sprint 27a D10 — the load channel obeys the admission routing: harvested
+     * keywords with misplaced shapes (paths, backticked code, headings) never
+     * land as symptom rows (they stay in the body they were harvested from,
+     * where word-matching reads them since D9), the suppression is REPORTED
+     * (a silent drop is this project's recorded deepest bug class), the file
+     * NAME slug is prosified so its cue phrasing stays a legal symptom, and a
+     * section heading becomes summary TEXT, not a heading-shaped summary.
+     */
+    @Test
+    void load_routes_misplaced_harvest_and_reports_the_suppression(@TempDir Path dir)
+            throws IOException {
+        writeMemory(dir, "renders-blank-on-aarch64.md",
+            "name: renders-blank-on-aarch64\ndescription: the view renders blank on aarch64\ntype: lesson",
+            "The `WidgetRenderer.paint()` call fails; see docs/render-notes.md for the trace.\n"
+            + "\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n");
+
+        Map<String, Object> report = maint(fqn -> null).load(dir);
+
+        assertTrue(report.containsKey("keywords_suppressed"),
+            "the route/skip report is PRESENT: " + report);
+        assertTrue((int) report.get("keywords_suppressed") >= 2,
+            "the backticked code term and the heading were suppressed: " + report);
+
+        java.util.List<String> allSymptoms = new java.util.ArrayList<>();
+        for (StoredEntry e : store.all()) {
+            Map<String, Object> doc = store.get(e.id()).orElseThrow();
+            if (doc.get("symptoms") instanceof java.util.List<?> list) {
+                for (Object s : list) {
+                    allSymptoms.add(String.valueOf(s));
+                }
+            }
+        }
+        for (String s : allSymptoms) {
+            assertFalse(AdmissionPolicy.misplaced(AdmissionPolicy.classify(s)),
+                "no misplaced shape lands as a symptom via load: '" + s + "'");
+        }
+        assertTrue(allSymptoms.contains("renders blank on aarch64"),
+            "the name slug arrives PROSIFIED, its cue phrasing intact: " + allSymptoms);
+        assertTrue(allSymptoms.contains("native buffer"),
+            "prose-shaped harvest (the bold phrase) still lands: " + allSymptoms);
+
+        boolean sectionSummaryClean = store.all().stream()
+            .map(StoredEntry::summary)
+            .anyMatch("Root cause"::equals);
+        assertTrue(sectionSummaryClean,
+            "the section summary is the heading TEXT without the ':' shape");
+    }
+
     @Test
     void load_flags_stale_symbol_on_ingest(@TempDir Path dir) throws IOException {
         writeMemory(dir, "s.md",
@@ -278,11 +327,25 @@ class ExperienceMaintenanceTest {
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
 
         ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
-        for (String cue : List.of("loader fingerprint self-heal", "skip-unchanged hash",
-                "loader_version", "recall-gap-lesson")) {
+        // Sprint 27a D10 amends the 21c contract: PROSE-shaped harvest (heading
+        // text, bold phrases) still lands as symptom rows and exact-matches;
+        // code/tag-shaped harvest (`LOADER_VERSION`, wikilink slugs) no longer
+        // becomes symptom rows — it stays in the body it was harvested from,
+        // and the cue still REACHES the entry through the word/meaning path,
+        // labelled as a nominee rather than vouched.
+        for (String cue : List.of("loader fingerprint self-heal", "skip-unchanged hash")) {
             assertEquals(ExperienceRetrieval.RESULT_MATCH,
                 retrieval.recall(new RecallQuery(null, null, null, cue, null)).get("result"),
-                "harvested cue hits: " + cue);
+                "prose-shaped harvested cue exact-matches: " + cue);
+        }
+        for (String cue : List.of("loader_version", "recall-gap-lesson")) {
+            Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, cue, null));
+            boolean reachable = ExperienceRetrieval.RESULT_MATCH.equals(r.get("result"))
+                || (ExperienceRetrieval.RESULT_ANALOGY.equals(r.get("result"))
+                    && r.get("analogies") instanceof List<?> a && !a.isEmpty());
+            assertTrue(reachable,
+                "code/tag-shaped harvest is routed, not lost — the cue still reaches"
+                + " the entry as a nominee: " + cue + " -> " + r.get("result"));
         }
     }
 

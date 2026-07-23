@@ -182,6 +182,7 @@ public final class ExperienceMaintenance {
         int unchanged = 0;
         int linked = 0;
         int keywordCapped = 0;
+        int keywordsSuppressed = 0;
         int anchored = 0;
         long bytes = 0;
         // Sprint 21e (item A): one resolver per load run — its token memo spans the run
@@ -266,12 +267,22 @@ public final class ExperienceMaintenance {
                 .language(doc.language);
             // v2.2.5 (find #13): the NAME is where cue-dense phrasing lives ("…renders
             // blank on aarch64") — index it as a symptom so recall can reach it.
+            // Sprint 27a D10: PROSIFIED — the slug's hyphens/underscores become
+            // spaces, so the cue phrasing stays matchable while the row obeys
+            // the admission shape (a slug is a tag; its words are an observation).
             if (doc.name != null && !doc.name.isBlank()) {
-                eb.addSymptom(doc.name);
+                eb.addSymptom(prosify(doc.name));
             }
             // Sprint 21c (item A): the harvested keyword surface — headings, bold
             // phrases, backticked terms, wikilink names — becomes symptom rows.
-            if (addKeywords(eb, doc.keywords)) {
+            // Sprint 27a D10: only ADMISSIBLE shapes (prose, plain words) still
+            // land as symptom rows; the misplaced shapes are already in the body
+            // verbatim (the harvest duplicates by construction — measured 98.3%)
+            // and BM25 reads the body since D9, so nothing becomes unfindable.
+            // The suppression is REPORTED, never silent.
+            List<String> admissible = admissibleKeywords(doc.keywords);
+            keywordsSuppressed += doc.keywords.size() - admissible.size();
+            if (addKeywords(eb, admissible)) {
                 keywordCapped++;
             }
             for (String link : doc.links) {
@@ -289,8 +300,12 @@ public final class ExperienceMaintenance {
             // gate answers with. The whole family shares the file-level source_ref +
             // source_hash, so skip-unchanged and deleteBySource stay untouched.
             for (Section s : doc.sections) {
+                // Sprint 27a D10: a section entry's summary is the heading TEXT,
+                // not the heading SHAPE — '#' prefixes and the trailing ':' are
+                // trimmed so load never mints what the record gate refuses.
                 SymbolFact.Builder sf = SymbolFact.of(
-                    doc.type == null ? "note" : doc.type, s.heading(), Confidence.MEDIUM);
+                    doc.type == null ? "note" : doc.type,
+                    unheading(s.heading()), Confidence.MEDIUM);
                 if (!s.body().isBlank()) {
                     sf.details(s.body().strip());
                 }
@@ -298,7 +313,9 @@ public final class ExperienceMaintenance {
                     .status(ExperienceEntry.ACCEPTED)
                     .language(doc.language)
                     .scopeKind("section");
-                if (addKeywords(sb, s.keywords())) {
+                List<String> sectionAdmissible = admissibleKeywords(s.keywords());
+                keywordsSuppressed += s.keywords().size() - sectionAdmissible.size();
+                if (addKeywords(sb, sectionAdmissible)) {
                     keywordCapped++;
                 }
                 for (String link : s.links()) {
@@ -343,6 +360,12 @@ public final class ExperienceMaintenance {
         report.put("skipped", skipped);
         if (keywordCapped > 0) {
             report.put("keyword_capped", keywordCapped);
+        }
+        // Sprint 27a D10: the route/skip report — a silent drop is this
+        // project's recorded deepest bug class, so the suppression count is
+        // ALWAYS present when load harvested anything, even at 0.
+        if (loaded > 0) {
+            report.put("keywords_suppressed", keywordsSuppressed);
         }
         if (anchored > 0) {
             report.put("anchored", anchored);
@@ -825,6 +848,34 @@ public final class ExperienceMaintenance {
             }
         }
         return links;
+    }
+
+    /** Sprint 27a D10: a memory-file NAME slug, made prose — hyphens and
+     *  underscores become spaces so the cue phrasing stays matchable while the
+     *  symptom row obeys the admission shape. */
+    static String prosify(String name) {
+        return name.replace('-', ' ').replace('_', ' ').strip();
+    }
+
+    /** Sprint 27a D10: the harvest keywords that may land as SYMPTOM rows —
+     *  prose and plain words. Misplaced shapes (paths, flags, headings, code,
+     *  ids, tags) stay in the body they were harvested from, where BM25 reads
+     *  them since D9; the caller counts and reports the suppressed rest. */
+    static List<String> admissibleKeywords(List<String> keywords) {
+        List<String> out = new ArrayList<>();
+        for (String k : keywords) {
+            if (!AdmissionPolicy.misplaced(AdmissionPolicy.classify(k))) {
+                out.add(k);
+            }
+        }
+        return out;
+    }
+
+    /** Sprint 27a D10: heading TEXT for a section summary — strips the '#'
+     *  prefix and the trailing ':' so load never mints a heading-shaped
+     *  summary (the shape the record gate refuses). */
+    static String unheading(String heading) {
+        return heading.replaceFirst("^#+\\s*", "").replaceFirst(":\\s*$", "").strip();
     }
 
     /** Add harvested keywords as symptoms up to the backstop; true when capped. */
