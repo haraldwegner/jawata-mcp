@@ -11,7 +11,7 @@
     <parent>
         <groupId>org.jawata</groupId>
         <artifactId>org.jawata.build</artifactId>
-        <version>3.5.0</version>
+        <version>3.5.1</version>
     </parent>
 
     <artifactId>spike-dist</artifactId>
@@ -64,6 +64,12 @@
                             <artifactItems>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.boot</artifactId><version>${project.version}</version><destFileName>jawata.jar</destFileName></artifactItem>
                                 <artifactItem><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.osgi</artifactId><version>${v.osgi}</version></artifactItem>
+                                <!-- v3.5.1 (Finding A): slf4j rides the BOOT classpath (not bundles/)
+                                     so slf4j-api's ServiceLoader binds the provider in one classloader.
+                                     The boot jar's Class-Path names these; JawataBoot re-exports org.slf4j
+                                     from the system bundle so the bundles' Import-Package still resolves. -->
+                                <artifactItem><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>${v.slf4j}</version></artifactItem>
+                                <artifactItem><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>${v.slf4j}</version></artifactItem>
                             </artifactItems>
                         </configuration>
                     </execution>
@@ -208,8 +214,11 @@
                                 <artifactItem><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId><version>${v.jackson}</version></artifactItem>
                                 <artifactItem><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId><version>${v.jackson}</version></artifactItem>
                                 <artifactItem><groupId>com.h2database</groupId><artifactId>h2</artifactId><version>${v.h2}</version></artifactItem>
-                                <artifactItem><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>${v.slf4j}</version></artifactItem>
-                                <artifactItem><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>${v.slf4j}</version></artifactItem>
+                                <!-- v3.5.1 (Finding A): slf4j-api + slf4j-simple MOVED to the boot
+                                     classpath copy above (out of bundles/) so the ServiceLoader binds. -->
+                                <!-- slf4j-api / slf4j-simple: now on the boot classpath, not here -->
+                                <!-- (SpiFly org.apache.aries.spifly.dynamic.bundle above is now unused
+                                     for slf4j; left provisioned, harmless.) -->
                             </artifactItems>
                         </configuration>
                     </execution>

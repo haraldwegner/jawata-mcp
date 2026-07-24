@@ -48,7 +48,10 @@ class PdeExternalPoolTest {
         assumeTrue(distRoot != null, "jawata.dist.root must be set (the boot sets it)");
         poolsBefore = System.getProperty("jawata.bundle.pools");
         System.setProperty("jawata.bundle.pools",
-            Path.of(distRoot, "bundles") + File.pathSeparator + Path.of(distRoot, "test-bundles"));
+            Path.of(distRoot, "bundles") + File.pathSeparator + Path.of(distRoot, "test-bundles")
+                // v3.5.1: slf4j-api rides the boot classpath (the dist root), not
+                // bundles/, so the fixture's Import-Package: org.slf4j resolves there.
+                + File.pathSeparator + Path.of(distRoot));
     }
 
     @AfterEach

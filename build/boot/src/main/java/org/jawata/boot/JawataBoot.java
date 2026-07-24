@@ -312,6 +312,18 @@ public final class JawataBoot {
             Files.createTempDirectory("jawata-boot-config").toString());
         props.put("osgi.install.area", home.toString());
         props.put("osgi.compatibility.bootdelegation", "true");
+        // v3.5.1 (Finding A): slf4j-api + a binding (slf4j-simple) ride the BOOT
+        // classpath (see the boot jar's Class-Path), so slf4j-api's ServiceLoader
+        // finds the provider in ONE classloader — the cross-bundle ServiceLoader it
+        // could never satisfy (SpiFly needs its weaving hook live before slf4j-api
+        // inits, but slf4j-api inits at the earliest bootstrap). The system bundle
+        // must then re-export org.slf4j so the bundles' Import-Package: org.slf4j
+        // still resolves; the version tracks build/pom.xml v.slf4j (2.0.18).
+        props.put("org.osgi.framework.system.packages.extra",
+            "org.slf4j;version=\"2.0.18\","
+                + "org.slf4j.event;version=\"2.0.18\","
+                + "org.slf4j.helpers;version=\"2.0.18\","
+                + "org.slf4j.spi;version=\"2.0.18\"");
         return props;
     }
 

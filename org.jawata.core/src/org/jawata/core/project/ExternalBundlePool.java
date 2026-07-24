@@ -80,6 +80,12 @@ public final class ExternalBundlePool {
         String distRoot = System.getProperty("jawata.dist.root");
         if (distRoot != null && !distRoot.isBlank()) {
             dirs.add(Path.of(distRoot, "bundles"));
+            // v3.5.1 (Finding A follow-on): slf4j-api + org.eclipse.osgi ride the
+            // BOOT classpath (the dist root, beside jawata.jar), not bundles/, so
+            // slf4j-api's ServiceLoader can bind. The self-hosting pool must scan
+            // the dist root too, else a PDE Import-Package: org.slf4j no longer
+            // resolves from it.
+            dirs.add(Path.of(distRoot));
         }
         return dirs.stream().filter(Files::isDirectory).toList();
     }
