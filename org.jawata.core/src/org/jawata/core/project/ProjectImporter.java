@@ -512,6 +512,33 @@ public class ProjectImporter {
             log.debug("Added {} library entries from .classpath", classpathLibCount);
         }
 
+        // Sprint 28 (mcp#3): required PROJECTS declared in .classpath as
+        // kind="src" path="/other.project". These are the sibling plug-ins a
+        // PDE tree compiles against. They used to be parsed as source folders
+        // and silently dropped, which is why a 5-reference project reached JDT
+        // with at most the one reference its Require-Bundle header happened to
+        // repeat. Resolved through the same workspace bundle registry the
+        // Require-Bundle pass uses: in a PDE workspace a project reference
+        // names a sibling whose bundle symbolic name is its project name.
+        int projectRefEntries = 0;
+        for (String refName : cp.projectRefs()) {
+            Optional<org.eclipse.jdt.core.IJavaProject> sibling = workspaceManager == null
+                ? Optional.empty() : workspaceManager.resolveBundle(refName);
+            if (sibling.isPresent()) {
+                IPath projPath = sibling.get().getPath();
+                if (addedProjectPaths.add(projPath)) {
+                    entries.add(JavaCore.newProjectEntry(projPath));
+                    projectRefEntries++;
+                }
+            } else {
+                log.debug("Required project '{}' from .classpath is not loaded in this workspace; skipping",
+                        refName);
+            }
+        }
+        if (projectRefEntries > 0) {
+            log.info("Resolved {} required project(s) from .classpath", projectRefEntries);
+        }
+
         // Add compiled classes directories (Maven)
         addIfExists(entries, projectPath, "target/classes", addedLibPaths);
         addIfExists(entries, projectPath, "target/test-classes", addedLibPaths);
@@ -543,9 +570,30 @@ public class ProjectImporter {
             }
         }
         List<String> importedPackages = readManifestImportPackage(projectPath);
-        if (!unresolvedRequires.isEmpty() || !importedPackages.isEmpty()) {
+        List<String> junitBundles = junitContainerBundles(cp.containers());
+        if (!unresolvedRequires.isEmpty() || !importedPackages.isEmpty() || !junitBundles.isEmpty()) {
             ExternalBundlePool pool = ExternalBundlePool.index(ExternalBundlePool.defaultPoolDirs());
             int external = 0;
+
+            // Sprint 28 (mcp#3): the JDT JUnit container. Eclipse resolves
+            // JUNIT_CONTAINER/<n> to the JUnit runtime; jawata's synthetic
+            // project has no containers at all, so JUnit annotations did not
+            // resolve and find_tests reported ZERO test classes in a tree that
+            // had three test source folders — an honest-looking empty answer
+            // for a question that could not be asked.
+            for (String symbolicName : junitBundles) {
+                Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
+                if (jar.isPresent()) {
+                    IPath eclipsePath = new Path(jar.get().toString());
+                    if (addedLibPaths.add(eclipsePath)) {
+                        entries.add(JavaCore.newLibraryEntry(eclipsePath, null, null));
+                        external++;
+                    }
+                } else {
+                    log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
+                            symbolicName);
+                }
+            }
             for (String required : unresolvedRequires) {
                 Optional<java.nio.file.Path> jar = pool.bundleJar(required);
                 if (jar.isPresent()) {
@@ -581,6 +629,64 @@ public class ProjectImporter {
         }
 
         log.info("Added {} dependency entries from {}", jars.size(), buildSystem);
+    }
+
+    /** The JDT JUnit classpath container, as written in a {@code .classpath}. */
+    private static final String JUNIT_CONTAINER = "org.eclipse.jdt.junit.JUNIT_CONTAINER";
+
+    /**
+     * The bundle symbolic names that stand in for a {@code JUNIT_CONTAINER}
+     * entry, by declared JUnit version.
+     *
+     * <p>Sprint 28 (mcp#3). Eclipse expands the container itself; a synthetic
+     * JDT project has no containers, so without this the JUnit types never
+     * resolve and {@code find_tests} answers "no tests" for a project full of
+     * them. The container path carries the version — {@code JUNIT_CONTAINER/3}
+     * and {@code /4} are the JUnit-4 line, {@code /5} the Jupiter line. An
+     * unversioned or unrecognised suffix asks for BOTH sets rather than
+     * guessing: a superfluous jar on the classpath is harmless, a missing one
+     * silently breaks every test lookup.</p>
+     *
+     * @param containers the {@code kind="con"} paths read from {@code .classpath}
+     * @return the symbolic names to resolve against the external bundle pools,
+     *         in a stable order and without duplicates; empty when no JUnit
+     *         container is declared
+     */
+    static List<String> junitContainerBundles(List<String> containers) {
+        List<String> junit4 = List.of("org.junit", "org.hamcrest.core");
+        List<String> junit5 = List.of(
+                "org.junit.jupiter.api",
+                "org.junit.jupiter.engine",
+                "org.junit.jupiter.params",
+                "org.junit.platform.commons",
+                "org.junit.platform.engine",
+                "org.opentest4j",
+                "org.apiguardian.api");
+        List<String> result = new ArrayList<>();
+        for (String container : containers) {
+            if (container == null || !container.startsWith(JUNIT_CONTAINER)) {
+                continue;
+            }
+            String suffix = container.substring(JUNIT_CONTAINER.length());
+            if (suffix.startsWith("/")) {
+                suffix = suffix.substring(1);
+            }
+            List<String> wanted = switch (suffix) {
+                case "3", "4" -> junit4;
+                case "5" -> junit5;
+                default -> {
+                    List<String> both = new ArrayList<>(junit4);
+                    both.addAll(junit5);
+                    yield both;
+                }
+            };
+            for (String name : wanted) {
+                if (!result.contains(name)) {
+                    result.add(name);
+                }
+            }
+        }
+        return result;
     }
 
     private void addIfExists(List<IClasspathEntry> entries, java.nio.file.Path projectPath,
@@ -1044,12 +1150,25 @@ public class ProjectImporter {
         }
     }
 
-    /** Eclipse .classpath src/lib/output entries. */
+    /**
+     * Eclipse .classpath src/lib/output entries.
+     *
+     * <p>{@code projectRefs} holds the names of REQUIRED PROJECTS — in a
+     * {@code .classpath} these are written as {@code kind="src"} entries whose
+     * path begins with {@code /}, e.g.
+     * {@code <classpathentry kind="src" path="/com.jats2.libs"/>}. They are
+     * project references, not source folders, and were previously resolved
+     * against the filesystem: {@code projectRoot.resolve("/x")} returns the
+     * absolute {@code /x}, which never exists, so every one of them was
+     * silently dropped (Sprint 28, mcp#3).</p>
+     */
     record ClasspathInfo(List<java.nio.file.Path> srcPaths,
                           List<java.nio.file.Path> libPaths,
-                          Optional<java.nio.file.Path> outputPath) {
+                          Optional<java.nio.file.Path> outputPath,
+                          List<String> projectRefs,
+                          List<String> containers) {
         static ClasspathInfo empty() {
-            return new ClasspathInfo(List.of(), List.of(), Optional.empty());
+            return new ClasspathInfo(List.of(), List.of(), Optional.empty(), List.of(), List.of());
         }
     }
 
@@ -1272,6 +1391,8 @@ public class ProjectImporter {
             NodeList entries = doc.getElementsByTagName("classpathentry");
             List<java.nio.file.Path> srcPaths = new ArrayList<>();
             List<java.nio.file.Path> libPaths = new ArrayList<>();
+            List<String> projectRefs = new ArrayList<>();
+            List<String> containers = new ArrayList<>();
             Optional<java.nio.file.Path> outputPath = Optional.empty();
             for (int i = 0; i < entries.getLength(); i++) {
                 Element entry = (Element) entries.item(i);
@@ -1280,17 +1401,32 @@ public class ProjectImporter {
                 if (path.isEmpty()) {
                     continue;
                 }
-                java.nio.file.Path resolved = projectRoot.resolve(path).normalize();
                 switch (kind) {
-                    case "src" -> srcPaths.add(resolved);
-                    case "lib" -> libPaths.add(resolved);
-                    case "output" -> outputPath = Optional.of(resolved);
+                    // Sprint 28 (mcp#3): a kind="src" entry whose path starts
+                    // with '/' is a REQUIRED PROJECT, not a source folder —
+                    // Eclipse writes project references in exactly this shape.
+                    // Resolving it as a directory yields the absolute path
+                    // itself (NIO resolve of an absolute path), which never
+                    // exists, so all of them used to vanish without a word.
+                    case "src" -> {
+                        if (path.startsWith("/")) {
+                            String name = path.substring(1);
+                            if (!name.isEmpty()) {
+                                projectRefs.add(name);
+                            }
+                        } else {
+                            srcPaths.add(projectRoot.resolve(path).normalize());
+                        }
+                    }
+                    case "lib" -> libPaths.add(projectRoot.resolve(path).normalize());
+                    case "output" -> outputPath = Optional.of(projectRoot.resolve(path).normalize());
+                    case "con" -> containers.add(path);
                     default -> {
-                        // "con" (containers), "var" (variables), unknown kinds: ignore.
+                        // "var" (variables) and unknown kinds: ignore.
                     }
                 }
             }
-            return new ClasspathInfo(srcPaths, libPaths, outputPath);
+            return new ClasspathInfo(srcPaths, libPaths, outputPath, projectRefs, containers);
         } catch (Exception e) {
             log.warn("Failed to parse .classpath at {}: {}", file, e.getMessage());
             return ClasspathInfo.empty();
