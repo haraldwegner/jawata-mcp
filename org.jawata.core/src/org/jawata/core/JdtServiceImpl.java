@@ -512,6 +512,30 @@ public class JdtServiceImpl implements IJdtService {
     private static ICompilationUnit lookupCompilationUnit(IJavaProject jp, Path filePath) {
         if (jp == null) return null;
         try {
+            // Sprint 28 (v3.6.1): ASK THE MODEL where the source roots are.
+            //
+            // This used to derive the type name by guessing the source folder
+            // from a fixed list of Maven/Gradle path conventions
+            // ("src/main/java/", ..., "src/"). Any project whose source folder
+            // is named something else — an Eclipse plug-in project with a
+            // top-level `test/`, `tests/` or `integration-tests/` — matched no
+            // prefix, so the ENTIRE absolute path was turned into a "package
+            // name" and every lookup failed. The caller (SourceScan) records
+            // that as unresolvable, which is honest, but the effect was that
+            // find_tests reported 1 of 20+ test classes and the quality scans
+            // silently missed 142 of 1040 files on a real PDE project, while
+            // the JDT search engine read the very same files without trouble.
+            //
+            // The source roots are a fact the Java model already holds, and
+            // getResource().getLocation() resolves a LINKED folder to its real
+            // filesystem target — which is exactly how jawata mounts a
+            // project's source folders into its synthesized workspace. So match
+            // the file against the actual roots and derive the name from the
+            // one that contains it. The convention guess stays underneath as a
+            // fallback for paths the model cannot place.
+            ICompilationUnit fromRoots = lookupViaSourceRoots(jp, filePath);
+            if (fromRoots != null) return fromRoots;
+
             String pathStr = filePath.toString().replace('\\', '/');
             String classPath = pathStr;
             String[] sourcePrefixes = {"src/main/java/", "src/test/java/", "src/main/kotlin/", "src/test/kotlin/", "src/"};
@@ -543,6 +567,53 @@ public class JdtServiceImpl implements IJdtService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * Resolve a file through the project's DECLARED source roots, whatever they
+     * are named.
+     *
+     * <p>Sprint 28 (v3.6.1). Each {@code K_SOURCE} package-fragment root knows
+     * its own filesystem location, and for a linked folder that location is the
+     * link TARGET — so a project mounted as {@code src-1-test -> <root>/test}
+     * resolves correctly without anyone hard-coding the name {@code test}.
+     * Longest matching root wins, so a nested source folder is preferred over
+     * its parent.</p>
+     *
+     * @return the compilation unit, or null when no declared root contains the
+     *         file (the caller then falls back to the convention guess)
+     */
+    private static ICompilationUnit lookupViaSourceRoots(IJavaProject jp, Path filePath) throws JavaModelException {
+        Path absolute = filePath.isAbsolute() ? filePath.normalize() : null;
+        if (absolute == null) return null;
+
+        IPackageFragmentRoot bestRoot = null;
+        Path bestRelative = null;
+        for (IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
+            if (root.getKind() != IPackageFragmentRoot.K_SOURCE) continue;
+            IResource resource = root.getResource();
+            if (resource == null) continue;
+            IPath location = resource.getLocation();
+            if (location == null) continue;
+            Path rootPath = Path.of(location.toOSString()).normalize();
+            if (!absolute.startsWith(rootPath)) continue;
+            Path relative = rootPath.relativize(absolute);
+            // Longest root wins: prefer the most specific source folder.
+            if (bestRelative == null || relative.getNameCount() < bestRelative.getNameCount()) {
+                bestRoot = root;
+                bestRelative = relative;
+            }
+        }
+        if (bestRoot == null) return null;
+
+        String relative = bestRelative.toString().replace('\\', '/');
+        int lastSlash = relative.lastIndexOf('/');
+        String packageName = lastSlash > 0 ? relative.substring(0, lastSlash).replace('/', '.') : "";
+        String className = lastSlash > 0 ? relative.substring(lastSlash + 1) : relative;
+        IPackageFragment pkg = bestRoot.getPackageFragment(packageName);
+        if (pkg == null || !pkg.exists()) return null;
+        ICompilationUnit cu = pkg.getCompilationUnit(className);
+        return cu != null && cu.exists() ? cu : null;
     }
 
     @Override

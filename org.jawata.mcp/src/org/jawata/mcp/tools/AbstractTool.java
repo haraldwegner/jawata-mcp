@@ -304,11 +304,32 @@ public abstract class AbstractTool implements Tool {
                 if (location != null) {
                     info.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
                 }
-            } else if (match.getResource() != null) {
-                IPath location = match.getResource().getLocation();
+            } else if (match.getResource() instanceof org.eclipse.core.resources.IFile file) {
+                // The compilation unit did not resolve, but the match still
+                // names a real FILE — report it, knowing there will be no line
+                // (the line/column block below needs the CU).
+                IPath location = file.getLocation();
                 if (location != null) {
                     info.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
                 }
+                info.put("unresolved", true);
+            } else if (match.getResource() != null) {
+                // Sprint 28 (v3.6.1): a match whose resource is a CONTAINER (the
+                // project or a folder) has no location to report. This used to
+                // be written into `filePath` anyway, so the row read as a
+                // result and pointed at a DIRECTORY with no line — the same
+                // shape as mcp#5, which v3.6.0 fixed for find_references only.
+                // Observed live on a PDE project: one row per search carrying
+                // the synthesized-workspace directory.
+                //
+                // Do not drop the row either — a silently discarded match is
+                // this project's recorded deepest bug class. Say what it is:
+                // the match is real, its location is not resolvable.
+                IPath location = match.getResource().getLocation();
+                info.put("unresolved", true);
+                info.put("unresolvedReason",
+                    "the match could not be tied to a source file, so it has no path or line"
+                        + (location == null ? "" : " (container: " + location.toOSString() + ")"));
             }
 
             // Offset and length
