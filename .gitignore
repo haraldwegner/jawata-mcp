@@ -15,6 +15,16 @@
 *.swp
 *~
 
+# ...but a TEST FIXTURE's .project/.classpath are test DATA, not a developer's
+# Eclipse artifacts. Sprint 28 (v3.6.1): the pde-nonstandard-layout fixture
+# exists to reproduce an Eclipse plug-in layout, and its .classpath is what
+# declares `test/` as a source folder. The rules above silently dropped it from
+# the commit, so the fixture built fine locally and arrived in CI without the
+# one file that makes it a PDE project — the two regression tests then failed
+# on the release run for exactly the reason they were written to catch.
+!org.jawata.core.tests/test-resources/sample-projects/**/.classpath
+!org.jawata.core.tests/test-resources/sample-projects/**/.project
+
 # Build outputs
 *.jar
 *.class
