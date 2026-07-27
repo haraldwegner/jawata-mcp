@@ -509,7 +509,19 @@ public class JdtServiceImpl implements IJdtService {
         return null;
     }
 
-    private static ICompilationUnit lookupCompilationUnit(IJavaProject jp, Path filePath) {
+    /**
+     * Resolve a file to its compilation unit within ONE project.
+     *
+     * <p>Package-private on purpose (Sprint 28, v3.6.2): {@link ScopedJdtService}
+     * — the view a tool gets when it passes {@code projectKey} — used to carry
+     * its own COPY of this logic. v3.6.1 fixed the source-folder handling here
+     * and the copy kept the old Maven-prefix guess, so an unscoped call
+     * resolved a plug-in project's {@code test/} folder and a scoped call did
+     * not. Measured on a live 1040-source project: {@code find_tests} answered
+     * 126 unscoped and 1 scoped, seconds apart, same resident. One
+     * implementation now, so the two cannot drift again.</p>
+     */
+    static ICompilationUnit lookupCompilationUnit(IJavaProject jp, Path filePath) {
         if (jp == null) return null;
         try {
             // Sprint 28 (v3.6.1): ASK THE MODEL where the source roots are.

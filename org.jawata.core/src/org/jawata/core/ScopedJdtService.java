@@ -78,45 +78,25 @@ public class ScopedJdtService implements IJdtService {
         return scope.javaProject();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Sprint 28 (v3.6.2): delegates to the ONE implementation in
+     * {@link JdtServiceImpl#lookupCompilationUnit}, restricted to this scope's
+     * project. This method used to hold a second copy of that logic, and when
+     * v3.6.1 taught the original to read a project's DECLARED source folders
+     * instead of guessing Maven layouts, the copy was left behind — so a tool
+     * call carrying {@code projectKey} still could not resolve anything under a
+     * source folder named {@code test/}. On a real 1040-source Eclipse plug-in
+     * that meant {@code find_tests} answered 126 unscoped and 1 scoped, and the
+     * quality scans reported 142 files "unresolvable" — one whole source root,
+     * every time.</p>
+     */
     @Override
     public ICompilationUnit getCompilationUnit(Path filePath) {
         IJavaProject jp = scope.javaProject();
         if (jp == null) return null;
-        try {
-            String pathStr = filePath.toString().replace('\\', '/');
-            String classPath = pathStr;
-            String[] sourcePrefixes = {"src/main/java/", "src/test/java/", "src/main/kotlin/", "src/test/kotlin/", "src/"};
-            for (String prefix : sourcePrefixes) {
-                if (pathStr.contains(prefix)) {
-                    int idx = pathStr.indexOf(prefix);
-                    classPath = pathStr.substring(idx + prefix.length());
-                    break;
-                }
-            }
-            String withoutExt = classPath.replace(".java", "");
-            String qualifiedName = withoutExt.replace('/', '.');
-            IType type = jp.findType(qualifiedName);
-            if (type != null) {
-                return type.getCompilationUnit();
-            }
-            for (IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
-                if (root.getKind() == IPackageFragmentRoot.K_SOURCE) {
-                    int lastSlash = classPath.lastIndexOf('/');
-                    String packageName = lastSlash > 0 ? classPath.substring(0, lastSlash).replace('/', '.') : "";
-                    String className = lastSlash > 0 ? classPath.substring(lastSlash + 1) : classPath;
-                    IPackageFragment pkg = root.getPackageFragment(packageName);
-                    if (pkg != null && pkg.exists()) {
-                        ICompilationUnit cu = pkg.getCompilationUnit(className);
-                        if (cu != null && cu.exists()) {
-                            return cu;
-                        }
-                    }
-                }
-            }
-            return null;
-        } catch (JavaModelException e) {
-            return null;
-        }
+        return JdtServiceImpl.lookupCompilationUnit(jp, filePath);
     }
 
     @Override
@@ -169,6 +149,17 @@ public class ScopedJdtService implements IJdtService {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Sprint 28 (v3.6.2): a listing failure is now LOUD, matching
+     * {@code JdtServiceImpl.collectFilesFrom}. It used to be swallowed as
+     * "best-effort", which returns a PARTIAL list that the caller cannot tell
+     * from a complete one — and every scanning tool turns that into a "0
+     * findings" verdict over files it never enumerated. That is the failure
+     * mode the whole scan-honesty contract exists to prevent, and this scoped
+     * view was quietly exempt from it.</p>
+     */
     @Override
     public List<Path> getAllJavaFiles() {
         List<Path> files = new ArrayList<>();
@@ -180,8 +171,8 @@ public class ScopedJdtService implements IJdtService {
                     collectJavaFilesIn(root, files);
                 }
             }
-        } catch (JavaModelException ignored) {
-            // best-effort
+        } catch (JavaModelException e) {
+            throw new SourceListingException(jp.getElementName(), e);
         }
         return files;
     }

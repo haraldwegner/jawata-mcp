@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Sibling Fixture
+Bundle-SymbolicName: com.example.sibling
+Bundle-Version: 1.0.0
