@@ -93,6 +93,20 @@ public final class SpikeTestMain {
             @Override
             public void executionFinished(TestIdentifier id, TestExecutionResult result) {
                 lastEvent[0] = System.currentTimeMillis();
+                // Sprint 28 (v3.6.3): report an ABORTED TEST WITH ITS REASON.
+                //
+                // An aborted method leaves its class SUCCESSFUL, and the class-level branch
+                // below is the only thing that printed anything — so an abort moved the
+                // summary's `aborted=` count and said nothing about which test or why. The
+                // summary's printFailuresTo covers failures only, so the reason was lost
+                // entirely. A test that stops asserting and reports only a number is the
+                // same shape as a failed lookup returned as an ordinary empty result: the
+                // line reads fine and the claim went unverified.
+                if (!isClass(id) && result.getStatus() == TestExecutionResult.Status.ABORTED) {
+                    System.out.printf("        ~~ ABORTED %s: %s%n", id.getDisplayName(),
+                        result.getThrowable().map(Throwable::getMessage).orElse("(no reason given)"));
+                    System.out.flush();
+                }
                 if (isClass(id)) {
                     done.incrementAndGet();
                     if (result.getStatus() != TestExecutionResult.Status.SUCCESSFUL) {

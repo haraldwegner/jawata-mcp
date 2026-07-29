@@ -9,6 +9,7 @@ import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.DebugTool;
 import org.jawata.mcp.tools.ProfileTool;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -129,12 +130,19 @@ class HotspotTest {
         assertFalse(rows.isEmpty(), "at least one CPU sample must have been captured");
 
         Map<String, Object> top = rows.get(0);
-        assertEquals(1, ((Number) top.get("rank")).intValue());
-        assertEquals("com.example.debug.HotLoopTarget#burnCpu", top.get("symbol"),
-            "the deliberately hot method, AS A SYMBOL, ranked #1: " + rows);
         assertTrue(((Number) top.get("samples")).longValue() > 0,
             "call counts (sample-based) must be present: " + top);
         assertTrue(((Number) d.get("totalSamples")).longValue() > 0);
+
+        // Sprint 28 (v3.6.3): same precondition as the wall test. HotLoopTarget burns CPU
+        // continuously, so it is a far better sampling subject than the ~97%-blocked
+        // WallTimeTarget and this has never been observed to thin out — but the assertion
+        // below is the identical shape (a rank over sample counts), so it gets the identical
+        // guard rather than waiting to be the next release's surprise.
+        assumeRankable(rows, "HotLoopTarget#burnCpu");
+        assertEquals(1, ((Number) top.get("rank")).intValue());
+        assertEquals("com.example.debug.HotLoopTarget#burnCpu", top.get("symbol"),
+            "the deliberately hot method, AS A SYMBOL, ranked #1: " + rows);
     }
 
     @Test
@@ -225,11 +233,24 @@ class HotspotTest {
         assertTrue(((Number) d.get("blockingEvents")).longValue() > 0,
             "the blocking wall time was actually captured, not just CPU samples: " + d);
 
-        // THE PROOF that wall != CPU, made with the tool's OWN two outputs on the SAME
-        // recording. burnCpu is a top CPU hotspot; but the #1 WALL method is where the program
-        // spends its elapsed time BLOCKED — a place a blocked thread's monitor-wait parks,
-        // which CPU sampling never sees (a blocked thread is not on the CPU) and which is NOT
-        // the CPU-bound burnCpu.
+        // THE PROOF that wall != CPU. The DETERMINISTIC half first: the #1 wall method is
+        // where the program spends its elapsed time BLOCKED. This rests on JFR monitor
+        // EVENTS, which fire when the block happens, so it does not depend on the profiled
+        // thread winning any CPU.
+        String topWallSymbol = wallRows.get(0).get("symbol").toString();
+        assertNotEquals("com.example.debug.WallTimeTarget#burnCpu", topWallSymbol,
+            "the #1 WALL method must be where the program BLOCKS, not where it burns CPU — "
+                + "that is the whole difference between wall and cpu: " + wallRows);
+        assertTrue(topWallSymbol.contains("wait") || topWallSymbol.contains("Wait")
+                || topWallSymbol.contains("park") || topWallSymbol.contains("Lock"),
+            "and that #1 wall method is a blocking/waiting one: " + wallRows);
+
+        // The CORROBORATION, and it is sampling-dependent, so it goes LAST and behind a
+        // precondition. WallTimeTarget is ~97% blocked BY DESIGN — that is the whole point of
+        // the fixture — which makes it a deliberately poor subject for a CPU sampler. On a
+        // contended machine the 5 s recording can catch it once, and then every row ties at
+        // one sample and "rank" is arbitrary tie order. Asserting a rank on that reports a
+        // conclusion the data cannot support, in either direction.
         ObjectNode cpu = profileAction("hotspots");
         cpu.put("artifactId", artifactId);
         cpu.put("dimension", "cpu");
@@ -238,17 +259,10 @@ class HotspotTest {
         List<Map<String, Object>> cpuRows =
             (List<Map<String, Object>>) data(profile.execute(cpu)).get("rows");
 
+        assumeRankable(cpuRows, "WallTimeTarget#burnCpu");
         int burnCpuRankInCpu = rankOf(cpuRows, "com.example.debug.WallTimeTarget#burnCpu");
         assertTrue(burnCpuRankInCpu > 0 && burnCpuRankInCpu <= 3,
             "burnCpu is a top CPU hotspot (that is where the CPU goes): " + cpuRows);
-
-        String topWallSymbol = wallRows.get(0).get("symbol").toString();
-        assertNotEquals("com.example.debug.WallTimeTarget#burnCpu", topWallSymbol,
-            "the #1 WALL method must be where the program BLOCKS, not where it burns CPU — "
-                + "that is the whole difference between wall and cpu: " + wallRows);
-        assertTrue(topWallSymbol.contains("wait") || topWallSymbol.contains("Wait")
-                || topWallSymbol.contains("park") || topWallSymbol.contains("Lock"),
-            "and that #1 wall method is a blocking/waiting one: " + wallRows);
     }
 
     @Test
@@ -329,6 +343,43 @@ class HotspotTest {
         Map<String, Object> one = recent.get(0);
         assertTrue(one.containsKey("symbol") && one.containsKey("quantity"),
             "carrying the event's OWN declared fields — the target's domain: " + one);
+    }
+
+    /**
+     * The smallest top-of-ranking sample count for a CPU ranking to carry information.
+     *
+     * <p>Below this every row is in the noise: with all counts tied at one, "rank" is
+     * arbitrary tie order, so an assertion on it can fail on a correct build and pass on a
+     * broken one. Three is the smallest count that shows any separation.</p>
+     */
+    private static final long MIN_SAMPLES_TO_RANK = 3;
+
+    /**
+     * Require a CPU profile thick enough to rank, and ABORT VISIBLY when it is not.
+     *
+     * <p>Sprint 28 (v3.6.3): the CI runner returned a five-row CPU ranking in which every
+     * row had exactly one sample — the profiled thread had been caught once in five seconds
+     * on a contended machine — and the rank assertion failed a correct build.</p>
+     *
+     * <p>This aborts rather than passes, deliberately. A silent pass on a starved profile is
+     * a test that quietly stops testing, which is the same shape as returning a failed
+     * lookup as an ordinary empty result: the summary would read "succeeded" for a claim
+     * nothing verified. An abort shows up in the suite line as its own count, and the
+     * message carries the number that caused it.</p>
+     */
+    private static void assumeRankable(List<Map<String, Object>> rows, String what) {
+        long topSamples = rows.stream()
+            .map(row -> row.get("samples"))
+            .filter(Number.class::isInstance)
+            .mapToLong(value -> ((Number) value).longValue())
+            .max()
+            .orElse(0);
+        Assumptions.assumeTrue(topSamples >= MIN_SAMPLES_TO_RANK,
+            () -> "CPU profile too thin to rank " + what + ": the top row carries "
+                + topSamples + " sample(s), under the " + MIN_SAMPLES_TO_RANK
+                + " needed for the ordering to mean anything. Not a failure of the ranking "
+                + "— the recording never caught the thread often enough to rank. Rows: "
+                + rows);
     }
 
     private static int rankOf(List<Map<String, Object>> rows, String symbol) {
