@@ -510,6 +510,41 @@ public class JdtServiceImpl implements IJdtService {
     }
 
     /**
+     * The part of a PROJECT-RELATIVE path that lies under a source root, or {@code null}
+     * when it does not lie under this one.
+     *
+     * <p>Sprint 28 (v3.6.4): jawata emitted a path it would not accept. Responses format
+     * paths through {@code PathUtils.formatPath}, which returns them RELATIVE to the
+     * project root — {@code test/com/example/FooTest.java}. Handing that exact string back
+     * to any tool that resolves a file returned {@code FILE_NOT_FOUND}, because the lookup
+     * only ever matched ABSOLUTE paths against the source roots and gave up on anything
+     * else. Measured on a live project: the absolute form resolved and reported its own
+     * path back in the relative form, which then did not resolve — with or without
+     * {@code projectKey}. An agent that passes a path jawata just gave it was told the file
+     * does not exist, which is the same lie as an empty result on a failed lookup.</p>
+     *
+     * <p>Matching is by root TAIL: a source root {@code …/com.example/test} ends with the
+     * relative path's first segment {@code test}, and {@code …/proj/src/main/java} ends
+     * with its first three. The longest match wins, so a root nested inside another is
+     * preferred, and the caller still verifies the compilation unit exists — a coincidental
+     * tail match resolves to nothing and is discarded rather than returned.</p>
+     *
+     * <p>Output is unchanged. This only widens what the lookup ACCEPTS, so no response
+     * shape, path form or existing caller moves.</p>
+     */
+    private static Path underRoot(Path rootPath, Path projectRelative) {
+        int segments = projectRelative.getNameCount();
+        if (segments < 2) return null; // needs at least one root segment plus a file name
+        int max = Math.min(rootPath.getNameCount(), segments - 1);
+        for (int k = max; k >= 1; k--) {
+            if (rootPath.endsWith(projectRelative.subpath(0, k))) {
+                return projectRelative.subpath(k, segments);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Resolve a file to its compilation unit within ONE project.
      *
      * <p>Package-private on purpose (Sprint 28, v3.6.2): {@link ScopedJdtService}
@@ -597,7 +632,7 @@ public class JdtServiceImpl implements IJdtService {
      */
     private static ICompilationUnit lookupViaSourceRoots(IJavaProject jp, Path filePath) throws JavaModelException {
         Path absolute = filePath.isAbsolute() ? filePath.normalize() : null;
-        if (absolute == null) return null;
+        Path projectRelative = absolute == null ? filePath.normalize() : null;
 
         IPackageFragmentRoot bestRoot = null;
         Path bestRelative = null;
@@ -608,8 +643,14 @@ public class JdtServiceImpl implements IJdtService {
             IPath location = resource.getLocation();
             if (location == null) continue;
             Path rootPath = Path.of(location.toOSString()).normalize();
-            if (!absolute.startsWith(rootPath)) continue;
-            Path relative = rootPath.relativize(absolute);
+            Path relative;
+            if (absolute != null) {
+                if (!absolute.startsWith(rootPath)) continue;
+                relative = rootPath.relativize(absolute);
+            } else {
+                relative = underRoot(rootPath, projectRelative);
+                if (relative == null) continue;
+            }
             // Longest root wins: prefer the most specific source folder.
             if (bestRelative == null || relative.getNameCount() < bestRelative.getNameCount()) {
                 bestRoot = root;

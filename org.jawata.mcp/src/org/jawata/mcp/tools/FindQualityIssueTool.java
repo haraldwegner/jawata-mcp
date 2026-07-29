@@ -194,18 +194,23 @@ public class FindQualityIssueTool extends AbstractTool {
             "description", "family sweeps only: 'save' snapshots the current findings; 'diff' "
                 + "returns {new, fixed, unchanged} vs the saved snapshot (trend over time)."));
         properties.put("summary", Map.of("type", "boolean",
-            "description", "family sweeps only: return counts-by-kind + the conflicts list only "
-                + "(NO full findings array) — the consumable shape for a broad sweep on a large project."));
+            "description", "Return counts-by-kind + conflicts only (NO findings array) — the "
+                + "consumable shape for a broad sweep. Works for a family sweep AND for a single "
+                + "`kind`. `count` carries the true finding total and `conflictCount` the true "
+                + "conflict total; the conflicts list itself is capped by `limit` and sets "
+                + "`conflictsTruncated` when it is."));
         properties.put("excludePaths", Map.of("type", "array",
             "items", Map.of("type", "string"),
             "description", "Optional path substrings; findings (and conflicts) whose filePath contains "
                 + "any entry are dropped BEFORE counts/summary/baseline/pagination — e.g. a vendored "
                 + "module like a copied upstream source file (v2.8.1)."));
         properties.put("offset", Map.of("type", "integer",
-            "description", "family sweeps only: skip the first N findings (pagination; default 0)."));
+            "description", "Skip the first N findings (pagination; default 0)."));
         properties.put("limit", Map.of("type", "integer",
-            "description", "family sweeps only: cap the findings returned (default " + DEFAULT_FINDINGS_LIMIT
-                + "); the full total is always in `count`. Prefer `summary` for a broad sweep."));
+            "description", "Cap the findings returned, and the conflicts returned under `summary` "
+                + "(default " + DEFAULT_FINDINGS_LIMIT + "); the full totals are always in `count` "
+                + "and `conflictCount`. A family sweep caps by default; a single `kind` returns "
+                + "everything unless you pass this. Prefer `summary` for a broad sweep."));
 
         schema.put("properties", properties);
         // kind OR family — validated in executeWithService (a static `required` can't express "one of").
@@ -253,7 +258,7 @@ public class FindQualityIssueTool extends AbstractTool {
                 return applyBaseline(service, family, baseline, r);
             }
             // Sprint 22a 2.6.1 (#1): bound the sweep for MCP consumers (summary / cap / page).
-            return r.isSuccess() ? paginateFamily(r, arguments) : r;
+            return r.isSuccess() ? boundResponse(r, arguments, true) : r;
         }
         if (!hasKind) {
             return ToolResponse.invalidParameter("kind",
@@ -265,6 +270,11 @@ public class FindQualityIssueTool extends AbstractTool {
         }
         return catalog.get(kind)
             .map(detector -> filterExcludedPaths(detector.detect(service, arguments), arguments))
+            // Sprint 28 (v3.6.4): a single kind honours summary/limit/offset too. It used to
+            // return the detector's response untouched, so `summary:true` here was accepted
+            // and dropped without a word. capByDefault=false keeps the default shape: paging
+            // only happens when the caller asks for it.
+            .map(r -> r.isSuccess() ? boundResponse(r, arguments, false) : r)
             .orElseGet(() -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + catalog.kinds()));
     }
@@ -381,7 +391,7 @@ public class FindQualityIssueTool extends AbstractTool {
                 // repeatable retrieval is the point of the feature.
                 ToolResponse r = session.result;
                 if (r != null && r.isSuccess()) {
-                    r = paginateFamily(r, arguments);
+                    r = boundResponse(r, arguments, true);
                 }
                 if (r != null && r.isSuccess() && r.getData() instanceof Map<?, ?> raw) {
                     Map<String, Object> data = new LinkedHashMap<>();
@@ -612,14 +622,32 @@ public class FindQualityIssueTool extends AbstractTool {
     }
 
     /**
-     * Sprint 22a 2.6.1 (#1) — bound a whole-family sweep for MCP consumers. A sweep on a
-     * large repo produces thousands of findings (222k+ chars) — unconsumable inline.
+     * Sprint 22a 2.6.1 (#1) — bound a response for MCP consumers. A sweep on a large repo
+     * produces thousands of findings (222k+ chars) — unconsumable inline.
      * {@code summary=true} returns counts-by-kind + the conflicts (what a broad sweep wants);
-     * otherwise the findings are paged (default cap {@link #DEFAULT_FINDINGS_LIMIT}). Applied
-     * AFTER the baseline branch, so trend diffing still sees the full finding set.
+     * otherwise the findings are paged. Applied AFTER the baseline branch, so trend diffing
+     * still sees the full finding set.
+     *
+     * <p>Sprint 28 (v3.6.4), from the Cursor dogfood of v3.6.3. Two defects, both of them a
+     * response that does not do what the caller asked:</p>
+     * <ul>
+     *   <li>This ran for FAMILY sweeps only, so {@code summary=true} on a single {@code kind}
+     *       was accepted and then silently dropped — the caller asked for counts and got the
+     *       full findings array with nothing saying the flag had been ignored. The parameter
+     *       is documented as family-only, which makes the call out of contract; a silently
+     *       discarded parameter is still the wrong answer to it. It is honoured now, for any
+     *       shape. {@code capByDefault} keeps the DEFAULT unchanged for a single kind: it
+     *       pages only when the caller passes {@code limit}/{@code offset}, so no existing
+     *       caller silently starts losing findings.</li>
+     *   <li>The summary itself was not consumable. It correctly dropped {@code findings} and
+     *       then returned the {@code conflicts} list in full — 295 entries, ~111k chars,
+     *       over an MCP client's result limit. The one shape built to make a broad sweep
+     *       readable was the shape that could not be read. Conflicts are now paged by the
+     *       same {@code limit}, with {@code conflictCount} carrying the true total.</li>
+     * </ul>
      */
     @SuppressWarnings("unchecked")
-    private ToolResponse paginateFamily(ToolResponse full, JsonNode args) {
+    private ToolResponse boundResponse(ToolResponse full, JsonNode args, boolean capByDefault) {
         if (!(full.getData() instanceof Map<?, ?> raw)) {
             return full;
         }
@@ -628,6 +656,11 @@ public class FindQualityIssueTool extends AbstractTool {
             ? new ArrayList<>((List<Object>) l) : new ArrayList<>();
         int total = findings.size();
 
+        int offset = Math.max(0, args.path("offset").asInt(0));
+        boolean callerGaveLimit = args.hasNonNull("limit") && args.path("limit").asInt(0) > 0;
+        int limit = callerGaveLimit ? args.path("limit").asInt(DEFAULT_FINDINGS_LIMIT)
+            : DEFAULT_FINDINGS_LIMIT;
+
         if (args.path("summary").asBoolean(false)) {
             Map<String, Integer> byKind = new LinkedHashMap<>();
             for (Object o : findings) {
@@ -635,17 +668,29 @@ public class FindQualityIssueTool extends AbstractTool {
                     byKind.merge(String.valueOf(f.get("kind")), 1, Integer::sum);
                 }
             }
-            Object conflicts = data.getOrDefault("conflicts", List.of());
+            List<Object> conflicts = data.get("conflicts") instanceof List<?> c
+                ? new ArrayList<>((List<Object>) c) : new ArrayList<>();
+            int conflictTotal = conflicts.size();
+            List<Object> conflictPage = conflicts.subList(0, Math.min(limit, conflictTotal));
             data.remove("findings");
             data.put("summary", true);
             data.put("byKind", byKind);
-            data.put("conflictCount", conflicts instanceof List<?> c ? c.size() : 0);
+            data.put("conflictCount", conflictTotal);
+            data.put("conflicts", new ArrayList<>(conflictPage));
+            if (conflictTotal > conflictPage.size()) {
+                data.put("conflictsTruncated", true);
+                data.put("hint", "showing " + conflictPage.size() + " of " + conflictTotal
+                    + " conflicts — conflictCount is the true total; raise `limit` for more");
+            }
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(total).returnedCount(0).build());
         }
 
-        int offset = Math.max(0, args.path("offset").asInt(0));
-        int limit = args.path("limit").asInt(DEFAULT_FINDINGS_LIMIT);
+        // A single kind returned every finding before this existed; keep that unless the
+        // caller opted into paging. Only a family sweep caps by default.
+        if (!capByDefault && !callerGaveLimit && offset == 0) {
+            return full;
+        }
         if (limit <= 0) {
             limit = DEFAULT_FINDINGS_LIMIT;
         }
