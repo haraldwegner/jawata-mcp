@@ -160,8 +160,52 @@ public class ProjectImporter {
 
     /** The stable id under which we register the running JVM (jawata-mcp#3). */
     private static final String RUNNING_JVM_ID = "jawata-running-jvm";
-    private static final String STANDARD_VM_TYPE =
+
+    /**
+     * The EXTENSION id of JDT's standard VM install type — not its class name.
+     *
+     * <p>Sprint 28 (v3.6.3): these two differ, and the difference is the whole
+     * macOS defect. {@code org.eclipse.jdt.launching}'s {@code plugin.xml}
+     * contributes the type as
+     * {@code class="org.eclipse.jdt.internal.launching.StandardVMType"} under
+     * {@code id="org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType"},
+     * and {@link JavaRuntime#getVMInstallType(String)} matches on
+     * {@link IVMInstallType#getId()}, which {@code AbstractVMInstallType} fills
+     * from the {@code id} attribute. Looking the type up by its class name
+     * therefore returned {@code null} on EVERY platform — invisibly, because
+     * only macOS ever reaches this code (see {@link #ensureDefaultVm()}).
+     */
+    private static final String STANDARD_VM_TYPE_ID =
+        "org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType";
+
+    /**
+     * The implementing class, used as a fallback when the extension id changes
+     * upstream. The id above is not API and JDT is free to rename it; the class
+     * is what we actually need, so match on either.
+     */
+    private static final String STANDARD_VM_TYPE_CLASS =
         "org.eclipse.jdt.internal.launching.StandardVMType";
+
+    /**
+     * JDT's standard VM install type, or {@code null} when the launching
+     * bundle contributes none.
+     *
+     * <p>Tries the declared extension id first, then falls back to scanning the
+     * registered types for the implementing class, so an upstream id rename
+     * degrades to a slower lookup rather than to a silently unbound JRE.
+     */
+    static IVMInstallType standardVmType() {
+        IVMInstallType byId = JavaRuntime.getVMInstallType(STANDARD_VM_TYPE_ID);
+        if (byId != null) {
+            return byId;
+        }
+        for (IVMInstallType candidate : JavaRuntime.getVMInstallTypes()) {
+            if (STANDARD_VM_TYPE_CLASS.equals(candidate.getClass().getName())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
 
     /**
      * Ensure the workspace has a default VM so {@code JRE_CONTAINER} binds
@@ -169,6 +213,14 @@ public class ProjectImporter {
      * otherwise register the JVM this process runs on ({@code java.home}) and
      * make it the default. Best-effort — a failure is logged, never fatal, so a
      * project still loads (degraded) rather than not at all.
+     *
+     * <p><b>Only macOS reaches the registration.</b> JDT's
+     * {@code StandardVMType.detectInstallLocation()} opens with
+     * {@code if (Platform.OS.isMac()) return null;}, so Linux and Windows
+     * auto-detect the running JVM and return at the first line here. macOS
+     * detects nothing, falls through, and depends entirely on the code below —
+     * which is why a defect in it (Sprint 28: the wrong type id) presented as a
+     * macOS-only failure while being platform-independent.
      */
     private static void ensureDefaultVm() {
         try {
@@ -176,7 +228,7 @@ public class ProjectImporter {
                 return; // a default VM is already present — nothing to bind
             }
             java.io.File javaHome = new java.io.File(System.getProperty("java.home", ""));
-            IVMInstallType stdType = JavaRuntime.getVMInstallType(STANDARD_VM_TYPE);
+            IVMInstallType stdType = standardVmType();
             if (stdType == null || !javaHome.isDirectory()) {
                 log.warn("jawata-mcp#3: no default VM and cannot register one "
                     + "(type={}, java.home={}); JRE_CONTAINER may stay unbound", stdType, javaHome);

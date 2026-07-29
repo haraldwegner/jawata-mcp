@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: JAWATA MCP
 Bundle-SymbolicName: org.jawata.mcp;singleton:=true
-Bundle-Version: 3.6.2
+Bundle-Version: 3.6.3
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
@@ -37,6 +37,7 @@ Import-Package: com.fasterxml.jackson.annotation,
  org.eclipse.jdt.core.dom.rewrite,
  org.eclipse.jdt.core.formatter,
  org.eclipse.jdt.core.search,
+ org.eclipse.jdt.core.util,
  org.eclipse.ltk.core.refactoring,
  org.eclipse.ltk.core.refactoring.participants,
  org.eclipse.ltk.core.refactoring.resource,
