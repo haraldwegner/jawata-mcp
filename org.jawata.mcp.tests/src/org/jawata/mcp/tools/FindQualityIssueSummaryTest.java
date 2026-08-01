@@ -169,7 +169,7 @@ class FindQualityIssueSummaryTest {
     }
 
     /**
-     * Sprint 28 — the v3.6.4 fix covered ONE of FIVE result shapes.
+     * Sprint 28 — the v3.6.4 fix covered ONE of SIX result shapes.
      *
      * <p>{@code boundResponse} read {@code findings} and nothing else, so every detector that
      * names its list differently was still handed the full array with the flag silently

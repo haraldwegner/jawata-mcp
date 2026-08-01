@@ -655,7 +655,7 @@ public class FindQualityIssueTool extends AbstractTool {
      * {@code violations} ({@code naming}, {@code large_classes}, nullness),
      * {@code issues} ({@code bugs}) and {@code cycles} ({@code circular_deps}). The caller
      * asked for counts and received the full array with nothing saying the flag was ignored.
-     * The v3.6.4 fix covered ONE of the five shapes, which is the same defect a size smaller.</p>
+     * The v3.6.4 fix covered ONE of the six shapes, which is the same defect a size smaller.</p>
      *
      * <p>Order matters only for a response carrying two lists at once, which no detector does
      * today; {@code findings} stays first because it is the common shape.</p>
