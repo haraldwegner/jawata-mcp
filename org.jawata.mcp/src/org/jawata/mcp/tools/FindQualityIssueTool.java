@@ -646,13 +646,54 @@ public class FindQualityIssueTool extends AbstractTool {
      *       same {@code limit}, with {@code conflictCount} carrying the true total.</li>
      * </ul>
      */
+    /**
+     * The result-list keys a quality detector may return, in probe order.
+     *
+     * <p>Sprint 28, from the v3.6.4 dogfood: {@link #boundResponse} read {@code findings} and
+     * nothing else, so {@code summary=true} and paging were silently inert for every detector
+     * that names its list differently — {@code unusedItems} ({@code unused}),
+     * {@code violations} ({@code naming}, {@code large_classes}, nullness),
+     * {@code issues} ({@code bugs}) and {@code cycles} ({@code circular_deps}). The caller
+     * asked for counts and received the full array with nothing saying the flag was ignored.
+     * The v3.6.4 fix covered ONE of the five shapes, which is the same defect a size smaller.</p>
+     *
+     * <p>Order matters only for a response carrying two lists at once, which no detector does
+     * today; {@code findings} stays first because it is the common shape.</p>
+     *
+     * <p>These are read from each tool's own {@code data.put} call, NOT from a text search:
+     * the first attempt at this list was assembled by searching for the literal
+     * {@code "violations"} and wrongly mapped {@code large_classes} to it — that hit is a
+     * NESTED field inside a {@code largeClasses} entry, and the top-level key is
+     * {@code largeClasses}. The test that guards this derives the key from the response
+     * instead of trusting the list, which is what caught the mistake.</p>
+     */
+    private static final List<String> RESULT_LIST_KEYS =
+        List.of("findings", "unusedItems", "violations", "issues", "cycles", "largeClasses");
+
+    /**
+     * Names the result list this response actually carries.
+     *
+     * @param data the response payload
+     * @return the first key from {@link #RESULT_LIST_KEYS} bound to a list, else
+     *         {@code "findings"} so a payload with no recognised list behaves as before
+     */
+    private static String resultListKey(Map<String, Object> data) {
+        for (String key : RESULT_LIST_KEYS) {
+            if (data.get(key) instanceof List<?>) {
+                return key;
+            }
+        }
+        return "findings";
+    }
+
     @SuppressWarnings("unchecked")
     private ToolResponse boundResponse(ToolResponse full, JsonNode args, boolean capByDefault) {
         if (!(full.getData() instanceof Map<?, ?> raw)) {
             return full;
         }
         Map<String, Object> data = new LinkedHashMap<>((Map<String, Object>) raw);
-        List<Object> findings = data.get("findings") instanceof List<?> l
+        String listKey = resultListKey(data);
+        List<Object> findings = data.get(listKey) instanceof List<?> l
             ? new ArrayList<>((List<Object>) l) : new ArrayList<>();
         int total = findings.size();
 
@@ -672,8 +713,13 @@ public class FindQualityIssueTool extends AbstractTool {
                 ? new ArrayList<>((List<Object>) c) : new ArrayList<>();
             int conflictTotal = conflicts.size();
             List<Object> conflictPage = conflicts.subList(0, Math.min(limit, conflictTotal));
-            data.remove("findings");
+            data.remove(listKey);
             data.put("summary", true);
+            data.put("resultKey", listKey);
+            // Sprint 28: always carry the total. byKind is empty when the entries have no
+            // `kind` field — true of several non-findings shapes — and a summary whose only
+            // number is an empty map answers nothing at all.
+            data.put("count", total);
             data.put("byKind", byKind);
             data.put("conflictCount", conflictTotal);
             data.put("conflicts", new ArrayList<>(conflictPage));
@@ -703,9 +749,9 @@ public class FindQualityIssueTool extends AbstractTool {
         data.put("limit", limit);
         data.put("returnedCount", page.size());
         data.put("truncated", truncated);
-        data.put("findings", page);
+        data.put(listKey, page);
         if (truncated) {
-            data.put("hint", "showing findings " + from + "–" + to + " of " + total
+            data.put("hint", "showing " + listKey + " " + from + "–" + to + " of " + total
                 + " — use summary:true for counts+conflicts only, or offset/limit to page");
         }
         return ToolResponse.success(data, ResponseMeta.builder()

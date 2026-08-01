@@ -231,4 +231,59 @@ class FindReferencesToolTest {
         assertEquals("HelloWorld", data.get("symbol"));
         assertNotNull(getReferences(data));
     }
+
+    /**
+     * jawata-mcp#5 — a reference row must be usable or say why it is not.
+     *
+     * <p>The reported defect: querying a TYPE returned, for every non-declaration match, the
+     * JDT project CONTAINER directory as {@code filePath} with {@code line}, {@code column}
+     * and {@code context} simply absent. The row looked like an ordinary reference and was
+     * not one — a directory is not somewhere a reader can go, and nothing in the response
+     * said the resolution had failed. As the issue put it: <em>a reference you cannot click
+     * is a count, not a reference.</em></p>
+     *
+     * <p>This asserts the INVARIANT rather than reproducing the exotic environment (the
+     * original needed a synthesized workspace). The invariant holds everywhere and is
+     * exactly what was violated, so it guards the whole class of failure rather than one
+     * instance of it: <strong>every row either carries a usable source location, or declares
+     * itself unresolved with a reason.</strong> Silence about a failure is the one option
+     * removed.</p>
+     */
+    @Test
+    @DisplayName("jawata-mcp#5: every reference row is usable or declares itself unresolved")
+    void everyReferenceRowIsUsableOrDeclaresItselfUnresolved() throws Exception {
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "references");
+        args.put("symbol", "com.example.Calculator");
+
+        ToolResponse response = tool.execute(args);
+        assertTrue(response.isSuccess(), () -> "got: " + response.getError());
+        List<Map<String, Object>> refs = getReferences(getData(response));
+        assertFalse(refs.isEmpty(), "the fixture type must have references for this to assert anything");
+
+        for (Map<String, Object> ref : refs) {
+            boolean usable = ref.get("filePath") != null && ref.get("line") != null;
+            boolean declaredUnresolved = Boolean.FALSE.equals(ref.get("resolved"));
+
+            assertTrue(usable || declaredUnresolved,
+                "a row with no line must say so — this row claims to be a reference and cannot "
+                    + "be navigated to, which is a failed lookup returned as an ordinary "
+                    + "result: " + ref);
+
+            if (declaredUnresolved) {
+                assertNotNull(ref.get("unresolvedReason"),
+                    "an unresolved row states WHY, so the caller can tell a binary match from a "
+                        + "broken workspace: " + ref);
+                assertNull(ref.get("line"),
+                    "a row cannot be both unresolved and carry a line: " + ref);
+            }
+
+            Object path = ref.get("filePath");
+            if (path != null) {
+                assertFalse(java.nio.file.Files.isDirectory(java.nio.file.Path.of(String.valueOf(path))),
+                    "filePath must never name a DIRECTORY — that was the reported defect, the "
+                        + "JDT project container standing in for the .java file: " + ref);
+            }
+        }
+    }
 }

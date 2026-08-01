@@ -214,12 +214,20 @@ public class FindReferencesTool extends AbstractTool {
             // yielding a "reference" with a cache-dir path and no line. Prefer the
             // compilation unit's own file; fall back to the match resource only
             // when there is no source CU.
+            //
+            // Sprint 28, second half of the same defect: the fallback ITSELF could hand
+            // back that container directory, and the row then carried a path, no line, no
+            // column, no context — and nothing saying the resolution had failed. A caller
+            // (human or agent) reads a filePath and believes it. A failed lookup returned
+            // as an ordinary result is this project's recorded deepest bug class, so the
+            // fallback now accepts a FILE only, and a row that could not be resolved to
+            // source says so in the response.
             IPath location = null;
             if (cu != null && cu.getResource() != null) {
                 location = cu.getResource().getLocation();
             }
-            if (location == null && match.getResource() != null) {
-                location = match.getResource().getLocation();
+            if (location == null && match.getResource() instanceof org.eclipse.core.resources.IFile file) {
+                location = file.getLocation();
             }
             if (location != null) {
                 info.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
@@ -236,6 +244,19 @@ public class FindReferencesTool extends AbstractTool {
                 if (!context.isEmpty()) {
                     info.put("context", context);
                 }
+            } else {
+                // Sprint 28 (jawata-mcp#5): no compilation unit means no line, column or
+                // context can exist for this match — so the row SAYS that instead of simply
+                // omitting them. Silence about a failure reads as "this reference has no
+                // line", which is a different and false claim. The match is still reported:
+                // it is a real reference and dropping it would understate the count.
+                info.put("resolved", false);
+                info.put("unresolvedReason", location == null
+                    ? "no source file for this match — the search hit a resource that is not a "
+                        + "Java file (typically a binary or a synthesized project container); "
+                        + "line, column and context do not exist for it"
+                    : "no source compilation unit for this match — the path names the enclosing "
+                        + "file but line, column and context could not be resolved");
             }
 
             // Reference kind based on match accuracy

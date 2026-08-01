@@ -145,9 +145,53 @@ public class WatchEngine {
                         "unused " + item.get("kind") + " " + name);
                 }
             }
+            // Sprint 28: THREE more shapes ride the quality door, and this engine saw none of
+            // them — `violations` (naming, large_classes, nullness), `issues` (bugs) and
+            // `cycles` (circular_deps). A watch on any of those kinds recorded silently
+            // nothing, which reads exactly like "no findings". Same defect the v3.6.4
+            // summary=true fix had, in a second consumer: the comment above said "two response
+            // shapes ride the quality door" and there were five.
+            for (String key : new String[] {"violations", "issues", "cycles"}) {
+                if (!(map.get(key) instanceof List<?> rows)) {
+                    continue;
+                }
+                for (Object f : rows) {
+                    if (!(f instanceof Map<?, ?> row)) {
+                        continue;
+                    }
+                    Object line = row.get("line");
+                    // Identity, best-first: these shapes disagree on their name field, and an
+                    // identity that falls back to the line still keys a stable watch entry.
+                    Object identity = firstNonNull(row.get("symbol"), row.get("name"),
+                        row.get("type"), row.get("packageName"), line);
+                    Object message = firstNonNull(row.get("message"), row.get("description"),
+                        row.get("reason"), identity);
+                    add(keys, details, kind, path, line, String.valueOf(identity),
+                        String.valueOf(message));
+                }
+            }
         } catch (Exception e) {
             log.warn("watch detector {} failed on {} — skipped", kind, path, e);
         }
+    }
+
+    /**
+     * Returns the first non-null candidate.
+     *
+     * <p>Sprint 28: the quality shapes disagree on which field names a finding
+     * ({@code symbol} / {@code name} / {@code type} / {@code packageName}), so the watch
+     * identity is picked best-first rather than assumed.</p>
+     *
+     * @param candidates the values to probe, in preference order
+     * @return the first non-null value, or {@code null} when every candidate is null
+     */
+    private static Object firstNonNull(Object... candidates) {
+        for (Object candidate : candidates) {
+            if (candidate != null) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static void add(Set<String> keys, List<String[]> details, String kind,

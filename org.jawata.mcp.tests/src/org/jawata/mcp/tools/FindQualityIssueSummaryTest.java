@@ -9,6 +9,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -164,5 +166,110 @@ class FindQualityIssueSummaryTest {
 
         assertNotNull(data.get("filesListed"), "coverage must survive: " + data.keySet());
         assertNotNull(data.get("filesExamined"), "coverage must survive: " + data.keySet());
+    }
+
+    /**
+     * Sprint 28 — the v3.6.4 fix covered ONE of FIVE result shapes.
+     *
+     * <p>{@code boundResponse} read {@code findings} and nothing else, so every detector that
+     * names its list differently was still handed the full array with the flag silently
+     * dropped: {@code unusedItems} ({@code unused}), {@code violations} ({@code naming},
+     * {@code large_classes}), {@code issues} ({@code bugs}) and {@code cycles}
+     * ({@code circular_deps}). Fixing one shape and declaring the defect closed is the same
+     * error a size smaller — which is why this is parameterised over every kind rather than
+     * written once for the one that was reported.</p>
+     *
+     * <p>Each of these fails on the unfixed build: the response still carries its result
+     * list.</p>
+     */
+    /**
+     * Metadata lists that ride alongside a result list and are NOT the detector's answer:
+     * {@code conflicts} is retained by the summary on purpose, {@code affectedPackages} is a
+     * companion of {@code cycles}.
+     */
+    private static final java.util.Set<String> NON_RESULT_LISTS =
+        java.util.Set.of("conflicts", "affectedPackages", "candidates");
+
+    /**
+     * Derives the detector's result-list key FROM ITS OWN RESPONSE.
+     *
+     * <p>Deliberately independent of the production list. The first version of this test
+     * hard-coded the mapping from a text search and asserted {@code large_classes} returns
+     * {@code violations} — that literal is a nested field, and the real key is
+     * {@code largeClasses}. A test that repeats the production list's assumption cannot
+     * catch the production list being wrong.</p>
+     */
+    private String resultKeyOf(Map<String, Object> data) {
+        return data.entrySet().stream()
+            .filter(e -> e.getValue() instanceof List<?>)
+            .map(Map.Entry::getKey)
+            .filter(k -> !NON_RESULT_LISTS.contains(k))
+            .findFirst()
+            .orElse(null);
+    }
+
+    @ParameterizedTest(name = "summary=true is honoured for kind={0}")
+    @ValueSource(strings = {"long_method", "unused", "naming", "large_classes", "bugs", "circular_deps"})
+    @DisplayName("summary=true drops the result list for EVERY detector shape, not just findings")
+    void summaryIsHonouredForEveryResultShape(String kind) {
+        ObjectNode plain = mapper.createObjectNode();
+        plain.put("kind", kind);
+        Map<String, Object> unbounded = run(plain);
+
+        String listKey = resultKeyOf(unbounded);
+        // Guard the guard: a kind that returns no list at all would make every assertion
+        // below pass vacuously, and a vacuous green is what let the original defect survive.
+        assertNotNull(listKey,
+            kind + " returned no result list, so this test would assert nothing: "
+                + unbounded.keySet());
+
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", kind);
+        args.put("summary", true);
+        Map<String, Object> data = run(args);
+
+        assertFalse(data.containsKey(listKey),
+            "summary=true asked for counts; `" + listKey + "` was returned anyway — a silently "
+                + "ignored parameter is still a wrong answer: " + data.keySet());
+        assertEquals(Boolean.TRUE, data.get("summary"), "the response declares it is a summary");
+        assertEquals(listKey, data.get("resultKey"),
+            "the summary names WHICH list it summarised, so the caller need not guess");
+        assertNotNull(data.get("count"),
+            "a summary always carries the total — byKind is empty for shapes whose entries have "
+                + "no `kind` field, and a summary whose only number is an empty map answers "
+                + "nothing: " + data.keySet());
+    }
+
+    /**
+     * Paging must follow the same key. Bounding that only ever pages {@code findings} would
+     * hand back an unpaged list while reporting {@code truncated}/{@code returnedCount} for a
+     * list it never touched — a response actively describing itself wrongly.
+     */
+    @ParameterizedTest(name = "limit pages kind={0} through its own result list")
+    @ValueSource(strings = {"unused", "naming", "bugs", "large_classes"})
+    @DisplayName("limit pages the detector's OWN result list")
+    void pagingFollowsTheDetectorsResultKey(String kind) {
+        ObjectNode plain = mapper.createObjectNode();
+        plain.put("kind", kind);
+        Map<String, Object> unbounded = run(plain);
+        String listKey = resultKeyOf(unbounded);
+        assertNotNull(listKey, kind + " returned no result list: " + unbounded.keySet());
+        Object all = unbounded.get(listKey);
+        int trueTotal = all instanceof List<?> l ? l.size() : 0;
+        if (trueTotal < 2) {
+            return; // nothing to page on this fixture; the summary test above still covers it
+        }
+
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", kind);
+        args.put("limit", 1);
+        Map<String, Object> data = run(args);
+
+        Object page = data.get(listKey);
+        assertTrue(page instanceof List<?>, "the paged list keeps its own key: " + data.keySet());
+        assertEquals(1, ((List<?>) page).size(), "`limit` bounds the detector's own list");
+        assertEquals(trueTotal, ((Number) data.get("count")).intValue(),
+            "count is the TRUE total, never the page size");
+        assertEquals(Boolean.TRUE, data.get("truncated"), "a capped list declares itself capped");
     }
 }
