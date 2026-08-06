@@ -154,8 +154,170 @@ public class ProjectImporter {
             new NullProgressMonitor()
         );
 
+        // 5. Apply the project's OWN declared Java language level.
+        applyComplianceLevel(javaProject, projectPath);
+
         log.info("Configured Java project with {} classpath entries", entries.size());
         return javaProject;
+    }
+
+    /**
+     * Set the compiler compliance from the level the project itself DECLARES.
+     *
+     * <p>Sprint 28 (D-IMPORTER). Nothing in the product set compliance at all —
+     * every loaded project silently took the JDT default, whatever its build
+     * file said. The v3.6.x macOS round recorded the symptom without the cause:
+     * a project "compiles at the wrong language level … 77 errors requiring
+     * Java 10+ ({@code var}) and Java 14+ (switch arrows) while the pom declares
+     * source/target 15". That was never specific to one project — no project
+     * ever received its declared level.</p>
+     *
+     * <p>Silently keeping the default is the worst outcome: the user's code is
+     * legal and the errors look real, so the search goes to their source instead
+     * of our classpath. When nothing is declared we keep JDT's default and say
+     * so at debug level, rather than guessing a level.</p>
+     */
+    private void applyComplianceLevel(IJavaProject javaProject, java.nio.file.Path projectPath) {
+        Optional<String> declared = readComplianceLevel(projectPath);
+        if (declared.isEmpty()) {
+            log.debug("No Java language level declared by {} — keeping the workspace default",
+                projectPath);
+            return;
+        }
+        String level = declared.get();
+        javaProject.setOption(JavaCore.COMPILER_COMPLIANCE, level);
+        javaProject.setOption(JavaCore.COMPILER_SOURCE, level);
+        javaProject.setOption(JavaCore.COMPILER_CODEGEN_TARGET_PLATFORM, level);
+        log.info("Java language level {} (declared by the project) applied to {}", level, projectPath);
+    }
+
+    /**
+     * The Java language level a project declares, per build system.
+     *
+     * <p>Each build system states it in its own vocabulary: Eclipse in
+     * {@code .settings/org.eclipse.jdt.core.prefs}, Maven in
+     * {@code maven.compiler.release/source}, Gradle in
+     * {@code sourceCompatibility}, Bazel in a {@code javacopts} entry. Read
+     * textually — this runs while the project is being configured, before any
+     * model exists to ask.</p>
+     */
+    static Optional<String> readComplianceLevel(java.nio.file.Path projectPath) {
+        Optional<String> fromEclipse = readEclipseCompliance(projectPath);
+        if (fromEclipse.isPresent()) {
+            return fromEclipse;
+        }
+        Optional<String> fromMaven = readMavenCompliance(projectPath.resolve("pom.xml"));
+        if (fromMaven.isPresent()) {
+            return fromMaven;
+        }
+        Optional<String> fromGradle = readGradleCompliance(projectPath);
+        if (fromGradle.isPresent()) {
+            return fromGradle;
+        }
+        return readBazelCompliance(projectPath);
+    }
+
+    /** {@code org.eclipse.jdt.core.compiler.compliance=21} in the project's own settings. */
+    private static Optional<String> readEclipseCompliance(java.nio.file.Path projectPath) {
+        java.nio.file.Path prefs = projectPath.resolve(".settings/org.eclipse.jdt.core.prefs");
+        if (!Files.isRegularFile(prefs)) {
+            return Optional.empty();
+        }
+        try (Stream<String> lines = Files.lines(prefs)) {
+            return lines.map(String::trim)
+                        .filter(l -> l.startsWith("org.eclipse.jdt.core.compiler.compliance="))
+                        .findFirst()
+                        .map(l -> l.substring(l.indexOf('=') + 1).trim())
+                        .filter(v -> !v.isEmpty());
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** {@code <maven.compiler.release>} wins over {@code <maven.compiler.source>}. */
+    private static Optional<String> readMavenCompliance(java.nio.file.Path pomXml) {
+        if (!Files.isRegularFile(pomXml)) {
+            return Optional.empty();
+        }
+        try {
+            String pom = Files.readString(pomXml);
+            for (String tag : new String[] {"maven.compiler.release", "maven.compiler.source"}) {
+                Matcher m = Pattern.compile("<" + Pattern.quote(tag) + ">\\s*([^<\\s]+)\\s*</").matcher(pom);
+                if (m.find()) {
+                    return Optional.of(m.group(1));
+                }
+            }
+            Matcher release = Pattern.compile("<release>\\s*([^<\\s]+)\\s*</release>").matcher(pom);
+            if (release.find()) {
+                return Optional.of(release.group(1));
+            }
+            Matcher source = Pattern.compile("<source>\\s*([^<\\s]+)\\s*</source>").matcher(pom);
+            if (source.find()) {
+                return Optional.of(source.group(1));
+            }
+        } catch (IOException e) {
+            log.debug("Could not read {} for its declared Java level: {}", pomXml, e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /** {@code sourceCompatibility = '21'} / {@code JavaVersion.VERSION_21} in a Gradle build file. */
+    private static Optional<String> readGradleCompliance(java.nio.file.Path projectPath) {
+        for (String name : new String[] {"build.gradle", "build.gradle.kts"}) {
+            java.nio.file.Path buildFile = projectPath.resolve(name);
+            if (!Files.isRegularFile(buildFile)) {
+                continue;
+            }
+            try {
+                String script = Files.readString(buildFile);
+                Matcher m = Pattern.compile(
+                    "(?:sourceCompatibility|targetCompatibility)\\s*(?:=|\\.set\\()\\s*"
+                        + "[\"']?(?:JavaVersion\\.VERSION_)?([0-9._]+)[\"']?")
+                    .matcher(script);
+                if (m.find()) {
+                    return Optional.of(m.group(1).replace('_', '.'));
+                }
+            } catch (IOException e) {
+                log.debug("Could not read {} for its declared Java level: {}", buildFile, e.getMessage());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * {@code javacopts = ["--release", "17"]} — or the older {@code -source}
+     * form — in any BUILD file of a Bazel project.
+     *
+     * <p>Bazel states the level per target, not per project, so the first
+     * declaration found governs. A project mixing levels across targets is not a
+     * shape one project-wide compliance can represent; the alternative, silently
+     * taking the default, is exactly what this ends.</p>
+     */
+    private static Optional<String> readBazelCompliance(java.nio.file.Path projectPath) {
+        if (!Files.exists(projectPath.resolve("MODULE.bazel"))
+                && !Files.exists(projectPath.resolve("WORKSPACE.bazel"))
+                && !Files.exists(projectPath.resolve("WORKSPACE"))) {
+            return Optional.empty();
+        }
+        try (Stream<java.nio.file.Path> walk = Files.walk(projectPath)) {
+            for (java.nio.file.Path buildFile : walk
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return "BUILD".equals(n) || "BUILD.bazel".equals(n);
+                    })
+                    .toList()) {
+                Matcher m = Pattern.compile(
+                    "[\"'](?:--release|-source|--source)[\"']\\s*,\\s*[\"']([0-9.]+)[\"']")
+                    .matcher(Files.readString(buildFile));
+                if (m.find()) {
+                    return Optional.of(m.group(1));
+                }
+            }
+        } catch (IOException e) {
+            log.debug("Could not scan {} for javacopts: {}", projectPath, e.getMessage());
+        }
+        return Optional.empty();
     }
 
     /** The stable id under which we register the running JVM (jawata-mcp#3). */
@@ -369,6 +531,18 @@ public class ProjectImporter {
         // For Bazel projects without standard source layout, scan for Java source directories
         if (sourcePaths.isEmpty() && detectBuildSystem(projectPath) == BuildSystem.BAZEL) {
             addBazelSourcePaths(projectPath, sourcePaths);
+        }
+
+        // Sprint 28 (D-IMPORTER): LAST RESORT for any layout none of the rules
+        // above recognises. Without this a project with sources under, say,
+        // `sources/` loaded with ZERO source roots and reported success — its
+        // files silently absent from every listing and scan, which reads as "no
+        // findings" about code that was never on the classpath. Loading empty
+        // and looking healthy is the failure this closes; discovering the roots
+        // from the package declarations is the same derivation the Bazel path
+        // uses, applied without needing to recognise the build system at all.
+        if (sourcePaths.isEmpty()) {
+            addDiscoveredSourceRoots(projectPath, sourcePaths);
         }
 
         // Sprint 11 Phase C: for Gradle projects, also pull source directories
@@ -1156,11 +1330,114 @@ public class ProjectImporter {
                   .filter(dir -> !IGNORED_DIRS.contains(dir.getFileName().toString()))
                   .filter(dir -> !isBazelOutputDirectory(projectPath, dir))
                   .filter(this::isBazelJavaPackage)
-                  .forEach(sourcePaths::add);
+                  .map(this::bazelSourceRootFor)
+                  .distinct()
+                  .forEach(root -> {
+                      if (!sourcePaths.contains(root)) {
+                          sourcePaths.add(root);
+                      }
+                  });
         } catch (IOException e) {
             log.warn("Failed to scan Bazel project for source directories: {}", e.getMessage());
         }
-        log.debug("Found {} Bazel source directories", sourcePaths.size());
+        log.debug("Found {} Bazel source roots", sourcePaths.size());
+    }
+
+    /**
+     * Last-resort source-root discovery for a layout no rule recognised.
+     *
+     * <p>Sprint 28 (D-IMPORTER). Walks for directories holding {@code .java}
+     * files and derives each one's source root from its package declaration —
+     * the same mapping the Bazel path uses, minus the {@code BUILD}-file
+     * requirement, so it works for a project with no build system at all.</p>
+     *
+     * <p>Only reached when every other rule found nothing, so it cannot
+     * override a declared or conventional layout.</p>
+     */
+    private void addDiscoveredSourceRoots(java.nio.file.Path projectPath,
+            List<java.nio.file.Path> sourcePaths) {
+        try (Stream<java.nio.file.Path> stream = Files.walk(projectPath)) {
+            stream.filter(Files::isDirectory)
+                  .filter(dir -> !IGNORED_DIRS.contains(dir.getFileName().toString()))
+                  .filter(this::containsJavaFiles)
+                  .map(this::bazelSourceRootFor)
+                  .distinct()
+                  .forEach(root -> {
+                      if (!sourcePaths.contains(root)) {
+                          sourcePaths.add(root);
+                      }
+                  });
+        } catch (IOException e) {
+            log.warn("Failed to discover source roots under {}: {}", projectPath, e.getMessage());
+        }
+        if (sourcePaths.isEmpty()) {
+            log.warn("No Java source roots found anywhere under {} — the project will load with"
+                + " NO sources, so every listing and scan over it is empty by construction,"
+                + " not because the code is clean.", projectPath);
+        } else {
+            log.info("Discovered {} source root(s) under {} by package declaration (no recognised"
+                + " build layout)", sourcePaths.size(), projectPath);
+        }
+    }
+
+    /**
+     * Map a Bazel java PACKAGE directory to its SOURCE ROOT.
+     *
+     * <p>Sprint 28 (D-IMPORTER). In Bazel the {@code BUILD} file sits in the
+     * package directory — {@code java/com/example/BUILD.bazel} beside
+     * {@code Greeter.java} declaring {@code package com.example}. Adding that
+     * directory as a source root makes JDT expect the DEFAULT package, so every
+     * class in a Bazel project loaded with
+     * <em>"The declared package &quot;com.example&quot; does not match the
+     * expected package &quot;&quot;"</em> — detection passed, roots were found,
+     * jars resolved, output was excluded, and nothing compiled.</p>
+     *
+     * <p>The source root is the directory the package path is relative to: strip
+     * one parent per package segment. A default-package directory IS its own
+     * root, and a package deeper than the path allows (a malformed tree) falls
+     * back to the package directory rather than escaping the project.</p>
+     */
+    private java.nio.file.Path bazelSourceRootFor(java.nio.file.Path packageDir) {
+        Optional<String> declared = readPackageDeclaration(packageDir);
+        if (declared.isEmpty()) {
+            return packageDir;
+        }
+        java.nio.file.Path root = packageDir;
+        for (int i = 0; i < declared.get().split("\\.").length; i++) {
+            java.nio.file.Path parent = root.getParent();
+            if (parent == null) {
+                return packageDir;
+            }
+            root = parent;
+        }
+        return root;
+    }
+
+    /**
+     * The {@code package} declaration of the first Java file in a directory, if
+     * any declares one. Read textually — this runs while the classpath is being
+     * BUILT, so no JDT model exists yet to ask.
+     */
+    private Optional<String> readPackageDeclaration(java.nio.file.Path dir) {
+        try (Stream<java.nio.file.Path> files = Files.list(dir)) {
+            for (java.nio.file.Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                try (Stream<String> lines = Files.lines(file)) {
+                    Optional<String> pkg = lines
+                        .map(String::trim)
+                        .filter(l -> l.startsWith("package ") && l.endsWith(";"))
+                        .findFirst()
+                        .map(l -> l.substring("package ".length(), l.length() - 1).trim());
+                    if (pkg.isPresent()) {
+                        return pkg;
+                    }
+                } catch (IOException e) {
+                    log.debug("Could not read {} for its package declaration: {}", file, e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            log.debug("Could not list {} for package declarations: {}", dir, e.getMessage());
+        }
+        return Optional.empty();
     }
 
     private boolean isBazelOutputDirectory(java.nio.file.Path projectRoot, java.nio.file.Path dir) {

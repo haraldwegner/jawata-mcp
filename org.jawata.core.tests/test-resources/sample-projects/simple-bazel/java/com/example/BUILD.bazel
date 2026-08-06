@@ -1,0 +1,12 @@
+# A Bazel java package: a BUILD file and .java files in the SAME directory is
+# what ProjectImporter.isBazelJavaPackage requires.
+#
+# javacopts carries the Java language level. Bazel accepts either the modern
+# --release form or the older -source/-target pair; the fixture uses --release
+# so the importer's parsing is exercised on the form Bazel documents first.
+java_library(
+    name = "example",
+    srcs = glob(["*.java"]),
+    javacopts = ["--release", "17"],
+    visibility = ["//visibility:public"],
+)

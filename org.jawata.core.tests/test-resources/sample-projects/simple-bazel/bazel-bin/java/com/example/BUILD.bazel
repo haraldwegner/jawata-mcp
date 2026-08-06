@@ -1,0 +1,2 @@
+# Deliberate trap: a BUILD file and a .java file inside the OUTPUT tree. A scan
+# that fails to exclude bazel-* would pick this up as a source root.

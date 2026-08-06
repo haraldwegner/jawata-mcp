@@ -1,0 +1,8 @@
+# Bazel's conventional test tree. java_test, not java_library — the marker that
+# says "this package is test code" in Bazel's own vocabulary.
+java_test(
+    name = "GreeterTest",
+    srcs = ["GreeterTest.java"],
+    javacopts = ["--release", "17"],
+    test_class = "com.example.GreeterTest",
+)

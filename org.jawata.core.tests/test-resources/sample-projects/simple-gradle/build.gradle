@@ -1,0 +1,7 @@
+// Sprint 28 D-IMPORTER fixture. sourceCompatibility is where Gradle states the
+// Java language level — the importer reads it textually, because this runs
+// while the classpath is being built and no Gradle daemon is guaranteed.
+plugins { id 'java' }
+sourceCompatibility = '17'
+targetCompatibility = '17'
+repositories { mavenCentral() }

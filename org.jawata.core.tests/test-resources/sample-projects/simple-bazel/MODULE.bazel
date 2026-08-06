@@ -1,0 +1,4 @@
+# Bazel root marker — ProjectImporter.detectBuildSystem looks for MODULE.bazel,
+# WORKSPACE.bazel or WORKSPACE at the project root (not BUILD files, which are
+# per-package). Sprint 28 D-IMPORTER fixture.
+module(name = "simple_bazel", version = "1.0.0")
