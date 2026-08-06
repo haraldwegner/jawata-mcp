@@ -230,6 +230,12 @@ public class ProjectImporter {
                         .map(l -> l.substring(l.indexOf('=') + 1).trim())
                         .filter(v -> !v.isEmpty());
         } catch (IOException e) {
+            // The settings file EXISTS and could not be read — that is not the
+            // same fact as "this project declares no level", and returning the
+            // empty Optional silently makes them identical. Say which one it is.
+            log.warn("{} exists but could not be read for its declared Java level ({}) —"
+                + " the project will take the default, which may not be what it declares",
+                prefs, e.getMessage());
             return Optional.empty();
         }
     }
