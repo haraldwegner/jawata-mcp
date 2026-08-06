@@ -1,0 +1,9 @@
+package com.example.libs;
+
+/** Sprint 28 D-IMPORTER fixture: the class a plain-Eclipse .classpath
+ *  kind="lib" entry contributes. Resolving THIS type proves the lib entry was
+ *  honoured, not merely parsed. */
+public final class EclipseLib {
+    private EclipseLib() {}
+    public static String name() { return "eclipse-lib"; }
+}

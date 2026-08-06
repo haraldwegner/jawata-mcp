@@ -25,6 +25,15 @@
 !org.jawata.core.tests/test-resources/sample-projects/**/.classpath
 !org.jawata.core.tests/test-resources/sample-projects/**/.project
 
+# FOURTH occurrence, same class (Sprint 28, C1 re-audit): `.settings/` above
+# swallowed plain-eclipse's org.eclipse.jdt.core.prefs — the ONLY file in which
+# that fixture declares compliance=17, since it has no pom, no gradle and no
+# manifest. Its "the declared level is applied" test would therefore have
+# passed here and failed in every clone. A directory rule must be negated as a
+# directory before anything inside it can be re-included.
+!org.jawata.core.tests/test-resources/sample-projects/**/.settings/
+!org.jawata.core.tests/test-resources/sample-projects/**/.settings/**
+
 # Build outputs
 *.jar
 *.class
@@ -32,6 +41,23 @@ out/
 target/
 # Sprint 11 Phase C: embedded Bundle-ClassPath jars must be tracked
 !org.jawata.core/lib/*.jar
+
+# Sprint 28 (C1 audit), THIRD occurrence of the *.jar rule silently eating a
+# tracked artifact (after 8b9f8eb and the patched-bundles line below): the
+# jars a D-IMPORTER fixture needs to prove "dependency jars reach the
+# classpath" were never committed, so that assertion passed on the author's
+# machine and would have found nothing in a fresh clone. Each is a few hundred
+# bytes and built from a source file beside it.
+!org.jawata.core.tests/test-resources/sample-projects/**/*.jar
+
+# The output-exclusion TRAPS. A fixture proves "build output is not mounted as
+# source" only if there IS output to mount, so each fixture plants a .java under
+# the directory its build system writes to. `target/` above would eat the Maven
+# one — and a trap that is not in the repository turns its test into a
+# tautology that passes on the broken code. Scoped to the one fixture that
+# needs it, which nothing builds, so no real output lands here.
+!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/
+!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/**
 
 # Working folder - session continuity docs (not tracked)
 working/
@@ -80,3 +106,11 @@ docs/REFACTORING_LESSONS_LEARNED.md
 # artifacts) — internal analysis state, never published
 .jawata/
 __pycache__/
+
+# SIXTH occurrence (Sprint 28, C1 re-audit): `/build/` above ate
+# build/probe-public-bazel.sh — the D-IMPORTER probe the Stage-1 commit claimed
+# to deliver existed only in the working tree. The reactor and its scripts live
+# under build/; only its OUTPUT should be ignored, and target/ + *.jar + *.class
+# below already do that. Un-ignore the directory so a new script or module pom
+# is VISIBLE in git status instead of silently dropped.
+!/build/

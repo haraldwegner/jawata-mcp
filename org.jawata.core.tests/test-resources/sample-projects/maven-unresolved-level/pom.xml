@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 D-IMPORTER fixture (C1 audit): a Maven project that declares its
+  Java language level through a PROPERTY REFERENCE.
+
+  <maven.compiler.source>${java.version}</maven.compiler.source> is legal,
+  extremely common, and resolved by Maven — not by us. Reading the pom textually
+  yields the literal string "${java.version}", and pushing that to JDT as a
+  compliance level configures the compiler with something that is not a Java
+  version at all.
+
+  The project must therefore keep the default level, and the importer must SAY
+  it did — an unusable declaration and no declaration lead to the same level but
+  are not the same fact.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>maven-unresolved-level</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+    </properties>
+
+</project>

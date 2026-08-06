@@ -1,0 +1,9 @@
+package com.example.lib;
+
+/** Sprint 28 D-IMPORTER fixture: the class a Bazel output jar contributes.
+ *  Resolving THIS type proves bazel-bin/libexample.jar is on the classpath and
+ *  readable — not merely that a path string was added. */
+public final class BazelLib {
+    private BazelLib() {}
+    public static String name() { return "bazel-lib"; }
+}

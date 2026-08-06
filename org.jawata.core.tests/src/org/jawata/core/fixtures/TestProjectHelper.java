@@ -91,7 +91,19 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
                 "Test fixtures directory not configured. " +
                 "Set system property: " + FIXTURES_PROPERTY);
         }
-        return Path.of(fixturesDir, projectName);
+        Path fixture = Path.of(fixturesDir, projectName);
+        if (!Files.isDirectory(fixture)) {
+            // Sprint 28 (C1 re-audit). Returning an unchecked path makes an
+            // ABSENT fixture look like a failed assertion about the code — and
+            // a fixture absent because it was never committed then reads as a
+            // defect in the importer, or worse passes silently where the
+            // assertion is about something NOT being found. Say which it is.
+            throw new IllegalStateException(
+                "No such test fixture: " + fixture + ". If it exists in your working tree,"
+                + " check that it is TRACKED (git ls-files) — the ignore rules have eaten"
+                + " fixture files four times now.");
+        }
+        return fixture;
     }
 
     /**

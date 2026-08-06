@@ -31,12 +31,20 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.concurrent.TimeUnit;
@@ -200,21 +208,59 @@ public class ProjectImporter {
      * {@code sourceCompatibility}, Bazel in a {@code javacopts} entry. Read
      * textually — this runs while the project is being configured, before any
      * model exists to ask.</p>
+     *
+     * <p>Textual reading has one failure mode worth naming: a build file may
+     * declare a level it does not itself contain. {@code <maven.compiler.source>
+     * ${java.version}</maven.compiler.source>} is legal Maven and extremely
+     * common, and the property is resolved by Maven, not by us. Handing
+     * {@code "${java.version}"} to JDT as a compliance level configures the
+     * compiler with a value that is not a Java version at all. So every
+     * candidate passes {@link #COMPLIANCE_LEVEL} before it leaves this method:
+     * an unusable declaration is reported at WARN naming the raw text, and the
+     * project keeps the default — the same outcome as declaring nothing, but
+     * never the same silence.</p>
      */
     static Optional<String> readComplianceLevel(java.nio.file.Path projectPath) {
         Optional<String> fromEclipse = readEclipseCompliance(projectPath);
         if (fromEclipse.isPresent()) {
-            return fromEclipse;
+            return usableLevel(fromEclipse.get(), projectPath, ".settings");
         }
         Optional<String> fromMaven = readMavenCompliance(projectPath.resolve("pom.xml"));
         if (fromMaven.isPresent()) {
-            return fromMaven;
+            return usableLevel(fromMaven.get(), projectPath, "pom.xml");
         }
         Optional<String> fromGradle = readGradleCompliance(projectPath);
         if (fromGradle.isPresent()) {
-            return fromGradle;
+            return usableLevel(fromGradle.get(), projectPath, "build.gradle");
         }
-        return readBazelCompliance(projectPath);
+        Optional<String> fromBree = readBreeCompliance(projectPath);
+        if (fromBree.isPresent()) {
+            return usableLevel(fromBree.get(), projectPath, "MANIFEST.MF");
+        }
+        Optional<String> fromBazel = readBazelCompliance(projectPath);
+        if (fromBazel.isPresent()) {
+            return usableLevel(fromBazel.get(), projectPath, "javacopts");
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The shapes JDT accepts as a compliance level: the historical {@code 1.3}
+     * … {@code 1.8}, and the bare major versions from {@code 9} on.
+     */
+    private static final Pattern COMPLIANCE_LEVEL = Pattern.compile("1\\.[3-8]|[1-9][0-9]?");
+
+    /** {@code level} if JDT could act on it; otherwise empty, said out loud. */
+    private static Optional<String> usableLevel(String level, java.nio.file.Path projectPath,
+            String declaredIn) {
+        if (COMPLIANCE_LEVEL.matcher(level).matches()) {
+            return Optional.of(level);
+        }
+        log.warn("{} declares the Java language level as \"{}\" in {}, which is not a level JDT can"
+            + " be set to — most often an unresolved build property. The project keeps the default"
+            + " level, so it may compile at a different level than it declares.",
+            projectPath, level, declaredIn);
+        return Optional.empty();
     }
 
     /** {@code org.eclipse.jdt.core.compiler.compliance=21} in the project's own settings. */
@@ -223,8 +269,9 @@ public class ProjectImporter {
         if (!Files.isRegularFile(prefs)) {
             return Optional.empty();
         }
-        try (Stream<String> lines = Files.lines(prefs)) {
-            return lines.map(String::trim)
+        try {
+            return readLinesLenient(prefs, 4096).stream()
+                        .map(String::trim)
                         .filter(l -> l.startsWith("org.eclipse.jdt.core.compiler.compliance="))
                         .findFirst()
                         .map(l -> l.substring(l.indexOf('=') + 1).trim())
@@ -267,6 +314,48 @@ public class ProjectImporter {
         return Optional.empty();
     }
 
+    /**
+     * {@code Bundle-RequiredExecutionEnvironment: JavaSE-21} — how an OSGi/PDE
+     * bundle states the Java level it must be built against.
+     *
+     * <p>Sprint 28 (C1 audit). PDE was the one advertised build system with no
+     * way to state a level at all, because we read only the four file formats
+     * the other systems use. A bundle states it in its manifest, and PDE
+     * bundles rarely carry a {@code .settings} file — so every OSGi project
+     * silently took the workspace default, which is the defect this sprint
+     * exists to end, left standing for one build system.</p>
+     *
+     * <p>Read through {@link Manifest} rather than textually: the header may be
+     * wrapped across continuation lines, which a line-oriented match would
+     * truncate. Legacy names ({@code J2SE-1.5}) and profile forms
+     * ({@code JavaSE/compact1-1.8}) both yield their version; the first BREE
+     * governs when several are listed.</p>
+     */
+    private static Optional<String> readBreeCompliance(java.nio.file.Path projectPath) {
+        java.nio.file.Path manifestPath = projectPath.resolve("META-INF/MANIFEST.MF");
+        if (!Files.isRegularFile(manifestPath)) {
+            return Optional.empty();
+        }
+        try (InputStream in = Files.newInputStream(manifestPath)) {
+            String bree = new Manifest(in).getMainAttributes()
+                .getValue("Bundle-RequiredExecutionEnvironment");
+            if (bree == null || bree.isBlank()) {
+                return Optional.empty();
+            }
+            Matcher m = Pattern.compile("(?:JavaSE|J2SE|CDC|OSGi)[^,-]*-([0-9]+(?:\\.[0-9]+)?)")
+                .matcher(bree);
+            if (m.find()) {
+                return Optional.of(m.group(1));
+            }
+            log.debug("{} declares Bundle-RequiredExecutionEnvironment \"{}\", which names no"
+                + " Java version we recognise", manifestPath, bree);
+        } catch (IOException e) {
+            log.warn("{} exists but could not be read for its required execution environment ({})"
+                + " — the bundle will take the default Java level", manifestPath, e.getMessage());
+        }
+        return Optional.empty();
+    }
+
     /** {@code sourceCompatibility = '21'} / {@code JavaVersion.VERSION_21} in a Gradle build file. */
     private static Optional<String> readGradleCompliance(java.nio.file.Path projectPath) {
         for (String name : new String[] {"build.gradle", "build.gradle.kts"}) {
@@ -305,23 +394,32 @@ public class ProjectImporter {
                 && !Files.exists(projectPath.resolve("WORKSPACE"))) {
             return Optional.empty();
         }
-        try (Stream<java.nio.file.Path> walk = Files.walk(projectPath)) {
-            for (java.nio.file.Path buildFile : walk
-                    .filter(Files::isRegularFile)
-                    .filter(p -> {
-                        String n = p.getFileName().toString();
-                        return "BUILD".equals(n) || "BUILD.bazel".equals(n);
-                    })
-                    .toList()) {
-                Matcher m = Pattern.compile(
-                    "[\"'](?:--release|-source|--source)[\"']\\s*,\\s*[\"']([0-9.]+)[\"']")
-                    .matcher(Files.readString(buildFile));
+        List<java.nio.file.Path> buildFiles = new ArrayList<>();
+        // Prune the OUTPUT tree here too (C1 re-audit). Reading the language
+        // level out of bazel-bin/ would take it from generated copies of the
+        // BUILD files — the same tree source discovery deliberately excludes.
+        walkPruned(projectPath, dir -> isBazelOutputDirectory(projectPath, dir), dir -> {
+            for (String name : new String[] {"BUILD", "BUILD.bazel"}) {
+                java.nio.file.Path candidate = dir.resolve(name);
+                if (Files.isRegularFile(candidate)) {
+                    buildFiles.add(candidate);
+                }
+            }
+        });
+        // Deterministic: "the first declaration governs" is only a rule if
+        // "first" is the same on every machine. Walk order is not.
+        buildFiles.sort(java.util.Comparator.comparing(java.nio.file.Path::toString));
+        Pattern javacopt = Pattern.compile(
+            "[\"'](?:--release|-source|--source)[\"']\\s*,\\s*[\"']([0-9.]+)[\"']");
+        for (java.nio.file.Path buildFile : buildFiles) {
+            try {
+                Matcher m = javacopt.matcher(String.join("\n", readLinesLenient(buildFile, 20000)));
                 if (m.find()) {
                     return Optional.of(m.group(1));
                 }
+            } catch (IOException e) {
+                log.debug("Could not read {} for javacopts: {}", buildFile, e.getMessage());
             }
-        } catch (IOException e) {
-            log.debug("Could not scan {} for javacopts: {}", projectPath, e.getMessage());
         }
         return Optional.empty();
     }
@@ -467,8 +565,15 @@ public class ProjectImporter {
         if (!Files.isRegularFile(manifest)) {
             return false;
         }
-        try (Stream<String> lines = Files.lines(manifest, java.nio.charset.StandardCharsets.UTF_8)) {
-            return lines.anyMatch(line -> line.startsWith("Bundle-SymbolicName:"));
+        try {
+            // Sprint 28 (C1 re-audit): NOT Files.lines. This runs from
+            // detectBuildSystem on EVERY project load, and a manifest is exactly
+            // where a non-UTF-8 byte turns up in the field — a Bundle-Vendor
+            // with an umlaut is ordinary. Strict lazy decoding would throw
+            // UncheckedIOException out of detection and take the whole load
+            // with it; the catch below cannot see a RuntimeException.
+            return readLinesLenient(manifest, 2000).stream()
+                .anyMatch(line -> line.startsWith("Bundle-SymbolicName:"));
         } catch (java.io.IOException e) {
             log.debug("Failed to read {}: {}", manifest, e.getMessage());
             return false;
@@ -1273,7 +1378,10 @@ public class ProjectImporter {
                   .filter(Files::isRegularFile)
                   .map(java.nio.file.Path::toString)
                   .forEach(jars::add);
-        } catch (IOException e) {
+        } catch (IOException | UncheckedIOException e) {
+            // UncheckedIOException too: Files.walk fails LAZILY, so one
+            // unreadable directory inside the output tree surfaces as a
+            // RuntimeException that would otherwise escape the load.
             log.warn("Failed to scan {} for JARs: {}", dir, e.getMessage());
         }
     }
@@ -1293,7 +1401,7 @@ public class ProjectImporter {
         for (java.nio.file.Path srcPath : sourcePaths) {
             try (Stream<java.nio.file.Path> stream = Files.walk(srcPath)) {
                 count += (int) stream.filter(p -> p.toString().endsWith(".java")).count();
-            } catch (IOException e) {
+            } catch (IOException | UncheckedIOException e) {
                 log.warn("Failed to count files in {}", srcPath, e);
             }
         }
@@ -1317,7 +1425,7 @@ public class ProjectImporter {
                       .filter(s -> !s.isEmpty())
                       .filter(s -> !packages.contains(s))  // Avoid duplicates
                       .forEach(packages::add);
-            } catch (IOException e) {
+            } catch (IOException | UncheckedIOException e) {
                 log.warn("Failed to find packages in {}", srcPath, e);
             }
         }
@@ -1331,22 +1439,75 @@ public class ProjectImporter {
      * Skips bazel-* output directories.
      */
     private void addBazelSourcePaths(java.nio.file.Path projectPath, List<java.nio.file.Path> sourcePaths) {
-        try (Stream<java.nio.file.Path> stream = Files.walk(projectPath)) {
-            stream.filter(Files::isDirectory)
-                  .filter(dir -> !IGNORED_DIRS.contains(dir.getFileName().toString()))
-                  .filter(dir -> !isBazelOutputDirectory(projectPath, dir))
-                  .filter(this::isBazelJavaPackage)
-                  .map(this::bazelSourceRootFor)
-                  .distinct()
-                  .forEach(root -> {
-                      if (!sourcePaths.contains(root)) {
-                          sourcePaths.add(root);
-                      }
-                  });
-        } catch (IOException e) {
-            log.warn("Failed to scan Bazel project for source directories: {}", e.getMessage());
-        }
+        List<java.nio.file.Path> packageDirs = new ArrayList<>();
+        walkPruned(projectPath, dir -> isBazelOutputDirectory(projectPath, dir), dir -> {
+            if (isBazelJavaPackage(dir)) {
+                packageDirs.add(dir);
+            }
+        });
+        addRootsForPackageDirs(packageDirs, sourcePaths);
         log.debug("Found {} Bazel source roots", sourcePaths.size());
+    }
+
+    /**
+     * Walk {@code projectPath}'s directories, PRUNING what must not be
+     * descended into.
+     *
+     * <p>Sprint 28 (C1 audit). The previous form filtered {@link #IGNORED_DIRS}
+     * out of a flat {@link Files#walk}, which tests only the LEAF name — so
+     * {@code target} itself was rejected while
+     * {@code target/generated-sources/annotations/com/example} passed the
+     * filter, held {@code .java} files, and was mounted as a source root.
+     * Generated sources then appear as duplicate types beside the originals
+     * they were generated from. Pruning the subtree is the difference between
+     * "do not add this directory" and "do not look inside it", and only the
+     * second one is what {@code IGNORED_DIRS} means.</p>
+     *
+     * <p>{@code visitFileFailed} continues rather than aborting: one
+     * unreadable directory must not end the scan of a project, which is the
+     * same class of over-reaction as the strict decoding fixed in
+     * {@link #readLinesLenient}.</p>
+     */
+    private static void walkPruned(java.nio.file.Path projectPath,
+            Predicate<java.nio.file.Path> prune,
+            java.util.function.Consumer<java.nio.file.Path> onDirectory) {
+        try {
+            Files.walkFileTree(projectPath, new SimpleFileVisitor<java.nio.file.Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(java.nio.file.Path dir,
+                        BasicFileAttributes attrs) {
+                    if (!dir.equals(projectPath)
+                            && (IGNORED_DIRS.contains(dir.getFileName().toString())
+                                || prune.test(dir))) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    onDirectory.accept(dir);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(java.nio.file.Path file, IOException exc) {
+                    log.debug("Skipping unreadable path {} while scanning {}: {}",
+                        file, projectPath, exc.getMessage());
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException | UncheckedIOException e) {
+            log.warn("Failed to scan {} for source directories: {}", projectPath, e.getMessage());
+        }
+    }
+
+    /** Map package directories to their source roots, appending each new one once. */
+    private void addRootsForPackageDirs(List<java.nio.file.Path> packageDirs,
+            List<java.nio.file.Path> sourcePaths) {
+        packageDirs.stream()
+                   .map(this::bazelSourceRootFor)
+                   .distinct()
+                   .forEach(root -> {
+                       if (!sourcePaths.contains(root)) {
+                           sourcePaths.add(root);
+                       }
+                   });
     }
 
     /**
@@ -1362,20 +1523,13 @@ public class ProjectImporter {
      */
     private void addDiscoveredSourceRoots(java.nio.file.Path projectPath,
             List<java.nio.file.Path> sourcePaths) {
-        try (Stream<java.nio.file.Path> stream = Files.walk(projectPath)) {
-            stream.filter(Files::isDirectory)
-                  .filter(dir -> !IGNORED_DIRS.contains(dir.getFileName().toString()))
-                  .filter(this::containsJavaFiles)
-                  .map(this::bazelSourceRootFor)
-                  .distinct()
-                  .forEach(root -> {
-                      if (!sourcePaths.contains(root)) {
-                          sourcePaths.add(root);
-                      }
-                  });
-        } catch (IOException e) {
-            log.warn("Failed to discover source roots under {}: {}", projectPath, e.getMessage());
-        }
+        List<java.nio.file.Path> packageDirs = new ArrayList<>();
+        walkPruned(projectPath, dir -> false, dir -> {
+            if (containsJavaFiles(dir)) {
+                packageDirs.add(dir);
+            }
+        });
+        addRootsForPackageDirs(packageDirs, sourcePaths);
         if (sourcePaths.isEmpty()) {
             log.warn("No Java source roots found anywhere under {} — the project will load with"
                 + " NO sources, so every listing and scan over it is empty by construction,"
@@ -1427,8 +1581,11 @@ public class ProjectImporter {
     private Optional<String> readPackageDeclaration(java.nio.file.Path dir) {
         try (Stream<java.nio.file.Path> files = Files.list(dir)) {
             for (java.nio.file.Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
-                try (Stream<String> lines = Files.lines(file)) {
-                    Optional<String> pkg = lines
+                try {
+                    // A package declaration is in the first few lines by
+                    // definition — reading the whole file would be the same
+                    // answer at arbitrary cost on a generated source.
+                    Optional<String> pkg = readLinesLenient(file, 200).stream()
                         .map(String::trim)
                         .filter(l -> l.startsWith("package ") && l.endsWith(";"))
                         .findFirst()
@@ -1440,13 +1597,51 @@ public class ProjectImporter {
                     log.debug("Could not read {} for its package declaration: {}", file, e.getMessage());
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | UncheckedIOException e) {
             log.debug("Could not list {} for package declarations: {}", dir, e.getMessage());
         }
         return Optional.empty();
     }
 
-    private boolean isBazelOutputDirectory(java.nio.file.Path projectRoot, java.nio.file.Path dir) {
+    /**
+     * The first {@code maxLines} lines of a file, decoded so that no byte
+     * sequence can abort the read.
+     *
+     * <p>Sprint 28 (C1 audit). {@link Files#lines} decodes LAZILY and strictly:
+     * a malformed UTF-8 byte surfaces as an {@link UncheckedIOException} from
+     * inside the terminal stream operation — a RuntimeException, which a
+     * {@code catch (IOException)} around the try-with-resources does not catch.
+     * The consequence is out of all proportion to the cause: one file somewhere
+     * in the tree that is not UTF-8 (a source in a legacy encoding, a stray
+     * binary named {@code .java}) throws out of source-root discovery and
+     * aborts the load of the ENTIRE project. Bazel and unknown-layout projects
+     * read a package declaration from every candidate directory, so they meet
+     * that file on every load.</p>
+     *
+     * <p>Decoding with {@link CodingErrorAction#REPLACE} substitutes U+FFFD for
+     * what cannot be decoded and reads on. A package declaration or a
+     * preference key is ASCII; a file whose relevant line survives is answered
+     * correctly, and a file whose does not simply yields no match — instead of
+     * taking the project down with it. Genuine I/O failure still throws
+     * {@link IOException}, which callers already handle.</p>
+     */
+    private static List<String> readLinesLenient(java.nio.file.Path file, int maxLines)
+            throws IOException {
+        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPLACE)
+            .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        List<String> lines = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(Files.newInputStream(file), decoder))) {
+            String line;
+            while (lines.size() < maxLines && (line = reader.readLine()) != null) {
+                lines.add(line);
+            }
+        }
+        return lines;
+    }
+
+    private static boolean isBazelOutputDirectory(java.nio.file.Path projectRoot, java.nio.file.Path dir) {
         if (dir.equals(projectRoot)) {
             return false;
         }
@@ -1464,7 +1659,12 @@ public class ProjectImporter {
     private boolean containsJavaFiles(java.nio.file.Path dir) {
         try (Stream<java.nio.file.Path> stream = Files.list(dir)) {
             return stream.anyMatch(p -> p.toString().endsWith(".java"));
-        } catch (IOException e) {
+        } catch (IOException | UncheckedIOException e) {
+            // UncheckedIOException too: Files.list defers the directory read to
+            // traversal, so an unreadable directory surfaces as a RuntimeException
+            // that this catch would otherwise miss — and one such directory would
+            // abort discovery for the whole project.
+            log.debug("Could not list {}: {}", dir, e.getMessage());
             return false;
         }
     }

@@ -7,5 +7,9 @@
     <classpathentry kind="src" path="src/main/java"/>
     <classpathentry kind="src" path="src/test/java" test="true"/>
     <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+    <!-- The declared dependency. lib/example-lib.jar holds com.example.libs.EclipseLib,
+         so the test can assert the entry was HONOURED (the type resolves) rather
+         than merely parsed. -->
+    <classpathentry kind="lib" path="lib/example-lib.jar"/>
     <classpathentry kind="output" path="bin"/>
 </classpath>

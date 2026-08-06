@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 D-IMPORTER fixture: a Maven project whose declared Java language
+  level DIFFERS from the workspace default.
+
+  simple-maven declares 21, which is also JDT's default here — so asserting
+  "the declared level was applied" against it cannot fail, and proves nothing.
+  This project declares 17, and the test additionally asserts that the default
+  is NOT 17, so the assertion is falsifiable by construction: if the default
+  ever becomes 17, the test fails and says to move this fixture, rather than
+  quietly becoming decoration.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>maven-level-17</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>
