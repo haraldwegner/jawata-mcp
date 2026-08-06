@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 D-IMPORTER fixture (C1 audit round 3): a pom declaring a BARE major
+  version. <maven.compiler.source>8</maven.compiler.source> is ordinary, correct
+  Maven meaning Java 8 — but JDT's name for that level is "1.8", and a bare "8"
+  set as a compliance level is a value it does not recognise.
+
+  So the shape check must NORMALIZE 5-8 rather than reject them. Rejecting would
+  have quietly lost a real declared level from a very large share of real poms,
+  while the log said the project "declares no level".
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>maven-level-8</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+</project>

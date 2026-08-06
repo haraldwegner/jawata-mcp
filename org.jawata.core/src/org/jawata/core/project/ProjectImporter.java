@@ -221,38 +221,49 @@ public class ProjectImporter {
      * never the same silence.</p>
      */
     static Optional<String> readComplianceLevel(java.nio.file.Path projectPath) {
-        Optional<String> fromEclipse = readEclipseCompliance(projectPath);
-        if (fromEclipse.isPresent()) {
-            return usableLevel(fromEclipse.get(), projectPath, ".settings");
-        }
-        Optional<String> fromMaven = readMavenCompliance(projectPath.resolve("pom.xml"));
-        if (fromMaven.isPresent()) {
-            return usableLevel(fromMaven.get(), projectPath, "pom.xml");
-        }
-        Optional<String> fromGradle = readGradleCompliance(projectPath);
-        if (fromGradle.isPresent()) {
-            return usableLevel(fromGradle.get(), projectPath, "build.gradle");
-        }
-        Optional<String> fromBree = readBreeCompliance(projectPath);
-        if (fromBree.isPresent()) {
-            return usableLevel(fromBree.get(), projectPath, "MANIFEST.MF");
-        }
-        Optional<String> fromBazel = readBazelCompliance(projectPath);
-        if (fromBazel.isPresent()) {
-            return usableLevel(fromBazel.get(), projectPath, "javacopts");
-        }
-        return Optional.empty();
+        // Each source in precedence order. An UNUSABLE declaration does not stop
+        // the search (C1 audit round 3): a pom saying ${java.version} used to
+        // suppress a perfectly good BREE or javacopts below it, so a project
+        // that states its level twice — once unresolvably — got no level at all.
+        // A usable declaration still wins immediately, so precedence is intact.
+        Optional<String> level = Optional.empty();
+        level = level.or(() -> usableLevel(readEclipseCompliance(projectPath), projectPath, ".settings"));
+        level = level.or(() -> usableLevel(
+            readMavenCompliance(projectPath.resolve("pom.xml")), projectPath, "pom.xml"));
+        level = level.or(() -> usableLevel(readGradleCompliance(projectPath), projectPath, "build.gradle"));
+        level = level.or(() -> usableLevel(readBreeCompliance(projectPath), projectPath, "MANIFEST.MF"));
+        level = level.or(() -> usableLevel(readBazelCompliance(projectPath), projectPath, "javacopts"));
+        return level;
     }
 
     /**
-     * The shapes JDT accepts as a compliance level: the historical {@code 1.3}
-     * … {@code 1.8}, and the bare major versions from {@code 9} on.
+     * The shapes JDT accepts as a compliance level: the historical
+     * {@code 1.3}–{@code 1.8}, and the bare major versions from {@code 9} on.
+     * A bare {@code 5}–{@code 8} is NOT one of them, which is why
+     * {@link #usableLevel} normalizes rather than merely tests.
      */
-    private static final Pattern COMPLIANCE_LEVEL = Pattern.compile("1\\.[3-8]|[1-9][0-9]?");
+    private static final Pattern COMPLIANCE_LEVEL = Pattern.compile("1\\.[3-8]|[9]|[1-9][0-9]+");
 
-    /** {@code level} if JDT could act on it; otherwise empty, said out loud. */
-    private static Optional<String> usableLevel(String level, java.nio.file.Path projectPath,
-            String declaredIn) {
+    /**
+     * {@code level} in the form JDT accepts, or empty — said out loud.
+     *
+     * <p>Two distinct jobs, and conflating them cost a real level (C1 audit
+     * round 3). {@code <maven.compiler.source>8</maven.compiler.source>} is
+     * ordinary, correct Maven meaning Java 8; JDT's name for that level is
+     * {@code 1.8}, and a bare {@code 8} handed to {@code setOption} is a value
+     * it does not recognise. So {@code 5}–{@code 8} are NORMALIZED, while a
+     * genuine non-version — an unresolved {@code ${java.version}} — is
+     * REFUSED.</p>
+     */
+    private static Optional<String> usableLevel(Optional<String> declared,
+            java.nio.file.Path projectPath, String declaredIn) {
+        if (declared.isEmpty()) {
+            return Optional.empty();
+        }
+        String level = declared.get();
+        if (level.length() == 1 && level.charAt(0) >= '5' && level.charAt(0) <= '8') {
+            return Optional.of("1." + level);
+        }
         if (COMPLIANCE_LEVEL.matcher(level).matches()) {
             return Optional.of(level);
         }
@@ -1582,14 +1593,7 @@ public class ProjectImporter {
         try (Stream<java.nio.file.Path> files = Files.list(dir)) {
             for (java.nio.file.Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
                 try {
-                    // A package declaration is in the first few lines by
-                    // definition — reading the whole file would be the same
-                    // answer at arbitrary cost on a generated source.
-                    Optional<String> pkg = readLinesLenient(file, 200).stream()
-                        .map(String::trim)
-                        .filter(l -> l.startsWith("package ") && l.endsWith(";"))
-                        .findFirst()
-                        .map(l -> l.substring("package ".length(), l.length() - 1).trim());
+                    Optional<String> pkg = readPackageDeclarationFrom(file);
                     if (pkg.isPresent()) {
                         return pkg;
                     }
@@ -1601,6 +1605,53 @@ public class ProjectImporter {
             log.debug("Could not list {} for package declarations: {}", dir, e.getMessage());
         }
         return Optional.empty();
+    }
+
+    /**
+     * The {@code package} declaration of one Java file, read until the
+     * declaration is found or the file's first type begins.
+     *
+     * <p>Sprint 28 (C1 audit round 3). A fixed line cap was the wrong shape:
+     * bounded at 200 lines it silently misses a declaration under a long
+     * licence header, and the directory then becomes its own source root with
+     * every class in it landing in the wrong package — the exact defect this
+     * whole path exists to fix, reintroduced by the cost control for it.
+     * Unbounded, it reads a whole generated file to learn one line.</p>
+     *
+     * <p>The language settles it: the declaration, if present, precedes the
+     * first type declaration. Stopping there is both correct and cheaper than
+     * any line count, and a file with no declaration stops at its first type
+     * rather than being read to the end.</p>
+     */
+    private static Optional<String> readPackageDeclarationFrom(java.nio.file.Path file)
+            throws IOException {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(Files.newInputStream(file), lenientUtf8()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("package ") && trimmed.endsWith(";")) {
+                    return Optional.of(
+                        trimmed.substring("package ".length(), trimmed.length() - 1).trim());
+                }
+                if (TYPE_DECLARATION.matcher(trimmed).find()) {
+                    return Optional.empty();   // default package
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The start of a type declaration — where a package declaration can no longer appear. */
+    private static final Pattern TYPE_DECLARATION = Pattern.compile(
+        "^(?:public\\s+|final\\s+|abstract\\s+|sealed\\s+|non-sealed\\s+|static\\s+)*"
+            + "(?:class|interface|enum|record|@interface)\\b");
+
+    /** A UTF-8 decoder that substitutes rather than reports — see {@link #readLinesLenient}. */
+    private static CharsetDecoder lenientUtf8() {
+        return StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPLACE)
+            .onUnmappableCharacter(CodingErrorAction.REPLACE);
     }
 
     /**
@@ -1627,12 +1678,9 @@ public class ProjectImporter {
      */
     private static List<String> readLinesLenient(java.nio.file.Path file, int maxLines)
             throws IOException {
-        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPLACE)
-            .onUnmappableCharacter(CodingErrorAction.REPLACE);
         List<String> lines = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(Files.newInputStream(file), decoder))) {
+                new InputStreamReader(Files.newInputStream(file), lenientUtf8()))) {
             String line;
             while (lines.size() < maxLines && (line = reader.readLine()) != null) {
                 lines.add(line);

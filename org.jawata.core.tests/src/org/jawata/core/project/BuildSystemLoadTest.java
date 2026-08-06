@@ -334,7 +334,13 @@ class BuildSystemLoadTest {
         // ignore a red test.
         IJavaProject jp = load("pde-bundle-a");
         List<String> entries = allClasspathEntries(jp);
-        Assumptions.assumeTrue(entries.stream().anyMatch(p -> p.contains("org.eclipse")),
+        // Guard on LIBRARY entries, not on the string "org.eclipse" (C1 audit
+        // round 3): the JRE container's own path is
+        // org.eclipse.jdt.launching.JRE_CONTAINER, so the earlier guard matched
+        // on every machine and never once skipped — a guard that cannot fire is
+        // not a guard, and the comment claiming it behaved like the Gradle cell
+        // was false. A pool contributes jars; without one there are none.
+        Assumptions.assumeTrue(!libraryPaths(jp).isEmpty(),
             "no external bundle pool on this machine (~/.p2/pool/plugins or -Djawata.dist.root)"
                 + " — PDE dependency resolution is unproven here, not passing. Entries: " + entries);
         assertTrue(entries.stream().anyMatch(p -> p.contains("org.eclipse.osgi")),
@@ -417,6 +423,36 @@ class BuildSystemLoadTest {
         IJavaProject jp = load("unknown-layout");
         assertNotNull(jp.findType("com.example.Widget"),
             "a sibling of the non-UTF-8 file did not resolve — the load was aborted");
+    }
+
+    @Test
+    @DisplayName("DETECTION survives a non-UTF-8 manifest — the widest blast radius of the three")
+    void detectionSurvivesANonUtf8Manifest() throws Exception {
+        // hasManifestSymbolicName runs from detectBuildSystem on EVERY load, so
+        // its strict lazy decode was the worst instance of this defect — worse
+        // than the .java one, because a Bundle-Vendor with an umlaut is
+        // ordinary. It had no control: every fixture manifest was clean UTF-8,
+        // so the fix could have been reverted with nothing going red.
+        //
+        // The fixture's Bundle-Vendor carries a raw Latin-1 byte and sits
+        // BEFORE Bundle-SymbolicName, so the scan must decode it to get there.
+        Path fixture = helper.getFixturePath("pde-latin1-manifest");
+        assertEquals(ProjectImporter.BuildSystem.ECLIPSE_PDE, importer.detectBuildSystem(fixture),
+            "a bundle with a legacy-encoded manifest was not detected as PDE");
+        assertNotNull(load("pde-latin1-manifest").findType("com.example.latin.Vendor"),
+            "the project did not load past its own manifest");
+    }
+
+    @Test
+    @DisplayName("a bare Java 8 in a pom becomes JDT's 1.8, rather than being refused")
+    void bareMajorVersionIsNormalizedNotRefused() throws Exception {
+        // <maven.compiler.source>8</maven.compiler.source> is ordinary, correct
+        // Maven meaning Java 8. JDT's name for that level is "1.8", and a bare
+        // "8" handed to setOption is a value it does not recognise — so the
+        // shape check must NORMALIZE it, not reject it as a non-version.
+        assertEquals(Optional.of("1.8"),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("maven-level-8")),
+            "a bare 8 was not normalized to JDT's 1.8");
     }
 
     @Test

@@ -123,7 +123,14 @@ public final class ExternalBundlePool {
             jars.filter(p -> p.getFileName().toString().endsWith(".jar"))
                 .sorted()
                 .forEach(jar -> indexJar(jar, byName, byPackage));
-        } catch (IOException e) {
+        } catch (IOException | java.io.UncheckedIOException e) {
+            // UncheckedIOException too (Sprint 28, C1 audit round 3): Files.list
+            // defers the directory read to the terminal operation and wraps a
+            // failure there as an UNCHECKED exception, which a catch(IOException)
+            // cannot see. This runs from addDependencyEntries on every load with
+            // an unresolved Require-Bundle or Import-Package — so a pool
+            // directory that becomes unreadable would abort the load rather than
+            // degrade to "this bundle did not resolve".
             log.warn("bundle pool: cannot list {}: {}", dir, e.getMessage());
             return null;
         }

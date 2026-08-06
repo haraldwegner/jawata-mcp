@@ -62,8 +62,9 @@ echo "probe: cloning $REPO into $WORK (shallow)"
 if ! git clone --depth 1 --quiet "$REPO" "$WORK/repo" 2>/dev/null; then
     echo "probe: RESULT=unreachable — could not clone $REPO (offline or repo moved)."
     echo "probe: this is not a jawata finding; it is a network/availability fact."
+    echo "probe: exiting 2 = DID NOT RUN. A probe that never ran is not a pass."
     check_tree_unchanged || exit 1
-    exit 0
+    exit 2
 fi
 
 TARGET="$WORK/repo"
@@ -79,8 +80,9 @@ echo "probe: java files=$JAVA_FILES, BUILD files=$BUILD_FILES"
 
 if [ "$JAVA_FILES" -eq 0 ]; then
     echo "probe: RESULT=no-java — $REPO has no Java sources under $TARGET; nothing to load."
+    echo "probe: exiting 2 = DID NOT RUN."
     check_tree_unchanged || exit 1
-    exit 0
+    exit 2
 fi
 
 if [ ! -f "$JAR" ]; then
@@ -99,7 +101,9 @@ RESIDENT_PID=$!
 for _ in $(seq 1 120); do
     grep -q "READY\|Server started\|listening" "$WORK/resident.log" 2>/dev/null && break
     kill -0 "$RESIDENT_PID" 2>/dev/null || { echo "probe: RESULT=resident-died on startup"
-                                             tail -20 "$WORK/resident.log"; exit 2; }
+                                             tail -20 "$WORK/resident.log"
+                                             check_tree_unchanged || exit 1
+                                             exit 2; }
     sleep 1
 done
 
@@ -126,6 +130,18 @@ VERDICT=0
 if printf '%s' "$LOAD" | grep -q '"success":true'; then
     if printf '%s' "$LOAD" "$STRUCT" | grep -qE '"sourceFileCount":[1-9]|"packageCount":[1-9]'; then
         echo "probe: RESULT=loaded — a real public Bazel repo mounted sources."
+        # WHICH code path derived the roots? A Bazel repo laid out the Maven way
+        # (src/main/java) is matched by the conventional rule BEFORE the Bazel
+        # one, so addBazelSourcePaths and bazelSourceRootFor — the Stage-1 defect
+        # and its fix — are never entered. Reporting "loaded" without this reads
+        # as though the Bazel importer had been driven for real when it had not.
+        if printf '%s' "$STRUCT" | grep -q 'src-[0-9]*-src-main-java'; then
+            echo "probe: PATH=conventional — roots came from the src/main/java rule."
+            echo "probe: the BAZEL-SPECIFIC root derivation was NOT exercised by this repo."
+            echo "probe: pass a repo whose Java sits beside a BUILD file (java/com/...) to reach it."
+        else
+            echo "probe: PATH=bazel-package-derived — the Bazel root derivation WAS exercised."
+        fi
     else
         echo "probe: RESULT=loaded-EMPTY — load_project reported success and mounted NOTHING."
         echo "probe: that is a jawata finding, not a property of $REPO."

@@ -56,8 +56,17 @@ target/
 # one — and a trap that is not in the repository turns its test into a
 # tautology that passes on the broken code. Scoped to the one fixture that
 # needs it, which nothing builds, so no real output lands here.
+# NARROWED to the trap subtree (C1 audit round 3). Un-ignoring the whole
+# target/ exposed it to `mvn dependency:build-classpath`, which the loader runs
+# IN the fixture directory and which writes a jawata-classpath-<pid>-<nonce>.txt
+# there — normally deleted, but two leftovers from July prove that is not
+# guaranteed. Under the wide negation the next `git add -A` would have committed
+# run residue: the gate's own "nothing enters our tree" clause, broken by the
+# change that closed it.
 !org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/
-!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/**
+org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/*
+!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/classes-src/
+!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/classes-src/**
 
 # Working folder - session continuity docs (not tracked)
 working/
