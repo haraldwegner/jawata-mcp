@@ -280,7 +280,9 @@ class BuildSystemLoadTest {
     @Test
     @DisplayName("plain eclipse P1: the mounted roots are EXACTLY the .classpath src entries")
     void plainEclipseMountsExactlyItsClasspathEntries() throws Exception {
-        assertRootsAre(load("plain-eclipse"), "src-main-java", "src-test-java");
+        // Three since Stage 2: src/it/java carries the DIRECT test="true"
+        // spelling, so both flag forms live in one fixture.
+        assertRootsAre(load("plain-eclipse"), "src-main-java", "src-test-java", "src-it-java");
     }
 
     @Test

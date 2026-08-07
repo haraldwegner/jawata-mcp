@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 Stage 2 fixture: a Tycho TEST bundle.
+
+  <packaging>eclipse-test-plugin</packaging> is how a Tycho project declares
+  "this bundle is test code" — rule 1 of the test-ness precedence, an EXPLICIT
+  declaration, which outranks folder convention and file content.
+
+  It matters here because this bundle's sources are flat under src/, so the
+  folder rule says nothing, and its classes import JUnit, so the content rule
+  would reach the right answer for the wrong reason. Only the packaging makes
+  it a declaration.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.jawata.fixture</groupId>
+    <artifactId>pde-tycho-tests</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>eclipse-test-plugin</packaging>
+</project>

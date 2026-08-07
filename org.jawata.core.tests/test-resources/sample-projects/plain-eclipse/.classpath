@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Sprint 28 D-IMPORTER fixture: a PLAIN Eclipse project (.classpath, no
-     MANIFEST.MF, no pom) — the only declared build system with no sample.
-     The test="true" attribute on the second entry is Eclipse's own way of
-     saying "this root is test code", and is what Stage 2 tags from. -->
+<!-- Sprint 28 D-IMPORTER/Stage-2 fixture: a PLAIN Eclipse project (.classpath, no
+     MANIFEST.MF, no pom). The test flag appears in BOTH spellings Eclipse-world
+     files use: the REAL nested <attributes> form Eclipse itself writes
+     (src/test/java), and the direct test="true" XML attribute found in
+     hand-written files (src/it/java). Stage 2 tags from either. -->
 <classpath>
     <classpathentry kind="src" path="src/main/java"/>
-    <classpathentry kind="src" path="src/test/java" test="true"/>
+    <classpathentry kind="src" path="src/test/java">
+        <attributes>
+            <attribute name="test" value="true"/>
+        </attributes>
+    </classpathentry>
+    <classpathentry kind="src" path="src/it/java" test="true"/>
     <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
     <!-- The declared dependency. lib/example-lib.jar holds com.example.libs.EclipseLib,
          so the test can assert the entry was HONOURED (the type resolves) rather

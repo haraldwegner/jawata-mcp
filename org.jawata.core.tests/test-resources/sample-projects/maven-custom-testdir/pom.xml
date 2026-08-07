@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28 Stage-2 fixture: Maven declaring NONSTANDARD source dirs. The
+     folder convention says nothing about code-src/ or tests-src/; only the
+     pom's explicit declaration (rule 1) can classify them. tests-src contains
+     no test-framework import, so the content rule cannot reach "test" either —
+     the declaration alone carries it. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>maven-custom-testdir</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <build>
+        <sourceDirectory>code-src</sourceDirectory>
+        <testSourceDirectory>tests-src</testSourceDirectory>
+    </build>
+</project>

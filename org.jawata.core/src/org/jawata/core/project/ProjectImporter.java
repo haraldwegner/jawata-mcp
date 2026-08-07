@@ -5,6 +5,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
@@ -768,6 +769,137 @@ public class ProjectImporter {
     }
 
     /**
+     * Is this source root TEST code?
+     *
+     * <p>Sprint 28 Stage 2 (D-UNWIRED's producer). The importer has always
+     * KNOWN test-ness — {@code readPomSourceDirs} returns {@code srcMain} and
+     * {@code srcTest} separately, {@code .classpath} carries the {@code test}
+     * flag — and then flattened everything into one {@code List<Path>},
+     * destroying the knowledge before it reached the model. That is why
+     * {@code compile_workspace(scope=…)} misclassifies jawata's own test
+     * bundles (mcp#9): the model never learned what the importer knew.</p>
+     *
+     * <p>Three rules, in an order that is LOAD-BEARING, not cosmetic:</p>
+     * <ol>
+     *   <li><b>An explicit declaration wins.</b> Tycho
+     *       {@code eclipse-test-plugin} packaging (the whole bundle is test
+     *       code); Maven's {@code <testSourceDirectory>} /
+     *       {@code <sourceDirectory>}; the {@code .classpath} {@code test}
+     *       flag — and a {@code .classpath} src entry WITHOUT the flag is an
+     *       explicit MAIN, because that is what the absence means to
+     *       Eclipse.</li>
+     *   <li><b>Else the folder convention.</b> {@code src/test/**} → test,
+     *       {@code src/main/**} → main. This must outrank content:
+     *       {@code build/testrunner/src/main/java} imports JUnit because it
+     *       RUNS tests, and content alone would mislabel the runner as test
+     *       code.</li>
+     *   <li><b>Else the content.</b> A flat root with no declaration and no
+     *       convention — jawata's own {@code *.tests} bundles are exactly
+     *       this shape — is test code iff it contains classes importing a
+     *       test framework ({@code org.junit}, {@code org.testng}).</li>
+     * </ol>
+     *
+     * <p>Classification happens HERE, at emission, through one pure function —
+     * not by re-plumbing the six collectors' {@code List<Path>} into a tagged
+     * type. This checkpoint's own record shows a measured
+     * one-new-defect-per-fix rate for structural changes to the collection
+     * paths; one function applied at one site is the shape that risk
+     * allows.</p>
+     */
+    boolean isTestSourceRoot(java.nio.file.Path srcPath, java.nio.file.Path projectPath) {
+        java.nio.file.Path owner = owningModuleDir(srcPath);
+
+        // Rule 1a — Tycho: the bundle's packaging declares the WHOLE bundle.
+        if (owner != null
+                && "eclipse-test-plugin".equals(
+                    readPomPackaging(owner.resolve("pom.xml")).orElse(null))) {
+            return true;
+        }
+        // Rule 1b — Maven's explicit source declarations.
+        if (owner != null) {
+            SourceDirs pomDirs = readPomSourceDirs(owner.resolve("pom.xml"));
+            if (pomDirs.srcTest().map(srcPath::equals).orElse(false)) {
+                return true;
+            }
+            if (pomDirs.srcMain().map(srcPath::equals).orElse(false)) {
+                return false;
+            }
+            // Rule 1c — the .classpath test flag; an entry WITHOUT it is
+            // explicit main.
+            ClasspathInfo cp = readEclipseClasspath(owner);
+            if (cp.testSrcPaths().contains(srcPath)) {
+                return true;
+            }
+            if (cp.srcPaths().contains(srcPath)) {
+                return false;
+            }
+        }
+        // Rule 2 — the folder convention.
+        String slashed = srcPath.toString().replace(File.separatorChar, '/');
+        if (slashed.contains("/src/test/") || slashed.endsWith("/src/test")) {
+            return true;
+        }
+        if (slashed.contains("/src/main/") || slashed.endsWith("/src/main")) {
+            return false;
+        }
+        // Rule 3 — the content.
+        return containsTestFrameworkImports(srcPath);
+    }
+
+    /**
+     * The module directory that DECLARES {@code srcPath}: the nearest ancestor
+     * carrying a {@code pom.xml} or {@code .classpath}. Walks upward unbounded
+     * by the project root, because a declared source dir may live OUTSIDE the
+     * project tree ({@code <sourceDirectory>../../bundle/src</sourceDirectory>}
+     * is the post-22d jawata shape); bounded at 12 levels so a filesystem walk
+     * to {@code /} cannot happen. Null when nothing declares it.
+     */
+    private static java.nio.file.Path owningModuleDir(java.nio.file.Path srcPath) {
+        java.nio.file.Path dir = srcPath.getParent();
+        for (int i = 0; dir != null && i < 12; i++, dir = dir.getParent()) {
+            if (Files.isRegularFile(dir.resolve("pom.xml"))
+                    || Files.isRegularFile(dir.resolve(".classpath"))) {
+                return dir;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Does this root contain classes importing a test framework? Bounded (500
+     * files, 120 lines each) and lenient — one unreadable or legacy-encoded
+     * file must not decide, or abort, the classification.
+     */
+    private boolean containsTestFrameworkImports(java.nio.file.Path srcPath) {
+        List<java.nio.file.Path> javaFiles = new ArrayList<>();
+        walkPruned(srcPath, dir -> false, dir -> {
+            if (javaFiles.size() < 500) {
+                try (Stream<java.nio.file.Path> files = Files.list(dir)) {
+                    files.filter(p -> p.toString().endsWith(".java"))
+                         .limit(500L - javaFiles.size())
+                         .forEach(javaFiles::add);
+                } catch (IOException | UncheckedIOException e) {
+                    log.debug("Could not list {}: {}", dir, e.getMessage());
+                }
+            }
+        });
+        for (java.nio.file.Path file : javaFiles) {
+            try {
+                for (String line : readLinesLenient(file, 120)) {
+                    String t = line.trim();
+                    if (t.startsWith("import ")
+                            && (t.contains("org.junit.") || t.contains("org.testng."))) {
+                        return true;
+                    }
+                }
+            } catch (IOException e) {
+                log.debug("Could not read {} for test-framework imports: {}", file, e.getMessage());
+            }
+        }
+        return false;
+    }
+
+    /**
      * Create linked folders for source directories and add them to classpath.
      * Uses linked folders to keep Eclipse metadata in the workspace.
      * Supports multi-module projects by scanning submodules.
@@ -788,9 +920,27 @@ public class ProjectImporter {
             try {
                 workspaceManager.createLinkedFolder(project, linkedName, srcPath);
                 IPath sourceEntryPath = project.getFolder(linkedName).getFullPath();
+                // Sprint 28 Stage 2: carry test-ness into the MODEL, as JDT's
+                // own TEST attribute — the knowledge used to be destroyed right
+                // here, which is why scope-filtered tools misclassified test
+                // bundles (mcp#9). Absence of the attribute is JDT's spelling
+                // of "main".
+                boolean test = isTestSourceRoot(srcPath, projectPath);
+                IClasspathAttribute[] extraAttributes = test
+                    ? new IClasspathAttribute[] {
+                        JavaCore.newClasspathAttribute(IClasspathAttribute.TEST, "true") }
+                    : new IClasspathAttribute[0];
+                // JDT REFUSES a test root sharing the main output folder
+                // ("must have a separate output folder", code 1015) — a real
+                // model constraint the tag surfaced, and the mirror of the
+                // real world: test classes never land in the production jar.
+                IPath testOutput = test
+                    ? project.getFullPath().append("test-classes")
+                    : null;
                 entries.add(JavaCore.newSourceEntry(sourceEntryPath,
-                    new IPath[0], SOURCE_EXCLUSIONS, null));
-                log.debug("Added linked source folder: {} -> {}", linkedName, srcPath);
+                    new IPath[0], SOURCE_EXCLUSIONS, testOutput, extraAttributes));
+                log.debug("Added linked source folder: {} -> {} (test={})", linkedName, srcPath,
+                    extraAttributes.length > 0);
             } catch (Exception e) {
                 // Swallowing this loaded a project with a MISSING SOURCE ROOT —
                 // its files silently absent from every listing and scan ("no
@@ -1931,9 +2081,11 @@ public class ProjectImporter {
                           List<java.nio.file.Path> libPaths,
                           Optional<java.nio.file.Path> outputPath,
                           List<String> projectRefs,
-                          List<String> containers) {
+                          List<String> containers,
+                          List<java.nio.file.Path> testSrcPaths) {
         static ClasspathInfo empty() {
-            return new ClasspathInfo(List.of(), List.of(), Optional.empty(), List.of(), List.of());
+            return new ClasspathInfo(List.of(), List.of(), Optional.empty(), List.of(), List.of(),
+                List.of());
         }
     }
 
@@ -2139,6 +2291,21 @@ public class ProjectImporter {
         return Optional.empty();
     }
 
+    /** The {@code test} flag of one {@code <classpathentry>}, in either spelling. */
+    private static boolean classpathEntryIsTest(Element entry) {
+        if ("true".equals(entry.getAttribute("test"))) {
+            return true;
+        }
+        NodeList attrs = entry.getElementsByTagName("attribute");
+        for (int i = 0; i < attrs.getLength(); i++) {
+            Element attr = (Element) attrs.item(i);
+            if ("test".equals(attr.getAttribute("name")) && "true".equals(attr.getAttribute("value"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Read Eclipse .classpath at the project root.
      * Resolves &lt;classpathentry path="..."&gt; values against projectRoot
@@ -2158,6 +2325,7 @@ public class ProjectImporter {
             List<java.nio.file.Path> libPaths = new ArrayList<>();
             List<String> projectRefs = new ArrayList<>();
             List<String> containers = new ArrayList<>();
+            List<java.nio.file.Path> testSrcPaths = new ArrayList<>();
             Optional<java.nio.file.Path> outputPath = Optional.empty();
             for (int i = 0; i < entries.getLength(); i++) {
                 Element entry = (Element) entries.item(i);
@@ -2180,7 +2348,17 @@ public class ProjectImporter {
                                 projectRefs.add(name);
                             }
                         } else {
-                            srcPaths.add(projectRoot.resolve(path).normalize());
+                            java.nio.file.Path resolved = projectRoot.resolve(path).normalize();
+                            srcPaths.add(resolved);
+                            // Sprint 28 Stage 2: the test flag. Eclipse writes it
+                            // as a NESTED element —
+                            //   <attributes><attribute name="test" value="true"/></attributes>
+                            // — and some hand-written files carry it as a direct
+                            // test="true" XML attribute. Read both: the point is
+                            // the DECLARATION, whichever way it was spelled.
+                            if (classpathEntryIsTest(entry)) {
+                                testSrcPaths.add(resolved);
+                            }
                         }
                     }
                     case "lib" -> libPaths.add(projectRoot.resolve(path).normalize());
@@ -2191,7 +2369,8 @@ public class ProjectImporter {
                     }
                 }
             }
-            return new ClasspathInfo(srcPaths, libPaths, outputPath, projectRefs, containers);
+            return new ClasspathInfo(srcPaths, libPaths, outputPath, projectRefs, containers,
+                testSrcPaths);
         } catch (Exception e) {
             log.warn("Failed to parse .classpath at {}: {}", file, e.getMessage());
             return ClasspathInfo.empty();
