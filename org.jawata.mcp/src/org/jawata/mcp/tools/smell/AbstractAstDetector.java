@@ -6,6 +6,7 @@ import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
+import org.jawata.core.project.SourceRootClassifier;
 import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.domain.Finding;
 import org.jawata.mcp.domain.Findings;
@@ -363,26 +364,39 @@ public abstract class AbstractAstDetector implements Detector {
      * Heuristic: is this a test source? Test code legitimately has long methods
      * and methods that hammer their subject-under-test, so smell scans exclude it
      * by default (the v1.2.1 dogfood found ~70% of long_method/feature_envy noise
-     * came from test sources). Matches Maven ({@code src/test/}) and PDE/Tycho
-     * test bundles ({@code *.tests/}).
+     * came from test sources).
      *
-     * <p>The check runs on the path <em>relative to the project root</em> — an
-     * absolute check falsely flags a project that merely lives under a
-     * {@code *.tests/} directory (e.g. a fixture under
-     * {@code org.jawata.core.tests/test-resources/…}).</p>
+     * <p>Sprint 28 Stage 4 — this was the SECOND derivation of test-ness. It
+     * matched {@code src/test/}, {@code test/java/} and {@code .tests/} on the
+     * project-relative path: the same convention {@code CompileWorkspaceTool}
+     * carried, with the same blind spots, which is what {@code mcp#9} was. A
+     * flat-{@code src} test fragment whose name has no dot, a Bazel test
+     * target, a Tycho {@code eclipse-test-plugin}, a Maven project with a
+     * custom {@code testSourceDirectory} — every one of them read as production
+     * here, so the Fowler detectors' {@code includeTests=false} filter silently
+     * kept scanning test code and reported its smells as the product's.</p>
+     *
+     * <p>It now asks the ONE classifier, which reads the test attribute the
+     * importer recorded on the source root. A path this cannot resolve to a
+     * compilation unit — and a root the model does not mark — falls open to
+     * "not test", the visible direction: a detector that wrongly INCLUDES a
+     * file reports a finding you can dismiss, while one that wrongly EXCLUDES
+     * it reports nothing and looks clean.</p>
      */
     public static boolean isTestSource(Path path, IJdtService service) {
-        if (path == null) {
+        if (path == null || service == null) {
             return false;
         }
-        String rel;
         try {
-            Path root = service != null ? service.getProjectRoot() : null;
-            rel = (root != null ? root.relativize(path) : path).toString().replace('\\', '/');
+            ICompilationUnit unit = service.getCompilationUnit(path);
+            if (unit == null) {
+                return false;
+            }
+            return SourceRootClassifier.classify(unit.getResource())
+                == SourceRootClassifier.Verdict.TEST;
         } catch (Exception e) {
-            rel = path.toString().replace('\\', '/');
+            return false;
         }
-        return rel.contains("src/test/") || rel.contains("test/java/") || rel.contains(".tests/");
     }
 }
 

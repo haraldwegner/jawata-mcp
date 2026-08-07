@@ -58,7 +58,11 @@ call() {   # call <tool> <json-args>
 }
 
 call load_project "{\"projectPath\":\"$ROOT\"}" > "$WORK/load.json"
-call find_quality_issue '{"kind":"called_only_by_tests"}' > "$WORK/findings.json"
+# family="quality", NOT kind="called_only_by_tests". Naming the kind would keep
+# this gate green even if the detector were dropped from the standard sweep —
+# the gate would be reaching it by a route no ordinary user takes. Sweeping the
+# family means the gate ALSO proves the detector fires unprompted.
+call find_quality_issue '{"family":"quality","limit":10000}' > "$WORK/findings.json"
 
 # Parse, and REFUSE a scan that examined nothing or admits partiality — an
 # empty result from a failed scan reported as "clean" is the lie this whole
@@ -72,17 +76,56 @@ payload = json.loads(raw["result"]["content"][0]["text"])
 if not payload.get("success"):
     print("gate: RESULT=tool-refused —", json.dumps(payload.get("error"))[:400]); sys.exit(2)
 d = payload["data"]
-examined = d.get("filesExamined", 0)
-print("gate: scan listed=%s examined=%s tracked=%s elapsedMs=%s"
-      % (d.get("filesListed"), examined, d.get("publicMainMembersTracked"), d.get("elapsedMs")))
-if examined == 0:
+findings = d.get("findings") or []
+if d.get("truncated"):
+    print("gate: RESULT=truncated-sweep — the findings list was capped, so absent"
+          " symbols cannot be told from dropped ones.")
+    sys.exit(2)
+ours = [f for f in findings if f.get("kind") == "called_only_by_tests"]
+kinds = sorted({f.get("kind") for f in findings})
+print("gate: family sweep returned %d finding(s) across %d kind(s); %d of kind"
+      " called_only_by_tests" % (len(findings), len(kinds), len(ours)))
+# The detector must be REACHED by the family sweep. Nothing in the request names
+# it; if the standard sweep no longer carries it, the gate must not read that as
+# "no hollow members".
+if "called_only_by_tests" not in kinds:
+    print("gate: RESULT=detector-not-in-sweep — find_quality_issue(family='quality')"
+          " returned no called_only_by_tests findings AT ALL. Either the detector was"
+          " dropped from the standard sweep, or it refused. Kinds seen:", kinds)
+    sys.exit(2)
+open(sys.argv[2], "w").write("\n".join(sorted(f["symbol"] for f in ours)) + "\n")
+PY
+rc=$?
+[ $rc -ne 0 ] && exit $rc
+
+# THE TIME BUDGET. A whole-workspace AST pass that quietly grows into minutes
+# stops being run, and a gate nobody runs is not a gate. Measured on this
+# 660-file workspace: 6.8s / 8.7s / 10.3s idle, 11.6s / 13.2s with the full test
+# suite running in parallel on the same machine. Budget 30s — ~2.3x the worst
+# observed, so machine load never trips it and a regression in the pass itself
+# does. This call names the kind DELIBERATELY: it measures the
+# detector, while the findings above come from the unprompted family sweep.
+call find_quality_issue '{"kind":"called_only_by_tests"}' > "$WORK/timed.json"
+python3 - "$WORK/timed.json" "${UNWIRED_BUDGET_MS:-30000}" <<'PY'
+import json, sys
+payload = json.loads(json.load(open(sys.argv[1]))["result"]["content"][0]["text"])
+d = payload["data"]
+ms, budget = d.get("elapsedMs"), int(sys.argv[2])
+print("gate: scan listed=%s examined=%s tracked=%s elapsedMs=%s (budget %sms)"
+      % (d.get("filesListed"), d.get("filesExamined"), d.get("publicMainMembersTracked"), ms, budget))
+if d.get("filesExamined", 0) == 0:
     print("gate: RESULT=examined-nothing — 'no findings' would be a claim about code never opened.")
     sys.exit(2)
 if d.get("scanIncomplete"):
     print("gate: RESULT=partial-scan — some files were unreadable; a baseline diff over a"
           " partial scan silently reads missing findings as fixed.")
     sys.exit(2)
-open(sys.argv[2], "w").write("\n".join(sorted(f["symbol"] for f in d["findings"])) + "\n")
+if ms is None:
+    print("gate: RESULT=no-timing — the scan stopped reporting its own cost.")
+    sys.exit(2)
+if ms > budget:
+    print("gate: RESULT=over-budget — %sms > %sms." % (ms, budget))
+    sys.exit(1)
 PY
 rc=$?
 [ $rc -ne 0 ] && exit $rc
@@ -99,6 +142,7 @@ payload = json.loads(raw["result"]["content"][0]["text"])
 callers = payload["data"]["callers"]
 prod = sorted({c["callerClass"] for c in callers if ".tests/" not in c["filePath"]})
 expected = ["org.jawata.mcp.tools.CompileWorkspaceTool",
+            "org.jawata.mcp.tools.smell.AbstractAstDetector",
             "org.jawata.mcp.tools.smell.TestOnlyCallerDetector"]
 print("gate: SourceRootClassifier production callers:", prod)
 if prod != expected:

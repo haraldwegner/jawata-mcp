@@ -95,6 +95,41 @@ class ScopeClassificationTest {
     }
 
     @Test
+    @DisplayName("THE SECOND CLASSIFIER: the smell detectors' test filter reads the model too")
+    void theSmellFilterUsesTheOneClassifier() throws Exception {
+        // Sprint 28 Stage 4 found a SECOND derivation of test-ness living in
+        // AbstractAstDetector#isTestSource: rel.contains("src/test/") ||
+        // rel.contains("test/java/") || rel.contains(".tests/") — the same
+        // convention Stage 3 deleted from CompileWorkspaceTool, with the same
+        // blind spots, feeding every Fowler detector's includeTests=false
+        // filter. This fixture is exactly where the two disagree: a test
+        // bundle whose sources are flat under src/ and whose directory name
+        // carries no dot, so NONE of the three substrings match and the old
+        // code called it production. Revert isTestSource to the convention and
+        // this assertion is the one that goes red.
+        JdtServiceImpl service = helper.loadProject("pde-external");
+        Path testsRoot = helper.getFixturePath("pde-external-tests");
+        service.addProject(testsRoot);
+
+        Path testFile = testsRoot.resolve("src/com/example/exttests/ExtLibTest.java");
+        Path mainFile = helper.getFixturePath("pde-external")
+            .resolve("src/com/example/ext/ExtLib.java");
+        // The old check ran on the path RELATIVE to the project root (an
+        // absolute one falsely matched this very fixture, which lives under
+        // org.jawata.core.tests/). Guard the same form it used, or the
+        // discriminator is not one.
+        String rel = testsRoot.relativize(testFile).toString().replace('\\', '/');
+        assertFalse(rel.contains("src/test/") || rel.contains("test/java/") || rel.contains(".tests/"),
+            "the fixture only discriminates while NO path convention matches its"
+                + " project-relative path, which is what the old code read: " + rel);
+
+        assertTrue(org.jawata.mcp.tools.smell.AbstractAstDetector.isTestSource(testFile, service),
+            "a flat-src test bundle is test code — the smell filter must exclude it");
+        assertFalse(org.jawata.mcp.tools.smell.AbstractAstDetector.isTestSource(mainFile, service),
+            "and the main bundle beside it must stay in scope");
+    }
+
+    @Test
     @DisplayName("a null or un-rooted resource falls OPEN, never hidden")
     void unclassifiableFallsOpen() {
         assertEquals(Verdict.CROSS_CUTTING, SourceRootClassifier.classify(null),

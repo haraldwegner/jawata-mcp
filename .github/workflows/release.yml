@@ -36,6 +36,16 @@ jobs:
              -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee test-run.log
         test ${PIPESTATUS[0]} -eq 0
 
+    # Sprint 28 (D-UNWIRED): no public production member may reach a release
+    # with every one of its callers in test code — the v3.4.0 shape, which
+    # shipped its central deliverable inert past a 1591/1591 suite. This runs
+    # the shipped jar over this repository through its own front door and fails
+    # on any finding not in build/unwired-baseline.txt. It also asserts the
+    # one-classifier invariant and a 30s time budget.
+    - name: Hollow-wiring gate (called_only_by_tests)
+      timeout-minutes: 20
+      run: ./build/unwired-gate.sh
+
     # always(): runs on failure, step-timeout AND cancellation — the per-class
     # progress log survives every outcome (GitHub discards a cancelled step's
     # own log; this artifact is the insurance).
