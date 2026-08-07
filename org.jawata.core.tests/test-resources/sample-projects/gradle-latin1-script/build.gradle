@@ -1,0 +1,7 @@
+// Sprint 28 (C1, final audit): a build script with a LEGACY-ENCODED byte.
+// Maintainer: Müller Software GmbH  <- Latin-1, invalid as UTF-8.
+// Same defect as maven-latin1-pom: a strict whole-file read turns one
+// undecodable byte into "this project declares no level".
+plugins { id 'java' }
+sourceCompatibility = '17'
+targetCompatibility = '17'

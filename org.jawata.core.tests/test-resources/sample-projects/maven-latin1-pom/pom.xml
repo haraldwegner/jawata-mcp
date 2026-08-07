@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 (C1, final audit): a pom with a LEGACY-ENCODED byte in a comment.
+  Vendor: Müller Software GmbH  <- that byte is Latin-1, invalid as UTF-8.
+
+  Files.readString decodes strictly, and its MalformedInputException is a
+  CHECKED IOException â€” so a reader that catches IOException and returns empty
+  turns "a byte I could not decode" into "this project declares no level", and
+  the project silently takes the workspace default. The exception type looked
+  correct, which is why this survived three audit rounds; what the catch DID
+  was the defect.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>maven-latin1-pom</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+</project>

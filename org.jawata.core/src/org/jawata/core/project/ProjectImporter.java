@@ -242,7 +242,17 @@ public class ProjectImporter {
      * A bare {@code 5}–{@code 8} is NOT one of them, which is why
      * {@link #usableLevel} normalizes rather than merely tests.
      */
-    private static final Pattern COMPLIANCE_LEVEL = Pattern.compile("1\\.[3-8]|[9]|[1-9][0-9]+");
+    private static final Pattern COMPLIANCE_LEVEL = Pattern.compile("1\\.[3-8]|[9]|[1-4][0-9]");
+
+    /**
+     * The highest bare major version accepted, and why there is a ceiling at
+     * all (C1, final audit): {@code [1-9][0-9]+} matched {@code 99} and
+     * {@code 1234}, so a typo'd {@code <maven.compiler.release>177</…>} was
+     * pushed to JDT unvalidated — the exact class of value the shape check
+     * exists to refuse. Two digits starting 1-4 covers every release JDT can
+     * be set to and every one it plausibly will be for decades; a level above
+     * it is far likelier to be a typo than a time traveller.
+     */
 
     /**
      * {@code level} in the form JDT accepts, or empty — said out loud.
@@ -304,7 +314,7 @@ public class ProjectImporter {
             return Optional.empty();
         }
         try {
-            String pom = Files.readString(pomXml);
+            String pom = readStringLenient(pomXml);
             for (String tag : new String[] {"maven.compiler.release", "maven.compiler.source"}) {
                 Matcher m = Pattern.compile("<" + Pattern.quote(tag) + ">\\s*([^<\\s]+)\\s*</").matcher(pom);
                 if (m.find()) {
@@ -375,7 +385,7 @@ public class ProjectImporter {
                 continue;
             }
             try {
-                String script = Files.readString(buildFile);
+                String script = readStringLenient(buildFile);
                 Matcher m = Pattern.compile(
                     "(?:sourceCompatibility|targetCompatibility)\\s*(?:=|\\.set\\()\\s*"
                         + "[\"']?(?:JavaVersion\\.VERSION_)?([0-9._]+)[\"']?")
@@ -600,7 +610,7 @@ public class ProjectImporter {
             return false;
         }
         try {
-            String content = Files.readString(pomPath);
+            String content = readStringLenient(pomPath);
             return content.contains("<modules>") || content.contains("<packaging>pom</packaging>");
         } catch (IOException e) {
             log.debug("Error reading pom.xml: {}", e.getMessage());
@@ -620,7 +630,7 @@ public class ProjectImporter {
         }
 
         try {
-            String content = Files.readString(pomPath);
+            String content = readStringLenient(pomPath);
             Matcher matcher = MODULE_PATTERN.matcher(content);
             while (matcher.find()) {
                 String moduleName = matcher.group(1).trim();
@@ -1636,9 +1646,13 @@ public class ProjectImporter {
                 if (trimmed.isEmpty()) {
                     continue;
                 }
-                if (trimmed.startsWith("package ") && trimmed.endsWith(";")) {
-                    return Optional.of(
-                        trimmed.substring("package ".length(), trimmed.length() - 1).trim());
+                // `package\tcom.example;` is legal Java. Requiring the literal
+                // "package " sent it to the type check below, which declared it
+                // the default package — the defect this method prevents (C1,
+                // final audit).
+                Matcher pkg = PACKAGE_DECLARATION.matcher(trimmed);
+                if (pkg.matches()) {
+                    return Optional.of(pkg.group(1));
                 }
                 if (TYPE_DECLARATION.matcher(trimmed).find()) {
                     return Optional.empty();   // default package
@@ -1659,6 +1673,9 @@ public class ProjectImporter {
      * "record of changes…", the file is declared to be in the default package,
      * and every class under that directory lands in the wrong package.</p>
      */
+    private static final Pattern PACKAGE_DECLARATION = Pattern.compile(
+        "package\\s+([\\p{L}_$][\\p{L}\\p{N}_$]*(?:\\s*\\.\\s*[\\p{L}_$][\\p{L}\\p{N}_$]*)*)\\s*;");
+
     private static final Pattern TYPE_DECLARATION = Pattern.compile(
         "^(?:public\\s+|final\\s+|abstract\\s+|sealed\\s+|non-sealed\\s+|static\\s+)*"
             + "(?:class|interface|enum|record|@interface)\\b");
@@ -1705,6 +1722,29 @@ public class ProjectImporter {
             }
         }
         return open;
+    }
+
+    /**
+     * A whole file, decoded so that no byte sequence can lose its content.
+     *
+     * <p>Sprint 28 (C1, final audit). {@link Files#readString} decodes UTF-8
+     * STRICTLY, and its {@link java.nio.charset.MalformedInputException} is a
+     * checked {@code IOException} — so every reader that wraps it in
+     * {@code catch (IOException)} and returns an empty result converts "this
+     * file has a byte I could not decode" into "this project declares
+     * nothing". One legacy-encoded byte in a {@code pom.xml} or
+     * {@code build.gradle} — a vendor name, a copyright line — and the project
+     * silently takes the workspace default level. That is the defect this
+     * entire sprint exists to end, and it survived three audit rounds here
+     * because the exception type was checked and the catch therefore looked
+     * correct. The type was never the problem; what the catch DID was.</p>
+     *
+     * <p>Substituting on malformed input keeps every byte that decodes, which
+     * is all any of these readers need: a compliance level, a
+     * {@code <module>} name and a {@code sourceCompatibility} are ASCII.</p>
+     */
+    private static String readStringLenient(java.nio.file.Path file) throws IOException {
+        return lenientUtf8().decode(java.nio.ByteBuffer.wrap(Files.readAllBytes(file))).toString();
     }
 
     /** A UTF-8 decoder that substitutes rather than reports — see {@link #readLinesLenient}. */

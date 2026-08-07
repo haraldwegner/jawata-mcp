@@ -484,21 +484,47 @@ class BuildSystemLoadTest {
     }
 
     @Test
-    @DisplayName("an unreadable directory does not abort the load of the project around it")
+    @DisplayName("GUARD (not a control): an unreadable directory does not abort the load")
     void anUnreadableDirectoryDoesNotAbortTheLoad() throws Exception {
-        // The lazy-failure class has one more shape that no committed fixture
-        // can carry: git cannot represent a directory the process may not read.
-        // Built here at runtime instead, because the alternative is a group of
-        // fixes with no control at all.
+        // HONEST LABEL. This is a guard, not a discriminator, and it was claimed
+        // as a control for five unchecked-catch widenings until an audit
+        // reverted them and watched it stay green.
+        //
+        // It cannot discriminate, for a structural reason: walkPruned already
+        // catches at the top level, so the LOAD survives an unreadable
+        // directory with or without the per-visit handling. What the handling
+        // changes is how much of the tree is still scanned afterwards — and
+        // asserting that needs the unreadable directory to be visited BEFORE
+        // the readable one, which no filesystem guarantees. A test that depends
+        // on directory-iteration order is a coin toss wearing a control's
+        // clothes; that is precisely what the first version of this was.
+        //
+        // Kept because "one unreadable directory must not take a project down"
+        // is worth pinning. Its limits are stated rather than implied, and the
+        // five widenings are recorded in the dossier as UNCONTROLLED.
+        // The unreadable directory is named so it sorts BEFORE the readable
+        // one. The first version used "blocked" and "example", and on this
+        // filesystem the readable directory happened to be walked first — so
+        // the roots were already collected when the walk hit the unreadable
+        // one, and the test passed against the UNFIXED code. It was not a
+        // control; it was a coin toss that had come up heads.
+        // The layout matters twice over. It must NOT use src/ or src/main/java,
+        // because those are mounted by CONVENTION and the discovery walk — the
+        // only code path that can meet an unreadable directory — never runs at
+        // all. The first version of this test used src/, so it exercised
+        // nothing and passed against the unfixed code.
+        //
+        // And the unreadable directory sorts FIRST, so a walk that gives up on
+        // it never reaches the readable one.
         Path root = helper.getTempDirectory().resolve("unreadable-project");
-        Path good = root.resolve("src/com/example");
+        Path blocked = root.resolve("legacy/aaa-blocked");
+        java.nio.file.Files.createDirectories(blocked);
+        java.nio.file.Files.writeString(blocked.resolve("Hidden.java"),
+            "package aaa.blocked;\npublic class Hidden {}\n");
+        Path good = root.resolve("legacy/com/example");
         java.nio.file.Files.createDirectories(good);
         java.nio.file.Files.writeString(good.resolve("Reachable.java"),
             "package com.example;\npublic class Reachable {}\n");
-        Path blocked = root.resolve("src/com/blocked");
-        java.nio.file.Files.createDirectories(blocked);
-        java.nio.file.Files.writeString(blocked.resolve("Hidden.java"),
-            "package com.blocked;\npublic class Hidden {}\n");
         boolean chmodded = blocked.toFile().setReadable(false, false);
         Assumptions.assumeTrue(chmodded && !java.nio.file.Files.isReadable(blocked),
             "this filesystem or user (root ignores the read bit) cannot make a directory"
@@ -510,7 +536,7 @@ class BuildSystemLoadTest {
             assertNotNull(jp.findType("com.example.Reachable"),
                 "a readable sibling did not resolve — one unreadable directory took the"
                     + " whole project down, which is the same over-reaction as the strict"
-                    + " decode");
+                    + " decode. Mounted roots: " + sourceRootPaths(jp));
         } finally {
             blocked.toFile().setReadable(true, false);   // so the fixture can be cleaned up
         }
@@ -527,6 +553,40 @@ class BuildSystemLoadTest {
             () -> helper.getFixturePath("no-such-fixture-anywhere"));
         assertTrue(e.getMessage().contains("No such test fixture"),
             "the failure did not name the missing fixture: " + e.getMessage());
+    }
+
+    @Test
+    @DisplayName("a legacy-encoded byte in a pom does not erase the declared level")
+    void aLegacyEncodedPomStillDeclaresItsLevel() throws Exception {
+        // The sprint's headline defect, in the place it was NOT fixed for two
+        // whole build systems. Files.readString decodes strictly and its
+        // MalformedInputException is a CHECKED IOException — so the catch
+        // looked correct while turning "a byte I could not decode" into "this
+        // project declares no level".
+        assertEquals(Optional.of("17"),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("maven-latin1-pom")),
+            "one legacy-encoded byte in a comment erased the level the pom declares");
+        assertLevelApplied(load("maven-latin1-pom"), "17");
+    }
+
+    @Test
+    @DisplayName("a legacy-encoded byte in a build script does not erase the declared level")
+    void aLegacyEncodedGradleScriptStillDeclaresItsLevel() throws Exception {
+        assertEquals(Optional.of("17"),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("gradle-latin1-script")),
+            "one legacy-encoded byte erased the level build.gradle declares");
+        assertLevelApplied(load("gradle-latin1-script"), "17");
+    }
+
+    @Test
+    @DisplayName("a level that is not a real Java release is refused, not pushed to JDT")
+    void anImpossibleLevelIsRefused() throws Exception {
+        // 99 and 1234 passed the earlier shape check. A typo'd
+        // <maven.compiler.release>177</...> reaching setOption is exactly the
+        // class of value the check exists to refuse.
+        assertEquals(Optional.empty(),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("maven-impossible-level")),
+            "a level that is not a Java release was accepted");
     }
 
     @Test
