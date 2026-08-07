@@ -15,7 +15,13 @@ TIMINGS="${TIMINGS:-$ROOT/docs/sprints/dossier-23-timings.txt}"
 DEFAULT_SECS="${DEFAULT_SECS:-15}"
 DIST="$ROOT/build/dist/target/dist"
 FIXTURES="$ROOT/org.jawata.core.tests/test-resources/sample-projects"
-OUT="$DIST/suite-shards"
+# PER-RUN output dir. Two concurrent runs used to share $DIST/suite-shards and
+# both `rm -rf` it, so the loser found no summaries and reported
+# "4 shard(s) produced no summary" — which reads as a broken SUITE rather than
+# as two runs colliding. Observed 2026-08-07 when a second run was started while
+# the first was still going. The pid keeps them apart; the symlink keeps the
+# familiar path pointing at the most recent run for anyone reading logs.
+OUT="$DIST/suite-shards-$$"
 
 [ -f "$DIST/jawata.jar" ] || { echo "FATAL: dist not built ($DIST/jawata.jar)"; exit 2; }
 
@@ -34,6 +40,7 @@ for d in "$DIST/bundles" "$DIST/test-bundles"; do
 done
 
 rm -rf "$OUT"; mkdir -p "$OUT"
+ln -sfn "$OUT" "$DIST/suite-shards"
 
 # 1. Discover test classes exactly like the boot does (org.jawata.* test
 #    bundles, top-level *Test.class).
