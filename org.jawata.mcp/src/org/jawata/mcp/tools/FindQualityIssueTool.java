@@ -692,13 +692,6 @@ public class FindQualityIssueTool extends AbstractTool {
         List.of("findings", "unusedItems", "violations", "issues", "cycles", "largeClasses");
 
     /**
-     * Names the result list this response actually carries.
-     *
-     * @param data the response payload
-     * @return the first key from {@link #RESULT_LIST_KEYS} bound to a list, else
-     *         {@code "findings"} so a payload with no recognised list behaves as before
-     */
-    /**
      * Ensure a merged entry names the detector it came from.
      *
      * <p>Sprint 28 C4 (audit finding 7). Findings built from {@code Finding}
@@ -714,9 +707,16 @@ public class FindQualityIssueTool extends AbstractTool {
             return entry;
         }
         Map<String, Object> row = (Map<String, Object>) m;
-        if (row.get("kind") instanceof String) {
+        if (row.get("kind") instanceof String s && !s.isBlank()) {
             return row;
         }
+        // containsKey, NOT just an instanceof check: a row carrying `kind` with
+        // a null or blank value would otherwise be stamped and then have the
+        // null written straight back over it by putAll (C4 audit round 2, N2).
+        // No detector emits that today; the guard should not read as total when
+        // it is not.
+        row = new LinkedHashMap<>(row);
+        row.remove("kind");
         Map<String, Object> stamped = new LinkedHashMap<>();
         stamped.put("kind", kind);
         stamped.putAll(row);
