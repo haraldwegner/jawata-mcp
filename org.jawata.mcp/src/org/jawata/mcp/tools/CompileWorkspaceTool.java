@@ -82,10 +82,11 @@ public class CompileWorkspaceTool extends AbstractTool {
               signature-shape edit that the incremental builder would otherwise
               skip recompiling consumers for (bugs.md #8).
             - scope — "main" | "test" | "both" (default "both"). Filters
-              diagnostics by the source root the file lives under (Maven
-              src/main/* vs src/test/* convention). When the project compiles
-              cleanly but test sources have errors, scope="test" surfaces them
-              explicitly (bugs.md #9).
+              diagnostics by the TEST ATTRIBUTE the importer records on each
+              source root in the model — every layout, including flat PDE
+              bundles, not a path convention. Project-level files cross-cut
+              (visible in both scopes); an all-test project's files are test
+              (jawata-mcp#9, fixed Sprint 28).
             - summary — default false. When true, return counts only
               (errorCount/warningCount + byProject) with NO diagnostics array —
               the consumable shape when a broken classpath yields thousands of
@@ -123,7 +124,7 @@ public class CompileWorkspaceTool extends AbstractTool {
         properties.put("scope", Map.of(
             "type", "string",
             "enum", List.of("main", "test", "both"),
-            "description", "Filter diagnostics by source-root convention (src/main/* vs src/test/*). Default 'both' (bugs.md #9)."));
+            "description", "Filter diagnostics by the source root's test attribute in the model (every layout, incl. flat PDE bundles — not a path convention). Project-level files cross-cut; an all-test project's files are test. Default 'both' (jawata-mcp#9)."));
         properties.put("summary", Map.of(
             "type", "boolean",
             "description", "Counts only (errorCount/warningCount + byProject), NO diagnostics array — for workspaces with thousands of errors (v2.7.1). Default false."));

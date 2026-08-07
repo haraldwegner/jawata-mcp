@@ -19,6 +19,21 @@
 
     <dependencies>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.boot</artifactId><version>${project.version}</version></dependency>
+        <!-- Sprint 28 (C3 audit observation): these edges exist for REACTOR
+             ORDERING, not for the classpath. dependency:copy pulls the jawata
+             module jars by artifactItem, which declares no graph edge — so a
+             parallel build (-T) raced copy against install and silently
+             assembled a STALE dist from ~/.m2 while reporting BUILD SUCCESS.
+             That is jawata-mcp#1's shape (a stale jar shadowing fresh code)
+             living in the build graph itself; the auditor reproduced the old
+             defect's numbers from exactly such a dist before catching it by
+             checksum. With the edges declared, Maven orders dist after every
+             module in ANY build mode. -->
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.testrunner</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
     </dependencies>
 
     <build>

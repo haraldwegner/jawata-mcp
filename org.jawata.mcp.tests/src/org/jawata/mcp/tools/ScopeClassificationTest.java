@@ -1,7 +1,9 @@
 package org.jawata.mcp.tools;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.jdt.core.ICompilationUnit;
@@ -97,6 +99,65 @@ class ScopeClassificationTest {
     void unclassifiableFallsOpen() {
         assertEquals(Verdict.CROSS_CUTTING, SourceRootClassifier.classify(null),
             "a classification tool must degrade to visible, never to hidden");
+    }
+
+    @Test
+    @DisplayName("THE TOOL SEAM: compile_workspace(scope=...) splits the mcp#9 shape correctly")
+    void theToolItselfSplitsTheScopes() throws Exception {
+        // The C3 audit's blocking finding: every other test stops one hop short
+        // of the tool, so the tool could stop consulting the classifier — or
+        // regrow a heuristic — with the whole suite staying green, which is the
+        // shape mcp#9 lived in for two sprints. This test drives
+        // tool.execute(scope=...) itself, against the defect's own layout:
+        // flat-src PDE bundle + flat-src test bundle, one seeded WARNING in
+        // each (an unused import, which the real builder reports).
+        java.nio.file.Path mainCopy = helper.copyFixture("pde-external");
+        java.nio.file.Path testsCopy = helper.copyFixture("pde-external-tests");
+        seedUnusedImportWarning(mainCopy.resolve("src/com/example/ext/SeededMain.java"),
+            "com.example.ext");
+        seedUnusedImportWarning(testsCopy.resolve("src/com/example/exttests/SeededTest.java"),
+            "com.example.exttests");
+
+        JdtServiceImpl service = new JdtServiceImpl();
+        service.loadProject(mainCopy);
+        service.addProject(testsCopy);
+        org.jawata.mcp.tools.CompileWorkspaceTool tool =
+            new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service);
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+        String mainDiags = scopeDiagnostics(tool, mapper, "main");
+        String testDiags = scopeDiagnostics(tool, mapper, "test");
+
+        assertTrue(mainDiags.contains("SeededMain.java"),
+            "scope=main lost the main bundle's warning: " + mainDiags);
+        assertFalse(mainDiags.contains("SeededTest.java"),
+            "scope=main returned a test-bundle file — mcp#9's exact symptom: " + mainDiags);
+        assertTrue(testDiags.contains("SeededTest.java"),
+            "scope=test lost the test bundle's warning: " + testDiags);
+        assertFalse(testDiags.contains("SeededMain.java"),
+            "scope=test returned a main-bundle file: " + testDiags);
+    }
+
+    private static void seedUnusedImportWarning(java.nio.file.Path file, String pkg)
+            throws java.io.IOException {
+        java.nio.file.Files.writeString(file,
+            "package " + pkg + ";\n\nimport java.util.List;\n\n"
+            + "/** Seeded: the unused import above is a real compiler WARNING. */\n"
+            + "public class " + file.getFileName().toString().replace(".java", "") + " {\n}\n");
+    }
+
+    @SuppressWarnings("unchecked")
+    private String scopeDiagnostics(org.jawata.mcp.tools.CompileWorkspaceTool tool,
+            com.fasterxml.jackson.databind.ObjectMapper mapper, String scope) {
+        com.fasterxml.jackson.databind.node.ObjectNode args = mapper.createObjectNode();
+        args.put("minSeverity", "WARNING");
+        args.put("scope", scope);
+        args.put("limit", 200);
+        org.jawata.mcp.models.ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "compile_workspace failed: " + r.getError());
+        java.util.Map<String, Object> data = (java.util.Map<String, Object>) r.getData();
+        return String.valueOf(data.get("diagnostics"));
     }
 
     // ================= helpers =================
