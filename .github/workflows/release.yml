@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  # Sprint 28 S9. Tag-only meant the release gates could never be EXERCISED
+  # without cutting a release — so the end-to-end gate added below could only
+  # ever be proven by the thing it exists to protect. A dispatch run builds,
+  # tests and gates exactly as a tag run does; the release-creating steps are
+  # already guarded by startsWith(github.ref, 'refs/tags/'), so nothing
+  # publishes — the release-creating step is tag-guarded in this same commit,
+  # because it was NOT guarded before. jawata-studio has had this for the same
+  # reason.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -109,7 +118,13 @@ jobs:
           echo "body_path=" >> "$GITHUB_OUTPUT"
         fi
 
+    # TAG-GUARDED. Without this a workflow_dispatch run would try to CREATE A
+    # RELEASE from a branch, with github.ref_name as the version — publishing
+    # from an unreviewed branch. I wrote a comment above claiming this guard
+    # already existed before checking; it did not. The dispatch trigger and this
+    # guard must land in the same change, or the trigger is a publish hazard.
     - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
         files: |
