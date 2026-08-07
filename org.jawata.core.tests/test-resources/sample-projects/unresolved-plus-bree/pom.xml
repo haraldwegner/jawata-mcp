@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 (C1, consolidated audit): a project that declares its Java level
+  TWICE — once unresolvably here, once usably in META-INF/MANIFEST.MF.
+
+  Reading the sources in precedence order and returning at the first one that
+  declared ANYTHING means the unusable declaration wins and the project gets no
+  level at all — so a project that states its level twice ends up worse off than
+  one that states it once. The unusable one must be skipped, not treated as an
+  answer.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>unresolved-plus-bree</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+    </properties>
+</project>

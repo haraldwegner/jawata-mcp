@@ -444,6 +444,92 @@ class BuildSystemLoadTest {
     }
 
     @Test
+    @DisplayName("a licence header does not fool the package scan into the default package")
+    void aLicenceHeaderDoesNotDefeatThePackageScan() throws Exception {
+        // The scan stops at the first type declaration, because a package
+        // declaration cannot appear after one. Testing that against RAW lines
+        // means a header line beginning "class hierarchy…" or "record of
+        // changes…" ends the scan — the file is declared to be in the default
+        // package, and every class under its directory lands in the wrong one.
+        // Which is the defect the whole package scan exists to prevent.
+        IJavaProject jp = load("unknown-layout");
+        assertNotNull(jp.findType("com.acme.headered.Headered"),
+            "a type whose file carries an asterisk-less licence header did not resolve in its"
+                + " declared package — the scan stopped inside the comment");
+    }
+
+    @Test
+    @DisplayName("an UNUSABLE declaration does not suppress a usable one below it")
+    void anUnusableDeclarationDoesNotSuppressAUsableOne() throws Exception {
+        // unresolved-plus-bree declares ${java.version} in its pom AND
+        // JavaSE-17 in its manifest. Returning at the first source that
+        // declared ANYTHING means the unusable one wins and the project gets no
+        // level at all — a project that states its level twice ending up worse
+        // off than one that states it once.
+        assertEquals(Optional.of("17"),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("unresolved-plus-bree")),
+            "an unresolved pom property suppressed the usable level declared below it");
+    }
+
+    @Test
+    @DisplayName("the language level is read from the SOURCE tree, not the output tree")
+    void theLevelComesFromTheSourceTreeNotTheOutputTree() throws Exception {
+        // simple-bazel's real BUILD file declares 17; the generated copy under
+        // bazel-bin/ declares 21. Which number arrives says which tree was
+        // read — and the output tree is the one source discovery deliberately
+        // excludes, so reading a level out of it is reading a generated file.
+        assertEquals(Optional.of("17"),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("simple-bazel")),
+            "the level was taken from the generated BUILD file in bazel-bin/");
+    }
+
+    @Test
+    @DisplayName("an unreadable directory does not abort the load of the project around it")
+    void anUnreadableDirectoryDoesNotAbortTheLoad() throws Exception {
+        // The lazy-failure class has one more shape that no committed fixture
+        // can carry: git cannot represent a directory the process may not read.
+        // Built here at runtime instead, because the alternative is a group of
+        // fixes with no control at all.
+        Path root = helper.getTempDirectory().resolve("unreadable-project");
+        Path good = root.resolve("src/com/example");
+        java.nio.file.Files.createDirectories(good);
+        java.nio.file.Files.writeString(good.resolve("Reachable.java"),
+            "package com.example;\npublic class Reachable {}\n");
+        Path blocked = root.resolve("src/com/blocked");
+        java.nio.file.Files.createDirectories(blocked);
+        java.nio.file.Files.writeString(blocked.resolve("Hidden.java"),
+            "package com.blocked;\npublic class Hidden {}\n");
+        boolean chmodded = blocked.toFile().setReadable(false, false);
+        Assumptions.assumeTrue(chmodded && !java.nio.file.Files.isReadable(blocked),
+            "this filesystem or user (root ignores the read bit) cannot make a directory"
+                + " unreadable — the case is unproven here, not passing");
+
+        try {
+            IProject project = workspaceManager.createLinkedProject("load-unreadable", root);
+            IJavaProject jp = importer.configureJavaProject(project, root, workspaceManager);
+            assertNotNull(jp.findType("com.example.Reachable"),
+                "a readable sibling did not resolve — one unreadable directory took the"
+                    + " whole project down, which is the same over-reaction as the strict"
+                    + " decode");
+        } finally {
+            blocked.toFile().setReadable(true, false);   // so the fixture can be cleaned up
+        }
+    }
+
+    @Test
+    @DisplayName("a missing fixture says so, instead of failing as if the code were wrong")
+    void aMissingFixtureIsNamedAsMissing() {
+        // This guard exists because thirteen fixtures were once absent from
+        // every clone but this machine, and their tests failed as though the
+        // importer were broken.
+        IllegalStateException e = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalStateException.class,
+            () -> helper.getFixturePath("no-such-fixture-anywhere"));
+        assertTrue(e.getMessage().contains("No such test fixture"),
+            "the failure did not name the missing fixture: " + e.getMessage());
+    }
+
+    @Test
     @DisplayName("a bare Java 8 in a pom becomes JDT's 1.8, rather than being refused")
     void bareMajorVersionIsNormalizedNotRefused() throws Exception {
         // <maven.compiler.source>8</maven.compiler.source> is ordinary, correct

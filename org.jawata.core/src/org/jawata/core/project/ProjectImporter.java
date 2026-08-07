@@ -1628,8 +1628,14 @@ public class ProjectImporter {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(Files.newInputStream(file), lenientUtf8()))) {
             String line;
+            boolean inBlockComment = false;
             while ((line = reader.readLine()) != null) {
-                String trimmed = line.trim();
+                String code = stripComments(line, inBlockComment);
+                inBlockComment = blockCommentStillOpen(line, inBlockComment);
+                String trimmed = code.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
                 if (trimmed.startsWith("package ") && trimmed.endsWith(";")) {
                     return Optional.of(
                         trimmed.substring("package ".length(), trimmed.length() - 1).trim());
@@ -1642,10 +1648,64 @@ public class ProjectImporter {
         return Optional.empty();
     }
 
-    /** The start of a type declaration — where a package declaration can no longer appear. */
+    /**
+     * The start of a type declaration — where a package declaration can no
+     * longer appear.
+     *
+     * <p>Applied only to lines with their COMMENTS REMOVED. Matching it against
+     * raw lines was a defect of exactly the kind this method exists to prevent:
+     * a licence header whose lines do not begin with {@code *} — legal and not
+     * rare — stops the scan on any line starting "class hierarchy…" or
+     * "record of changes…", the file is declared to be in the default package,
+     * and every class under that directory lands in the wrong package.</p>
+     */
     private static final Pattern TYPE_DECLARATION = Pattern.compile(
         "^(?:public\\s+|final\\s+|abstract\\s+|sealed\\s+|non-sealed\\s+|static\\s+)*"
             + "(?:class|interface|enum|record|@interface)\\b");
+
+    /** {@code line} with {@code //} and {@code /* *}{@code /} comment text removed. */
+    private static String stripComments(String line, boolean inBlockComment) {
+        StringBuilder code = new StringBuilder();
+        boolean inBlock = inBlockComment;
+        for (int i = 0; i < line.length(); i++) {
+            if (inBlock) {
+                if (line.startsWith("*/", i)) {
+                    inBlock = false;
+                    i++;
+                }
+                continue;
+            }
+            if (line.startsWith("//", i)) {
+                break;
+            }
+            if (line.startsWith("/*", i)) {
+                inBlock = true;
+                i++;
+                continue;
+            }
+            code.append(line.charAt(i));
+        }
+        return code.toString();
+    }
+
+    /** Whether a block comment is still open after {@code line}. */
+    private static boolean blockCommentStillOpen(String line, boolean wasOpen) {
+        boolean open = wasOpen;
+        for (int i = 0; i < line.length(); i++) {
+            if (open) {
+                if (line.startsWith("*/", i)) {
+                    open = false;
+                    i++;
+                }
+            } else if (line.startsWith("//", i)) {
+                break;
+            } else if (line.startsWith("/*", i)) {
+                open = true;
+                i++;
+            }
+        }
+        return open;
+    }
 
     /** A UTF-8 decoder that substitutes rather than reports — see {@link #readLinesLenient}. */
     private static CharsetDecoder lenientUtf8() {

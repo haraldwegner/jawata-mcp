@@ -52,9 +52,83 @@ jobs:
              -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee test-run.log
         test ${PIPESTATUS[0]} -eq 0
 
+    # Sprint 28 (C1): the HERMETIC half of the gate. A checkout IS a clone, so
+    # this job already proves the suite passes from the repository rather than
+    # from someone's working tree — but only if nothing the run produced is left
+    # behind, and only if every file a test depends on was actually committed.
+    #
+    # Both halves were violated at once during Sprint 28: thirteen fixture files
+    # existed only on the author's machine, so four tests passed there and would
+    # have passed against BROKEN code anywhere else, because the thing they trip
+    # over was not in the repository. Nothing in CI noticed, because CI never
+    # asked.
+    - name: Tree is unchanged by the test run
+      if: always()
+      shell: bash
+      run: |
+        residue="$(git status --porcelain)"
+        if [ -n "$residue" ]; then
+          echo "FAIL: the test run left the working tree dirty:"
+          printf '%s\n' "$residue"
+          echo
+          echo "Either a test writes into the repository (it must not), or a file it"
+          echo "produced is not covered by .gitignore. Both hide real evidence: the"
+          echo "first pollutes the repo, the second makes the next 'git add -A' commit"
+          echo "run residue."
+          exit 1
+        fi
+        echo "ok: git status clean after the suite"
+
     - name: Upload test log
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-log-${{ matrix.os }}
         path: test-run.log
+
+  # Sprint 28 (C1): the one property cell that cannot be proven on a machine
+  # without a Gradle distribution. It SKIPS there — reported as unproven, never
+  # as passing — so it needs one environment where skipping is a failure.
+  gradle-cell:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build
+      shell: bash
+      run: mvn -B -f build/pom.xml install -DskipTests
+
+    - name: The Gradle jar cell must PASS, not skip
+      timeout-minutes: 20
+      shell: bash
+      run: |
+        echo org.jawata.core.project.BuildSystemLoadTest > /tmp/one-class.txt
+        java -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
+             -Djawata.test.classlist=/tmp/one-class.txt \
+             -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee gradle-cell.log
+        line="$(grep 'SPIKE-TESTS' gradle-cell.log | tail -1)"
+        echo "$line"
+        case "$line" in
+          *"failed=0"*) ;;
+          *) echo "FAIL: tests failed"; exit 1 ;;
+        esac
+        # An abort here is the Gradle Tooling API finding no distribution. On a
+        # machine that HAS one, that is a defect in jar resolution wearing an
+        # environment skip's clothes.
+        case "$line" in
+          *"aborted=0"*) echo "ok: no cell skipped — the Gradle jar cell was proven" ;;
+          *) echo "FAIL: a cell skipped in an environment that can support it:"
+             grep -i 'ABORTED' gradle-cell.log || true
+             exit 1 ;;
+        esac

@@ -1,2 +1,14 @@
-# Deliberate trap: a BUILD file and a .java file inside the OUTPUT tree. A scan
-# that fails to exclude bazel-* would pick this up as a source root.
+# Sprint 28 (C1, consolidated audit): the generated copy in the OUTPUT tree, and
+# a trap on two axes.
+#
+# 1. It sits beside a .java file, so a source scan that fails to exclude bazel-*
+#    mounts generated output as project source.
+# 2. It declares a DIFFERENT language level from the real BUILD file. Reading
+#    the level by walking the whole tree finds this one; pruning the output tree
+#    finds the source tree's 17. Whichever number the project ends up with says
+#    which code path ran.
+java_library(
+    name = "generated",
+    srcs = ["Generated.java"],
+    javacopts = ["--release", "21"],
+)
