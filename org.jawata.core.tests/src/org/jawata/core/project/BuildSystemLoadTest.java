@@ -163,10 +163,22 @@ class BuildSystemLoadTest {
         Path fixture = helper.getFixturePath("simple-gradle");
         Optional<ProjectImporter.GradleProjectModel> model =
             ProjectImporter.readGradleProjectModel(fixture);
-        Assumptions.assumeTrue(model.isPresent() && !model.get().classpathJars().isEmpty(),
-            "the Gradle Tooling API produced no model here — it needs a Gradle distribution, and"
-                + " returns nothing by design when there is none. This cell is unproven in this"
-                + " environment, not passing.");
+        // The message names the RIGHT cause now (C1, audit round 6). It used to
+        // say "no Gradle distribution", which was false on the machine the
+        // evidence was produced on — Gradle 8.10 was cached there throughout and
+        // the model resolved fine. The cell aborted because the FIXTURE declared
+        // no dependencies, so getClasspath() was empty by construction and no
+        // environment could have made it pass. A stated cause that is wrong is
+        // worse than an unexplained skip: it sends the next reader to the
+        // machine instead of the fixture.
+        Assumptions.assumeTrue(model.isPresent(),
+            "the Gradle Tooling API produced no model here — it needs a Gradle distribution and"
+                + " returns nothing by design when there is none. UNPROVEN in this environment,"
+                + " not passing.");
+        Assumptions.assumeFalse(model.get().classpathJars().isEmpty(),
+            "the Gradle model resolved but listed no jars. The fixture declares a flat-dir"
+                + " dependency, so this means the model could not resolve it — UNPROVEN, not"
+                + " passing.");
         List<String> libs = libraryPaths(load("simple-gradle"));
         assertFalse(libs.isEmpty(),
             "the Gradle model listed " + model.get().classpathJars().size()
@@ -570,6 +582,53 @@ class BuildSystemLoadTest {
             "expected exactly one root; a nested root was mounted inside another: " + roots);
         assertNotNull(jp.findType("com.example.Foo"),
             "com.example.Foo did not resolve");
+    }
+
+    @Test
+    @DisplayName("a package declaration sharing its line with an import is still one")
+    void aPackageDeclarationSharingItsLineIsStillOne() throws Exception {
+        // `package com.acme.oneline; import java.util.List;` is legal on one
+        // line. Requiring the whole line to BE the declaration sent it to the
+        // type check, which declared it the default package.
+        assertNotNull(load("package-with-import").findType("com.acme.oneline.OneLine"),
+            "a package declaration sharing its line with an import was not recognised");
+    }
+
+    @Test
+    @DisplayName("a level JDT accepts is not refused by the shape check")
+    void anAncientButRealLevelIsAccepted() throws Exception {
+        // javap on the shipped JDT jar declares VERSION_1_1..VERSION_1_8 and
+        // VERSION_9..VERSION_27. The previous bound refused 1.1 and 1.2 while
+        // accepting 28-49 — wrong in both directions, because it was invented
+        // rather than read.
+        assertEquals(Optional.of("1.2"),
+            ProjectImporter.readComplianceLevel(helper.getFixturePath("maven-level-1-2")),
+            "a level JDT accepts was refused by the shape check");
+    }
+
+    @Test
+    @DisplayName("a stray no-package file at the root does not suppress the real roots")
+    void aStrayRootFileDoesNotSuppressTheRealRoots() throws Exception {
+        // The stray file yields the PROJECT ROOT as a candidate, because it
+        // declares nothing. De-nesting then let that suppress code/, and the
+        // real code stopped resolving — the fix for nested roots producing the
+        // exact failure the discovery path exists to prevent.
+        assertNotNull(load("stray-root-file").findType("com.example.Foo"),
+            "a stray file at the project root suppressed the real source root");
+    }
+
+    @Test
+    @DisplayName("the root derivation never escapes the project")
+    void theRootDerivationNeverEscapesTheProject() throws Exception {
+        // A file at the project root declaring a two-segment package asks for
+        // two parents the project does not have, so the derivation walked
+        // ABOVE it. Outside the project, that root sorted shallowest and
+        // suppressed everything.
+        IJavaProject jp = load("package-at-root");
+        assertTrue(sourceRootPaths(jp).stream().noneMatch(String::isEmpty),
+            "a source root was derived outside the project: " + sourceRootPaths(jp));
+        assertNotNull(jp.findType("com.example.Foo"),
+            "the correctly-laid-out code did not resolve");
     }
 
     @Test

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28 (C1, audit round 6): a level JDT ACCEPTS that the previous shape
+  check refused. javap on the shipped JDT jar declares VERSION_1_1..VERSION_1_8
+  and VERSION_9..VERSION_27; the round-4 bound was `1\.[3-8]|[9]|[1-4][0-9]`,
+  which accepted 28-49 (impossible) and refused 1.1 and 1.2 (real).
+
+  Ancient, and that is the point: the bound must come from what JDT declares,
+  not from what looks like a reasonable range.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>maven-level-1-2</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <properties>
+        <maven.compiler.source>1.2</maven.compiler.source>
+    </properties>
+</project>

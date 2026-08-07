@@ -55,10 +55,17 @@ target/
 # a Gradle or Bazel run in a fixture directory drops jars into build/libs or
 # bazel-out, and the next `git add -A` would commit them. The Bazel fixture's
 # bazel-bin/ jar is a deliberate, committed exception and is re-negated after.
-org.jawata.core.tests/test-resources/sample-projects/*/build/**
-org.jawata.core.tests/test-resources/sample-projects/*/bazel-out/**
-org.jawata.core.tests/test-resources/sample-projects/*/.gradle/**
+# SIXTH occurrence of the rule THIS FILE already documents as the fourth: a
+# rule matching a DIRECTORY blocks re-including anything inside it, so
+# `build/**` + `!build/generated/**` left the committed trap files unaddable —
+# invisible to `git status`, silently skipped by `git add -A`, and refused by an
+# explicit `git add`. Written, committed, and described as "verified in both
+# directions" while the negation was dead. `build/*` excludes the ENTRIES of
+# build/, which a directory negation can then re-open.
+org.jawata.core.tests/test-resources/sample-projects/*/build/*
+!org.jawata.core.tests/test-resources/sample-projects/*/build/generated/
 !org.jawata.core.tests/test-resources/sample-projects/*/build/generated/**
+org.jawata.core.tests/test-resources/sample-projects/*/bazel-out/**
 !org.jawata.core.tests/test-resources/sample-projects/simple-bazel/bazel-bin/**
 
 # The output-exclusion TRAPS. A fixture proves "build output is not mounted as

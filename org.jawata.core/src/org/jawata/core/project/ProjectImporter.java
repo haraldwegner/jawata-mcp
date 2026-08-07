@@ -1470,7 +1470,7 @@ public class ProjectImporter {
                 packageDirs.add(dir);
             }
         });
-        addRootsForPackageDirs(packageDirs, sourcePaths);
+        addRootsForPackageDirs(packageDirs, sourcePaths, projectPath);
         log.debug("Found {} Bazel source roots", sourcePaths.size());
     }
 
@@ -1524,7 +1524,7 @@ public class ProjectImporter {
 
     /** Map package directories to their source roots, appending each new one once. */
     private void addRootsForPackageDirs(List<java.nio.file.Path> packageDirs,
-            List<java.nio.file.Path> sourcePaths) {
+            List<java.nio.file.Path> sourcePaths, java.nio.file.Path projectRoot) {
         // SHALLOWEST FIRST, then drop anything nested inside an accepted root.
         //
         // Sprint 28 (C1, audit round 5). De-duplicating was not enough: a
@@ -1540,16 +1540,31 @@ public class ProjectImporter {
         // defect a third time, re-created inside the last-resort path written
         // to close them — which is why nesting, not just equality, is what
         // gets checked here.
-        List<java.nio.file.Path> candidates = packageDirs.stream()
-            .map(this::bazelSourceRootFor)
+        List<DerivedRoot> candidates = packageDirs.stream()
+            .map(dir -> derivedRootFor(dir, projectRoot))
             .distinct()
-            .sorted(java.util.Comparator.comparingInt(java.nio.file.Path::getNameCount)
-                .thenComparing(java.nio.file.Path::toString))
+            .sorted(java.util.Comparator.comparingInt(
+                (DerivedRoot d) -> d.root().getNameCount())
+                .thenComparing(d -> d.root().toString()))
             .toList();
-        for (java.nio.file.Path root : candidates) {
-            if (sourcePaths.stream().anyMatch(root::startsWith)) {
-                log.debug("Skipping {} — it is inside the already-mounted source root {}",
-                    root, sourcePaths.stream().filter(root::startsWith).findFirst().orElse(null));
+
+        // Only a PACKAGE-DERIVED root may suppress one nested inside it. A
+        // fallback root — "the directory this file happened to sit in", from a
+        // file that declares nothing — carries no evidence about where the
+        // package tree begins, and letting it suppress deeper roots is how the
+        // first version of this dropped a project's real sources.
+        List<java.nio.file.Path> suppressors = candidates.stream()
+            .filter(DerivedRoot::fromPackageDeclaration)
+            .map(DerivedRoot::root)
+            .toList();
+        for (DerivedRoot candidate : candidates) {
+            java.nio.file.Path root = candidate.root();
+            java.util.Optional<java.nio.file.Path> outer = suppressors.stream()
+                .filter(s -> !s.equals(root) && root.startsWith(s))
+                .findFirst();
+            if (outer.isPresent()) {
+                log.debug("Skipping {} — inside the package-derived source root {}",
+                    root, outer.get());
                 continue;
             }
             if (!sourcePaths.contains(root)) {
@@ -1577,7 +1592,7 @@ public class ProjectImporter {
                 packageDirs.add(dir);
             }
         });
-        addRootsForPackageDirs(packageDirs, sourcePaths);
+        addRootsForPackageDirs(packageDirs, sourcePaths, projectPath);
         if (sourcePaths.isEmpty()) {
             log.warn("No Java source roots found anywhere under {} — the project will load with"
                 + " NO sources, so every listing and scan over it is empty by construction,"
@@ -1606,19 +1621,55 @@ public class ProjectImporter {
      * back to the package directory rather than escaping the project.</p>
      */
     private java.nio.file.Path bazelSourceRootFor(java.nio.file.Path packageDir) {
+        return derivedRootFor(packageDir, null).root();
+    }
+
+    /**
+     * A candidate source root, and whether a {@code package} declaration
+     * produced it.
+     *
+     * <p>The flag is load-bearing (C1, audit round 6). A root DERIVED from a
+     * declaration is evidence about where the package tree begins; a root that
+     * is merely "the directory a file happened to sit in" is a fallback. Only
+     * the first may suppress a root nested inside it — treating the two alike
+     * let a fallback swallow the real roots.</p>
+     */
+    private record DerivedRoot(java.nio.file.Path root, boolean fromPackageDeclaration) {}
+
+    /**
+     * Map a package directory to its source root, never escaping
+     * {@code projectRoot}.
+     *
+     * <p>Sprint 28 (C1, audit round 6) — the CLAMP, and why its absence was
+     * only fatal once de-nesting existed. Stripping one parent per package
+     * segment can walk above the project: a file at the project root declaring
+     * {@code package com.example} asks for two parents, landing OUTSIDE the
+     * project entirely. Before de-nesting that bogus root was merely mounted
+     * beside the correct ones and the code still resolved. With de-nesting it
+     * sorted shallowest and suppressed every correct root, so nothing resolved
+     * at all — a fix that turned a cosmetic defect into the exact failure the
+     * discovery path exists to prevent: a project that loads with no usable
+     * roots and reports success.</p>
+     */
+    private DerivedRoot derivedRootFor(java.nio.file.Path packageDir,
+            java.nio.file.Path projectRoot) {
         Optional<String> declared = readPackageDeclaration(packageDir);
         if (declared.isEmpty()) {
-            return packageDir;
+            return new DerivedRoot(packageDir, false);
         }
         java.nio.file.Path root = packageDir;
         for (int i = 0; i < declared.get().split("\\.").length; i++) {
             java.nio.file.Path parent = root.getParent();
-            if (parent == null) {
-                return packageDir;
+            if (parent == null || (projectRoot != null && !parent.startsWith(projectRoot))) {
+                // The declaration is deeper than the tree allows — a source
+                // file directly in the project root, or a malformed layout.
+                // Its own directory is the honest answer; escaping the project
+                // is never one.
+                return new DerivedRoot(packageDir, false);
             }
             root = parent;
         }
-        return root;
+        return new DerivedRoot(root, true);
     }
 
     /**

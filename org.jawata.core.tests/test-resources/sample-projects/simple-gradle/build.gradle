@@ -5,3 +5,13 @@ plugins { id 'java' }
 sourceCompatibility = '17'
 targetCompatibility = '17'
 repositories { mavenCentral() }
+
+// C1, audit round 6: WITHOUT this the jar-resolution cell could never pass.
+// EclipseProject.getClasspath() was empty by construction — the fixture
+// declared no dependencies at all — so the test aborted even on a machine with
+// a Gradle distribution present, and the abort was reported as "no Gradle
+// distribution here". A flat-dir dependency keeps the cell offline-clean:
+// nothing is downloaded to resolve it.
+dependencies {
+    implementation files('lib/gradle-lib.jar')
+}
