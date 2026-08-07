@@ -339,50 +339,36 @@ public class CompileWorkspaceTool extends AbstractTool {
     }
 
     /**
-     * Sprint 14 (bugs.md #9): classify the file as main-source or test-source
-     * based on the Maven convention {@code src/main/*} vs {@code src/test/*}.
-     * Linked-folder resources inside the Eclipse workspace point at the
-     * original on-disk path via {@link IResource#getLocation()}, so the same
-     * convention still applies.
+     * jawata-mcp#9, fixed for real (Sprint 28 Stage 3): main-vs-test comes
+     * from the MODEL — the {@code test} attribute the importer records on
+     * every source entry — read through
+     * {@link org.jawata.core.project.SourceRootClassifier}. No path
+     * convention, no name pattern.
      *
-     * <p>Falls open (no filter) when:</p>
-     * <ul>
-     *   <li>scope = "both" (the default)</li>
-     *   <li>the resource is null or has no location (project-level markers)</li>
-     *   <li>the resource doesn't sit under any {@code src/main/} or
-     *       {@code src/test/} segment (project-level errors, build-config
-     *       errors, etc.)</li>
-     * </ul>
+     * <p>What stood here before, and why it could not work: a
+     * {@code src/main}/{@code src/test} path match (says nothing about flat
+     * PDE-bundle layouts), a {@code projectName.endsWith(".tests")} check that
+     * was UNREACHABLE live — loaded projects are named
+     * {@code jawata-<dir>-<session>}, never by bundle name, so the branch had
+     * a green unit test feeding it hand-written names and never fired in any
+     * real workspace — and a {@code .java} catch-all that then swept every
+     * flat-layout file into MAIN. Result: {@code scope=main} returned
+     * jawata's own test bundles and {@code scope=test} returned nothing.</p>
+     *
+     * <p>Cross-cutting resources (under no source root) stay visible in both
+     * scopes — except in a project whose every source root is test code,
+     * which IS the test half, manifests included (the pinned C8-F4 semantics,
+     * now derived from the model instead of a name).</p>
      */
     private static boolean matchesScope(org.eclipse.core.resources.IResource resource, String scope) {
         if ("both".equals(scope)) return true;
-        if (resource == null) return true;
-        org.eclipse.core.runtime.IPath location = resource.getLocation();
-        if (location == null) return true;
-        String projectName = resource.getProject() == null
-            ? "" : resource.getProject().getName();
-        return matchesScope(location.toString(), projectName, scope);
-    }
-
-    /**
-     * jawata-mcp#9 (Sprint 27a Stage 8): main-vs-test from BOTH conventions.
-     * The Maven path convention alone misclassifies PDE bundle layouts — a
-     * test FRAGMENT like {@code org.jawata.mcp.tests} keeps its sources
-     * directly under {@code src/}, so path segments said "neither" and both
-     * scopes returned the SAME set on jawata's own repository. The
-     * bundle-name convention is the other half: a {@code *.tests} project IS
-     * the test half. Project-level markers (no source designation) stay
-     * cross-cutting, visible in both scopes.
-     */
-    static boolean matchesScope(String pathStr, String projectName, String scope) {
-        if ("both".equals(scope)) return true;
-        boolean mavenTest = pathStr.contains("/src/test/") || pathStr.contains("\\src\\test\\");
-        boolean testBundle = projectName.endsWith(".tests");
-        boolean inTest = mavenTest || testBundle;
-        boolean mavenMain = pathStr.contains("/src/main/") || pathStr.contains("\\src\\main\\");
-        boolean inMain = !inTest && (mavenMain || pathStr.endsWith(".java"));
-        if (!inTest && !inMain) return true;
-        return "test".equals(scope) ? inTest : inMain;
+        org.jawata.core.project.SourceRootClassifier.Verdict verdict =
+            org.jawata.core.project.SourceRootClassifier.classify(resource);
+        return switch (verdict) {
+            case CROSS_CUTTING -> true;
+            case TEST -> "test".equals(scope);
+            case MAIN -> "main".equals(scope);
+        };
     }
 
     private static Map<String, Object> describeMarker(IMarker marker,
