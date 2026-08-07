@@ -71,6 +71,37 @@ public final class TestOnlyCallerDetector implements Detector {
             + "source-root attribute, never a path heuristic.";
     }
 
+    /**
+     * How one reference is attributed. Package-private so the truth table can
+     * be asserted directly: the end-to-end {@code CROSS_CUTTING} path is
+     * reachable only through a {@link org.eclipse.jdt.core.JavaModelException}
+     * inside the classifier — a file outside every source root is not listed
+     * at all — so no fixture can seed it, and this seam is where the fix is
+     * falsifiable (C4 audit, finding 3).
+     */
+    enum Attribution { PRODUCTION, TEST, UNKNOWN }
+
+    /**
+     * THREE outcomes, not two. Reading this as {@code verdict != TEST ?
+     * PRODUCTION : TEST} is the defect: it turns "we could not tell" into
+     * "production", which silently deletes a finding.
+     */
+    static Attribution attribute(SourceRootClassifier.Verdict verdict) {
+        return switch (verdict) {
+            case MAIN -> Attribution.PRODUCTION;
+            case TEST -> Attribution.TEST;
+            case CROSS_CUTTING -> Attribution.UNKNOWN;
+        };
+    }
+
+    /**
+     * Whether the evidence entitles this scan to say "every caller is a test".
+     * One unplaceable reference is enough to forfeit that claim.
+     */
+    static boolean reportable(int testRefs, boolean productionRef, boolean unknownRef) {
+        return testRefs > 0 && !productionRef && !unknownRef;
+    }
+
     /** What one pass learns about a declared member. */
     private static final class MemberRecord {
         String filePath;
@@ -78,6 +109,13 @@ public final class TestOnlyCallerDetector implements Detector {
         String symbol;
         int testRefs;
         boolean productionRef;
+        /**
+         * A reference from a file whose main-vs-test nature could NOT be
+         * determined. Neither a production nor a test reference — and the
+         * difference is the whole finding, so a member carrying one is not
+         * reported at all (C4 audit, finding 3).
+         */
+        boolean unknownRef;
     }
 
     @Override
@@ -86,6 +124,7 @@ public final class TestOnlyCallerDetector implements Detector {
         Map<String, MemberRecord> declared = new LinkedHashMap<>();
         List<String> unreadable = new ArrayList<>();
         List<String> bindingsDead = new ArrayList<>();
+        List<String> unclassified = new ArrayList<>();
         int listed = 0;
         int examined = 0;
 
@@ -119,6 +158,10 @@ public final class TestOnlyCallerDetector implements Detector {
             for (ParsedUnit unit : units) {
                 if (unit.verdict == SourceRootClassifier.Verdict.MAIN) {
                     harvestDeclarations(unit, declared);
+                } else if (unit.verdict == SourceRootClassifier.Verdict.CROSS_CUTTING) {
+                    // Not harvested — and that omission is a hole in the answer,
+                    // not a fact about the code. Counted so it is visible.
+                    unclassified.add(unit.filePath);
                 }
             }
             for (ParsedUnit unit : units) {
@@ -136,8 +179,16 @@ public final class TestOnlyCallerDetector implements Detector {
         }
 
         List<Finding> findings = new ArrayList<>();
+        int withheld = 0;
         for (MemberRecord r : declared.values()) {
-            if (r.testRefs > 0 && !r.productionRef) {
+            if (r.testRefs > 0 && !r.productionRef && r.unknownRef) {
+                // Every caller MIGHT be a test — but one of them came from a
+                // file we could not place, so "every caller is test code" is
+                // not something this scan is entitled to say.
+                withheld++;
+                continue;
+            }
+            if (reportable(r.testRefs, r.productionRef, r.unknownRef)) {
                 findings.add(new Finding(kind(), r.filePath, r.line, -1, "warning",
                     "public " + r.symbol + " is called ONLY by tests (" + r.testRefs
                         + " test reference(s), zero production callers) — a capability kept"
@@ -156,12 +207,27 @@ public final class TestOnlyCallerDetector implements Detector {
         int missed = unreadable.size() + bindingsDead.size();
         if (missed > 0) {
             scan.put("filesMissed", missed);
+        }
+        // An unplaceable file is its own kind of hole: the file WAS read, so it
+        // is not "missed", but its half of the main-vs-test question went
+        // unanswered — which is the only question this detector asks.
+        if (!unclassified.isEmpty()) {
+            scan.put("filesUnclassified", unclassified.size());
+        }
+        if (withheld > 0) {
+            scan.put("findingsWithheld", withheld);
+        }
+        boolean incomplete = missed > 0 || !unclassified.isEmpty();
+        if (incomplete) {
             scan.put("scanIncomplete", true);
         }
         return Findings.toResponse(findings, scan,
-            missed > 0
-                ? "PARTIAL SCAN: " + missed + " file(s) unread — these findings are what"
-                    + " survived, not what exists."
+            incomplete
+                ? "PARTIAL SCAN: " + missed + " file(s) unread and " + unclassified.size()
+                    + " file(s) whose main-vs-test nature could not be determined"
+                    + (withheld > 0 ? " (" + withheld + " member(s) withheld — every caller"
+                        + " MAY be a test, but one came from a file we could not place)" : "")
+                    + ". These findings are what survived, not what exists."
                 : findings.isEmpty()
                     ? "None found — and the scan was COMPLETE (" + examined + " files, "
                         + declared.size() + " public production members tracked)."
@@ -255,8 +321,25 @@ public final class TestOnlyCallerDetector implements Detector {
         return binding.getName();
     }
 
+    /**
+     * Attribute this unit's references.
+     *
+     * <p>C4 audit, finding 3 — the three-way split matters. This read
+     * {@code verdict != TEST} as "production", so a compilation unit the
+     * classifier could not place (a {@code JavaModelException} mid-scan, a
+     * source file not on the build path) turned every reference it made into a
+     * production reference, and the finding it should have supported vanished
+     * while the scan still called itself complete. That is this sprint's own
+     * defect class — a failed lookup returned as an answer — inside the
+     * detector written to catch it.</p>
+     *
+     * <p>A .java compilation unit inside a loaded project is MAIN or TEST;
+     * {@code CROSS_CUTTING} here means "could not tell", so its references
+     * mark the member UNKNOWN. Unknown is not "clean" and not "hollow": the
+     * member is withheld and the scan declares itself incomplete.</p>
+     */
     private static void markReferences(ParsedUnit unit, Map<String, MemberRecord> declared) {
-        boolean production = unit.verdict != SourceRootClassifier.Verdict.TEST;
+        SourceRootClassifier.Verdict v = unit.verdict;
         unit.ast.accept(new ASTVisitor() {
             @Override
             public boolean visit(SimpleName node) {
@@ -291,10 +374,10 @@ public final class TestOnlyCallerDetector implements Detector {
                 if (r == null) {
                     return;
                 }
-                if (production) {
-                    r.productionRef = true;
-                } else {
-                    r.testRefs++;
+                switch (attribute(v)) {
+                    case PRODUCTION -> r.productionRef = true;
+                    case TEST -> r.testRefs++;
+                    case UNKNOWN -> r.unknownRef = true;
                 }
             }
         });

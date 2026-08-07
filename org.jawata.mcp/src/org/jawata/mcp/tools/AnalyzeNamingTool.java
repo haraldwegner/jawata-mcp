@@ -383,8 +383,18 @@ public class AnalyzeNamingTool extends AbstractTool {
             if (cu == null) {
                 continue;   // RECORDED, not swallowed — see SourceScan
             }
-            boolean inTestRoot = path.toString().contains("/src/test/")
-                || path.toString().contains("/test/java/");
+            // Sprint 28 C4 (audit finding 5) — this matched "/src/test/" and
+            // "/test/java/" on the ABSOLUTE path, which is two defects at once:
+            // the second derivation of test-ness this sprint exists to remove,
+            // and the absolute-path form the C2 audit already caught in
+            // ProjectImporter, where a checkout living under a directory named
+            // src/test made every file in the project read as test code. It
+            // decides which types teach the `test` naming convention, so
+            // getting it wrong on a flat-layout workspace means the convention
+            // is learned from zero examples and every *Test class is then
+            // reported as a naming violation.
+            boolean inTestRoot = org.jawata.core.project.SourceRootClassifier.classify(
+                cu.getResource()) == org.jawata.core.project.SourceRootClassifier.Verdict.TEST;
             CompilationUnit ast = scan.parse(cu, path, false);
             if (ast == null) {
                 continue;

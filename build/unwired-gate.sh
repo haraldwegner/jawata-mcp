@@ -140,15 +140,30 @@ import json, sys
 raw = json.load(open(sys.argv[1]))
 payload = json.loads(raw["result"]["content"][0]["text"])
 callers = payload["data"]["callers"]
-prod = sorted({c["callerClass"] for c in callers if ".tests/" not in c["filePath"]})
-expected = ["org.jawata.mcp.tools.CompileWorkspaceTool",
-            "org.jawata.mcp.tools.smell.AbstractAstDetector",
-            "org.jawata.mcp.tools.smell.TestOnlyCallerDetector"]
-print("gate: SourceRootClassifier production callers:", prod)
-if prod != expected:
-    print("gate: RESULT=classifier-invariant-broken — expected exactly", expected)
-    print("gate: a consumer that stopped calling it grew its own test-ness heuristic;")
-    print("gate: a new one must be added here deliberately, not discovered later.")
+# NO path convention here. This check exists because deriving test-ness from a
+# path is the defect; doing it inside the check would be the same mistake one
+# level up (C4 audit, finding 9) — a future test caller in a flat-src bundle
+# would read as production and FAIL the gate spuriously, and a production
+# caller under a *.tests/ path would be dropped silently. Instead BOTH sets are
+# enumerated by name: anything not listed is a new consumer, and a new consumer
+# is classified deliberately here, not guessed at runtime.
+expected_production = {"org.jawata.mcp.tools.CompileWorkspaceTool",
+                       "org.jawata.mcp.tools.AnalyzeNamingTool",
+                       "org.jawata.mcp.tools.smell.AbstractAstDetector",
+                       "org.jawata.mcp.tools.smell.TestOnlyCallerDetector"}
+known_test = {"org.jawata.mcp.tools.ScopeClassificationTest",
+              "org.jawata.mcp.tools.smell.TestOnlyCallerDetectorTest"}
+seen = {c["callerClass"] for c in callers}
+print("gate: SourceRootClassifier callers:", sorted(seen))
+missing = sorted(expected_production - seen)
+unknown = sorted(seen - expected_production - known_test)
+if missing:
+    print("gate: RESULT=classifier-invariant-broken — these stopped calling it:", missing)
+    print("gate: a consumer that walked away grew its own test-ness heuristic.")
+    sys.exit(1)
+if unknown:
+    print("gate: RESULT=classifier-invariant-broken — unclassified new caller(s):", unknown)
+    print("gate: add it to expected_production or known_test in this script, deliberately.")
     sys.exit(1)
 PY
 rc=$?

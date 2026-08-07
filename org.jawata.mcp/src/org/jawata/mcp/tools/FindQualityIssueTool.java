@@ -180,7 +180,9 @@ public class FindQualityIssueTool extends AbstractTool {
         Map<String, Object> includeTests = new LinkedHashMap<>();
         includeTests.put("type", "boolean");
         includeTests.put("description",
-            "Fowler smell kinds only — include test sources (src/test, *.tests) in the scan. "
+            "Fowler smell kinds only — include test sources in the scan. Test-ness comes from "
+                + "the source root's test attribute in the loaded model, not from a path or name "
+                + "convention, so a flat-layout test bundle is recognised too. "
                 + "Default false: test code legitimately has long methods and subject-under-test "
                 + "access, so it is excluded to keep findings actionable.");
         properties.put("includeTests", includeTests);
@@ -545,9 +547,28 @@ public class FindQualityIssueTool extends AbstractTool {
                 break;
             }
             ToolResponse r = catalog.get(k).map(d -> d.detect(service, arguments)).orElse(null);
-            if (r != null && r.isSuccess() && r.getData() instanceof Map<?, ?> data
-                && data.get("findings") instanceof List<?> fs) {
-                merged.addAll((List<Object>) fs);
+            // Sprint 28 C4 (audit finding 7) — this read data.get("findings")
+            // ONLY. Six of the analyzers return their list under a different
+            // key (unusedItems, violations, issues, cycles, largeClasses), so
+            // they contributed NOTHING to any family sweep and said nothing
+            // about it: large_classes reported 101 violations when named by
+            // kind and 0 through family="quality". A sweep that structurally
+            // cannot hear from a third of its detectors while answering "489
+            // findings across 2 kinds" is the same lie as an empty result from
+            // a failed scan. resultListKey() is the resolution the summary path
+            // already used; the merge now uses it too.
+            if (r != null && r.isSuccess() && r.getData() instanceof Map<?, ?> raw) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> data = (Map<String, Object>) raw;
+                if (data.get(resultListKey(data)) instanceof List<?> fs) {
+                    // Entries from the non-"findings" shapes carry no `kind` —
+                    // merging them raw makes the sweep non-empty but leaves
+                    // byKind counting them under null and the reader unable to
+                    // say WHICH detector spoke. Stamp the kind we just ran.
+                    for (Object entry : fs) {
+                        merged.add(withKind(entry, k));
+                    }
+                }
             }
             done++;
             if (progress != null) {
@@ -677,6 +698,31 @@ public class FindQualityIssueTool extends AbstractTool {
      * @return the first key from {@link #RESULT_LIST_KEYS} bound to a list, else
      *         {@code "findings"} so a payload with no recognised list behaves as before
      */
+    /**
+     * Ensure a merged entry names the detector it came from.
+     *
+     * <p>Sprint 28 C4 (audit finding 7). Findings built from {@code Finding}
+     * already carry {@code kind}; the narrow analyzers' entries
+     * ({@code largeClasses}, {@code violations}, {@code cycles}, …) do not, and
+     * an unlabelled entry in a family sweep is only marginally better than a
+     * dropped one — the reader still cannot tell which detector spoke, and
+     * {@code byKind} buckets it under null.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private static Object withKind(Object entry, String kind) {
+        if (!(entry instanceof Map<?, ?> m)) {
+            return entry;
+        }
+        Map<String, Object> row = (Map<String, Object>) m;
+        if (row.get("kind") instanceof String) {
+            return row;
+        }
+        Map<String, Object> stamped = new LinkedHashMap<>();
+        stamped.put("kind", kind);
+        stamped.putAll(row);
+        return stamped;
+    }
+
     private static String resultListKey(Map<String, Object> data) {
         for (String key : RESULT_LIST_KEYS) {
             if (data.get(key) instanceof List<?>) {

@@ -50,6 +50,50 @@ class SweepHardeningTest {
     }
 
     @Test
+    @DisplayName("a family sweep hears from detectors whose result list is NOT named 'findings'")
+    @SuppressWarnings("unchecked")
+    void familySweepMergesEveryResultShape() {
+        // Sprint 28 C4, audit finding 7. The merge read data.get("findings")
+        // ONLY, so six analyzers returning unusedItems / violations / issues /
+        // cycles / largeClasses contributed NOTHING to any family sweep and
+        // said nothing about it — large_classes answered 101 when named by kind
+        // and 0 through family="quality". On jawata's own repository the sweep
+        // reported 489 findings across 2 kinds; it reports 1994 across 8 now.
+        // A sweep that structurally cannot hear a third of its detectors while
+        // answering with a total is the same lie as an empty result from a
+        // failed scan.
+        ObjectNode named = mapper.createObjectNode();
+        named.put("kind", "large_classes");
+        named.put("maxMethods", 1);
+        named.put("maxFields", 1);
+        named.put("maxLines", 10);
+        Map<String, Object> direct = data(tool.execute(named));
+        assertFalse(direct.containsKey("findings"),
+            () -> "it must return its list under its OWN key, not 'findings' — that is the"
+                + " shape the merge used to drop: " + direct.keySet());
+        int whenNamed = ((List<?>) direct.get("largeClasses")).size();
+        assertTrue(whenNamed > 0,
+            () -> "the fixture must actually violate the thresholds, or this proves nothing: "
+                + direct.keySet());
+
+        ObjectNode family = mapper.createObjectNode();
+        family.put("family", "quality");
+        family.put("maxMethods", 1);
+        family.put("maxFields", 1);
+        family.put("maxLines", 10);
+        family.put("summary", true);
+        Map<String, Object> byKind =
+            (Map<String, Object>) data(tool.execute(family)).get("byKind");
+
+        assertTrue(byKind.containsKey("large_classes"),
+            () -> "the family sweep must carry this detector's findings, labelled with the"
+                + " kind that produced them: " + byKind);
+        assertEquals(whenNamed, ((Number) byKind.get("large_classes")).intValue(),
+            () -> "and carry ALL of them — naming the kind and sweeping the family must not"
+                + " disagree about how many exist: " + byKind);
+    }
+
+    @Test
     @DisplayName("#1 summary mode returns counts-by-kind + conflicts, no full findings array")
     @SuppressWarnings("unchecked")
     void summary_mode_returns_counts_not_findings() {

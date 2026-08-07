@@ -3,6 +3,7 @@ package org.jawata.mcp.tools.smell;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.core.project.SourceRootClassifier;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.FindQualityIssueTool;
@@ -26,13 +27,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code test-only-caller} fixture, which seeds the v3.4.0 shape next to every
  * neighbouring case that must stay silent.
  *
- * <p>The fixture's test source imports nothing from JUnit and carries no
- * annotation, so its test-ness is available ONLY from the source root the
- * importer recorded. That is deliberate: it is what makes these assertions
- * fail if the detector ever stops consulting
- * {@link org.jawata.core.project.SourceRootClassifier} and grows a heuristic
- * of its own — the second-place-to-know-test-ness mistake that produced
- * mcp#9.</p>
+ * <p>The fixture's test source imports nothing from JUnit, carries no
+ * annotation, and is not named {@code *Test}, so an IMPORT- or NAME-based
+ * heuristic finds nothing to go on. It is Maven-conventional, however, so it
+ * does NOT defeat a PATH heuristic — a detector matching
+ * {@code contains("src/test/")} passes every assertion here (C4 audit,
+ * finding 4, and it was right). {@link #findsTheHollowMemberWhereNoPathConventionApplies()}
+ * is the one that closes that family: the flat-{@code src} PDE pair, where the
+ * convention and the model disagree.</p>
  */
 class TestOnlyCallerDetectorTest {
 
@@ -156,6 +158,119 @@ class TestOnlyCallerDetectorTest {
         assertFalse(data.containsKey("scanIncomplete"),
             () -> "a complete scan must not claim partiality: " + data);
         assertNotNull(data.get("elapsedMs"), "the scan reports its own cost");
+    }
+
+    @Test
+    @DisplayName("THE PATH-HEURISTIC DISCRIMINATOR: it finds the hollow member in a flat-src PDE pair")
+    void findsTheHollowMemberWhereNoPathConventionApplies() throws Exception {
+        // C4 audit, finding 4. The test-only-caller fixture is
+        // Maven-conventional, so a detector carrying its own
+        // contains("src/test/") heuristic produces byte-identical results on it
+        // and every assertion in this class stays green. This pair is where the
+        // heuristic and the model DISAGREE: both bundles keep sources flat
+        // under src/, and the test bundle's directory name has no dot, so no
+        // path convention places it. Under a heuristic the test bundle reads as
+        // PRODUCTION, ExtLib#magic() gains a production caller, and this
+        // finding disappears.
+        JdtServiceImpl service = helper.loadProject("pde-external");
+        service.addProject(helper.getFixturePath("pde-external-tests"));
+        FindQualityIssueTool pde = new FindQualityIssueTool(() -> service);
+
+        ToolResponse r = pde.execute(kindArgs());
+        assertTrue(r.isSuccess(), () -> "refused: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fs = (List<Map<String, Object>>) data.get("findings");
+        Set<String> found = fs.stream().map(f -> String.valueOf(f.get("symbol")))
+            .collect(Collectors.toSet());
+
+        assertTrue(found.contains("com.example.ext.ExtLib#magic()"),
+            () -> "magic() is public, in a flat-src MAIN bundle, and called only from the"
+                + " flat-src test bundle — the mcp#9 layout, where a path convention"
+                + " cannot see the test side: " + found + " / scan " + data);
+    }
+
+    @Test
+    @DisplayName("THE THREE-WAY MAPPING: 'could not tell' is its own answer, never 'production'")
+    void unplaceableIsNeverReadAsProduction() {
+        // C4 audit, finding 3. markReferences read "verdict != TEST" as
+        // production, so a compilation unit the classifier could not place
+        // turned every reference it made into a production reference — the
+        // finding it should have supported vanished, and the scan still called
+        // itself COMPLETE. That is this sprint's own defect class (a failed
+        // lookup returned as an answer) inside the detector written to catch it.
+        //
+        // HONEST LIMIT: this is asserted at the mapping, not end to end. A
+        // .java file outside every source root is never LISTED (proven by the
+        // sibling test below), so the only route to CROSS_CUTTING on a listed
+        // file is a JavaModelException inside the classifier, which no fixture
+        // can seed. Revert the mapping to the two-way form and this goes red.
+        assertEquals(TestOnlyCallerDetector.Attribution.PRODUCTION,
+            TestOnlyCallerDetector.attribute(SourceRootClassifier.Verdict.MAIN));
+        assertEquals(TestOnlyCallerDetector.Attribution.TEST,
+            TestOnlyCallerDetector.attribute(SourceRootClassifier.Verdict.TEST));
+        assertEquals(TestOnlyCallerDetector.Attribution.UNKNOWN,
+            TestOnlyCallerDetector.attribute(SourceRootClassifier.Verdict.CROSS_CUTTING),
+            "an unplaceable file is UNKNOWN — reading it as PRODUCTION deletes findings"
+                + " and reading it as TEST invents them");
+
+        // And one unplaceable caller forfeits the claim entirely.
+        assertTrue(TestOnlyCallerDetector.reportable(2, false, false),
+            "test callers, no production caller, nothing unknown -> the finding");
+        assertFalse(TestOnlyCallerDetector.reportable(2, false, true),
+            "one unplaceable caller and 'every caller is a test' is no longer provable");
+        assertFalse(TestOnlyCallerDetector.reportable(2, true, false),
+            "a production caller suppresses");
+        assertFalse(TestOnlyCallerDetector.reportable(0, false, false),
+            "zero callers is the ordinary unused check");
+    }
+
+    @Test
+    @DisplayName("why the mapping above cannot be driven end to end: an off-root file is never listed")
+    void aFileOutsideEverySourceRootIsNotEvenListed() throws Exception {
+        // The listing walks the model's source roots, so an off-root .java file
+        // is invisible to the scan rather than unplaceable within it. Worth
+        // pinning: it is what bounds the fix above to the mapping, and if the
+        // listing ever changes to walk disk, this test tells you — because then
+        // the CROSS_CUTTING path becomes reachable for real and needs its own
+        // end-to-end control.
+        java.nio.file.Path copy = helper.copyFixture("test-only-caller");
+        java.nio.file.Path stray = copy.resolve("tools/StrayCaller.java");
+        java.nio.file.Files.createDirectories(stray.getParent());
+        java.nio.file.Files.writeString(stray, """
+            public class StrayCaller {
+                public void poke() {
+                    new com.example.hollow.Capability().enable();
+                }
+            }
+            """);
+        JdtServiceImpl service = new JdtServiceImpl();
+        service.loadProject(copy);
+        FindQualityIssueTool scoped = new FindQualityIssueTool(() -> service);
+
+        ToolResponse r = scoped.execute(kindArgs());
+        assertTrue(r.isSuccess(), () -> "refused: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+
+        assertEquals(4, ((Number) data.get("filesListed")).intValue(),
+            () -> "the four source-root files, and NOT tools/StrayCaller.java: " + data);
+        assertEquals(0, ((Number) data.getOrDefault("filesUnclassified", 0)).intValue(),
+            () -> "an off-root file is not listed, so it is never an unplaceable one: " + data);
+        assertFalse(data.containsKey("scanIncomplete"),
+            () -> "and the scan is complete over what it is responsible for: " + data);
+
+        // The stray file calls enable(). Since it is never listed, that call is
+        // invisible — enable() is still reported. Were the listing to start
+        // walking disk, this expectation is the first thing that breaks.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fs = (List<Map<String, Object>>) data.get("findings");
+        assertTrue(fs.stream().anyMatch(
+                f -> "com.example.hollow.Capability#enable()".equals(f.get("symbol"))),
+            () -> "an off-root caller neither suppresses nor withholds: " + fs);
+
+        service.dispose();
     }
 
     @Test
