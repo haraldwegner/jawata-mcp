@@ -237,22 +237,26 @@ public class ProjectImporter {
     }
 
     /**
-     * The shapes JDT accepts as a compliance level: the historical
-     * {@code 1.3}–{@code 1.8}, and the bare major versions from {@code 9} on.
-     * A bare {@code 5}–{@code 8} is NOT one of them, which is why
-     * {@link #usableLevel} normalizes rather than merely tests.
+     * The levels JDT accepts, taken from what it DECLARES rather than from
+     * what looks reasonable: {@code JavaCore} publishes {@code VERSION_1_1}
+     * … {@code VERSION_1_8} and {@code VERSION_9} … {@code VERSION_27}.
+     *
+     * <p>Two corrections, both from audits, both in the direction of
+     * inventing a rule instead of reading one (C1, rounds 4 and 5). First the
+     * pattern was {@code [1-9][0-9]+}, which matched {@code 99} and
+     * {@code 1234} — a typo'd {@code <maven.compiler.release>177</…>} reached
+     * the compiler unvalidated, the exact class of value this check exists to
+     * refuse. Then the fix bounded it to two digits starting 1–4 and the
+     * Javadoc claimed that "covers every release JDT can be set to", which was
+     * false in BOTH directions: it accepted 28–49, which JDT cannot be set to,
+     * and refused {@code 1.1}/{@code 1.2}, which it can.</p>
+     *
+     * <p>A ceiling has to be maintained as JDT moves. That is the honest cost
+     * of validating at all, and it is smaller than the cost of the alternative
+     * — which is what a wrong level does to a user's error list.</p>
      */
-    private static final Pattern COMPLIANCE_LEVEL = Pattern.compile("1\\.[3-8]|[9]|[1-4][0-9]");
-
-    /**
-     * The highest bare major version accepted, and why there is a ceiling at
-     * all (C1, final audit): {@code [1-9][0-9]+} matched {@code 99} and
-     * {@code 1234}, so a typo'd {@code <maven.compiler.release>177</…>} was
-     * pushed to JDT unvalidated — the exact class of value the shape check
-     * exists to refuse. Two digits starting 1-4 covers every release JDT can
-     * be set to and every one it plausibly will be for decades; a level above
-     * it is far likelier to be a typo than a time traveller.
-     */
+    private static final Pattern COMPLIANCE_LEVEL =
+        Pattern.compile("1\\.[1-8]|[9]|1[0-9]|2[0-7]");
 
     /**
      * {@code level} in the form JDT accepts, or empty — said out loud.
@@ -1521,14 +1525,37 @@ public class ProjectImporter {
     /** Map package directories to their source roots, appending each new one once. */
     private void addRootsForPackageDirs(List<java.nio.file.Path> packageDirs,
             List<java.nio.file.Path> sourcePaths) {
-        packageDirs.stream()
-                   .map(this::bazelSourceRootFor)
-                   .distinct()
-                   .forEach(root -> {
-                       if (!sourcePaths.contains(root)) {
-                           sourcePaths.add(root);
-                       }
-                   });
+        // SHALLOWEST FIRST, then drop anything nested inside an accepted root.
+        //
+        // Sprint 28 (C1, audit round 5). De-duplicating was not enough: a
+        // directory whose files declare NO package — or a package shallower
+        // than its depth — yields ITSELF as a root, and if a sibling produced
+        // an ancestor root, both were mounted. JDT then expects the default
+        // package inside the nested one, so legal code reports "The declared
+        // package "" does not match the expected package "com.example.util"",
+        // the same file is counted twice, and the project's file count is
+        // wrong in the direction that looks like more coverage.
+        //
+        // That is the Bazel-package-directory defect and the unknown-layout
+        // defect a third time, re-created inside the last-resort path written
+        // to close them — which is why nesting, not just equality, is what
+        // gets checked here.
+        List<java.nio.file.Path> candidates = packageDirs.stream()
+            .map(this::bazelSourceRootFor)
+            .distinct()
+            .sorted(java.util.Comparator.comparingInt(java.nio.file.Path::getNameCount)
+                .thenComparing(java.nio.file.Path::toString))
+            .toList();
+        for (java.nio.file.Path root : candidates) {
+            if (sourcePaths.stream().anyMatch(root::startsWith)) {
+                log.debug("Skipping {} — it is inside the already-mounted source root {}",
+                    root, sourcePaths.stream().filter(root::startsWith).findFirst().orElse(null));
+                continue;
+            }
+            if (!sourcePaths.contains(root)) {
+                sourcePaths.add(root);
+            }
+        }
     }
 
     /**
@@ -1650,9 +1677,13 @@ public class ProjectImporter {
                 // "package " sent it to the type check below, which declared it
                 // the default package — the defect this method prevents (C1,
                 // final audit).
+                // lookingAt, not matches: `package com.example; import java.util.List;`
+                // is legal on one line, and requiring the whole line to BE the
+                // declaration sent it to the type check below, which declared
+                // it the default package (C1, audit round 5).
                 Matcher pkg = PACKAGE_DECLARATION.matcher(trimmed);
-                if (pkg.matches()) {
-                    return Optional.of(pkg.group(1));
+                if (pkg.lookingAt()) {
+                    return Optional.of(pkg.group(1).replaceAll("\\s+", ""));
                 }
                 if (TYPE_DECLARATION.matcher(trimmed).find()) {
                     return Optional.empty();   // default package

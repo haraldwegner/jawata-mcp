@@ -556,6 +556,49 @@ class BuildSystemLoadTest {
     }
 
     @Test
+    @DisplayName("discovered roots are never NESTED inside one another")
+    void discoveredRootsAreNotNested() throws Exception {
+        // code/ holds a class declaring `package com.example`, so the walk
+        // derives code/ as a root. code/com/example/util/ holds one declaring
+        // nothing, so the walk derives THAT directory as a root too — inside
+        // the first. JDT then expects the default package there and reports
+        // "The declared package … does not match" on legal code, and the same
+        // file is counted twice.
+        IJavaProject jp = load("nested-roots");
+        List<String> roots = sourceRootPaths(jp);
+        assertEquals(1, roots.size(),
+            "expected exactly one root; a nested root was mounted inside another: " + roots);
+        assertNotNull(jp.findType("com.example.Foo"),
+            "com.example.Foo did not resolve");
+    }
+
+    @Test
+    @DisplayName("a TAB after `package` is a package declaration")
+    void aTabAfterPackageIsStillADeclaration() throws Exception {
+        // `package\tcom.acme.tabbed;` is legal Java. Requiring the literal
+        // "package " sent it to the type check, which declared it the default
+        // package — so its directory became its own source root and the class
+        // landed in the wrong package.
+        assertNotNull(load("tabbed-package").findType("com.acme.tabbed.Tabbed"),
+            "a type whose file separates `package` from its name with a tab did not resolve"
+                + " in its declared package");
+    }
+
+    @Test
+    @DisplayName("a multi-module pom with a legacy-encoded byte still yields its modules")
+    void aLegacyEncodedAggregatorStillYieldsItsModules() throws Exception {
+        // isMultiModuleProject and getModules read the pom with the same strict
+        // decode. Swallowed, they return false and an empty list — so an
+        // aggregator loads as a single-module project and its modules' sources
+        // are never mounted at all. E1 claimed this was fixed; nothing tested it.
+        Path fixture = helper.getFixturePath("maven-latin1-aggregator");
+        assertTrue(importer.isMultiModuleProject(fixture),
+            "an aggregator with one legacy-encoded byte was not recognised as multi-module");
+        assertFalse(importer.getModules(fixture).isEmpty(),
+            "the modules of a legacy-encoded aggregator pom were not found");
+    }
+
+    @Test
     @DisplayName("a legacy-encoded byte in a pom does not erase the declared level")
     void aLegacyEncodedPomStillDeclaresItsLevel() throws Exception {
         // The sprint's headline defect, in the place it was NOT fixed for two

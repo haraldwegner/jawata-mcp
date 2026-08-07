@@ -50,6 +50,17 @@ target/
 # bytes and built from a source file beside it.
 !org.jawata.core.tests/test-resources/sample-projects/**/*.jar
 
+# …but NOT inside a fixture's own OUTPUT tree (C1, audit round 5). The negation
+# above re-exposed exactly what the Maven narrowing below was written to shut:
+# a Gradle or Bazel run in a fixture directory drops jars into build/libs or
+# bazel-out, and the next `git add -A` would commit them. The Bazel fixture's
+# bazel-bin/ jar is a deliberate, committed exception and is re-negated after.
+org.jawata.core.tests/test-resources/sample-projects/*/build/**
+org.jawata.core.tests/test-resources/sample-projects/*/bazel-out/**
+org.jawata.core.tests/test-resources/sample-projects/*/.gradle/**
+!org.jawata.core.tests/test-resources/sample-projects/*/build/generated/**
+!org.jawata.core.tests/test-resources/sample-projects/simple-bazel/bazel-bin/**
+
 # The output-exclusion TRAPS. A fixture proves "build output is not mounted as
 # source" only if there IS output to mount, so each fixture plants a .java under
 # the directory its build system writes to. `target/` above would eat the Maven

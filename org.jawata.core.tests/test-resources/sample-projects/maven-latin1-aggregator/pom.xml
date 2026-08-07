@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28 (C1, audit round 5): an AGGREGATOR pom with a legacy-encoded
+     byte. Vendor: Müller Software GmbH.
+
+     isMultiModuleProject and getModules read the pom with the same strict
+     decode as the compliance readers. Swallowed, they return false and an
+     empty list â€” so this project loads as a SINGLE module and mod-a is never
+     mounted at all. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>maven-latin1-aggregator</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <modules>
+        <module>mod-a</module>
+    </modules>
+</project>

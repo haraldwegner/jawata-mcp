@@ -132,3 +132,19 @@ jobs:
              grep -i 'ABORTED' gradle-cell.log || true
              exit 1 ;;
         esac
+
+    # This job is the ONLY one that runs Gradle against a committed fixture, so
+    # it is the only one that can drop build/libs and .gradle into the fixture
+    # tree — and until now it was the one job with no tree-clean step. The gate
+    # was structurally blind to the residue the new job creates.
+    - name: Tree is unchanged by the Gradle run
+      if: always()
+      shell: bash
+      run: |
+        residue="$(git status --porcelain)"
+        if [ -n "$residue" ]; then
+          echo "FAIL: the Gradle run left the working tree dirty:"
+          printf '%s\n' "$residue"
+          exit 1
+        fi
+        echo "ok: git status clean after the Gradle cell"
