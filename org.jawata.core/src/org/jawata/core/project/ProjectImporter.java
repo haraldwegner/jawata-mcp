@@ -1236,9 +1236,6 @@ public class ProjectImporter {
         }
     }
 
-    /** Per-module classpath file name — relative, so the reactor writes one per module. */
-    private static final String CP_FILE_NAME = "jawata-classpath.txt";
-
     /**
      * v2.9.2 (dogfood D4): resolve the Maven executable robustly. A Studio-launched
      * resident inherits a desktop/AppImage PATH without the user's shell profile —
@@ -1778,27 +1775,6 @@ public class ProjectImporter {
     }
 
     /**
-     * Map a Bazel java PACKAGE directory to its SOURCE ROOT.
-     *
-     * <p>Sprint 28 (D-IMPORTER). In Bazel the {@code BUILD} file sits in the
-     * package directory — {@code java/com/example/BUILD.bazel} beside
-     * {@code Greeter.java} declaring {@code package com.example}. Adding that
-     * directory as a source root makes JDT expect the DEFAULT package, so every
-     * class in a Bazel project loaded with
-     * <em>"The declared package &quot;com.example&quot; does not match the
-     * expected package &quot;&quot;"</em> — detection passed, roots were found,
-     * jars resolved, output was excluded, and nothing compiled.</p>
-     *
-     * <p>The source root is the directory the package path is relative to: strip
-     * one parent per package segment. A default-package directory IS its own
-     * root, and a package deeper than the path allows (a malformed tree) falls
-     * back to the package directory rather than escaping the project.</p>
-     */
-    private java.nio.file.Path bazelSourceRootFor(java.nio.file.Path packageDir) {
-        return derivedRootFor(packageDir, null).root();
-    }
-
-    /**
      * A candidate source root, and whether a {@code package} declaration
      * produced it.
      *
@@ -1813,6 +1789,20 @@ public class ProjectImporter {
     /**
      * Map a package directory to its source root, never escaping
      * {@code projectRoot}.
+     *
+     * <p>Why this exists at all — the Bazel shape (Sprint 28, D-IMPORTER). In
+     * Bazel the {@code BUILD} file sits in the PACKAGE directory:
+     * {@code java/com/example/BUILD.bazel} beside {@code Greeter.java}
+     * declaring {@code package com.example}. Adding that directory as a source
+     * root makes JDT expect the DEFAULT package, so every class in a Bazel
+     * project loaded with <em>"The declared package &quot;com.example&quot;
+     * does not match the expected package &quot;&quot;"</em> — detection
+     * passed, roots were found, jars resolved, output was excluded, and
+     * nothing compiled. The root is the directory the package path is relative
+     * to: strip one parent per package segment. A default-package directory IS
+     * its own root, and a package deeper than the path allows (a malformed
+     * tree) falls back to the package directory rather than escaping the
+     * project.</p>
      *
      * <p>Sprint 28 (C1, audit round 6) — the CLAMP, and why its absence was
      * only fatal once de-nesting existed. Stripping one parent per package

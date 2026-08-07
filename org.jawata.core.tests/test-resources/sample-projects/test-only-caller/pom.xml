@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28 Stage 4 (D-UNWIRED) fixture: the hollow-wiring shape.
+
+     Deliberately dependency-FREE, and the test source declares no JUnit
+     annotation and imports nothing from org.junit. Test-ness here can only
+     come from the source root recorded in the model — which is the property
+     under test. A fixture whose test file imported Jupiter would let the
+     importer's content rule reach the same verdict, and the detector could
+     stop consulting the classifier without any test noticing. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>test-only-caller</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Test-Only Caller Fixture</name>
+    <description>Public production members whose every caller is test code</description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>

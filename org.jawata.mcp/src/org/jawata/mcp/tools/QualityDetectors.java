@@ -55,7 +55,10 @@ public final class QualityDetectors {
             // Sprint 23 (GATE-1 addition): lack of coverage evidence as a smell.
             .register(new org.jawata.mcp.tools.smell.CoverageLackDetector(), "quality")
             // Sprint 25 (D3a): undocumented public API as a smell (the doc ratchet).
-            .register(new org.jawata.mcp.tools.smell.JavadocLackDetector(), "quality");
+            .register(new org.jawata.mcp.tools.smell.JavadocLackDetector(), "quality")
+            // Sprint 28 (D-UNWIRED): hollow wiring as a smell — public production
+            // members whose every caller is test code (the v3.4.0 shape).
+            .register(new org.jawata.mcp.tools.smell.TestOnlyCallerDetector(), "quality");
     }
 
     /**
