@@ -76,15 +76,49 @@ class SourceRootTestnessTest {
     }
 
     @Test
-    @DisplayName("rule 1: Tycho eclipse-test-plugin packaging tags the WHOLE bundle")
+    @DisplayName("rule 1: Tycho eclipse-test-plugin packaging tags the bundle — as the ONLY evidence")
     void tychoTestPluginPackagingTagsTheBundle() throws Exception {
-        // Sources flat under src/ (convention silent). The classes DO import
-        // JUnit, so content would also say test — which is exactly why the
-        // packaging must be read: the declaration is evidence, the imports are
-        // coincidence.
+        // Sources flat under src/ (convention silent) and deliberately
+        // importing NO test framework (content silent) — so ONLY the packaging
+        // can tag this, and deleting the packaging check turns this red. The
+        // first version imported JUnit and was a bystander rule 3 covered for
+        // (C2 audit F2). The fixture also carries Fragment-Host: it is a true
+        // test FRAGMENT, the shape jawata's own *.tests bundles have.
         IJavaProject jp = load("pde-tycho-tests");
         assertTrue(isTestRoot(jp, "-src"),
-            "an eclipse-test-plugin bundle's source root was not tagged test");
+            "an eclipse-test-plugin fragment's source root was not tagged test");
+    }
+
+    @Test
+    @DisplayName("the checkout location NEVER classifies: a project under /src/test/ keeps its own truth")
+    void theCheckoutLocationNeverClassifies() throws Exception {
+        // C2 audit F1, the relocated-tree defect: rule 2 matched the ABSOLUTE
+        // path, so a checkout under any directory containing /src/test/ tagged
+        // every convention root test — including inverting the runner-shape
+        // precedence guard. The convention must be read RELATIVE to the
+        // project; evidence outside the project must never classify it.
+        Path crafted = helper.getTempDirectory().resolve("src/test/checkout/runner-shape");
+        copyTree(helper.getFixturePath("runner-shape"), crafted);
+
+        IProject project = workspaceManager.createLinkedProject("tag-relocated", crafted);
+        IJavaProject jp = importer.configureJavaProject(project, crafted, workspaceManager);
+        assertFalse(isTestRoot(jp, "src-main-java"),
+            "src/main/java was tagged test because the CHECKOUT path contains /src/test/ — "
+                + "the classifier read evidence from outside the project");
+    }
+
+    private static void copyTree(Path from, Path to) throws java.io.IOException {
+        try (java.util.stream.Stream<Path> walk = java.nio.file.Files.walk(from)) {
+            for (Path p : walk.toList()) {
+                Path dest = to.resolve(from.relativize(p).toString());
+                if (java.nio.file.Files.isDirectory(p)) {
+                    java.nio.file.Files.createDirectories(dest);
+                } else {
+                    java.nio.file.Files.createDirectories(dest.getParent());
+                    java.nio.file.Files.copy(p, dest);
+                }
+            }
+        }
     }
 
     @Test

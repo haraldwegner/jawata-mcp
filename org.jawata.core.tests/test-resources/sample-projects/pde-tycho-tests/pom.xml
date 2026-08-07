@@ -7,9 +7,13 @@
   declaration, which outranks folder convention and file content.
 
   It matters here because this bundle's sources are flat under src/, so the
-  folder rule says nothing, and its classes import JUnit, so the content rule
-  would reach the right answer for the wrong reason. Only the packaging makes
-  it a declaration.
+  folder rule says nothing — and its classes deliberately import NO test
+  framework, so the content rule cannot reach "test" either. The packaging is
+  the ONLY evidence, which is what makes the fixture a discriminator for rule
+  1a rather than a bystander rule 3 covers for (C2 audit F2).
+
+  Fragment-Host in the manifest makes it a true test FRAGMENT — the shape the
+  C2 exit criterion names, and the shape jawata's own *.tests bundles have.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

@@ -807,7 +807,7 @@ public class ProjectImporter {
      * allows.</p>
      */
     boolean isTestSourceRoot(java.nio.file.Path srcPath, java.nio.file.Path projectPath) {
-        java.nio.file.Path owner = owningModuleDir(srcPath);
+        java.nio.file.Path owner = owningModuleDir(srcPath, projectPath);
 
         // Rule 1a — Tycho: the bundle's packaging declares the WHOLE bundle.
         if (owner != null
@@ -834,13 +834,25 @@ public class ProjectImporter {
                 return false;
             }
         }
-        // Rule 2 — the folder convention.
-        String slashed = srcPath.toString().replace(File.separatorChar, '/');
-        if (slashed.contains("/src/test/") || slashed.endsWith("/src/test")) {
-            return true;
-        }
-        if (slashed.contains("/src/main/") || slashed.endsWith("/src/main")) {
-            return false;
+        // Rule 2 — the folder convention, matched against the path RELATIVE to
+        // the project (or the owning module). The first version matched the
+        // ABSOLUTE string, so a checkout under any directory containing
+        // /src/test/ tagged every convention root test and inverted the
+        // precedence guard — the classifier reading evidence from OUTSIDE the
+        // project it classifies, which is the C1 defect class again (C2 audit
+        // F1, proven with a relocated tree: 3 of 7 tests red).
+        java.nio.file.Path base = owner != null && srcPath.startsWith(owner) ? owner
+            : srcPath.startsWith(projectPath) ? projectPath
+            : null;
+        if (base != null) {
+            String rel = "/" + base.relativize(srcPath).toString()
+                .replace(File.separatorChar, '/') + "/";
+            if (rel.contains("/src/test/")) {
+                return true;
+            }
+            if (rel.contains("/src/main/")) {
+                return false;
+            }
         }
         // Rule 3 — the content.
         return containsTestFrameworkImports(srcPath);
@@ -848,15 +860,27 @@ public class ProjectImporter {
 
     /**
      * The module directory that DECLARES {@code srcPath}: the nearest ancestor
-     * carrying a {@code pom.xml} or {@code .classpath}. Walks upward unbounded
-     * by the project root, because a declared source dir may live OUTSIDE the
-     * project tree ({@code <sourceDirectory>../../bundle/src</sourceDirectory>}
-     * is the post-22d jawata shape); bounded at 12 levels so a filesystem walk
-     * to {@code /} cannot happen. Null when nothing declares it.
+     * carrying a {@code pom.xml} or {@code .classpath}, bounded to the
+     * PROJECT. Null when nothing inside the project declares it.
+     *
+     * <p>The first version walked upward unbounded (C2 audit F3), on the
+     * theory that an out-of-tree declared source dir needs it. It does not:
+     * for {@code <sourceDirectory>../../bundle/src</sourceDirectory>} the
+     * declaring module is NOT an ancestor of the source dir, so an upward walk
+     * can never find it anyway — the unbounded walk bought nothing and let
+     * AMBIENT files decide: the enclosing repository's own {@code pom.xml}
+     * became the "owner" of a fixture, and a stray {@code ~/.classpath} could
+     * explicit-main a user's roots. Evidence from outside the project must
+     * never classify the project.</p>
      */
-    private static java.nio.file.Path owningModuleDir(java.nio.file.Path srcPath) {
+    private static java.nio.file.Path owningModuleDir(java.nio.file.Path srcPath,
+            java.nio.file.Path projectPath) {
+        if (!srcPath.startsWith(projectPath)) {
+            return null;
+        }
         java.nio.file.Path dir = srcPath.getParent();
-        for (int i = 0; dir != null && i < 12; i++, dir = dir.getParent()) {
+        for (int i = 0; dir != null && dir.startsWith(projectPath) && i < 12;
+                i++, dir = dir.getParent()) {
             if (Files.isRegularFile(dir.resolve("pom.xml"))
                     || Files.isRegularFile(dir.resolve(".classpath"))) {
                 return dir;

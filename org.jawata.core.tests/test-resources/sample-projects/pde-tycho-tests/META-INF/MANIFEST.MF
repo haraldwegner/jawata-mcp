@@ -1,7 +1,7 @@
 Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
-Bundle-Name: Tycho Test Bundle Fixture
+Bundle-Name: Tycho Test Fragment Fixture
 Bundle-SymbolicName: org.jawata.fixture.tycho.tests;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-RequiredExecutionEnvironment: JavaSE-17
-Import-Package: org.junit.jupiter.api
+Fragment-Host: org.jawata.fixture.b
