@@ -46,6 +46,31 @@ jobs:
       timeout-minutes: 20
       run: ./build/unwired-gate.sh
 
+    # Sprint 28 D-E2E. This script has existed since Sprint 27a and ran only
+    # when someone remembered to run it — which is the same failure mode it was
+    # written to catch. v3.4.0 shipped its central feature completely inert with
+    # a 1591/1591 unit suite, because every test supplied by hand the wiring
+    # production was missing. This script cannot do that: it has ONE way in, the
+    # JSON-RPC endpoint an editor uses, against the BUILT ARTIFACT on a
+    # throwaway store.
+    #
+    # It runs AFTER "Package distributions" would be the natural reading, but
+    # the dist it needs is produced by the Build step above, so it gates here —
+    # before anything is uploaded, and before the release is created.
+    - name: End-to-end gate (the product's own front door)
+      timeout-minutes: 20
+      run: ./build/end-to-end-test.sh
+
+    - name: Upload end-to-end log
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: end-to-end-log
+        path: |
+          e2e-*.log
+          build/e2e-fixture/entries.json
+        if-no-files-found: ignore
+
     # always(): runs on failure, step-timeout AND cancellation — the per-class
     # progress log survives every outcome (GitHub discards a cancelled step's
     # own log; this artifact is the insurance).
