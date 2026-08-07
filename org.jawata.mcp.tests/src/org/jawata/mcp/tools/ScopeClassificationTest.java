@@ -130,6 +130,38 @@ class ScopeClassificationTest {
     }
 
     @Test
+    @DisplayName("a project it cannot READ degrades to CROSS_CUTTING, not to a guess")
+    void anUnreadableProjectDegradesRatherThanGuessing() throws Exception {
+        // C4 audit round 2, carried residual 3: the CROSS_CUTTING degradation
+        // had no test at all — the classifier's whole error path was reasoned,
+        // not exercised. A CLOSED project reaches it for real (the Java model
+        // reports the project as not existing, and reading its classpath
+        // throws), which is the same state a JavaModelException produces
+        // mid-scan.
+        //
+        // WHAT THIS DOES NOT CLOSE, stated so the residual is not reported as
+        // gone: it covers the CLASSIFIER's degradation, not the DETECTOR's
+        // handling of it. TestOnlyCallerDetector never sees a CROSS_CUTTING
+        // .java file in practice, because the listing walks source roots — its
+        // three-way mapping stays asserted at the seam.
+        JdtServiceImpl service = helper.loadProject("simple-maven");
+        Path file = helper.getFixturePath("simple-maven")
+            .resolve("src/main/java/com/example/HelloWorld.java");
+        ICompilationUnit unit = service.getCompilationUnit(file);
+        assertNotNull(unit, "the fixture file must resolve before we break the project");
+        IResource resource = unit.getResource();
+        assertEquals(Verdict.MAIN, SourceRootClassifier.classify(resource),
+            "it must classify normally FIRST, or the assertion below proves nothing");
+
+        resource.getProject().close(null);
+
+        assertEquals(Verdict.CROSS_CUTTING, SourceRootClassifier.classify(resource),
+            "a project the model cannot read must fall OPEN — a classifier that guessed"
+                + " MAIN here would sweep test code into the main scope, and one that"
+                + " guessed TEST would hide production code from it");
+    }
+
+    @Test
     @DisplayName("a null or un-rooted resource falls OPEN, never hidden")
     void unclassifiableFallsOpen() {
         assertEquals(Verdict.CROSS_CUTTING, SourceRootClassifier.classify(null),
