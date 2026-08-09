@@ -113,9 +113,9 @@ PY
 
 no_score() {   # 27a: no similarity number in any user-facing payload
     if printf '%s' "$2" | grep -qE '0\.[0-9]{2}'; then
-        fail "27a-noscore $1 leaked a similarity number"
+        fail "no-similarity-number $1 leaked a similarity number"
     else
-        pass "27a-noscore $1 carries no similarity number"
+        pass "no-similarity-number $1 carries no similarity number"
     fi
 }
 
@@ -124,14 +124,24 @@ echo "end-to-end test — against $JAR"
 # ============================ lifecycle 1 ====================================
 start_resident
 
-# --- D1: the embedder is loaded AND says which backend actually won ---------
+# --- embedder-loaded: the embedder is loaded AND says which backend actually won ---------
 H="$(call health_check '{}')"
 case "$H" in
-    *'"available":true'*) pass "D1 embedder available; backend reported" ;;
-    *) fail "D1 embedder not available in the running product" ;;
+    *'"available":true'*) pass "embedder-loaded embedder available; backend reported" ;;
+    *) fail "embedder-loaded embedder not available in the running product" ;;
 esac
 
-# --- D2: recall by MEANING, the release's central claim ---------------------
+# --- tool-count-still-45: no tool silently appeared or vanished --------------
+# The release-note sentence "the tool count is still 45" gets its live check
+# (Sprint 28 outcome audit, F7 — the sentence had no check behind it).
+TOOLS="$(printf '%s' "$H" | grep -oE '"toolCount"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+')"
+if [ "${TOOLS:-missing}" = "45" ]; then
+    pass "tool-count-still-45 health_check reports exactly 45 tools"
+else
+    fail "tool-count-still-45 expected 45 tools, health_check reports: ${TOOLS:-no toolCount field at all}"
+fi
+
+# --- recall-by-meaning: recall by MEANING, the release's central claim ---------------------
 call experience '{"kind":"record","type":"lesson",
   "summary":"the roof leaked because nobody swept the gutters in autumn",
   "operation":"end-to-end-test","language":"process"}' >/dev/null
@@ -139,31 +149,31 @@ R="$(call experience '{"kind":"recall",
   "symptom":"water came through the ceiling after the drains clogged with leaves",
   "format":"text"}')"
 case "$R" in
-    *gutters*) pass "D2 a paraphrase sharing no words with the entry found it" ;;
-    *) fail "D2 RECALL BY MEANING IS NOT RUNNING IN THE PRODUCT" ;;
+    *gutters*) pass "recall-by-meaning a paraphrase sharing no words with the entry found it" ;;
+    *) fail "recall-by-meaning RECALL BY MEANING IS NOT RUNNING IN THE PRODUCT" ;;
 esac
 
-# --- D5: recording a near-duplicate proposes a merge ------------------------
+# --- write-dedup: recording a near-duplicate proposes a merge ------------------------
 D="$(call experience '{"kind":"record","type":"lesson",
   "summary":"the roof leaked because nobody swept the gutters in autumn",
   "operation":"end-to-end-test","language":"process"}')"
 case "$D" in
-    *duplicate_of*) pass "D5 a re-recorded entry is flagged as a duplicate" ;;
-    *) fail "D5 write-path dedup did not fire on an identical entry" ;;
+    *duplicate_of*) pass "write-dedup a re-recorded entry is flagged as a duplicate" ;;
+    *) fail "write-dedup write-path dedup did not fire on an identical entry" ;;
 esac
 no_score "record(dedup-flag)" "$D"
 
-# --- D6: the counters actually move, and say how to read themselves --------
+# --- counters: the counters actually move, and say how to read themselves --------
 S="$(call experience '{"kind":"stats"}')"
 case "$S" in
-    *unavailable*)      fail "D6 the counter table is missing on this store" ;;
+    *unavailable*)      fail "counters the counter table is missing on this store" ;;
     *'"fired.'*|*question_hook*)
-                        pass "D6 counters advanced from the calls above" ;;
-    *)                  fail "D6 no counter moved despite live recalls" ;;
+                        pass "counters counters advanced from the calls above" ;;
+    *)                  fail "counters no counter moved despite live recalls" ;;
 esac
 case "$S" in
-    *CORRELATION*) pass "D6 the counts carry their how-to-read sentence" ;;
-    *) fail "D6 counts rendered without the correlation label" ;;
+    *CORRELATION*) pass "counters the counts carry their how-to-read sentence" ;;
+    *) fail "counters counts rendered without the correlation label" ;;
 esac
 
 # --- 27a: import the committed fixture through the front door ----------------
@@ -174,53 +184,53 @@ print(json.dumps({"kind": "import", "entries": entries}))
 PY
 IMP="$(call_file experience "$WS/import-args.json")"
 case "$IMP" in
-    *'"imported":48'*) pass "27a-fixture the 48 committed entries imported" ;;
-    *) fail "27a-fixture import did not land 48 entries: $(printf '%s' "$IMP" | head -c 200)" ;;
+    *'"imported":48'*) pass "fixture-import the 48 committed entries imported" ;;
+    *) fail "fixture-import import did not land 48 entries: $(printf '%s' "$IMP" | head -c 200)" ;;
 esac
 
-# --- 27a-D5cov: a restored store is honestly PART-embedded ------------------
+# --- backfill-pending-after-restore: a restored store is honestly PART-embedded ------------------
 S1="$(call experience '{"kind":"stats"}')"
 EMB="$(printf '%s' "$S1" | grep -o '"embedding".\{0,220\}')"
 if [ -z "$EMB" ]; then
-    fail "27a-D5cov stats carries no embedding block (v3.4.1 shape)"
+    fail "backfill-pending-after-restore stats carries no embedding block (v3.4.1 shape)"
 else
     EMB_N="$(printf '%s' "$EMB" | grep -oE '"embedded":[0-9]+' | head -1 | cut -d: -f2)"
     TOT_N="$(printf '%s' "$EMB" | grep -oE '"total":[0-9]+' | head -1 | cut -d: -f2)"
     if [ -n "$EMB_N" ] && [ -n "$TOT_N" ] && [ "$EMB_N" -lt "$TOT_N" ]; then
-        pass "27a-D5cov stats shows the restored rows honestly unembedded ($EMB_N/$TOT_N)"
+        pass "backfill-pending-after-restore stats shows the restored rows honestly unembedded ($EMB_N/$TOT_N)"
     else
-        fail "27a-D5cov expected n<total right after a restore, got ${EMB_N:-?}/${TOT_N:-?}"
+        fail "backfill-pending-after-restore expected n<total right after a restore, got ${EMB_N:-?}/${TOT_N:-?}"
     fi
 fi
 
-# --- 27a-D10: a wrong-kind record is refused with the teaching redirect -----
+# --- admission-gate: a wrong-kind record is refused with the teaching redirect -----
 A="$(call experience '{"kind":"record","type":"lesson",
   "summary":"a lesson about the ordering notes",
   "symptoms":["client-app/docs/ordering-notes.md"]}')"
 case "$A" in
-    *REPHRASE*) pass "27a-D10 a path standing as a symptom is refused with the teaching message" ;;
-    *'"stored":true'*) fail "27a-D10 THE ADMISSION GATE IS NOT RUNNING (garbage stored)" ;;
-    *) fail "27a-D10 unexpected admission response: $(printf '%s' "$A" | head -c 200)" ;;
+    *REPHRASE*) pass "admission-gate a path standing as a symptom is refused with the teaching message" ;;
+    *'"stored":true'*) fail "admission-gate THE ADMISSION GATE IS NOT RUNNING (garbage stored)" ;;
+    *) fail "admission-gate unexpected admission response: $(printf '%s' "$A" | head -c 200)" ;;
 esac
 
-# --- 27a-D4: a genuine paraphrase in different words is NOT flagged ---------
+# --- paraphrase-not-duplicate: a genuine paraphrase in different words is NOT flagged ---------
 # (the corrected release-note claim, live: high-precision dedup only ever
 # proposes, and only for near-identical wording)
 P="$(call experience '{"kind":"record","type":"lesson",
   "summary":"crawling glaze at cone six traces back to dust left on the pots",
   "operation":"end-to-end-test"}')"
 case "$P" in
-    *duplicate_of*) fail "27a-D4 a genuine paraphrase was flagged — the corrected claim is false" ;;
-    *'"stored":true'*) pass "27a-D4 a paraphrase in different words is admitted unflagged" ;;
-    *) fail "27a-D4 unexpected record response" ;;
+    *duplicate_of*) fail "paraphrase-not-duplicate a genuine paraphrase was flagged — the corrected claim is false" ;;
+    *'"stored":true'*) pass "paraphrase-not-duplicate a paraphrase in different words is admitted unflagged" ;;
+    *) fail "paraphrase-not-duplicate unexpected record response" ;;
 esac
 
-# --- 27a-load: the memory-file ingest reports its routing -------------------
+# --- ingest-route-report: the memory-file ingest reports its routing -------------------
 printf -- "---\nname: e2e-load-probe\ndescription: a probe note for the load report\ntype: lesson\n---\nThe \`WidgetRenderer.paint()\` call fails on scale change.\n\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n" > "$WS/mem.md"
 L="$(call experience "{\"kind\":\"load\",\"path\":\"$WS/mem.md\"}")"
 case "$L" in
-    *keywords_suppressed*) pass "27a-load the load report carries the route/skip count" ;;
-    *) fail "27a-load NO ROUTE/SKIP REPORT from the ingest (v3.4.1 shape)" ;;
+    *keywords_suppressed*) pass "ingest-route-report the load report carries the route/skip count" ;;
+    *) fail "ingest-route-report NO ROUTE/SKIP REPORT from the ingest (v3.4.1 shape)" ;;
 esac
 
 stop_resident
@@ -255,56 +265,56 @@ for _ in $(seq 1 60); do
     sleep 3
 done
 if [ -n "$CONVERGED" ]; then
-    pass "27a-D5cov2 the startup reconciliation converged, BOTH lanes ($ENTRY_LANE)"
+    pass "backfill-closes-both-lanes the startup reconciliation converged, BOTH lanes ($ENTRY_LANE)"
 else
-    fail "27a-D5cov2 the backfill never closed both lanes (entry lane: ${ENTRY_LANE:-absent})"
+    fail "backfill-closes-both-lanes the backfill never closed both lanes (entry lane: ${ENTRY_LANE:-absent})"
 fi
 
-# --- 27a-D1a: fixture knowledge is reachable by MEANING ---------------------
+# --- restored-found-by-meaning: fixture knowledge is reachable by MEANING ---------------------
 M="$(call experience '{"kind":"recall",
   "symptom":"my sourdough fell in on itself after I let it rise for too long",
   "format":"text"}')"
 case "$M" in
-    *poke-test*|*sourdough*) pass "27a-D1a a fixture lesson is found by meaning after the restore" ;;
-    *) fail "27a-D1a the restored fixture is invisible to meaning recall" ;;
+    *poke-test*|*sourdough*) pass "restored-found-by-meaning a fixture lesson is found by meaning after the restore" ;;
+    *) fail "restored-found-by-meaning the restored fixture is invisible to meaning recall" ;;
 esac
 no_score "recall(meaning)" "$M"
 
-# --- 27a-D1b: nonsense produces NO VOUCHED ANSWER, nominees labelled --------
+# --- nonsense-never-vouched: nonsense produces NO VOUCHED ANSWER, nominees labelled --------
 N="$(call experience '{"kind":"recall",
   "symptom":"the marzipan barometer forgot its velvet inventory",
   "format":"text"}')"
 case "$N" in
-    *'"result":"match"'*) fail "27a-D1b nonsense produced a VOUCHED answer" ;;
-    *) pass "27a-D1b nonsense is never vouched" ;;
+    *'"result":"match"'*) fail "nonsense-never-vouched nonsense produced a VOUCHED answer" ;;
+    *) pass "nonsense-never-vouched nonsense is never vouched" ;;
 esac
 case "$N" in
     *meaning-near*|*"shares distinctive wording"*|*analogy*)
-        pass "27a-D1b whatever nonsense surfaces is labelled a nominee (basis in words)" ;;
-    *) fail "27a-D1b nominees rendered without their basis labels" ;;
+        pass "nonsense-never-vouched whatever nonsense surfaces is labelled a nominee (basis in words)" ;;
+    *) fail "nonsense-never-vouched nominees rendered without their basis labels" ;;
 esac
 no_score "recall(nonsense)" "$N"
 
-# --- 27a-D6r: a rejected note stays gone BY MEANING -------------------------
+# --- rejected-stays-gone: a rejected note stays gone BY MEANING -------------------------
 G="$(call experience '{"kind":"recall",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",
   "format":"text"}')"
 case "$G" in
-    *"moon phase determines"*) fail "27a-D6r the REJECTED note came back through the meaning path" ;;
-    *) pass "27a-D6r the rejected note stays gone by meaning" ;;
+    *"moon phase determines"*) fail "rejected-stays-gone the REJECTED note came back through the meaning path" ;;
+    *) pass "rejected-stays-gone the rejected note stays gone by meaning" ;;
 esac
 
-# --- 27a-D2d: dispatch rides recall — the seeded seat run is found ----------
+# --- past-run-dispatch: dispatch rides recall — the seeded seat run is found ----------
 DS="$(call experience '{"kind":"recall",
   "symptom":"how was the scheduler retry loop covered before its refactor",
   "format":"json"}')"
 case "$DS" in
-    *dispatch*) pass "27a-D2d the seeded seat run arrives dispatch-decorated" ;;
-    *) fail "27a-D2d no dispatch decoration on the seat-run recall" ;;
+    *dispatch*) pass "past-run-dispatch the seeded seat run arrives dispatch-decorated" ;;
+    *) fail "past-run-dispatch no dispatch decoration on the seat-run recall" ;;
 esac
 no_score "recall(dispatch)" "$DS"
 
-# --- 27a-choke: the LIVE warning cycle on a real project --------------------
+# --- choke-gate: the LIVE warning cycle on a real project --------------------
 # fire (a reverted refactor becomes a precedent) → warn (advisory steer,
 # uncharged) → charge (the identity tier refuses an unjustified repeat) →
 # pay (a written justification proceeds) → the outcome-after counter fills.
@@ -312,8 +322,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cp -r "$REPO_ROOT/org.jawata.core.tests/test-resources/sample-projects/compile-clean" "$WS/proj"
 LP="$(call load_project "{\"projectPath\":\"$WS/proj\"}")"
 case "$LP" in
-    *'"success":true'*|*sourceFiles*|*packages*) pass "27a-choke a real project loads in the throwaway resident" ;;
-    *) fail "27a-choke load_project failed: $(printf '%s' "$LP" | head -c 200)" ;;
+    *'"success":true'*|*sourceFiles*|*packages*) pass "choke-gate a real project loads in the throwaway resident" ;;
+    *) fail "choke-gate load_project failed: $(printf '%s' "$LP" | head -c 200)" ;;
 esac
 
 # pre-advice seeding: a prose lesson the refactor's pre-advice can reach
@@ -324,14 +334,14 @@ call experience '{"kind":"record","type":"lesson",
 REN="$(call rename_symbol '{"symbol":"com.example.Clean#greet","newName":"salute"}')"
 UNDO_ID="$(printf '%s' "$REN" | grep -oE '"undoChangeId":"[^"]+"' | head -1 | cut -d'"' -f4)"
 if [ -n "$UNDO_ID" ]; then
-    pass "27a-choke the rename ran and returned its undo handle"
+    pass "choke-gate the rename ran and returned its undo handle"
 else
-    fail "27a-choke rename_symbol gave no undoChangeId: $(printf '%s' "$REN" | head -c 200)"
+    fail "choke-gate rename_symbol gave no undoChangeId: $(printf '%s' "$REN" | head -c 200)"
 fi
 UN="$(call refactoring "{\"action\":\"undo\",\"undoChangeId\":\"$UNDO_ID\"}")"
 case "$UN" in
     *'"success":true'*) : ;;
-    *) fail "27a-choke the undo itself failed: $(printf '%s' "$UN" | head -c 160)" ;;
+    *) fail "choke-gate the undo itself failed: $(printf '%s' "$UN" | head -c 160)" ;;
 esac
 # the JDT model re-serves the restored member a moment after the undo — settle
 for _ in $(seq 1 30); do
@@ -341,8 +351,8 @@ done
 
 AN="$(call analyze '{"kind":"type","typeName":"com.example.Clean"}')"
 case "$AN" in
-    *'⚠ PRECEDENT'*) pass "27a-choke the IDENTITY tier WARNS on the reverted target (the steer that arms the charge; the call itself ran)" ;;
-    *) fail "27a-choke no precedent warning surfaced after the revert" ;;
+    *'⚠ PRECEDENT'*) pass "choke-gate the IDENTITY tier WARNS on the reverted target (the steer that arms the charge; the call itself ran)" ;;
+    *) fail "choke-gate no precedent warning surfaced after the revert" ;;
 esac
 # the ADVISORY tier is the different-target line (C7 audit F1 — it needs its
 # OWN probe, not the identity warn wearing its name): a call on a target the
@@ -350,8 +360,8 @@ esac
 # it advisory-only.
 AD="$(call analyze '{"kind":"type","typeName":"com.example.CleanSupport"}')"
 case "$AD" in
-    *'Similar past case'*) pass "27a-choke the ADVISORY tier speaks on a different target (advisory only, uncharged)" ;;
-    *) fail "27a-choke the advisory tier never spoke on a meaning-near different target" ;;
+    *'Similar past case'*) pass "choke-gate the ADVISORY tier speaks on a different target (advisory only, uncharged)" ;;
+    *) fail "choke-gate the advisory tier never spoke on a meaning-near different target" ;;
 esac
 # arm the charge on the EXACT (tool, target) pair the repeat will use — the
 # ledger is exact-match by design (a warning about the class does not tax the
@@ -360,16 +370,16 @@ call find_references '{"kind":"references","symbol":"com.example.Clean#greet"}' 
 
 R2="$(call rename_symbol '{"symbol":"com.example.Clean#greet","newName":"salute2"}')"
 case "$R2" in
-    *precedentOverride*) pass "27a-choke the identity tier CHARGES an unjustified repeat (and names the payment)" ;;
-    *'"success":true'*) fail "27a-choke the repeat ran uncharged — the justification-cost is words only" ;;
-    *) fail "27a-choke unexpected charge response: $(printf '%s' "$R2" | head -c 200)" ;;
+    *precedentOverride*) pass "choke-gate the identity tier CHARGES an unjustified repeat (and names the payment)" ;;
+    *'"success":true'*) fail "choke-gate the repeat ran uncharged — the justification-cost is words only" ;;
+    *) fail "choke-gate unexpected charge response: $(printf '%s' "$R2" | head -c 200)" ;;
 esac
 
 R3="$(call rename_symbol '{"symbol":"com.example.Clean#greet","newName":"salute2",
   "precedentOverride":"the earlier undo was an experiment; this rename is intended"}')"
 case "$R3" in
-    *filesModified*|*'"success":true'*) pass "27a-choke a written justification PAYS the cost — the call proceeds" ;;
-    *) fail "27a-choke the paid call did not proceed: $(printf '%s' "$R3" | head -c 200)" ;;
+    *filesModified*|*'"success":true'*) pass "choke-gate a written justification PAYS the cost — the call proceeds" ;;
+    *) fail "choke-gate the paid call did not proceed: $(printf '%s' "$R3" | head -c 200)" ;;
 esac
 call compile_workspace '{}' >/dev/null    # the gate call that classifies the outcome
 
@@ -382,16 +392,16 @@ call refactoring "{\"action\":\"plan\",\"kind\":\"compose_method\",
 SQ="$(call experience '{"kind":"stats"}')"
 FIRED_BLOCK="$(printf '%s' "$SQ" | grep -o '"recalls_fired":{[^}]*}')"
 case "$FIRED_BLOCK" in
-    *choke_*) pass "27a-choke a choke surface FIRED into the quality counters (not merely consulted)" ;;
-    *) fail "27a-choke no choke surface fired through the whole cycle (fired block: ${FIRED_BLOCK:-absent})" ;;
+    *choke_*) pass "choke-gate a choke surface FIRED into the quality counters (not merely consulted)" ;;
+    *) fail "choke-gate no choke surface fired through the whole cycle (fired block: ${FIRED_BLOCK:-absent})" ;;
 esac
 case "$SQ" in
-    *pre_advice*) pass "27a-choke the pre-advice surface was consulted (counter present)" ;;
-    *) fail "27a-choke the pre-advice surface never consulted" ;;
+    *pre_advice*) pass "choke-gate the pre-advice surface was consulted (counter present)" ;;
+    *) fail "choke-gate the pre-advice surface never consulted" ;;
 esac
 case "$SQ" in
-    *'outcome_after":{"'*) pass "27a-choke the outcome-after counter FILLS — the cycle closes" ;;
-    *) fail "27a-choke the warning cycle never closed (outcome_after empty)" ;;
+    *'outcome_after":{"'*) pass "choke-gate the outcome-after counter FILLS — the cycle closes" ;;
+    *) fail "choke-gate the warning cycle never closed (outcome_after empty)" ;;
 esac
 
 stop_resident
@@ -404,16 +414,16 @@ start_resident -Djawata.embed.disabled=true
 H3="$(call health_check '{}')"
 case "$H3" in
     *'"available":false'*|*'"available": false'*)
-        pass "27a-deg the resident is honestly degraded (embedder off)" ;;
-    *) fail "27a-deg the disable switch did not take" ;;
+        pass "degrade-is-honest the resident is honestly degraded (embedder off)" ;;
+    *) fail "degrade-is-honest the disable switch did not take" ;;
 esac
 
 W="$(call experience '{"kind":"recall",
   "symptom":"why did my cone-six glaze crawl on the bisque",
   "format":"text"}')"
 case "$W" in
-    *crawl*|*cone-six*|*bisque*) pass "27a-D9 with the embedder OFF the store answers a prose question by WORDS" ;;
-    *) fail "27a-D9 KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape)" ;;
+    *crawl*|*cone-six*|*bisque*) pass "words-only-answers with the embedder OFF the store answers a prose question by WORDS" ;;
+    *) fail "words-only-answers KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape)" ;;
 esac
 no_score "recall(words-only)" "$W"
 
@@ -423,23 +433,23 @@ N3="$(call experience '{"kind":"recall",
   "symptom":"the marzipan barometer forgot its velvet inventory",
   "format":"text"}')"
 case "$N3" in
-    *'"result":"match"'*) fail "27a-D1b-deg nonsense got VOUCHED with the embedder off" ;;
-    *) pass "27a-D1b-deg nonsense is never vouched, words-only included" ;;
+    *'"result":"match"'*) fail "nonsense-never-vouched-degraded nonsense got VOUCHED with the embedder off" ;;
+    *) pass "nonsense-never-vouched-degraded nonsense is never vouched, words-only included" ;;
 esac
 G3="$(call experience '{"kind":"recall",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",
   "format":"text"}')"
 case "$G3" in
-    *"moon phase determines"*) fail "27a-D6r-deg the rejected note returned through the WORD path" ;;
-    *) pass "27a-D6r-deg the rejected note stays gone by words too" ;;
+    *"moon phase determines"*) fail "rejected-stays-gone-degraded the rejected note returned through the WORD path" ;;
+    *) pass "rejected-stays-gone-degraded the rejected note stays gone by words too" ;;
 esac
 
 A3="$(call experience '{"kind":"record","type":"lesson",
   "summary":"another lesson about ordering notes",
   "symptoms":["--enable-preview"]}')"
 case "$A3" in
-    *REPHRASE*) pass "27a-D10d the admission gate holds with no embedder" ;;
-    *) fail "27a-D10d the admission gate needs the embedder (it must not)" ;;
+    *REPHRASE*) pass "admission-gate-degraded the admission gate holds with no embedder" ;;
+    *) fail "admission-gate-degraded the admission gate needs the embedder (it must not)" ;;
 esac
 
 stop_resident
@@ -447,9 +457,9 @@ stop_resident
 # --- the fixture is PRISTINE ------------------------------------------------
 FIXTURE_SHA_AFTER="$(sha256sum "$FIXTURE" | cut -d' ' -f1)"
 if [ "$FIXTURE_SHA_BEFORE" = "$FIXTURE_SHA_AFTER" ]; then
-    pass "27a-fixture the committed fixture is byte-identical after the run"
+    pass "fixture-import the committed fixture is byte-identical after the run"
 else
-    fail "27a-fixture THE RUN MUTATED THE COMMITTED FIXTURE"
+    fail "fixture-import THE RUN MUTATED THE COMMITTED FIXTURE"
 fi
 
 echo "end-to-end test: $PASSED passed, $FAILED failed"
