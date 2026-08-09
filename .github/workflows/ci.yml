@@ -109,27 +109,33 @@ jobs:
       shell: bash
       run: mvn -B -f build/pom.xml install -DskipTests
 
-    - name: The Gradle jar cell must PASS, not skip
+    - name: The Gradle and PDE jar cells must PASS, not skip
       timeout-minutes: 20
       shell: bash
       run: |
         echo org.jawata.core.project.BuildSystemLoadTest > /tmp/one-class.txt
+        # jawata.bundle.pools: the PDE cell resolves Require-Bundle against an
+        # external pool; CI has no ~/.p2. The freshly built dist IS a pool —
+        # bundles/ plus the dist root, where org.eclipse.osgi itself lives.
+        # (Sprint 28 outcome audit F11: without this, the PDE jar cell
+        # assumption-skipped on every CI run and nothing forced it anywhere.)
         java -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
              -Djawata.test.classlist=/tmp/one-class.txt \
-             -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee gradle-cell.log
-        line="$(grep 'SPIKE-TESTS' gradle-cell.log | tail -1)"
+             -Djawata.bundle.pools="$PWD/build/dist/target/dist/bundles:$PWD/build/dist/target/dist" \
+             -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee load-cells.log
+        line="$(grep 'SPIKE-TESTS' load-cells.log | tail -1)"
         echo "$line"
         case "$line" in
           *"failed=0"*) ;;
           *) echo "FAIL: tests failed"; exit 1 ;;
         esac
-        # An abort here is the Gradle Tooling API finding no distribution. On a
-        # machine that HAS one, that is a defect in jar resolution wearing an
-        # environment skip's clothes.
+        # An abort here is the Gradle Tooling API finding no distribution, or
+        # the PDE pool not resolving. On a machine that HAS both, that is a
+        # defect in jar resolution wearing an environment skip's clothes.
         case "$line" in
-          *"aborted=0"*) echo "ok: no cell skipped — the Gradle jar cell was proven" ;;
+          *"aborted=0"*) echo "ok: no cell skipped — the Gradle AND PDE jar cells were proven" ;;
           *) echo "FAIL: a cell skipped in an environment that can support it:"
-             grep -i 'ABORTED' gradle-cell.log || true
+             grep -i 'ABORTED' load-cells.log || true
              exit 1 ;;
         esac
 

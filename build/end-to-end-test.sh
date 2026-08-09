@@ -406,6 +406,73 @@ esac
 
 stop_resident
 
+# ======================= lifecycle 2b: THE UPGRADE PATH ======================
+# Sprint 28 outcome audit F6. Everything above enters through the IMPORT path,
+# so every row lands at the CURRENT schema — restore + backfill were proven,
+# an UPGRADE never was, and that is the half three of the four v3.4.0 defects
+# lived in. This store was written by the RELEASED v3.3.1 — pre-embeddings:
+# no vectors, no quality-counter tables, the old schema on disk — and holds
+# four invented entries (kiln, tides, sourdough-starter, telescope). The
+# committed file is copied before use and hash-checked pristine after; the
+# resident works on the copy only.
+OLD_SRC="$(cd "$(dirname "$0")" && pwd)/e2e-fixture/old-store-v3.3.1/experience.mv.db"
+[ -f "$OLD_SRC" ] || { echo "no old-schema store at $OLD_SRC" >&2; exit 2; }
+OLD_SHA_BEFORE="$(sha256sum "$OLD_SRC" | cut -d' ' -f1)"
+MAIN_STORE="$STORE"
+STORE="$(mktemp -d)"
+cp "$OLD_SRC" "$STORE/experience.mv.db"
+start_resident
+
+# --- upgrade-rows-survive: the old rows are still there after the migration --
+UP="$(call experience '{"kind":"stats"}')"
+UP_TOT="$(printf '%s' "$UP" | grep -o '"experience_entry":{[^}]*}' | grep -oE '"total":[0-9]+' | cut -d: -f2)"
+if [ "${UP_TOT:-0}" -ge 4 ]; then
+    pass "upgrade-rows-survive the v3.3.1 rows opened at the current schema (total=$UP_TOT)"
+else
+    fail "upgrade-rows-survive expected the 4 old-schema rows, stats says: ${UP_TOT:-none}"
+fi
+
+# --- upgrade-earns-vectors: rows written before embeddings existed get them --
+UPCONV=""
+for _ in $(seq 1 60); do
+    UP="$(call experience '{"kind":"stats"}')"
+    if lane_closed "$UP" "experience_entry"; then UPCONV="yes"; break; fi
+    sleep 3
+done
+if [ -n "$UPCONV" ]; then
+    pass "upgrade-earns-vectors backfill embedded every pre-embedding row"
+else
+    fail "upgrade-earns-vectors rows written before embeddings never earned vectors"
+fi
+
+# --- upgrade-found-by-meaning: an OLD row answers a paraphrase sharing no words
+UPM="$(call experience '{"kind":"recall",
+  "symptom":"why did my pottery oven shelving bend after rapid chilling from peak heat",
+  "format":"text"}')"
+case "$UPM" in
+    *kiln*|*warps*|*quartz*) pass "upgrade-found-by-meaning a v3.3.1 row is findable by MEANING after upgrade" ;;
+    *) fail "upgrade-found-by-meaning THE UPGRADED STORE IS INVISIBLE TO MEANING RECALL: $(printf '%s' "$UPM" | head -c 200)" ;;
+esac
+no_score "recall(upgraded)" "$UPM"
+
+# --- upgrade-counters-present: the counter tables an old install never had ---
+case "$UPM$UP" in
+    *unavailable*) fail "upgrade-counters-present the quality-counter table is missing on the upgraded store" ;;
+    *) pass "upgrade-counters-present the upgraded store carries the counter tables it was born without" ;;
+esac
+
+# --- upgrade-fixture-pristine: the committed slice was never touched ---------
+OLD_SHA_AFTER="$(sha256sum "$OLD_SRC" | cut -d' ' -f1)"
+if [ "$OLD_SHA_BEFORE" = "$OLD_SHA_AFTER" ]; then
+    pass "upgrade-fixture-pristine the committed v3.3.1 slice is byte-identical after the run"
+else
+    fail "upgrade-fixture-pristine THE GATE MUTATED ITS OWN FIXTURE"
+fi
+
+stop_resident
+rm -rf "$STORE"
+STORE="$MAIN_STORE"
+
 # ============================ lifecycle 3 ====================================
 # Embedder DISABLED: the degrade contract — the store still answers by WORDS
 # (D9), and the write-side gates hold without any model.
