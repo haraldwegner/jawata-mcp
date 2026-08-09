@@ -141,3 +141,7 @@ __pycache__/
 # below already do that. Un-ignore the directory so a new script or module pom
 # is VISIBLE in git status instead of silently dropped.
 !/build/
+
+# JDT/Eclipse per-project build output (the jawata-dev resident compiles these)
+bin/
+**/bin/
