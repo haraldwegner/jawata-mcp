@@ -1,6 +1,14 @@
 name: CI
 
 on:
+  # Sprint 28a D5b: this three-operating-system matrix existed for months and had
+  # NEVER RUN — `pull_request` was its only trigger and this repository has never
+  # had a pull request. A matrix nobody fires proves nothing about Windows or
+  # macOS, which is precisely the defect class this sprint exists to close.
+  # Deliberately NOT workflow_dispatch: a workflow someone has to remember to
+  # press is the same defect wearing a different hat.
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
