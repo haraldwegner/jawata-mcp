@@ -42,27 +42,54 @@ class ProjectImporterGradleToolingTest {
         );
     }
 
+    /**
+     * Resolve the {@code @TempDir} through any symlinks before the test uses it.
+     *
+     * <p>Sprint 28a: these three tests failed on macOS the first time the CI matrix
+     * ever ran. On macOS {@code /var} is a symlink to {@code /private/var}, and
+     * JUnit hands out a temp directory spelled the short way while the Gradle
+     * Tooling API reports the canonical one. Both sides then called
+     * {@link Path#normalize()}, which collapses {@code .} and {@code ..} and
+     * <em>never</em> resolves a symlink — so the assertions compared two spellings
+     * of the same directory and declared them different.</p>
+     *
+     * <p>Canonicalising once, here, removes the symlink from the comparison so each
+     * test asserts what its name says: that the Tooling API reports the right source
+     * roots and classpath entries.</p>
+     *
+     * <p><b>Not covered, deliberately:</b> what the importer should return when a
+     * <em>caller</em> hands it a project path that runs through a symlink. That is a
+     * real question — the importer passes Gradle's canonical answer straight through,
+     * so such a caller gets source roots spelled differently from the root it supplied
+     * — but it is a product question, not this test's subject, and it is recorded
+     * rather than silently folded in here.</p>
+     */
+    private static Path canonicalRoot(Path tempDir) throws IOException {
+        return tempDir.toRealPath();
+    }
+
     @Test
     @DisplayName("Tooling API extracts the standard sourceSets (src/main/java + src/test/java) from a plain java-plugin project")
     void gradle_returnsActualSourceSets(@TempDir Path tempDir) throws IOException {
         assumeGradleAvailable();
 
-        Files.writeString(tempDir.resolve("settings.gradle"), "rootProject.name = 'simple-gradle'\n");
-        Files.writeString(tempDir.resolve("build.gradle"),
+        Path root = canonicalRoot(tempDir);
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'simple-gradle'\n");
+        Files.writeString(root.resolve("build.gradle"),
             "plugins { id 'java' }\n");
-        Files.createDirectories(tempDir.resolve("src/main/java/com/example"));
-        Files.createDirectories(tempDir.resolve("src/test/java/com/example"));
-        Files.writeString(tempDir.resolve("src/main/java/com/example/Main.java"),
+        Files.createDirectories(root.resolve("src/main/java/com/example"));
+        Files.createDirectories(root.resolve("src/test/java/com/example"));
+        Files.writeString(root.resolve("src/main/java/com/example/Main.java"),
             "package com.example; public class Main {}\n");
 
         Optional<ProjectImporter.GradleProjectModel> model =
-            ProjectImporter.readGradleProjectModel(tempDir);
+            ProjectImporter.readGradleProjectModel(root);
 
         assertTrue(model.isPresent(), "Tooling API should resolve a model for a java-plugin project");
         List<Path> srcs = model.get().srcPaths();
-        assertTrue(srcs.contains(tempDir.resolve("src/main/java").toAbsolutePath().normalize()),
+        assertTrue(srcs.contains(root.resolve("src/main/java")),
             "Standard src/main/java should be reported as a source directory; got " + srcs);
-        assertTrue(srcs.contains(tempDir.resolve("src/test/java").toAbsolutePath().normalize()),
+        assertTrue(srcs.contains(root.resolve("src/test/java")),
             "Standard src/test/java should be reported as a source directory; got " + srcs);
     }
 
@@ -74,22 +101,23 @@ class ProjectImporterGradleToolingTest {
         // Use a flat-dir repo with a local jar to avoid any network dependency
         // for declared classpath deps. The jar's bytes don't matter — Gradle
         // resolves it as a path-typed classpath entry without inspecting it.
-        Files.createDirectories(tempDir.resolve("libs"));
-        Files.write(tempDir.resolve("libs/dummy-1.0.0.jar"), new byte[]{});
+        Path root = canonicalRoot(tempDir);
+        Files.createDirectories(root.resolve("libs"));
+        Files.write(root.resolve("libs/dummy-1.0.0.jar"), new byte[]{});
 
-        Files.writeString(tempDir.resolve("settings.gradle"), "rootProject.name = 'simple-gradle-deps'\n");
-        Files.writeString(tempDir.resolve("build.gradle"),
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'simple-gradle-deps'\n");
+        Files.writeString(root.resolve("build.gradle"),
             "plugins { id 'java' }\n" +
             "repositories { flatDir { dirs 'libs' } }\n" +
             "dependencies { implementation files('libs/dummy-1.0.0.jar') }\n");
-        Files.createDirectories(tempDir.resolve("src/main/java"));
+        Files.createDirectories(root.resolve("src/main/java"));
 
         Optional<ProjectImporter.GradleProjectModel> model =
-            ProjectImporter.readGradleProjectModel(tempDir);
+            ProjectImporter.readGradleProjectModel(root);
 
         assertTrue(model.isPresent());
         List<Path> jars = model.get().classpathJars();
-        Path dummyJar = tempDir.resolve("libs/dummy-1.0.0.jar").toAbsolutePath().normalize();
+        Path dummyJar = root.resolve("libs/dummy-1.0.0.jar");
         assertTrue(jars.contains(dummyJar),
             "Declared file-based dependency should appear on the classpath; got " + jars);
     }
@@ -99,28 +127,29 @@ class ProjectImporterGradleToolingTest {
     void gradle_customSrcDir(@TempDir Path tempDir) throws IOException {
         assumeGradleAvailable();
 
-        Files.writeString(tempDir.resolve("settings.gradle"), "rootProject.name = 'simple-gradle-custom'\n");
-        Files.writeString(tempDir.resolve("build.gradle"),
+        Path root = canonicalRoot(tempDir);
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'simple-gradle-custom'\n");
+        Files.writeString(root.resolve("build.gradle"),
             "plugins { id 'java' }\n" +
             "sourceSets {\n" +
             "    main { java { srcDirs = ['custom-src'] } }\n" +
             "    test { java { srcDirs = ['custom-test'] } }\n" +
             "}\n");
-        Files.createDirectories(tempDir.resolve("custom-src/com/example"));
-        Files.createDirectories(tempDir.resolve("custom-test/com/example"));
-        Files.writeString(tempDir.resolve("custom-src/com/example/Main.java"),
+        Files.createDirectories(root.resolve("custom-src/com/example"));
+        Files.createDirectories(root.resolve("custom-test/com/example"));
+        Files.writeString(root.resolve("custom-src/com/example/Main.java"),
             "package com.example; public class Main {}\n");
 
         Optional<ProjectImporter.GradleProjectModel> model =
-            ProjectImporter.readGradleProjectModel(tempDir);
+            ProjectImporter.readGradleProjectModel(root);
 
         assertTrue(model.isPresent());
         List<Path> srcs = model.get().srcPaths();
-        assertTrue(srcs.contains(tempDir.resolve("custom-src").toAbsolutePath().normalize()),
+        assertTrue(srcs.contains(root.resolve("custom-src")),
             "Custom src dir should be reported; got " + srcs);
-        assertTrue(srcs.contains(tempDir.resolve("custom-test").toAbsolutePath().normalize()),
+        assertTrue(srcs.contains(root.resolve("custom-test")),
             "Custom test dir should be reported; got " + srcs);
-        assertFalse(srcs.contains(tempDir.resolve("src/main/java").toAbsolutePath().normalize()),
+        assertFalse(srcs.contains(root.resolve("src/main/java")),
             "Standard src/main/java was overridden — should NOT appear; got " + srcs);
     }
 }

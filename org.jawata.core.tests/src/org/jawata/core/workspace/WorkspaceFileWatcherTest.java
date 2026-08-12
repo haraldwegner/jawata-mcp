@@ -196,7 +196,14 @@ class WorkspaceFileWatcherTest {
         sb.append("{\n  \"version\": 1,\n  \"name\": \"test\",\n  \"projects\": [\n");
         for (int i = 0; i < paths.length; i++) {
             if (i > 0) sb.append(",\n");
-            sb.append("    \"").append(paths[i].toAbsolutePath()).append("\"");
+            // ESCAPE THE SEPARATOR. A Windows absolute path is C:\Users\... and a
+            // backslash begins an escape sequence in JSON, so appending one raw
+            // produces "\U" — not a valid escape. The file is then unparseable,
+            // the watcher loads nothing, and all six tests in this class report
+            // "expected <N> but was <0>". Found by Sprint 28a on the first run of
+            // the cross-platform CI matrix; harmless on Unix, fatal on Windows.
+            String jsonPath = paths[i].toAbsolutePath().toString().replace("\\", "\\\\");
+            sb.append("    \"").append(jsonPath).append("\"");
         }
         sb.append("\n  ]\n}\n");
 

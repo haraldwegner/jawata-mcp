@@ -33,16 +33,62 @@ public class PathUtilsImpl implements IPathUtils {
         if (useAbsolutePaths) {
             result = normalizedPath.toString();
         } else {
-            // Try to make relative to project root
-            if (normalizedPath.startsWith(projectRoot)) {
-                result = projectRoot.relativize(normalizedPath).toString();
-            } else {
-                result = normalizedPath.toString();
-            }
+            result = relativizeOrAbsolute(normalizedPath);
         }
 
         // Use forward slashes for consistency
         return result.replace('\\', '/');
+    }
+
+    /**
+     * Relativise against the project root, retrying on the canonical spellings
+     * when the plain comparison fails.
+     *
+     * <p><b>Why the retry exists.</b> {@link Path#normalize()} collapses {@code .}
+     * and {@code ..} and nothing else — it does not resolve a symlink, and it does
+     * not expand a short name. So one directory can reach this method under two
+     * spellings that are not {@code equals}, {@code startsWith} returns false, and
+     * the branch below leaks a MACHINE-SPECIFIC ABSOLUTE PATH into the response.
+     * Two spellings seen in the wild:</p>
+     * <ul>
+     *   <li><b>macOS:</b> {@code /var} is a symlink to {@code /private/var}, so a
+     *       temp-rooted project root and the files under it disagree.</li>
+     *   <li><b>Windows:</b> 8.3 short names — {@code C:\Users\RUNNER~1} for
+     *       {@code C:\Users\runneradmin}.</li>
+     * </ul>
+     *
+     * <p>Sprint 28a found this the first time the cross-platform CI matrix ever
+     * ran: every refactoring diff on Windows carried absolute paths instead of
+     * project-relative ones, which broke nineteen golden-file parity tests and
+     * would have shown every Windows user their own home directory in each diff.
+     * It is the SECOND instance of this exact fragility — the comment on
+     * {@code formatPath} records the first, where a packaged resident leaked its
+     * AppImage mount path (v2.14.1).</p>
+     *
+     * <p>Canonicalising is a filesystem call and can fail (a path that does not
+     * exist yet, a permission error), so it is attempted only when the cheap
+     * comparison has already failed, and a failure falls back to the previous
+     * behaviour rather than throwing.</p>
+     */
+    private String relativizeOrAbsolute(Path normalizedPath) {
+        if (normalizedPath.startsWith(projectRoot)) {
+            return projectRoot.relativize(normalizedPath).toString();
+        }
+        Path realRoot = toRealQuietly(projectRoot);
+        Path realPath = toRealQuietly(normalizedPath);
+        if (realPath.startsWith(realRoot)) {
+            return realRoot.relativize(realPath).toString();
+        }
+        return normalizedPath.toString();
+    }
+
+    /** Canonical form of {@code path}, or {@code path} itself if it cannot be resolved. */
+    private static Path toRealQuietly(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (java.io.IOException | RuntimeException e) {
+            return path;
+        }
     }
 
     @Override
