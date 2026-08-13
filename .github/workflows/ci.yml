@@ -54,9 +54,22 @@ jobs:
         else
           echo "note: jdk.incubator.vector unavailable — scalar backend"
         fi
+        # Sprint 28a: these jobs have NO Gradle distribution — that is the
+        # deliberate split, and the gradle-cell job below is the environment
+        # built to prove the Gradle cells (where a skip counts as a failure).
+        #
+        # The property has existed since Sprint 11 and every Gradle-dependent
+        # test already honours it; the matrix simply never set it. Without it
+        # the Tooling API tries to DOWNLOAD a distribution mid-suite, so those
+        # tests pass or fail on whether services.gradle.org answers — three
+        # operating systems each fetching ~150 MB on every push. The first
+        # matrix run downloaded one successfully and went green; the second
+        # did not, and four tests failed for a reason that has nothing to do
+        # with the code under test.
         java $VECTOR \
              -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
              -Djawata.experience.shared.dir="$RUNNER_TEMP/jawata-test-store" \
+             -Djawata.skip.gradle=true \
              -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee test-run.log
         test ${PIPESTATUS[0]} -eq 0
 
@@ -121,7 +134,16 @@ jobs:
       timeout-minutes: 20
       shell: bash
       run: |
-        echo org.jawata.core.project.BuildSystemLoadTest > /tmp/one-class.txt
+        # Every Gradle-dependent class runs HERE, in the one job that has a
+        # distribution — because the matrix now skips them, and a test proven
+        # nowhere is worse than a test that fails loudly. The aborted=0 check
+        # below is what makes this real: a skip in THIS job is a failure, so
+        # these cannot quietly stop running.
+        {
+          echo org.jawata.core.project.BuildSystemLoadTest
+          echo org.jawata.core.project.ProjectImporterGradleToolingTest
+          echo org.jawata.mcp.tools.verification.RunTestsShapesTest
+        } > /tmp/one-class.txt
         # jawata.bundle.pools: the PDE cell resolves Require-Bundle against an
         # external pool; CI has no ~/.p2. The freshly built dist IS a pool —
         # bundles/ plus the dist root, where org.eclipse.osgi itself lives.
