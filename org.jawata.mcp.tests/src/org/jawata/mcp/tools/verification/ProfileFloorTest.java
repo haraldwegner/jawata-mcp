@@ -159,14 +159,21 @@ class ProfileFloorTest {
     @DisplayName("deadlock: the seeded fixture is caught, and BOTH threads are NAMED in the summary")
     void seededDeadlockIsNamedInSummary() throws Exception {
         String sessionId = launchAndResume("com.example.debug.DeadlockTarget");
-        // The fixture's own 500ms hold guarantees the deadlock has formed by
-        // the time we ask — deterministic, not a race with the probe.
-        Thread.sleep(1500);
-
-        ToolResponse r = profile.execute(profileAction("deadlock", sessionId));
-        assertTrue(r.isSuccess(), "got: " + r.getError());
-        Map<String, Object> d = data(r);
-
+        // Sprint 28a: wait for the CONDITION, not a fixed 1500ms — this exact
+        // test is the Sprint-25 recorded fixed-sleep race (deadlocked=false
+        // under load because the seeded deadlock had not formed when sampled).
+        ToolResponse r = null;
+        Map<String, Object> d = null;
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (System.currentTimeMillis() < deadline) {
+            r = profile.execute(profileAction("deadlock", sessionId));
+            assertTrue(r.isSuccess(), "got: " + r.getError());
+            d = data(r);
+            if (Boolean.TRUE.equals(d.get("deadlocked"))) {
+                break;
+            }
+            Thread.sleep(250);
+        }
         assertEquals(Boolean.TRUE, d.get("deadlocked"), "got: " + d);
         @SuppressWarnings("unchecked")
         List<String> blocked = (List<String>) d.get("blockedThreads");
@@ -187,12 +194,24 @@ class ProfileFloorTest {
     @DisplayName("threads dump on the deadlocked fixture ALSO flags it, without contradicting the deadlock action")
     void threadsDumpAgreesWithDeadlockAction() throws Exception {
         String sessionId = launchAndResume("com.example.debug.DeadlockTarget");
-        Thread.sleep(1500);
-
-        ToolResponse threadsResponse = profile.execute(profileAction("threads", sessionId));
-        assertTrue(threadsResponse.isSuccess());
+        // Sprint 28a: WAIT FOR THE CONDITION, never a fixed sleep. The 1500ms
+        // that sufficed on Linux lost the race on the Windows runner (slower
+        // process start; the deadlock not yet formed when threads sampled) —
+        // the fixed-sleep family recorded in Sprint 25. Poll until the flag
+        // appears or a real deadline expires; the deadline failure still names
+        // the last observation.
+        ToolResponse threadsResponse = null;
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (System.currentTimeMillis() < deadline) {
+            threadsResponse = profile.execute(profileAction("threads", sessionId));
+            assertTrue(threadsResponse.isSuccess());
+            if (data(threadsResponse).get("deadlockWarning") != null) {
+                break;
+            }
+            Thread.sleep(250);
+        }
         assertNotNull(data(threadsResponse).get("deadlockWarning"),
-            "threads must flag the deadlock it just saw: " + data(threadsResponse));
+            "threads must flag the deadlock within the deadline: " + data(threadsResponse));
     }
 
     // ========================================================== histogram / gc / nmt
