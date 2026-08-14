@@ -49,17 +49,11 @@ public final class DiffRenderer {
     private record Op(char type, int aIndex, int bIndex, String line) {}
 
     private static String[] splitLines(String content) {
-        if (content == null || content.isEmpty()) {
-            return new String[0];
-        }
-        String[] raw = content.split("\n", -1);
-        // A trailing newline yields one empty trailing element — not a line.
-        if (raw.length > 0 && raw[raw.length - 1].isEmpty()) {
-            String[] trimmed = new String[raw.length - 1];
-            System.arraycopy(raw, 0, trimmed, 0, trimmed.length);
-            return trimmed;
-        }
-        return raw;
+        // Splitting on "\n" alone left a trailing \r on every line of a CRLF
+        // file, and those bytes went straight into the rendered diff — where a
+        // reader cannot see them, so a file appears to differ from itself.
+        // Line endings are a host concern; the boundary owns them.
+        return org.jawata.core.host.HostText.splitLines(content);
     }
 
     private static List<Op> diffOps(String[] a, String[] b) {
