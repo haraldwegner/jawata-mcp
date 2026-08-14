@@ -6,6 +6,7 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.search.IJavaSearchConstants;
 import org.eclipse.jdt.core.search.SearchMatch;
+import org.jawata.core.host.IPathUtils;
 import org.jawata.core.search.SearchService;
 
 import java.nio.file.Path;

@@ -1,4 +1,4 @@
-package org.jawata.core;
+package org.jawata.core.host;
 
 import java.nio.file.Path;
 

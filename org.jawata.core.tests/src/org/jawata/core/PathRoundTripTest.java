@@ -2,6 +2,7 @@ package org.jawata.core;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.core.host.IPathUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;

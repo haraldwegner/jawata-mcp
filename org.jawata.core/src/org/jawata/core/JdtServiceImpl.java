@@ -15,6 +15,8 @@ import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.ISourceRange;
+import org.jawata.core.host.IPathUtils;
+import org.jawata.core.host.PathUtilsImpl;
 import org.jawata.core.project.ProjectImporter;
 import org.jawata.core.search.SearchService;
 import org.jawata.core.workspace.WorkspaceManager;

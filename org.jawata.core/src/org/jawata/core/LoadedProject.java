@@ -1,6 +1,7 @@
 package org.jawata.core;
 
 import org.eclipse.jdt.core.IJavaProject;
+import org.jawata.core.host.IPathUtils;
 import org.jawata.core.project.ProjectImporter;
 import org.jawata.core.search.SearchService;
 
