@@ -662,12 +662,26 @@ class ProjectImporterTest {
                 + "printf '/repo/fake-a.jar" + java.io.File.pathSeparator
                 + "/repo/fake-b.jar' > \"$out\"\n"
                 + "echo x >> attempts.log\nexit 0\n",
+            // SCAN argv for the -Dmdep.outputFile= argument instead of pinning
+            // position %2 — a .cmd launched through ProcessBuilder goes via
+            // cmd.exe, and the argument numbering the POSIX $2 relies on is not
+            // guaranteed to survive that wrapping. A shift loop, never
+            // `for %%a in (%*)` (cmd's for-in splits on '=', shredding exactly
+            // the -Dkey=value argument being sought).
             "@echo off\r\n"
-                + "set \"OUT=%~2\"\r\n"
-                + "set \"OUT=%OUT:~18%\"\r\n"
+                + "setlocal enabledelayedexpansion\r\n"
+                + "set \"OUT=\"\r\n"
+                + ":scan\r\n"
+                + "if \"%~1\"==\"\" goto write\r\n"
+                + "set \"A=%~1\"\r\n"
+                + "if \"!A:~0,18!\"==\"-Dmdep.outputFile=\" set \"OUT=!A:~18!\"\r\n"
+                + "shift\r\n"
+                + "goto scan\r\n"
+                + ":write\r\n"
+                + "if \"!OUT!\"==\"\" exit /b 3\r\n"
                 + "mkdir target 2>nul\r\n"
                 + "<nul set /p x=\"/repo/fake-a.jar" + java.io.File.pathSeparator
-                + "/repo/fake-b.jar\" > \"%OUT%\"\r\n"
+                + "/repo/fake-b.jar\" > \"!OUT!\"\r\n"
                 + ">> attempts.log echo x\r\n"
                 + "exit /b 0\r\n");
         ProjectImporter importer = new ProjectImporter();
