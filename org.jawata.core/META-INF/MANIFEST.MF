@@ -10,6 +10,7 @@ Bundle-ClassPath: .,
  lib/gradle-tooling-api-8.10.jar
 Export-Package: org.jawata.core,
  org.jawata.core.exceptions,
+ org.jawata.core.host,
  org.jawata.core.project,
  org.jawata.core.search,
  org.jawata.core.workspace
