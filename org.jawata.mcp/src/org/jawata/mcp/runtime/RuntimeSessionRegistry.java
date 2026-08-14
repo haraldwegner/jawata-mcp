@@ -1,9 +1,5 @@
 package org.jawata.mcp.runtime;
 
-import com.sun.jdi.VirtualMachine;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,6 +8,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.sun.jdi.VirtualMachine;
 
 /**
  * Sprint 24 (D5) — the live debug sessions, by handle. Mirrors Sprint 23's
@@ -159,37 +160,10 @@ public final class RuntimeSessionRegistry {
      * on failure is a lie, and that applies to cleanup too.</p>
      */
     static void deleteRecursively(Path dir) {
-        if (dir == null || !Files.exists(dir)) {
-            return;
-        }
-        for (int attempt = 0; attempt < 10; attempt++) {
-            try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
-                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (Exception ignored) {
-                        // Retried by the next pass; counted honestly after the last.
-                    }
-                });
-            } catch (Exception ignored) {
-                // The dir may already be gone — the check below settles it.
-            }
-            if (!Files.exists(dir)) {
-                return;
-            }
-            try {
-                Thread.sleep(250);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
-            long residue = walk.count();
+        long residue = org.jawata.core.host.HostFs.deleteRecursively(dir);
+        if (residue > 0) {
             log.warn("JFR repository {} still holds {} entr{} after bounded retries — "
                 + "not deleted", dir, residue, residue == 1 ? "y" : "ies");
-        } catch (Exception ignored) {
-            // Gone between the loop and the count — the goal state after all.
         }
     }
 

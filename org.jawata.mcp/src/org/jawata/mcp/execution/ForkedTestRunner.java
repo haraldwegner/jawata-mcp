@@ -1,12 +1,5 @@
 package org.jawata.mcp.execution;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jawata.core.host.HostCommand;
-import org.jawata.core.host.HostProcesses;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,12 +8,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Sprint 23 (D1) — the execution spine: forks ONE runner JVM per test
@@ -341,11 +340,14 @@ public final class ForkedTestRunner {
     }
 
     private static void deleteRecursively(Path dir) {
-        try (Stream<Path> walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try { Files.delete(p); } catch (IOException ignored) { }
-            });
-        } catch (IOException ignored) { }
+        // The silent-swallow copy is gone: this is the bounded-retry
+        // implementation that was hardened for Windows, and it now reports what
+        // it could not remove instead of discarding the failure.
+        long residue = org.jawata.core.host.HostFs.deleteRecursively(dir);
+        if (residue > 0) {
+            log.warn("runner scratch {} still holds {} entr{} after bounded retries",
+                dir, residue, residue == 1 ? "y" : "ies");
+        }
     }
 
     /** Bounded async reader; keeps the head up to the cap, returns a 100-line tail. */
