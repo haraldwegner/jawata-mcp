@@ -251,3 +251,19 @@ rule is that a re-run is how a lying test stays hidden.
 *Carried as a watch item.* It is not blocking Stage 0. If it recurs, capture the FULL output
 of a single invocation — the name is the whole finding. It matters most at Stages 7/9/11,
 where a false red during a sweep costs a debugging cycle and trust in the gate.
+
+## Watch item: ExperienceToolHygieneTest#prune — Windows intermittent, name CAPTURED
+
+First failure in 8 Windows matrix runs, on a release-notes-only commit:
+run 31814248338 (fail 15:16) vs run 31808099077 (pass, same code, 40 min
+earlier) vs the rerun of 31814248338 itself (pass 15:49, identical commit).
+Same bytes, fail-then-pass — non-determinism proven, not inferred.
+
+The test: `prune_removes_only_aged_rejected_or_superseded` — age-based
+pruning, i.e. the timing-sensitivity family (fixed clocks/sleeps racing a
+slower runner) whose cure is already twice-applied in this sprint:
+wait-for-condition with a deadline, or an injected clock. Unlike the studio's
+old unnamed 284/1 intermittent, this one has its name and both run ids.
+
+Home: the 1b hardening batch (alongside the abort-budget gate). Not a
+release blocker — v3.7.2 shipped green and the flake predates nothing in it.
