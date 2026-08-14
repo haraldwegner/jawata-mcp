@@ -1,7 +1,7 @@
 package org.jawata.core;
 
 import org.jawata.core.fixtures.TestProjectHelper;
-import org.jawata.core.host.PathUtilsImpl;
+import org.jawata.core.host.HostPathsImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,18 +18,18 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Unit tests for PathUtilsImpl.
  * Tests path formatting, relative path calculation, and project boundary detection.
  */
-class PathUtilsImplTest {
+class HostPathsImplTest {
 
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
     private Path projectRoot;
-    private PathUtilsImpl pathUtils;
+    private HostPathsImpl pathUtils;
 
     @BeforeEach
     void setUp() throws Exception {
         projectRoot = helper.getFixturePath("simple-maven");
-        pathUtils = new PathUtilsImpl(projectRoot);
+        pathUtils = new HostPathsImpl(projectRoot);
     }
 
     // ========== formatPath Tests ==========
@@ -172,7 +172,7 @@ class PathUtilsImplTest {
     @Test
     @DisplayName("isWindows should detect operating system correctly")
     void isWindows_detectsOperatingSystem() {
-        boolean isWindows = PathUtilsImpl.isWindows();
+        boolean isWindows = HostPathsImpl.isWindows();
         String osName = System.getProperty("os.name").toLowerCase();
 
         if (osName.contains("win")) {
@@ -217,7 +217,7 @@ class PathUtilsImplTest {
 
         // The project root is the SYMLINK; the file is discovered under its REAL
         // path — exactly the asymmetry the platforms produce.
-        PathUtilsImpl utils = new PathUtilsImpl(linkedRoot);
+        HostPathsImpl utils = new HostPathsImpl(linkedRoot);
         String formatted = utils.formatPath(sourceFile);
 
         assertEquals("src/main/java/com/example/Main.java", formatted,

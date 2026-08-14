@@ -9,7 +9,7 @@ import java.nio.file.Path;
  * <p>All paths are formatted with forward slashes for consistency.
  * Relative paths are used by default to minimize token usage.
  */
-public interface IPathUtils {
+public interface HostPaths {
 
     /**
      * Format a path for output.

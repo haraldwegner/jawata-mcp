@@ -6,12 +6,12 @@ import java.nio.file.Path;
  * Implementation of path utilities for JAWATA.
  * Provides consistent path formatting across platforms.
  */
-public class PathUtilsImpl implements IPathUtils {
+public class HostPathsImpl implements HostPaths {
 
     private final Path projectRoot;
     private final boolean useAbsolutePaths;
 
-    public PathUtilsImpl(Path projectRoot) {
+    public HostPathsImpl(Path projectRoot) {
         this.projectRoot = projectRoot.toAbsolutePath().normalize();
         this.useAbsolutePaths = "true".equalsIgnoreCase(System.getenv("JAWATA_ABSOLUTE_PATHS"));
     }

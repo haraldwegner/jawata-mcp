@@ -2,7 +2,7 @@ package org.jawata.core;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.jawata.core.fixtures.TestProjectHelper;
-import org.jawata.core.host.IPathUtils;
+import org.jawata.core.host.HostPaths;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Sprint 28 (v3.6.4) — a path jawata emits must be a path jawata accepts.
  *
  * <p>Found by working v3.6.3 in anger (Cursor dogfood, 2026-07-29). Responses format file
- * paths through {@link IPathUtils#formatPath}, which returns them RELATIVE to the project
+ * paths through {@link HostPaths#formatPath}, which returns them RELATIVE to the project
  * root. Feeding that exact string back to a tool that resolves a file returned
  * {@code FILE_NOT_FOUND} — the lookup matched only ABSOLUTE paths against the source roots
  * and abandoned anything else. Measured live on a 1040-source project: the absolute form

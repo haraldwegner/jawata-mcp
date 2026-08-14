@@ -1,7 +1,7 @@
 package org.jawata.core;
 
 import org.eclipse.jdt.core.IJavaProject;
-import org.jawata.core.host.IPathUtils;
+import org.jawata.core.host.HostPaths;
 import org.jawata.core.project.ProjectImporter;
 import org.jawata.core.search.SearchService;
 
@@ -42,7 +42,7 @@ public record LoadedProject(
     Path projectRoot,
     IJavaProject javaProject,
     SearchService searchService,
-    IPathUtils pathUtils,
+    HostPaths pathUtils,
     Instant loadedAt,
     int sourceFileCount,
     int packageCount,

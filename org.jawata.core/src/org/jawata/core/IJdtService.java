@@ -6,7 +6,7 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.search.IJavaSearchConstants;
 import org.eclipse.jdt.core.search.SearchMatch;
-import org.jawata.core.host.IPathUtils;
+import org.jawata.core.host.HostPaths;
 import org.jawata.core.search.SearchService;
 
 import java.nio.file.Path;
@@ -31,7 +31,7 @@ public interface IJdtService {
      *
      * @return Path utilities instance
      */
-    IPathUtils getPathUtils();
+    HostPaths getPathUtils();
 
     /**
      * Get the project root path.

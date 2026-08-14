@@ -6,7 +6,7 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.fixtures.TestProjectHelper;
-import org.jawata.core.host.IPathUtils;
+import org.jawata.core.host.HostPaths;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -229,7 +229,7 @@ class JdtServiceImplTest {
     @Test
     @DisplayName("getPathUtils should return configured PathUtils")
     void getPathUtils_returnsConfigured() {
-        IPathUtils pathUtils = service.getPathUtils();
+        HostPaths pathUtils = service.getPathUtils();
 
         assertNotNull(pathUtils, "PathUtils should be configured");
     }

@@ -15,8 +15,8 @@ import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.ISourceRange;
-import org.jawata.core.host.IPathUtils;
-import org.jawata.core.host.PathUtilsImpl;
+import org.jawata.core.host.HostPaths;
+import org.jawata.core.host.HostPathsImpl;
 import org.jawata.core.project.ProjectImporter;
 import org.jawata.core.search.SearchService;
 import org.jawata.core.workspace.WorkspaceManager;
@@ -56,7 +56,7 @@ public class JdtServiceImpl implements IJdtService {
     private final int timeoutSeconds;
 
     private Path projectRoot;
-    private IPathUtils pathUtils;
+    private HostPaths pathUtils;
     private IJavaProject javaProject;
     private SearchService searchService;
     private Instant loadedAt;
@@ -257,7 +257,7 @@ public class JdtServiceImpl implements IJdtService {
      */
     private LoadedProject loadInternal(Path path) throws CoreException {
         Path absRoot = path.toAbsolutePath().normalize();
-        IPathUtils utils = new PathUtilsImpl(absRoot);
+        HostPaths utils = new HostPathsImpl(absRoot);
 
         workspaceManager.initialize();
 
@@ -383,7 +383,7 @@ public class JdtServiceImpl implements IJdtService {
     }
 
     @Override
-    public IPathUtils getPathUtils() {
+    public HostPaths getPathUtils() {
         return pathUtils;
     }
 
