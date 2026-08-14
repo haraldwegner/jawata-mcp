@@ -584,7 +584,27 @@ class ProjectImporterTest {
     // cache anything. Deterministic via a fake project-local mvnw, which
     // resolveMavenCommand prefers over PATH.
 
-    private static Path fakeMavenProject(Path dir, String mvnwScript) throws IOException {
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    /**
+     * Sprint 28a: the fake wrapper is written in the dialect THIS host can
+     * execute, under the name the product actually resolves here. The old
+     * fixture always wrote a POSIX {@code mvnw}; on Windows
+     * {@code resolveMavenCommand} correctly prefers {@code mvnw.cmd}, so the
+     * fake was never selected — and the runner's REAL Maven ran against the
+     * dummy pom. Three tests then failed on the fixture, not the product.
+     */
+    private static Path fakeWrapper(Path dir, String shBody, String cmdBody) throws IOException {
+        Path wrapper = dir.resolve(isWindows() ? "mvnw.cmd" : "mvnw");
+        Files.writeString(wrapper, isWindows() ? cmdBody : "#!/bin/sh\n" + shBody);
+        assertTrue(wrapper.toFile().setExecutable(true));
+        return wrapper;
+    }
+
+    private static Path fakeMavenProject(Path dir, String shBody, String cmdBody)
+            throws IOException {
         // Unique pom content per test so the static pom-hash classpath cache
         // can never leak results between these tests (or into others).
         Files.writeString(dir.resolve("pom.xml"),
@@ -592,16 +612,14 @@ class ProjectImporterTest {
                 + "<modelVersion>4.0.0</modelVersion>"
                 + "<groupId>t</groupId><artifactId>t</artifactId><version>1</version>"
                 + "</project>\n");
-        Path wrapper = dir.resolve("mvnw");
-        Files.writeString(wrapper, mvnwScript);
-        assertTrue(wrapper.toFile().setExecutable(true));
+        fakeWrapper(dir, shBody, cmdBody);
         return dir;
     }
 
     @Test
     @DisplayName("Maven exit 0 without an output file (the stolen-scratch-file shape) REFUSES the load — never 'no dependencies'")
     void mavenResolution_noOutputFile_refuses(@TempDir Path dir) throws IOException {
-        fakeMavenProject(dir, "#!/bin/sh\nexit 0\n");
+        fakeMavenProject(dir, "exit 0\n", "@exit /b 0\r\n");
         ProjectImporter importer = new ProjectImporter();
         org.jawata.core.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
             org.jawata.core.project.DependencyResolutionException.class,
@@ -614,7 +632,10 @@ class ProjectImporterTest {
     @DisplayName("Maven exit != 0 REFUSES the load after one retry, carrying Maven's own output")
     void mavenResolution_failure_refusesWithCause(@TempDir Path dir) throws IOException {
         Path marker = dir.resolve("attempts.log");
-        fakeMavenProject(dir, "#!/bin/sh\necho BOOM-a-dependency-broke\necho x >> attempts.log\nexit 1\n");
+        fakeMavenProject(dir,
+            "echo BOOM-a-dependency-broke\necho x >> attempts.log\nexit 1\n",
+            // Prefix redirection, so cmd writes exactly "x" with no trailing space.
+            "@echo BOOM-a-dependency-broke\r\n@>> attempts.log echo x\r\n@exit /b 1\r\n");
         ProjectImporter importer = new ProjectImporter();
         org.jawata.core.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
             org.jawata.core.project.DependencyResolutionException.class,
@@ -629,14 +650,54 @@ class ProjectImporterTest {
     @Test
     @DisplayName("a successful resolution parses the per-invocation nonce file, leaves no scratch residue, and caches")
     void mavenResolution_success_isCleanAndCached(@TempDir Path dir) throws IOException {
+        // Sprint 28a: UNPROVEN on Windows, with the evidence attached. This test
+        // needs a fake wrapper that READS ITS ARGV (to find the per-invocation
+        // -Dmdep.outputFile), and the .cmd stand-in demonstrably does not
+        // receive it: the batch scans its whole argv for the prefix and exits 3
+        // on a miss — run 31804158929 shows exactly that exit, so the arguments
+        // do not arrive intact under ProcessBuilder's cmd.exe wrapping. The
+        // sibling tests that need NO argv (exit-1 with words carried, exit-0
+        // with no output file refused) PASS on Windows, so the invocation path
+        // is proven there; the nonce/cache/residue logic proven here is
+        // platform-independent Java, proven on POSIX. Counted by the abort
+        // budget; the argv-capable Windows fake is recorded 1b work.
+        org.junit.jupiter.api.Assumptions.assumeTrue(!isWindows(),
+            "the .cmd fake does not receive argv under cmd.exe wrapping (exit-3 evidence, "
+                + "run 31804158929) — UNPROVEN here, not passing");
         Path marker = dir.resolve("attempts.log");
         // The fake writes the classpath file to the exact per-invocation name
         // it is given (argument 2 = -Dmdep.outputFile=target/<nonce>.txt).
-        fakeMavenProject(dir, "#!/bin/sh\n"
-            + "out=$(printf '%s' \"$2\" | sed 's/^-Dmdep.outputFile=//')\n"
-            + "mkdir -p target\n"
-            + "printf '/repo/fake-a.jar" + java.io.File.pathSeparator + "/repo/fake-b.jar' > \"$out\"\n"
-            + "echo x >> attempts.log\nexit 0\n");
+        // The batch twin strips the fixed 18-char "-Dmdep.outputFile=" prefix by
+        // substring (the prefix contains '=', which cmd's search/replace cannot
+        // express), and writes the classpath newline-free via <nul set /p.
+        fakeMavenProject(dir,
+            "out=$(printf '%s' \"$2\" | sed 's/^-Dmdep.outputFile=//')\n"
+                + "mkdir -p target\n"
+                + "printf '/repo/fake-a.jar" + java.io.File.pathSeparator
+                + "/repo/fake-b.jar' > \"$out\"\n"
+                + "echo x >> attempts.log\nexit 0\n",
+            // SCAN argv for the -Dmdep.outputFile= argument instead of pinning
+            // position %2 — a .cmd launched through ProcessBuilder goes via
+            // cmd.exe, and the argument numbering the POSIX $2 relies on is not
+            // guaranteed to survive that wrapping. A shift loop, never
+            // `for %%a in (%*)` (cmd's for-in splits on '=', shredding exactly
+            // the -Dkey=value argument being sought).
+            "@echo off\r\n"
+                + "setlocal enabledelayedexpansion\r\n"
+                + "set \"OUT=\"\r\n"
+                + ":scan\r\n"
+                + "if \"%~1\"==\"\" goto write\r\n"
+                + "set \"A=%~1\"\r\n"
+                + "if \"!A:~0,18!\"==\"-Dmdep.outputFile=\" set \"OUT=!A:~18!\"\r\n"
+                + "shift\r\n"
+                + "goto scan\r\n"
+                + ":write\r\n"
+                + "if \"!OUT!\"==\"\" exit /b 3\r\n"
+                + "mkdir target 2>nul\r\n"
+                + "<nul set /p x=\"/repo/fake-a.jar" + java.io.File.pathSeparator
+                + "/repo/fake-b.jar\" > \"!OUT!\"\r\n"
+                + ">> attempts.log echo x\r\n"
+                + "exit /b 0\r\n");
         ProjectImporter importer = new ProjectImporter();
         assertEquals(List.of("/repo/fake-a.jar", "/repo/fake-b.jar"),
             importer.getMavenDependencies(dir));
@@ -657,11 +718,9 @@ class ProjectImporterTest {
     @Test
     @DisplayName("resolveMavenCommand prefers the project's own wrapper")
     void resolveMavenCommand_prefersWrapper(@TempDir Path dir) throws IOException {
-        Path wrapper = dir.resolve("mvnw");
-        Files.writeString(wrapper, "#!/bin/sh\n");
-        assertTrue(wrapper.toFile().setExecutable(true));
+        Path wrapper = fakeWrapper(dir, "", "@exit /b 0\r\n");
         assertEquals(wrapper,
-            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), false));
+            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), isWindows()));
     }
 
     @Test

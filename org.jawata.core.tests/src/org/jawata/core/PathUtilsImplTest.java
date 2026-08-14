@@ -7,9 +7,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Unit tests for PathUtilsImpl.
@@ -177,6 +179,49 @@ class PathUtilsImplTest {
         } else {
             assertFalse(isWindows, "Should detect non-Windows OS");
         }
+    }
+
+    // ========== canonical-spelling relativisation (Sprint 28a) ==========
+
+    @Test
+    @DisplayName("a project root reached through a symlink still yields a RELATIVE path, not a leaked absolute one")
+    void formatPath_relativisesThroughASymlinkedRoot(@TempDir Path tempDir) throws Exception {
+        // The defect: formatPath relativised with normalize() + startsWith, and
+        // normalize() resolves "." and ".." but NEVER a symlink or a Windows 8.3
+        // short name. So one directory reaching the method under two spellings
+        // failed startsWith and the machine-specific ABSOLUTE path was returned.
+        //
+        // Found when the cross-platform CI matrix ran for the first time: every
+        // refactoring diff on Windows carried "C:/Users/runneradmin/..." instead of
+        // "src/main/java/...", which broke nineteen golden-file parity tests and
+        // would have shown every Windows user their own home directory. macOS has
+        // the same shape via /var -> /private/var.
+        //
+        // This reproduces it with a symlink, which every platform we ship on has.
+        Path realRoot = Files.createDirectories(tempDir.resolve("real-root"));
+        Path sourceFile = realRoot.resolve("src/main/java/com/example/Main.java");
+        Files.createDirectories(sourceFile.getParent());
+        Files.writeString(sourceFile, "package com.example; public class Main {}\n");
+
+        Path linkedRoot = tempDir.resolve("linked-root");
+        try {
+            Files.createSymbolicLink(linkedRoot, realRoot);
+        } catch (UnsupportedOperationException | java.io.IOException e) {
+            // Windows without developer mode refuses symlink creation to an
+            // unprivileged process. Skipping is honest; the assertion below is
+            // what matters and it runs everywhere symlinks are permitted.
+            assumeTrue(false, "symlinks not creatable here: " + e.getMessage());
+            return;
+        }
+
+        // The project root is the SYMLINK; the file is discovered under its REAL
+        // path — exactly the asymmetry the platforms produce.
+        PathUtilsImpl utils = new PathUtilsImpl(linkedRoot);
+        String formatted = utils.formatPath(sourceFile);
+
+        assertEquals("src/main/java/com/example/Main.java", formatted,
+            "a symlinked root must still relativise; a leaked absolute path here is the "
+            + "Windows/macOS defect reproduced");
     }
 
     // ========== isUsingAbsolutePaths Tests ==========

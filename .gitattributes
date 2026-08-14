@@ -13,3 +13,18 @@ docs/upgrade-checklist.md export-ignore
 docs/upstream-parity-v1.4.2.md export-ignore
 npm/** export-ignore
 CHANGELOG.md export-ignore
+
+# Sprint 28a (1a step 1): pin line endings at checkout. The first-ever Windows
+# matrix run failed 19 refactoring-parity tests on ONE cause: no EOL policy, so
+# Git for Windows (core.autocrlf=true by default) checked out fixtures AND
+# goldens as CRLF, and a byte-exact comparison against LF-rendered engine
+# output could never match. The engine's output was character-identical across
+# OSes — the inputs were not. This pins the INPUTS; the comparison stays
+# byte-exact. Windows script formats keep their required CRLF.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jar binary
+*.zip binary
+*.class binary

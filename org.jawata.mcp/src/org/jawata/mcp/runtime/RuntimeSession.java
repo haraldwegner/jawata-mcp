@@ -194,7 +194,15 @@ public final class RuntimeSession {
             try {
                 process.descendants().forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
-                process.waitFor(10, TimeUnit.SECONDS);
+                // READ the result. A false here means the JVM is STILL RUNNING
+                // after ten seconds — deleting its JFR repository next would race
+                // a process that still holds the chunk files. On Windows that race
+                // was lost routinely (handles are released late), and the swallow-
+                // everything delete then left the repository behind silently.
+                if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                    log.warn("The launched JVM for {} did not exit within 10s of "
+                        + "destroyForcibly; its JFR repository may need retries", id);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {

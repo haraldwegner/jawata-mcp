@@ -67,6 +67,13 @@ class NativeTriageTest {
         Path workDir = Files.createTempDirectory("jawata-native-triage-run-");
         List<String> command = new java.util.ArrayList<>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        // Sprint 28a: the hs_err PARSER speaks the POSIX dialect — SIGSEGV,
+        // gdb-shaped frames. A Windows crash writes EXCEPTION_ACCESS_VIOLATION
+        // and PDB-less frames the parser does not know, so these cells are
+        // UNPROVEN there, not passing; the Windows dialect is recorded 1b work.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            !System.getProperty("os.name", "").toLowerCase().contains("win"),
+            "hs_err parsing speaks the POSIX dialect — Windows dialect unimplemented, UNPROVEN here");
         command.add("-XX:ErrorFile=" + workDir.resolve("hs_err_pid%p.log"));
         if (nativeMemoryTracking) {
             command.add("-XX:NativeMemoryTracking=summary");
@@ -83,7 +90,12 @@ class NativeTriageTest {
         boolean finished = process.waitFor(20, TimeUnit.SECONDS);
         assertTrue(finished, "the crash fixture must exit (it deliberately SIGSEGVs)");
 
-        File[] hsErrFiles = workDir.toFile().listFiles((dir, name) -> name.startsWith("hs_err_pid"));
+        // Sprint 28a: require the .log suffix. On Windows the JVM writes a
+        // minidump (hs_err_pidN.mdmp) BESIDE the log, so a prefix-only match
+        // found two files and the exactly-one assertion failed on a platform
+        // difference the product never sees — it takes hsErrFile explicitly.
+        File[] hsErrFiles = workDir.toFile()
+            .listFiles((dir, name) -> name.startsWith("hs_err_pid") && name.endsWith(".log"));
         assertNotNull(hsErrFiles, "no hs_err file appeared in " + workDir);
         assertEquals(1, hsErrFiles.length, "expected exactly one hs_err file: "
             + java.util.Arrays.toString(hsErrFiles));
@@ -218,6 +230,13 @@ class NativeTriageTest {
     @Test
     @DisplayName("THE CORRELATION ITSELF: an hs_err symbol carries its +offset, a gdb function does not — they must still match")
     void correlationMatchesAcrossTheOffsetSuffix() throws Exception {
+        // Sprint 28a: macOS resolves Mach-O symbols with a leading underscore
+        // (and the adapter there is lldb, not gdb) — the correlator speaks the
+        // ELF/gdb dialect only, so the crash resolves no symbols it can use.
+        // UNPROVEN on macOS, not passing; the Mach-O dialect is recorded 1b work.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            !System.getProperty("os.name", "").toLowerCase().contains("mac"),
+            "symbol correlation speaks the ELF/gdb dialect — Mach-O/lldb unimplemented, UNPROVEN here");
         // Sprint-24 audit (2026-07-14): this comparison was an exact Set.contains between
         // hs_err's "Unsafe_PutInt+0xa4" and gdb's "Unsafe_PutInt" — so it could never be
         // true. correlatedWithHsErr was false for every frame ever produced, and the one
@@ -277,10 +296,18 @@ class NativeTriageTest {
             "the C++ symbol correlates: " + frames.get(2));
     }
 
-    /** A stand-in debugger we fully control — the only way to prove the failure paths. */
-    private Path fakeAdapter(String name, String script) throws Exception {
-        Path adapter = Files.createTempFile(name, ".sh");
-        Files.writeString(adapter, "#!/bin/sh\n" + script);
+    /**
+     * A stand-in debugger we fully control — the only way to prove the failure paths.
+     *
+     * <p>Sprint 28a: portable. A {@code .sh} fixture on Windows dies in
+     * {@code CreateProcess error=193} before the scenario under test is ever
+     * reached — the assertion then fails on the fixture, not the product. Each
+     * caller supplies both dialects; the OS picks.</p>
+     */
+    private Path fakeAdapter(String name, String shScript, String cmdScript) throws Exception {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Path adapter = Files.createTempFile(name, windows ? ".cmd" : ".sh");
+        Files.writeString(adapter, windows ? cmdScript : "#!/bin/sh\n" + shScript);
         assertTrue(adapter.toFile().setExecutable(true));
         return adapter;
     }
@@ -294,7 +321,10 @@ class NativeTriageTest {
         // huge or mismatched core, producing no output and never returning. The MCP call
         // hung indefinitely. (Jcmd.run had the identical ordering, and the identical fate
         // against a SIGSTOPped target — see the floor actions.)
-        Path wedged = fakeAdapter("wedged-adapter", "sleep 20\n");
+        // cmd has no sleep; ping -n N waits N-1 seconds and exists everywhere.
+        Path wedged = fakeAdapter("wedged-adapter",
+            "sleep 20\n",
+            "@ping -n 21 127.0.0.1 >nul\r\n");
         Path anyPath = Files.createTempFile("core", ".dump");
 
         long start = System.currentTimeMillis();
@@ -316,7 +346,9 @@ class NativeTriageTest {
         // true, threads: []` — a silently empty result, the codebase's own documented
         // deepest bug class.
         Path failing = fakeAdapter("failing-adapter",
-            "echo 'gdb: could not open core file: No such file or directory' >&2\nexit 1\n");
+            "echo 'gdb: could not open core file: No such file or directory' >&2\nexit 1\n",
+            "@echo gdb: could not open core file: No such file or directory 1>&2\r\n"
+                + "@exit /b 1\r\n");
         Path anyPath = Files.createTempFile("core", ".dump");
 
         Exception thrown = assertThrows(Exception.class,

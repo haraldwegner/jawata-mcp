@@ -142,21 +142,54 @@ public final class RuntimeSessionRegistry {
             String.join(" ", command), vm, process, capabilities, process.pid(), jfrRepo));
     }
 
-    /** Best-effort recursive delete of a launched session's JFR repository on teardown. */
+    /**
+     * Recursive delete of a launched session's JFR repository on teardown —
+     * with bounded retries, because "best effort, once" was a silent leak.
+     *
+     * <p>Windows releases a killed process's file handles LATE (termination
+     * latency, antivirus scans), so a single pass right after
+     * {@code destroyForcibly} routinely found chunks it could not delete,
+     * swallowed every failure, and left the repository behind — while the
+     * D5 contract ("no recording left behind") read as satisfied. Caught by
+     * the first-ever Windows matrix run
+     * (DebugSessionSpineTest#launchedSessionLeavesNoRecordingBehind).</p>
+     *
+     * <p>Up to 10 passes, 250 ms apart, stopping the moment the tree is gone.
+     * Residue after the last pass is LOGGED with its count — an empty result
+     * on failure is a lie, and that applies to cleanup too.</p>
+     */
     static void deleteRecursively(Path dir) {
         if (dir == null || !Files.exists(dir)) {
             return;
         }
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (Exception ignored) {
+                        // Retried by the next pass; counted honestly after the last.
+                    }
+                });
+            } catch (Exception ignored) {
+                // The dir may already be gone — the check below settles it.
+            }
+            if (!Files.exists(dir)) {
+                return;
+            }
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
         try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (Exception ignored) {
-                    // A file we cannot delete is a best-effort miss, not a failure.
-                }
-            });
+            long residue = walk.count();
+            log.warn("JFR repository {} still holds {} entr{} after bounded retries — "
+                + "not deleted", dir, residue, residue == 1 ? "y" : "ies");
         } catch (Exception ignored) {
-            // The dir may already be gone — fine.
+            // Gone between the loop and the count — the goal state after all.
         }
     }
 

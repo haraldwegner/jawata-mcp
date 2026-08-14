@@ -124,9 +124,13 @@ class WorkspaceFileWatcherTest {
         // events. The new mtime-fallback poll guarantees reconciliation
         // regardless of event delivery.
         Path simpleMavenB = helper.getFixturePath("simple-maven-b");
+        // Sprint 28a: escape the separators, as the builder at the bottom of this
+        // file already does. A raw Windows path pasted into JSON is a string of
+        // invalid escapes (\U, \h, ...), every reconcile parse fails, and the
+        // watcher test times out on a fixture bug rather than a product one.
         String body = "{\n  \"version\": 1,\n  \"name\": \"test\",\n  \"projects\": [\n"
-            + "    \"" + simpleMaven.toAbsolutePath() + "\",\n"
-            + "    \"" + simpleMavenB.toAbsolutePath() + "\"\n"
+            + "    \"" + simpleMaven.toAbsolutePath().toString().replace("\\", "\\\\") + "\",\n"
+            + "    \"" + simpleMavenB.toAbsolutePath().toString().replace("\\", "\\\\") + "\"\n"
             + "  ]\n}\n";
         Files.writeString(workspaceJson, body);
 
@@ -196,15 +200,37 @@ class WorkspaceFileWatcherTest {
         sb.append("{\n  \"version\": 1,\n  \"name\": \"test\",\n  \"projects\": [\n");
         for (int i = 0; i < paths.length; i++) {
             if (i > 0) sb.append(",\n");
-            sb.append("    \"").append(paths[i].toAbsolutePath()).append("\"");
+            // ESCAPE THE SEPARATOR. A Windows absolute path is C:\Users\... and a
+            // backslash begins an escape sequence in JSON, so appending one raw
+            // produces "\U" — not a valid escape. The file is then unparseable,
+            // the watcher loads nothing, and all six tests in this class report
+            // "expected <N> but was <0>". Found by Sprint 28a on the first run of
+            // the cross-platform CI matrix; harmless on Unix, fatal on Windows.
+            String jsonPath = paths[i].toAbsolutePath().toString().replace("\\", "\\\\");
+            sb.append("    \"").append(jsonPath).append("\"");
         }
         sb.append("\n  ]\n}\n");
 
         Path tmp = workspaceJson.resolveSibling("workspace.json.tmp");
         Files.writeString(tmp, sb.toString());
-        Files.move(tmp, workspaceJson,
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE);
+        // Sprint 28a: retry the rename. On Windows an ATOMIC_MOVE onto a file
+        // the watcher is concurrently READING fails AccessDenied — sharing
+        // semantics, not a logic error. The reader closes within milliseconds;
+        // a bounded retry is what any real Windows writer of this file needs
+        // too (noted for the product's own atomic-write helper).
+        java.nio.file.AccessDeniedException last = null;
+        for (int i = 0; i < 20; i++) {
+            try {
+                Files.move(tmp, workspaceJson,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+                return;
+            } catch (java.nio.file.AccessDeniedException e) {
+                last = e;
+                Thread.sleep(50);
+            }
+        }
+        throw last;
     }
 
     /**
