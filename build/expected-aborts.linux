@@ -1,0 +1,27 @@
+# Sprint 28a (1b, M13) — the aborts Linux is ALLOWED to have, by REASON.
+#
+# Each line is a substring; every abort the suite reports must match one of
+# them. An abort matching nothing FAILS the job — that is the whole point: a
+# new honest skip must be a decision somebody made, not a quiet loss of
+# coverage.
+#
+# This is a pattern list, NOT a count, and the difference was measured. Two
+# consecutive full-suite runs of the SAME work reported 2 aborts and then 4,
+# because HotspotTest's profiling assumptions depend on the JFR sampler
+# collecting enough samples, which depends on available CPU — and a parallel
+# shard had just started spawning JVMs. Running HotspotTest alone: 11/11, zero
+# aborts. A count-based budget would have failed that job for a reason with no
+# defect behind it, and a gate that cries wolf gets ignored.
+#
+# Add a line only WITH the reason it is acceptable. Removing coverage is
+# cheap; noticing that it went is what this file is for.
+
+# The embedding corpus is a large artifact not carried in the repository; the
+# tests that need it say so and skip. Supplying -Djawata.embed.corpus turns
+# them back on.
+no corpus at -Djawata.embed.corpus
+
+# The profiler ranks SAMPLED measurements. Under contention the sampler can
+# return too few samples to rank anything, and the test refuses to assert on a
+# top row carrying one sample rather than report a coin toss as a result.
+CPU profile too thin

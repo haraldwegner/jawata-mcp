@@ -73,6 +73,31 @@ jobs:
              -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee test-run.log
         test ${PIPESTATUS[0]} -eq 0
 
+    # Sprint 28a (1b, M13): every honest skip must be a decision somebody made.
+    #
+    # The assumption-skips are a feature — a cell that cannot be proven on this
+    # host aborts with its reason instead of passing. The risk is that the set
+    # grows quietly and coverage leaves without anyone choosing to let it go. So
+    # each abort must match a committed reason pattern for this operating
+    # system; one that matches nothing fails the job.
+    #
+    # Deliberately patterns, NOT a count. Two consecutive runs of the same work
+    # reported 2 aborts then 4, because the profiler's sampling assumptions
+    # depend on available CPU — running that test alone gave 11/11 with zero
+    # aborts. A count would have failed a job with no defect behind it, and a
+    # gate that cries wolf gets ignored.
+    - name: Abort budget — no skip arrives unaccounted for
+      if: always()
+      shell: bash
+      run: |
+        case "${{ matrix.os }}" in
+          ubuntu-*)  os=linux ;;
+          windows-*) os=windows ;;
+          macos-*)   os=macos ;;
+          *)         echo "FATAL: no budget mapping for ${{ matrix.os }}"; exit 2 ;;
+        esac
+        build/abort-budget.sh test-run.log "$os"
+
     # Sprint 28 (C1): the HERMETIC half of the gate. A checkout IS a clone, so
     # this job already proves the suite passes from the repository rather than
     # from someone's working tree — but only if nothing the run produced is left

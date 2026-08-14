@@ -1,0 +1,16 @@
+# Sprint 28a (1b, M13) — the aborts macOS is ALLOWED to have, by REASON.
+#
+# Each line is a substring; every abort the suite reports must match one.
+# An abort matching nothing FAILS the job.
+#
+# PROVENANCE: derived from the assumption messages in the source, not from a
+# macOS run of this branch. macOS was green on the last matrix run with no
+# platform-specific skips, so this list is deliberately the common pair; the
+# next matrix run confirms it.
+
+# The embedding corpus is a large artifact not carried in the repository.
+no corpus at -Djawata.embed.corpus
+
+# The profiler ranks SAMPLED measurements; under contention it can return too
+# few samples to rank anything, and refuses to assert on a coin toss.
+CPU profile too thin
