@@ -76,6 +76,19 @@ class RcpLaunchShapeTest {
     @Test
     @DisplayName("rcp shape: launcher gets program args + appendVmargs + preset behind -vmargs; held; scratch areas untouched; detach cleans the JFR repo")
     void rcpShape_launchesHeldUnderPreset_prodConfigUntouched() throws Exception {
+        // Sprint 28a: UNPROVEN on Windows, not passing — and not attempted. The
+        // first .cmd stand-in HUNG the whole suite until CI's 75-minute timeout
+        // (run 31789882384): a batch launcher cannot `exec` like the POSIX fake,
+        // so the held JVM sits behind a cmd.exe the attach wait never times out
+        // on — and JDK 21's hardened ProcessBuilder treats .cmd targets
+        // specially besides. The real eclipse launcher on Windows is a native
+        // .exe this harness cannot fabricate. An honest skip beats a fixture
+        // that burns 75 runner-minutes; the abort budget records it, and the
+        // attach-deadline product hardening is the follow-up that makes a hang
+        // impossible regardless of fixture.
+        assumeTrue(!System.getProperty("os.name", "").toLowerCase().contains("win"),
+            "the RCP launcher fake needs exec semantics a Windows .cmd cannot express — "
+                + "UNPROVEN here, not passing");
         // jawata's own boot jar — the JVM running this test was started with -jar,
         // so its classpath IS that jar. If a future runner boots differently, the
         // fixture premise is gone: skip rather than fake it.
