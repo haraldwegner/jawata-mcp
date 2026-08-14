@@ -75,6 +75,21 @@ class ExperienceToolHygieneTest {
         setStatus(record("was rejected", null), "rejected");
         setStatus(record("was superseded", null), "superseded");
 
+        // The clock is pinned one second AHEAD of the writes above, and that is
+        // the whole point. With days=0 the cutoff is "now", the delete is
+        // `updated_at < cutoff`, and the rows were written microseconds ago —
+        // so on a host whose clock granularity is coarse (Windows ticks about
+        // every 15ms) updated_at can EQUAL now, `<` is false, and the entries
+        // survive. That is the Windows-only intermittent proven by an A/B on an
+        // identical commit: run 31814248338 failed at 15:16 and passed on rerun
+        // at 15:49. A fixed clock makes the boundary exact rather than merely
+        // unlikely to be hit; nothing here sleeps.
+        // Cast rather than widen ExperienceStore: pinning a clock is a test
+        // seam on the H2 implementation, and putting it on the production
+        // interface would oblige every future store to answer for it.
+        ((org.jawata.mcp.knowledge.H2ExperienceStore) store).useClock(java.time.Clock.fixed(
+            java.time.Instant.now().plusSeconds(1), java.time.ZoneOffset.UTC));
+
         // Everything is seconds old: the default 30-day threshold removes nothing...
         assertEquals(0, data(exec("prune", a -> { })).get("removed"));
         // ...days=0 removes exactly the two dead entries, never the active one.

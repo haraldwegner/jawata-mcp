@@ -888,9 +888,31 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     // --- Sprint 21a (item G): hygiene — prune / compact ---------------------------------
 
+    /**
+     * The clock the prune cutoff is measured against.
+     *
+     * <p>Injectable because {@code Instant.now()} made
+     * {@code pruneAged}'s boundary a race with the timestamps written moments
+     * earlier by the same test — which reproduced as a Windows-only flake: the
+     * SAME commit failed one run and passed the next. A fixed clock makes the
+     * boundary exact rather than merely unlikely to be hit.</p>
+     */
+    private java.time.Clock clock = java.time.Clock.systemUTC();
+
+    /**
+     * Pin the clock this store measures age against.
+     *
+     * <p>A test seam, and deliberately explicit: a test that needs an exact age
+     * boundary says so, instead of sleeping and hoping.</p>
+     */
+    public synchronized void useClock(java.time.Clock fixed) {
+        this.clock = fixed == null ? java.time.Clock.systemUTC() : fixed;
+    }
+
     @Override
     public synchronized int pruneAged(int days) {
-        Timestamp cutoff = Timestamp.from(Instant.now().minusSeconds(Math.max(0, days) * 86400L));
+        Timestamp cutoff =
+            Timestamp.from(Instant.now(clock).minusSeconds(Math.max(0, days) * 86400L));
         try {
             for (String child : new String[] {"experience_symptom", "experience_link"}) {
                 try (PreparedStatement ps = live().prepareStatement(
