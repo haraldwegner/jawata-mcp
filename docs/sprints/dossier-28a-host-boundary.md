@@ -50,7 +50,15 @@ through the same package's kit.
 | M2 | `move(kind=class)` ×2, staged | compile 0/0; 4 classes **53/53** | `0e48064` |
 | M3 | `rename_symbol` ×3, staged | compile 0/0; 4 classes **53/53** | `9d3b939` |
 | M4 | `inline(kind=method)` + 2 delegations | compile 0/0; 4 classes **69/69** | `b976cab` |
-| M5 | 3 provenance rewrites | compile 0/0; **full suite** (below) | pending |
+| M5 | 3 provenance rewrites | compile 0/0; full suite 1789/0 failed | `c13f6f5` |
+| M6 | `Write` ×4 (port) + contract test | compile 0/0; contract **15/15** | `2a4a524` |
+| M7 | `change_method_signature` (coupled) | compile 0/0; importer + host **61/61** | `a18bc7a` |
+| M8 | 11 launch sites → 1 | **census: 1 production `ProcessBuilder`**; 29 suites **196/196** | `f72ad75`, `0bf8f0e` |
+| M9 | `HostFs` + 2 delegates | compile 0/0; 29 suites **196/196** | `7cb3d18` |
+| M10 | `HostText` + red CRLF test | **236/236** incl. full parity battery, zero golden churn | `6cde1cc` |
+| M12 | injected `Clock` | build exit 0; hygiene **269, 0 failed** | `5d58f30` |
+| M13 | rules test + abort budget | **5/5**, no skip; budget verified to FAIL on violation | `3815b75` |
+| M11 | TestHost kit | **NOT DONE** — see "What is not finished" | — |
 
 ### M0 — pin bytes at checkout
 `* text=auto eol=lf`, `*.cmd text eol=crlf`. Shipped in 1a; the 19 parity reds
@@ -158,6 +166,63 @@ the first attempt** at the `HostOS` body edit and made the declaration
 mandatory; that refusal is in the transcript.
 
 ---
+
+### M6–M13 — what the boundary absorbed
+
+**M6 built the port and its contract test immediately found a defect in it.**
+`readAllBytes()` returns at end of stream, and for a pipe that means when the
+child exits — so reading before `waitFor` made the timeout decorative. A child
+told to sleep 120 s under a 3 s timeout returned `Completed`, 120 seconds
+later. The same test after the fix: 3 seconds.
+
+**Then the same bug turned up at four production sites** — `GitDiff`,
+`GitHistory`, `CoverageService#runGit`, `HeapHistogram` — each with a timeout
+that could never fire. And `Jcmd`, three directories away, had been fixed for
+exactly this in the Sprint-24 audit, with a comment saying so. *A careful fix
+in one file does not travel.* That sentence is the argument for a chokepoint,
+and here it is as evidence rather than assertion: one routing change fixed four
+copies of a bug that had been written four times independently.
+
+**M8's exit gate is the census.** Production `ProcessBuilder` construction went
+from 11 sites to exactly one — `SystemHostProcesses`. Sites that run-and-capture
+use `run()`; sites whose child outlives the call keep their own draining and
+cross via `start()`. What has to be single is the *spawn*, not the draining.
+
+**A defect I introduced, caught by the tests.** Discarding a non-merged stderr
+inside `start()` threw away the evidence of callers that *read* it, turning
+`ForkedTestRunner`'s `OutOfMemoryError` into an unexplained exit 2. `start()`
+leaves the streams to its caller; draining an unread stderr is `run()`'s job.
+
+**M12 diagnosed the Windows-only prune flake rather than retrying it.** With
+`days=0` the cutoff is *now* and the delete is `updated_at < cutoff`, but the
+rows were written microseconds earlier — so on a host whose clock granularity is
+coarse (Windows ticks ~15 ms) `updated_at` can *equal* now, `<` is false, and
+the entries survive. An injected `Clock` makes the boundary exact. Nothing
+sleeps.
+
+**M13 corrects the design it implements.** The artifact specified the abort
+budget as `aborted <= expected(os)`. A count is the wrong instrument: two
+consecutive runs of identical work reported 2 aborts then 4, because the
+profiler's sampling assumption depends on available CPU — that test alone gave
+11/11 with zero aborts. The budget is therefore committed **reason patterns**;
+an abort matching nothing fails the job. The gate's own failure modes were
+verified, not just its green: an unbudgeted abort fails, a missing log fails,
+an OS with no committed list fails.
+
+## What is not finished
+
+**M11, the TestHost kit, is NOT done, and the reason is not effort.** Its
+purpose is a fake executable that receives argv faithfully on every OS, which
+would remove `ProjectImporterTest`'s Windows skip (`the .cmd fake does not
+receive argv under cmd.exe wrapping`, exit-3 evidence, run 31804158929). The
+design's answer is a java-launcher-based fake — but whether that survives
+`ProcessBuilder`'s `cmd.exe` wrapping is precisely the thing that failed before,
+and I have no Windows runner. Building it here and declaring it fixed would be
+the sprint's own defect in miniature: a platform claim that no reachable test
+can falsify. It stays open, with its skip budgeted and its reason committed.
+
+Also outstanding: the `move(kind=class)` test-root defect (`e9c5a3db`) needs an
+issue filed on the tracker, not only a store entry.
 
 ## Open items carried forward
 
