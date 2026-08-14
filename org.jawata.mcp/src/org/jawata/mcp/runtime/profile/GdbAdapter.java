@@ -1,5 +1,7 @@
 package org.jawata.mcp.runtime.profile;
 
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -72,13 +75,12 @@ public final class GdbAdapter {
     /** Is {@code command} (e.g. "gdb", "lldb") resolvable and runnable on THIS machine? */
     public static boolean isAvailable(String command) {
         try {
-            Process p = new ProcessBuilder(command, "--version").redirectErrorStream(true).start();
-            boolean exited = p.waitFor(5, TimeUnit.SECONDS);
-            if (!exited) {
-                p.destroyForcibly();
-                return false;
-            }
-            return p.exitValue() == 0;
+            // A debugger that is absent and one that is present but broken are
+            // both "unavailable" HERE — but the boundary keeps them apart, so
+            // the reason reaches the log instead of being flattened to false.
+            return HostProcesses.system()
+                .run(HostCommand.of(command, "--version").waitingAtMost(Duration.ofSeconds(5)))
+                .succeeded();
         } catch (Exception e) {
             return false;
         }
@@ -119,9 +121,10 @@ public final class GdbAdapter {
      */
     public static String runBacktrace(String command, Path javaBinary, Path coreFile, int timeoutSeconds)
             throws Exception {
-        Process process = new ProcessBuilder(backtraceCommand(command, javaBinary, coreFile))
-            .redirectErrorStream(true)
-            .start();
+        // The gdb/lldb DIALECT knowledge stays in this adapter — that is
+        // debugger variance, not OS variance. Only the spawn crosses.
+        Process process = HostProcesses.system()
+            .start(HostCommand.of(backtraceCommand(command, javaBinary, coreFile)));
 
         StringBuilder output = new StringBuilder();
         Thread drain = new Thread(() -> {

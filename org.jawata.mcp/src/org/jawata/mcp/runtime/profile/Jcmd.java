@@ -1,14 +1,15 @@
 package org.jawata.mcp.runtime.profile;
 
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Sprint 24 (D10) — the profiling floor's channel to a target JVM: the {@code jcmd}
@@ -32,7 +33,10 @@ public final class Jcmd {
     private Jcmd() {
     }
 
-    /** The raw diagnostic-command output — the process's own words, not reinterpreted. */
+    /**
+     * The raw diagnostic-command output — the process's own words, not
+     * reinterpreted.
+     */
     public static String run(long pid, String... command) throws JcmdException {
         List<String> full = new ArrayList<>();
         full.add(BINARY.toString());
@@ -40,48 +44,29 @@ public final class Jcmd {
         full.addAll(List.of(command));
 
         try {
-            Process process = new ProcessBuilder(full).redirectErrorStream(true).start();
+            // The drain-then-wait discipline this method pioneered (Sprint-24
+            // audit: reading to EOF first blocks until the child exits, so the
+            // timeout could only be reached by a jcmd that had already
+            // finished) now lives in the boundary, where every launch site gets
+            // it. Three git sites and HeapHistogram still carried the original
+            // bug because a careful fix in one file does not travel.
+            HostProcessOutcome outcome = HostProcesses.system()
+                .run(HostCommand.of(full).waitingAtMost(Duration.ofSeconds(30)));
 
-            // Drain on a SEPARATE thread, then wait with the timeout. Reading to EOF first
-            // (as v2.13.0 did) blocks until the child EXITS, so the 30s timeout below could
-            // only ever be reached by a jcmd that had already finished — while a jcmd wedged
-            // against a stopped or unresponsive target held every profiling-floor action
-            // (threads, deadlock, histogram, gc, nmt, heap_dump) open forever. Sprint-24 audit.
-            StringBuilder out = new StringBuilder();
-            Thread drain = new Thread(() -> {
-                try (BufferedReader reader =
-                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        synchronized (out) {
-                            out.append(line).append('\n');
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("jcmd {} output stream ended: {}", pid, e.getMessage());
-                }
-            }, "jawata-jcmd-drain");
-            drain.setDaemon(true);
-            drain.start();
-
-            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-                process.waitFor(5, TimeUnit.SECONDS);
-                drain.join(2_000);
+            if (outcome instanceof HostProcessOutcome.TimedOut) {
                 throw new JcmdException("jcmd " + pid + " " + String.join(" ", command)
                     + " timed out after 30s and was killed — the target is not answering the "
                     + "attach listener (stopped, wedged, or gone).");
             }
-            drain.join(5_000);
-
-            String output;
-            synchronized (out) {
-                output = out.toString();
+            if (outcome instanceof HostProcessOutcome.CannotLaunch cannotLaunch) {
+                throw new JcmdException("Could not run jcmd against pid " + pid + ": "
+                    + cannotLaunch.reason());
             }
-            if (process.exitValue() != 0) {
+            HostProcessOutcome.Completed completed = (HostProcessOutcome.Completed) outcome;
+            String output = completed.output();
+            if (completed.exitCode() != 0) {
                 throw new JcmdException("jcmd " + pid + " " + String.join(" ", command)
-                    + " failed (exit " + process.exitValue() + "): " + output.strip());
+                    + " failed (exit " + completed.exitCode() + "): " + output.strip());
             }
             log.debug("jcmd {} {} -> {} bytes", pid, String.join(" ", command), output.length());
             return output;

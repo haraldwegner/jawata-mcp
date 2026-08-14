@@ -1396,17 +1396,18 @@ public class ProjectImporter {
         String cpFileName = "jawata-classpath-" + ProcessHandle.current().pid() + "-"
             + Long.toHexString(System.nanoTime()) + ".txt";
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                mvnCmd.toString(),
-                "dependency:build-classpath",
-                "-Dmdep.outputFile=target/" + cpFileName,
-                "-q"
-            );
-            pb.directory(projectPath.toFile());
-            pb.redirectErrorStream(true);
+            // The SPAWN crosses the boundary; the bounded-tail draining stays
+            // here, because this site keeps only the last 15 lines so a failure
+            // can say what Maven said without holding a whole build's output.
+            org.jawata.core.host.HostCommand command = org.jawata.core.host.HostCommand.of(
+                    mvnCmd.toString(),
+                    "dependency:build-classpath",
+                    "-Dmdep.outputFile=target/" + cpFileName,
+                    "-q")
+                .in(projectPath);
 
             log.info("Running Maven ({}) to get classpath...", mvnCmd);
-            Process process = pb.start();
+            Process process = org.jawata.core.host.HostProcesses.system().start(command);
 
             // Consume output to prevent blocking — keep a bounded tail so a
             // failure can SAY what Maven said instead of discarding it.

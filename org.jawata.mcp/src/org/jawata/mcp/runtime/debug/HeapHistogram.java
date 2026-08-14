@@ -1,17 +1,17 @@
 package org.jawata.mcp.runtime.debug;
 
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Sprint 24 (D6) — the exact live count of a class's instances, from the JVM's own
@@ -50,34 +50,26 @@ final class HeapHistogram {
             log.debug("no jcmd at {} — the exact heap count is unavailable", jcmd);
             return counts;
         }
-        Process process = null;
         try {
-            process = new ProcessBuilder(jcmd.toString(), String.valueOf(pid),
-                "GC.class_histogram")
-                .redirectErrorStream(true)
-                .start();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    parseRow(line, counts);
-                }
-            }
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
+            // Through the boundary. The previous shape read the stream to its
+            // end and only THEN waited 30s — and a stream ends when the child
+            // exits, so a jcmd wedged against an unresponsive target held this
+            // call open indefinitely. Jcmd (the sibling in runtime/profile) had
+            // already been fixed for exactly this in the Sprint-24 audit; the
+            // fix never reached here, which is the argument for one chokepoint
+            // rather than four careful copies.
+            HostProcessOutcome outcome = HostProcesses.system().run(
+                HostCommand.of(jcmd.toString(), String.valueOf(pid), "GC.class_histogram")
+                    .waitingAtMost(Duration.ofSeconds(30)));
+            if (!(outcome instanceof HostProcessOutcome.Completed)) {
+                log.debug("heap histogram for pid {}: {}", pid, outcome.describe());
                 return Map.of();
             }
+            outcome.output().lines().forEach(line -> parseRow(line, counts));
             return counts;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Map.of();
-        } catch (Exception e) {
-            log.debug("heap histogram for pid {} failed: {}", pid, e.getMessage());
-            return Map.of();
-        } finally {
-            if (process != null && process.isAlive()) {
-                process.destroyForcibly();
-            }
         }
     }
 

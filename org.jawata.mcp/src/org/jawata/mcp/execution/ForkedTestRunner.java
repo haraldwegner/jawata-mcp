@@ -2,6 +2,8 @@ package org.jawata.mcp.execution;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -224,19 +226,31 @@ public final class ForkedTestRunner {
         cmd.add("org.jawata.testrunner.Main");
         cmd.add(argFile.toString());
 
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.environment().clear();
+        java.util.Map<String, String> allowed = new java.util.LinkedHashMap<>();
         for (String key : ENV_ALLOWLIST) {
             String v = System.getenv(key);
-            if (v != null) pb.environment().put(key, v);
+            if (v != null) allowed.put(key, v);
         }
+        // The SPAWN crosses the boundary; the streams stay here, because this
+        // child is drained progressively for its whole life (per-test events),
+        // not run-and-captured. The allowlisted environment is now the port's
+        // vocabulary rather than a ProcessBuilder detail.
+        // SEPARATE stderr, deliberately: the runner's stdout carries structured
+        // events while stderr carries the JVM's own words (an OutOfMemoryError,
+        // a crash). Merging them — the port's default, and what this site got
+        // when it first crossed the boundary — moves the OOM evidence out of
+        // the stream that reports it, and the run reads as an unexplained
+        // abnormal exit. Caught by RunnerSpineTest's -Xmx bound assertion.
+        HostCommand command = HostCommand.of(cmd)
+            .withOnlyEnvironment(allowed)
+            .withSeparateStderr();
         if (spec.workingDirectory != null) {
-            pb.directory(spec.workingDirectory.toFile());
+            command = command.in(spec.workingDirectory);
         }
 
         Result result = new Result();
         long startNanos = System.nanoTime();
-        Process process = pb.start();
+        Process process = HostProcesses.system().start(command);
         processRef.set(process);
         StreamTail stdout = StreamTail.consume(process.getInputStream());
         StreamTail stderr = StreamTail.consume(process.getErrorStream());

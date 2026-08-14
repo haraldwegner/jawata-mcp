@@ -91,6 +91,23 @@ final class SystemHostProcesses implements HostProcesses {
         drain.setDaemon(true);
         drain.start();
 
+        // run() owns both streams, so an unmerged stderr gets drained too — not
+        // to report it (this caller asked for stdout alone) but because a full
+        // pipe blocks the child, and a hang presents as a slow tool.
+        if (!command.mergeStderr()) {
+            Thread stderrDrain = new Thread(() -> {
+                try (InputStream err = process.getErrorStream()) {
+                    while (err.read() != -1) {
+                        // discard: kept out of the parsed stream by request
+                    }
+                } catch (IOException ignored) {
+                    // The stream dies with the process — expected on teardown.
+                }
+            }, "jawata-host-drain-err");
+            stderrDrain.setDaemon(true);
+            stderrDrain.start();
+        }
+
         if (!process.waitFor(command.timeout().toMillis(), TimeUnit.MILLISECONDS)) {
             // Kill the tree, not just the parent: a wrapper script that spawned
             // the real tool leaves it running otherwise.
@@ -111,19 +128,21 @@ final class SystemHostProcesses implements HostProcesses {
         if (command.workingDirectory() != null) {
             builder.directory(command.workingDirectory().toFile());
         }
+        if (command.cleanEnvironment()) {
+            builder.environment().clear();
+        }
         if (!command.environment().isEmpty()) {
             Map<String, String> env = builder.environment();
             env.putAll(command.environment());
         }
-        if (command.mergeStderr()) {
-            builder.redirectErrorStream(true);
-        } else {
-            // Nobody drains a SEPARATE stderr, and an undrained pipe fills and
-            // blocks the child — a hang that looks like a slow tool. A caller
-            // that keeps the streams apart is saying it wants stdout clean (a
-            // parser reading `git log`), not that it wants to read stderr.
-            builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-        }
+        // start() hands the live process to its caller, so it must NOT touch
+        // the streams beyond the merge choice. An earlier version discarded a
+        // separate stderr here to stop an undrained pipe blocking the child —
+        // and silently threw away the evidence of callers who READ stderr
+        // (ForkedTestRunner's OutOfMemoryError became an unexplained exit 2).
+        // Draining an unread stderr is run()'s job, where this class owns the
+        // streams; it is never start()'s.
+        builder.redirectErrorStream(command.mergeStderr());
         return builder.start();
     }
 

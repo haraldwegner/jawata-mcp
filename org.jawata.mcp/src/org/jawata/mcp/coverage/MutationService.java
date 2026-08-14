@@ -2,6 +2,8 @@ package org.jawata.mcp.coverage;
 
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.RunnerClasspath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,9 +105,13 @@ public final class MutationService {
         cmd.add("false");
 
         long start = System.nanoTime();
-        Process p = new ProcessBuilder(cmd)
-            .directory(new File(project.getProject().getLocation().toOSString()))
-            .start();
+        // The SPAWN crosses the boundary; the two streams stay here, because
+        // this site reads stdout and stderr SEPARATELY (stderr is the error
+        // report shown to the user, stdout is only drained).
+        Process p = HostProcesses.system().start(
+            HostCommand.of(cmd)
+                .in(Path.of(project.getProject().getLocation().toOSString()))
+                .withSeparateStderr());
         StringBuilder err = new StringBuilder();
         Thread gobbler = new Thread(() -> {
             try (BufferedReader r = new BufferedReader(

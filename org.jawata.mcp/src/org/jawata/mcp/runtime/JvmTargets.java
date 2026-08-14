@@ -4,6 +4,8 @@ import com.sun.jdi.Bootstrap;
 import com.sun.jdi.VirtualMachine;
 import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.connect.Connector;
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,11 +105,15 @@ public final class JvmTargets {
 
     private static VirtualMachine startAndAttach(List<String> full, Path workingDirectory,
                                                  Process[] outProcess) throws Exception {
-        ProcessBuilder builder = new ProcessBuilder(full).redirectErrorStream(true);
+        // The SPAWN crosses the boundary; the stream handling stays here,
+        // because this target outlives the call — it is held before its first
+        // instruction and drained for its whole life, which is not a
+        // run-and-capture shape.
+        HostCommand command = HostCommand.of(full);
         if (workingDirectory != null) {
-            builder.directory(workingDirectory.toFile());
+            command = command.in(workingDirectory);
         }
-        Process process = builder.start();
+        Process process = HostProcesses.system().start(command);
         outProcess[0] = process;
 
         BufferedReader out =

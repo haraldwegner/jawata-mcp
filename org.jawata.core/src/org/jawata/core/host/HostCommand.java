@@ -17,17 +17,26 @@ import java.util.Map;
  *
  * @param argv             the executable and its arguments; never empty
  * @param workingDirectory where to run, or {@code null} for the JVM's own
- * @param environment      extra environment entries; never null, often empty
+ * @param environment      environment entries; never null, often empty. Added
+ *                         to the inherited environment, or — when
+ *                         {@code cleanEnvironment} is set — the whole of it
  * @param timeout          how long to wait for completion before giving up
  * @param mergeStderr      whether stderr joins stdout (the common case: one
  *                         readable stream for diagnostics)
+ * @param cleanEnvironment whether the child starts from an EMPTY environment
+ *                         rather than inheriting this process's. A forked test
+ *                         runner wants this: the resident's environment is not
+ *                         the environment the user's tests should see, and an
+ *                         inherited variable is a test that passes here and
+ *                         fails on a colleague's machine
  */
 public record HostCommand(
     List<String> argv,
     Path workingDirectory,
     Map<String, String> environment,
     Duration timeout,
-    boolean mergeStderr) {
+    boolean mergeStderr,
+    boolean cleanEnvironment) {
 
     /** The default patience for a short-lived tool invocation. */
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
@@ -43,29 +52,45 @@ public record HostCommand(
 
     /** A command run in the JVM's own directory, stderr merged, default timeout. */
     public static HostCommand of(String... argv) {
-        return new HostCommand(List.of(argv), null, Map.of(), DEFAULT_TIMEOUT, true);
+        return new HostCommand(List.of(argv), null, Map.of(), DEFAULT_TIMEOUT, true, false);
     }
 
     /** A command run in the JVM's own directory, stderr merged, default timeout. */
     public static HostCommand of(List<String> argv) {
-        return new HostCommand(argv, null, Map.of(), DEFAULT_TIMEOUT, true);
+        return new HostCommand(argv, null, Map.of(), DEFAULT_TIMEOUT, true, false);
     }
 
     public HostCommand in(Path directory) {
-        return new HostCommand(argv, directory, environment, timeout, mergeStderr);
+        return new HostCommand(argv, directory, environment, timeout, mergeStderr,
+            cleanEnvironment);
     }
 
     public HostCommand waitingAtMost(Duration newTimeout) {
-        return new HostCommand(argv, workingDirectory, environment, newTimeout, mergeStderr);
+        return new HostCommand(argv, workingDirectory, environment, newTimeout, mergeStderr,
+            cleanEnvironment);
     }
 
     public HostCommand withEnvironment(Map<String, String> extra) {
-        return new HostCommand(argv, workingDirectory, extra, timeout, mergeStderr);
+        return new HostCommand(argv, workingDirectory, extra, timeout, mergeStderr,
+            cleanEnvironment);
     }
 
     /** Keep stderr separate — for a caller that reports the two streams apart. */
     public HostCommand withSeparateStderr() {
-        return new HostCommand(argv, workingDirectory, environment, timeout, false);
+        return new HostCommand(argv, workingDirectory, environment, timeout, false,
+            cleanEnvironment);
+    }
+
+    /**
+     * Start from an EMPTY environment carrying only {@code allowed}.
+     *
+     * <p>For a child whose environment should be the user's project, not this
+     * process's: a forked test runner inherits the resident's variables
+     * otherwise, and an inherited variable is a test that passes here and fails
+     * on a colleague's machine.</p>
+     */
+    public HostCommand withOnlyEnvironment(Map<String, String> allowed) {
+        return new HostCommand(argv, workingDirectory, allowed, timeout, mergeStderr, true);
     }
 
     /** The executable, for diagnostics that name what could not be started. */
