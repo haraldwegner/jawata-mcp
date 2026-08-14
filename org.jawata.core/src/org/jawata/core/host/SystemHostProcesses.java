@@ -115,7 +115,15 @@ final class SystemHostProcesses implements HostProcesses {
             Map<String, String> env = builder.environment();
             env.putAll(command.environment());
         }
-        builder.redirectErrorStream(command.mergeStderr());
+        if (command.mergeStderr()) {
+            builder.redirectErrorStream(true);
+        } else {
+            // Nobody drains a SEPARATE stderr, and an undrained pipe fills and
+            // blocks the child — a hang that looks like a slow tool. A caller
+            // that keeps the streams apart is saying it wants stdout clean (a
+            // parser reading `git log`), not that it wants to read stderr.
+            builder.redirectError(ProcessBuilder.Redirect.DISCARD);
+        }
         return builder.start();
     }
 

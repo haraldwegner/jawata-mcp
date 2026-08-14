@@ -1,26 +1,29 @@
 package org.jawata.mcp.coverage;
 
-import org.eclipse.jdt.core.IClasspathEntry;
-import org.eclipse.jdt.core.IJavaProject;
-import org.jawata.core.LoadedProject;
-import org.jawata.core.host.HostOS;
-import org.jawata.mcp.execution.ForkedTestRunner;
-import org.jawata.mcp.execution.RunnerClasspath;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+
+import org.eclipse.jdt.core.IClasspathEntry;
+import org.eclipse.jdt.core.IJavaProject;
+import org.jawata.core.LoadedProject;
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostOS;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.execution.ForkedTestRunner;
+import org.jawata.mcp.execution.RunnerClasspath;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 23 (D3) — the coverage collector + query service on the forked-
@@ -178,14 +181,18 @@ public final class CoverageService {
     }
 
     private static String runGit(Path dir, String... args) {
+        List<String> cmd = new ArrayList<>(List.of("git", "-C", dir.toString()));
+        cmd.addAll(List.of(args));
         try {
-            List<String> cmd = new ArrayList<>(List.of("git", "-C", dir.toString()));
-            cmd.addAll(List.of(args));
-            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!p.waitFor(5, TimeUnit.SECONDS) || p.exitValue() != 0) return null;
-            return out.strip();
-        } catch (Exception e) {
+            // Through the boundary: the five-second budget is now real. The
+            // previous shape read the whole stream BEFORE waitFor, and
+            // readAllBytes returns at end of stream — so the timeout could
+            // never expire and a wedged git held this call indefinitely.
+            HostProcessOutcome outcome = HostProcesses.system()
+                .run(HostCommand.of(cmd).waitingAtMost(Duration.ofSeconds(5)));
+            return outcome.succeeded() ? outcome.output().strip() : null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return null;
         }
     }

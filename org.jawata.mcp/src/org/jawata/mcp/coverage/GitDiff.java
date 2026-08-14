@@ -1,20 +1,22 @@
 package org.jawata.mcp.coverage;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 23 (D3, Stage 8) — changed NEW-side line numbers from a git diff,
@@ -52,17 +54,23 @@ public final class GitDiff {
                 "diff must be worktree, staged, or range; got '" + kind + "'");
         }
         try {
-            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!p.waitFor(20, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
+            HostProcessOutcome outcome = HostProcesses.system()
+                .run(HostCommand.of(cmd).waitingAtMost(Duration.ofSeconds(20)));
+            // Each outcome keeps the diagnosis it deserves. A git that is not
+            // installed used to arrive here as the same "git diff failed" as a
+            // git that ran and refused the range.
+            if (outcome instanceof HostProcessOutcome.CannotLaunch cannotLaunch) {
+                throw new IOException(cannotLaunch.describe());
+            }
+            if (outcome instanceof HostProcessOutcome.TimedOut) {
                 throw new IOException("git diff timed out");
             }
-            if (p.exitValue() != 0) {
-                throw new IOException("git diff failed (exit " + p.exitValue() + "): "
-                    + out.lines().findFirst().orElse(""));
+            HostProcessOutcome.Completed completed = (HostProcessOutcome.Completed) outcome;
+            if (completed.exitCode() != 0) {
+                throw new IOException("git diff failed (exit " + completed.exitCode() + "): "
+                    + completed.output().lines().findFirst().orElse(""));
             }
-            return parse(out);
+            return parse(completed.output());
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted running git diff", ie);

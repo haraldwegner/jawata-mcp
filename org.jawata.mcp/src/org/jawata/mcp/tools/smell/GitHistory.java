@@ -1,13 +1,17 @@
 package org.jawata.mcp.tools.smell;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
 
 /**
  * Sprint 17 — minimal git-history capability for the change-correlation smells
@@ -84,21 +88,21 @@ public final class GitHistory {
             return unavailable();
         }
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "git", "-C", projectRoot.toString(),
-                "log", "--no-merges", "--name-only", "--relative", "--format=%x1f%H");
-            pb.redirectErrorStream(false);
-            Process p = pb.start();
-            String out = new String(p.getInputStream().readAllBytes());
-            if (!p.waitFor(20, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return unavailable();
-            }
-            if (p.exitValue() != 0) {
-                return unavailable();
-            }
-            return fromGitLog(out);
-        } catch (Exception e) {
+            // stderr stays OUT of the stream this parses — a warning mixed into
+            // `git log` output would be read as a commit. Through the boundary,
+            // the twenty-second budget is now enforceable: the previous shape
+            // read the stream to its end before waiting, and a stream ends when
+            // the process does.
+            HostProcessOutcome outcome = HostProcesses.system().run(
+                HostCommand.of("git", "-C", projectRoot.toString(),
+                        "log", "--no-merges", "--name-only", "--relative", "--format=%x1f%H")
+                    .withSeparateStderr()
+                    .waitingAtMost(Duration.ofSeconds(20)));
+            return outcome.succeeded() ? fromGitLog(outcome.output()) : unavailable();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return unavailable();
+        } catch (RuntimeException e) {
             return unavailable();
         }
     }
