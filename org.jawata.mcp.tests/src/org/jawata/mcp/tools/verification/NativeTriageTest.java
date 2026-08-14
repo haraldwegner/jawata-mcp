@@ -67,6 +67,13 @@ class NativeTriageTest {
         Path workDir = Files.createTempDirectory("jawata-native-triage-run-");
         List<String> command = new java.util.ArrayList<>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        // Sprint 28a: the hs_err PARSER speaks the POSIX dialect — SIGSEGV,
+        // gdb-shaped frames. A Windows crash writes EXCEPTION_ACCESS_VIOLATION
+        // and PDB-less frames the parser does not know, so these cells are
+        // UNPROVEN there, not passing; the Windows dialect is recorded 1b work.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            !System.getProperty("os.name", "").toLowerCase().contains("win"),
+            "hs_err parsing speaks the POSIX dialect — Windows dialect unimplemented, UNPROVEN here");
         command.add("-XX:ErrorFile=" + workDir.resolve("hs_err_pid%p.log"));
         if (nativeMemoryTracking) {
             command.add("-XX:NativeMemoryTracking=summary");

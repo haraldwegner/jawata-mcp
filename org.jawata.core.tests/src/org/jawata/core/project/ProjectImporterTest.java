@@ -666,7 +666,7 @@ class ProjectImporterTest {
                 + "set \"OUT=%~2\"\r\n"
                 + "set \"OUT=%OUT:~18%\"\r\n"
                 + "mkdir target 2>nul\r\n"
-                + "<nul set /p =\"/repo/fake-a.jar" + java.io.File.pathSeparator
+                + "<nul set /p x=\"/repo/fake-a.jar" + java.io.File.pathSeparator
                 + "/repo/fake-b.jar\" > \"%OUT%\"\r\n"
                 + ">> attempts.log echo x\r\n"
                 + "exit /b 0\r\n");
@@ -692,7 +692,7 @@ class ProjectImporterTest {
     void resolveMavenCommand_prefersWrapper(@TempDir Path dir) throws IOException {
         Path wrapper = fakeWrapper(dir, "", "@exit /b 0\r\n");
         assertEquals(wrapper,
-            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), false));
+            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), isWindows()));
     }
 
     @Test

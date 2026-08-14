@@ -213,9 +213,24 @@ class WorkspaceFileWatcherTest {
 
         Path tmp = workspaceJson.resolveSibling("workspace.json.tmp");
         Files.writeString(tmp, sb.toString());
-        Files.move(tmp, workspaceJson,
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE);
+        // Sprint 28a: retry the rename. On Windows an ATOMIC_MOVE onto a file
+        // the watcher is concurrently READING fails AccessDenied — sharing
+        // semantics, not a logic error. The reader closes within milliseconds;
+        // a bounded retry is what any real Windows writer of this file needs
+        // too (noted for the product's own atomic-write helper).
+        java.nio.file.AccessDeniedException last = null;
+        for (int i = 0; i < 20; i++) {
+            try {
+                Files.move(tmp, workspaceJson,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+                return;
+            } catch (java.nio.file.AccessDeniedException e) {
+                last = e;
+                Thread.sleep(50);
+            }
+        }
+        throw last;
     }
 
     /**
