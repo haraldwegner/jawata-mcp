@@ -17,6 +17,7 @@ import org.gradle.tooling.ProjectConnection;
 import org.gradle.tooling.model.eclipse.EclipseExternalDependency;
 import org.gradle.tooling.model.eclipse.EclipseProject;
 import org.gradle.tooling.model.eclipse.EclipseSourceDirectory;
+import org.jawata.core.host.HostOS;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1583,7 +1584,7 @@ public class ProjectImporter {
     }
 
     private boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("win");
+        return HostOS.current().isWindows();
     }
 
     /**

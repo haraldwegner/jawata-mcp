@@ -111,11 +111,4 @@ public class HostPathsImpl implements HostPaths {
         Path normalizedPath = path.toAbsolutePath().normalize();
         return normalizedPath.startsWith(projectRoot);
     }
-
-    /**
-     * Check if running on Windows.
-     */
-    public static boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("win");
-    }
 }

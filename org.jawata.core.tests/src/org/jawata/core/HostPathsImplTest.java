@@ -1,6 +1,7 @@
 package org.jawata.core;
 
 import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostPathsImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -172,7 +173,7 @@ class HostPathsImplTest {
     @Test
     @DisplayName("isWindows should detect operating system correctly")
     void isWindows_detectsOperatingSystem() {
-        boolean isWindows = HostPathsImpl.isWindows();
+        boolean isWindows = HostOS.current().isWindows();
         String osName = System.getProperty("os.name").toLowerCase();
 
         if (osName.contains("win")) {
