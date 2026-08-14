@@ -124,9 +124,13 @@ class WorkspaceFileWatcherTest {
         // events. The new mtime-fallback poll guarantees reconciliation
         // regardless of event delivery.
         Path simpleMavenB = helper.getFixturePath("simple-maven-b");
+        // Sprint 28a: escape the separators, as the builder at the bottom of this
+        // file already does. A raw Windows path pasted into JSON is a string of
+        // invalid escapes (\U, \h, ...), every reconcile parse fails, and the
+        // watcher test times out on a fixture bug rather than a product one.
         String body = "{\n  \"version\": 1,\n  \"name\": \"test\",\n  \"projects\": [\n"
-            + "    \"" + simpleMaven.toAbsolutePath() + "\",\n"
-            + "    \"" + simpleMavenB.toAbsolutePath() + "\"\n"
+            + "    \"" + simpleMaven.toAbsolutePath().toString().replace("\\", "\\\\") + "\",\n"
+            + "    \"" + simpleMavenB.toAbsolutePath().toString().replace("\\", "\\\\") + "\"\n"
             + "  ]\n}\n";
         Files.writeString(workspaceJson, body);
 

@@ -95,8 +95,35 @@ class RcpLaunchShapeTest {
         // launcher contract, exec the boot jar under the VM args. Program args are
         // NOT forwarded (the held target never parses args anyway) — they are the
         // assertion surface in the argv log.
-        Path launcher = scratch.resolve("fake-rcp-launcher.sh");
-        Files.writeString(launcher, """
+        // Sprint 28a: written in the dialect THIS host can execute. The real
+        // eclipse launcher is a native executable everywhere; a .cmd is the
+        // faithful Windows stand-in, and the POSIX permission API (which THROWS
+        // on Windows) is replaced by File.setExecutable — a no-op there, where
+        // executability comes from the extension.
+        //
+        // The batch twin iterates argv with a SHIFT loop, never `for %%a in (%*)`:
+        // cmd's for-in splits on '=' as well as spaces, and VM args are
+        // -Dkey=value shaped — a for-in would shred exactly the arguments this
+        // test exists to assert.
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Path launcher = scratch.resolve(windows ? "fake-rcp-launcher.cmd" : "fake-rcp-launcher.sh");
+        String body = windows
+            ? """
+            @echo off
+            setlocal enabledelayedexpansion
+            type nul > "%LOG%"
+            set SEEN=0
+            set VMARGS=
+            :loop
+            if "%~1"=="" goto run
+            >> "%LOG%" echo %~1
+            if "%~1"=="-vmargs" ( set SEEN=1 ) else ( if !SEEN!==1 set VMARGS=!VMARGS! "%~1" )
+            shift
+            goto loop
+            :run
+            java !VMARGS! -jar "%JAR%"
+            """.replace("%LOG%", argvLog.toString()).replace("%JAR%", bootJar)
+            : """
             #!/bin/bash
             printf '%s\\n' "$@" > "%LOG%"
             VMARGS=()
@@ -106,10 +133,9 @@ class RcpLaunchShapeTest {
               if [ "$seen" = 1 ]; then VMARGS+=("$a"); fi
             done
             exec java "${VMARGS[@]}" -jar "%JAR%"
-            """.replace("%LOG%", argvLog.toString()).replace("%JAR%", bootJar));
-        Files.setPosixFilePermissions(launcher, Set.of(
-            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
-            PosixFilePermission.OWNER_EXECUTE));
+            """.replace("%LOG%", argvLog.toString()).replace("%JAR%", bootJar);
+        Files.writeString(launcher, body);
+        assertTrue(launcher.toFile().setExecutable(true));
 
         ObjectNode launch = om.createObjectNode();
         launch.put("action", "launch");
