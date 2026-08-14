@@ -66,4 +66,23 @@ public interface HostProcesses {
     static HostProcesses system() {
         return SystemHostProcesses.INSTANCE;
     }
+
+    /**
+     * The real implementation, answering for a NAMED operating system rather
+     * than this one.
+     *
+     * <p>Its purpose is the sprint's whole thesis: a caller's per-OS behaviour
+     * should be testable on every runner. Before the boundary, a test could
+     * only exercise the branch belonging to the machine it ran on — which is
+     * why {@code ProjectImporterTest} passed a hardcoded {@code false} at three
+     * of four call sites and so never checked the Windows spellings even when
+     * running on Windows.</p>
+     *
+     * <p>Naming is pure logic, so it is honest to drive it this way. LAUNCHING
+     * is not: a spawn's behaviour belongs to the real host and is proven per
+     * environment by {@code HostProcessesContractTest}.</p>
+     */
+    static HostProcesses forOs(HostOS os) {
+        return new SystemHostProcesses(os);
+    }
 }

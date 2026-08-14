@@ -1245,27 +1245,39 @@ public class ProjectImporter {
      * Order: project wrapper (mvnw) > PATH > caller-supplied known locations.
      * Package-visible seam for tests; production callers use the 1-arg overload.
      */
-    static java.nio.file.Path resolveMavenCommand(java.nio.file.Path projectPath, String pathEnv,
-            List<java.nio.file.Path> knownLocations, boolean windows) {
-        String mvn = windows ? "mvn.cmd" : "mvn";
-        java.nio.file.Path wrapper = projectPath.resolve(windows ? "mvnw.cmd" : "mvnw");
-        if (Files.isExecutable(wrapper)) {
-            return wrapper;
+    static java.nio.file.Path resolveMavenCommand(java.nio.file.Path projectPath, java.lang.String pathEnv, java.util.List<java.nio.file.Path> knownLocations, org.jawata.core.host.HostProcesses host) {
+        // The ORDER below is a past-bug fix and must not change: project wrapper,
+        // then PATH, then known install locations. What DID change is where the
+        // per-OS spellings come from — the host, rather than a ternary repeated
+        // at each decision. On Windows that now also finds mvn.exe and mvn.bat,
+        // which the single "mvn.cmd" guess could not.
+        for (String wrapperName : host.wrapperNames("mvnw")) {
+            java.nio.file.Path wrapper = projectPath.resolve(wrapperName);
+            if (Files.isExecutable(wrapper)) {
+                return wrapper;
+            }
         }
+        java.util.List<String> mvnNames = host.executableCandidates("mvn");
         if (pathEnv != null) {
+            // Directory-major: the FIRST directory on PATH that holds maven under
+            // any spelling wins, which is what a user editing PATH expects.
             for (String dir : pathEnv.split(File.pathSeparator)) {
                 if (!dir.isBlank()) {
-                    java.nio.file.Path candidate = java.nio.file.Path.of(dir).resolve(mvn);
-                    if (Files.isExecutable(candidate)) {
-                        return candidate;
+                    for (String mvn : mvnNames) {
+                        java.nio.file.Path candidate = java.nio.file.Path.of(dir).resolve(mvn);
+                        if (Files.isExecutable(candidate)) {
+                            return candidate;
+                        }
                     }
                 }
             }
         }
         for (java.nio.file.Path dir : knownLocations) {
-            java.nio.file.Path candidate = dir.resolve(mvn);
-            if (Files.isExecutable(candidate)) {
-                return candidate;
+            for (String mvn : mvnNames) {
+                java.nio.file.Path candidate = dir.resolve(mvn);
+                if (Files.isExecutable(candidate)) {
+                    return candidate;
+                }
             }
         }
         return null;
@@ -1285,7 +1297,7 @@ public class ProjectImporter {
         if (!home.isBlank()) {
             known.add(java.nio.file.Path.of(home, ".sdkman", "candidates", "maven", "current", "bin"));
         }
-        return resolveMavenCommand(projectPath, System.getenv("PATH"), known, isWindows());
+        return resolveMavenCommand(projectPath, System.getenv("PATH"), known, org.jawata.core.host.HostProcesses.system());
     }
 
     /**
@@ -1581,10 +1593,6 @@ public class ProjectImporter {
             // RuntimeException that would otherwise escape the load.
             log.warn("Failed to scan {} for JARs: {}", dir, e.getMessage());
         }
-    }
-
-    private boolean isWindows() {
-        return HostOS.current().isWindows();
     }
 
     /**

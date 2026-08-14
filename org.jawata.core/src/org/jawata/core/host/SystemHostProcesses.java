@@ -14,14 +14,26 @@ import java.util.concurrent.TimeUnit;
  */
 final class SystemHostProcesses implements HostProcesses {
 
-    static final SystemHostProcesses INSTANCE = new SystemHostProcesses();
+    static final SystemHostProcesses INSTANCE = new SystemHostProcesses(HostOS.current());
 
-    private SystemHostProcesses() {
+    /**
+     * The operating system whose SPELLINGS this instance answers for.
+     *
+     * <p>A value, not {@code HostOS.current()} read inline — for the same reason
+     * {@link HostOS#of(String)} takes a string: it makes the Windows naming
+     * branch reachable from a Linux runner. Naming is pure logic and deserves
+     * to be tested on every host; LAUNCHING is not, and is proven per
+     * environment by the boundary's contract test.</p>
+     */
+    private final HostOS os;
+
+    SystemHostProcesses(HostOS os) {
+        this.os = os;
     }
 
     @Override
     public List<String> executableCandidates(String base) {
-        if (!HostOS.current().isWindows()) {
+        if (!os.isWindows()) {
             return List.of(base);
         }
         // .cmd first: a tool shipped as both a wrapper script and a binary should
@@ -33,7 +45,7 @@ final class SystemHostProcesses implements HostProcesses {
 
     @Override
     public List<String> wrapperNames(String base) {
-        return HostOS.current().isWindows() ? List.of(base + ".cmd", base) : List.of(base);
+        return os.isWindows() ? List.of(base + ".cmd", base) : List.of(base);
     }
 
     @Override
@@ -47,6 +59,7 @@ final class SystemHostProcesses implements HostProcesses {
             // disagreed with us, and the caller is told which.
             return new HostProcessOutcome.CannotLaunch(command.executable(), reasonFor(e));
         }
+
         // The output is drained on its OWN thread, and this is not a style
         // choice. InputStream.readAllBytes() returns at end of stream — which
         // for a pipe means when the process exits — so reading inline BEFORE
@@ -56,10 +69,11 @@ final class SystemHostProcesses implements HostProcesses {
         // sleep 120s under a 3s timeout came back Completed, 120 seconds later.
         // Draining concurrently also keeps a chatty child from filling the pipe
         // buffer and deadlocking against a parent that is not reading yet.
-        // StringBuffer, not StringBuilder: on the timeout path we read what the
-        // drain has produced WITHOUT it having finished, and a bounded join that
-        // expires establishes no happens-before edge. Synchronised appends are
-        // what make the partial output safe to read at all.
+        //
+        // StringBuffer, not StringBuilder: on the timeout path the partial
+        // output is read while the drain is still running, and a bounded join
+        // that EXPIRES establishes no happens-before edge. Synchronised appends
+        // are what make that read safe at all.
         StringBuffer captured = new StringBuffer();
         Thread drain = new Thread(() -> {
             try (InputStream in = process.getInputStream()) {
@@ -68,8 +82,10 @@ final class SystemHostProcesses implements HostProcesses {
                 while ((read = in.read(chunk)) != -1) {
                     captured.append(new String(chunk, 0, read, StandardCharsets.UTF_8));
                 }
-            } catch (IOException ignored) {
-                // The stream dies when we kill the process — expected on timeout.
+            } catch (IOException e) {
+                // The stream dies when we kill the process — expected on timeout,
+                // and the partial output collected so far is still returned.
+                captured.append("\n[output truncated: ").append(e.getMessage()).append(']');
             }
         }, "jawata-host-drain");
         drain.setDaemon(true);
@@ -109,7 +125,8 @@ final class SystemHostProcesses implements HostProcesses {
      * <p>The JDK's message for a Windows spawn refusal is
      * {@code CreateProcess error=193, %1 is not a valid Win32 application} —
      * accurate and opaque. It almost always means a {@code .cmd} was executed
-     * as if it were a binary, which is a spelling problem, not a maven problem.
+     * as if it were a binary, which is a spelling problem, not a maven
+     * problem.</p>
      */
     private static String reasonFor(IOException e) {
         String message = e.getMessage() == null ? e.toString() : e.getMessage();

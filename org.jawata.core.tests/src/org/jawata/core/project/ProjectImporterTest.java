@@ -720,7 +720,7 @@ class ProjectImporterTest {
     void resolveMavenCommand_prefersWrapper(@TempDir Path dir) throws IOException {
         Path wrapper = fakeWrapper(dir, "", "@exit /b 0\r\n");
         assertEquals(wrapper,
-            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), isWindows()));
+            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), org.jawata.core.host.HostProcesses.system()));
     }
 
     @Test
@@ -731,8 +731,33 @@ class ProjectImporterTest {
         Files.writeString(mvn, "#!/bin/sh\n");
         assertTrue(mvn.toFile().setExecutable(true));
         Path project = Files.createDirectories(dir.resolve("proj"));
-        assertEquals(mvn,
-            ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(), false));
+        // A POSIX host, named rather than inherited: the fixture writes a POSIX
+        // "mvn", so the resolution must be asked for POSIX spellings. Passing
+        // the RUNNER's host here would make the test's subject the machine.
+        assertEquals(mvn, ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)));
+    }
+
+    @Test
+    @DisplayName("resolveMavenCommand finds mvn.cmd on PATH for a WINDOWS host — asserted from any runner")
+    void resolveMavenCommand_findsWindowsSpellingOnPath(@TempDir Path dir) throws IOException {
+        // The branch no test could reach before the boundary. Three of the four
+        // resolution tests passed a hardcoded `false`, so the Windows spellings
+        // were unexercised even when the suite ran ON Windows. Naming is pure
+        // logic; asking the port for a named host makes it checkable everywhere.
+        Path bin = Files.createDirectories(dir.resolve("bin"));
+        Path mvnCmd = bin.resolve("mvn.cmd");
+        Files.writeString(mvnCmd, "@echo off\r\n");
+        assertTrue(mvnCmd.toFile().setExecutable(true));
+        Path project = Files.createDirectories(dir.resolve("proj"));
+
+        assertEquals(mvnCmd, ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.WINDOWS)));
+
+        // ...and the POSIX host must NOT accept it: "mvn.cmd" is not "mvn".
+        assertNull(ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)),
+            "a POSIX host must not resolve a .cmd — that is the mix-up error=193 reports");
     }
 
     @Test
@@ -744,12 +769,14 @@ class ProjectImporterTest {
         assertTrue(mvn.toFile().setExecutable(true));
         Path project = Files.createDirectories(dir.resolve("proj"));
         assertEquals(mvn,
-            ProjectImporter.resolveMavenCommand(project, "/usr/nonexistent", List.of(installBin), false));
+            ProjectImporter.resolveMavenCommand(project, "/usr/nonexistent", List.of(installBin),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)));
     }
 
     @Test
     @DisplayName("resolveMavenCommand returns null when nothing is found (loader must warn, not die silently)")
     void resolveMavenCommand_nothingFound(@TempDir Path dir) {
-        assertNull(ProjectImporter.resolveMavenCommand(dir, "/usr/nonexistent", List.of(), false));
+        assertNull(ProjectImporter.resolveMavenCommand(dir, "/usr/nonexistent", List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)));
     }
 }
