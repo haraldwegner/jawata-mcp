@@ -3,6 +3,7 @@ package org.jawata.mcp.coverage;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.jawata.core.LoadedProject;
+import org.jawata.core.host.HostOS;
 import org.jawata.mcp.execution.ForkedTestRunner;
 import org.jawata.mcp.execution.RunnerClasspath;
 import org.slf4j.Logger;
@@ -82,7 +83,7 @@ public final class CoverageService {
             : String.valueOf(CoverageService.class.getPackage().getImplementationVersion());
         m.jacocoVersion = "0.8.15";
         m.jdkVersion = System.getProperty("java.version");
-        m.environment = System.getProperty("os.name") + "/" + System.getProperty("os.arch");
+        m.environment = HostOS.description();
         m.projectKey = project.projectKey();
         m.projectRoot = project.projectRoot().toString();
         m.framework = framework;
@@ -208,7 +209,7 @@ public final class CoverageService {
         m.createdAt = Instant.now().toString();
         m.jacocoVersion = "0.8.15";
         m.jdkVersion = System.getProperty("java.version");
-        m.environment = System.getProperty("os.name") + "/" + System.getProperty("os.arch");
+        m.environment = HostOS.description();
         m.projectKey = project.projectKey();
         m.projectRoot = project.projectRoot().toString();
         m.evidenceKind = evidenceKind == null || evidenceKind.isBlank() ? "imported" : evidenceKind;

@@ -3,6 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.core.host.HostOS;
 import org.jawata.mcp.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.WorkspaceHealth;
@@ -197,8 +198,8 @@ public class HealthCheckTool implements Tool {
             "vendor", System.getProperty("java.vendor")
         ));
         status.put("os", Map.of(
-            "name", System.getProperty("os.name"),
-            "arch", System.getProperty("os.arch")
+            "name", HostOS.osName(),
+            "arch", HostOS.osArch()
         ));
 
         // Capabilities
