@@ -20,3 +20,13 @@ CPU profile too thin
 # gradle-cell job is where these must NOT skip. See expected-aborts.linux for
 # the full reasoning.
 Gradle Tooling API tests skipped via jawata.skip.gradle=true
+
+# --- MEASURED on the first macOS run that reached the comparison (CI 31853736031) ---
+
+# Native crash triage correlates symbols in the ELF/gdb dialect. macOS uses
+# Mach-O and lldb, where the same symbols carry a leading underscore, and the
+# test says so rather than asserting against a correlation it cannot perform.
+# The dialect is DEFERRED to the Sprint-28-family native-triage batch — the
+# design names it as placed-not-built, and the boundary already holds its
+# seams (GdbAdapter keeps the debugger dialect, HostProcesses the spawn).
+Mach-O/lldb unimplemented
