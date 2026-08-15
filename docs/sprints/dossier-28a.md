@@ -418,3 +418,50 @@ mechanism, so it is filed as an issue rather than carried as a watch item.
 | `release.yml` parses; new step unconditional | verified — `if: (always)` on all matrix targets |
 | the filtered step on Windows/macOS | **NOT RUN** — needs a push |
 | a live deploy to the new clients | **NOT RUN** — needs a running studio (dogfood) |
+
+## The adapters, proven against the real client binaries
+
+Not a dogfood and not a claim — the writers' actual output, handed to the actual tools.
+Our `write_managed_toml_block` / `write_managed_json_block` produced the file (via the
+`stage2_live_probe` dump helper, `#[ignore]`d so it never gates anything), into a sandboxed
+HOME that already contained a user's own server and, for Codex, a user's comment. Then the
+client's own binary was asked what it saw.
+
+**Codex** — `codex mcp get jawata-javata-dev`:
+
+```
+jawata-javata-dev
+  enabled: true
+  transport: streamable_http
+  url: http://127.0.0.1:8800/mcp
+  http_headers: Authorization=*****
+```
+
+`codex mcp list` also showed the user's `users-own` server still there, and the file still
+opened with `# the user was here first`.
+
+**Copilot CLI** — `copilot mcp get jawata-javata-dev`:
+
+```
+jawata-javata-dev
+  Status: Enabled
+  Type: http
+  URL: http://127.0.0.1:8800/mcp
+  Headers:
+    Authorization: ***
+  Tools: * (all)
+  Source: User
+```
+
+`copilot mcp list` showed `jawata-javata-dev (http)` and `users-own (local)` side by side.
+
+**What this proves and what it does not.** It proves the bytes we write are bytes these two
+clients parse into an enabled, authenticated jawata server — which is the half a unit test
+cannot reach, because a unit test only ever compares our output to our own expectation. It
+does **not** prove the agent calls jawata and gets an answer; that needs a running resident
+and a real session, and it is C2's live probe.
+
+**VS Code is not covered by this.** It has no CLI that lists configured MCP servers, so
+there is no equivalent read-back. Its schema is measured (`code --add-mcp` wrote the file we
+match, `servers` root and all), but the parse is unverified and stays that way until the
+live probe.
