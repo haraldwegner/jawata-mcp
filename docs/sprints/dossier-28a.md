@@ -379,12 +379,25 @@ Stage 2b, which owns the shared roster.
 
 ## Deliberately deferred, with homes
 
-* **The frontend roster stays hardcoded** — the eleven places across four files that Stage 2b
-  exists to collapse into one constant. Adding three clients to those lists now would make
-  2b's job harder, not easier. Consequence, stated so it is not mistaken for a gap: the new
-  clients deploy **through the backend defaults**, not yet through the dashboard picker. C2b
-  is the checkpoint that requires the picker, and the picker is where the camelCase/snake_case
-  pairing lives that made Claude Desktop silently undeployable once.
+* ~~**The frontend roster stays hardcoded**~~ — **WITHDRAWN, it was wrong.** The paragraph
+  that stood here said the new clients "deploy through the backend defaults, not yet through
+  the dashboard picker", and the C2 audit proved that false. The default is never consulted:
+  `runDeployWithTargets` in `ProjectList.svelte` ALWAYS sends an explicit target list built
+  from a hardcoded array, and `deploy_to_agents` treats a present list as authoritative. So
+  all three new clients took the "Skipped: not selected in this deploy run" branch on every
+  run — three fully-tested adapters no user could reach, with every backend test green.
+
+  The sentence written specifically to stop a reader mistaking this for a gap is the sentence
+  that concealed it. That is the failure worth keeping: a mitigation stated from inference
+  instead of traced through the call chain reads exactly like a mitigation that was checked.
+
+  Fixed: the three clients are in the picker, in `RuntimeSettings.svelte`, and in the TS
+  types. And the loop is closed — `the_ui_picker_can_reach_every_client_the_backend_knows`
+  reads `ProjectList.svelte` **at runtime** and asserts every `KNOWN_DEPLOY_CLIENT_IDS` entry
+  appears in it. Red-proven by removing one. (It reads at runtime rather than via
+  `include_str!` because that was measured too: with `include_str!`, cargo did not rebuild
+  when only the `.svelte` changed, so editing the picker and running `cargo test` returned a
+  stale green — a gate blind to the file it guards.)
 * **Steering files for the new clients** — the deploy writes the inert
   `jawata-studio-rules.md` sibling the `_` arm has always written. Copilot reads `AGENTS.md`
   but at **repository** scope, and the spec is explicit that guidance which would land in the
@@ -415,7 +428,7 @@ mechanism, so it is filed as an issue rather than carried as a watch item.
 | `cargo test` (workspace) | **314 passed, 0 failed, 6 ignored** — 294 at Stage-2 baseline, +20 |
 | `svelte-check` | **0 errors**, 3 pre-existing a11y warnings |
 | `deploy_resolves_here` filter selects | 5 tests, all pass on Linux |
-| `release.yml` parses; new step unconditional | verified — `if: (always)` on all matrix targets |
+| `release.yml` parses; new step carries NO `if:` | verified — it is therefore `success()`, NOT `always()`: if an earlier step fails on a runner this one is SKIPPED there. An earlier version of this row said `always()`, which claimed a stronger guarantee than exists (C2 audit F2) |
 | the filtered step on Windows/macOS | **NOT RUN** — needs a push |
 | a live deploy to the new clients | **NOT RUN** — needs a running studio (dogfood) |
 
@@ -465,3 +478,50 @@ and a real session, and it is C2's live probe.
 there is no equivalent read-back. Its schema is measured (`code --add-mcp` wrote the file we
 match, `servers` root and all), but the parse is unverified and stays that way until the
 live probe.
+
+## C2 adversarial audit — verdict REFUSE, and the disposition
+
+A fresh-context auditor was given the commit, the C2 exit criteria and the spec, and told to
+assume the implementer overclaimed. It ran the suite in a clean worktree, mutation-tested
+three specific claims, and read git history. **Verdict: REFUSE.** It was right, and the lead
+finding was a wiring failure the implementer's own mitigation sentence denied.
+
+| # | finding | disposition |
+|---|---|---|
+| F1 | **The three new clients were unreachable from the product.** The only deploy call site always sends an explicit target list from a hardcoded five-client array; the backend treats a present list as authoritative. "They deploy through backend defaults" was false — the default is never consulted. | **FIXED.** Added to the picker, settings and TS types. Loop closed by a runtime-reading test, red-proven. |
+| F2 | The CI step has never run (self-disclosed). Two precision defects around it: the dossier called a missing `if:` "`always()`" when it is `success()`; and `cargo test <filter>` **exits 0 when the filter matches nothing**, so a rename would leave the step green while testing zero paths. | **Row corrected. Count assertion added** (`EXPECTED=5`), verified to fail against a filter that selects nothing. The run itself still needs a push. |
+| F3 | `deploy_resolves_here` gave 4 of 8 clients no path coverage — **mutation-proven**: IntelliJ's candidates replaced with `.totally-wrong-dir` left 314 passing. The "anti-vacuity clause" checked only `is_absolute()`. | **FIXED.** Per-client expected-suffix table for all eight; the same mutation now fails it. Surfaced a probable real defect — see below. |
+| F4 | `config.rs` asserted in the present indicative that "the roster marks it unsupported and the UI greys it out". Nothing does; that half is Stage 2b. | **FIXED.** Comment is future-tense and names what shipped versus what did not. |
+| F5 | `path_has_managed_entries` blind to Codex/VS Code. | Already fixed mid-audit; the auditor noted the fix commit landing as corroboration. |
+| F6 | "Nothing downstream branches on a client name" is false — 13 sites still do, and this commit **added** one. | **Restated** to the true, narrower claim: nothing in the *MCP-entry write path* branches on a client name. |
+| F7 | `is_managed_mcp_key` was widened to bare `jl` and `javalens`. **`git log -S` shows neither was ever a gateway id** — speculative. A bare managed name is deleted on deploy AND undeploy, so a user's server keyed `jl` would vanish silently. | **FIXED.** Narrowed to `jawata \| goja`, the two names history confirms. Test now asserts `jl`/`javalens` are NOT claimed. |
+| F8 | The JSON writer clobbers an unparseable config while the TOML writer refuses one — opposite policies, same commit, and two new clients routed down the clobbering path. | **FIXED.** JSON refuses too; an empty file is still started (VS Code ships `mcp.json` at 0 bytes — measured). |
+| F9 | Calibration note: with VS Code's root key mutated, only 1 of the 4 no-clobber cells caught it. | Accepted as stated. The grid is real; its depth per cell is one test. |
+
+### What F3 surfaced: IntelliJ probably writes where nothing reads
+
+Closing the blind spot immediately produced a finding. Measured on this machine:
+`~/.config/JetBrains/` holds **versioned** product directories (`IntelliJIdea2024.3`, …),
+while the unversioned `IntelliJIdea/` that studio's candidate names contains nothing but the
+`mcp.json` studio itself wrote. Consistent with Harald's report that MCP does not work in
+IntelliJ.
+
+Two possible defects, one of them cross-platform: the unversioned directory, and the fact
+that the candidate is built home-relative (`~/.config/...`) rather than from
+`dirs::config_dir()` — which coincide on Linux and diverge on macOS
+(`~/Library/Application Support`) and Windows (`%APPDATA%`).
+
+**No fix proposed**, because where IntelliJ actually reads cannot be determined headlessly
+and guessing at the very thing that is wrong is how this gets fixed twice. Filed as
+`jawata-studio#9`, homed in Stage 7's Linux sweep. The pinned test row encodes what we
+currently write and says in the comment that it is unverified.
+
+### C2 status after the fixes
+
+| C2 exit clause | status |
+|---|---|
+| `cargo test` green | **MET** — 318 passed, 0 failed, 7 ignored |
+| Each client answers a jawata-only question on Linux | **NOT MET** — now *reachable* (F1 fixed) but needs a running resident and a live session |
+| Filtered step green on all five targets in a linked run | **NOT MET** — needs a push |
+
+Both remaining clauses are gated on Harald, not on engineering.
