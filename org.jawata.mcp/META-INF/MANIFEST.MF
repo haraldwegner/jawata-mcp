@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: JAWATA MCP
 Bundle-SymbolicName: org.jawata.mcp;singleton:=true
-Bundle-Version: 3.7.2
+Bundle-Version: 3.8.0
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
@@ -44,6 +44,7 @@ Import-Package: com.fasterxml.jackson.annotation,
  org.eclipse.text.templates,
  org.jawata.core,
  org.jawata.core.exceptions,
+ org.jawata.core.host,
  org.jawata.core.project,
  org.jawata.core.search,
  org.jawata.core.workspace,

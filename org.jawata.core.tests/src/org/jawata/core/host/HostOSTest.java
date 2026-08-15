@@ -55,8 +55,6 @@ class HostOSTest {
         assertTrue(HostOS.WINDOWS.isWindows());
         assertFalse(HostOS.MACOS.isWindows());
         assertFalse(HostOS.LINUX.isWindows());
-        assertTrue(HostOS.MACOS.isMacOs());
-        assertFalse(HostOS.LINUX.isMacOs());
     }
 
     @Test

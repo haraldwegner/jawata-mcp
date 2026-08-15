@@ -168,7 +168,7 @@ class HostProcessesContractTest {
             .waitingAtMost(Duration.ofSeconds(5));
 
         assertEquals("git", command.executable());
-        assertEquals("git -C /repo diff", command.describe());
+        assertEquals(List.of("git", "-C", "/repo", "diff"), command.argv());
         assertEquals(Duration.ofSeconds(5), command.timeout());
         assertTrue(command.mergeStderr(), "merged by default — one stream to read");
         assertFalse(command.withSeparateStderr().mergeStderr());

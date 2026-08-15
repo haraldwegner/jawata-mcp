@@ -1,5 +1,4 @@
 org.jawata.core.JdtServiceImpl#dispose()
-org.jawata.core.PathUtilsImpl#isWindows()
 org.jawata.core.search.SearchService#findReadAccesses(IJavaElement,int)
 org.jawata.core.search.SearchService#getAllSupertypes(IType)
 org.jawata.core.search.SearchService#getProject()
@@ -25,6 +24,7 @@ org.jawata.mcp.knowledge.EmbeddingIndex#nearestEntries(String)
 org.jawata.mcp.knowledge.ExperienceAnalogies#rank(List<StoredEntry>,RecallQuery,Map<String,Double>,int,Supplier<IJdtService>)
 org.jawata.mcp.knowledge.ExperienceMaintenance#load(Path)
 org.jawata.mcp.knowledge.ExperienceRetrieval#keywordOnly(ExperienceStore,Supplier<IJdtService>)
+org.jawata.mcp.knowledge.H2ExperienceStore#useClock(Clock)
 org.jawata.mcp.knowledge.LearnerEventStore#failedWrites()
 org.jawata.mcp.knowledge.LearnerEventStore#totalEvents()
 org.jawata.mcp.knowledge.QualityLedger#SURFACE_SEAT

@@ -97,9 +97,4 @@ public record HostCommand(
     public String executable() {
         return argv.get(0);
     }
-
-    /** A readable rendering for logs and error messages — never for a shell to parse. */
-    public String describe() {
-        return String.join(" ", argv);
-    }
 }

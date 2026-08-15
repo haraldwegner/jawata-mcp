@@ -71,11 +71,6 @@ public enum HostOS {
         return this == WINDOWS;
     }
 
-    /** Whether this is macOS — the lldb/Mach-O dialect's precondition. */
-    public boolean isMacOs() {
-        return this == MACOS;
-    }
-
     /** The raw {@code os.name}, for provenance reporting that must stay verbatim. */
     public static String osName() {
         return System.getProperty("os.name", "");

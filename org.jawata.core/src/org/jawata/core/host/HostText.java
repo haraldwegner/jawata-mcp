@@ -46,39 +46,12 @@ public final class HostText {
         return raw;
     }
 
-    /**
-     * Every line terminator becomes LF — the canonical form everything above
-     * the boundary computes over.
-     */
-    public static String canonicalizeToLf(String content) {
-        return content == null ? null : content.replaceAll("\\R", "\n");
-    }
-
-    /**
-     * The line terminator {@code content} actually uses, so a rewrite can put
-     * back what it found.
-     *
-     * <p>Reading a user's CRLF file and writing it back as LF rewrites every
-     * line of their file — a refactoring that touches one method and shows up
-     * in review as the whole file. The first terminator wins; a file with mixed
-     * endings has no single answer, and the majority is not more correct than
-     * the first, only slower to compute.</p>
-     */
-    public static String eolOf(String content, String fallback) {
-        if (content == null) {
-            return fallback;
-        }
-        int cr = content.indexOf('\r');
-        int lf = content.indexOf('\n');
-        if (cr >= 0 && lf == cr + 1) {
-            return "\r\n";
-        }
-        if (cr >= 0 && (lf < 0 || cr < lf)) {
-            return "\r";
-        }
-        if (lf >= 0) {
-            return "\n";
-        }
-        return fallback;
-    }
+    // canonicalizeToLf and eolOf were written here ahead of their consumers and
+    // deleted at the release gate, which proved no production code called them.
+    // The NEED they anticipated is real and recorded in the 1b dossier: reading
+    // a user's CRLF file and writing it back as LF rewrites every line, so a
+    // one-method refactoring arrives in review as the whole file. Whoever
+    // implements EOL PRESERVATION adds them back with the caller that uses
+    // them — an uncalled method is not a head start, it is a claim nothing
+    // tests.
 }
