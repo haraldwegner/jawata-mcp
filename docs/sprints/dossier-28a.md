@@ -267,3 +267,154 @@ old unnamed 284/1 intermittent, this one has its name and both run ids.
 
 Home: the 1b hardening batch (alongside the abort-budget gate). Not a
 release blocker — v3.7.2 shipped green and the flake predates nothing in it.
+
+---
+
+# Stage 2 — four tool adapters and the deploy-path proof (D1, R13a)
+
+Repo: **jawata-studio**. Date: 2026-08-15.
+
+## What the roster gained
+
+Three new clients — **Codex**, **Copilot CLI**, **VS Code** — bringing the deploy roster
+from five to eight. IntelliJ was already on it. Antigravity stays on it, unsupported.
+
+## Every client fact here was measured, not recalled
+
+The failure this project records most often is a fact produced from memory and reported in
+the language of measurement. Client config paths and schemas are exactly that hazard, so
+each one was obtained by **making the client's own tooling write a config in a sandboxed
+HOME**, then reading the file back:
+
+| client | command run | what it wrote |
+|---|---|---|
+| Codex | `codex mcp add jawata-probe --url http://…` | `~/.codex/config.toml`, `[mcp_servers.<id>]` with `url` |
+| Codex | `codex mcp get jawata-javata-dev` | echoed `http_headers: Authorization=*****` — confirming the header key |
+| Codex | wrote `enabled = false`, re-read | reported `jawata-probe (disabled)` |
+| Copilot CLI | `copilot mcp add --transport http …` | `~/.copilot/mcp-config.json`, root `mcpServers`, entry `{tools:["*"], type:"http", url, headers}` |
+| Copilot CLI | `copilot mcp --help` | names `~/.copilot/mcp-config.json` as the User source |
+| VS Code | `code --user-data-dir=… --add-mcp '{…}'` | `<user-data>/User/mcp.json`, root **`servers`**, plus a sibling `inputs: []` |
+
+Two of those measurements overturned what a reasonable guess would have produced:
+
+1. **VS Code's root key is `servers`, not `mcpServers`.** Every other client on the roster
+   uses `mcpServers`. Writing there would have produced a perfectly-merged file under a key
+   VS Code never reads — a deploy reporting success and doing nothing, which is this
+   project's recorded deepest bug class.
+2. **Codex spells "off" as `enabled = false`, not `disabled = true`** — the opposite
+   polarity from every JSON client. `disabled` is a key Codex has no concept of, so it
+   would have been ignored and the server left running while the deploy reported success.
+
+## The design change: the dialect became a value
+
+Before this stage the per-client differences lived as bare string literals scattered across
+the writer, the remover and the validator — `"mcpServers"` appeared in three places and
+`client == "antigravity"` in two. Adding a client meant finding all of them, and missing one
+is silent.
+
+`src-tauri/src/client_dialect.rs` (new, leaf module) now answers, per client: the file
+format, the server-map key, the URL field name, and which entry extras it carries. Nothing
+downstream branches on a client name. This is the same move `org.jawata.core.host` made for
+the operating system in 1b — **the varying knowledge becomes a value with one owner**.
+
+Codex forced a second writer: TOML. `serde_json` round-trips JSON losing nothing a client
+cares about, but a plain TOML serializer destroys every comment and hand-chosen layout in
+the user's file. Codex's own `codex mcp add` preserves them, so a jawata deploy that did not
+would be visibly worse than the tool it sits beside. `toml_edit` (the format-preserving
+editor cargo itself uses) is a new dependency for that reason, and the merge test asserts a
+user's comment survives.
+
+## A product defect the work surfaced
+
+**The gateway's consolidated entry could not be removed.** With `gateway_enabled` on,
+`gateway_entry` writes ONE server keyed `jawata` — no hyphen, no workspace suffix — while
+every branch of `is_managed_mcp_key` required `jawata-`. So the gateway entry was not
+recognised as ours: an undeploy reported "nothing to remove" and left it pointing at a
+gateway no longer running, and `path_has_managed_entries` could not see a gateway-deployed
+client at all.
+
+Found because the Codex removal test used the bare id and failed for the same reason the
+product did. Fixed here; pinned by a test that asserts against the **production
+constructor** (`gateway_entry`) rather than a literal, so renaming the entry cannot quietly
+re-open it. Gated behind a setting that is off by default, which is why it survived.
+
+## The gap the no-clobber tests cannot close, and what closes it
+
+D1 requires each new adapter to ship the four no-clobber shapes, and they do — 12 tests
+across the three clients, plus 4 more for the TOML-specific hazards. The spec states two
+limits on what they prove and they are worth repeating: they run on **Linux only**, and they
+take the settings-file path as a **parameter**. So they prove the merge and remove logic and
+say nothing about *which directory a deploy resolves to* — the only platform-varying part,
+and exactly where a clobber bug lives.
+
+R13a's answer: a `deploy_resolves_here` module that runs the real resolver and asserts the
+shape for the operating system it is running on, wired into `release.yml` as a
+**name-filtered step with no platform condition**. It runs on all five release targets. This
+is the first time any of these paths is checked anywhere but Linux.
+
+The specific hazard it is aimed at: `dirs::config_dir()` returns `~/.config` on Linux,
+`~/Library/Application Support` on macOS and `%APPDATA%` on Windows. VS Code and Claude
+Desktop key off it; Codex and Copilot key off the home dir. A client wired to the wrong one
+passes on Linux and is silently wrong on the other two forever. The path comparison joins
+segments with `MAIN_SEPARATOR_STR` rather than `/`, because a hardcoded slash would pass on
+two platforms and never match on the third — the one the check exists for.
+
+**Not yet answered:** the step has not run. Answering it requires a push, which is Harald's.
+
+## Antigravity: unsupported, explained, not vanished
+
+D1, on Harald's 2026-08-11 design: marked unsupported rather than deleted, because a client
+that explains its own absence beats one that silently vanishes. Its command-line tool has no
+mechanism to connect jawata at all, so the workflow files studio wrote for it steered an
+agent toward tools that client can never call.
+
+A deploy now writes none, and **removes any a previous version left behind** — utilities
+first, because the seat-command removal prunes `.agent/workflows` when it empties and a
+utility file removed after it would be stranded inside a directory no mapping knows.
+`derive_seat_commands_dir` deliberately still answers for Antigravity: dropping the mapping
+would strand those files forever.
+
+The user-facing half — greyed in the list, controls disabled, a mouseover saying why — is
+Stage 2b, which owns the shared roster.
+
+## Deliberately deferred, with homes
+
+* **The frontend roster stays hardcoded** — the eleven places across four files that Stage 2b
+  exists to collapse into one constant. Adding three clients to those lists now would make
+  2b's job harder, not easier. Consequence, stated so it is not mistaken for a gap: the new
+  clients deploy **through the backend defaults**, not yet through the dashboard picker. C2b
+  is the checkpoint that requires the picker, and the picker is where the camelCase/snake_case
+  pairing lives that made Claude Desktop silently undeployable once.
+* **Steering files for the new clients** — the deploy writes the inert
+  `jawata-studio-rules.md` sibling the `_` arm has always written. Copilot reads `AGENTS.md`
+  but at **repository** scope, and the spec is explicit that guidance which would land in the
+  user's own repository is a choice they make, never automatic. D10 / Stage 6 owns it.
+
+## Watch item CLOSED: the studio suite's intermittent, now named
+
+The Stage-0 entry above recorded two unexplained failures, refused to name a cause, and
+asked for one thing: *"capture the FULL output of a single invocation — the name is the
+whole finding."*
+
+Captured 2026-08-15. The two tests are
+`a_java_hand_edit_is_denied_by_the_real_binary` and
+`a_declared_authoring_window_lets_the_next_java_edit_through`, both in
+`jawata-hook/tests/edit_gate_runs_the_real_binary.rs`. They **fail together under the full
+workspace run and pass in isolation**, which is a test-isolation defect and not the
+contention story the shape invited: the pair shares the persisted `jawata-author:` session
+window, and one test's window is visible to the other.
+
+Two subsequent full runs were green, so it is intermittent, and the earlier entry's own rule
+applies — green runs are not evidence. What changed is that it now has names and a
+mechanism, so it is filed as an issue rather than carried as a watch item.
+
+## Gates
+
+| gate | result |
+|---|---|
+| `cargo test` (workspace) | **314 passed, 0 failed, 6 ignored** — 294 at Stage-2 baseline, +20 |
+| `svelte-check` | **0 errors**, 3 pre-existing a11y warnings |
+| `deploy_resolves_here` filter selects | 5 tests, all pass on Linux |
+| `release.yml` parses; new step unconditional | verified — `if: (always)` on all matrix targets |
+| the filtered step on Windows/macOS | **NOT RUN** — needs a push |
+| a live deploy to the new clients | **NOT RUN** — needs a running studio (dogfood) |
