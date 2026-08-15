@@ -3,11 +3,10 @@
 # Each line is a substring; every abort the suite reports must match one.
 # An abort matching nothing FAILS the job.
 #
-# PROVENANCE: these patterns are DERIVED FROM THE ASSUMPTION MESSAGES IN THE
-# SOURCE, not from a Windows run of this branch — no Windows runner was
-# available while 1b was written. The next matrix run is what confirms the set
-# is complete; until then, treat an unbudgeted abort here as information rather
-# than as a defect, and add it WITH its reason.
+# PROVENANCE: MEASURED on CI run 31852349674, the first Windows run of this
+# branch. The list started as patterns derived from the source's assumption
+# messages; three more were added from what Windows actually reported, which is
+# the gate working as intended on its first outing.
 
 # The embedding corpus is a large artifact not carried in the repository.
 no corpus at -Djawata.embed.corpus
@@ -28,3 +27,22 @@ the RCP launcher fake needs exec semantics a Windows .cmd cannot express
 # sibling tests needing NO argv pass on Windows, so the invocation path itself
 # is proven there. The java-launcher fake that removes this skip is M11.
 the .cmd fake does not receive argv under cmd.exe wrapping
+
+# --- MEASURED on the first Windows run (CI 31852349674) ---
+
+# The matrix jobs deliberately set -Djawata.skip.gradle=true; the separate
+# gradle-cell job is where these must NOT skip. See expected-aborts.linux.
+Gradle Tooling API tests skipped via jawata.skip.gradle=true
+
+# Native crash triage parses hs_err in the POSIX dialect. Windows writes a
+# different one (EXCEPTION_ACCESS_VIOLATION, a .mdmp beside the log), and the
+# tests say so rather than asserting against text they cannot read. The
+# dialect itself is DEFERRED to the Sprint-28-family native-triage batch; the
+# boundary already places its seams (HostFs.crashLogs keeps the minidump out
+# of the hs_err set), so the feature slots in without moving them.
+hs_err parsing speaks the POSIX dialect
+
+# A guard test needs a directory the process cannot read. The Windows runner's
+# user ignores the read bit, so the precondition cannot be established — and
+# the test refuses to pass a guard it never actually exercised.
+cannot make a directory unreadable

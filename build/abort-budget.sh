@@ -41,7 +41,15 @@ if [ ! -f "$EXPECTED" ]; then
 fi
 
 # Patterns: non-empty, non-comment lines.
-mapfile -t PATTERNS < <(grep -v '^[[:space:]]*#' "$EXPECTED" | grep -v '^[[:space:]]*$')
+#
+# read-loop, not mapfile: macOS ships bash 3.2, where mapfile does not exist.
+# The first CI run of this gate died there with "mapfile: command not found"
+# followed by "PATTERNS: unbound variable" — a portability assumption inside
+# the very script that polices portability assumptions.
+PATTERNS=()
+while IFS= read -r line; do
+    PATTERNS+=("$line")
+done < <(grep -v '^[[:space:]]*#' "$EXPECTED" | grep -v '^[[:space:]]*$')
 if [ "${#PATTERNS[@]}" -eq 0 ]; then
     echo "FATAL: $EXPECTED lists no patterns — an empty budget would accept every skip."
     exit 2
@@ -57,7 +65,10 @@ else
     echo "reports OK for every possible run, which is worse than no check."
     exit 2
 fi
-mapfile -t ABORTS < <(cat "${LOGS[@]}" 2>/dev/null | sed -n 's/.*~~ ABORTED //p')
+ABORTS=()
+while IFS= read -r line; do
+    ABORTS+=("$line")
+done < <(cat "${LOGS[@]}" 2>/dev/null | sed -n 's/.*~~ ABORTED //p')
 
 echo "abort budget [$OS]: ${#ABORTS[@]} abort(s) reported, ${#PATTERNS[@]} pattern(s) allowed"
 

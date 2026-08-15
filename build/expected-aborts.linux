@@ -25,3 +25,12 @@ no corpus at -Djawata.embed.corpus
 # return too few samples to rank anything, and the test refuses to assert on a
 # top row carrying one sample rather than report a coin toss as a result.
 CPU profile too thin
+
+# The matrix jobs deliberately set -Djawata.skip.gradle=true: they have no
+# Gradle distribution, and without the flag the Tooling API DOWNLOADS one
+# mid-suite, so those tests would pass or fail on whether services.gradle.org
+# answers — three operating systems fetching ~150 MB on every push. The
+# separate gradle-cell job is the environment built to prove these, and there
+# a skip counts as a failure. Added after the first CI run of this gate: the
+# budget had been derived from LOCAL runs, which do not set the flag.
+Gradle Tooling API tests skipped via jawata.skip.gradle=true
