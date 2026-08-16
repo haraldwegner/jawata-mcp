@@ -720,3 +720,14 @@ not com-jats2-model (the declarer) — first-resolver iteration luck. Filed as
 **mcp#26**. Sweep total: four clients re-driven on the released versions,
 7/7-equivalent each after per-client cell expectations; ALL FOUR followed the
 D11 redirect unprompted.
+
+**VS Code (Copilot agent) driven on v3.9.2/3.9.0 (2026-08-16, Harald pasting)
+— the last Linux client row fills:** engine key held on the unguessable count
+(11); D11 texts verbatim on P3/P4; mcp#26's provenance defect reproduced
+INDEPENDENTLY (etfwatch projectKey again); P6 ran (hookless honest); marker
+11974f12, recall count=5 — the chain spans all five driven clients. Two
+client-side observations, neither a jawata defect: a single health_check
+failed with a VS Code extension invoke error while the SAME server answered
+P3/P4 in the same run (transient, client-side); and the agent misreported
+P2's file list (claimed 5 files incl. clicktrader-ui vs the measured 7 files
+/ 2 projects) — the pre-measured-key protocol caught it, the summary did not.

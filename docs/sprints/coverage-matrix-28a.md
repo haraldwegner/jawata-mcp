@@ -25,13 +25,14 @@ markers in the shared experience store.
 | Cursor | ✅ driven (7/7 probe run, keys exact) | ✅ in-band + .mdc rules | ✅ deny observed (both layers, verbatim) | ✅ best-effort (sessionStart; no per-prompt injection — platform limit) | ⚠️ side-effect only (platform limit, recorded) | ✅ marker 98d29a36, dedup-linked |
 | Codex | ✅ driven (7/7, keys exact) | ✅ in-band (per-answer carry; no file — by design, D10) | — none (no hook surface on this route; enforcement via principal, later) · grep ran, honest | pull-only | pull-only | ✅ marker 0dc1ee50, dedup-linked |
 | Copilot CLI | ✅ driven (7/7, keys exact) | ✅ in-band | — none (same ruling) · grep ran, honest | pull-only | pull-only | ✅ marker d098f917, recall count=4 |
-| VS Code | ☐ deploys (6/6 deploy run green), **never driven** | ✅ in-band by construction (same MCP entry) — not driven | — none | pull-only | pull-only | ☐ not driven |
+| VS Code (Copilot agent) | ✅ driven (engine key count exact: 11; one client-side invoke error on a single health_check while the same server answered P3/P4 — VS Code-side transient; agent misreported the file list, caught by the pre-measured key) | ✅ in-band observed (D11 texts verbatim) | — none (no hook surface) · grep ran, honest | pull-only | pull-only | ✅ marker 11974f12, recall count=5 |
 | Grok | ✅ driven (P1–P4, P7 exact; P5 surfaced mcp#26) | ✅ in-band (tools-not-guard ruling) | — none (platform has no hook surface) · grep ran, honest | pull-only | pull-only | ✅ marker a4ac4783 |
 
-**The D11 behavioral cell, all four driven clients:** given only the
-not-found/empty-search redirect, every agent (Cursor, Codex, Copilot, Grok)
-navigated to the other workspace's server and resolved the symbol —
-unprompted. The feature does not merely render; it steers.
+**The D11 behavioral cell, all five driven clients:** given only the
+not-found/empty-search redirect, every agent (Cursor, Codex, Copilot CLI,
+VS Code's Copilot agent, Grok) navigated to the other workspace's server and
+resolved the symbol — unprompted. The feature does not merely render; it
+steers.
 
 ## 2 · Clients × channels — Windows *(no cell driven yet — Harald's session)*
 
