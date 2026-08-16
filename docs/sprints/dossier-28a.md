@@ -608,3 +608,48 @@ its own stale-cells rules.
 **C5 verdict:** each defect closed with what was observed — one "already fixed,
 here is the evidence", one "diagnosed to filed issues", one "still broken, filed".
 Zero fixes applied in this stage; all fix work homes to the issues (28c).
+
+## Stage 6 — D7/D6/D10/D11, each measured per its deliverable (2026-08-16)
+
+**D11 — a wrong-workspace question answers itself. SHIPPED (mcp commit `4a70aca`).**
+`WorkspaceIdentity` (org.jawata.mcp.models), installed at boot from workspace.json
+before the message loop (no race with initialize), live loaded keys preferred once
+present. Three surfaces: initialize instructions carry workspace name + roster;
+every SYMBOL_NOT_FOUND hint says where it looked and redirects; empty search
+steers instead of reading as nonexistence. Gate: 8 new in-framework tests
+(WorkspaceIdentityTest 8/8) + neighbors McpProtocolHandler 21/21, SearchSymbols
+15/15, ToolResponse 12/12. LIVE measure (spec: wrong workspace answers naming the
+right place, both workspaces connected) re-drives when the v3.9.2 resident runs —
+today's residents are v3.9.1.
+
+**D10 — steering reaches the clients that have no hooks. SHIPPED (studio `de47a37`, help `b76bb69`).**
+Mechanism measured: guidance travels IN-BAND — the MCP initialize instructions
+(all clients; since D11 they also name the workspace) and Codex's per-answer
+carry; the v3.9.1 five-client sweep already demonstrated every hookless client
+holding jawata's guidance (all chose jawata tools unprompted). The deploy's old
+`_`-arm rule file (`jawata-studio-rules.md`) was litter no client reads (Stage-2
+architect finding): derive_rule_path is now an Option — files only for cursor
+(.mdc) and claude (CLAUDE.md); deploy AND delete remove the inert file older
+versions wrote (backup first). Nothing is written into a user's repository; help
+states repo-level files (AGENTS.md etc.) are the user's own choice. Gate: 515/0
+across studio targets incl. 2 new tests; unwired gate PASS.
+
+**D7 — the product explains itself. VERIFIED (2b work + today's truth fix).**
+Settings show the six-client roster with the Antigravity tombstone; help.md
+carries the per-client setup table (held by the_help_file_names_every_supported_
+client, green in the 515). Stale claim "guard identical on every client" fixed to
+the two-client enforcement truth (`b76bb69`). R13b (a real JetBrains newcomer
+reads it) is the recorded deferral to Sprint 29.
+
+**D6 — Windows no-friction install route. BUILT; verification is Stage 9 by design.**
+Release workflow ships jawata-studio-portable-windows-{x64,arm64}.zip (studio
+`3e83a02`): exe + jawata-hook.exe side by side (the current_exe() adjacency law),
+content asserted via 7z listing. Bucket repo LIVE:
+https://github.com/haraldwegner/scoop-jawata (manifest for both arches, checkver/
+autoupdate, WebView2 note, AGPL-3.0). OPEN ITEM FOR THE v3.9.2 RELEASE FLOW: the
+manifest's two hash fields read FILL-ON-v3.9.2-RELEASE — fill them from the
+published zips (sha256) right after the release, before any scoop install.
+`scoop install` on real Windows = Stage 9's cell, as the plan states.
+
+**C6 verdict:** D7/D10/D11 measured green; D6 built with its live half homed to
+Stage 9 and one named release-flow step outstanding (the manifest hashes).
