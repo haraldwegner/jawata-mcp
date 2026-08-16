@@ -702,3 +702,11 @@ followed; note it searched without projectKey and correctly navigated past
 the EXECSIM Order — the mcp#25 generic-name shape in the right-workspace
 direction). Store marker 0dc1ee50, duplicate_of the Cursor marker — the
 cross-client dedup chain now three links deep.
+
+**Copilot CLI re-driven on v3.9.2/3.9.0 (2026-08-16, Harald pasting):** 7/7
+against the same keys — engine key exact (11/2), both D11 texts verbatim, the
+redirect followed via inspect(kind=source) on orb (origin=workspace-source).
+P6 ran (hookless honest cell, as Codex). Store marker d098f917; recall
+count=4 — the cross-client marker chain now spans agent, Cursor, Codex,
+Copilot on one operation key. Three of three re-driven clients closed the
+D11 loop unprompted.
