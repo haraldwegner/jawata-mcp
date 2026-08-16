@@ -97,7 +97,7 @@ public final class HostFs {
      * the file's EXTENSION, so this is a no-op that reports success rather than
      * a failure to do something meaningless.</p>
      */
-    public static boolean setExecutable(Path path) {
+    static boolean setExecutable(Path path) {
         if (!supportsPosixPermissions()) {
             return true;
         }

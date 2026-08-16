@@ -55,7 +55,7 @@ public final class WorkspaceIdentity {
     }
 
     /** Test hook — a static holder that cannot be cleared poisons every later test. */
-    public static void reset() {
+    static void reset() {
         workspaceName = null;
         configuredProjects = List.of();
         liveProjectKeys = null;
