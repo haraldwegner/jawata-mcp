@@ -555,3 +555,56 @@ text. (Reading the store: 584f627d is Copilot's, 1fafddfc is Grok's, despite the
 
 Companion install dogfood the same day (nine probes, one finding → jawata-studio#12) is
 in the store under `dogfood:v3.9.1`.
+
+## Stage 5 — the three D9b engine defects, closed with what was observed (2026-08-16, Linux)
+
+Order note: Stage 4 (matrix skeleton) was resequenced AFTER 5+6 and the mcp push on
+Harald's question — the skeleton's only binding constraint is "before the first sweep
+probe", and building it before the engine work would void its pre-filled cells under
+its own stale-cells rules.
+
+**1. Wrong Java language level (falcon) — ALREADY FIXED, Sprint 28 C1.**
+- The fix: `ProjectImporter` derives JDT compliance per build system
+  (`readMavenCompliance` — `maven.compiler.release` wins over `source`;
+  `readEclipseCompliance` reads `.settings`; `usableLevel` validates). Landed in
+  commit `22476b8` ("Sprint 28 C1: every declared build system LOADS"), first
+  release tag **v3.7.0** — after the macOS v3.6.4 finding that flagged falcon.
+  Test-held: `BuildSystemLoadTest` asserts `compiler.compliance=17 was not read
+  from .settings` (org.jawata.core.tests/.../BuildSystemLoadTest.java:316).
+- The observation: `compile_workspace` over the 29-project orb workspace —
+  **falcon: 0 errors** (absent from byProject) where macOS v3.6.4 reported 77
+  wrong-level errors (`var`, switch arrows vs pom source/target 15). The compile
+  is the level-sensitive instrument.
+- Discarded evidence, recorded honestly: a `validate_syntax` arrow-switch probe
+  returned valid against BOTH falcon and the old com-jats2 RCP project — the
+  syntax check does not apply per-project source levels, so it discriminates
+  nothing and is not part of the evidence.
+- Residual: source parity between the Linux and macOS falcon clones was not
+  verified; the macOS cell re-drives in the Stage 11 sweep.
+
+**2. 1139 errors across 20 projects — DIAGNOSED; decomposes into filed issues #3 + #11.**
+- Linux baseline: `compile_workspace(summary=true)` → **1229 errors / 29 projects
+  compiled / 11 with errors**. Deterministic across OSes: top offender identical
+  to the digit (org-eclipse-e4-ui-workbench-commands-swt = 613 on both), e4fixes
+  = 14 on both, the documented-2 projects = 2 on both; clicktrader 431 vs 362 and
+  com-jats2 157 vs 125 differ in magnitude only. Not an OS effect.
+- Root cause observed: `inspect(kind=classpath)` on com-jats2-clicktrader → **3
+  entries** (own src, target/classes, JRE) — every PDE dependency dropped
+  (= mcp#3). Its errors are uniformly "cannot be resolved" for types that exist
+  in com-jats2-model (Order verified indexed there). com-jats2 and the e4-swt
+  bundle are the same family; com-jats2-model resolves 36 entries and shows only
+  the documented 2 (= mcp#11 re-export depth). 100-error samples per project show
+  no third cause. Full observation filed as a comment on **mcp#3**.
+- The fix is #3/#11 engine work — homed to Sprint 28c per the family's homing rule.
+
+**3. inspect(kind=source) size — STILL BROKEN, reproduced on Linux, filed as mcp#23.**
+- `inspect(kind=source, typeName=java.util.stream.Collectors)` → 98,065 chars in
+  ONE line, rejected by the calling client (Claude Code), exactly the macOS 82 KB
+  shape. Both are under `LibrarySource.MAX_SOURCE_CHARS = 120_000` — the bound
+  exists, is not caller-controllable, and defaults far above transport reality.
+  Filed as **mcp#23** with the single-caller fix direction
+  (`InspectTool#libSource` → `LibrarySource#sourceOf`).
+
+**C5 verdict:** each defect closed with what was observed — one "already fixed,
+here is the evidence", one "diagnosed to filed issues", one "still broken, filed".
+Zero fixes applied in this stage; all fix work homes to the issues (28c).
