@@ -1,0 +1,97 @@
+# Coverage matrix — Sprint 28a (D3)
+
+What was **actually driven**, per client, per channel, per operating system —
+and what was not. A cell claims nothing that was not exercised; "deploys,
+never driven" is a permitted, honest state. A tier describes what a client
+*can carry*, not what a weak model will do with it.
+
+Versions of record: **jawata-studio v3.9.2 · jawata-mcp 3.9.0** (both released
+2026-08-16). Cells stamped with the version they were driven on; the staleness
+rules (bottom) say which cells a change re-opens.
+
+Channel definitions — TOOLS: the client's agent answers through jawata MCP
+calls · STEERING: jawata's guidance demonstrably shapes the agent (in-band via
+MCP instructions everywhere; rule files only where a client reads one) ·
+GUARD: a shell/edit that violates the workflow is DENIED · PRIMER: domain
+knowledge injected at session start unprompted · RECALL: prior knowledge
+surfaces at prompts/edits unprompted · STORE: the agent can record and recall
+markers in the shared experience store.
+
+## 1 · Clients × channels — Linux (driven 2026-08-16, v3.9.2/3.9.0)
+
+| Client | Tools | Steering | Guard | Primer | Recall | Store |
+|---|---|---|---|---|---|---|
+| Claude Code | ✅ driven (this session, all day incl. D11 texts) | ✅ in-band + CLAUDE.md rule block | ✅ deny observed (java-grep + workspace blocks fired live) | ✅ auto (SessionStart) | ✅ auto (per-prompt nominees observed) | ✅ records + recalls (many today) |
+| Cursor | ✅ driven (7/7 probe run, keys exact) | ✅ in-band + .mdc rules | ✅ deny observed (both layers, verbatim) | ✅ best-effort (sessionStart; no per-prompt injection — platform limit) | ⚠️ side-effect only (platform limit, recorded) | ✅ marker 98d29a36, dedup-linked |
+| Codex | ✅ driven (7/7, keys exact) | ✅ in-band (per-answer carry; no file — by design, D10) | — none (no hook surface on this route; enforcement via principal, later) · grep ran, honest | pull-only | pull-only | ✅ marker 0dc1ee50, dedup-linked |
+| Copilot CLI | ✅ driven (7/7, keys exact) | ✅ in-band | — none (same ruling) · grep ran, honest | pull-only | pull-only | ✅ marker d098f917, recall count=4 |
+| VS Code | ☐ deploys (6/6 deploy run green), **never driven** | ✅ in-band by construction (same MCP entry) — not driven | — none | pull-only | pull-only | ☐ not driven |
+| Grok | ✅ driven (P1–P4, P7 exact; P5 surfaced mcp#26) | ✅ in-band (tools-not-guard ruling) | — none (platform has no hook surface) · grep ran, honest | pull-only | pull-only | ✅ marker a4ac4783 |
+
+**The D11 behavioral cell, all four driven clients:** given only the
+not-found/empty-search redirect, every agent (Cursor, Codex, Copilot, Grok)
+navigated to the other workspace's server and resolved the symbol —
+unprompted. The feature does not merely render; it steers.
+
+## 2 · Clients × channels — Windows *(no cell driven yet — Harald's session)*
+
+| Client | Tools | Steering | Guard | Primer | Recall | Store |
+|---|---|---|---|---|---|---|
+| Claude Code | ☐ | ☐ | ☐ (+ deleted-binary check) | ☐ | ☐ | ☐ |
+| Cursor | ☐ | ☐ | ☐ (known: hooks-in-visible-bash defect class) | ☐ | ☐ | ☐ |
+| Codex | ☐ | ☐ | — none by platform (Windows: no hooks at all — published limit) | ☐ | ☐ | ☐ |
+| Copilot CLI | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
+| VS Code | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
+| Grok | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
+
+Windows extras owed by the plan: settings/cache dirs in Windows locations ·
+the deleted-binary fail-open check · **Scoop**: `scoop install` from
+[scoop-jawata](https://github.com/haraldwegner/scoop-jawata) (hashes live for
+v3.9.2) yields a working Studio, tray, deploy, resident, one tool call.
+
+## 3 · Clients × channels — macOS *(no cell driven yet — Harald's session)*
+
+Same grid as Windows, all ☐; macOS extras: delete-everything confirmation ·
+deleted-binary check · D9a items (download freeze, window/Dock behavior).
+Falcon's wrong-level cell re-drives here (fixed since v3.7.0 on Linux
+evidence; macOS confirmation completes it).
+
+## 4 · Engine — project types × OS (the CI matrix, run 2026-08-16 on 3.9.0)
+
+| Project type | Linux | Windows | macOS |
+|---|---|---|---|
+| Maven | ✅ green | ✅ green | ✅ green |
+| Gradle (source roots etc.) | ✅ green | ✅ green | ✅ green |
+| Gradle **jar** cell | ✅ (separate Linux job) | — skip (no Gradle distribution in matrix job) — recorded as skip, never a pass | — skip (same) |
+| Eclipse PDE | ✅ green | ✅ green | ✅ green |
+| Eclipse-plugin **jar** cell | ✅ (Linux bundle-pool job) | — skip (no bundle pool) | — skip (same) |
+| Plain Java | ✅ green | ✅ green | ✅ green |
+| RCP launch shape | ✅ green | ✅ green | ✅ green |
+
+Loading, source roots, output exclusion and language level are exercised for
+all five types on all three OSes; the two jar cells stay Linux-only and this
+matrix says so (guard-versus-verified marks carried unchanged). Windows argv
+handling is an assertion (TestHost, M11), not a hope. One Windows
+nondeterminism on the suite is filed: mcp#24 (duplicate-scan fixture race).
+
+## 5 · Stale-cells rules (D12) — what a change re-opens
+
+| Change kind | Cells invalidated |
+|---|---|
+| Hook binary (jawata-hook) changes | Every guard/primer/recall cell on every client, per OS where deployed |
+| A client adapter / deploy writer changes | That client's full row (tools + steering + deploy-dependent cells), all OSes |
+| Resident (jawata-mcp runtime) changes | ALL cells, all clients, all OSes (tools, D11 texts, store — everything transits it) |
+| Studio UI only (no writer, no hook, no resident) | Nothing in this matrix |
+| Rule-block/steering content changes | Steering cells only, clients that receive that channel |
+
+Applied history: 3.9.1→3.9.2/3.9.0 changed deploy writers **and** the
+resident → all Linux cells re-driven above (done); hook binaries unchanged →
+the 3.9.1 guard observations would have carried, and were re-confirmed anyway
+on Cursor. **No cell is driven twice outside these rules.**
+
+## 6 · Open issues feeding later sprints
+
+mcp#3/#11 (PDE dependency resolution — the diagnosed 1229-error mass) ·
+mcp#23 (source size) · mcp#24 (Windows suite flake) · mcp#25 (generic-name
+noise without redirect) · mcp#26 (source provenance + missing filePath) ·
+studio#6/#7 (Windows payload captures, owed to the Windows session).
