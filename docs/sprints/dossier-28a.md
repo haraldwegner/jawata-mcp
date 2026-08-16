@@ -525,3 +525,33 @@ currently write and says in the comment that it is unverified.
 | Filtered step green on all five targets in a linked run | **NOT MET** — needs a push |
 
 Both remaining clauses are gated on Harald, not on engineering.
+
+## The C2 live clause: MET — the five-client sweep, 2026-08-16, v3.9.1
+
+The clause that stayed open through two releases — "each client answers a question it
+could only answer by calling jawata" — closed today, driven by Harald interactively on
+each client against pre-measured keys, judged from the Claude Code session.
+
+The question: every workspace reference to
+`Contract#getPipsFromDoubleAmount`, grouped by project. The key: 12 references across
+`com.jats2.model` (10) and `com.jats2.portfolio.ui` (2) — a cross-project answer no
+single-project index can produce.
+
+| Client | Tools | Guard | Store round-trip |
+|---|---|---|---|
+| Claude Code | ✅ (session itself) | ✅ denied a live probe | ✅ |
+| Cursor | ✅ exact + per-file | ✅ both layers, fallback signpost | ✅ |
+| Codex | ✅ exact | — ran, expected (no hook surface) | ✅ |
+| Copilot CLI | ✅ **per-line exact** (471; 463/613; 255/320/339/393/396; 86/95; 1001/1135) | — ran, expected | ✅ |
+| Grok | ✅ exact + per-file | — ran, expected | ✅ |
+
+The guard rows are recorded as the platform facts they are: denial where a hook surface
+exists, unimpeded execution where none does — the tools-only cell is expected, not a gap.
+
+One store observation worth keeping: the Copilot and Grok prompts carried the Codex
+marker text unchanged, so both wrote "Codex dogfood" summaries — and the store's dedup
+linked both to the real Codex marker. Correct behaviour, three clients, near-identical
+text. (Reading the store: 584f627d is Copilot's, 1fafddfc is Grok's, despite the text.)
+
+Companion install dogfood the same day (nine probes, one finding → jawata-studio#12) is
+in the store under `dogfood:v3.9.1`.
