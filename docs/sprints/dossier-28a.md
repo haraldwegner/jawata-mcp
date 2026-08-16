@@ -710,3 +710,13 @@ P6 ran (hookless honest cell, as Codex). Store marker d098f917; recall
 count=4 — the cross-client marker chain now spans agent, Cursor, Codex,
 Copilot on one operation key. Three of three re-driven clients closed the
 D11 loop unprompted.
+
+**Grok re-driven on v3.9.2/3.9.0 (2026-08-16, Harald pasting) — Linux block
+complete:** P1-P4, P7 exact against the keys (marker a4ac4783). P6 ran —
+the correct cell for the one client with NO hook surface. P5 surfaced a real
+finding the other agents papered over: inspect(kind=source) has no filePath
+field and attributed Order to com-jats2-portfolio-ui-etfwatch (a dependent),
+not com-jats2-model (the declarer) — first-resolver iteration luck. Filed as
+**mcp#26**. Sweep total: four clients re-driven on the released versions,
+7/7-equivalent each after per-client cell expectations; ALL FOUR followed the
+D11 redirect unprompted.
