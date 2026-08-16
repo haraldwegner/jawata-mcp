@@ -182,7 +182,9 @@ public class SearchSymbolsTool extends AbstractTool {
             return ToolResponse.success(data, ResponseMeta.builder()
                 .returnedCount(page.size())
                 .truncated(page.size() == maxResults)
-                .steering(teachTheAddress(query, page, address -> resolves(service, address)))
+                .steering(total == 0
+                    ? emptyResultSteering(query)
+                    : teachTheAddress(query, page, address -> resolves(service, address)))
                 .suggestedNextTools(List.of(
                     "get_symbol_info at a result location for detailed info",
                     "get_type_members for type results",
@@ -194,6 +196,20 @@ public class SearchSymbolsTool extends AbstractTool {
             log.error("Error searching symbols: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * Sprint 28a (D11) — an empty result from one of several jawata servers must say
+     * WHERE it looked. Without this, "results: []" from the wrong workspace reads as
+     * "the symbol does not exist" — the agent's next move should be the OTHER
+     * workspace's server, and the steering line is where that redirect lives.
+     */
+    public static String emptyResultSteering(String query) {
+        String elsewhere = org.jawata.mcp.models.WorkspaceIdentity.elsewhereHint();
+        if (elsewhere == null) {
+            return null;
+        }
+        return "No match for '" + query + "' HERE. " + elsewhere;
     }
 
     /**

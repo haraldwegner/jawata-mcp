@@ -278,6 +278,12 @@ public class JawataApplication implements IApplication {
 
         log.info("Registered {} tools", toolRegistry.getToolCount());
 
+        // Sprint 28a (D11): install this server's workspace identity BEFORE the
+        // message loop, from the same workspace.json the async load will read —
+        // the initialize handshake must never race the project load. The live
+        // supplier takes over once projects are actually in.
+        installWorkspaceIdentity();
+
         // Sprint 10 v1.4.0: prefer workspace.json in the JDT data dir as the
         // source of truth for what to load. The manager (jawata-studio)
         // writes this file. Fall back to the legacy JAVA_PROJECT_PATH env
@@ -439,6 +445,42 @@ public class JawataApplication implements IApplication {
      * non-manager-spawned JVM (Cursor, Claude Code, etc.) saw an empty
      * project list.</p>
      */
+    /**
+     * Sprint 28a (D11): who this server is, readable before anything loads. Boot
+     * facts come from {@code workspace.json} (name + configured project roots);
+     * the env-var fallback names its single root. The live supplier reads the
+     * loaded model when it exists — it reflects later load_project / project-add
+     * calls, and while the async load runs it returns empty so the boot list
+     * keeps answering.
+     */
+    private void installWorkspaceIdentity() {
+        try {
+            Path dataDir = resolveDataDir();
+            Path workspaceJson = dataDir == null ? null : findWorkspaceJson(dataDir);
+            if (workspaceJson != null) {
+                org.jawata.mcp.models.WorkspaceIdentity.install(
+                    readProvenance(workspaceJson)[0], readProjects(workspaceJson));
+            } else {
+                String envRoot = System.getenv("JAVA_PROJECT_PATH");
+                if (envRoot != null && !envRoot.isBlank()) {
+                    Path root = Path.of(envRoot).toAbsolutePath().normalize();
+                    org.jawata.mcp.models.WorkspaceIdentity.install(null, java.util.List.of(root));
+                }
+            }
+            org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> {
+                IJdtService s = this.jdtService;
+                if (s == null) {
+                    return java.util.List.of();
+                }
+                return s.allProjects().stream()
+                    .map(org.jawata.core.LoadedProject::projectKey).toList();
+            });
+        } catch (Exception e) {
+            // Identity is a courtesy layer — a failure here must never stop the server.
+            log.warn("Workspace identity not installed: {}", e.getMessage());
+        }
+    }
+
     private void autoLoadProjects() {
         Path dataDir = resolveDataDir();
         if (dataDir != null) {

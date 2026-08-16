@@ -239,7 +239,12 @@ public class McpProtocolHandler {
 
         // Sprint 22 (MCP injector): the protocol-level guide — "use JAWATA, not grep".
         // Clients that honour the initialize `instructions` field inject it into context.
-        result.put("instructions", SERVER_INSTRUCTIONS);
+        // Sprint 28a (D11): plus this server's own workspace roster, so an agent facing
+        // several jawata servers can pick the right one BEFORE its first search.
+        String identity = org.jawata.mcp.models.WorkspaceIdentity.describe();
+        result.put("instructions", identity == null
+            ? SERVER_INSTRUCTIONS
+            : SERVER_INSTRUCTIONS + "\n\n" + identity);
 
         return result;
     }

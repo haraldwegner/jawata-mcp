@@ -153,9 +153,20 @@ public class ToolResponse {
 
     /**
      * Create a symbol not found error.
+     *
+     * <p>Sprint 28a (D11): the hint names WHICH workspace looked and failed. A bare
+     * "not found" from one of several jawata servers reads as "does not exist",
+     * when the truth is "does not exist HERE" — the enriched hint sends the agent
+     * to its other workspace servers instead of to a wrong conclusion.</p>
      */
     public static ToolResponse symbolNotFound(String symbol) {
-        return error(ErrorInfo.symbolNotFound(symbol));
+        ErrorInfo base = ErrorInfo.symbolNotFound(symbol);
+        String elsewhere = WorkspaceIdentity.elsewhereHint();
+        if (elsewhere == null) {
+            return error(base);
+        }
+        String hint = base.getHint() == null ? elsewhere : base.getHint() + " " + elsewhere;
+        return error(new ErrorInfo(base.getCode(), base.getMessage(), hint));
     }
 
     /**
