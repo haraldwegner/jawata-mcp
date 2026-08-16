@@ -653,3 +653,25 @@ published zips (sha256) right after the release, before any scoop install.
 
 **C6 verdict:** D7/D10/D11 measured green; D6 built with its live half homed to
 Stage 9 and one named release-flow step outstanding (the manifest hashes).
+
+## v3.9.0 dogfood — the shipped artifact, through the front door (2026-08-16, Linux)
+
+Ran against the RELEASED `jawata-v3.9.0-linux-x64.tar.gz` (downloaded from the
+GitHub release, not a local build), launched with a manager-shaped
+`workspace.json` naming the workspace `dogfood-390` and serving one fixture
+project (javadoc-seat). All probes over live JSON-RPC to the resident.
+
+| Probe | Result |
+|---|---|
+| P1 initialize | ✅ serverInfo.version = 3.9.0; instructions end with "THIS SERVER'S WORKSPACE ('dogfood-390'): 1 project(s): javadoc-seat …" — D11 surface 1 live |
+| P3 FQN not-found (`inspect kind=source` on com.jats2…Order) | ✅ SYMBOL_NOT_FOUND, hint: "This is the 'dogfood-390' workspace (…) — a symbol that lives in another project tree is served by that tree's own jawata server" — D11 surface 2 live |
+| P4 empty search (`MatchingOrderForwarder`) | ✅ 0 results + steering "No match for '…' HERE. This is the 'dogfood-390' workspace (…)" — D11 surface 3 live |
+| P5 right-workspace sanity | ✅ fixture's own classes (Account, Ledger, Statement) resolve normally |
+| P2 generic-name search (`Order`) | ⚠️ 32 JDK binary hits via the substring retry — non-empty, so no redirect fires; plausible noise instead of "not here". **Filed as mcp#25** (append the redirect when a bare-name page is binary-only) |
+
+**D11's live measure is MET on the shipped artifact** — a wrong-workspace
+question answers itself on all three designed surfaces; #25 names the one
+query shape (generic simple names) where the answer is noise rather than a
+redirect. The studio-managed residents on this machine pick up v3.9.0 via the
+studio's own update pull; these cells re-drive trivially then (stale-cells:
+resident change re-opens all).
