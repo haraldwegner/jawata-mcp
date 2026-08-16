@@ -684,3 +684,12 @@ with its real 4-project roster and redirect; the orb-strategy server in the same
 session resolves the very symbol (com.jats2.model.platform.position.Order), so
 following the redirect succeeds. D11's two-workspace measure is MET on the
 managed deployment, not only the sandbox.
+
+**Cursor re-driven on v3.9.2/3.9.0 (2026-08-16, Harald pasting):** 7/7 PASS
+against pre-measured keys — versions 3.9.0 both servers (4+29 projects); the
+OrderSplitterStrategy key exact (11 refs / 2 projects / Cross+Fade); D11's
+three surfaces verbatim, and P5 shows the loop CLOSING: the agent followed the
+redirect unprompted and resolved Order on orb-strategy (origin=workspace-
+source). Guard denied via both layers (workspace + java-search), hooks
+unchanged since 3.9.1 — carry cell reconfirmed. Store round-trip: marker
+98d29a36 recallable, dedup linked duplicate_of the 3.9.1 marker (45161c64).
