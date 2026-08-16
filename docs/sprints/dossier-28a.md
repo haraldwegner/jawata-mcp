@@ -675,3 +675,12 @@ query shape (generic simple names) where the answer is noise rather than a
 redirect. The studio-managed residents on this machine pick up v3.9.0 via the
 studio's own update pull; these cells re-drive trivially then (stale-cells:
 resident change re-opens all).
+
+**Managed residents re-driven same evening:** studio auto-updated to v3.9.2 /
+runtime 3.9.0 and reloaded both workspaces (Harald's dashboard: 6/6 clients
+deployed, 0 failed — the 2b status line on a real deploy). Against the LIVE
+managed javata-dev server: FQN not-found and empty search both name 'javata-dev'
+with its real 4-project roster and redirect; the orb-strategy server in the same
+session resolves the very symbol (com.jats2.model.platform.position.Order), so
+following the redirect succeeds. D11's two-workspace measure is MET on the
+managed deployment, not only the sandbox.
