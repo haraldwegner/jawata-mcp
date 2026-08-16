@@ -693,3 +693,12 @@ redirect unprompted and resolved Order on orb-strategy (origin=workspace-
 source). Guard denied via both layers (workspace + java-search), hooks
 unchanged since 3.9.1 — carry cell reconfirmed. Store round-trip: marker
 98d29a36 recallable, dedup linked duplicate_of the 3.9.1 marker (45161c64).
+
+**Codex re-driven on v3.9.2/3.9.0 (2026-08-16, Harald pasting):** 7/7 against
+the same keys. P6 ran (exit 0) — the honest tools-only cell for a hookless
+client per the four-client ruling; Codex labeled it UNEXPECTED only because
+the prompt framed Cursor's expectation. D11 loop closed here too (redirect
+followed; note it searched without projectKey and correctly navigated past
+the EXECSIM Order — the mcp#25 generic-name shape in the right-workspace
+direction). Store marker 0dc1ee50, duplicate_of the Cursor marker — the
+cross-client dedup chain now three links deep.
