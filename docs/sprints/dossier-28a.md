@@ -883,3 +883,7 @@ defect is GitHub's CLI, the token-on-argv hardening is ours.
   re-open whenever a hook change re-opens those rows anyway) · the
   two-workspace redirect cells on Win/mac (unlock via the one-time local
   build, any time) · gateway stage 2 (Sprint 30 / 28b proxy, tracked #27).
+
+**SIGNED OFF by Harald 2026-08-17 — Sprint 28a is CLOSED.** Spec marked ✅ in
+jawata-enterprise; this dossier and the coverage matrix are the permanent run
+record.
