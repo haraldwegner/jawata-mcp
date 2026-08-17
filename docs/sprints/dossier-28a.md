@@ -822,3 +822,11 @@ confirmed); dedup chain extended; and a recall-ordering nuance fed to #34
 omitted it — ordering under cap is undefined, the fix must define it).
 Remaining Windows cells: deleted-binary check, Scoop route, optional
 B-workspace build for two-workspace redirect cells.
+
+**Scoop route driven (2026-08-17):** install from the bucket verified the
+v3.9.2 zip hash, the Scoop binary started on the shared state — D6's Windows
+half closes. The probe's real catch, Harald's: **studio#13 is GENERAL** — an
+ordinary Stop workspace on Windows leaves java hanging and the next startup
+cannot own a fresh process; 'PID not discoverable' names the mechanism
+(no tree-kill, blind adoption). Upgraded on the issue as the Windows face of
+studio#1, with the three-part fix direction and the manual workaround.

@@ -45,10 +45,15 @@ steers.
 | VS Code (Copilot agent) | ✅ driven @3.9.0 (19/9 key exact, full verbatim refs; P1 pasted the embedder block — vector-api available on BOTH servers, confirming #33's closure) | ✅ D11 live, both texts verbatim (#32 fifth sighting) | — none (no hook surface) · Select-String ran (its ** glob matched nothing — PowerShell, not a block) | pull-only | pull-only | ✅ marker ebd72ef0, dedup-linked to Codex's; recall nuance fed #34 |
 | Grok (CLI) | ✅ driven @3.9.0 (Grok 4.6; 19/9 key exact; #26 fifth repro, #31 second client, #32 fourth sighting) | ✅ D11 live, both texts verbatim | — none (no hook surface, per ruling) · built-in grep + Select-String ran; shell rg/grep were OS-missing, correctly not attributed to jawata | pull-only | pull-only | ✅ marker 48b087cb, dedup-linked; ⚠️ found **mcp#34**: capped recall serves oldest-first, own marker invisible |
 
-Windows extras owed by the plan: settings/cache dirs in Windows locations ·
-the deleted-binary fail-open check · **Scoop**: `scoop install` from
-[scoop-jawata](https://github.com/haraldwegner/scoop-jawata) (hashes live for
-v3.9.2) yields a working Studio, tray, deploy, resident, one tool call.
+Windows extras: **Scoop ✅ driven 2026-08-17** — `scoop install` from
+[scoop-jawata](https://github.com/haraldwegner/scoop-jawata) verified the
+manifest sha256 end to end, and the Scoop-delivered binary started correctly
+on the shared state (v3.9.2/3.9.0 header, both workspaces and services
+visible; the day's tool calls ran against these services). Found during the
+probe: **studio#13 generalized** — 'Stop workspace' on Windows leaves java
+hanging and the next start cannot own a fresh process ('PID not
+discoverable'); the Windows face of studio#1. Still owed: the deleted-binary
+fail-open check · settings/cache dirs in Windows locations.
 
 ## 3 · Clients × channels — macOS *(no cell driven yet — Harald's session)*
 
