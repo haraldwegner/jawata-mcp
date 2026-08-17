@@ -130,7 +130,7 @@ class FieldRecorderTest {
             MAPPER.createObjectNode(), ToolResponse.success(Map.of()), 3);
         FieldEvent event = pile.fold().get(0);
         assertEquals(Token.UNKNOWN, event.client());
-        assertEquals(Token.UNKNOWN, event.version());
+        assertEquals(Version.UNKNOWN, event.version());
         assertTrue(event.ok());
     }
 

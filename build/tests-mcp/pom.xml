@@ -36,7 +36,11 @@
             <resource>
                 <directory>${project.basedir}/../../org.jawata.mcp.tests/test-resources</directory>
                 <targetPath>test-resources</targetPath>
-                <includes><include>embed-goldens/*.json</include></includes>
+                <!-- Sprint 28b: the leak corpus rides the same classpath path. -->
+                <includes>
+                    <include>embed-goldens/*.json</include>
+                    <include>field/*.txt</include>
+                </includes>
             </resource>
         </resources>
         <plugins>
