@@ -231,6 +231,42 @@ class ExperienceRetrievalTest {
     }
 
     @Test
+    void the_marker_an_agent_just_wrote_survives_the_cap() throws Exception {
+        // mcp#34 — the store's most basic self-check is record-then-recall, and
+        // it failed whenever a cue's fit set exceeded MAX_TERMINAL: Grok on
+        // Windows recorded a marker, recalled its own operation cue, and got
+        // count=5 capped_from=9 — five OLDER entries, without the one it had
+        // just written seconds earlier.
+        //
+        // The cap itself is right (a cue must not return a pile). The ordering
+        // was not: the fit set is sorted specificity › affinity › confidence ›
+        // MEANING › recency, and meaning is a continuous cosine score, so it
+        // almost never ties — which makes recency unreachable whenever the
+        // embedder is on, for every cue kind.
+        for (int i = 0; i < 8; i++) {
+            store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "older dogfood note number " + i, Confidence.HIGH)
+                    .build())
+                .operation("dogfood-probe").build());
+            Thread.sleep(2);   // distinct createdAt, so "newest" is well defined
+        }
+        String justWritten = store.put(ExperienceEntry.of(
+            SymbolFact.of("lesson", "the marker this agent wrote last", Confidence.HIGH).build())
+            .operation("dogfood-probe").build());
+
+        Map<String, Object> r = retrieval.recall(
+            new RecallQuery(null, null, "dogfood-probe", null, null));
+
+        assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
+        assertEquals(5, entries(r).size(), "the cap still holds");
+        assertEquals(9, r.get("capped_from"), "and it still declares what it capped");
+        assertTrue(ids(entries(r)).contains(justWritten),
+            "the newest fitting entry must be served — a record-then-recall round trip that "
+                + "cannot see its own write makes the store untrustworthy for exactly the "
+                + "purpose an agent uses it for: " + entries(r));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void pointer_resolution_flags_no_project_when_jdt_absent() {
         putSymbol("lesson", "guard lifecycle", "com.example.WorkflowCoordinator");

@@ -244,17 +244,26 @@ public final class ExperienceRetrieval {
         // arbitrary tail loses to an informed one: meaning ranks within the
         // tie, recency only after that. Nothing is added or removed by this;
         // it is purely which of the same entries comes first.
+        // mcp#34: meaning is BANDED, not raw. The comment above promises that
+        // meaning breaks ties "and only ties" — but a cosine score is
+        // continuous, so two distinct texts essentially never tie on it and the
+        // recency key below became unreachable whenever the embedder is on. A
+        // just-written marker then loses to older, wordier entries that happen
+        // to score higher, and a record-then-recall round trip cannot see its
+        // own write. Rounding to bands restores the documented contract: a
+        // meaningfully better match still wins; a rounding-noise difference
+        // falls through to recency.
         fitting.sort(Comparator
             .comparingInt(StoredEntry::specificity).reversed()
             .thenComparing(Comparator.comparingInt(
                 (StoredEntry e) -> memberAffinity(e, memberToken)).reversed())
             .thenComparing(Comparator.comparingInt(StoredEntry::confidenceRank).reversed())
-            .thenComparing(Comparator.comparingDouble(
-                (StoredEntry e) -> meaning.getOrDefault(e.id(), 0.0)).reversed())
+            .thenComparing(Comparator.comparingLong(
+                (StoredEntry e) -> meaningBand(meaning.getOrDefault(e.id(), 0.0))).reversed())
             .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
 
         boolean capped = fitting.size() > MAX_TERMINAL;
-        List<StoredEntry> top = capped ? fitting.subList(0, MAX_TERMINAL) : fitting;
+        List<StoredEntry> top = capped ? withNewestKept(fitting) : fitting;
 
         List<Map<String, Object>> entries = new ArrayList<>();
         for (StoredEntry e : top) {
@@ -272,6 +281,50 @@ public final class ExperienceRetrieval {
             out.put("analogies", ExperienceAnalogies.toMaps(analogies));
         }
         return out;
+    }
+
+    /** Width of one meaning band — see the sort above (mcp#34). */
+    private static final double MEANING_BAND = 0.05;
+
+    /**
+     * Quantize a cosine score so meaning breaks REAL ties only (mcp#34).
+     *
+     * <p>0.05 is a deliberate choice against measured distributions: the parity
+     * band for "the same text" sits at ≥0.999 and retrieval-relevant differences
+     * are far coarser than 0.05, so entries inside one band are not
+     * distinguishable by meaning in any sense a reader would accept — and
+     * recency is a better tie-break than rounding noise.
+     */
+    private static long meaningBand(double score) {
+        return Math.round(score / MEANING_BAND);
+    }
+
+    /**
+     * The capped page, with the newest fitting entry guaranteed a slot (mcp#34).
+     *
+     * <p>Record-then-recall is the store's most basic self-check, and it must
+     * not depend on the just-written entry also winning the ranking: an agent
+     * that cannot see its own marker cannot trust the store at all. So when the
+     * fit set overflows, the last slot goes to the newest entry if the ranking
+     * did not already include it. The cap is unchanged; one row of it is
+     * reserved.
+     */
+    private static List<StoredEntry> withNewestKept(List<StoredEntry> ranked) {
+        List<StoredEntry> top = new ArrayList<>(ranked.subList(0, MAX_TERMINAL));
+        StoredEntry newest = null;
+        for (StoredEntry e : ranked) {
+            if (e.createdAt() == null) {
+                continue;
+            }
+            if (newest == null || e.createdAt().isAfter(newest.createdAt())) {
+                newest = e;
+            }
+        }
+        if (newest == null || top.contains(newest)) {
+            return top;
+        }
+        top.set(MAX_TERMINAL - 1, newest);
+        return top;
     }
 
     /**
