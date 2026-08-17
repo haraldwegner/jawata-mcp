@@ -142,10 +142,18 @@ public abstract class AbstractTool implements Tool {
             };
         }
         if (service == null) {
-            // A project-independent tool with no service at all: nothing to
-            // scope, and its own execute() reads the runtime rather than the
-            // model. Keep the historical answer rather than invent one.
-            return ToolResponse.projectNotLoaded();
+            // Only reachable for a tool that DECLARED it needs no project
+            // (the gate above answered for every other case). It runs — with a
+            // null service it never reads.
+            //
+            // Sprint 28b: this used to answer PROJECT_NOT_LOADED anyway, which
+            // silently un-did the override: `debug`, `profile` and `field` all
+            // say they answer about the runtime rather than the model, and all
+            // three were refused whenever no service existed at all — exactly
+            // the moment an agent reaches for them. Nothing in production had
+            // a null service, so no test could see it until a tool arrived
+            // whose whole point is answering when the model is unavailable.
+            return executeWithService(null, arguments);
         }
 
         if (projectKey != null) {

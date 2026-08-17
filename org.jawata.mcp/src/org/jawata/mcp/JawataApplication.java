@@ -197,14 +197,9 @@ public class JawataApplication implements IApplication {
         if (bundle != null) {
             bundleVersion = bundle.getVersion().toString();
         }
-        // The pile lives under the WORKSPACE ROOT — the same resolution studio
-        // reads (C1 audit F3: user.dir is a second convention for the same
-        // concept, and a divergence would have studio reading a location the
-        // pile is never written to).
         org.jawata.mcp.field.FieldRecorder fieldRecorder =
             new org.jawata.mcp.field.FieldRecorder(
-                new org.jawata.mcp.field.FieldPile(
-                    resolveWorkspaceRoot(resolveDataDir()).resolve("field")),
+                new org.jawata.mcp.field.FieldPile(fieldDir()),
                 clientDirectory, bundleVersion);
 
         // Sprint 26: the event tap — every tool outcome becomes a learner
@@ -901,6 +896,18 @@ public class JawataApplication implements IApplication {
         }
     }
 
+    /**
+     * Sprint 28b (D1/D3): where the field lane's pile and state live — under
+     * the WORKSPACE ROOT, the same resolution studio reads (C1 audit F3: a
+     * second convention for the same concept would have studio reading a
+     * location the pile is never written to). One seam, three users: the
+     * recorder writes the pile, {@code FieldTool} reads both, and studio's
+     * field view folds the same files.
+     */
+    private java.nio.file.Path fieldDir() {
+        return resolveWorkspaceRoot(resolveDataDir()).resolve("field");
+    }
+
     private void registerTools() {
         // Sprint 21d: strict disk sync — every tool call reconciles external edits
         // before executing; the unchanged-tree fast path is the only skip.
@@ -934,6 +941,14 @@ public class JawataApplication implements IApplication {
         // Sprint 16b/A (v1.1.1): project(action) collapses list/add/remove_project
         // (load_project stays separate — it installs the workspace service).
         toolRegistry.register(new ProjectTool(() -> jdtService));
+
+        // Sprint 28b (D3): the field lane's one front door — the local
+        // recording's ranked shapes, the posted mark, and the two switches.
+        // Needs no loaded project: it answers about jawata's own use, and a
+        // workspace whose projects failed to load is exactly when an agent
+        // most wants to report that.
+        toolRegistry.register(
+            new org.jawata.mcp.tools.FieldTool(() -> jdtService, this::fieldDir));
 
         // Batch 1: Core Navigation Tools
         toolRegistry.register(new SearchSymbolsTool(() -> jdtService));
