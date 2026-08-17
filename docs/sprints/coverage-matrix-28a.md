@@ -55,12 +55,24 @@ hanging and the next start cannot own a fresh process ('PID not
 discoverable'); the Windows face of studio#1. Still owed: the deleted-binary
 fail-open check · settings/cache dirs in Windows locations.
 
-## 3 · Clients × channels — macOS *(no cell driven yet — Harald's session)*
+## 3 · Clients × channels — macOS *(session 2026-08-17, all cells @3.9.0, aarch64, embedder vector-api(4 lanes))*
 
-Same grid as Windows, all ☐; macOS extras: delete-everything confirmation ·
-deleted-binary check · D9a items (download freeze, window/Dock behavior).
-Falcon's wrong-level cell re-drives here (fixed since v3.7.0 on Linux
-evidence; macOS confirmation completes it).
+| Client | Tools | Steering | Guard | Store | Falcon (P8) |
+|---|---|---|---|---|---|
+| Claude Code | ✅ 19/9 key exact, full verbatims; v3.6.4 cache-path defect confirmed NOT reproducing | ✅ D11 verbatim | ✅ deny observed | ✅ marker a5f61d3c | ✅ errorCount 0 |
+| Cursor | ✅ 19/9 exact | ✅ D11 verbatim | ✅ deny observed | ✅ dedup-linked | ✅ 0 |
+| VS Code (Copilot agent, Haiku via auto) | ✅ clean run, 1m07s | ✅ D11 verbatim | — none · ran | ✅ marker 4f5595aa | ✅ 0 |
+| Codex | ✅ clean | ✅ D11 verbatim | — none · ran | ✅ dedup-linked | ✅ 0 |
+| Copilot CLI | ❌ **not drivable this run — client-side**: tool search found the jawata tools but the CLI never loaded them into the callable schema; the agent improvised (shell-invoked tool names, ps-harvested resident tokens → studio#14, curled wrong endpoints) and never issued one MCP call. Same client drove Linux directly and Windows only via its internal task agent — a Copilot CLI deferred-MCP defect × weak auto-model | — | — | — | — |
+| Grok | ✅ 19/9 exact | ✅ D11 verbatim | — none · ran | ✅ marker recorded; **#34 reproduced** (own marker absent from capped recall) | ✅ 0 |
+
+**Falcon closes on origin soil**: errorCount 0 on the machine where v3.6.4
+measured 77 wrong-level errors — the D9b defect verified fixed on both OSes
+that matter. P4/P5 legitimately skipped everywhere (javata-dev workspace
+unloaded — current checkout, needs only the one-time local build). #29
+reproduced (third OS). macOS extras still open: delete-everything
+confirmation · deleted-binary check · D9a items (download freeze,
+window/Dock behavior).
 
 ## 4 · Engine — project types × OS (the CI matrix, run 2026-08-16 on 3.9.0)
 

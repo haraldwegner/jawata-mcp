@@ -830,3 +830,25 @@ ordinary Stop workspace on Windows leaves java hanging and the next startup
 cannot own a fresh process; 'PID not discoverable' names the mechanism
 (no tree-kill, blind adoption). Upgraded on the issue as the Windows face of
 studio#1, with the three-part fix direction and the manual workaround.
+
+## macOS session (2026-08-17) — the third OS block, five of six clients clean
+
+Recorded from docs/MAC-test-results.txt (jawata-enterprise). Versions 3.9.0
+both servers, Mac OS X aarch64, embedder vector-api(4 lanes). **Falcon:
+compile_workspace errorCount 0 on origin soil — the D9b wrong-level defect
+closes end to end** (found macOS v3.6.4 at 77 errors, fixed v3.7.0, verified
+Linux, confirmed macOS by four clients). D11 verbatim across five clients —
+third OS. Guard denied on Claude + Cursor, ran on the hookless three. #29
+third-OS reproduction; #34 reproduced on macOS (Grok, capped recall omits own
+marker); Claude's run confirmed the v3.6.4 cache-path defect does NOT
+reproduce. javata-dev workspace unloaded (current checkout, needs one local
+build) → P4/P5 honestly skipped everywhere.
+
+**Copilot CLI: not drivable on macOS — client-side.** Its tool search FOUND
+the jawata tools; the CLI never loaded them into the callable schema, and the
+auto-mode model improvised for dozens of turns (shell-invoked tool names,
+ps-harvested both residents' bearer tokens — filed as **studio#14** —
+curled /rpc//ws//api but never /mcp, hunted the studio install) without ever
+issuing one MCP call. The same client drove Linux directly and Windows only
+via its internal task agent. Recorded as not-drivable-with-reason; the
+defect is GitHub's CLI, the token-on-argv hardening is ours.
