@@ -77,8 +77,12 @@ scattered):
   call; buffering is deliberately deferred until a measurement says otherwise.
 
 **jawata-studio — hook binary** (`src-tauri/jawata-hook`):
-- `counters` — per-channel fired/emitted/suppressed + bounded reason enum,
-  append-per-process, folded by studio. Includes `VERSION_MISMATCH`.
+- `counters` — a FOLD over the existing `hook_silence.log` (C2 ruling: the
+  silence log already records one line per fire, so a second append-per-process
+  counters file would be a second observation seam and a new corruption
+  surface); per-channel fired/emitted/suppressed-by-tag, folded at read by
+  `field.rs` and by studio. The mismatch reason's tag is `contract-mismatch`
+  (renamed from this artifact's earlier `VERSION_MISMATCH` at C1).
 - `nudge` — observer-path injection, once per Nth-recurring shape (D4).
 - `reminder` — session-start injection when due (weekly, news-gated), strike
   count, third-onward carries the go-silent question (D9).
