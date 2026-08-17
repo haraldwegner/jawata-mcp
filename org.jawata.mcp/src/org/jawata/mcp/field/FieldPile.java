@@ -119,7 +119,8 @@ public final class FieldPile {
             Token code = Token.of(section(line, "\"code\":\"", '"'));
             int lat = Integer.parseInt(section(line, "\"lat\":", ','));
             Token client = Token.of(section(line, "\"client\":\"", '"'));
-            Token version = Token.of(section(line, "\"ver\":\"", '"'));
+            Version version = Version.of(
+                section(line, "\"ver\":\"", '"').replace('_', '.'));
             return new FieldEvent(t, tool, kind, ok, code, lat, client, version);
         } catch (RuntimeException e) {
             return null;

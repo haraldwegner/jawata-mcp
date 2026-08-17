@@ -19,7 +19,7 @@ class FieldPileTest {
     private static FieldEvent event(String tool, String kind, boolean ok, String code) {
         return new FieldEvent(1L, Token.of(tool), Token.of(kind), ok,
             ok ? Token.UNKNOWN : new Token(code), 2, Token.of("claude_code"),
-            Token.of("3_11_0"));
+            new Version(3, 11, 0));
     }
 
     @Test
@@ -63,6 +63,27 @@ class FieldPileTest {
         assertNull(FieldPile.parse(null));
         FieldEvent roundTrip = FieldPile.parse(event("a_tool", "k", false, "CODE").toJsonLine());
         assertEquals("a_tool/k/CODE", roundTrip.shapeKey());
+    }
+
+    @Test
+    void the_version_round_trips_and_rejects_non_semver() {
+        FieldEvent roundTrip = FieldPile.parse(event("t", "k", true, null).toJsonLine());
+        assertEquals("3_11_0", roundTrip.version().token());
+        assertEquals(Version.UNKNOWN, Version.of("ghp_16chartokenexample0000000000000000"));
+        assertEquals(Version.UNKNOWN, Version.of("resident-token-9f8e7d6c5b4a"));
+        assertEquals(new Version(3, 11, 0), Version.of("v3.11.0-rc1"));
+    }
+
+    @Test
+    void a_failed_write_is_counted_loudly(@TempDir Path dir) throws Exception {
+        // The pile's parent "directory" is a FILE — createDirectories must fail.
+        Path notADir = dir.resolve("field");
+        Files.writeString(notADir, "occupied");
+        FieldPile pile = new FieldPile(notADir);
+        pile.append(event("t", "k", true, null));
+        assertEquals(1, pile.failedWrites(),
+            "a dropped event is counted, never silent (D-RECALL-DEAD)");
+        assertTrue(pile.fold().isEmpty());
     }
 
     @Test

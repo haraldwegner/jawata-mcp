@@ -64,6 +64,11 @@ class FieldLeakCorpusTest {
         for (String leak : corpus) {
             assertFalse(stored.contains(leak),
                 "corpus string leaked into the pile: " + leak);
+            // C1 audit F2: a content-preserving transform (punctuation →
+            // underscores) must not smuggle the leak past the substring check.
+            String transformed = leak.toLowerCase().replaceAll("[^a-z0-9_]", "_");
+            assertFalse(stored.contains(transformed),
+                "corpus string leaked modulo punctuation: " + transformed);
         }
         // And the pile is not merely empty — every event was recorded, as shapes.
         assertTrue(pile.fold().size() == corpus.size() * 2,

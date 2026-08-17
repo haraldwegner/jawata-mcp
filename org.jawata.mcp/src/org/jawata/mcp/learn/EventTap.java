@@ -17,7 +17,9 @@ import java.util.Set;
  * and records {@link LearnerEvent} telemetry (tool errors, undos, gate calls).
  * The edit-switch model that once trained on these events is retired in Sprint
  * 26a (D4); the events remain as cheap telemetry, and the experience loop is the
- * live capture.
+ * live capture. Sprint 28b adds the sanitized field recording — a small
+ * synchronous file append per call (the tap's first disk consumer; the cost is
+ * owned in ARCHITECTURE-field-recordings-28b.md).
  */
 public class EventTap {
 

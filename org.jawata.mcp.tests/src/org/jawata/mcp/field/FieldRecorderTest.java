@@ -68,8 +68,58 @@ class FieldRecorderTest {
         assertEquals("probe_tool/probe/PROBE_FAILED", event.shapeKey());
         assertFalse(event.ok());
         assertEquals("claude_code", event.client().value());
-        assertEquals("3_11_0", event.version().value());
+        assertEquals("3_11_0", event.version().token());
         assertTrue(event.latencyBucket() >= 0 && event.latencyBucket() <= 6);
+    }
+
+    @Test
+    void the_registry_plumbs_the_real_call_duration(@TempDir Path dir) throws Exception {
+        // A tool that takes >100ms must land in bucket >= 1: reverting the
+        // duration plumbing (passing 0) turns this red (C1 audit F5a).
+        FieldPile pile = new FieldPile(dir);
+        FieldRecorder recorder = new FieldRecorder(pile, new ClientDirectory(), "3.11.0");
+        ToolRegistry registry = new ToolRegistry();
+        EventTap tap = new EventTap(new SessionLedger(), null);
+        tap.setFieldRecorder(recorder);
+        registry.setEventTap(tap);
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "slow_tool";
+            }
+            @Override public String getDescription() {
+                return "sleeps past the first bucket boundary";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of();
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                try {
+                    Thread.sleep(120);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return ToolResponse.success(Map.of());
+            }
+        });
+        registry.callTool("slow_tool", MAPPER.createObjectNode(), "s");
+        assertTrue(pile.fold().get(0).latencyBucket() >= 1,
+            "a 120ms call cannot be in the <10ms bucket unless the plumbing passes 0");
+    }
+
+    @Test
+    void initialize_attributes_the_session_through_the_protocol_handler(@TempDir Path dir)
+            throws Exception {
+        // The REAL protocol path (C1 audit F5b): an initialize message with a
+        // clientInfo must land in the directory under its session id.
+        ClientDirectory clients = new ClientDirectory();
+        org.jawata.mcp.protocol.McpProtocolHandler handler =
+            new org.jawata.mcp.protocol.McpProtocolHandler(new ToolRegistry());
+        handler.setClientDirectory(clients);
+        handler.processMessage("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"clientInfo\":{\"name\":\"claude-code\",\"version\":\"2.1\"},"
+            + "\"protocolVersion\":\"2025-06-18\"}}", "session-init-7");
+        assertEquals("claude_code", clients.clientOf("session-init-7").value());
+        assertEquals(Token.UNKNOWN, clients.clientOf("other-session"));
     }
 
     @Test

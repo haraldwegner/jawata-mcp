@@ -59,9 +59,22 @@ scattered):
   silence get/set, counters). Pattern: facade; smell prevented: tool-count
   creep (the collapse-to-39 lesson). The agent sets the go-silent state
   through it; studio's checkbox writes the same state file atomically.
-- Shape dedupe REUSES the store's symptom normalization from `knowledge.*` —
-  exposed via a seam, never duplicated (the duplicate-implementation dead-fix
-  lesson).
+- Shape dedupe: `FieldEvent.shapeKey()` is CANONICAL BY CONSTRUCTION — every
+  part crossed the whitelist, so there is no prose to normalize and the store's
+  symptom normalization is NOT called (C1 ruling; the original clause's purpose
+  — never a *copied* normalizer — holds: zero normalization code exists in
+  `field.*`). Owned trade: `Token.of` collapses every rejected kind to
+  `unknown`, so distinct free-text kinds fold into one shape; D4's
+  Nth-recurrence nudge may over-merge those — acceptable, since real kinds are
+  schema enums and pass.
+- Grammar rulings from the C1 audit (F1/F2): tokens are DIGIT-FREE
+  (`[a-z_]{1,40}|[A-Z_]{1,40}`) — real tool/kind/code vocabularies carry no
+  digits, identifier-shaped secrets do; the version is a parsed three-int
+  `Version` (parse-or-unknown); the client is a CLOSED VOCABULARY match, never
+  a transform — a transform preserves the content it was supposed to reject.
+- Owned cost: the field append is the tap's first synchronous disk consumer —
+  one small open/append/close per tool call, guarded so it can never fail the
+  call; buffering is deliberately deferred until a measurement says otherwise.
 
 **jawata-studio — hook binary** (`src-tauri/jawata-hook`):
 - `counters` — per-channel fired/emitted/suppressed + bounded reason enum,

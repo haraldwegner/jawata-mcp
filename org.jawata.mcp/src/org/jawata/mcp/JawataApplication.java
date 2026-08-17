@@ -197,10 +197,14 @@ public class JawataApplication implements IApplication {
         if (bundle != null) {
             bundleVersion = bundle.getVersion().toString();
         }
+        // The pile lives under the WORKSPACE ROOT — the same resolution studio
+        // reads (C1 audit F3: user.dir is a second convention for the same
+        // concept, and a divergence would have studio reading a location the
+        // pile is never written to).
         org.jawata.mcp.field.FieldRecorder fieldRecorder =
             new org.jawata.mcp.field.FieldRecorder(
                 new org.jawata.mcp.field.FieldPile(
-                    java.nio.file.Path.of(System.getProperty("user.dir"), "field")),
+                    resolveWorkspaceRoot(resolveDataDir()).resolve("field")),
                 clientDirectory, bundleVersion);
 
         // Sprint 26: the event tap — every tool outcome becomes a learner

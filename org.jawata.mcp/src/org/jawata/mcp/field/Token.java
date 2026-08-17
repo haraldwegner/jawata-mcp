@@ -16,7 +16,13 @@ import java.util.regex.Pattern;
  */
 public record Token(String value) {
 
-    private static final Pattern OK = Pattern.compile("[a-z0-9_]{1,40}|[A-Z0-9_]{1,40}");
+    // NO DIGITS, deliberately (C1 audit F1): every real tool name, kind and
+    // error code is digit-free ("search_symbols", "type_hierarchy",
+    // "PROJECT_NOT_LOADED"), while identifier-shaped secrets and ids carry
+    // digit runs ("ghp_16chartoken…", hex suffixes). Excluding digits makes
+    // that whole class unrepresentable; versions carry digits and get their
+    // own parsed type (Version).
+    private static final Pattern OK = Pattern.compile("[a-z_]{1,40}|[A-Z_]{1,40}");
 
     /** The coercion target for every value the whitelist rejects. */
     public static final Token UNKNOWN = new Token("unknown");

@@ -15,15 +15,14 @@ public final class FieldRecorder {
 
     private final FieldPile pile;
     private final ClientDirectory clients;
-    private final Token version;
+    private final Version version;
 
-    /** @param version the jawata version, pre-tokenized (dots → underscores). */
+    /** @param version the jawata version string; parse-or-unknown (C1 F2: no
+     *        transform — an unparseable value contributes nothing). */
     public FieldRecorder(FieldPile pile, ClientDirectory clients, String version) {
         this.pile = pile;
         this.clients = clients;
-        this.version = Token.of(version == null
-            ? null
-            : version.toLowerCase().replaceAll("[^a-z0-9_]", "_"));
+        this.version = Version.of(version);
     }
 
     /** The pile this recorder writes (status surfaces + tests). */

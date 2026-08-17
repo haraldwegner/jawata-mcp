@@ -13,9 +13,8 @@ package org.jawata.mcp.field;
  * @param errorCode     the structured error CODE (never the message);
  *                      {@code unknown} for a success
  * @param latencyBucket log-scale duration bucket, see {@link #bucket(long)}
- * @param client        the connected client's name as a token
- * @param version       the jawata version as a token (dots become {@code unknown};
- *                      the wiring passes a tokenized form)
+ * @param client        the connected client, from the closed vocabulary
+ * @param version       the jawata version, parse-or-unknown ints only
  */
 public record FieldEvent(
     long epochMillis,
@@ -25,7 +24,7 @@ public record FieldEvent(
     Token errorCode,
     int latencyBucket,
     Token client,
-    Token version
+    Version version
 ) {
 
     /** Log-scale duration buckets: 0 &lt;10ms · 1 &lt;100ms · 2 &lt;1s · 3 &lt;10s ·
@@ -58,6 +57,6 @@ public record FieldEvent(
             + ",\"code\":\"" + errorCode.value() + '"'
             + ",\"lat\":" + latencyBucket
             + ",\"client\":\"" + client.value() + '"'
-            + ",\"ver\":\"" + version.value() + "\"}";
+            + ",\"ver\":\"" + version.token() + "\"}";
     }
 }
