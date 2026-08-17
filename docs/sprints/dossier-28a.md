@@ -801,3 +801,14 @@ new Codex sandbox permitted project reads). The catch of the run: the record
 carried duplicate_of — **dedup works on Windows, mcp#33 closed as an agent
 misreading of the store's by-design keep-and-link behavior**; embedder
 implicitly proven up. Four of six Windows client rows now measured.
+
+**Grok CLI on Windows @3.9.0 (2026-08-17, Grok 4.6) — the Windows CLI set
+closes:** the most disciplined report of the sweep (four-way P6 separating
+OS-missing commands from jawata denials; P7 cross-checked with list when
+recall looked wrong). 19/9 key exact; D11 verbatim both texts; #26 fifth
+reproduction, #31 second client, #32 fourth sighting — and ONE new defect
+worth the run: **mcp#34**, capped recall serves oldest-first so a
+record-then-recall agent cannot see its own marker (capped_from honest, page
+ordering wrong). Windows client rows now: Claude, Cursor, Codex, Copilot,
+Grok measured; VS Code row + deleted-binary check + Scoop remain the open
+Windows cells.

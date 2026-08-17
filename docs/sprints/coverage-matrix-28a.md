@@ -43,7 +43,7 @@ steers.
 | Codex | ☐ | ☐ | — none by platform (Windows: no hooks at all — published limit) | ☐ | ☐ | ☐ |
 | Copilot CLI (Git Bash) | ✅ driven @3.9.0 (AbstractMultiplier 19 refs, matching two independent Claude runs; #28 NPE reproduced — third client) | ⚠️ D11 claimed, not verbatim — run driven by Haiku + gpt-5-mini: the model tier degraded the reporting (sub-agent detour, summaries), while jawata's computed answers stayed exact | — none (no hook surface, per ruling) · grep ran via PowerShell, honest | pull-only | pull-only | ✅ marker 25bfe0ed round-tripped |
 | VS Code | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
-| Grok | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
+| Grok (CLI) | ✅ driven @3.9.0 (Grok 4.6; 19/9 key exact; #26 fifth repro, #31 second client, #32 fourth sighting) | ✅ D11 live, both texts verbatim | — none (no hook surface, per ruling) · built-in grep + Select-String ran; shell rg/grep were OS-missing, correctly not attributed to jawata | pull-only | pull-only | ✅ marker 48b087cb, dedup-linked; ⚠️ found **mcp#34**: capped recall serves oldest-first, own marker invisible |
 
 Windows extras owed by the plan: settings/cache dirs in Windows locations ·
 the deleted-binary fail-open check · **Scoop**: `scoop install` from
