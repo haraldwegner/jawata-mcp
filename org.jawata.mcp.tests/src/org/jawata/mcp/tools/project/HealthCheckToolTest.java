@@ -88,4 +88,47 @@ class HealthCheckToolTest {
         assertTrue(toolWithProject.execute(null).isSuccess());
         assertTrue(toolWithoutProject.execute(objectMapper.createObjectNode()).isSuccess());
     }
+
+    @Test
+    @DisplayName("mcp#29: nothing loaded after a FAILED load is NOT healthy — and says why")
+    void aWorkspaceWhereEverythingFailedToLoadIsUnhealthy() {
+        // The defect: health was computed over the loaded-project list, and a
+        // total failure leaves that list EMPTY — "no unhealthy projects" then
+        // read as healthy=true, in the same response whose project.status
+        // already said "failed". A caller trusting the documented contract
+        // ("false gates analyses and refactorings") treated a dead workspace as
+        // fine and got empty answers.
+        String reason = "all 1 workspace project(s) FAILED to load — first: jawata-mcp: "
+            + "Maven resolution failed. Remedy: run the project's build once.";
+        HealthCheckTool tool = new HealthCheckTool(() -> false, () -> 56,
+            () -> ProjectLoadingState.FAILED, () -> reason,
+            () -> new org.jawata.core.JdtServiceImpl());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> workspace = (Map<String, Object>)
+            getData(tool.execute(objectMapper.createObjectNode())).get("workspace");
+
+        assertEquals(0, workspace.get("projectCount"), "nothing loaded — that is the premise");
+        assertEquals(Boolean.FALSE, workspace.get("healthy"),
+            "an empty workspace after a failed load is the one case the flag exists for: "
+                + workspace);
+        assertTrue(String.valueOf(workspace.get("warning")).contains("Maven resolution failed"),
+            "and the warning carries the REASON, so the user knows what to fix: " + workspace);
+    }
+
+    @Test
+    @DisplayName("an empty workspace that never tried to load is not branded unhealthy")
+    void anEmptyButNotFailedWorkspaceStaysHealthy() {
+        // The guard must not cry wolf: a server started before any project was
+        // loaded is waiting, not broken.
+        HealthCheckTool tool = new HealthCheckTool(() -> false, () -> 56,
+            () -> ProjectLoadingState.NOT_LOADED, () -> null,
+            () -> new org.jawata.core.JdtServiceImpl());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> workspace = (Map<String, Object>)
+            getData(tool.execute(objectMapper.createObjectNode())).get("workspace");
+
+        assertEquals(Boolean.TRUE, workspace.get("healthy"), "got: " + workspace);
+    }
 }

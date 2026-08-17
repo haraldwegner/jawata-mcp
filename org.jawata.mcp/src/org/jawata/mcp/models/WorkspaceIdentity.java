@@ -28,6 +28,7 @@ public final class WorkspaceIdentity {
     private static volatile String workspaceName;
     private static volatile List<String> configuredProjects = List.of();
     private static volatile Supplier<List<String>> liveProjectKeys;
+    private static volatile Supplier<String> loadFailure;
 
     private WorkspaceIdentity() {}
 
@@ -54,11 +55,27 @@ public final class WorkspaceIdentity {
         liveProjectKeys = supplier;
     }
 
+    /**
+     * The terminal load failure, when there is one — supplied so the identity can
+     * tell "still loading" from "will never load" (mcp#32).
+     *
+     * <p>The boot list exists to cover the async-loading window. It kept
+     * answering after a TERMINAL failure too, so a workspace whose only project
+     * failed to load introduced that project as PRESENT while {@code
+     * health_check} reported {@code projectCount: 0} — the server contradicting
+     * itself in two answers to the same agent. The supplier returns null while
+     * the load is fine or still running, and the reason once it has failed.</p>
+     */
+    public static void installLoadFailure(Supplier<String> supplier) {
+        loadFailure = supplier;
+    }
+
     /** Test hook — a static holder that cannot be cleared poisons every later test. */
     static void reset() {
         workspaceName = null;
         configuredProjects = List.of();
         liveProjectKeys = null;
+        loadFailure = null;
     }
 
     /** True once {@link #install} gave this server something to say about itself. */
@@ -93,6 +110,20 @@ public final class WorkspaceIdentity {
             + " project tree is served by that tree's own jawata server, not this one.";
     }
 
+    /** The terminal failure reason, or null — a broken supplier answers null. */
+    private static String readLoadFailure() {
+        Supplier<String> supplier = loadFailure;
+        if (supplier == null) {
+            return null;
+        }
+        try {
+            String reason = supplier.get();
+            return reason == null || reason.isBlank() ? null : reason;
+        } catch (Exception e) {
+            return null; // never let this break an error response
+        }
+    }
+
     private static String projectSummary() {
         List<String> live = null;
         Supplier<List<String>> supplier = liveProjectKeys;
@@ -103,7 +134,21 @@ public final class WorkspaceIdentity {
                 live = null; // a broken supplier must never break an error response
             }
         }
-        List<String> names = live != null && !live.isEmpty() ? live : configuredProjects;
+        boolean nothingLive = live == null || live.isEmpty();
+        if (nothingLive) {
+            // mcp#32: a TERMINAL failure ends the boot list's mandate. Naming
+            // the configured projects here would claim as present exactly the
+            // projects the same server reports as zero.
+            String failure = readLoadFailure();
+            if (failure != null) {
+                return (configuredProjects.isEmpty()
+                        ? "no project loaded"
+                        : configuredProjects.size() + " configured project(s) FAILED to load ("
+                            + String.join(", ", configuredProjects) + ")")
+                    + " — " + failure;
+            }
+        }
+        List<String> names = nothingLive ? configuredProjects : live;
         if (names.isEmpty()) {
             return "no projects loaded yet";
         }

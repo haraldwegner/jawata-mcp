@@ -74,6 +74,53 @@ class WorkspaceIdentityTest {
     }
 
     @Test
+    @DisplayName("mcp#32: after a TERMINAL load failure the identity stops claiming the projects")
+    void failedLoad_saysFailedInsteadOfNamingProjectsAsPresent() {
+        // The boot list exists to cover the async-LOADING window. It kept
+        // answering after a terminal failure, so this server introduced its
+        // project as present while health_check reported projectCount: 0 — the
+        // same server contradicting itself in two answers to one agent.
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/home/x/jawata-mcp")));
+        WorkspaceIdentity.installLiveKeys(List::of);
+        WorkspaceIdentity.installLoadFailure(() ->
+            "all 1 workspace project(s) FAILED to load — first: jawata-mcp: Maven resolution failed");
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+        assertNotNull(hint);
+        assertTrue(hint.contains("FAILED to load"),
+            "the failure is stated, not implied: " + hint);
+        assertTrue(hint.contains("Maven resolution failed"),
+            "and it carries the reason the agent must relay: " + hint);
+        assertFalse(hint.contains("1 project(s): jawata-mcp"),
+            "the configured project must NOT be presented as present: " + hint);
+    }
+
+    @Test
+    @DisplayName("while the load is still running the boot list still answers")
+    void stillLoading_keepsUsingTheBootList() {
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/home/x/jawata-mcp")));
+        WorkspaceIdentity.installLiveKeys(List::of);
+        WorkspaceIdentity.installLoadFailure(() -> null);   // no failure (yet)
+
+        assertTrue(WorkspaceIdentity.describe().contains("1 project(s): jawata-mcp"),
+            "the async-loading window is precisely why the boot list exists");
+    }
+
+    @Test
+    @DisplayName("mcp#32: two hints joined read as two sentences")
+    void notFoundHint_isNotARunOnLine() {
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/home/x/jawata-mcp")));
+
+        String hint = ToolResponse.symbolNotFound("com.example.Foo").getError().getHint();
+        assertNotNull(hint);
+        assertFalse(hint.contains("symbols This is"),
+            "the base hint and the workspace hint were concatenated with a bare space, so every "
+                + "not-found answer read as one run-on line: " + hint);
+        assertTrue(hint.contains(". This is") || hint.startsWith("This is"),
+            "the join is a sentence break: " + hint);
+    }
+
+    @Test
     @DisplayName("an empty search result steers instead of reading as nonexistence")
     void emptySearch_steers() {
         WorkspaceIdentity.install("javata-dev", List.of(Path.of("/home/x/jawata-mcp")));

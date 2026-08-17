@@ -165,8 +165,26 @@ public class ToolResponse {
         if (elsewhere == null) {
             return error(base);
         }
-        String hint = base.getHint() == null ? elsewhere : base.getHint() + " " + elsewhere;
-        return error(new ErrorInfo(base.getCode(), base.getMessage(), hint));
+        return error(new ErrorInfo(base.getCode(), base.getMessage(),
+            joinHints(base.getHint(), elsewhere)));
+    }
+
+    /**
+     * Join two hint sentences so the reader sees two sentences (mcp#32).
+     *
+     * <p>Concatenating with a bare space produced
+     * "…find available symbols This is the 'x' workspace…" — one run-on line in
+     * every not-found answer. A hint that already ends in punctuation is left
+     * alone.</p>
+     */
+    private static String joinHints(String base, String addition) {
+        if (base == null || base.isBlank()) {
+            return addition;
+        }
+        String trimmed = base.stripTrailing();
+        boolean ended = trimmed.endsWith(".") || trimmed.endsWith("!") || trimmed.endsWith("?")
+            || trimmed.endsWith(":") || trimmed.endsWith(";");
+        return trimmed + (ended ? " " : ". ") + addition;
     }
 
     /**

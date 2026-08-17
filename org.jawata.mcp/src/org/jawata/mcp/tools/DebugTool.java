@@ -39,6 +39,19 @@ public class DebugTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(DebugTool.class);
 
+    /**
+     * A debugger needs a JVM, not a loaded project (mcp#28).
+     *
+     * <p>{@code discover} lists the local JVMs and {@code attach} takes a pid;
+     * neither reads the Java model. Refusing them on an empty or failed
+     * workspace would remove the one tool family that still works when the
+     * model does not.
+     */
+    @Override
+    protected boolean requiresLoadedProject() {
+        return false;
+    }
+
     private static final List<String> ACTIONS = List.of(
         "discover", "launch", "attach", "status", "detach", "cancel",
         "preset_args",

@@ -174,11 +174,33 @@ public class HealthCheckTool implements Tool {
                 }
             }
 
+            // mcp#29: a workspace whose every project FAILED to load has an
+            // EMPTY project list, and health computed over that list came out
+            // TRUE — the one field whose contract is "false gates analyses and
+            // refactorings" said fine about a dead workspace, while this same
+            // response's `project.status` already said "failed". The
+            // contradiction was internal, so nothing caught it.
+            boolean nothingLoadedAfterFailure =
+                projects.isEmpty() && loadingState == ProjectLoadingState.FAILED;
+            if (nothingLoadedAfterFailure) {
+                unhealthy.add("the workspace's configured project(s) failed to load: "
+                    + loadingErrorSupplier.get());
+            }
+
             Map<String, Object> workspace = new LinkedHashMap<>();
             workspace.put("projects", projects);
             workspace.put("projectCount", projects.size());
             workspace.put("healthy", unhealthy.isEmpty());
-            if (!unhealthy.isEmpty()) {
+            if (nothingLoadedAfterFailure) {
+                workspace.put("unhealthyProjects", unhealthy);
+                workspace.put("warning", "NOTHING IS LOADED. Every configured project of this "
+                    + "workspace failed to load, so every analysis will answer about an empty "
+                    + "model — a tool reporting 'nothing found' has found nothing because there "
+                    + "is nothing to look at, not because the code lacks it. REFACTORINGS ARE "
+                    + "REFUSED. The reason is: " + loadingErrorSupplier.get()
+                    + " — this is a configuration fault for the workspace's owner to fix, and it "
+                    + "is not something an agent should work around.");
+            } else if (!unhealthy.isEmpty()) {
                 workspace.put("unhealthyProjects", unhealthy);
                 workspace.put("warning", "This workspace has " + unhealthy.size() + " project(s) "
                     + "that CANNOT BE READ. Every whole-workspace analysis will be incomplete, "

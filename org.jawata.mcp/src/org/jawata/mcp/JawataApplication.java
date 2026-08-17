@@ -133,6 +133,26 @@ public class JawataApplication implements IApplication {
         return app != null ? app.loadingError : null;
     }
 
+    /**
+     * Test hook — stand in a workspace-load state without booting Equinox.
+     *
+     * <p>The tool gate's answer depends on this application-wide state
+     * (mcp#28), and no unit test can start a real application to produce a
+     * failed load. Package-private on purpose: a public test-only member is
+     * exactly what the hollow-wiring gate refuses.
+     */
+    static void setLoadingStateForTest(ProjectLoadingState state, String error) {
+        JawataApplication app = new JawataApplication();
+        app.loadingState = state;
+        app.loadingError = error;
+        instance = app;
+    }
+
+    /** Test hook — a static instance left behind poisons every later test. */
+    static void clearLoadingStateForTest() {
+        instance = null;
+    }
+
     @Override
     public Object start(IApplicationContext context) throws Exception {
         log.info("JAWATA MCP Server starting...");
@@ -475,6 +495,11 @@ public class JawataApplication implements IApplication {
                 return s.allProjects().stream()
                     .map(org.jawata.core.LoadedProject::projectKey).toList();
             });
+            // mcp#32: the boot list covers the LOADING window only. Once the
+            // load has terminally failed, the identity says so instead of
+            // naming projects this server does not have.
+            org.jawata.mcp.models.WorkspaceIdentity.installLoadFailure(() ->
+                getLoadingState() == ProjectLoadingState.FAILED ? getLoadingError() : null);
         } catch (Exception e) {
             // Identity is a courtesy layer — a failure here must never stop the server.
             log.warn("Workspace identity not installed: {}", e.getMessage());

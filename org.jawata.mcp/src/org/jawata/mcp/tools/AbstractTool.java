@@ -76,28 +76,37 @@ public abstract class AbstractTool implements Tool {
     }
 
     /**
-     * Default execute implementation that checks for loaded project
-     * then delegates to executeWithService.
+     * Whether this tool needs at least one readable project.
      *
-     * <p>Handles three cases:
-     * <ul>
-     *   <li>Project is loading - returns "loading" message with hint to check health_check</li>
-     *   <li>Project load failed - returns error with the failure reason</li>
-     *   <li>No project loaded - returns standard "project not loaded" error</li>
-     * </ul>
+     * <p>Nearly every tool does — it answers about code. The exceptions are the
+     * RUNTIME tools: {@code debug} discovers and attaches to JVMs and
+     * {@code profile} reads a crash log, both of which are meaningful with no
+     * project loaded at all. Overriding this to {@code false} is what keeps the
+     * gate below a single seam instead of a per-tool condition (mcp#28).
+     */
+    protected boolean requiresLoadedProject() {
+        return true;
+    }
+
+    /**
+     * Default execute implementation that checks for a readable project, then
+     * delegates to executeWithService.
+     *
+     * <p><b>The gate is "are there projects to answer from", not "is the
+     * service object present" (mcp#28).</b> A workspace whose every project
+     * FAILED to load still has a service — empty. Tools then ran against
+     * nothing: {@code search_symbols} dereferenced a null search service and
+     * answered INTERNAL_ERROR "this may be a bug", on exactly the path a
+     * redirected agent lands on. Reading emptiness rather than the loading enum
+     * also self-heals, because a later successful {@code load_project} makes the
+     * predicate false without anyone having to remember to clear a flag.
+     *
+     * <p>The loading state still chooses the WORDS: loading, failed-with-reason,
+     * or nothing-loaded.
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
         IJdtService service = serviceSupplier.get();
-        if (service == null) {
-            // Check loading state to provide more specific feedback
-            ProjectLoadingState loadingState = JawataApplication.getLoadingState();
-            return switch (loadingState) {
-                case LOADING -> ToolResponse.projectLoading();
-                case FAILED -> ToolResponse.projectLoadFailed(JawataApplication.getLoadingError());
-                default -> ToolResponse.projectNotLoaded();
-            };
-        }
 
         // Sprint 10: optional projectKey scoping. When the agent passes
         // projectKey on a tool call, narrow the service view to just that
@@ -110,16 +119,41 @@ public abstract class AbstractTool implements Tool {
                 projectKey = raw;
             }
         }
+
+        // A DROPPED key is knowledge only the service holds, and it outranks
+        // "nothing is loaded" — the caller named a key that WAS valid, and
+        // being told when it went away is what lets them recover (bugs.md #11).
+        // Answering the emptiness first would replace that with a generic
+        // not-loaded, which is exactly the regression the suite caught here.
+        if (service != null && projectKey != null && service.getProject(projectKey).isEmpty()) {
+            Optional<Long> dropped = service.wasRecentlyDropped(projectKey);
+            if (dropped.isPresent()) {
+                return ToolResponse.projectKeyDropped(projectKey, dropped.get());
+            }
+        }
+
+        if (requiresLoadedProject() && (service == null || service.allProjects().isEmpty())) {
+            // Check loading state to provide more specific feedback
+            ProjectLoadingState loadingState = JawataApplication.getLoadingState();
+            return switch (loadingState) {
+                case LOADING -> ToolResponse.projectLoading();
+                case FAILED -> ToolResponse.projectLoadFailed(JawataApplication.getLoadingError());
+                default -> ToolResponse.projectNotLoaded();
+            };
+        }
+        if (service == null) {
+            // A project-independent tool with no service at all: nothing to
+            // scope, and its own execute() reads the runtime rather than the
+            // model. Keep the historical answer rather than invent one.
+            return ToolResponse.projectNotLoaded();
+        }
+
         if (projectKey != null) {
             Optional<LoadedProject> scoped = service.getProject(projectKey);
             if (scoped.isEmpty()) {
-                // bugs.md #11 (Sprint 14): distinguish "dropped recently"
-                // from "never existed" so an agent can recover via
-                // list_projects rather than treating the key as a typo.
-                Optional<Long> dropped = service.wasRecentlyDropped(projectKey);
-                if (dropped.isPresent()) {
-                    return ToolResponse.projectKeyDropped(projectKey, dropped.get());
-                }
+                // Not dropped (that answered above) and not present: a key that
+                // never existed here. Name the recovery route rather than the
+                // typo.
                 return ToolResponse.invalidParameter(
                     "projectKey",
                     "Unknown projectKey '" + projectKey + "'. Use list_projects to see available keys.");

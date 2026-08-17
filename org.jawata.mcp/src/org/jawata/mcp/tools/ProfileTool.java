@@ -132,6 +132,20 @@ public class ProfileTool extends AbstractTool {
     private final RuntimeSessionRegistry sessions;
     private final RuntimeArtifactStore artifacts;
 
+    /**
+     * Profiling reads a running JVM or a crash log, not the Java model (mcp#28).
+     *
+     * <p>{@code native_hs_err} in particular exists for a process that is
+     * already GONE, and the workspace it belonged to may never have loaded.
+     * Only two actions resolve symbols against the model ({@code call_counts},
+     * {@code latency_seam}) and those answer with their own error when the model
+     * is empty.
+     */
+    @Override
+    protected boolean requiresLoadedProject() {
+        return false;
+    }
+
     public ProfileTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions) {
         this(serviceSupplier, sessions, new RuntimeArtifactStore());
     }
