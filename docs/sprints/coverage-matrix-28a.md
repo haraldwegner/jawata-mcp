@@ -41,7 +41,7 @@ steers.
 | Claude Code | ✅ driven @3.9.0 (21-project jats workspace) | ✅ D11 live: empty-search steering names 'jats' + its 21 projects (cap working); not-found hint redirects (mcp#32: failed-load workspace misnamed as present) | ✅ deny observed @3.9.0 (deleted-binary check still owed) | ☐ | ☐ | ✅ round-trip works; ⚠️ no dedup of identical markers (mcp#33) |
 | Cursor | ✅ driven @3.9.0 (agent: Grok 4.6; engine + D11 texts verbatim) | ✅ D11 live (empty-search + not-found redirects; #32 phantom project again) | ✅ **deny observed @3.9.0 — the historic hooks-in-visible-bash hazard is CLEARED by the binary hook** | ☐ | ☐ | ✅ marker ce7edf02; ⚠️ #33 dedup absent, embedder field still unreported |
 | Codex | ☐ | ☐ | — none by platform (Windows: no hooks at all — published limit) | ☐ | ☐ | ☐ |
-| Copilot CLI | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
+| Copilot CLI (Git Bash) | ✅ driven @3.9.0 (AbstractMultiplier 19 refs, matching two independent Claude runs; #28 NPE reproduced — third client) | ⚠️ D11 claimed, not verbatim — the agent delegated to a sub-agent and summarized; provenance weaker than every other row | — none (no hook surface, per ruling) · grep ran via PowerShell, honest | pull-only | pull-only | ✅ marker 25bfe0ed round-tripped |
 | VS Code | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
 | Grok | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
 

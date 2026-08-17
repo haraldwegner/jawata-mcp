@@ -784,3 +784,12 @@ reproductions on 3.9.0: #28's NPE (live search against the dead workspace),
 #29's vacuous healthy. #33 unchanged (five markers, no dedup links) and its
 embedder-field discriminator remains unanswered. B workspace still awaits the
 one-time pull+build (the error now names its own sticky cache).
+
+**Copilot CLI (Git Bash) on Windows @3.9.0 (2026-08-17):** cells filled with a
+provenance caveat — the agent needed a sub-agent detour and returned summaries
+where verbatims were demanded (the weakest run of the sweep; the
+instruction-following-varies observation again). Cross-checkable numbers
+match (AbstractMultiplier 19 refs = both Claude runs); mcp#28's NPE
+reproduced by a third client; grep ran (the honest hookless cell, same as
+its Linux row); store marker 25bfe0ed. #33's embedder discriminator now
+unreported by three consecutive Windows runs.
