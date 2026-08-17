@@ -33,16 +33,24 @@ every 28b checkpoint diffs against.
 
 **jawata-mcp — new package `org.jawata.mcp.field`** (one package, nothing
 scattered):
-- `FieldEvent` — the sanitizer AS A TYPE: a record of enums and ints only
-  (tool, kind, ok, errorCode enum, latencyBucket, client, version, priorTool).
-  No `String` field exists, so no path/message/symbol CAN be stored. Pattern:
-  allowlist value object; smell prevented: the leak class dies at the type
-  level instead of in a filter.
-- `ErrorCodes` — the single mapping exception/failure → error-code enum. The
-  leak corpus tests THIS seam.
-- `FieldRecorder` — observes the `domain.Outcome` tap (Sprint 26; consumers
-  today: `Advisor`/`ExperienceAdvisor`). Pattern: Observer; smell prevented:
-  per-tool emission code (shotgun surgery).
+- `FieldEvent` — the sanitizer AS A TYPE: a record of enums, ints, and
+  whitelist-validated `Token` values only (tool, kind, ok, errorCode,
+  latencyBucket, client, version, priorTool). `Token` is a value type whose
+  constructor accepts only `[a-z0-9_]{1,40}` (upper-snake for error codes) —
+  a path, message, or symbol cannot pass it, so the leak class still dies at
+  the type level. (Refined at C1 from "enums and ints only": tool/kind names
+  are a bounded vocabulary but not a maintainable enum.) Pattern: allowlist
+  value object.
+- `ErrorCodes` — the single mapping from a `ToolResponse` failure to the
+  error-code token (structured codes pass the whitelist; anything else maps
+  to `INTERNAL_ERROR`). The leak corpus tests THIS seam.
+- `FieldRecorder` — a consumer installed on the Sprint-26 `EventTap`
+  (`EventTap.setFieldRecorder`, beside `setToolExperienceRecorder`), which
+  sits at the `ToolRegistry.callTool` choke point and fires on success and
+  on both error paths. (Refined at C1: the as-built seam is `EventTap`, the
+  registry event tap the raw named — `domain.Outcome` is the refactoring-cycle
+  record, a different object.) Pattern: Observer; smell prevented: per-tool
+  emission code (shotgun surgery).
 - `FieldPile` — append-only JSONL under `<workspace>/field/`, versioned
   header, fold-at-read. Pattern: event log; smell prevented: the silence.rs
   read-modify-write corruption class (the standing prohibition: any file a

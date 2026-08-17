@@ -47,7 +47,7 @@ class ToolRegistryTest {
         registry.setEventTap(new org.jawata.mcp.learn.EventTap(ledger, null) {
             @Override
             public void onCall(String s, String n, JsonNode a,
-                    org.jawata.mcp.models.ToolResponse r) {
+                    org.jawata.mcp.models.ToolResponse r, long durationMs) {
                 throw new IllegalStateException("tap boom");
             }
         });

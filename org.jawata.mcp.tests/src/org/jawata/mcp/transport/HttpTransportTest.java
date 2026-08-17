@@ -63,6 +63,22 @@ class HttpTransportTest {
     }
 
     @Test
+    @DisplayName("Sprint 28b D7: every response echoes the store's contract version")
+    void contractVersionEchoedOnEveryResponse() throws Exception {
+        try (TestServer server = new TestServer((msg, session) ->
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}")) {
+            HttpResponse<String> resp = post(server.port(), TOKEN,
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}");
+            assertEquals(String.valueOf(org.jawata.mcp.field.FieldContract.VERSION),
+                resp.headers().firstValue(org.jawata.mcp.field.FieldContract.HEADER)
+                    .orElseThrow(() -> new AssertionError(
+                        "the contract header must be on EVERY response — a caller"
+                            + " that sends its own version detects a mismatch as a"
+                            + " typed fact, never as silence")));
+        }
+    }
+
+    @Test
     @DisplayName("respondsToHealthCheckOverHttp — POST /mcp dispatches and returns 200")
     void respondsToHealthCheckOverHttp() throws Exception {
         try (TestServer server = new TestServer((msg, session) ->

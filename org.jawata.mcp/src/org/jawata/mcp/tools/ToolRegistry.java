@@ -354,7 +354,7 @@ public class ToolRegistry {
             // as a side effect of the call itself (D7: training is a side
             // effect of use). Tap failures are the tap's own concern (loud
             // there); they never fail the tool call.
-            tap(sessionId, name, arguments, response);
+            tap(sessionId, name, arguments, response, duration);
             // Sprint 26 (D1): the automatic architect — the delta (hand edits
             // seen by the pre-call disk sync + files this call modified) runs
             // through the watch engine; NEW findings ride the answer. Never
@@ -392,7 +392,7 @@ public class ToolRegistry {
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
             ToolResponse error = ToolResponse.internalError(e);
-            tap(sessionId, name, arguments, error);
+            tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
             return error;
         } catch (Error err) {
             // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
@@ -402,7 +402,7 @@ public class ToolRegistry {
             // request already failed, dying with it helps nobody.
             log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
             ToolResponse error = ToolResponse.internalError(err);
-            tap(sessionId, name, arguments, error);
+            tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
             return error;
         }
     }
@@ -629,13 +629,16 @@ public class ToolRegistry {
         this.watchEngine = engine;
     }
 
-    /** Sprint 26: forwards the outcome to the event tap; never fails the call. */
-    private void tap(String sessionId, String name, JsonNode arguments, ToolResponse response) {
+    /** Sprint 26: forwards the outcome to the event tap; never fails the call.
+     *  Sprint 28b: carries the call's wall-clock duration for the field
+     *  recording's latency bucket. */
+    private void tap(String sessionId, String name, JsonNode arguments, ToolResponse response,
+            long durationMs) {
         if (eventTap == null) {
             return;
         }
         try {
-            eventTap.onCall(sessionId, name, arguments, response);
+            eventTap.onCall(sessionId, name, arguments, response, durationMs);
         } catch (Exception e) {
             log.error("Event tap failed after {} — the label stream missed this outcome", name, e);
         }

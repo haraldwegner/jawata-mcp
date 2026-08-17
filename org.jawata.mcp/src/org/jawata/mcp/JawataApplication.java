@@ -185,6 +185,24 @@ public class JawataApplication implements IApplication {
             toolRegistry.setStoreNotice(r::notice);
         }
 
+        // Sprint 28b D1: the sanitized field recording — file-based (append-only
+        // JSONL under <workspace>/field/), independent of the store, so it works
+        // in the degraded branch too. Shapes, never content: every value crosses
+        // the Token whitelist. Studio reads the same file and folds it itself.
+        org.jawata.mcp.field.ClientDirectory clientDirectory =
+            new org.jawata.mcp.field.ClientDirectory();
+        String bundleVersion = null;
+        org.osgi.framework.Bundle bundle =
+            org.osgi.framework.FrameworkUtil.getBundle(JawataApplication.class);
+        if (bundle != null) {
+            bundleVersion = bundle.getVersion().toString();
+        }
+        org.jawata.mcp.field.FieldRecorder fieldRecorder =
+            new org.jawata.mcp.field.FieldRecorder(
+                new org.jawata.mcp.field.FieldPile(
+                    java.nio.file.Path.of(System.getProperty("user.dir"), "field")),
+                clientDirectory, bundleVersion);
+
         // Sprint 26: the event tap — every tool outcome becomes a learner
         // label as a side effect of the call (D7: training is a side effect
         // of use). Rides the store's H2 file; a non-H2 (degraded) store means
@@ -204,6 +222,8 @@ public class JawataApplication implements IApplication {
             org.jawata.mcp.learn.ToolExperienceRecorder toolExperienceRecorder =
                 new org.jawata.mcp.learn.ToolExperienceRecorder(toolExperienceStore);
             eventTap.setToolExperienceRecorder(toolExperienceRecorder);
+            // Sprint 28b D1: the field recording rides the same tap.
+            eventTap.setFieldRecorder(fieldRecorder);
             // Sprint 27 D6: the quality ledger — every counter advances as a side
             // effect of normal use, which is the only way Sprint 33 gets evidence
             // nobody had to remember to collect. Installed on all four producers
@@ -287,14 +307,20 @@ public class JawataApplication implements IApplication {
                 }, learnerEvents));
             log.info("Learner event tap + watch engine wired");
         } else {
-            toolRegistry.setEventTap(new org.jawata.mcp.learn.EventTap(
-                new org.jawata.mcp.learn.SessionLedger(), null));
+            org.jawata.mcp.learn.EventTap degradedTap = new org.jawata.mcp.learn.EventTap(
+                new org.jawata.mcp.learn.SessionLedger(), null);
+            // Sprint 28b D1: the field recording is file-based and survives a
+            // degraded store — the utilization signal must not vanish with H2.
+            degradedTap.setFieldRecorder(fieldRecorder);
+            toolRegistry.setEventTap(degradedTap);
             log.warn("Learner event tap running LEDGER-ONLY — no persistent store"
                 + " (degraded experience store); the label stream is not persisted");
         }
 
         // Initialize protocol handler
         protocolHandler = new McpProtocolHandler(toolRegistry);
+        // Sprint 28b D1: session → client attribution for the field recording.
+        protocolHandler.setClientDirectory(clientDirectory);
 
         log.info("Registered {} tools", toolRegistry.getToolCount());
 

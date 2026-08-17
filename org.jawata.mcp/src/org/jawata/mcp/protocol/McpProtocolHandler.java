@@ -26,9 +26,18 @@ public class McpProtocolHandler {
     private String clientName;
     private String clientVersion;
 
+    /** Sprint 28b D1: session → client attribution for the field recording;
+     *  null until the application wires it. */
+    private org.jawata.mcp.field.ClientDirectory clientDirectory;
+
     public McpProtocolHandler(ToolRegistry toolRegistry) {
         this.objectMapper = new ObjectMapper();
         this.toolRegistry = toolRegistry;
+    }
+
+    /** Sprint 28b D1: install the client directory (application wiring). */
+    public void setClientDirectory(org.jawata.mcp.field.ClientDirectory directory) {
+        this.clientDirectory = directory;
     }
 
     /**
@@ -96,7 +105,7 @@ public class McpProtocolHandler {
 
         try {
             Object result = switch (method) {
-                case "initialize" -> handleInitialize(params);
+                case "initialize" -> handleInitialize(params, sessionId);
                 case "initialized" -> handleInitialized();
                 case "tools/list" -> handleToolsList();
                 case "tools/call" -> handleToolsCall(params, sessionId);
@@ -192,7 +201,7 @@ public class McpProtocolHandler {
     /**
      * Handle initialize request - MCP handshake.
      */
-    private Object handleInitialize(JsonNode params) {
+    private Object handleInitialize(JsonNode params, String sessionId) {
         String requestedVersion = null;
         if (params != null) {
             JsonNode clientInfo = params.get("clientInfo");
@@ -200,6 +209,11 @@ public class McpProtocolHandler {
                 clientName = clientInfo.has("name") ? clientInfo.get("name").asText() : "unknown";
                 clientVersion = clientInfo.has("version") ? clientInfo.get("version").asText() : "unknown";
                 log.info("Client connected: {} v{}", clientName, clientVersion);
+                // Sprint 28b D1: remember which client this session is, for
+                // the sanitized field recording's client attribution.
+                if (clientDirectory != null) {
+                    clientDirectory.record(sessionId, clientName);
+                }
             }
             JsonNode versionNode = params.get("protocolVersion");
             if (versionNode != null && versionNode.isTextual()) {

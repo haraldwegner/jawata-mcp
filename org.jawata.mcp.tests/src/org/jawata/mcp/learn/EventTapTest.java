@@ -45,7 +45,7 @@ class EventTapTest {
     @Test
     void a_tool_error_becomes_a_tool_error_event_and_a_ledger_row() throws Exception {
         tap.onCall("s1", "rename_symbol", mapper.readTree("{}"),
-            ToolResponse.internalError("boom"));
+            ToolResponse.internalError("boom"), 0L);
         assertEquals(Map.of(LearnerEvent.KIND_TOOL_ERROR, 1L), events.countByKind());
         List<SessionLedger.CallRecord> calls = ledger.calls("s1");
         assertEquals(1, calls.size());
@@ -55,14 +55,14 @@ class EventTapTest {
     @Test
     void an_undo_call_becomes_an_undo_event() throws Exception {
         tap.onCall("s1", "refactoring", mapper.readTree("{\"action\":\"undo\"}"),
-            ToolResponse.success(Map.of("undone", true)));
+            ToolResponse.success(Map.of("undone", true)), 0L);
         assertTrue(events.countByKind().containsKey(LearnerEvent.KIND_UNDO));
     }
 
     @Test
     void a_mechanical_touch_becomes_a_touch_event() throws Exception {
         tap.onCall("s1", "rename_symbol", mapper.readTree("{}"),
-            ToolResponse.success(Map.of("filesModified", List.of("A.java", "B.java"))));
+            ToolResponse.success(Map.of("filesModified", List.of("A.java", "B.java"))), 0L);
         assertTrue(events.countByKind().containsKey(LearnerEvent.KIND_MECHANICAL_TOUCH));
         assertEquals(2, ledger.calls("s1").get(0).filesModified());
     }
@@ -71,7 +71,7 @@ class EventTapTest {
     void a_failing_gate_after_a_touch_labels_compile_after_touch_fail() throws Exception {
         MechanicalChangeJournal.recordMechanical("src/A.java");
         tap.onCall("s1", "compile_workspace", mapper.readTree("{}"),
-            ToolResponse.success(Map.of("errorCount", 3)));
+            ToolResponse.success(Map.of("errorCount", 3)), 0L);
         Map<String, Long> counts = events.countByKind();
         assertTrue(counts.containsKey(LearnerEvent.KIND_GATE_CALL));
         assertTrue(counts.containsKey(LearnerEvent.KIND_COMPILE_AFTER_TOUCH_FAIL),
@@ -81,7 +81,7 @@ class EventTapTest {
     @Test
     void a_clean_gate_without_touches_is_only_a_gate_call() throws Exception {
         tap.onCall("s1", "compile_workspace", mapper.readTree("{}"),
-            ToolResponse.success(Map.of("errorCount", 0)));
+            ToolResponse.success(Map.of("errorCount", 0)), 0L);
         assertEquals(Map.of(LearnerEvent.KIND_GATE_CALL, 1L), events.countByKind());
     }
 

@@ -282,6 +282,15 @@ public class HttpTransport implements Transport {
                 }
                 exchange.getResponseHeaders().add("Mcp-Session-Id", sessionId);
 
+                // Sprint 28b D7: the studio↔store contract version — ALWAYS
+                // echoed, so a caller that sends its own version can detect a
+                // mismatch as a typed, countable fact instead of silence (the
+                // 21c→27a semantic drift was invisible precisely because both
+                // sides stayed individually green).
+                exchange.getResponseHeaders().add(
+                    org.jawata.mcp.field.FieldContract.HEADER,
+                    String.valueOf(org.jawata.mcp.field.FieldContract.VERSION));
+
                 String response = handler.handle(body, sessionId);
                 if (response != null) {
                     byte[] respBytes = response.getBytes(StandardCharsets.UTF_8);

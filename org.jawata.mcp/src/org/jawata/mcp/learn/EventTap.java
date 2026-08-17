@@ -32,6 +32,10 @@ public class EventTap {
      *  wires it (the real edit-outcome capture that replaces the retired edit switch). */
     private ToolExperienceRecorder toolExperience;
 
+    /** Sprint 28b D1: the sanitized field recording — null until the
+     *  application wires it. Shapes, never content. */
+    private org.jawata.mcp.field.FieldRecorder fieldRecorder;
+
     public EventTap(SessionLedger ledger, LearnerEventStore events) {
         this.ledger = ledger;
         this.events = events;
@@ -42,15 +46,31 @@ public class EventTap {
         this.toolExperience = recorder;
     }
 
+    /** Sprint 28b D1: install the sanitized field recorder (application wiring). */
+    public void setFieldRecorder(org.jawata.mcp.field.FieldRecorder recorder) {
+        this.fieldRecorder = recorder;
+    }
+
     public SessionLedger ledger() {
         return ledger;
     }
 
-    /** Called after every completed tool call (success or structured error). */
-    public void onCall(String sessionId, String name, JsonNode arguments, ToolResponse response) {
+    /** Called after every completed tool call (success or structured error).
+     * @param durationMs wall-clock duration of the call, for the field
+     *        recording's latency bucket (Sprint 28b) */
+    public void onCall(String sessionId, String name, JsonNode arguments, ToolResponse response, long durationMs) {
         int filesModified = filesModified(response);
         ledger.record(sessionId, new SessionLedger.CallRecord(
             name, response.isSuccess(), filesModified, System.currentTimeMillis()));
+        // Sprint 28b D1: the sanitized field recording — every outcome, success
+        // and error, as a shape. Its own try: recording never fails the call.
+        if (fieldRecorder != null) {
+            try {
+                fieldRecorder.onCall(sessionId, name, arguments, response, durationMs);
+            } catch (Exception e) {
+                // FieldPile counts its own drops; this guards recorder bugs.
+            }
+        }
         // Sprint 26a D2: the experience loop's selective capture — independent of
         // the learner-event store below and of the learner models (retired in D4).
         if (toolExperience != null) {
