@@ -758,3 +758,19 @@ round-trip works and is shared across both servers. Also observed: the probe
 agent's premise-correction discipline (led with the version mismatch) and
 the installer's two unsigned-launch prompts (SmartScreen via Explorer,
 legacy security dialog via OneCommander) — signing stays Sprint 33.
+
+**Windows re-driven on 3.9.0 (2026-08-17, after the orphan kill) — the row is
+real now:** D11 live on Windows (empty-search steering names 'jats' + 21
+projects with the …and-9-more cap; not-found hint redirects), guard denied
+again, store round-trip works, versions 3.9.0 both servers — studio#13's
+orphan mechanism confirmed by the cure working. The probe sharpened four
+findings: mcp#29 confirmed in 3.9.0; mcp#26 reproduced a fourth time in its
+sharpest form (ambiguous FQN, two tools, two projects, no signal); mcp#31
+upgraded (the precedent gate DEMANDS the undeclared parameter — dead-end on
+strict clients); and two new: mcp#32 (WorkspaceIdentity's boot-list fallback
+names FAILED-load projects as present + the missing sentence break in
+symbolNotFound) and mcp#33 (Windows store stores byte-identical markers
+undeduplicated where Linux dedup-links — discriminator: the embedder field on
+the Windows resident's health_check). The B workspace still fails on the
+un-run local build (poms still at 3.7.1 — git pull + mvn install remain
+owed); its cells stay honestly open.

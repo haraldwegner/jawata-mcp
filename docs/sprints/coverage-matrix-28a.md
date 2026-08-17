@@ -34,11 +34,11 @@ VS Code's Copilot agent, Grok) navigated to the other workspace's server and
 resolved the symbol — unprompted. The feature does not merely render; it
 steers.
 
-## 2 · Clients × channels — Windows *(first session 2026-08-17 — cells below stamped **3.8.0**: the services had not reloaded onto the pulled 3.9.0 runtime (studio#30); D11-dependent cells re-drive after the reload)*
+## 2 · Clients × channels — Windows *(session 2026-08-17; after the orphan kill (studio#13) the cells below are stamped **3.9.0**)*
 
 | Client | Tools | Steering | Guard | Primer | Recall | Store |
 |---|---|---|---|---|---|---|
-| Claude Code | ✅ driven @3.8.0 (21-project jats workspace; find_references 19 refs/9 files, structurally resolved incl. anonymous subclass sites) | ⚠️ @3.8.0 pre-D11 (unconditioned steering observed — the fixed defect; re-drive @3.9.0) | ✅ **deny observed** — the first Windows enforcement cell ever driven (jawata-fallback denial verbatim; deleted-binary check still owed) | ☐ | ☐ | ✅ marker 4ed49cd8 round-tripped, and shared across both servers |
+| Claude Code | ✅ driven @3.9.0 (21-project jats workspace) | ✅ D11 live: empty-search steering names 'jats' + its 21 projects (cap working); not-found hint redirects (mcp#32: failed-load workspace misnamed as present) | ✅ deny observed @3.9.0 (deleted-binary check still owed) | ☐ | ☐ | ✅ round-trip works; ⚠️ no dedup of identical markers (mcp#33) |
 | Cursor | ☐ | ☐ | ☐ (known: hooks-in-visible-bash defect class) | ☐ | ☐ | ☐ |
 | Codex | ☐ | ☐ | — none by platform (Windows: no hooks at all — published limit) | ☐ | ☐ | ☐ |
 | Copilot CLI | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
