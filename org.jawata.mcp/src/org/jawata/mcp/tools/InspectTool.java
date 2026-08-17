@@ -83,6 +83,11 @@ public class InspectTool extends AbstractTool {
                                  …-sources.jar in the local repo, existing
                                  only — no silent fetch) | disassembled-stub
                                  (honest header, signatures only).
+                                 PAGED: maxChars (default 24000) + offset;
+                                 every reply reports sourceLength and
+                                 returnedChars, and a clipped one carries the
+                                 offset to ask for next. A big JDK type is
+                                 ~100K characters — one page, then continue.
 
             Requires load_project to be called first.
             """;
@@ -105,6 +110,15 @@ public class InspectTool extends AbstractTool {
         properties.put("scope", Map.of("type", "string", "description", "dependency_graph: scope (e.g. package/class)."));
         properties.put("name", Map.of("type", "string", "description", "dependency_graph: the entity name."));
         properties.put("limit", Map.of("type", "integer", "description", "landmarks: how many to name (default 20)."));
+        properties.put("maxChars", Map.of("type", "integer", "description",
+            "source: characters of source per page (default "
+                + org.jawata.mcp.tools.shared.LibrarySource.DEFAULT_MAX_CHARS
+                + ", which every current client accepts). A whole JDK type can be ~100K "
+                + "characters and be REFUSED by the client as too large; the reply always "
+                + "reports sourceLength so a page never reads as the whole type."));
+        properties.put("offset", Map.of("type", "integer", "description",
+            "source: character offset into the source — the next page. A truncated reply's "
+                + "hint names the offset to ask for."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
@@ -202,8 +216,15 @@ public class InspectTool extends AbstractTool {
                 "kind=source needs typeName (a fully-qualified type name).");
         }
         try {
-            Map<String, Object> result =
-                org.jawata.mcp.tools.shared.LibrarySource.sourceOf(service, typeName);
+            // mcp#23: the reply is PAGED. A whole JDK type can be ~100K
+            // characters, which the clients refuse outright — a correct answer
+            // nobody can receive. The default is transport-realistic and the
+            // caller can page or widen it.
+            int maxChars = getIntParam(arguments, "maxChars",
+                org.jawata.mcp.tools.shared.LibrarySource.DEFAULT_MAX_CHARS);
+            int offset = getIntParam(arguments, "offset", 0);
+            Map<String, Object> result = org.jawata.mcp.tools.shared.LibrarySource
+                .sourceOf(service, typeName, maxChars, offset);
             if (result == null) {
                 return ToolResponse.symbolNotFound(
                     "Type '" + typeName + "' resolves in no loaded project.");

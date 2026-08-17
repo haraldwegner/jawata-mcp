@@ -101,4 +101,61 @@ class InspectToolTest {
         assertFalse(tool.execute(args(null)).isSuccess());
         assertFalse(tool.execute(args("typo")).isSuccess());
     }
+
+    // ---- mcp#23: kind=source is PAGED, and always says how much there is ----
+    //
+    // `inspect(kind=source, typeName=java.util.stream.Collectors)` came back at
+    // 98,064 characters and the CLIENT REFUSED it ("exceeds maximum allowed
+    // tokens") — a correct answer nobody can receive. The engine's own 120K
+    // bound was neither caller-controllable nor transport-realistic, and it
+    // reported `truncated` with no way to fetch the rest, which this project's
+    // own history treats as half a fix.
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> sourceOf(int maxChars, int offset) {
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "source");
+        a.put("typeName", "com.example.Calculator");
+        if (maxChars > 0) a.put("maxChars", maxChars);
+        if (offset > 0) a.put("offset", offset);
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "kind=source must resolve a workspace type");
+        return (Map<String, Object>) r.getData();
+    }
+
+    @Test
+    @DisplayName("mcp#23: a page carries the FULL length, so it never reads as the whole type")
+    void source_page_declares_the_total_and_the_next_offset() {
+        Map<String, Object> full = sourceOf(0, 0);
+        int total = (Integer) full.get("sourceLength");
+        assertTrue(total > 0, "the length is always reported: " + full.keySet());
+
+        Map<String, Object> firstPage = sourceOf(40, 0);
+        assertEquals(total, firstPage.get("sourceLength"),
+            "a clipped page still declares the whole type's size");
+        assertEquals(40, firstPage.get("returnedChars"));
+        assertEquals(Boolean.TRUE, firstPage.get("truncated"));
+        assertTrue(String.valueOf(firstPage.get("hint")).contains("offset=40"),
+            "and it names the next call rather than leaving the caller stuck: "
+                + firstPage.get("hint"));
+        assertEquals(40, ((String) firstPage.get("source")).length());
+    }
+
+    @Test
+    @DisplayName("mcp#23: the hinted offset returns the continuation, not the start again")
+    void source_offset_continues_where_the_page_ended() {
+        String whole = (String) sourceOf(0, 0).get("source");
+        Map<String, Object> second = sourceOf(40, 40);
+
+        assertEquals(40, second.get("offset"));
+        assertEquals(whole.substring(40, 80), second.get("source"));
+    }
+
+    @Test
+    @DisplayName("mcp#23: the default page is transport-realistic, well under the engine ceiling")
+    void the_default_page_is_sized_for_a_client_not_for_the_engine() {
+        assertTrue(org.jawata.mcp.tools.shared.LibrarySource.DEFAULT_MAX_CHARS <= 30_000,
+            "98K characters was refused by the client; a default near the engine's 120K "
+                + "ceiling would ship that failure to every caller");
+    }
 }
