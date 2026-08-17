@@ -812,3 +812,13 @@ record-then-recall agent cannot see its own marker (capped_from honest, page
 ordering wrong). Windows client rows now: Claude, Cursor, Codex, Copilot,
 Grok measured; VS Code row + deleted-binary check + Scoop remain the open
 Windows cells.
+
+**VS Code (Copilot agent) on Windows @3.9.0 (2026-08-17) — the Windows client
+grid COMPLETES:** all six rows measured. 19/9 key exact with full verbatim
+references; D11 both texts; the pasted P1 JSON carries the embedder block
+(vector-api, available:true on both servers — #33's closure directly
+confirmed); dedup chain extended; and a recall-ordering nuance fed to #34
+(format=text included the caller's own marker where structured recall had
+omitted it — ordering under cap is undefined, the fix must define it).
+Remaining Windows cells: deleted-binary check, Scoop route, optional
+B-workspace build for two-workspace redirect cells.
