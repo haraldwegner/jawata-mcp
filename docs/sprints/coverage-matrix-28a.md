@@ -39,7 +39,7 @@ steers.
 | Client | Tools | Steering | Guard | Primer | Recall | Store |
 |---|---|---|---|---|---|---|
 | Claude Code | ✅ driven @3.9.0 (21-project jats workspace) | ✅ D11 live: empty-search steering names 'jats' + its 21 projects (cap working); not-found hint redirects (mcp#32: failed-load workspace misnamed as present) | ✅ deny observed @3.9.0 (deleted-binary check still owed) | ☐ | ☐ | ✅ round-trip works; ⚠️ no dedup of identical markers (mcp#33) |
-| Cursor | ☐ | ☐ | ☐ (known: hooks-in-visible-bash defect class) | ☐ | ☐ | ☐ |
+| Cursor | ✅ driven @3.9.0 (agent: Grok 4.6; engine + D11 texts verbatim) | ✅ D11 live (empty-search + not-found redirects; #32 phantom project again) | ✅ **deny observed @3.9.0 — the historic hooks-in-visible-bash hazard is CLEARED by the binary hook** | ☐ | ☐ | ✅ marker ce7edf02; ⚠️ #33 dedup absent, embedder field still unreported |
 | Codex | ☐ | ☐ | — none by platform (Windows: no hooks at all — published limit) | ☐ | ☐ | ☐ |
 | Copilot CLI | ☐ | ☐ | — none | ☐ | ☐ | ☐ |
 | VS Code | ☐ | ☐ | — none | ☐ | ☐ | ☐ |

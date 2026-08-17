@@ -774,3 +774,13 @@ undeduplicated where Linux dedup-links — discriminator: the embedder field on
 the Windows resident's health_check). The B workspace still fails on the
 un-run local build (poms still at 3.7.1 — git pull + mvn install remain
 owed); its cells stay honestly open.
+
+**Cursor re-driven on Windows @3.9.0 (2026-08-17, agent Grok 4.6):** the
+loaded cell goes green — guard DENIED cleanly under Cursor on Windows, the
+combination whose pre-binary shell hooks spawned visible never-exiting bash
+windows; the binary hook clears the historic hazard class. D11 live (both
+texts verbatim; #32's phantom project sighted a third time). Cross-client
+reproductions on 3.9.0: #28's NPE (live search against the dead workspace),
+#29's vacuous healthy. #33 unchanged (five markers, no dedup links) and its
+embedder-field discriminator remains unanswered. B workspace still awaits the
+one-time pull+build (the error now names its own sticky cache).
