@@ -852,3 +852,34 @@ curled /rpc//ws//api but never /mcp, hunted the studio install) without ever
 issuing one MCP call. The same client drove Linux directly and Windows only
 via its internal task agent. Recorded as not-drivable-with-reason; the
 defect is GitHub's CLI, the token-on-argv hardening is ours.
+
+## Stage 13 — publish and close (2026-08-17)
+
+- **The deleted-binary check is structurally a HUMAN probe**: the agent's
+  attempt to rename its own deployed guard binary was denied by the client's
+  classifier — an agent that could disable its own guard would defeat it.
+  Recorded as the reason that cell is human-owned on every OS; deferred with
+  the D9a observation items.
+- **README + jawata.org rewritten from the matrix** (`4c5e0ad`): six clients,
+  tools+store everywhere (measured on three OSes), guard on the two
+  hook-capable clients, memory delivery tiers stated per client; the dead
+  roster (Claude Desktop/Antigravity) removed from the manager paragraph; the
+  Scoop route added to the site's install note.
+- **As-built architect pass (fresh context, evidence-fed): all nine
+  deliverable groups WIRED, none merely built** — the first sprint in the
+  27/28 line with that verdict. Its report: three ranked findings (headline:
+  #28/#29/#32 are ONE unmodeled load-failure state — re-framed in the 28c doc
+  as a single design item), the WorkspaceIdentity watch rule (one canary
+  fired; second release on the shape converts the holder to injected
+  context — recorded symbol-anchored in the store), and all four reviewed
+  design changes ruled design-fixes (the two visibility reductions: correct
+  minimal). Seat gate: compile_workspace clean (0 errors) after the pass.
+- **R8 (over-days findings)**: per the standing rule, observations that only
+  appear over days of real use home to Sprint 30 — the sprint closes on the
+  running product as swept.
+- Deferrals leaving this sprint, each with its home: deleted-binary +
+  delete-confirmation + D9a app-behavior items (human probes → the Sprint 30
+  over-days bucket, joined by R8) · Windows primer/recall cells (not probed;
+  re-open whenever a hook change re-opens those rows anyway) · the
+  two-workspace redirect cells on Win/mac (unlock via the one-time local
+  build, any time) · gateway stage 2 (Sprint 30 / 28b proxy, tracked #27).
