@@ -793,3 +793,11 @@ match (AbstractMultiplier 19 refs = both Claude runs); mcp#28's NPE
 reproduced by a third client; grep ran (the honest hookless cell, same as
 its Linux row); store marker 25bfe0ed. #33's embedder discriminator now
 unreported by three consecutive Windows runs.
+
+**Codex on Windows @3.9.0 (2026-08-17, gpt-5.6-terra, fresh default sandbox):**
+D11 empty-steering verbatim; correct strictness on the impossible P4 inversion;
+rg ran (hookless honest — exit-1 was Select-Object closing the pipe, and the
+new Codex sandbox permitted project reads). The catch of the run: the record
+carried duplicate_of — **dedup works on Windows, mcp#33 closed as an agent
+misreading of the store's by-design keep-and-link behavior**; embedder
+implicitly proven up. Four of six Windows client rows now measured.
