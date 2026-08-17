@@ -887,3 +887,44 @@ defect is GitHub's CLI, the token-on-argv hardening is ours.
 **SIGNED OFF by Harald 2026-08-17 — Sprint 28a is CLOSED.** Spec marked ✅ in
 jawata-enterprise; this dossier and the coverage matrix are the permanent run
 record.
+
+---
+
+## 28e background lane, round 1 — 2026-08-17 (after 28a closed)
+
+Recorded here because these are the first fixes that ran on the product 28a
+proved, and both releases came out of them.
+
+Six issues fixed and closed on live proof, one half-closed, one filed, and BOTH
+products released as **v3.10.0** on Harald's word — engine FIRST, then studio,
+because the studio routes the token through a file only for an engine that
+reads one.
+
+**The fixes:** studio#14 (the resident token left argv for a 0600 file; the
+READY line and the workspace log redacted), mcp#28 + #29 + #32 as ONE seam (a
+load-failed workspace is a state: the tool gate reads emptiness rather than the
+sticky loading enum, health reports unhealthy with the reason, the identity
+stops claiming failed projects as present), mcp#34 (recall reserves a slot for
+the newest fact; meaning banded so it breaks real ties only), mcp#23
+(`inspect(kind=source)` paged, with the full length always reported).
+studio#3 closed on evidence with no code. studio#11 half fixed — the ask
+detector no longer fires on a reply to his own question; the write tripwire's
+over-denial stays by design and now explains itself. mcp#35 filed: the sticky
+enum still misreports after a recovery.
+
+**No auditor round** (his instruction) — an architect check per fix replaced it,
+and changed two designs BEFORE any code existed: the proposed `loadingState ==
+FAILED` gate would have refused every tool on a RECOVERED workspace and newly
+blocked debug/profile, and the proposed recall fix was a bandage over a cause
+that affects every cue kind. The suite then caught a third thing on its own: my
+emptiness gate initially swallowed the more specific PROJECT_KEY_DROPPED
+diagnosis.
+
+**Release gates, engine v3.10.0:** full suite 1842 tests / 1836 passed / 0
+failed; hollow-wiring gate PASS — and it detected that
+`TransportConfig#getTokenFile` had become WIRED, so the baseline tightened
+78 → 77; end-to-end gate 43/43. `/releases/latest` advanced v3.9.0 → v3.10.0,
+observed against a before-reading rather than assumed. The published Linux
+artifact was then re-verified in anger: `ResolvedToken` is in the shipped
+bundle, READY names the token file, the file is `0600`, and auth with it
+answers 200.
