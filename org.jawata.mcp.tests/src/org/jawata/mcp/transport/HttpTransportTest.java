@@ -218,8 +218,10 @@ class HttpTransportTest {
     void rejectsNullBindAndToken() {
         assertThrows(IllegalArgumentException.class,
             () -> new HttpTransport(0, null, "tok"));
+        // The cast picks the raw-token constructor: since studio#14 there is
+        // also a ResolvedToken form, and a bare null matches both.
         assertThrows(IllegalArgumentException.class,
-            () -> new HttpTransport(0, "127.0.0.1", null));
+            () -> new HttpTransport(0, "127.0.0.1", (String) null));
         assertThrows(IllegalArgumentException.class,
             () -> new HttpTransport(0, "127.0.0.1", ""));
     }

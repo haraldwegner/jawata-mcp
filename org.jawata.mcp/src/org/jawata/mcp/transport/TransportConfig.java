@@ -26,8 +26,14 @@ public final class TransportConfig {
     private final Kind kind;
     private final int port;             // 0 = auto-allocate ephemeral
     private final String bindAddress;
-    private final String token;          // null = generate at startup
-    private final Path tokenFile;        // null = don't write token to disk
+    private final String token;          // null = resolve via tokenFile, else generate
+    /**
+     * Where the token LIVES (studio#14). Null = no file: the token comes from
+     * {@code -token} or is generated in memory. Non-null = the token's home —
+     * read from it when it exists, generated and written {@code 0600} when it
+     * does not. See {@link ResolvedToken}.
+     */
+    private final Path tokenFile;
 
     public TransportConfig(Kind kind, int port, String bindAddress, String token, Path tokenFile) {
         this.kind = Objects.requireNonNull(kind, "kind");
@@ -63,8 +69,11 @@ public final class TransportConfig {
      *   <li>{@code -transport stdio|http} — default HTTP if absent.</li>
      *   <li>{@code -port N} — 0/absent = ephemeral.</li>
      *   <li>{@code -bind X} — default {@code 127.0.0.1}.</li>
-     *   <li>{@code -token T} — absent = generate at startup.</li>
-     *   <li>{@code -token-file PATH} — absent = don't write.</li>
+     *   <li>{@code -token T} — absent = read the token file, else generate.
+     *       Passing a secret here exposes it to every local process
+     *       ({@code /proc/<pid>/cmdline}); prefer {@code -token-file}.</li>
+     *   <li>{@code -token-file PATH} — the token's home: read when present,
+     *       generated and written {@code 0600} when absent.</li>
      * </ul>
      * Unknown flags are ignored (Eclipse {@code -data} / {@code -clean} pass through).
      *

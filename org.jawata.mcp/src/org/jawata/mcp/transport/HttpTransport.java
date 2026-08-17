@@ -45,10 +45,15 @@ import java.util.concurrent.Executors;
  * </ul>
  *
  * <p><b>READY contract:</b> after a successful bind, exactly one line is
- * written to stdout: {@code READY url=http://<bind>:<port> token=<token>}.
- * The token MUST NOT appear elsewhere on stdout — the manager-side
- * launcher captures stdout into a log file, and a leaked token in logs is
- * a security regression. See {@code tokenNotInStdoutBeyondReadyLine} test.
+ * written to stdout: {@code READY url=http://<bind>:<port> <token field>}.
+ * The token field is decided by {@link ResolvedToken#readyTokenField()}:
+ * {@code token-file=<path>} when the token lives in a file,
+ * {@code token=provided} when the launcher handed it in, and
+ * {@code token=<token>} only for a bare manual launch that has no other
+ * channel. The manager-side launcher tees stdout into a log FILE, so a token
+ * printed here persists on disk after the process is gone — which is why an
+ * automated launch must name a token file (studio#14). The token MUST NOT
+ * appear elsewhere on stdout either; see {@code tokenNotInStdoutBeyondReadyLine}.
  *
  * <p><b>Bearer auth:</b> every request must carry
  * {@code Authorization: Bearer <token>}; missing or wrong → 401 with
@@ -70,6 +75,14 @@ public class HttpTransport implements Transport {
     private final int requestedPort;
     private final String bindAddress;
     private final String token;
+    /**
+     * How the READY line discloses the token — studio#14. The manager tees
+     * stdout into a workspace log file, so a token printed here outlives the
+     * process on disk. A {@link ResolvedToken} answers this itself; the
+     * token-only constructor keeps the historical {@code token=<token>} form
+     * for a bare manual launch, which has no other channel.
+     */
+    private final String readyTokenField;
     private final Duration heartbeatInterval;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final List<SseSubscriber> subscribers = new CopyOnWriteArrayList<>();
@@ -84,11 +97,28 @@ public class HttpTransport implements Transport {
     }
 
     /**
+     * Production constructor — the token knows how it may be disclosed.
+     *
+     * <p>Prefer this over the raw-token form: with a token file in play the
+     * READY line names the FILE instead of the secret, which is what keeps the
+     * credential out of the manager's log (studio#14).
+     */
+    public HttpTransport(int port, String bindAddress, ResolvedToken resolved) {
+        this(port, bindAddress, resolved.token(), DEFAULT_HEARTBEAT_INTERVAL,
+            resolved.readyTokenField());
+    }
+
+    /**
      * Package-private constructor for tests that need a short heartbeat
      * interval to exercise the keep-alive path quickly. Production callers
      * use the three-arg constructor with the 30s default.
      */
     HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval) {
+        this(port, bindAddress, token, heartbeatInterval, "token=" + token);
+    }
+
+    private HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
+                          String readyTokenField) {
         if (bindAddress == null || bindAddress.isBlank()) {
             throw new IllegalArgumentException("bindAddress required");
         }
@@ -101,6 +131,7 @@ public class HttpTransport implements Transport {
         this.requestedPort = port;
         this.bindAddress = bindAddress;
         this.token = token;
+        this.readyTokenField = readyTokenField;
         this.heartbeatInterval = heartbeatInterval;
     }
 
@@ -131,8 +162,11 @@ public class HttpTransport implements Transport {
         server.start();
 
         actualPort = server.getAddress().getPort();
-        // READY contract: single line on stdout, token appears here ONLY.
-        System.out.println("READY url=http://" + bindAddress + ":" + actualPort + " token=" + token);
+        // READY contract: a single line on stdout. The token field is the
+        // token's own disclosure decision (studio#14) — with a token file it
+        // names the file, so the manager's log never holds the secret.
+        System.out.println("READY url=http://" + bindAddress + ":" + actualPort
+            + " " + readyTokenField);
         readyLatch.countDown();
 
         log.info("HTTP transport listening on {}:{}", bindAddress, actualPort);

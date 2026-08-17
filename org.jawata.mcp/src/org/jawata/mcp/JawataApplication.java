@@ -66,7 +66,7 @@ import org.jawata.mcp.tools.workflow.FormatTool;
 import org.jawata.mcp.tools.workflow.OptimizeImportsWorkspaceTool;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.StdioTransport;
-import org.jawata.mcp.transport.TokenGenerator;
+import org.jawata.mcp.transport.ResolvedToken;
 import org.jawata.mcp.transport.Transport;
 import org.jawata.mcp.transport.TransportConfig;
 import org.slf4j.Logger;
@@ -1084,12 +1084,15 @@ public class JawataApplication implements IApplication {
             log.info("Transport: stdio (opt-in via -transport stdio)");
             return new StdioTransport(System.in, System.out);
         }
-        String token = config.getToken() != null
-            ? config.getToken()
-            : TokenGenerator.generate();
-        log.info("Transport: http (default) — port={}, bind={}",
-            config.getPort(), config.getBindAddress());
-        return new HttpTransport(config.getPort(), config.getBindAddress(), token);
+        // studio#14: the token is resolved through its file when one is named,
+        // so the secret need never appear in argv (world-readable via
+        // /proc/<pid>/cmdline) nor in the READY line the manager logs.
+        ResolvedToken resolved = ResolvedToken.resolve(config);
+        log.info("Transport: http (default) — port={}, bind={}, token={}",
+            config.getPort(), config.getBindAddress(),
+            resolved.tokenFile() != null ? "from " + resolved.tokenFile()
+                : resolved.supplied() ? "supplied" : "generated");
+        return new HttpTransport(config.getPort(), config.getBindAddress(), resolved);
     }
 
     @Override
