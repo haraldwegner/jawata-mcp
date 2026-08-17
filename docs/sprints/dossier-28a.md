@@ -731,3 +731,30 @@ failed with a VS Code extension invoke error while the SAME server answered
 P3/P4 in the same run (transient, client-side); and the agent misreported
 P2's file list (claimed 5 files incl. clicktrader-ui vs the measured 7 files
 / 2 projects) — the pre-measured-key protocol caught it, the summary did not.
+
+## Windows session opens (2026-08-17, Claude plugin, first probe run)
+
+Headline: **studio header claims runtime 3.9.0; both running services serve
+3.8.0** — the services were not reloaded onto the pulled runtime (Linux's
+update restarted them; Windows's did not). Filed as **studio#13**, the
+concrete instance of the ruled "auto-update must actually update" item.
+Consequence: this run's cells are stamped 3.8.0, and the two "defects" the
+probe found in steering (unconditioned on empty results; not-found hint
+naming no workspace) are the PRE-D11 behavior — already fixed in 3.9.0,
+re-drive after reload.
+
+Real new findings, filed: **mcp#28** — search_symbols NPEs (unguarded
+getSearchService()) on a load-failed workspace, the exact path a redirected
+agent lands on, present in 3.9.0's code too; **mcp#29** — workspace.healthy
+vacuously true when every project failed (project.status=failed + remedy is
+correct, the summary flag contradicts it). The B-workspace load failure
+itself is the KNOWN sticky-Maven shape (stale checkout wanting 3.7.1
+artifacts; cure = git pull + one local build, then reload).
+
+Cells of record: Windows guard cell driven for the FIRST time — deny with
+the jawata-fallback text verbatim (Claude plugin); tools driven on the
+21-project jats workspace (19 refs / 9 files, structurally resolved); store
+round-trip works and is shared across both servers. Also observed: the probe
+agent's premise-correction discipline (led with the version mismatch) and
+the installer's two unsigned-launch prompts (SmartScreen via Explorer,
+legacy security dialog via OneCommander) — signing stays Sprint 33.
