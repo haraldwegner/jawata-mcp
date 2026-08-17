@@ -1,0 +1,30 @@
+# Leak corpus — strings that must NEVER appear in a stored field record.
+# One entry per line; '#' lines are comments. Stage-1 test feeds each through
+# the recording path (as exception messages, workspace paths, symbol names)
+# and asserts the serialized pile contains none of them.
+#
+# --- absolute paths (POSIX) ---
+/home/harald/CursorProjects/secret-project/src/main/java/App.java
+/home/harald/.ssh/id_ed25519
+/var/lib/jenkins/workspace/customer-build/pom.xml
+/tmp/claude-1000/scratch/session-token.txt
+# --- absolute paths (Windows) ---
+C:\Users\harald\Documents\customer\Contract.java
+C:\secrets\deploy.key
+# --- error-message strings with embedded identifiers ---
+Cannot resolve symbol 'CustomerBillingService' in /home/harald/work/billing/Billing.java
+FileNotFoundException: /etc/jawata/customer-workspace.json (No such file or directory)
+NullPointerException: Cannot invoke "com.acme.billing.Invoice.total()" because "invoice" is null
+Connection refused: connect to db.internal.acme-corp.example:5432
+# --- fully-qualified Java names ---
+com.acme.billing.internal.InvoiceLedger
+org.customerco.trading.risk.PositionLimitCheck
+com.acme.billing.InvoiceLedger#recalculate(java.math.BigDecimal)
+# --- repo / workspace identity ---
+git@github.com:acme-corp/billing-internal.git
+https://github.com/acme-corp/billing-internal
+acme-billing-workspace
+# --- secret-shaped strings ---
+ghp_16chartokenexample0000000000000000
+Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature
+resident-token-9f8e7d6c5b4a
