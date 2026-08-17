@@ -106,8 +106,10 @@
   <h2>Install in one line</h2>
   <pre class="install"><code>curl -fsSL https://jawata.org/install.sh | bash</code></pre>
   <p class="install-note">Linux &amp; macOS — installs jawata-studio, which downloads and manages the
-  engine and wires up Claude Code and Cursor. Windows:
-  <a href="https://github.com/haraldwegner/jawata-studio/releases">grab the installer</a>.</p>
+  engine and wires up your agent clients. Windows:
+  <a href="https://github.com/haraldwegner/jawata-studio/releases">grab the installer</a> or
+  <code>scoop bucket add jawata https://github.com/haraldwegner/scoop-jawata &amp;&amp;
+  scoop install jawata-studio</code>.</p>
 
   <h2>What only jawata brings</h2>
   <ul>
@@ -137,10 +139,13 @@
         compiler model is built from <em>your</em> working tree, live, and stays there.</li>
     <li><strong>No IDE required — yours stays whatever it is.</strong> Headless residents
         managed by <a href="https://github.com/haraldwegner/jawata-studio">jawata-studio</a>,
-        wired into Claude Code and Cursor in two clicks. jawata serves the <em>agent</em>,
-        not the editor: keep IntelliJ, keep Eclipse, keep VS Code — the agent gets
-        Eclipse-grade semantics either way. Tools and guard are identical on every client;
-        memory auto-push is full on Claude Code, best-effort on Cursor.</li>
+        wired into six clients in two clicks — Claude Code, Cursor, Codex, Copilot CLI,
+        VS Code, Grok. jawata serves the <em>agent</em>, not the editor: keep IntelliJ,
+        keep Eclipse, keep VS Code — the agent gets Eclipse-grade semantics either way.
+        Tools and the shared memory store work on every supported client (verified on
+        Linux, Windows and macOS); the enforcement guard runs on Claude Code and Cursor,
+        the two with a hook surface; memory auto-push is full on Claude Code,
+        best-effort on Cursor.</li>
   </ul>
 
   <h2>The Java renaissance</h2>

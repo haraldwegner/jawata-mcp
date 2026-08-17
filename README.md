@@ -122,12 +122,18 @@ against the closed set, not invent a cause*. Written from any MCP client, recall
 any MCP client: a lesson recorded in Cursor today answers by symbol in Claude Code
 tomorrow. Promote it, prune it, export it — it's yours.
 
-**Honest client parity:** the tools and the guard are identical on every MCP client. The
-memory *auto-push* (session primer, prompt-boundary recall, on-edit recall) is **full on
-Claude Code** and **best-effort on Cursor** — Cursor's hook surface can't inject context
-at every seam, so there the recalled facts reach the agent via the deployed rule block
-and the steering that rides on every tool result. Same knowledge, different delivery —
-we'd rather tell you exactly what each client gets than claim "identical everywhere."
+**Honest client parity** (measured, per client, per OS — the full grid lives in
+[the coverage matrix](docs/sprints/coverage-matrix-28a.md)): the **tools and the shared
+memory store work on all six supported clients** — Claude Code, Cursor, Codex, Copilot
+CLI, VS Code, Grok — verified live on Linux, Windows and macOS. The **enforcement guard
+runs on Claude Code and Cursor**, the two clients with a hook surface; the others hold
+jawata's guidance in-band (the connection instructions name the workspace and its
+projects, and steering rides on every tool result) — demonstrated, not assumed: in the
+release sweep every hookless client still answered through jawata unprompted. Memory
+*auto-push* (session primer, prompt-boundary recall, on-edit recall) is **full on
+Claude Code**, **best-effort on Cursor** (its hook surface can't inject at every seam),
+and pull-on-request elsewhere. Same knowledge, different delivery — we'd rather tell
+you exactly what each client gets than claim "identical everywhere."
 
 > The agent's prior is verifiability-seeking, not shortcut-seeking — it is a liability
 > only while design properties are expensive to verify. Make them cheap and it flips
@@ -146,8 +152,8 @@ we'd rather tell you exactly what each client gets than claim "identical everywh
 
 [jawata-studio](https://github.com/haraldwegner/jawata-studio) is the desktop control plane. It
 downloads the matching JAWATA engine, manages named workspaces of Java projects, runs one resident
-JVM per workspace, and writes the MCP entry into Cursor / Claude Desktop / Antigravity /
-IntelliJ-style configs for you.
+JVM per workspace, and writes the MCP entry into the configs of all six supported clients —
+Claude Code, Cursor, Codex, Copilot CLI, VS Code and Grok — for you.
 
 | Platform | Install |
 |---|---|
