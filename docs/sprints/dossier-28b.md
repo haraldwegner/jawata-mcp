@@ -82,3 +82,41 @@ of those two contracts inside these two repositories?
 - `/report`'s registration is committed, but its appearance in a client tree
   needs a Studio redeploy that has not been exercised headlessly. UNPROVEN until
   Stage 6 says otherwise.
+
+---
+
+## Close-out · 2026-08-18
+
+**Released:** jawata-mcp v3.11.0 (`72f0751`) and jawata-studio v3.11.0
+(`4f0e4ae`). Both workflows succeeded, both releases published rather than left
+as drafts, both `latest` pointers verified moving off v3.10.0 — the two checks
+that have failed here before.
+
+**Dogfood on the released build, on Harald's machine.** Three of the four
+measures that had no headless front door proved themselves on the first launch:
+the recording ran clean (10 events, 1 failure, 0 dropped writes), the reminder
+spoke through the agent at session start with no pop-up, and `/report` appeared
+as a deployed skill and filed a real issue end to end.
+
+**The dogfood's findings, all filed through the sprint's own outbound channel:**
+
+- `jawata-studio#16` — the canary calls a still-LOADING resident degraded. The
+  tray was amber on a healthy launch because the first probe (45s) asked a
+  compiler question the resident could not answer yet; `PROJECT_LOADING` is the
+  correct answer and `judge_canary` counted it as a failure.
+- `jawata-studio#17` — the seat routes by the failing tool, which mis-routes
+  every case where the tool answered correctly and a CONSUMER misread it. Found
+  by deviating from the rule deliberately while filing #16.
+- `jawata-studio#18` — the stop gate demands a code gate from `/report`, which
+  changes no code; it will fire on every run, and an always-wrong warning
+  trains people past the seats where it matters.
+
+All three are in the 28e doc's round-2 section.
+
+**Held for Harald's ranking, homed to 28e:** the architect's R4 (split the tool
+base class's entry point) and R5 (split `state.json` by the nature of its
+data), the latter crossing a release boundary because a shipped hook binary
+reads the current format. Both carry the architect's open question — whether
+every consumer of those contracts lives inside these two repositories.
+
+**Signed off by Harald, 2026-08-18.**
