@@ -34,6 +34,14 @@ import java.util.function.Supplier;
  * <p>One tool rather than four (the collapse-to-39 discipline): every action
  * reads or writes the same two files in {@code <workspace>/field/}.</p>
  *
+ * <p><b>No response carries a filesystem path.</b> The {@code /report} seat
+ * drafts a PUBLIC issue body straight from these answers, and an absolute path
+ * carries the user's account name and the name of whatever he is working on —
+ * exactly the content the pile is built to exclude. The seat is told it has no
+ * paths and must not invent any; handing it one would make that instruction a
+ * lie. {@code FieldToolLeakTest} asserts it on the serialized response of every
+ * action, success and refusal alike.</p>
+ *
  * <p><b>No project needed.</b> The field lane answers about jawata's own use,
  * not about code — a workspace whose projects failed to load is exactly when
  * an agent most wants to report the failure.</p>
@@ -167,7 +175,6 @@ public class FieldTool extends AbstractTool {
         data.put("droppedWrites", pileFile.failedWrites());
         data.put("nudges", state.nudges());
         data.put("silenced", state.silenced());
-        data.put("pileFile", pileFile.file().toString());
         return ToolResponse.success(data);
     }
 
@@ -182,7 +189,8 @@ public class FieldTool extends AbstractTool {
         if (!state.write(dir)) {
             return ToolResponse.error("FIELD_STATE_WRITE_FAILED",
                 "the shape was NOT recorded as posted — it will nudge again",
-                "check the field directory is writable: " + dir);
+                "check that the resident's field directory is writable"
+                    + " (health_check's workspace block names the workspace root)");
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("shape", shape);
@@ -205,14 +213,14 @@ public class FieldTool extends AbstractTool {
         if (changed && !state.write(dir)) {
             return ToolResponse.error("FIELD_STATE_WRITE_FAILED",
                 "the switch was NOT saved — it still reads as it did before",
-                "check the field directory is writable: " + dir);
+                "check that the resident's field directory is writable"
+                    + " (health_check's workspace block names the workspace root)");
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("nudges", state.nudges());
         data.put("silenced", state.silenced());
         data.put("strikes", state.strikes());
         data.put("changed", changed);
-        data.put("stateFile", FieldState.file(dir).toString());
         return ToolResponse.success(data);
     }
 }
