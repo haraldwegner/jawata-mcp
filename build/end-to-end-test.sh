@@ -111,6 +111,15 @@ PY
         -d @"$body" | sed 's/\\"/"/g'
 }
 
+tool_names() {   # every registered tool name, space-separated — so a count
+                 # mismatch says WHICH tools are there, not only how many
+    curl -s --max-time 60 -X POST "http://127.0.0.1:$PORT/mcp" \
+        -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: e2e-$$" \
+        -H 'Content-Type: application/json' \
+        -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+        | grep -oE '"name":"[a-z_]+"' | cut -d'"' -f4 | sort -u | tr '\n' ' '
+}
+
 no_score() {   # 27a: no similarity number in any user-facing payload
     if printf '%s' "$2" | grep -qE '0\.[0-9]{2}'; then
         fail "no-similarity-number $1 leaked a similarity number"
@@ -131,14 +140,25 @@ case "$H" in
     *) fail "embedder-loaded embedder not available in the running product" ;;
 esac
 
-# --- tool-count-still-45: no tool silently appeared or vanished --------------
-# The release-note sentence "the tool count is still 45" gets its live check
+# --- tool-count: no tool silently appeared or vanished -----------------------
+# The release-note sentence "the tool count is still N" gets its live check
 # (Sprint 28 outcome audit, F7 — the sentence had no check behind it).
+#
+# The number moves when a tool is added ON PURPOSE, and then this line is part
+# of that change. It was not: 28b's `field` tool made it 46 and the assertion
+# stayed at 45, so the gate failed on its own sprint's work and the failure
+# said only "46" — a number, with nothing to tell you which tool it was (28b
+# closing audit, F1). The failure now NAMES every registered tool, so the next
+# addition is a one-line edit here rather than an investigation.
+EXPECTED_TOOLS=46
 TOOLS="$(printf '%s' "$H" | grep -oE '"toolCount"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+')"
-if [ "${TOOLS:-missing}" = "45" ]; then
-    pass "tool-count-still-45 health_check reports exactly 45 tools"
+if [ "${TOOLS:-missing}" = "$EXPECTED_TOOLS" ]; then
+    pass "tool-count-still-$EXPECTED_TOOLS health_check reports exactly $EXPECTED_TOOLS tools"
 else
-    fail "tool-count-still-45 expected 45 tools, health_check reports: ${TOOLS:-no toolCount field at all}"
+    fail "tool-count-still-$EXPECTED_TOOLS expected $EXPECTED_TOOLS tools, health_check reports:
+          ${TOOLS:-no toolCount field at all}. Registered right now: $(tool_names)
+          If a tool was added or removed on purpose, set EXPECTED_TOOLS in this
+          script (and the release note's sentence) in that same change."
 fi
 
 # --- recall-by-meaning: recall by MEANING, the release's central claim ---------------------
