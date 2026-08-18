@@ -620,7 +620,27 @@ public final class ExperienceTool implements Tool {
         "Match the observation to ONE of these with evidence, or declare it genuinely new"
         + " — do not generate a novel cause.";
 
+    /**
+     * #37: the caller's own deadline, in milliseconds.
+     *
+     * <p>A deadline is only useful to a caller that will still be waiting when it fires.
+     * The hook's HTTP call gives up at 1500 ms, so the engine's 15-second default is out
+     * of its reach entirely: a wedged store produced an anonymous transport timeout
+     * there, exactly as before the fix. A caller that knows its own budget states it and
+     * gets the typed answer inside its own window. Clamped by
+     * {@code ExperienceRetrieval.setRetrievalBudgetMillis} — a caller may buy a faster
+     * answer, never a longer wait.</p>
+     */
+    static final String BUDGET_MILLIS = "budget_ms";
+
+    private void applyBudget(JsonNode args) {
+        if (args != null && args.hasNonNull(BUDGET_MILLIS) && args.get(BUDGET_MILLIS).isNumber()) {
+            retrieval.setRetrievalBudgetMillis(args.get(BUDGET_MILLIS).asLong());
+        }
+    }
+
     private ToolResponse recall(JsonNode args) {
+        applyBudget(args);
         RecallQuery q = new RecallQuery(
             text(args, "symbol"),
             text(args, "package"),
@@ -642,6 +662,7 @@ public final class ExperienceTool implements Tool {
     }
 
     private ToolResponse primer(JsonNode args) {
+        applyBudget(args);
         int limit = args != null && args.has("limit") && args.get("limit").isInt()
             ? args.get("limit").asInt() : 20;
         return respond(args, retrieval.primer(limit));

@@ -151,8 +151,14 @@ public final class ExperienceRetrieval {
             return out;
         }
 
+        // THE TASK GETS ITS OWN MAP. Sharing `out` with the pool thread is a data race
+        // with a specific, ugly outcome: a straggler that finally completes writes
+        // result=absence over the caller's result=unavailable, and the tool — which
+        // reads the map AFTER this returns — then emits a successful absence during an
+        // outage. That is the exact lie this whole change exists to remove, reintroduced
+        // by the mechanism removing it.
         try {
-            return within(() -> recallFromStore(q, surface, out), out);
+            return within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out)), out);
         } catch (RuntimeException e) {
             // #37: the store was reached and could not answer. Everything below this
             // line is the knowledge layer, so a failure here is that layer being
@@ -327,29 +333,60 @@ public final class ExperienceRetrieval {
      */
     public static final long RETRIEVAL_BUDGET_MILLIS = 15_000;
 
-    /** The live budget; only a test lowers it (see {@link #setRetrievalBudgetMillis}). */
+    /** Floor on a caller-supplied budget: below this, a healthy read would be cut off. */
+    public static final long MIN_RETRIEVAL_BUDGET_MILLIS = 200;
+
+    /**
+     * The live budget. A CALLER MAY LOWER IT, and one has to.
+     *
+     * <p>The first version of this made 15 seconds the only budget, which put the answer
+     * out of reach of the consumer it was built for: the hook's HTTP call gives up at
+     * 1500 ms (`HookConfig::timeout` defaults to `STDIN_DEADLINE`), so a wedged store
+     * still produced an anonymous transport timeout there and the typed answer arrived
+     * ten times too late to be read. A deadline is only useful to a caller who will
+     * still be waiting when it fires, so the caller states it.</p>
+     */
     private long budgetMillis = RETRIEVAL_BUDGET_MILLIS;
 
     /**
-     * Package-private, and only tests call it — so a stall test runs in milliseconds.
-     * The budget is a constant in production precisely so no caller can widen it back
-     * toward "wait forever".
+     * Lower the budget for this retrieval — clamped to
+     * [{@link #MIN_RETRIEVAL_BUDGET_MILLIS}, {@link #RETRIEVAL_BUDGET_MILLIS}].
+     *
+     * <p>Clamped in BOTH directions on purpose: a caller may buy a faster answer, never
+     * a longer wait. "Wait longer" is the state #37 was filed about, and it must not be
+     * reachable through a request parameter.</p>
      */
-    void setRetrievalBudgetMillis(long millis) {
-        this.budgetMillis = millis;
+    public void setRetrievalBudgetMillis(long millis) {
+        this.budgetMillis = Math.max(MIN_RETRIEVAL_BUDGET_MILLIS,
+            Math.min(RETRIEVAL_BUDGET_MILLIS, millis));
+    }
+
+    /** The budget in force — so a test can assert the SHIPPED default, not a literal. */
+    public long retrievalBudgetMillis() {
+        return budgetMillis;
     }
 
     /**
-     * Daemon threads: an abandoned read must never hold the JVM open. Cached rather than
-     * a single worker, because a stuck read would otherwise block every LATER caller on
-     * the queue — which is the convoy this method exists to break.
+     * Bounded, and daemon.
+     *
+     * <p>Daemon: an abandoned read must never hold the JVM open. BOUNDED: a cached pool
+     * looked right — a stuck read must not block later callers on a queue — but
+     * {@code H2ExperienceStore.query} is {@code synchronized}, and a thread blocked
+     * ENTERING a monitor ignores {@code Future.cancel(true)}. An unbounded pool therefore
+     * turns the incident's 66 queued threads into an unbounded thread population that
+     * cannot be reclaimed until the socket gives up. A small pool that REFUSES instantly
+     * is strictly better: the refusal is the same typed unavailable, and it costs
+     * nothing.</p>
      */
     private static final java.util.concurrent.ExecutorService RETRIEVAL_POOL =
-        java.util.concurrent.Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "jawata-retrieval");
-            t.setDaemon(true);
-            return t;
-        });
+        new java.util.concurrent.ThreadPoolExecutor(0, 8, 30L,
+            java.util.concurrent.TimeUnit.SECONDS,
+            new java.util.concurrent.SynchronousQueue<>(),
+            r -> {
+                Thread t = new Thread(r, "jawata-retrieval");
+                t.setDaemon(true);
+                return t;
+            });
 
     /**
      * #37, THE MEASURED CASE: run a retrieval with a deadline, because the connection
@@ -371,7 +408,15 @@ public final class ExperienceRetrieval {
      */
     private Map<String, Object> within(java.util.concurrent.Callable<Map<String, Object>> read,
             Map<String, Object> out) {
-        java.util.concurrent.Future<Map<String, Object>> task = RETRIEVAL_POOL.submit(read);
+        java.util.concurrent.Future<Map<String, Object>> task;
+        try {
+            task = RETRIEVAL_POOL.submit(read);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // The pool is full: every worker is stuck in the store. That IS the
+            // unavailable condition, observed rather than waited for.
+            return unavailable(out, "the store has " + 8 + " reads outstanding and none has"
+                + " returned; it is wedged");
+        }
         try {
             return task.get(budgetMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.TimeoutException e) {
@@ -405,6 +450,10 @@ public final class ExperienceRetrieval {
      * outages into the surface's silence rate, where nobody would ever find them.</p>
      */
     private static Map<String, Object> unavailable(Map<String, Object> out, String reason) {
+        // Strip any half-built answer. A body carrying `count`, `capped_from` or
+        // `analogies` beside `result=unavailable` invites a reader to use the fragment,
+        // and a fragment of an answer that was never completed is not an answer.
+        out.keySet().removeIf(k -> !"cue".equals(k));
         out.put("result", RESULT_UNAVAILABLE);
         out.put("reason", reason);
         out.put("message", "Knowledge layer UNAVAILABLE — this is NOT an absence: "
@@ -654,7 +703,7 @@ public final class ExperienceRetrieval {
     public Map<String, Object> primer(int limit) {
         Map<String, Object> out = new LinkedHashMap<>();
         try {
-            return within(() -> primerFromStore(limit, out), out);
+            return within(() -> primerFromStore(limit, new LinkedHashMap<>(out)), out);
         } catch (RuntimeException e) {
             // #37: same rule as recall — a primer that could not be read is not an
             // empty corpus. A session that starts against a broken store must know it

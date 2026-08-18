@@ -184,16 +184,82 @@ class KnowledgeUnavailableTest {
     }
 
     /**
-     * The budget is WIRED, not merely present: production builds retrieval without ever
-     * touching the test-only setter, so the shipped value is the constant. A stall test
-     * that only ever runs at 200ms would pass just as well if nothing bounded the live
-     * path at all.
+     * The budget is WIRED, not merely declared.
+     *
+     * <p>The first version of this test asserted {@code RETRIEVAL_BUDGET_MILLIS > 0 &&
+     * <= 60_000} — a tautology over a literal, under a javadoc claiming it proved the
+     * wiring. Its false-green path was exact: set the instance field to
+     * {@code Long.MAX_VALUE} and production is unbounded again — the precise #37 state —
+     * while every test still passes, because the stall test sets 200 explicitly and no
+     * other test stalls. So this asks a FRESHLY CONSTRUCTED retrieval what budget it is
+     * actually carrying.</p>
      */
     @Test
-    void the_shipped_budget_is_the_constant_and_it_is_bounded() {
-        assertTrue(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS > 0
-                && ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS <= 60_000,
-            "an unbounded or absurd default is the state #37 was filed about");
+    void a_freshly_built_retrieval_carries_the_shipped_budget() {
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            ExperienceRetrieval fresh = ExperienceRetrieval.keywordOnly(store, () -> null);
+            assertEquals(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS,
+                fresh.retrievalBudgetMillis(),
+                "production builds retrieval without touching any setter — if this is not the"
+                    + " constant, the live path is running on some other budget");
+        }
+        assertTrue(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS <= 60_000,
+            "and the constant itself is a bound, not a synonym for waiting");
+    }
+
+    /**
+     * A caller may buy a FASTER answer, never a longer wait.
+     *
+     * <p>The hook's 1500 ms HTTP deadline is why the parameter exists at all; the clamp
+     * is why it cannot be turned into the unbounded wait #37 was filed about.
+     */
+    @Test
+    void the_budget_clamps_in_both_directions() {
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            ExperienceRetrieval r = ExperienceRetrieval.keywordOnly(store, () -> null);
+
+            r.setRetrievalBudgetMillis(1_200);
+            assertEquals(1_200, r.retrievalBudgetMillis(), "a caller may ask for less");
+
+            r.setRetrievalBudgetMillis(Long.MAX_VALUE);
+            assertEquals(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS, r.retrievalBudgetMillis(),
+                "and may NOT ask for more — that is the state the issue was filed about");
+
+            r.setRetrievalBudgetMillis(0);
+            assertEquals(ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS, r.retrievalBudgetMillis(),
+                "nor for a budget so small that a healthy read is reported as an outage");
+        }
+    }
+
+    /**
+     * The partial answer must not survive into the unavailable body — and, more
+     * importantly, a straggler must not be able to overwrite the verdict.
+     *
+     * <p>The task now works on its OWN map. Sharing the caller's map was a data race
+     * with one specific ugly outcome: a read that finally completes writes
+     * {@code result=absence} over {@code result=unavailable}, and the tool — which reads
+     * the map after the call returns — emits a successful absence during an outage.
+     */
+    @Test
+    void an_unavailable_body_carries_no_fragment_of_the_answer_it_never_got() {
+        ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(
+            new UnreadableStore(2_000), () -> null);
+        retrieval.setRetrievalBudgetMillis(200);
+
+        Map<String, Object> result = retrieval.recall(
+            new RecallQuery("com.example.Anything", null, null, null, null));
+        assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"));
+
+        // Give the straggler time to finish and try to write its own verdict.
+        try {
+            Thread.sleep(2_500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"),
+            "a late completion must not turn the outage back into an answer");
+        assertTrue(result.get("count") == null && result.get("analogies") == null,
+            "and no fragment of the answer that never arrived: " + result.keySet());
     }
 
     /**

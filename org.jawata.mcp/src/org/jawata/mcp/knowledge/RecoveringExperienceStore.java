@@ -69,6 +69,7 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     /** Non-null while degraded — the text every answer carries. Null once recovered. */
+    @Override
     public String degradedNotice() {
         return notice;
     }

@@ -630,9 +630,18 @@ public class DebugTool extends AbstractTool {
         // agent is reminded before it investigates from scratch. The spec's measure is exactly
         // this: "a diagnosis session demonstrably recalls a previously recorded incident
         // first." Sprint-24 audit (T2.5) — this was proven nowhere and wired nowhere in v2.13.0.
-        List<Map<String, Object>> priorKnowledge = recallForSymbol(symbol);
+        Map<String, Object> recalled = recallFor(symbol);
+        List<Map<String, Object>> priorKnowledge = entriesOf(recalled);
         String recallSteering = "";
-        if (!priorKnowledge.isEmpty()) {
+        // #37: an unavailable knowledge layer is not "nothing on record". Without this,
+        // the debugger seat is told nothing and investigates from scratch believing the
+        // store was consulted — the defect #37 names, at a consumer in this same repo.
+        if (org.jawata.mcp.knowledge.ExperienceRetrieval.RESULT_UNAVAILABLE
+                .equals(recalled.get("result"))) {
+            recallSteering = " KNOWLEDGE LAYER UNAVAILABLE (" + recalled.get("reason") + ") — "
+                + "prior notes on this symbol could NOT be read. Nothing is established either "
+                + "way; do not treat this as 'nothing on record'.";
+        } else if (!priorKnowledge.isEmpty()) {
             data.put("priorKnowledge", priorKnowledge);
             recallSteering = " YOU HAVE " + priorKnowledge.size() + " PRIOR NOTE(S) on this "
                 + "symbol (priorKnowledge above) — read them BEFORE probing; the last session "
@@ -648,30 +657,43 @@ public class DebugTool extends AbstractTool {
             .build());
     }
 
-    /** Prior experience-store knowledge for a symbol the runtime just named — empty if none or unwired. */
-    private List<Map<String, Object>> recallForSymbol(String symbol) {
+    /**
+     * The recall RESULT for a symbol the runtime just named — the whole document, not
+     * only its entries.
+     *
+     * <p>#37: this used to return the entry list alone, which collapsed "the store holds
+     * nothing about this symbol" and "the store could not be read" into the same empty
+     * list. The caller needs to tell them apart, so the caller gets the result word.
+     * An empty map means the recall was never attempted (no store wired, no symbol).</p>
+     */
+    private Map<String, Object> recallFor(String symbol) {
         if (experience == null || symbol == null || symbol.isBlank()) {
-            return List.of();
+            return Map.of();
         }
         try {
-            Map<String, Object> recalled = experience.recall(new org.jawata.mcp.knowledge.RecallQuery(
-                symbol, null, null, null, null));
-            Object entries = recalled.get("entries");
-            if (entries instanceof List<?> list && !list.isEmpty()) {
-                List<Map<String, Object>> out = new ArrayList<>();
-                for (Object e : list) {
-                    if (e instanceof Map<?, ?> m) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> entry = (Map<String, Object>) m;
-                        out.add(entry);
-                    }
-                }
-                return out;
-            }
+            return experience.recall(
+                new org.jawata.mcp.knowledge.RecallQuery(symbol, null, null, null, null));
         } catch (Exception e) {
             log.debug("recall-before-probe for {} failed: {}", symbol, e.getMessage());
+            return Map.of();
         }
-        return List.of();
+    }
+
+    /** The entries of a recall result, or empty when it carries none. */
+    private static List<Map<String, Object>> entriesOf(Map<String, Object> recalled) {
+        Object entries = recalled.get("entries");
+        if (!(entries instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object e : list) {
+            if (e instanceof Map<?, ?> m) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> entry = (Map<String, Object>) m;
+                out.add(entry);
+            }
+        }
+        return out;
     }
 
     private ToolResponse threads(JsonNode arguments) throws Exception {

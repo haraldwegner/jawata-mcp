@@ -101,6 +101,10 @@ public final class H2ExperienceStore implements ExperienceStore {
      * without a bound is exactly the state that produced the outage, and an operator
      * reading the log should be able to see that it is unbounded.
      */
+    /** So the unbounded-connection fact is stated once per process, not once per open. */
+    private static final java.util.concurrent.atomic.AtomicBoolean UNBOUNDED_REPORTED =
+        new java.util.concurrent.atomic.AtomicBoolean();
+
     private static void boundNetworkWait(Connection connection) {
         try {
             connection.setNetworkTimeout(Runnable::run, NETWORK_TIMEOUT_MILLIS);
@@ -111,11 +115,19 @@ public final class H2ExperienceStore implements ExperienceStore {
             // bound that did not exist, which is the #37 failure wearing the fix's clothes.
             // So read it back, and if the driver ignored us, SAY SO.
             int applied = connection.getNetworkTimeout();
-            if (applied <= 0) {
-                log.warn("Experience store connection is UNBOUNDED — {} ignores setNetworkTimeout"
-                        + " (asked {} ms, reports {}). A store read that stops returning will hang"
-                        + " until the caller gives up. See #37.",
-                    connection.getClass().getName(), NETWORK_TIMEOUT_MILLIS, applied);
+            if (applied <= 0 && UNBOUNDED_REPORTED.compareAndSet(false, true)) {
+                // ONCE per process, and at INFO. H2 2.2.224 ignores this call
+                // unconditionally, so a WARN here fired on every connection open forever
+                // — an always-on warning is not a signal, it is background. And its
+                // original text ("will hang until the caller gives up") is no longer
+                // true: the OPERATION is bounded now, at the retrieval boundary. What
+                // remains worth saying once is which of the two bounds is in force.
+                log.info("Experience store connection is UNBOUNDED — {} ignores"
+                        + " setNetworkTimeout (asked {} ms, reports {}). Retrieval is bounded"
+                        + " at the operation instead ({} ms); a read that stops returning"
+                        + " still holds its H2 session lock. See #37.",
+                    connection.getClass().getName(), NETWORK_TIMEOUT_MILLIS, applied,
+                    org.jawata.mcp.knowledge.ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
             }
         } catch (SQLException | RuntimeException e) {
             log.warn("Experience store connection is UNBOUNDED — setNetworkTimeout refused: {}",
