@@ -13,7 +13,14 @@ import java.util.Set;
 /**
  * The field lane's small mutable state (Sprint 28b, D3/D4/D9): which error
  * shapes have been posted, whether the in-session nudge is switched off, and
- * (D9) whether the reminders are silenced plus their bookkeeping.
+ * (D9) whether the reminders are silenced.
+ *
+ * <p><b>No reminder bookkeeping lives here.</b> It once did — a
+ * {@code remindedAt} timestamp and a {@code strikes} counter — and nothing in
+ * production ever wrote them, while {@code FieldTool} handed them to agents as
+ * fact: an agent read {@code strikes: 0} forever while the real count advanced
+ * in {@code reminded.log} (28b closing audit, F2). The append-only ledger is
+ * the single truth; {@link #reminderStrikes(Path)} folds it.</p>
  *
  * <p><b>One home, three readers.</b> The file sits beside the pile in
  * {@code <workspace>/field/}: the resident writes it through {@code FieldTool},
@@ -37,10 +44,10 @@ public final class FieldState {
     private boolean silenced = false;
     /** Shapes already reported — they never nudge or remind again. */
     private final Set<String> posted = new LinkedHashSet<>();
-    /** D9 bookkeeping: when the last reminder was shown, and how many have
-     *  gone unanswered since the last {@code /report} use. */
-    private long remindedAtMillis = 0;
-    private int strikes = 0;
+
+    /** The append-only reminder ledger, beside the state in the same
+     *  directory. THE single truth about reminder strikes. */
+    static final String REMINDER_LEDGER = "reminded.log";
 
     private FieldState() {
     }
@@ -57,14 +64,6 @@ public final class FieldState {
         return Set.copyOf(posted);
     }
 
-    public long remindedAtMillis() {
-        return remindedAtMillis;
-    }
-
-    public int strikes() {
-        return strikes;
-    }
-
     public FieldState withNudges(boolean on) {
         this.nudges = on;
         return this;
@@ -75,13 +74,13 @@ public final class FieldState {
         return this;
     }
 
-    /** Marks a shape reported: it stops nudging and stops counting as news,
-     *  and a {@code /report} use resets the reminder strikes (D9). */
+    /** Marks a shape reported: it stops nudging and stops counting as news.
+     *  The reminder strikes are reset by the ledger marker
+     *  {@link #recordReportUsed} appends, never by a counter held here. */
     public FieldState withPosted(String shapeKey) {
         if (shapeKey != null && !shapeKey.isBlank()) {
             posted.add(shapeKey);
         }
-        this.strikes = 0;
         return this;
     }
 
@@ -96,7 +95,7 @@ public final class FieldState {
     public void recordReportUsed(Path dir) {
         try {
             Files.createDirectories(dir);
-            Files.writeString(dir.resolve("reminded.log"),
+            Files.writeString(dir.resolve(REMINDER_LEDGER),
                 System.currentTimeMillis() + "\treset\n",
                 java.nio.file.StandardOpenOption.CREATE,
                 java.nio.file.StandardOpenOption.APPEND);
@@ -104,6 +103,48 @@ public final class FieldState {
             log.error("Reminder-reset marker NOT written at {} — the reminders will keep"
                 + " counting this use as unanswered", dir, e);
         }
+    }
+
+    /**
+     * Unanswered reminders: the {@code shown} lines since the last
+     * {@code reset} in the append-only ledger (D9).
+     *
+     * <p>THE LEDGER IS THE ONLY TRUTH HERE. The state file used to carry a
+     * copy, but nothing in production ever wrote it while this tool reported
+     * it to agents as fact — so an agent read {@code strikes: 0} forever while
+     * the real count advanced (28b closing audit, F2). The fold below is the
+     * same one the hook does in {@code jawata-hook/src/field.rs
+     * ::reminder_ledger} and studio does in {@code field_view.rs}: three
+     * processes append to this file, so none of them may hold a counter.</p>
+     *
+     * @param dir the {@code <workspace>/field} directory
+     * @return the strike count; 0 when the ledger is absent or unreadable
+     */
+    public static int reminderStrikes(Path dir) {
+        Path ledger = dir.resolve(REMINDER_LEDGER);
+        if (!Files.exists(ledger)) {
+            return 0;
+        }
+        int strikes = 0;
+        try {
+            for (String line : Files.readAllLines(ledger)) {
+                int tab = line.indexOf('\t');
+                if (tab < 0) {
+                    continue;   // a half-written line loses itself, never the fold
+                }
+                String kind = line.substring(tab + 1).trim();
+                if ("shown".equals(kind)) {
+                    strikes++;
+                } else if ("reset".equals(kind)) {
+                    strikes = 0;
+                }
+            }
+        } catch (IOException e) {
+            log.error("Reminder ledger unreadable at {} — reporting 0 strikes, which"
+                + " under-reports rather than inventing a count", ledger, e);
+            return 0;
+        }
+        return strikes;
     }
 
     /** The state at {@code dir}; defaults (nudges on, not silenced) when the
@@ -118,8 +159,6 @@ public final class FieldState {
             String content = Files.readString(file);
             state.nudges = !content.contains("\"nudges\":false");
             state.silenced = content.contains("\"silenced\":true");
-            state.remindedAtMillis = longField(content, "\"remindedAt\":");
-            state.strikes = (int) longField(content, "\"strikes\":");
             int from = content.indexOf("\"posted\":[");
             if (from >= 0) {
                 int to = content.indexOf(']', from);
@@ -158,14 +197,6 @@ public final class FieldState {
         }
     }
 
-    /** D9: records that a reminder was shown now, counting one unanswered
-     *  strike (reset by {@link #withPosted}). */
-    public FieldState withReminderShown(long nowMillis) {
-        this.remindedAtMillis = nowMillis;
-        this.strikes = strikes + 1;
-        return this;
-    }
-
     String toJson() {
         StringBuilder shapes = new StringBuilder();
         for (String shape : posted) {
@@ -176,32 +207,10 @@ public final class FieldState {
         }
         return "{\"nudges\":" + nudges
             + ",\"silenced\":" + silenced
-            + ",\"remindedAt\":" + remindedAtMillis
-            + ",\"strikes\":" + strikes
             + ",\"posted\":[" + shapes + "]}";
     }
 
     public static Path file(Path dir) {
         return dir.resolve("state.json");
-    }
-
-    /** One numeric field out of the flat state document; 0 when absent or
-     *  unparseable — a missing number is never a reason to fail a read. */
-    private static long longField(String content, String key) {
-        int from = content.indexOf(key);
-        if (from < 0) {
-            return 0;
-        }
-        from += key.length();
-        int to = from;
-        while (to < content.length()
-                && (Character.isDigit(content.charAt(to)) || content.charAt(to) == '-')) {
-            to++;
-        }
-        try {
-            return Long.parseLong(content.substring(from, to));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 }

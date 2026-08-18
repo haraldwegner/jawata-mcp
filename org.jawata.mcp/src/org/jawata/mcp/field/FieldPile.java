@@ -33,17 +33,17 @@ public final class FieldPile {
      *  the file seam). */
     public static final int FORMAT_VERSION = 1;
 
+    /** The pile's file name inside the field directory. Part of the FILE SEAM
+     *  — studio and the hook open this name themselves — so it is a named
+     *  constant rather than a literal repeated at each end. */
+    public static final String FILE_NAME = "pile.jsonl";
+
     private final Path file;
     private final AtomicLong failedWrites = new AtomicLong();
 
     /** @param dir the {@code <workspace>/field} directory (created lazily). */
     public FieldPile(Path dir) {
-        this.file = dir.resolve("pile.jsonl");
-    }
-
-    /** The pile file (for status surfaces and tests). */
-    public Path file() {
-        return file;
+        this.file = dir.resolve(FILE_NAME);
     }
 
     /** Appends one event; writes the versioned header first on a fresh file.

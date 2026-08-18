@@ -60,7 +60,7 @@ class FieldLeakCorpusTest {
                 ToolResponse.internalError(new IllegalStateException(leak)), 42);
         }
 
-        String stored = Files.readString(pile.file());
+        String stored = Files.readString(dir.resolve(FieldPile.FILE_NAME));
         for (String leak : corpus) {
             assertFalse(stored.contains(leak),
                 "corpus string leaked into the pile: " + leak);

@@ -26,7 +26,7 @@ class FieldPileTest {
     void first_line_is_the_versioned_header(@TempDir Path dir) throws Exception {
         FieldPile pile = new FieldPile(dir);
         pile.append(event("search_symbols", "unknown", true, null));
-        List<String> lines = Files.readAllLines(pile.file());
+        List<String> lines = Files.readAllLines(dir.resolve(FieldPile.FILE_NAME));
         assertEquals("{\"pileFormat\":" + FieldPile.FORMAT_VERSION
             + ",\"contract\":" + FieldContract.VERSION + "}", lines.get(0),
             "studio refuses newer formats instead of misreading them — the"

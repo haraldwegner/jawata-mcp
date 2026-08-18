@@ -7,6 +7,7 @@ import org.jawata.mcp.tools.FieldTool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -69,15 +70,40 @@ class FieldToolTest {
 
     @Test
     void mark_posted_records_the_shape_and_resets_the_strikes(@TempDir Path dir) {
-        new FieldState_TestSeam().seedStrikes(dir, 2);
+        seedRemindersShown(dir, 2);
+        assertEquals(2, FieldState.reminderStrikes(dir), "two reminders went unanswered");
         ToolResponse response = tool(dir).execute(
             args("mark_posted").put("shape", "run_tests/run/RUNNER_TIMEOUT"));
         assertTrue(response.isSuccess());
         assertEquals(0, field(response, "strikes"),
             "a /report use resets the reminder strikes (D9)");
-        FieldState state = FieldState.read(dir);
-        assertTrue(state.posted().contains("run_tests/run/RUNNER_TIMEOUT"));
-        assertEquals(0, state.strikes());
+        assertTrue(FieldState.read(dir).posted().contains("run_tests/run/RUNNER_TIMEOUT"));
+        assertEquals(0, FieldState.reminderStrikes(dir),
+            "and the reset is in the LEDGER, which is the only place strikes live");
+    }
+
+    /**
+     * 28b closing audit F2: the strike count the tool reports is folded from
+     * the ledger the hook actually writes — not from a state-file counter that
+     * production never wrote. Before the fix an agent read {@code strikes: 0}
+     * forever while the real count advanced.
+     */
+    @Test
+    void the_reported_strikes_come_from_the_ledger_the_hook_writes(@TempDir Path dir) {
+        // What the hook appends, in the hook's own format, with nobody having
+        // touched state.json at all.
+        seedRemindersShown(dir, 3);
+        assertEquals(3, field(tool(dir).execute(args("silence")), "strikes"),
+            "the tool reports what reminded.log says, not a copy nobody writes");
+    }
+
+    @Test
+    void a_missing_or_malformed_ledger_reads_as_no_strikes(@TempDir Path dir) throws Exception {
+        assertEquals(0, FieldState.reminderStrikes(dir), "no ledger, no strikes");
+        Files.writeString(dir.resolve("reminded.log"),
+            "not a record\n\n" + "17\tshown\n" + "gibberish\n");
+        assertEquals(1, FieldState.reminderStrikes(dir),
+            "a half-written line loses itself, never the fold");
     }
 
     @Test
@@ -119,13 +145,28 @@ class FieldToolTest {
         assertFalse(fresh.silenced());
 
         assertTrue(FieldState.read(dir).withNudges(false).withSilenced(true)
-            .withPosted("a/b/C").withReminderShown(1234L).write(dir));
+            .withPosted("a/b/C").write(dir));
         FieldState read = FieldState.read(dir);
         assertFalse(read.nudges());
         assertTrue(read.silenced());
         assertTrue(read.posted().contains("a/b/C"));
-        assertEquals(1234L, read.remindedAtMillis());
-        assertEquals(1, read.strikes());
+    }
+
+    /**
+     * The state document carries the two switches and the posted set — and
+     * nothing else. The dead {@code remindedAt}/{@code strikes} keys are gone:
+     * a value written by nobody and reported as fact is worse than an absent
+     * one (28b closing audit, F2).
+     */
+    @Test
+    void the_state_document_carries_no_reminder_bookkeeping(@TempDir Path dir)
+            throws Exception {
+        assertTrue(FieldState.read(dir).withSilenced(true).write(dir));
+        String document = Files.readString(FieldState.file(dir));
+        assertFalse(document.contains("remindedAt"), document);
+        assertFalse(document.contains("strikes"), document);
+        assertTrue(document.contains("\"silenced\":true"),
+            "and the switch the hook decides on by substring is still there: " + document);
     }
 
     @Test
@@ -149,14 +190,18 @@ class FieldToolTest {
         assertTrue(tool(dir).execute(args("pile")).isSuccess());
     }
 
-    /** Seeds reminder strikes through the real state writer. */
-    private static final class FieldState_TestSeam {
-        void seedStrikes(Path dir, int strikes) {
-            FieldState state = FieldState.read(dir);
-            for (int i = 0; i < strikes; i++) {
-                state.withReminderShown(1000L + i);
+    /** Appends {@code shown} lines exactly as the hook binary does — the only
+     *  writer of that marker, and the only place a strike ever comes from. */
+    private static void seedRemindersShown(Path dir, int count) {
+        try {
+            Files.createDirectories(dir);
+            StringBuilder ledger = new StringBuilder();
+            for (int i = 0; i < count; i++) {
+                ledger.append(1000L + i).append("\tshown\n");
             }
-            state.write(dir);
+            Files.writeString(dir.resolve("reminded.log"), ledger.toString());
+        } catch (Exception e) {
+            throw new IllegalStateException("could not seed the reminder ledger", e);
         }
     }
 }

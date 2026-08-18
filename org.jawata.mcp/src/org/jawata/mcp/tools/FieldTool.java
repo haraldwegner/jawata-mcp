@@ -195,7 +195,7 @@ public class FieldTool extends AbstractTool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("shape", shape);
         data.put("posted", state.posted());
-        data.put("strikes", state.strikes());
+        data.put("strikes", FieldState.reminderStrikes(dir));
         return ToolResponse.success(data);
     }
 
@@ -219,7 +219,7 @@ public class FieldTool extends AbstractTool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("nudges", state.nudges());
         data.put("silenced", state.silenced());
-        data.put("strikes", state.strikes());
+        data.put("strikes", FieldState.reminderStrikes(dir));
         data.put("changed", changed);
         return ToolResponse.success(data);
     }
