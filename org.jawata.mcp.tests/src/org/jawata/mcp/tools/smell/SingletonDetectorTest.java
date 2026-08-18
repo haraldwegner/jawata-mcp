@@ -39,7 +39,7 @@ class SingletonDetectorTest {
     private Set<String> symbols(String kindOrFamily, boolean isFamily) {
         ObjectNode args = mapper.createObjectNode();
         args.put(isFamily ? "family" : "kind", kindOrFamily);
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> data = (Map<String, Object>) r.getData();
         List<Map<String, Object>> findings = (List<Map<String, Object>>) data.get("findings");

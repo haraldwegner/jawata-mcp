@@ -132,20 +132,37 @@ class FindQualityIssueAsyncTest {
         assertEquals("INVALID_PARAMETER", r3.getError().getCode());
     }
 
+    /**
+     * This test used to assert that a synchronous family sweep worked and that
+     * {@code action="run"} matched it. {@code jawata-mcp#10} removed the thing
+     * it asserted: a family sweep timed out on any realistic project, so the
+     * synchronous path is refused rather than advertised.
+     *
+     * <p>What survives is the invariant underneath it — the two spellings of
+     * "synchronous" must behave IDENTICALLY. Omitting {@code action} and
+     * passing {@code action="run"} are the same request, and one of them
+     * quietly still running a sweep would be the divergence this file was
+     * written to catch, wearing the opposite sign.</p>
+     */
     @Test
-    @DisplayName("synchronous path is untouched: action=run behaves like no action")
-    void syncPathUnchanged() {
+    @DisplayName("both spellings of synchronous refuse identically, and name the async path")
+    void theTwoSynchronousSpellingsAgree() {
         ObjectNode plain = objectMapper.createObjectNode();
         plain.put("family", "quality");
-        plain.put("summary", true);
-        Map<String, Object> a = data(tool.execute(plain));
+        ToolResponse a = tool.execute(plain);
 
         ObjectNode run = objectMapper.createObjectNode();
         run.put("action", "run");
         run.put("family", "quality");
-        run.put("summary", true);
-        Map<String, Object> b = data(tool.execute(run));
-        assertEquals(a.get("count"), b.get("count"));
+        ToolResponse b = tool.execute(run);
+
+        assertFalse(a.isSuccess(), "no action: a family sweep is async-only");
+        assertFalse(b.isSuccess(), "action=run: the same request, the same answer");
+        assertEquals(a.getError().getCode(), b.getError().getCode());
+        assertEquals("SWEEP_REQUIRES_ASYNC", a.getError().getCode());
+        assertTrue(a.getError().getMessage().contains("start"),
+            "the refusal must point at the path this whole file tests: "
+                + a.getError().getMessage());
     }
 
     /**

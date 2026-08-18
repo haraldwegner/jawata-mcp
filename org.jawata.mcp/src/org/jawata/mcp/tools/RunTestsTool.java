@@ -49,6 +49,34 @@ public class RunTestsTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(RunTestsTool.class);
 
+    /**
+     * Every action {@link #executeWithService} accepts, in one place.
+     *
+     * <p>The declared schema said <em>four</em> while the dispatcher accepted
+     * <em>eighteen</em>, and the refusal message named ten of the fourteen
+     * coverage suffixes — omitting {@code coverage_tests_covering},
+     * {@code coverage_of_test}, {@code coverage_impacted_tests} and
+     * {@code coverage_mutation}. So the schema a caller reads, and the error
+     * text that would otherwise teach it, both hid capabilities that had
+     * shipped: impacted-test selection was built and verified in Sprint 23 and
+     * sat unused for five weeks, and nothing a caller could read said it
+     * existed.</p>
+     *
+     * <p>Three hand-maintained copies of one list is what produced that, so
+     * there is now one list and no copies. {@code RunTestsToolActionsTest}
+     * drives every entry through the real dispatcher and refuses anything the
+     * switch routes but this list omits — the divergence cannot silently
+     * return.</p>
+     */
+    static final List<String> ACTIONS = List.of(
+        "run", "start", "status", "cancel",
+        "coverage_report", "coverage_uncovered", "coverage_artifacts",
+        "coverage_delete", "coverage_delta", "coverage_baseline_set",
+        "coverage_baseline_compare", "coverage_threshold_set",
+        "coverage_stability", "coverage_tests_covering",
+        "coverage_of_test", "coverage_impacted_tests",
+        "coverage_import", "coverage_mutation");
+
     private final org.jawata.mcp.execution.TestSessionRegistry sessions =
         new org.jawata.mcp.execution.TestSessionRegistry();
 
@@ -198,9 +226,13 @@ public class RunTestsTool extends AbstractTool {
             "items", Map.of("type", "string"),
             "description", "Optional JVM flags for the forked test runner."));
         properties.put("action", Map.of("type", "string",
-            "enum", List.of("run", "start", "status", "cancel"),
+            "enum", ACTIONS,
             "description", "run (default) = synchronous. start = async, returns a sessionId "
-                + "immediately. status/cancel operate on a sessionId (scope not needed)."));
+                + "immediately. status/cancel operate on a sessionId (scope not needed). "
+                + "The coverage_* actions query and manage coverage evidence — including "
+                + "coverage_impacted_tests, which selects the tests a diff actually touches, "
+                + "and coverage_mutation, which checks whether those tests would notice a "
+                + "change."));
         properties.put("sessionId", Map.of("type", "string",
             "description", "Session handle from action=start; required for status/cancel."));
         properties.put("extraClasspath", Map.of("type", "array",
@@ -267,6 +299,15 @@ public class RunTestsTool extends AbstractTool {
             return ToolResponse.invalidParameter("scope", "Required object 'scope' is missing.");
         }
         String action = getStringParam(arguments, "action", "run");
+        // THE DECLARED LIST IS THE GATE, so the two cannot drift apart: an
+        // action the switch below routes but ACTIONS omits is unreachable by
+        // construction, rather than merely caught by a test someone has to
+        // remember to update. The reverse direction — declared here and not
+        // routed below — is what the `default` arm now means, and it says so.
+        if (!ACTIONS.contains(action)) {
+            return ToolResponse.invalidParameter("action",
+                "Must be one of: " + String.join(", ", ACTIONS) + "; got '" + action + "'.");
+        }
         switch (action) {
             case "status", "cancel" -> {
                 return handleSessionAction(action, arguments);
@@ -286,11 +327,15 @@ public class RunTestsTool extends AbstractTool {
             }
             case "run", "start" -> { /* fall through to launch */ }
             default -> {
-                return ToolResponse.invalidParameter("action",
-                    "Must be run, start, status, cancel, or one of the coverage_* actions "
-                        + "(report, uncovered, artifacts, delete, delta, baseline_set, "
-                        + "baseline_compare, threshold_set, stability, import); got '"
-                        + action + "'.");
+                // NOT a caller error — the guard above already refused anything
+                // undeclared. Reaching here means jawata declares an action it
+                // does not route, and saying "you passed something invalid"
+                // would send the caller hunting for a mistake it did not make.
+                log.error("run_tests declares action '{}' and routes it nowhere", action);
+                return ToolResponse.error("ACTION_NOT_ROUTED",
+                    "'" + action + "' is a declared run_tests action that this build does not "
+                        + "route. This is a jawata defect, not a problem with your call.",
+                    "Report it; nothing you change about the call will help.");
             }
         }
         if (arguments == null || !arguments.has("scope") || !arguments.get("scope").isObject()) {

@@ -55,7 +55,7 @@ class ConflictSeamTest {
         a.put("family", "fowler");
         a.put("threshold", 3);   // knot: 4 params (> 3) AND body over 3 LOC -> both fire
 
-        ToolResponse r = tool.execute(a);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, a);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> d = data(r);
 

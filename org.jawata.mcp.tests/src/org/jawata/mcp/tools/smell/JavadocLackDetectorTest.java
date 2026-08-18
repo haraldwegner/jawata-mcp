@@ -45,7 +45,7 @@ class JavadocLackDetectorTest {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> run(ObjectNode args) {
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), () -> "refused: " + (r.getError() != null
             ? r.getError().getCode() + " / " + r.getError().getMessage() : "?"));
         return (Map<String, Object>) r.getData();

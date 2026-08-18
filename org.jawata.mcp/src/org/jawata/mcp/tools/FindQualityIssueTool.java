@@ -254,13 +254,35 @@ public class FindQualityIssueTool extends AbstractTool {
 
         // family without kind: run every detector in the family and merge findings.
         if (!hasKind && hasFamily) {
-            ToolResponse r = runFamily(service, family, arguments);
-            String baseline = getStringParam(arguments, "baseline");
-            if (r.isSuccess() && baseline != null && !baseline.isBlank()) {
-                return applyBaseline(service, family, baseline, r);
-            }
-            // Sprint 22a 2.6.1 (#1): bound the sweep for MCP consumers (summary / cap / page).
-            return r.isSuccess() ? boundResponse(r, arguments, true) : r;
+            // jawata-mcp#10 — REFUSED, in milliseconds, naming the path that works.
+            //
+            // Measured on a warm resident: `family="fowler"` on a 1040-file
+            // Eclipse plug-in timed out twice at the 30 s default, with ONE of
+            // eighteen detector kinds taking 10.3 s. The tool advertised a
+            // synchronous family sweep it cannot honour at realistic project
+            // sizes, and the failure taught the caller nothing — a bare timeout
+            // says neither that an async path exists nor that the sweep is
+            // still computing a result nobody will ever read.
+            //
+            // Refusing beats auto-starting: `action=start` returns a sweepId
+            // instead of findings, and silently changing WHAT COMES BACK is how
+            // a caller ends up parsing a handle as a result. The caller asks
+            // for the async path in one word and knows what it will get.
+            //
+            // It is a smaller project's convenience that is lost here, and
+            // that is the trade: a capability that works on 655 files and
+            // fails on 1040 is not a capability, it is a size limit nobody
+            // documented.
+            return ToolResponse.error("SWEEP_REQUIRES_ASYNC",
+                "A whole-family sweep runs " + catalog.kinds(family).size()
+                    + " detectors and can outlive your client's timeout, so it is not "
+                    + "available synchronously. Re-issue this call with action=\"start\" — "
+                    + "it returns a sweepId immediately — then poll action=\"status\" with "
+                    + "that id for progress and, once finished, the full result. The result "
+                    + "stays retrievable, so a timed-out poll loses nothing.",
+                "For a synchronous answer, ask for a single `kind` instead of a `family`; "
+                    + "those complete well inside the timeout. This family's kinds: "
+                    + catalog.kinds(family));
         }
         if (!hasKind) {
             return ToolResponse.invalidParameter("kind",
@@ -521,11 +543,6 @@ public class FindQualityIssueTool extends AbstractTool {
         return kept;
     }
 
-    /** Run every detector in {@code family} and merge their {@code findings} into one response. */
-    private ToolResponse runFamily(IJdtService service, String family, JsonNode arguments) {
-        return runFamily(service, family, arguments, null, null);
-    }
-
     /**
      * Sprint 25 Stage 14a: the async worker's variant — {@code progress}
      * receives the completed-kind count after each detector; a set
@@ -540,6 +557,28 @@ public class FindQualityIssueTool extends AbstractTool {
             return ToolResponse.invalidParameter("family",
                 "Unknown family '" + family + "'. One of: quality, fowler, solid, kerievsky.");
         }
+        // Longest root first, so a project nested inside another wins its own
+        // files. Built ONCE per sweep rather than per finding: a sweep over a
+        // 29-project workspace produces thousands of rows.
+        // MEASURED, not assumed: a finding's `filePath` is WORKSPACE-RELATIVE
+        // ("org.jawata.core/src/org/jawata/core/ProjectKeys.java"), while
+        // `projectRoot` is absolute. Matching one against the other is what the
+        // first version of this did, and it attributed nothing at all — 0 of 92
+        // rows — while looking entirely reasonable. The key that actually
+        // matches is the project directory's own NAME, which is that relative
+        // path's first segment.
+        List<Map.Entry<String, String>> owners = service.allProjects().stream()
+            .filter(p -> p.projectRoot() != null && p.projectRoot().getFileName() != null
+                && p.projectKey() != null)
+            .map(p -> Map.entry(p.projectRoot().getFileName().toString(), p.projectKey()))
+            // Longest name first: "core" must not claim "core-tests".
+            .sorted((a, b) -> Integer.compare(b.getKey().length(), a.getKey().length()))
+            .toList();
+        // With exactly one project loaded, every finding is that project's by
+        // construction — the paths may not carry a project segment at all, and
+        // saying nothing would be less true than saying the only thing there is
+        // to say.
+        String soleProject = owners.size() == 1 ? owners.get(0).getValue() : null;
         List<Object> merged = new ArrayList<>();
         int done = 0;
         for (String k : kinds) {
@@ -566,7 +605,7 @@ public class FindQualityIssueTool extends AbstractTool {
                     // byKind counting them under null and the reader unable to
                     // say WHICH detector spoke. Stamp the kind we just ran.
                     for (Object entry : fs) {
-                        merged.add(withKind(entry, k));
+                        merged.add(withProject(withKind(entry, k), owners, soleProject));
                     }
                 }
             }
@@ -701,6 +740,56 @@ public class FindQualityIssueTool extends AbstractTool {
      * dropped one — the reader still cannot tell which detector spoke, and
      * {@code byKind} buckets it under null.</p>
      */
+    /**
+     * Name the project a finding came from.
+     *
+     * <p>A whole-workspace sweep merges findings from every loaded project into
+     * one list and, before this, said nothing about which project each row
+     * belonged to — while {@code compile_workspace} has emitted
+     * {@code sourceProject} on every diagnostic all along. On the 29-project
+     * workspace this plan was measured against, that is a flat list of
+     * thousands of rows with no way to say "these are clicktrader's", so the
+     * reader has to reconstruct ownership from path prefixes by hand — the
+     * work the loaded model already did.</p>
+     *
+     * <p>Resolved by longest matching project root, so a project nested inside
+     * another claims its own files. A row whose path matches nothing keeps
+     * {@code null} rather than being assigned to the nearest guess: an
+     * unattributed finding is honest, a misattributed one sends someone to the
+     * wrong repository.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private static Object withProject(Object entry, List<Map.Entry<String, String>> owners,
+            String soleProject) {
+        if (owners.isEmpty() || !(entry instanceof Map<?, ?> m)) {
+            return entry;
+        }
+        Map<String, Object> row = (Map<String, Object>) m;
+        if (row.get("sourceProject") instanceof String s && !s.isBlank()) {
+            return row;
+        }
+        if (!(row.get("filePath") instanceof String path) || path.isBlank()) {
+            return row;
+        }
+        String key = null;
+        for (Map.Entry<String, String> owner : owners) {
+            String dir = owner.getKey();
+            if (path.equals(dir) || path.startsWith(dir + "/") || path.startsWith(dir + "\\")) {
+                key = owner.getValue();
+                break;
+            }
+        }
+        if (key == null) {
+            key = soleProject;
+        }
+        if (key == null) {
+            return row;
+        }
+        Map<String, Object> stamped = new LinkedHashMap<>(row);
+        stamped.put("sourceProject", key);
+        return stamped;
+    }
+
     @SuppressWarnings("unchecked")
     private static Object withKind(Object entry, String kind) {
         if (!(entry instanceof Map<?, ?> m)) {

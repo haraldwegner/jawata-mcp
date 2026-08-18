@@ -116,6 +116,7 @@ public class AnalyzeChangeImpactTool extends AbstractTool {
             Set<String> visited = new HashSet<>();
             List<IJavaElement> currentLevel = List.of(element);
 
+            boolean capHit = false;
             for (int d = 0; d < depth && !currentLevel.isEmpty(); d++) {
                 List<IJavaElement> nextLevel = new ArrayList<>();
 
@@ -124,7 +125,15 @@ public class AnalyzeChangeImpactTool extends AbstractTool {
                     if (visited.contains(key)) continue;
                     visited.add(key);
 
-                    List<SearchMatch> matches = service.getSearchService().findAllReferences(target, 500);
+                    // COUNTED: this tool's whole answer is a blast radius, and a
+                    // silent 500-per-target cap is the worst possible place to
+                    // report a page as a population — a caller reads "417 call
+                    // sites" and plans a refactoring around it.
+                    org.jawata.core.search.ReferenceSearch found = service.getSearchService()
+                        .searchReferences(target,
+                            org.eclipse.jdt.core.search.IJavaSearchConstants.REFERENCES, 500);
+                    capHit |= found.truncated();
+                    List<SearchMatch> matches = found.matches();
 
                     for (SearchMatch match : matches) {
                         Map<String, Object> callSite = formatMatch(match, service);
@@ -175,12 +184,23 @@ public class AnalyzeChangeImpactTool extends AbstractTool {
             data.put("depth", depth);
             data.put("directReferences", allCallSites.stream().filter(c -> (int) c.get("depth") == 1).count());
             data.put("totalReferences", allCallSites.size());
+            // SAY SO WHEN THE ANSWER IS A FLOOR. Each target's search is capped
+            // at 500; before this, hitting that cap was invisible and the
+            // number read as complete. A blast radius that is silently a floor
+            // is worse than no blast radius, because it gets acted on.
+            data.put("referencesTruncated", capHit);
+            if (capHit) {
+                data.put("truncationNote", "At least one symbol had more than 500 references; "
+                    + "the counts above are a FLOOR, not a total. Narrow the depth or analyse "
+                    + "the busiest symbol on its own.");
+            }
             data.put("affectedFiles", affectedFiles);
             data.put("callSites", allCallSites);
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(allCallSites.size())
                 .returnedCount(allCallSites.size())
+                .truncated(capHit)
                 .suggestedNextTools(List.of(
                     "rename_symbol for safe renaming across all affected files",
                     "find_references for simple reference list without grouping"

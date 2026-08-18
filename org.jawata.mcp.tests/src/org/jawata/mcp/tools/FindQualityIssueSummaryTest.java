@@ -54,7 +54,11 @@ class FindQualityIssueSummaryTest {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> run(ObjectNode args) {
-        ToolResponse r = tool.execute(args);
+        // jawata-mcp#10: a whole-family sweep is async-only now. `Sweeps.run`
+        // drives start → poll → status with these same arguments, so the
+        // shaping asserted below is applied by the retrieving call exactly as
+        // it is for a real caller. Single-kind requests pass straight through.
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), () -> "got: " + r.getError());
         return (Map<String, Object>) r.getData();
     }

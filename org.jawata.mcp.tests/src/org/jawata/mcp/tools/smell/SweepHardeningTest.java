@@ -67,7 +67,7 @@ class SweepHardeningTest {
         named.put("maxMethods", 1);
         named.put("maxFields", 1);
         named.put("maxLines", 10);
-        Map<String, Object> direct = data(tool.execute(named));
+        Map<String, Object> direct = data(org.jawata.mcp.fixtures.Sweeps.run(tool,named));
         assertFalse(direct.containsKey("findings"),
             () -> "it must return its list under its OWN key, not 'findings' — that is the"
                 + " shape the merge used to drop: " + direct.keySet());
@@ -83,7 +83,7 @@ class SweepHardeningTest {
         family.put("maxLines", 10);
         family.put("summary", true);
         Map<String, Object> byKind =
-            (Map<String, Object>) data(tool.execute(family)).get("byKind");
+            (Map<String, Object>) data(org.jawata.mcp.fixtures.Sweeps.run(tool,family)).get("byKind");
 
         assertTrue(byKind.containsKey("large_classes"),
             () -> "the family sweep must carry this detector's findings, labelled with the"
@@ -102,7 +102,7 @@ class SweepHardeningTest {
         a.put("threshold", 1);   // low threshold -> many findings, deterministically
         a.put("summary", true);
 
-        ToolResponse r = tool.execute(a);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool,a);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> d = data(r);
 
@@ -123,7 +123,7 @@ class SweepHardeningTest {
         a.put("threshold", 1);
         a.put("limit", 2);
 
-        ToolResponse r = tool.execute(a);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool,a);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> d = data(r);
 
@@ -146,7 +146,7 @@ class SweepHardeningTest {
         a.put("threshold", 1);
         a.put("filePath", "src/main/java/com/example/ComposeMethodTargets.java"); // relative
 
-        ToolResponse r = tool.execute(a);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool,a);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> d = data(r);
 

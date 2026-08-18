@@ -39,7 +39,7 @@ class DipDetectorTest {
     private Set<String> symbols() {
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "dip");
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), "dip must dispatch");
         Map<String, Object> data = (Map<String, Object>) r.getData();
         List<Map<String, Object>> findings = (List<Map<String, Object>>) data.get("findings");
@@ -64,7 +64,7 @@ class DipDetectorTest {
     void dip_in_solid_family() {
         ObjectNode args = mapper.createObjectNode();
         args.put("family", "solid");
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess());
         List<String> kinds = (List<String>) ((Map<String, Object>) r.getData()).get("kinds");
         assertTrue(kinds.contains("dip"), "dip must be tagged solid: " + kinds);

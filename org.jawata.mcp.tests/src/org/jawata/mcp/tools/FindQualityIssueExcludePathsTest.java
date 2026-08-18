@@ -49,7 +49,7 @@ class FindQualityIssueExcludePathsTest {
             var arr = args.putArray("excludePaths");
             for (String e : excludes) arr.add(e);
         }
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), () -> "sweep must succeed; got: " + r.getError());
         return (Map<String, Object>) r.getData();
     }
@@ -88,7 +88,7 @@ class FindQualityIssueExcludePathsTest {
         args.put("kind", "primitive_obsession");
         var arr = args.putArray("excludePaths");
         arr.add("PrimitiveObsession");
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), () -> "kind run must succeed; got: " + r.getError());
         Map<String, Object> data = (Map<String, Object>) r.getData();
         List<Map<String, Object>> findings = (List<Map<String, Object>>) data.get("findings");

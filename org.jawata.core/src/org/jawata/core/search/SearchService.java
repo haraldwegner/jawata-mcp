@@ -139,6 +139,20 @@ public class SearchService {
      * @return List of reference locations
      */
     public List<SearchMatch> findReferences(IJavaElement element, int limitTo, int maxResults) throws CoreException {
+        return searchReferences(element, limitTo, maxResults).matches();
+    }
+
+    /**
+     * The same search, keeping the number it would otherwise throw away.
+     *
+     * <p>The requestor sees every match and drops the ones past the cap, so
+     * the true total is free — and without it a consumer can only report the
+     * page size, which is what {@code find_references} did in both its total
+     * fields. See {@link ReferenceSearch} for why the list-returning form
+     * above still exists.</p>
+     */
+    public ReferenceSearch searchReferences(IJavaElement element, int limitTo, int maxResults)
+            throws CoreException {
         SearchPattern pattern = SearchPattern.createPattern(
             element,
             limitTo
@@ -146,7 +160,7 @@ public class SearchService {
 
         if (pattern == null) {
             log.warn("Cannot create pattern for element: {}", element);
-            return List.of();
+            return new ReferenceSearch(List.of(), 0);
         }
 
         CollectingSearchRequestor requestor = new CollectingSearchRequestor(maxResults);
@@ -159,8 +173,9 @@ public class SearchService {
             new NullProgressMonitor()
         );
 
-        log.debug("Reference search for {} found {} results", element.getElementName(), requestor.getMatches().size());
-        return requestor.getMatches();
+        log.debug("Reference search for {} found {} results ({} kept)",
+            element.getElementName(), requestor.getTotalSeen(), requestor.getMatches().size());
+        return new ReferenceSearch(requestor.getMatches(), requestor.getTotalSeen());
     }
 
     /**
@@ -397,6 +412,12 @@ public class SearchService {
     private static class CollectingSearchRequestor extends SearchRequestor {
         private final List<SearchMatch> matches = new ArrayList<>();
         private final int maxResults;
+        /**
+         * Every match the search produced, including the ones dropped to
+         * honour the cap. Counting them costs an increment and is the only
+         * way any consumer can tell a page from a total.
+         */
+        private int totalSeen;
 
         CollectingSearchRequestor(int maxResults) {
             this.maxResults = maxResults;
@@ -404,6 +425,7 @@ public class SearchService {
 
         @Override
         public void acceptSearchMatch(SearchMatch match) {
+            totalSeen++;
             if (matches.size() < maxResults) {
                 matches.add(match);
             }
@@ -411,6 +433,10 @@ public class SearchService {
 
         List<SearchMatch> getMatches() {
             return matches;
+        }
+
+        int getTotalSeen() {
+            return totalSeen;
         }
     }
 }

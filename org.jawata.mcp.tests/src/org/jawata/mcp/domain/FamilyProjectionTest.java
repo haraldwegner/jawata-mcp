@@ -55,7 +55,7 @@ class FamilyProjectionTest {
     void solid_family_runs_the_tagged_set() {
         ObjectNode args = mapper.createObjectNode();
         args.put("family", "solid");
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool,args);
         assertTrue(r.isSuccess(), "family=solid must dispatch");
         Map<String, Object> data = (Map<String, Object>) r.getData();
         List<String> kinds = (List<String>) data.get("kinds");
@@ -74,7 +74,7 @@ class FamilyProjectionTest {
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "naming");
         args.put("family", "solid");
-        assertFalse(tool.execute(args).isSuccess(), "naming is not in the solid family");
+        assertFalse(org.jawata.mcp.fixtures.Sweeps.run(tool,args).isSuccess(), "naming is not in the solid family");
     }
 
     @Test
@@ -82,10 +82,10 @@ class FamilyProjectionTest {
     void invalid_requests_rejected() {
         ObjectNode bogus = mapper.createObjectNode();
         bogus.put("family", "nope");
-        assertFalse(tool.execute(bogus).isSuccess(), "unknown family rejected");
+        assertFalse(org.jawata.mcp.fixtures.Sweeps.run(tool,bogus).isSuccess(), "unknown family rejected");
 
         ObjectNode empty = mapper.createObjectNode();
-        assertFalse(tool.execute(empty).isSuccess(), "neither kind nor family rejected");
+        assertFalse(org.jawata.mcp.fixtures.Sweeps.run(tool,empty).isSuccess(), "neither kind nor family rejected");
     }
 
     @Test
@@ -93,6 +93,6 @@ class FamilyProjectionTest {
     void single_kind_still_works() {
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "naming");
-        assertTrue(tool.execute(args).isSuccess(), "single-kind path unchanged");
+        assertTrue(org.jawata.mcp.fixtures.Sweeps.run(tool,args).isSuccess(), "single-kind path unchanged");
     }
 }

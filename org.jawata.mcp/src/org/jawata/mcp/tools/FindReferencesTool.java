@@ -154,9 +154,12 @@ public class FindReferencesTool extends AbstractTool {
                 }
             }
 
-            // Use SearchService for indexed reference search
-            List<SearchMatch> matches = service.getSearchService()
-                .findAllReferences(element, maxResults);
+            // Use SearchService for indexed reference search. The COUNTED form:
+            // this tool publishes a total, and the capped list's size is not one.
+            org.jawata.core.search.ReferenceSearch found = service.getSearchService()
+                .searchReferences(element,
+                    org.eclipse.jdt.core.search.IJavaSearchConstants.REFERENCES, maxResults);
+            List<SearchMatch> matches = found.matches();
 
             // Convert matches to reference info
             List<Map<String, Object>> references = new ArrayList<>();
@@ -178,14 +181,24 @@ public class FindReferencesTool extends AbstractTool {
                 data.put("containingType", field.getDeclaringType().getElementName());
             }
 
-            data.put("totalReferences", references.size());
+            // THE TRUE TOTAL, in both fields. Measured before this change: a
+            // 28-reference symbol asked with maxResults=2 answered
+            // `totalReferences: 2` AND `meta.totalCount: 2` — the page size
+            // reported as the population, twice, with `truncated: true` sitting
+            // beside it. A caller sizing a refactoring off either number sizes
+            // it off the cap it happened to pass.
+            //
+            // `returnedCount` stays the page. `find_quality_issue` is the model:
+            // count is the population, returnedCount is what came back.
+            data.put("totalReferences", found.totalMatched());
+            data.put("returnedReferences", references.size());
             data.put("references",
                 org.jawata.mcp.tools.shared.FieldsProjection.project(references, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
-                .totalCount(references.size())
+                .totalCount(found.totalMatched())
                 .returnedCount(references.size())
-                .truncated(references.size() >= maxResults)
+                .truncated(found.truncated())
                 .suggestedNextTools(List.of(
                     "go_to_definition to see the symbol definition",
                     "get_type_hierarchy for type symbols"

@@ -62,7 +62,33 @@ call load_project "{\"projectPath\":\"$ROOT\"}" > "$WORK/load.json"
 # this gate green even if the detector were dropped from the standard sweep —
 # the gate would be reaching it by a route no ordinary user takes. Sweeping the
 # family means the gate ALSO proves the detector fires unprompted.
-call find_quality_issue '{"family":"quality","limit":10000}' > "$WORK/findings.json"
+# jawata-mcp#10: a whole-family sweep is ASYNC-ONLY — it timed out on any real
+# project, so the synchronous form now refuses. The gate takes the same path a
+# caller takes: start, then poll until the sweep is finished. The shaping
+# (`limit`) rides the STATUS call, because that is where shaping is applied.
+call find_quality_issue '{"action":"start","family":"quality"}' > "$WORK/start.json"
+SWEEP_ID=$(python3 -c '
+import json, sys
+raw = json.load(open(sys.argv[1]))
+text = raw["result"]["content"][0]["text"]
+print(json.loads(text).get("data", {}).get("sweepId", ""))
+' "$WORK/start.json")
+[ -n "$SWEEP_ID" ] || { echo "gate: RESULT=sweep-never-started"; cat "$WORK/start.json"; exit 2; }
+
+for _ in $(seq 1 900); do
+    call find_quality_issue \
+        "{\"action\":\"status\",\"sweepId\":\"$SWEEP_ID\",\"limit\":10000}" \
+        > "$WORK/findings.json"
+    STATE=$(python3 -c '
+import json, sys
+raw = json.load(open(sys.argv[1]))
+text = raw["result"]["content"][0]["text"]
+print(json.loads(text).get("data", {}).get("state", ""))
+' "$WORK/findings.json")
+    [ "$STATE" = "running" ] || break
+    sleep 1
+done
+[ "$STATE" != "running" ] || { echo "gate: RESULT=sweep-never-finished"; exit 2; }
 
 # Parse, and REFUSE a scan that examined nothing or admits partiality — an
 # empty result from a failed scan reported as "clean" is the lie this whole

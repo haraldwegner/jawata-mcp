@@ -40,7 +40,7 @@ class QualityBaselineTest {
         ObjectNode args = mapper.createObjectNode();
         args.put("family", "fowler");
         args.put("baseline", baseline);
-        ToolResponse r = tool.execute(args);
+        ToolResponse r = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) r.getData();
