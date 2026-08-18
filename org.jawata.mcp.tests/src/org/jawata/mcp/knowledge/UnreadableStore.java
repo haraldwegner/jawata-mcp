@@ -18,6 +18,7 @@ final class UnreadableStore implements ExperienceStore {
     static final String BOOM = "failed to query entries: connection is broken";
 
     private final long stallMillis;
+    private final boolean succeedAfterStall;
 
     /** Fails instantly — the broken-connection case. */
     UnreadableStore() {
@@ -30,10 +31,22 @@ final class UnreadableStore implements ExperienceStore {
      * the budget under test; the point is that the caller returns first.
      */
     UnreadableStore(long stallMillis) {
-        this.stallMillis = stallMillis;
+        this(stallMillis, false);
     }
 
-    private IllegalStateException boom() {
+    /**
+     * With {@code succeedAfterStall}: the read stalls past the budget and then
+     * SUCCEEDS with an empty result — the straggler case. A fixture that always
+     * throws cannot exercise the race where a late normal completion overwrites the
+     * caller's unavailable verdict, because a throwing task never writes a verdict at
+     * all; the first race test was green against broken code for exactly that reason.
+     */
+    UnreadableStore(long stallMillis, boolean succeedAfterStall) {
+        this.stallMillis = stallMillis;
+        this.succeedAfterStall = succeedAfterStall;
+    }
+
+    private void stall() {
         if (stallMillis > 0) {
             try {
                 Thread.sleep(stallMillis);
@@ -43,16 +56,37 @@ final class UnreadableStore implements ExperienceStore {
                 Thread.currentThread().interrupt();
             }
         }
+    }
+
+    private IllegalStateException boom() {
+        stall();
         return new IllegalStateException(BOOM);
     }
 
     @Override
     public java.util.List<StoredEntry> query(RecallQuery query) {
+        if (succeedAfterStall) {
+            stall();
+            return java.util.List.of();   // the straggler: late, and NORMAL
+        }
         throw boom();
     }
 
     @Override
     public java.util.List<StoredEntry> all() {
+        if (succeedAfterStall) {
+            stall();
+            return java.util.List.of();   // consistent with query(): slow, then normal
+        }
+        throw boom();
+    }
+
+    @Override
+    public java.util.List<StoredEntry> byIds(java.util.List<String> ids) {
+        if (succeedAfterStall) {
+            stall();
+            return java.util.List.of();
+        }
         throw boom();
     }
 
@@ -83,11 +117,6 @@ final class UnreadableStore implements ExperienceStore {
 
     @Override
     public java.util.Optional<java.util.Map<String, Object>> get(String id) {
-        throw boom();
-    }
-
-    @Override
-    public java.util.List<StoredEntry> byIds(java.util.List<String> ids) {
         throw boom();
     }
 
@@ -131,6 +160,19 @@ final class UnreadableStore implements ExperienceStore {
     @Override
     public java.util.Map<String, Object> stats() {
         throw boom();
+    }
+
+    /**
+     * NOT degraded — BROKEN, and those are different states worth keeping apart.
+     *
+     * <p>"Degraded" means the store is serving a fallback: it answers, and its answers
+     * are incomplete. This store does not answer at all. Reporting a notice here would
+     * route these tests through the degraded branch and leave the throwing branch — the
+     * one the measured incident actually took — unexercised.</p>
+     */
+    @Override
+    public String degradedNotice() {
+        return null;
     }
 
     /** Closing a broken store is the one thing that must still work. */

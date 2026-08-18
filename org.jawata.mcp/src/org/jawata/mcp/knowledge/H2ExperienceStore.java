@@ -357,6 +357,17 @@ public final class H2ExperienceStore implements ExperienceStore {
         this.projectId = projectId;
     }
 
+    /**
+     * A healthy open store is not degraded — stated here rather than inherited, because
+     * the interface deliberately has no default: every store answers for itself, and the
+     * compiler names the ones that have not (the {@code RecoveringExperienceStore}
+     * forwarding hole was invisible for exactly as long as a default answered for it).
+     */
+    @Override
+    public String degradedNotice() {
+        return null;
+    }
+
     // Schema DDL lives in SchemaMigrations (Sprint 21a item B) — versioned, additive-first,
     // backed-up-before-migrate. The v2.0.0 initSchema() became its v1 step.
 

@@ -279,6 +279,12 @@ public final class ExperienceTool implements Tool {
                 + " quality counters (stats), never what is retrieved."));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: exceptions / caveats."));
+        props.put(BUDGET_MILLIS, Map.of("type", "integer",
+            "description", "recall/primer: the CALLER's deadline in milliseconds — state it"
+                + " when your own timeout is shorter than the 15s default, so a wedged store"
+                + " answers KNOWLEDGE_UNAVAILABLE inside your window instead of a transport"
+                + " timeout. Clamped: a caller may ask for a faster answer, never a longer"
+                + " wait."));
 
         schema.put("properties", props);
         schema.put("required", List.of("kind"));
@@ -627,20 +633,24 @@ public final class ExperienceTool implements Tool {
      * The hook's HTTP call gives up at 1500 ms, so the engine's 15-second default is out
      * of its reach entirely: a wedged store produced an anonymous transport timeout
      * there, exactly as before the fix. A caller that knows its own budget states it and
-     * gets the typed answer inside its own window. Clamped by
-     * {@code ExperienceRetrieval.setRetrievalBudgetMillis} — a caller may buy a faster
-     * answer, never a longer wait.</p>
+     * gets the typed answer inside its own window.</p>
+     *
+     * <p>Read into a LOCAL and passed — never stored. The first shape of this wrote the
+     * value onto the shared retrieval instance, and the first hook request's 1200 ms
+     * silently became every later caller's budget, including the studio canary's in
+     * another process. The clamp (faster yes, longer no) lives in
+     * {@code ExperienceRetrieval.clampBudget}.</p>
      */
     static final String BUDGET_MILLIS = "budget_ms";
 
-    private void applyBudget(JsonNode args) {
+    private static long budgetIn(JsonNode args) {
         if (args != null && args.hasNonNull(BUDGET_MILLIS) && args.get(BUDGET_MILLIS).isNumber()) {
-            retrieval.setRetrievalBudgetMillis(args.get(BUDGET_MILLIS).asLong());
+            return args.get(BUDGET_MILLIS).asLong();
         }
+        return ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS;
     }
 
     private ToolResponse recall(JsonNode args) {
-        applyBudget(args);
         RecallQuery q = new RecallQuery(
             text(args, "symbol"),
             text(args, "package"),
@@ -653,7 +663,8 @@ public final class ExperienceTool implements Tool {
         String surface = text(args, "surface");
         Map<String, Object> result = retrieval.recall(q,
             surface == null || surface.isBlank()
-                ? org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK : surface);
+                ? org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK : surface,
+            budgetIn(args));
         ToolResponse response = respond(args, result);
         if (ExperienceRetrieval.RESULT_MATCH.equals(result.get("result"))) {
             response.applySteering(CLASSIFY_STEERING);
@@ -662,10 +673,9 @@ public final class ExperienceTool implements Tool {
     }
 
     private ToolResponse primer(JsonNode args) {
-        applyBudget(args);
         int limit = args != null && args.has("limit") && args.get("limit").isInt()
             ? args.get("limit").asInt() : 20;
-        return respond(args, retrieval.primer(limit));
+        return respond(args, retrieval.primer(limit, budgetIn(args)));
     }
 
     /**

@@ -167,10 +167,16 @@ public interface ExperienceStore extends AutoCloseable {
      * every caller reaching it through {@code ExperienceStore} would otherwise need an
      * {@code instanceof} — and an {@code instanceof} against a wrapped store is how a
      * production path silently took the not-degraded branch before (the C4-F1 lesson).</p>
+     *
+     * <p><b>Abstract, not defaulted.</b> It shipped as {@code default { return null; }} for
+     * twenty-four minutes, and in that time a wrapper was written whose {@code
+     * degradedNotice} was the ONE method of twenty that did not forward to its delegate.
+     * Invisible — because the default answered "not degraded" for the wrapped store anyway.
+     * A default here lets an implementation look complete while silently never reporting
+     * degradation, which is the hollow shape this codebase has already paid for. Every store
+     * states its own answer, and the compiler names the ones that have not.</p>
      */
-    default String degradedNotice() {
-        return null;
-    }
+    String degradedNotice();
 
     @Override
     void close();

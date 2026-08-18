@@ -68,10 +68,18 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         retryThread.start();
     }
 
-    /** Non-null while degraded — the text every answer carries. Null once recovered. */
+    /**
+     * Non-null while degraded — the text every answer carries. Null once recovered.
+     *
+     * <p>AND IT FORWARDS. This was the one method of twenty here that answered for
+     * itself instead of asking the delegate, which meant that once recovery cleared
+     * {@code notice}, this wrapper would report "not degraded" for the wrapped store
+     * whatever the wrapped store had to say. Inert while the H2 store had nothing to
+     * say — and it would have gone live silently the moment it did.</p>
+     */
     @Override
     public String degradedNotice() {
-        return notice;
+        return notice != null ? notice : delegate.degradedNotice();
     }
 
     private void retryLoop(Supplier<H2ExperienceStore> reopener, long retryMs) {

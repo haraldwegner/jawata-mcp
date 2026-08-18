@@ -168,11 +168,11 @@ class KnowledgeUnavailableTest {
     void a_read_that_never_returns_releases_the_caller_on_its_budget() {
         ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(
             new UnreadableStore(60_000), () -> null);
-        retrieval.setRetrievalBudgetMillis(200);
 
         long start = System.currentTimeMillis();
         Map<String, Object> result = retrieval.recall(
-            new RecallQuery("com.example.Anything", null, null, null, null));
+            new RecallQuery("com.example.Anything", null, null, null, null),
+            org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
         long waited = System.currentTimeMillis() - start;
 
         assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"),
@@ -184,80 +184,87 @@ class KnowledgeUnavailableTest {
     }
 
     /**
-     * The budget is WIRED, not merely declared.
+     * THE DEADLINE IS A VALUE, NOT STATE — the structural fix, pinned.
      *
-     * <p>The first version of this test asserted {@code RETRIEVAL_BUDGET_MILLIS > 0 &&
-     * <= 60_000} — a tautology over a literal, under a javadoc claiming it proved the
-     * wiring. Its false-green path was exact: set the instance field to
-     * {@code Long.MAX_VALUE} and production is unbounded again — the precise #37 state —
-     * while every test still passes, because the stall test sets 200 explicitly and no
-     * other test stalls. So this asks a FRESHLY CONSTRUCTED retrieval what budget it is
-     * actually carrying.</p>
+     * <p>Two earlier shapes of this test were false greens. The first asserted the
+     * constant's range (a tautology over a literal). The second asserted a fresh
+     * instance's field — which existed only because the budget was mutable instance
+     * state, and that state was the defect: the first hook request's 1200 ms silently
+     * became every later caller's budget, including the studio canary's in another
+     * process. Now there is no field to assert. What is asserted instead is the
+     * BEHAVIOUR: one caller's budget must not leak into the next call on the SAME
+     * instance.</p>
      */
     @Test
-    void a_freshly_built_retrieval_carries_the_shipped_budget() {
-        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceRetrieval fresh = ExperienceRetrieval.keywordOnly(store, () -> null);
-            assertEquals(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS,
-                fresh.retrievalBudgetMillis(),
-                "production builds retrieval without touching any setter — if this is not the"
-                    + " constant, the live path is running on some other budget");
-        }
-        assertTrue(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS <= 60_000,
-            "and the constant itself is a bound, not a synonym for waiting");
+    void one_callers_budget_does_not_leak_into_the_next_call() {
+        // A store that stalls 800 ms then answers normally. Call 1 brings a 200 ms
+        // budget → unavailable. Call 2 states no budget → the 15 s default applies,
+        // the 800 ms read completes, and the answer is a normal absence. On the old
+        // sticky-field shape, call 2 inherited call 1's 200 ms and reported a
+        // manufactured outage — this test fails on that code.
+        ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(
+            new UnreadableStore(800, true), () -> null);
+        RecallQuery q = new RecallQuery("com.example.Anything", null, null, null, null);
+        String surface = org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK;
+
+        Map<String, Object> first = retrieval.recall(q, surface, 200);
+        assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, first.get("result"),
+            "call 1: an 800ms read against a 200ms budget is unavailable");
+
+        Map<String, Object> second = retrieval.recall(q, surface);
+        assertEquals(ExperienceRetrieval.RESULT_ABSENCE, second.get("result"),
+            "call 2 stated NO budget and must get the default — if this reads unavailable,"
+                + " call 1's budget leaked into it, which is the sticky-state defect");
     }
 
     /**
      * A caller may buy a FASTER answer, never a longer wait.
      *
      * <p>The hook's 1500 ms HTTP deadline is why the parameter exists at all; the clamp
-     * is why it cannot be turned into the unbounded wait #37 was filed about.
+     * is why it cannot be turned into the unbounded wait #37 was filed about. Pure
+     * function, no instance, no state — deliberately.
      */
     @Test
     void the_budget_clamps_in_both_directions() {
-        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceRetrieval r = ExperienceRetrieval.keywordOnly(store, () -> null);
-
-            r.setRetrievalBudgetMillis(1_200);
-            assertEquals(1_200, r.retrievalBudgetMillis(), "a caller may ask for less");
-
-            r.setRetrievalBudgetMillis(Long.MAX_VALUE);
-            assertEquals(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS, r.retrievalBudgetMillis(),
-                "and may NOT ask for more — that is the state the issue was filed about");
-
-            r.setRetrievalBudgetMillis(0);
-            assertEquals(ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS, r.retrievalBudgetMillis(),
-                "nor for a budget so small that a healthy read is reported as an outage");
-        }
+        assertEquals(1_200, ExperienceRetrieval.clampBudget(1_200), "a caller may ask for less");
+        assertEquals(ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS,
+            ExperienceRetrieval.clampBudget(Long.MAX_VALUE),
+            "and may NOT ask for more — that is the state the issue was filed about");
+        assertEquals(ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS,
+            ExperienceRetrieval.clampBudget(0),
+            "nor for a budget so small that a healthy read is reported as an outage");
     }
 
     /**
-     * The partial answer must not survive into the unavailable body — and, more
-     * importantly, a straggler must not be able to overwrite the verdict.
+     * A STRAGGLER THAT SUCCEEDS must not overwrite the caller's verdict.
      *
-     * <p>The task now works on its OWN map. Sharing the caller's map was a data race
-     * with one specific ugly outcome: a read that finally completes writes
-     * {@code result=absence} over {@code result=unavailable}, and the tool — which reads
-     * the map after the call returns — emits a successful absence during an outage.
+     * <p>The first shape of this test used a fixture that always THROWS — and a throwing
+     * task never writes a verdict at all, so the race it claimed to pin was unreachable
+     * through it: reverting the fix left it green. This fixture stalls past the budget
+     * and then completes NORMALLY, which is the only completion that can race the
+     * caller's {@code result=unavailable} write.</p>
      */
     @Test
-    void an_unavailable_body_carries_no_fragment_of_the_answer_it_never_got() {
+    void a_straggler_that_completes_normally_cannot_overwrite_the_verdict() {
         ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(
-            new UnreadableStore(2_000), () -> null);
-        retrieval.setRetrievalBudgetMillis(200);
+            new UnreadableStore(1_000, true), () -> null);
 
         Map<String, Object> result = retrieval.recall(
-            new RecallQuery("com.example.Anything", null, null, null, null));
+            new RecallQuery("com.example.Anything", null, null, null, null),
+            org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
         assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"));
 
-        // Give the straggler time to finish and try to write its own verdict.
+        // Let the straggler COMPLETE — normally, with a verdict of its own to write.
+        // Its full path stalls TWICE (query, then the analogies pass' all()), so the
+        // wait must cover both; a window shorter than the straggler's own run would
+        // assert before the race it exists to pin could even happen.
         try {
-            Thread.sleep(2_500);
+            Thread.sleep(3_000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
         assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"),
-            "a late completion must not turn the outage back into an answer");
+            "a late NORMAL completion must not turn the outage back into an answer");
         assertTrue(result.get("count") == null && result.get("analogies") == null,
             "and no fragment of the answer that never arrived: " + result.keySet());
     }

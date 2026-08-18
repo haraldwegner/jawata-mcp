@@ -141,6 +141,20 @@ public final class ExperienceRetrieval {
      * guessing would make one of the two counters permanently wrong.</p>
      */
     public Map<String, Object> recall(RecallQuery q, String surface) {
+        return recall(q, surface, RETRIEVAL_BUDGET_MILLIS);
+    }
+
+    /**
+     * Recall with the CALLER's deadline (#37).
+     *
+     * <p>A deadline is only useful to a caller that will still be waiting when it
+     * fires: the hook's HTTP call gives up at 1500 ms, so the 15-second default is out
+     * of its reach entirely and it states its own. The budget is a PARAMETER, not
+     * state — the first shape of this fix stored it on this shared instance, and one
+     * caller's budget silently became every later caller's.</p>
+     */
+    public Map<String, Object> recall(RecallQuery q, String surface, long budgetMillis) {
+        long budget = clampBudget(budgetMillis);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("cue", cueMap(q));
         if (q == null || q.isEmpty()) {
@@ -158,7 +172,7 @@ public final class ExperienceRetrieval {
         // outage. That is the exact lie this whole change exists to remove, reintroduced
         // by the mechanism removing it.
         try {
-            return within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out)), out);
+            return within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out)), out, budget);
         } catch (RuntimeException e) {
             // #37: the store was reached and could not answer. Everything below this
             // line is the knowledge layer, so a failure here is that layer being
@@ -330,6 +344,12 @@ public final class ExperienceRetrieval {
      * <p>Fifteen seconds is not a performance target — a healthy recall over this corpus
      * is milliseconds. It is the point past which "slow" is indistinguishable from
      * "never", and the caller is better served by a typed unavailable than by a wait.</p>
+     *
+     * <p>This is the DEFAULT and the CEILING, never a field. The first shape of this fix
+     * stored the budget on the shared retrieval instance, and the first hook request that
+     * sent one left every later caller — including the studio canary, in another process —
+     * silently running on it. A deadline is a property of the CALL: it arrives with the
+     * request, is clamped, is used, and is gone.</p>
      */
     public static final long RETRIEVAL_BUDGET_MILLIS = 15_000;
 
@@ -337,33 +357,15 @@ public final class ExperienceRetrieval {
     public static final long MIN_RETRIEVAL_BUDGET_MILLIS = 200;
 
     /**
-     * The live budget. A CALLER MAY LOWER IT, and one has to.
-     *
-     * <p>The first version of this made 15 seconds the only budget, which put the answer
-     * out of reach of the consumer it was built for: the hook's HTTP call gives up at
-     * 1500 ms (`HookConfig::timeout` defaults to `STDIN_DEADLINE`), so a wedged store
-     * still produced an anonymous transport timeout there and the typed answer arrived
-     * ten times too late to be read. A deadline is only useful to a caller who will
-     * still be waiting when it fires, so the caller states it.</p>
+     * Clamp a caller's budget to [{@link #MIN_RETRIEVAL_BUDGET_MILLIS},
+     * {@link #RETRIEVAL_BUDGET_MILLIS}] — a caller may buy a FASTER answer, never a
+     * longer wait. "Wait longer" is the state #37 was filed about, and it must not be
+     * reachable through a request parameter. Pure, so the rule is testable without a
+     * store and without state.
      */
-    private long budgetMillis = RETRIEVAL_BUDGET_MILLIS;
-
-    /**
-     * Lower the budget for this retrieval — clamped to
-     * [{@link #MIN_RETRIEVAL_BUDGET_MILLIS}, {@link #RETRIEVAL_BUDGET_MILLIS}].
-     *
-     * <p>Clamped in BOTH directions on purpose: a caller may buy a faster answer, never
-     * a longer wait. "Wait longer" is the state #37 was filed about, and it must not be
-     * reachable through a request parameter.</p>
-     */
-    public void setRetrievalBudgetMillis(long millis) {
-        this.budgetMillis = Math.max(MIN_RETRIEVAL_BUDGET_MILLIS,
-            Math.min(RETRIEVAL_BUDGET_MILLIS, millis));
-    }
-
-    /** The budget in force — so a test can assert the SHIPPED default, not a literal. */
-    public long retrievalBudgetMillis() {
-        return budgetMillis;
+    static long clampBudget(long requestedMillis) {
+        return Math.max(MIN_RETRIEVAL_BUDGET_MILLIS,
+            Math.min(RETRIEVAL_BUDGET_MILLIS, requestedMillis));
     }
 
     /**
@@ -378,8 +380,12 @@ public final class ExperienceRetrieval {
      * is strictly better: the refusal is the same typed unavailable, and it costs
      * nothing.</p>
      */
+    /** The pool bound, named once — the rejection message derives from it, so the two
+     *  cannot drift apart the way a duplicated literal would. */
+    private static final int MAX_CONCURRENT_RETRIEVALS = 8;
+
     private static final java.util.concurrent.ExecutorService RETRIEVAL_POOL =
-        new java.util.concurrent.ThreadPoolExecutor(0, 8, 30L,
+        new java.util.concurrent.ThreadPoolExecutor(0, MAX_CONCURRENT_RETRIEVALS, 30L,
             java.util.concurrent.TimeUnit.SECONDS,
             new java.util.concurrent.SynchronousQueue<>(),
             r -> {
@@ -407,15 +413,18 @@ public final class ExperienceRetrieval {
      * from becoming every caller's timeout in the meantime.</p>
      */
     private Map<String, Object> within(java.util.concurrent.Callable<Map<String, Object>> read,
-            Map<String, Object> out) {
+            Map<String, Object> out, long budgetMillis) {
         java.util.concurrent.Future<Map<String, Object>> task;
         try {
             task = RETRIEVAL_POOL.submit(read);
         } catch (java.util.concurrent.RejectedExecutionException e) {
-            // The pool is full: every worker is stuck in the store. That IS the
-            // unavailable condition, observed rather than waited for.
-            return unavailable(out, "the store has " + 8 + " reads outstanding and none has"
-                + " returned; it is wedged");
+            // The pool is saturated: every worker is occupied by a read that has not
+            // returned. Stated as what was OBSERVED — a full pool — not as a diagnosis:
+            // eight healthy concurrent reads look exactly the same from here, and a
+            // wedge verdict manufactured under ordinary load would be its own lie.
+            return unavailable(out, "every retrieval worker (" + MAX_CONCURRENT_RETRIEVALS
+                + ") is occupied and none has returned; the store is saturated or wedged"
+                + " — retry shortly");
         }
         try {
             return task.get(budgetMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -701,9 +710,15 @@ public final class ExperienceRetrieval {
      * so it is pushed up front. Ordered confidence › recency, capped at {@code limit}.
      */
     public Map<String, Object> primer(int limit) {
+        return primer(limit, RETRIEVAL_BUDGET_MILLIS);
+    }
+
+    /** Primer with the caller's deadline — same contract as the recall overload (#37). */
+    public Map<String, Object> primer(int limit, long budgetMillis) {
+        long budget = clampBudget(budgetMillis);
         Map<String, Object> out = new LinkedHashMap<>();
         try {
-            return within(() -> primerFromStore(limit, new LinkedHashMap<>(out)), out);
+            return within(() -> primerFromStore(limit, new LinkedHashMap<>(out)), out, budget);
         } catch (RuntimeException e) {
             // #37: same rule as recall — a primer that could not be read is not an
             // empty corpus. A session that starts against a broken store must know it
