@@ -34,6 +34,21 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     private static final Logger log = LoggerFactory.getLogger(H2ExperienceStore.class);
 
+    /**
+     * #37: values at or below this ride INSIDE the row instead of being streamed as a
+     * remote LOB. An entry's text and its 384-float embedding are both far below it, so
+     * in practice nothing streams; 64 KiB leaves headroom without bloating a page.
+     */
+    static final int MAX_INPLACE_LOB_BYTES = 65_536;
+
+    /**
+     * #37: the ceiling on a single store round trip. A read that never returns must fail
+     * in seconds — {@code LOCK_TIMEOUT} does NOT cover this, because that is H2's table
+     * lock, not the session's {@code ReentrantLock} and not the socket. The measured hang
+     * sat in {@code Net.poll} for 3459 s having burned 90 ms of CPU; nothing bounded it.
+     */
+    static final int NETWORK_TIMEOUT_MILLIS = 15_000;
+
     private final ObjectMapper json = new ObjectMapper();
     /** Non-final: {@link #compact()} shuts the database down and reopens the connection. */
     private Connection conn;
@@ -75,12 +90,33 @@ public final class H2ExperienceStore implements ExperienceStore {
         conn = null;
     }
 
+    /**
+     * #37: put a ceiling on how long ONE store round trip may block. Applied to every
+     * connection this class hands out — the initial one and every self-healed re-open —
+     * because the resident that wedged was an AUTO_SERVER client whose LOB read parked in
+     * a socket read that nothing could ever interrupt.
+     *
+     * <p>Best-effort by design: a driver that does not implement it must not stop the
+     * store from opening. It is logged rather than swallowed, because a store running
+     * without a bound is exactly the state that produced the outage, and an operator
+     * reading the log should be able to see that it is unbounded.
+     */
+    private static void boundNetworkWait(Connection connection) {
+        try {
+            connection.setNetworkTimeout(Runnable::run, NETWORK_TIMEOUT_MILLIS);
+        } catch (SQLException | RuntimeException e) {
+            log.warn("Experience store connection is UNBOUNDED — setNetworkTimeout refused: {}",
+                e.getMessage());
+        }
+    }
+
     private Connection live() {
         try {
             if (conn == null || conn.isClosed() || !conn.isValid(1)) {
                 JdbcDataSource ds = new JdbcDataSource();
                 ds.setURL(url);
                 conn = ds.getConnection();
+                boundNetworkWait(conn);
                 log.info("Experience store connection re-established");
             }
         } catch (SQLException e) {
@@ -94,6 +130,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         this.conn = conn;
         this.url = url;
         this.storeFile = storeFile;
+        boundNetworkWait(conn);
         Map<String, Object> report = SchemaMigrations.migrate(conn, storeDir);
         if (Boolean.TRUE.equals(report.get("migrated"))) {
             log.info("Experience store schema: {}", report);
@@ -140,8 +177,14 @@ public final class H2ExperienceStore implements ExperienceStore {
         // cross-resident write that contends on a shared row (two residents MERGE the
         // same learner_state key over the auto-server socket) WAITS for the peer's tiny
         // transaction instead of failing fast and dropping the event.
+        // #37: with AUTO_SERVER every resident but the host is an H2 CLIENT, so a LOB read
+        // is a lazy per-value round trip over a socket — and one such read, with no
+        // timeout, held the session lock for 58 minutes while 66 threads queued behind the
+        // store monitor. Entry text and a 384-float embedding are small; keeping them
+        // INLINE in the row removes the streaming, so there is nothing left to hang on.
         String url = "jdbc:h2:file:" + base.toAbsolutePath()
-            + ";AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000";
+            + ";AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000"
+            + ";MAX_LENGTH_INPLACE_LOB=" + MAX_INPLACE_LOB_BYTES;
         // v2.2.4: a runtime swap restarts residents seconds apart — the dying peer's lock
         // file is "recently modified" and H2 refuses the open. That is TRANSIENT; retry
         // before the caller degrades to a silent, non-persistent in-memory store.
