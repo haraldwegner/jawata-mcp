@@ -709,11 +709,16 @@ public final class ExperienceRetrieval {
      * that is always relevant (bounded contexts, concepts, invariants, ubiquitous language),
      * so it is pushed up front. Ordered confidence › recency, capped at {@code limit}.
      */
-    public Map<String, Object> primer(int limit) {
-        return primer(limit, RETRIEVAL_BUDGET_MILLIS);
-    }
-
-    /** Primer with the caller's deadline — same contract as the recall overload (#37). */
+    /**
+     * Primer with the caller's deadline — same contract as the recall overload (#37).
+     *
+     * <p>Deliberately NO convenience overload without the budget: the release gate
+     * caught {@code primer(int)} with every caller in test code the moment the tool
+     * started passing a budget, and a default-budget overload that only tests call is
+     * a hollow member waiting to diverge. The one production caller states its budget;
+     * a test that wants the default states {@link #RETRIEVAL_BUDGET_MILLIS} and says
+     * so.</p>
+     */
     public Map<String, Object> primer(int limit, long budgetMillis) {
         long budget = clampBudget(budgetMillis);
         Map<String, Object> out = new LinkedHashMap<>();

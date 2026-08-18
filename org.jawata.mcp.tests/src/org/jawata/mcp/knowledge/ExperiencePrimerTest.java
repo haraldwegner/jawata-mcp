@@ -45,7 +45,7 @@ class ExperiencePrimerTest {
         store.put(ExperienceEntry.of(SymbolFact.of("domain_fact", "unpromoted", Confidence.LOW).build())
             .build());
 
-        Map<String, Object> primer = retrieval.primer(20);
+        Map<String, Object> primer = retrieval.primer(20, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
         assertEquals(ExperienceRetrieval.RESULT_PRIMER, primer.get("result"));
         assertEquals(2, primer.get("count"), "two accepted domain nodes (type + scope), lesson excluded");
     }
@@ -53,7 +53,7 @@ class ExperiencePrimerTest {
     @Test
     void primer_absence_when_no_domain_knowledge() {
         putAccepted("lesson", "not a domain node", null);
-        Map<String, Object> primer = retrieval.primer(20);
+        Map<String, Object> primer = retrieval.primer(20, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, primer.get("result"));
     }
 

@@ -657,7 +657,7 @@ class ExperienceMaintenanceTest {
 
         // Symptom 1: the sections reach the always-on primer (scope_kind=section).
         ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
-        Map<String, Object> primer = retrieval.primer(20);
+        Map<String, Object> primer = retrieval.primer(20, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
         assertEquals(ExperienceRetrieval.RESULT_PRIMER, primer.get("result"),
             "loaded sections must reach the primer, not starve it");
         @SuppressWarnings("unchecked")
