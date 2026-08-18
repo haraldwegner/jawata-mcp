@@ -101,7 +101,7 @@ class SourceRootTestnessTest {
         copyTree(helper.getFixturePath("runner-shape"), crafted);
 
         IProject project = workspaceManager.createLinkedProject("tag-relocated", crafted);
-        IJavaProject jp = importer.configureJavaProject(project, crafted, workspaceManager);
+        IJavaProject jp = importer.configureJavaProject(project, crafted, workspaceManager).javaProject();
         assertFalse(isTestRoot(jp, "src-main-java"),
             "src/main/java was tagged test because the CHECKOUT path contains /src/test/ — "
                 + "the classifier read evidence from outside the project");
@@ -187,7 +187,7 @@ class SourceRootTestnessTest {
     private IJavaProject load(String fixture) throws Exception {
         Path path = helper.getFixturePath(fixture);
         IProject project = workspaceManager.createLinkedProject("tag-" + fixture, path);
-        return importer.configureJavaProject(project, path, workspaceManager);
+        return importer.configureJavaProject(project, path, workspaceManager).javaProject();
     }
 
     /** Whether the source entry ending in {@code suffix} carries TEST=true. */

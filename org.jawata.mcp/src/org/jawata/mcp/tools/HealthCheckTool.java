@@ -152,6 +152,23 @@ public class HealthCheckTool implements Tool {
                 row.put("sourceFileCount", lp.sourceFileCount());
                 row.put("isDefault", lp.projectKey().equals(defaultKey));
 
+                // Sprint 28 Stage 8 (G6a): how many requirements this project's
+                // import asked for and could not find.
+                //
+                // ALWAYS PRESENT — a zero is the answer "asked and satisfied",
+                // and it must not be spelled the same way as "never asked". The
+                // count only; `inspect(kind=classpath)` carries the list, and a
+                // health check that inlined every unresolved bundle of a
+                // 29-project workspace would be unreadable in the one response
+                // everyone makes first.
+                //
+                // It does NOT touch `healthy`. That flag is the refactoring
+                // guard: false REFUSES renames. Flipping it on unresolved
+                // dependencies would refuse every refactoring across the very
+                // workspace this instrument exists to diagnose. The flag-level
+                // question is C10's ruling, with that blast radius stated.
+                row.put("unresolvedDependencyCount", lp.unresolved().size());
+
                 projects.add(row);
             }
 

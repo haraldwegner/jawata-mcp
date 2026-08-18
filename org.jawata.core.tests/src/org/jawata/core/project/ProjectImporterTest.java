@@ -323,7 +323,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should add JRE container to classpath")
     void configureJavaProject_addsJreContainer() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("jre-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
 
         IClasspathEntry[] classpath = javaProject.getRawClasspath();
         boolean hasJre = Arrays.stream(classpath)
@@ -344,7 +344,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject binds a default VM so the JRE container resolves")
     void configureJavaProject_bindsDefaultVmSoJreResolves() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("vm-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
 
         assertNotNull(org.eclipse.jdt.launching.JavaRuntime.getDefaultVMInstall(),
             "a default VM must be registered so JRE_CONTAINER is not unbound");
@@ -360,7 +360,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should add source folders")
     void configureJavaProject_addsSourceFolders() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("src-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
 
         IClasspathEntry[] classpath = javaProject.getRawClasspath();
         boolean hasSource = Arrays.stream(classpath)
@@ -373,7 +373,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should set output location")
     void configureJavaProject_setsOutputLocation() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("output-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
 
         assertNotNull(javaProject.getOutputLocation(), "Output location should be set");
         assertTrue(javaProject.getOutputLocation().toString().contains("bin"),
@@ -384,7 +384,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should return valid Java project")
     void configureJavaProject_returnsValidProject() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("valid-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
 
         assertNotNull(javaProject, "Should return a Java project");
         assertTrue(javaProject.exists(), "Java project should exist");

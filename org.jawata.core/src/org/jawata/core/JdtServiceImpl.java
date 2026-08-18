@@ -284,12 +284,14 @@ public class JdtServiceImpl implements IJdtService {
         ProjectImporter.readManifestSymbolicName(absRoot)
             .ifPresent(symbolicName -> workspaceManager.registerBundle(symbolicName, project));
 
-        IJavaProject jp = projectImporter.configureJavaProject(project, absRoot, workspaceManager);
+        org.jawata.core.project.ImportResult imported =
+            projectImporter.configureJavaProject(project, absRoot, workspaceManager);
+        IJavaProject jp = imported.javaProject();
         SearchService search = new SearchService(jp);
 
         LoadedProject loaded = new LoadedProject(
             key, absRoot, jp, search, utils, Instant.now(),
-            fileCount, pkgList.size(), pkgList, detected
+            fileCount, pkgList.size(), pkgList, detected, imported.unresolved()
         );
         projectsByKey.put(key, loaded);
         return loaded;

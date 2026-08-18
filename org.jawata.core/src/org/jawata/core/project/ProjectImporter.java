@@ -127,8 +127,7 @@ public class ProjectImporter {
      * @return Configured IJavaProject
      * @throws CoreException if configuration fails
      */
-    public IJavaProject configureJavaProject(IProject project, java.nio.file.Path projectPath,
-            org.jawata.core.workspace.WorkspaceManager workspaceManager) throws CoreException {
+    public org.jawata.core.project.ImportResult configureJavaProject(IProject project, java.nio.file.Path projectPath, org.jawata.core.workspace.WorkspaceManager workspaceManager) throws CoreException {
         IJavaProject javaProject = JavaCore.create(project);
 
         // jawata-mcp#3: a synthesized workspace can start with NO default VM
@@ -150,7 +149,8 @@ public class ProjectImporter {
         addSourceEntries(entries, project, projectPath, workspaceManager);
 
         // 3. Add dependency JARs from build system + Require-Bundle siblings
-        addDependencyEntries(entries, projectPath, workspaceManager);
+        List<UnresolvedRequirement> unresolved =
+            addDependencyEntries(entries, projectPath, workspaceManager);
 
         // 4. Add output location
         IPath outputPath = project.getFullPath().append("bin");
@@ -165,8 +165,9 @@ public class ProjectImporter {
         // 5. Apply the project's OWN declared Java language level.
         applyComplianceLevel(javaProject, projectPath);
 
-        log.info("Configured Java project with {} classpath entries", entries.size());
-        return javaProject;
+        log.info("Configured Java project with {} classpath entries ({} unresolved requirement(s))",
+            entries.size(), unresolved.size());
+        return new ImportResult(javaProject, unresolved);
     }
 
     /**
@@ -988,8 +989,7 @@ public class ProjectImporter {
         return name.replaceAll("[^a-zA-Z0-9\\-_]", "-").replaceAll("-+", "-");
     }
 
-    private void addDependencyEntries(List<IClasspathEntry> entries, java.nio.file.Path projectPath,
-            org.jawata.core.workspace.WorkspaceManager workspaceManager) {
+    private java.util.List<org.jawata.core.project.UnresolvedRequirement> addDependencyEntries(List<IClasspathEntry> entries, java.nio.file.Path projectPath, org.jawata.core.workspace.WorkspaceManager workspaceManager) {
         // Bug #7 (Sprint 14): dedupe library and project entries by IPath
         // before passing to setRawClasspath(). JDT throws
         // "Build path contains duplicate entry" on any dup. Sources of
@@ -1090,6 +1090,13 @@ public class ProjectImporter {
         // over the pools' Export-Package index. Still-unresolved requirements
         // stay unresolved (logged), exactly as before.
         int bundleEntries = 0;
+        // Sprint 28 Stage 8 (G6a): what the import was ASKED for and could not
+        // find. Every one of these was already known here and written to
+        // `log.debug` — off by default, reaching no response, invisible to the
+        // person looking at the error count. On the measured workspace that
+        // made four projects resolving NOTHING look exactly like four projects
+        // whose code is broken.
+        List<UnresolvedRequirement> unresolved = new ArrayList<>();
         List<String> unresolvedRequires = new ArrayList<>();
         for (String required : readManifestRequireBundle(projectPath)) {
             Optional<org.eclipse.jdt.core.IJavaProject> sibling = workspaceManager == null
@@ -1127,6 +1134,7 @@ public class ProjectImporter {
                 } else {
                     log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
                             symbolicName);
+                    unresolved.add(UnresolvedRequirement.junitContainer(symbolicName));
                 }
             }
             for (String required : unresolvedRequires) {
@@ -1141,6 +1149,7 @@ public class ProjectImporter {
                     }
                 } else {
                     log.debug("Require-Bundle '{}' not found in workspace or external pools; skipping", required);
+                    unresolved.add(UnresolvedRequirement.requireBundle(required));
                 }
             }
             for (String pkg : importedPackages) {
@@ -1153,6 +1162,7 @@ public class ProjectImporter {
                     }
                 } else {
                     log.debug("Import-Package '{}' has no provider in the external pools; skipping", pkg);
+                    unresolved.add(UnresolvedRequirement.importPackage(pkg));
                 }
             }
             if (external > 0) {
@@ -1164,6 +1174,9 @@ public class ProjectImporter {
         }
 
         log.info("Added {} dependency entries from {}", jars.size(), buildSystem);
+        // EMPTY, never null: a caller must be able to tell "resolved everything"
+        // from "was never asked", and a missing field reads as the second.
+        return List.copyOf(unresolved);
     }
 
     /** The JDT JUnit classpath container, as written in a {@code .classpath}. */

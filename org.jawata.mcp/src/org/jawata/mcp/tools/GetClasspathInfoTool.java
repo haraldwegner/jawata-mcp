@@ -68,6 +68,32 @@ public class GetClasspathInfoTool extends AbstractTool {
         return withProjectKey(schema);
     }
 
+    /**
+     * The unresolved requirements recorded for this project when it was
+     * imported, as plain rows.
+     *
+     * <p>Matched on the {@link org.eclipse.jdt.core.IJavaProject} handle rather
+     * than on a path, because the caller may have scoped the service to one
+     * project of many and the handle is what identifies it either way.</p>
+     */
+    private static List<Map<String, Object>> unresolvedFor(IJdtService service,
+            IJavaProject project) {
+        return service.allProjects().stream()
+            .filter(p -> project.equals(p.javaProject()))
+            .findFirst()
+            .map(org.jawata.core.LoadedProject::unresolved)
+            .orElseGet(List::of)
+            .stream()
+            .map(u -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("kind", u.kind());
+                row.put("name", u.name());
+                row.put("reason", u.reason());
+                return row;
+            })
+            .toList();
+    }
+
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         boolean includeLibraries = getBooleanParam(arguments, "includeLibraries", true);
@@ -131,6 +157,17 @@ public class GetClasspathInfoTool extends AbstractTool {
             if (!variables.isEmpty()) {
                 data.put("variables", variables);
             }
+
+            // Sprint 28 Stage 8 (G6a): what the import was ASKED for and could
+            // not find.
+            //
+            // ALWAYS PRESENT, empty when everything resolved. That is the whole
+            // point: on the measured 29-project workspace, four projects
+            // resolved NOTHING and the only visible difference was that
+            // `projectDependencies` was missing — an absence a reader has to
+            // notice, guess the meaning of, and be right about. 1215 of 1229
+            // errors came from those four, and no response said so.
+            data.put("unresolvedDependencies", unresolvedFor(service, project));
 
             // Output folder
             try {

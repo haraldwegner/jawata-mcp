@@ -546,7 +546,7 @@ class BuildSystemLoadTest {
 
         try {
             IProject project = workspaceManager.createLinkedProject("load-unreadable", root);
-            IJavaProject jp = importer.configureJavaProject(project, root, workspaceManager);
+            IJavaProject jp = importer.configureJavaProject(project, root, workspaceManager).javaProject();
             assertNotNull(jp.findType("com.example.Reachable"),
                 "a readable sibling did not resolve — one unreadable directory took the"
                     + " whole project down, which is the same over-reaction as the strict"
@@ -737,7 +737,7 @@ class BuildSystemLoadTest {
     private IJavaProject load(String fixture) throws Exception {
         Path path = helper.getFixturePath(fixture);
         IProject project = workspaceManager.createLinkedProject("load-" + fixture, path);
-        return importer.configureJavaProject(project, path, workspaceManager);
+        return importer.configureJavaProject(project, path, workspaceManager).javaProject();
     }
 
     /** The level a project gets when nothing is applied to it. */

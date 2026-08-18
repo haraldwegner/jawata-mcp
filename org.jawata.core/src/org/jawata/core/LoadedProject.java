@@ -47,8 +47,18 @@ public record LoadedProject(
     int sourceFileCount,
     int packageCount,
     List<String> packages,
-    ProjectImporter.BuildSystem buildSystem
+    ProjectImporter.BuildSystem buildSystem,
+    List<org.jawata.core.project.UnresolvedRequirement> unresolved
 ) {
+    /**
+     * EMPTY, never null. A project that resolved everything and a project
+     * nobody asked about must not look the same — that ambiguity is the whole
+     * reason this component exists.
+     */
+    public LoadedProject {
+        unresolved = unresolved == null ? List.of() : List.copyOf(unresolved);
+    }
+
     public int classpathEntryCount() {
         try {
             return javaProject != null ? javaProject.getRawClasspath().length : 0;
