@@ -40,11 +40,27 @@ import java.util.function.Supplier;
  *
  *     @Override
  *     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
- *         // Tool implementation - service is guaranteed non-null
+ *         // Tool implementation - see the nullness contract below
  *         return ToolResponse.success(data);
  *     }
  * }
  * }</pre>
+ *
+ * <p><b>Is {@code service} non-null? It depends on what the tool DECLARED.</b>
+ * For a tool that requires a loaded project — nearly all of them — yes: the
+ * gate in {@link #execute} answers for every empty case before the body runs.
+ * For a tool that overrides {@link #requiresLoadedProject()} to {@code false}
+ * ({@code debug}, {@code profile}, {@code field}), NO: declaring independence
+ * buys the body the right to RUN, not a service to run against, and the seam
+ * hands it whatever the supplier holds — including {@code null}, which is
+ * exactly the state those tools exist to answer in.
+ *
+ * <p>So an independent tool that reads the model must guard and answer its
+ * OWN typed refusal. An unguarded read throws out of {@code execute()} and
+ * comes back as INTERNAL_ERROR "this may be a bug" — blaming us for a state
+ * the user owns, and leaving the agent nothing to act on. This javadoc used
+ * to promise non-null unconditionally, and {@code profile}'s two
+ * model-resolving actions were written against that promise.
  */
 public abstract class AbstractTool implements Tool {
 
@@ -214,10 +230,14 @@ public abstract class AbstractTool implements Tool {
     }
 
     /**
-     * Execute the tool with a guaranteed non-null IJdtService.
-     * Subclasses should override this instead of execute().
+     * Execute the tool. Subclasses should override this instead of execute().
      *
-     * @param service The IJdtService (guaranteed non-null)
+     * @param service The IJdtService — non-null for a tool that requires a
+     *                loaded project (the gate answered for every empty case
+     *                first), but possibly {@code null} for one that overrode
+     *                {@link #requiresLoadedProject()} to {@code false}. Such a
+     *                tool must guard any read and answer its own typed
+     *                refusal; see the class javadoc.
      * @param arguments The tool arguments
      * @return The tool response
      */

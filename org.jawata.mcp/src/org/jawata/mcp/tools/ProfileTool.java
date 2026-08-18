@@ -831,6 +831,21 @@ public class ProfileTool extends AbstractTool {
     }
 
     private ToolResponse callCounts(IJdtService service, JsonNode arguments) throws Exception {
+        // profile DECLARES it needs no loaded project (requiresLoadedProject()
+        // -> false), so the seam hands this tool a NULL service whenever the
+        // workspace holds nothing. call_counts and latency_seam are the only
+        // two of the 23 actions that then READ the model, and reading it
+        // unguarded threw an NPE out of executeWithService that came back as
+        // INTERNAL_ERROR "this may be a bug" — accusing us of a defect for a
+        // state the USER owns, and telling the agent nothing it can act on.
+        //
+        // Checked BEFORE sessionOf(): it costs nothing, it is the promise this
+        // class's own requiresLoadedProject() javadoc makes, and it keeps the
+        // refusal reachable without a live JVM — a branch no test could reach
+        // is exactly how this shipped.
+        if (service == null) {
+            return ToolResponse.projectNotLoaded();
+        }
         RuntimeSession session = sessionOf(arguments);
         String className = getStringParam(arguments, "className");
         if (className == null || className.isBlank()) {
@@ -919,6 +934,11 @@ public class ProfileTool extends AbstractTool {
     }
 
     private ToolResponse latencySeam(IJdtService service, JsonNode arguments) throws Exception {
+        // The other model-reading action — same null service, same reason it is
+        // answered here rather than left to NPE below. See callCounts.
+        if (service == null) {
+            return ToolResponse.projectNotLoaded();
+        }
         RuntimeSession session = sessionOf(arguments);
         String className = getStringParam(arguments, "className");
         String methodName = getStringParam(arguments, "method");
