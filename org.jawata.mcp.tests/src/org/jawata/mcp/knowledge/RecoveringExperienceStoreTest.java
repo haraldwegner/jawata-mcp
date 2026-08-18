@@ -39,10 +39,10 @@ class RecoveringExperienceStoreTest {
     void degraded_store_serves_and_announces() {
         store = new RecoveringExperienceStore("open failed: boom",
             () -> { throw new IllegalStateException("still down"); }, 3600_000);
-        assertNotNull(store.notice(), "a degraded store must announce itself");
-        assertTrue(store.notice().contains("NON-PERSISTENT"),
-            "the notice names the consequence: " + store.notice());
-        assertTrue(store.notice().contains("boom"), "the notice carries the reason");
+        assertNotNull(store.degradedNotice(), "a degraded store must announce itself");
+        assertTrue(store.degradedNotice().contains("NON-PERSISTENT"),
+            "the notice names the consequence: " + store.degradedNotice());
+        assertTrue(store.degradedNotice().contains("boom"), "the notice carries the reason");
         String id = store.put(fact("recorded while degraded"));
         assertNotNull(id);
         assertEquals(1, store.count(), "the fallback still works");
@@ -65,10 +65,10 @@ class RecoveringExperienceStoreTest {
         store.put(fact("written during the degraded window"));
 
         long deadline = System.currentTimeMillis() + 10_000;
-        while (store.notice() != null && System.currentTimeMillis() < deadline) {
+        while (store.degradedNotice() != null && System.currentTimeMillis() < deadline) {
             Thread.sleep(50);
         }
-        assertNull(store.notice(), "recovered: the notice must clear");
+        assertNull(store.degradedNotice(), "recovered: the notice must clear");
         assertTrue(attempts.get() >= 2, "the background retry actually retried");
         assertEquals(1, real.count(),
             "the degraded-window entry was replayed into the real store");
@@ -88,8 +88,8 @@ class RecoveringExperienceStoreTest {
                 throw new IllegalStateException("still newer");
             }, 30);
         Thread.sleep(300);
-        assertNotNull(store.notice(), "still degraded, still announcing");
+        assertNotNull(store.degradedNotice(), "still degraded, still announcing");
         assertTrue(attempts.get() >= 2, "keeps trying in the background");
-        assertTrue(store.notice().contains("schema written by a newer resident"));
+        assertTrue(store.degradedNotice().contains("schema written by a newer resident"));
     }
 }

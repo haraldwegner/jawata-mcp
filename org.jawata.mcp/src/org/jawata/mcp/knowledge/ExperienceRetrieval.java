@@ -45,6 +45,16 @@ public final class ExperienceRetrieval {
     public static final String RESULT_PRIMER = "primer";
     /** Sprint 27: nothing passed the gate, but comparable experience exists. */
     public static final String RESULT_ANALOGY = "analogy";
+    /**
+     * #37: the knowledge layer COULD NOT ANSWER — which is not an absence.
+     *
+     * <p>An absence is a fact we observed: we looked at the corpus and it holds nothing
+     * for this cue. This is the other thing entirely: the corpus was not readable, or was
+     * not the real corpus. The two were indistinguishable in the response until now — a
+     * wedged store and a degraded in-memory fallback both answered "No known knowledge",
+     * and every consumer read that as an observed absence.</p>
+     */
+    public static final String RESULT_UNAVAILABLE = "unavailable";
 
     /** Domain-layer entry types + scope kinds — the always-relevant knowledge the primer pushes.
      *  v2.2.3: widened with the standing how-to-work types a real memory corpus maps to
@@ -141,6 +151,23 @@ public final class ExperienceRetrieval {
             return out;
         }
 
+        try {
+            return within(() -> recallFromStore(q, surface, out), out);
+        } catch (RuntimeException e) {
+            // #37: the store was reached and could not answer. Everything below this
+            // line is the knowledge layer, so a failure here is that layer being
+            // unavailable — NOT an absence, and not a caller error. It is reported as
+            // what it is, with the cause named, rather than as "nothing known".
+            log.warn("recall failed for cue {} — reporting UNAVAILABLE, not absence", cueMap(q), e);
+            return unavailable(out,
+                "the store failed while answering: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+        }
+    }
+
+    /** The store-backed half of {@link #recall(RecallQuery, String)} — everything that can fail. */
+    private Map<String, Object> recallFromStore(RecallQuery q, String surface,
+            Map<String, Object> out) {
         List<StoredEntry> candidates = store.query(q);
 
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
@@ -187,6 +214,14 @@ public final class ExperienceRetrieval {
 
         if (fitting.isEmpty()) {
             if (analogies.isEmpty()) {
+                // #37: an empty answer from a DEGRADED store is not an observed
+                // absence — the corpus that was searched is the fallback, not the
+                // real one. Saying "no known knowledge" here is the exact lie the
+                // hook's own query module was written to stop, one layer lower.
+                String degraded = store.degradedNotice();
+                if (degraded != null) {
+                    return unavailable(out, degraded);
+                }
                 // Sprint 27a D2: the surface was consulted and STAYED SILENT.
                 // Counted as the abstain counterpart of a speak, so a silent
                 // surface is distinguishable from one never consulted.
@@ -280,6 +315,102 @@ public final class ExperienceRetrieval {
         if (!analogies.isEmpty()) {
             out.put("analogies", ExperienceAnalogies.toMaps(analogies));
         }
+        return out;
+	}
+
+    /**
+     * #37: how long a retrieval may take before the CALLER is released.
+     *
+     * <p>Fifteen seconds is not a performance target — a healthy recall over this corpus
+     * is milliseconds. It is the point past which "slow" is indistinguishable from
+     * "never", and the caller is better served by a typed unavailable than by a wait.</p>
+     */
+    public static final long RETRIEVAL_BUDGET_MILLIS = 15_000;
+
+    /** The live budget; only a test lowers it (see {@link #setRetrievalBudgetMillis}). */
+    private long budgetMillis = RETRIEVAL_BUDGET_MILLIS;
+
+    /**
+     * Package-private, and only tests call it — so a stall test runs in milliseconds.
+     * The budget is a constant in production precisely so no caller can widen it back
+     * toward "wait forever".
+     */
+    void setRetrievalBudgetMillis(long millis) {
+        this.budgetMillis = millis;
+    }
+
+    /**
+     * Daemon threads: an abandoned read must never hold the JVM open. Cached rather than
+     * a single worker, because a stuck read would otherwise block every LATER caller on
+     * the queue — which is the convoy this method exists to break.
+     */
+    private static final java.util.concurrent.ExecutorService RETRIEVAL_POOL =
+        java.util.concurrent.Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "jawata-retrieval");
+            t.setDaemon(true);
+            return t;
+        });
+
+    /**
+     * #37, THE MEASURED CASE: run a retrieval with a deadline, because the connection
+     * underneath it has none.
+     *
+     * <p>The incident was a store read parked in a socket read for 3459 seconds. The
+     * obvious remedy — {@code Connection.setNetworkTimeout} — is accepted and DISCARDED
+     * by H2 2.2.224 (its body is {@code return}; a tripwire test in
+     * {@code ExperienceStoreTest} pins that). The connection cannot be bounded, so the
+     * OPERATION is: the caller is released on a deadline and told the layer is
+     * unavailable.</p>
+     *
+     * <p>Stated plainly, because it is a real limit: this frees the CALLER, not the
+     * stuck reader. The abandoned task is interrupted, and interrupting a thread blocked
+     * in a socket read does not end it — it keeps its H2 session lock until the socket
+     * gives up. Un-wedging the store itself is the structural work (narrow the monitor,
+     * stop scanning the whole table); this is the bulkhead that stops one stuck read
+     * from becoming every caller's timeout in the meantime.</p>
+     */
+    private Map<String, Object> within(java.util.concurrent.Callable<Map<String, Object>> read,
+            Map<String, Object> out) {
+        java.util.concurrent.Future<Map<String, Object>> task = RETRIEVAL_POOL.submit(read);
+        try {
+            return task.get(budgetMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            task.cancel(true);
+            log.warn("retrieval exceeded its {}ms budget — reporting UNAVAILABLE", budgetMillis);
+            return unavailable(out, "the store did not answer within " + budgetMillis
+                + "ms; it is unreachable or wedged");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return unavailable(out, "interrupted while waiting for the store");
+        } catch (java.util.concurrent.ExecutionException e) {
+            // The read's own failure — unwrapped, so the caller's catch sees the real
+            // cause rather than a wrapper naming this method.
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            if (cause instanceof Error err) {
+                throw err;
+            }
+            throw new IllegalStateException(cause == null ? e : cause);
+        }
+    }
+
+    /**
+     * #37: the one construction of {@link #RESULT_UNAVAILABLE} — "I could not answer",
+     * with the reason, and with {@code entries} EMPTY but the result word saying why.
+     *
+     * <p>It deliberately does not advance the {@code silent} counter: a store that could
+     * not be read did not abstain, and counting it as an abstention would put the layer's
+     * outages into the surface's silence rate, where nobody would ever find them.</p>
+     */
+    private static Map<String, Object> unavailable(Map<String, Object> out, String reason) {
+        out.put("result", RESULT_UNAVAILABLE);
+        out.put("reason", reason);
+        out.put("message", "Knowledge layer UNAVAILABLE — this is NOT an absence: "
+            + reason + ". Proceed without recall and say so; do not read this as"
+            + " 'nothing is known'.");
+        out.put("entries", List.of());
         return out;
     }
 
@@ -521,6 +652,21 @@ public final class ExperienceRetrieval {
      * so it is pushed up front. Ordered confidence › recency, capped at {@code limit}.
      */
     public Map<String, Object> primer(int limit) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        try {
+            return within(() -> primerFromStore(limit, out), out);
+        } catch (RuntimeException e) {
+            // #37: same rule as recall — a primer that could not be read is not an
+            // empty corpus. A session that starts against a broken store must know it
+            // started blind.
+            log.warn("primer failed — reporting UNAVAILABLE, not an empty corpus", e);
+            return unavailable(out,
+                "the store failed while answering: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage()));
+        }
+    }
+
+    private Map<String, Object> primerFromStore(int limit, Map<String, Object> out) {
         List<StoredEntry> domain = new ArrayList<>();
         for (StoredEntry e : store.all()) {
             if (!ExperienceEntry.ACCEPTED.equals(e.status())) {
@@ -537,8 +683,13 @@ public final class ExperienceRetrieval {
             .comparingInt(StoredEntry::confidenceRank).reversed()
             .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
 
-        Map<String, Object> out = new LinkedHashMap<>();
         if (domain.isEmpty()) {
+            // #37: an empty primer from a degraded store means the domain layer was
+            // never read, not that the corpus holds no domain knowledge.
+            String degraded = store.degradedNotice();
+            if (degraded != null) {
+                return unavailable(out, degraded);
+            }
             out.put("result", RESULT_ABSENCE);
             out.put("message", "No domain knowledge loaded.");
             out.put("entries", List.of());
@@ -565,6 +716,16 @@ public final class ExperienceRetrieval {
         if (RESULT_ABSENCE.equals(res)) {
             Object msg = result.get("message");
             return msg == null ? "No known knowledge for this cue." : msg.toString();
+        }
+        if (RESULT_UNAVAILABLE.equals(res)) {
+            // #37: the text carrier renders it too, so a caller that renders BEFORE
+            // it inspects the result word still cannot print an absence. (The tool
+            // does not reach here — it answers unavailable as a typed ERROR in both
+            // formats — but a second rendering path that lapses is how one honesty
+            // rule holds and the other quietly does not.)
+            Object msg = result.get("message");
+            return msg == null
+                ? "Knowledge layer UNAVAILABLE — this is NOT an absence." : msg.toString();
         }
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries =

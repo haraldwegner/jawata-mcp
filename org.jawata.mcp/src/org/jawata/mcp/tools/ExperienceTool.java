@@ -647,13 +647,42 @@ public final class ExperienceTool implements Tool {
         return respond(args, retrieval.primer(limit));
     }
 
-    /** Structured JSON by default; {@code format=text} returns flat injection-ready lines. */
+    /**
+     * Structured JSON by default; {@code format=text} returns flat injection-ready lines.
+     *
+     * <p>#37: a retrieval that could not be performed leaves here as a typed ERROR in
+     * BOTH formats, never as a successful answer carrying no entries. The distinction
+     * the consumer needs is "the store said nothing" versus "the store could not
+     * answer", and a success body cannot carry the second one — the hook's own parser
+     * treats every success as an answer and only an error as a refusal.</p>
+     */
     private ToolResponse respond(JsonNode args, Map<String, Object> result) {
+        if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(result.get("result"))) {
+            Object reason = result.get("reason");
+            return ToolResponse.error(KNOWLEDGE_UNAVAILABLE,
+                "Knowledge layer unavailable: "
+                    + (reason == null ? "reason not recorded" : reason),
+                "This is NOT an absence — nothing has been established about the cue one"
+                    + " way or the other. Proceed without recall and SAY that recall was"
+                    + " unavailable; do not record a conclusion as if the store had been"
+                    + " consulted. Check the resident's store health (experience"
+                    + " kind=stats) if it persists.");
+        }
         if ("text".equalsIgnoreCase(text(args, "format"))) {
             return ToolResponse.success(ExperienceRetrieval.renderText(result));
         }
         return ToolResponse.success(result);
     }
+
+    /**
+     * #37: the error code for "the knowledge layer could not answer".
+     *
+     * <p>Its own code rather than {@code INTERNAL_ERROR}, because the two mean different
+     * things to whoever reads them: an internal error says jawata is broken and the call
+     * should be reported, while this says the knowledge layer is temporarily unreadable
+     * and the caller should carry on WITHOUT recall and disclose that it did.</p>
+     */
+    public static final String KNOWLEDGE_UNAVAILABLE = "KNOWLEDGE_UNAVAILABLE";
 
     private ToolResponse record(JsonNode args) {
         String type = text(args, "type");

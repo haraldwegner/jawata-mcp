@@ -154,6 +154,24 @@ public interface ExperienceStore extends AutoCloseable {
         return null;
     }
 
+    /**
+     * #37: why this store cannot currently give a trustworthy answer, or {@code null}
+     * when it can.
+     *
+     * <p>A store that is serving from a fallback still ANSWERS — and its empty answer
+     * is indistinguishable, in shape, from "I looked and there is nothing". That is the
+     * lie this method exists to make impossible: retrieval asks before it reports an
+     * absence, and reports {@code unavailable} instead when this is non-null.</p>
+     *
+     * <p>On the interface rather than on the one implementation that has it, because
+     * every caller reaching it through {@code ExperienceStore} would otherwise need an
+     * {@code instanceof} — and an {@code instanceof} against a wrapped store is how a
+     * production path silently took the not-degraded branch before (the C4-F1 lesson).</p>
+     */
+    default String degradedNotice() {
+        return null;
+    }
+
     @Override
     void close();
 }

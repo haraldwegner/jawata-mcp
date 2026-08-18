@@ -16,7 +16,7 @@ import java.util.function.Supplier;
  * <ol>
  *   <li><b>Serve</b> — the fallback works exactly like before (an in-memory
  *       delegate), so a broken store never kills the resident.</li>
- *   <li><b>Say so</b> — {@link #notice()} is non-null the whole time the
+ *   <li><b>Say so</b> — {@link #degradedNotice()} is non-null the whole time the
  *       store is degraded; the registry appends it to EVERY answer. A
  *       degraded result presented as normal is this codebase's recorded
  *       top-bug class — this class exists so it cannot happen here again.</li>
@@ -69,7 +69,7 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     /** Non-null while degraded — the text every answer carries. Null once recovered. */
-    public String notice() {
+    public String degradedNotice() {
         return notice;
     }
 

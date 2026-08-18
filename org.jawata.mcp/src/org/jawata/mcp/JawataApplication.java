@@ -182,7 +182,7 @@ public class JawataApplication implements IApplication {
 
         // v3.2.1 (dogfood #1): while the store is degraded, EVERY answer says so.
         if (experienceStore instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r) {
-            toolRegistry.setStoreNotice(r::notice);
+            toolRegistry.setStoreNotice(r::degradedNotice);
         }
 
         // Sprint 28b D1: the sanitized field recording — file-based (append-only
