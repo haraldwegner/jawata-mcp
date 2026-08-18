@@ -104,19 +104,42 @@ public final class H2ExperienceStore implements ExperienceStore {
     private static void boundNetworkWait(Connection connection) {
         try {
             connection.setNetworkTimeout(Runnable::run, NETWORK_TIMEOUT_MILLIS);
+            // VERIFY, DO NOT TRUST THE CALL. H2 2.2.224 ACCEPTS this and discards it —
+            // JdbcConnection.setNetworkTimeout's whole body is `return`, and
+            // getNetworkTimeout answers 0 forever. Catching the exception was useless
+            // because no exception is thrown: the first version of this method reported a
+            // bound that did not exist, which is the #37 failure wearing the fix's clothes.
+            // So read it back, and if the driver ignored us, SAY SO.
+            int applied = connection.getNetworkTimeout();
+            if (applied <= 0) {
+                log.warn("Experience store connection is UNBOUNDED — {} ignores setNetworkTimeout"
+                        + " (asked {} ms, reports {}). A store read that stops returning will hang"
+                        + " until the caller gives up. See #37.",
+                    connection.getClass().getName(), NETWORK_TIMEOUT_MILLIS, applied);
+            }
         } catch (SQLException | RuntimeException e) {
             log.warn("Experience store connection is UNBOUNDED — setNetworkTimeout refused: {}",
                 e.getMessage());
         }
     }
 
+    /**
+     * The ONE place a store connection is created. Three sites used to build their own
+     * ({@link #live()}, {@link #compact()}, and the opener) and the bound was a convention
+     * repeated by hand — which {@code compact()} already failed to keep.
+     */
+    private static Connection openBound(String url) throws SQLException {
+        JdbcDataSource ds = new JdbcDataSource();
+        ds.setURL(url);
+        Connection connection = ds.getConnection();
+        boundNetworkWait(connection);
+        return connection;
+    }
+
     private Connection live() {
         try {
             if (conn == null || conn.isClosed() || !conn.isValid(1)) {
-                JdbcDataSource ds = new JdbcDataSource();
-                ds.setURL(url);
-                conn = ds.getConnection();
-                boundNetworkWait(conn);
+                conn = openBound(url);
                 log.info("Experience store connection re-established");
             }
         } catch (SQLException e) {
@@ -285,9 +308,7 @@ public final class H2ExperienceStore implements ExperienceStore {
     private static H2ExperienceStore openUrl(String url, Path storeDir, Path storeFile) {
         Connection conn = null;
         try {
-            JdbcDataSource ds = new JdbcDataSource();
-            ds.setURL(url);
-            conn = ds.getConnection();
+            conn = openBound(url);
             return new H2ExperienceStore(conn, url, storeDir, storeFile);
         } catch (SQLException e) {
             closeQuietly(conn);
@@ -990,9 +1011,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 s.execute("SHUTDOWN COMPACT");       // closes the database (and this conn)
             }
             closeQuietly(conn);
-            JdbcDataSource ds = new JdbcDataSource();
-            ds.setURL(url);
-            conn = ds.getConnection();               // reopen on the compacted file
+            conn = openBound(url);                   // reopen on the compacted file
         } catch (SQLException e) {
             throw new IllegalStateException("failed to compact: " + e.getMessage(), e);
         }
@@ -1115,9 +1134,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             String url = "jdbc:h2:file:" + expDir.resolve("experience").toAbsolutePath()
                 + ";DB_CLOSE_ON_EXIT=FALSE;ACCESS_MODE_DATA=r";
             try {
-                JdbcDataSource ds = new JdbcDataSource();
-                ds.setURL(url);
-                try (Connection orphan = ds.getConnection()) {
+                try (Connection orphan = openBound(url)) {
                     int version = SchemaMigrations.detectVersion(orphan);
                     if (version > SchemaMigrations.LATEST) {
                         log.warn("recovery: {} is schema v{} (> v{}) — skipped, not marked",
