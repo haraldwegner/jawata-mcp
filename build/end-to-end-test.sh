@@ -253,6 +253,77 @@ case "$L" in
     *) fail "ingest-route-report NO ROUTE/SKIP REPORT from the ingest (v3.4.1 shape)" ;;
 esac
 
+# ==================== 28b: the field lane, at the front door =================
+# Sprint 28b's Stage-6 proof was run by hand and left NOTHING behind, so its
+# claims would not exist at release time or in CI (28b closing audit, F9).
+# These are that proof, as assertions. They belong here rather than in a unit
+# test for the reason this whole script exists: the field lane's promise is
+# about what LEAVES the product, and only the front door can see that.
+FIELD_PILE="$WS/ws/field/pile.jsonl"    # the resident records under -data
+
+# --- field-tool-answers: the /report seat's one front door replies -----------
+FP="$(call field '{"action":"pile"}')"
+case "$FP" in
+    *'"shapes"'*'"shapeCount"'*) pass "field-tool-answers field(pile) answers with ranked shapes" ;;
+    *) fail "field-tool-answers field(pile) did not answer: $(printf '%s' "$FP" | head -c 200)" ;;
+esac
+FS="$(call field '{"action":"silence"}')"
+case "$FS" in
+    *'"nudges"'*'"silenced"'*) pass "field-tool-answers field(silence) reports both switches" ;;
+    *) fail "field-tool-answers field(silence) reported no switches: $(printf '%s' "$FS" | head -c 200)" ;;
+esac
+
+# --- field-answers-carry-no-path: the seat drafts a PUBLIC issue from these --
+# (28b closing audit, F8: `pile` used to answer with the absolute pile path and
+# `silence` with the state path, both carrying the user's account name.)
+case "$FP$FS" in
+    */home/*|*/Users/*|*"$WS"*)
+        fail "field-answers-carry-no-path a field answer carries a filesystem path — the /report seat drafts a public issue body from exactly this" ;;
+    *)  pass "field-answers-carry-no-path no field answer carries a filesystem path" ;;
+esac
+
+# --- field-records-failures: a failing call lands a shape WITH its error code -
+# No project is loaded in this lifecycle, so the refusal is deterministic. The
+# needle rides in the ARGUMENT: the failure must be recorded, the symbol must
+# not be.
+call analyze '{"kind":"type","typeName":"com.acme.SecretLedger"}' >/dev/null
+if [ -f "$FIELD_PILE" ] \
+        && grep -q '"tool":"analyze"[^}]*"ok":false[^}]*"code":"[A-Z_]\{2,\}"' "$FIELD_PILE"; then
+    pass "field-records-failures the failed call is in the pile as a shape with an error CODE"
+else
+    fail "field-records-failures no failed-analyze shape with a code in the pile: $(tail -3 "$FIELD_PILE" 2>/dev/null | head -c 300)"
+fi
+
+# --- field-pile-carries-no-content: shapes, never content --------------------
+# Four needles pushed in through four different inputs — a symbol argument, a
+# path argument, free prose, and the bearer token this run authenticates with.
+# The pile may carry that each call failed; it may carry none of these.
+call load_project "{\"projectPath\":\"$WS/no-such-project-here\"}" >/dev/null
+call experience '{"kind":"recall","symptom":"marzipan-barometer-needle","format":"text"}' >/dev/null
+LEAKED="$(grep -oE "com\.acme\.SecretLedger|no-such-project-here|marzipan-barometer-needle|$TOKEN" \
+    "$FIELD_PILE" 2>/dev/null | sort -u | tr '\n' ' ')"
+if [ -z "$LEAKED" ]; then
+    pass "field-pile-carries-no-content none of the leak needles reached the pile"
+else
+    fail "field-pile-carries-no-content THE PILE CARRIES CONTENT, not shapes: $LEAKED"
+fi
+
+# --- field-contract-header: the seam version rides the response --------------
+# The hook refuses to inject under an unverified seam by comparing its own
+# contract against this echo (D7). No header, no refusal — it would inject
+# blind, which is the failure mode the typed mismatch exists to prevent.
+CH="$(curl -s -D - -o /dev/null --max-time 60 -X POST "http://127.0.0.1:$PORT/mcp" \
+    -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: e2e-$$" \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+         "params":{"name":"field","arguments":{"action":"pile"}}}' \
+    | grep -i '^x-jawata-contract:' | tr -d '\r')"
+if printf '%s' "$CH" | grep -qiE '^x-jawata-contract:[[:space:]]*[0-9]+$'; then
+    pass "field-contract-header the response carries the seam version ($CH)"
+else
+    fail "field-contract-header no X-Jawata-Contract header on the response — the hook cannot detect a seam mismatch and would inject under an unverified contract"
+fi
+
 stop_resident
 
 # ============================ lifecycle 2 ====================================
