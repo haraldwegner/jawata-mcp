@@ -85,6 +85,27 @@ public final class FieldState {
         return this;
     }
 
+    /**
+     * Appends the {@code /report}-was-used marker to the reminder ledger (D9).
+     *
+     * <p>The ledger is APPEND-ONLY and shared with the hook, which appends its
+     * own {@code shown} lines: three processes touch this lane, so a
+     * read-modify-write from any of them would lose another's record. The
+     * hook counts strikes as the lines since the last reset.</p>
+     */
+    public void recordReportUsed(Path dir) {
+        try {
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve("reminded.log"),
+                System.currentTimeMillis() + "\treset\n",
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            log.error("Reminder-reset marker NOT written at {} — the reminders will keep"
+                + " counting this use as unanswered", dir, e);
+        }
+    }
+
     /** The state at {@code dir}; defaults (nudges on, not silenced) when the
      *  file is absent or unreadable — a missing state must never silence. */
     public static FieldState read(Path dir) {

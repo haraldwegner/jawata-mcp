@@ -178,6 +178,7 @@ public class FieldTool extends AbstractTool {
                 "mark_posted needs the shape key from `pile`");
         }
         FieldState state = FieldState.read(dir).withPosted(shape);
+        state.recordReportUsed(dir);
         if (!state.write(dir)) {
             return ToolResponse.error("FIELD_STATE_WRITE_FAILED",
                 "the shape was NOT recorded as posted — it will nudge again",
