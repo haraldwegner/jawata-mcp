@@ -129,6 +129,14 @@ public final class ExternalBundlePool {
             .map(PlatformResolver.PoolBundle::jar);
     }
 
+    /** The facts read from one indexed jar, by its path — the applier's jar-in-jar honesty check (12.3). */
+    public Optional<BundleFacts> factsOf(Path jar) {
+        return bundles.stream()
+            .filter(b -> b.jar().equals(jar))
+            .map(PlatformResolver.PoolBundle::facts)
+            .findFirst();
+    }
+
     public boolean isEmpty() {
         return bundles.isEmpty();
     }

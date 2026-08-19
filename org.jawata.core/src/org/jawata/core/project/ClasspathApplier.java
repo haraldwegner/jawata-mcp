@@ -73,6 +73,8 @@ public final class ClasspathApplier {
      */
     public static WireResult computeWire(PlatformResolver.Wiring wiring,
             ExternalBundlePool pool,
+            BundleFacts facts,
+            java.nio.file.Path projectRoot,
             List<String> junitBundles,
             Function<String, Optional<IJavaProject>> workspaceProjects,
             Set<IPath> occupiedLibs,
@@ -137,6 +139,47 @@ public final class ClasspathApplier {
             if (libs.add(eclipsePath)) {
                 entries.add(wireLibrary(eclipsePath, true));
             }
+        }
+
+        // Bundle-ClassPath (12.3): the project's OWN nested jars, exported=true
+        // — a JDT project entry exposes only exported entries, so without the
+        // flag the lib-container pattern contributes NOTHING to dependents. A
+        // jar the .classpath ALSO names dedupes by absolute path (R25); a
+        // declared-but-missing jar is an honest row, never silence.
+        for (String bcp : facts.bundleClassPath()) {
+            String entry = bcp.trim();
+            if (entry.isEmpty() || ".".equals(entry)) {
+                continue; // "." is the project's own output — nothing to mount
+            }
+            java.nio.file.Path nested = projectRoot.resolve(entry).toAbsolutePath().normalize();
+            if (java.nio.file.Files.isRegularFile(nested)) {
+                IPath eclipsePath = new Path(nested.toString());
+                if (libs.add(eclipsePath)) {
+                    entries.add(wireLibrary(eclipsePath, true));
+                }
+            } else {
+                unresolved.add(new UnresolvedRequirement("Bundle-ClassPath", entry,
+                    "declared by the manifest, but no such file under the project root"));
+            }
+        }
+
+        // A POOL jar whose manifest declares nested Bundle-ClassPath entries
+        // carries them INSIDE the packaged jar — jawata cannot mount a
+        // jar-in-jar, and saying nothing would be the forbidden silent miss
+        // (R19). One honest row per nested entry.
+        for (PlatformResolver.Provider provider : jarProviders) {
+            java.nio.file.Path jar = provider.jar().orElseThrow();
+            pool.factsOf(jar).ifPresent(jarFacts -> {
+                for (String bcp : jarFacts.bundleClassPath()) {
+                    String entry = bcp.trim();
+                    if (!entry.isEmpty() && !".".equals(entry)) {
+                        unresolved.add(new UnresolvedRequirement("Bundle-ClassPath",
+                            jarFacts.symbolicName() + "!/" + entry,
+                            "the entry lives inside the packaged pool jar " + jar.getFileName()
+                                + " — a jar-in-jar cannot be mounted; classes in it will not resolve"));
+                    }
+                }
+            });
         }
 
         // The resolver's misses. Import-Package has ONE miss shape, so it

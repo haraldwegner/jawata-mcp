@@ -430,6 +430,7 @@ public class JdtServiceImpl implements IJdtService {
 
         org.jawata.core.project.ClasspathApplier.WireResult wire =
             org.jawata.core.project.ClasspathApplier.computeWire(wiring, pool,
+                inputs.facts(), project.projectRoot(),
                 inputs.junitBundles(), projectLookup, occupiedLibs, occupiedProjects);
 
         if (!sameEntries(currentWire, wire.entries())) {

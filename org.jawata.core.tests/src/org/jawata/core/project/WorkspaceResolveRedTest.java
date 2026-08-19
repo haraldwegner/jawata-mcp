@@ -279,7 +279,6 @@ class WorkspaceResolveRedTest {
     // ------------------------------------------------------------------
 
     /** The com.jats2.libs shape: a lib-container bundle consumed by a sibling. */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.3")
     @Test
     @DisplayName("RED until C12.3: a container's Bundle-ClassPath jars reach the dependent")
     void libContainer_nestedJarsOnDependentClasspath() throws Exception {
