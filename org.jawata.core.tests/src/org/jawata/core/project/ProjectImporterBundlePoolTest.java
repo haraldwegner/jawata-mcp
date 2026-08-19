@@ -66,7 +66,10 @@ class ProjectImporterBundlePoolTest {
             " com.example.second;visibility:=reexport,\r\n" +
             " com.example.third\r\n");
 
-        List<String> required = ProjectImporter.readManifestRequireBundle(tempDir);
+        List<String> required = org.jawata.core.resolve.BundleFacts.of(tempDir).orElseThrow()
+            .requiredBundles().stream()
+            .map(org.jawata.core.resolve.OsgiHeaders.Requirement::name)
+            .toList();
 
         assertEquals(List.of("com.example.first", "com.example.second", "com.example.third"), required);
     }

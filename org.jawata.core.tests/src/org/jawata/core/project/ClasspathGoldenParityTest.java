@@ -71,6 +71,33 @@ class ClasspathGoldenParityTest {
     }
 
     @Test
+    @DisplayName("golden: pde-external(+tests) — the POOL-exercising set")
+    void externalPool() throws Exception {
+        // The property dance mirrors PdeExternalPoolTest: the running dist's
+        // own bundles are the pool. CAPTURED at C11.3-start rather than C11.0 —
+        // honestly recorded in the plan: the 11.1 parser swap was proven
+        // behaviour-preserving on the other five goldens first.
+        String distRoot = System.getProperty("jawata.dist.root");
+        org.junit.jupiter.api.Assumptions.assumeTrue(distRoot != null,
+            "jawata.dist.root must be set (the boot sets it)");
+        String before = System.getProperty("jawata.bundle.pools");
+        System.setProperty("jawata.bundle.pools",
+            Path.of(distRoot, "bundles") + java.io.File.pathSeparator
+                + Path.of(distRoot, "test-bundles") + java.io.File.pathSeparator
+                + Path.of(distRoot));
+        try {
+            JdtServiceImpl service = helper.loadWorkspaceCopy("pde-external", "pde-external-tests");
+            check("pde-external", service);
+        } finally {
+            if (before == null) {
+                System.clearProperty("jawata.bundle.pools");
+            } else {
+                System.setProperty("jawata.bundle.pools", before);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("golden: maven-custom-testdir (the non-PDE BYPASS must never change)")
     void plainMavenBypass() throws Exception {
         JdtServiceImpl service = helper.loadWorkspaceCopy("maven-custom-testdir");

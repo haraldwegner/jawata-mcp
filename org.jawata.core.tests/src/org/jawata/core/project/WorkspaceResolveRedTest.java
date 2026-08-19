@@ -323,7 +323,10 @@ class WorkspaceResolveRedTest {
                 + "Bundle-SymbolicName: org.example.ranged\nBundle-Version: 1.0.0\n"
                 + "Require-Bundle: org.example.pinned;bundle-version=\"[1.0.0,2.0.0)\",\n"
                 + " org.example.plain\n");
-        List<String> required = ProjectImporter.readManifestRequireBundle(project);
+        List<String> required = org.jawata.core.resolve.BundleFacts.of(project).orElseThrow()
+            .requiredBundles().stream()
+            .map(org.jawata.core.resolve.OsgiHeaders.Requirement::name)
+            .toList();
         assertEquals(List.of("org.example.pinned", "org.example.plain"), required,
             "the comma INSIDE the quoted range is not a separator; today's naive "
                 + "split(\",\") manufactures a third, phantom requirement");

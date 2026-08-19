@@ -165,6 +165,13 @@ public class ProjectImporter {
         // 5. Apply the project's OWN declared Java language level.
         applyComplianceLevel(javaProject, projectPath);
 
+        // Stage 11.3 (D5, inert until 12.1 makes cycles wireable): circular
+        // project references are LEGAL in the dev-time comprehension model —
+        // Eclipse itself makes this severity configurable, and a resolve
+        // phase makes cycles resolvable. JDT's default is ERROR, which would
+        // put hard markers on both members of the first cycle 12.1 wires.
+        javaProject.setOption(JavaCore.CORE_CIRCULAR_CLASSPATH, JavaCore.WARNING);
+
         log.info("Configured Java project with {} classpath entries ({} unresolved requirement(s))",
             entries.size(), unresolved.size());
         return new ImportResult(javaProject, unresolved);
@@ -1081,102 +1088,110 @@ public class ProjectImporter {
         addIfExists(entries, projectPath, "build/classes/java/main", addedLibPaths);
         addIfExists(entries, projectPath, "build/classes/java/test", addedLibPaths);
 
-        // Sprint 11 Phase B: workspace bundle pool — resolve Require-Bundle
-        // entries against sibling projects already loaded into the workspace.
-        // Sprint 23 (D7): whatever the workspace pool does NOT satisfy is
-        // resolved against EXTERNAL pools (materialized target platform via
-        // jawata.bundle.pools, the shared p2 pool, the server's own dist
-        // bundles) — as EXPORTED library entries, plus an Import-Package pass
-        // over the pools' Export-Package index. Still-unresolved requirements
-        // stay unresolved (logged), exactly as before.
-        int bundleEntries = 0;
-        // Sprint 28 Stage 8 (G6a): what the import was ASKED for and could not
-        // find. Every one of these was already known here and written to
-        // `log.debug` — off by default, reaching no response, invisible to the
-        // person looking at the error count. On the measured workspace that
-        // made four projects resolving NOTHING look exactly like four projects
-        // whose code is broken.
+        // Stage 11.3: the PDE half is the Inventory -> Resolve -> Apply
+        // pipeline (ARCHITECTURE-workspace-resolution.md). At this checkpoint
+        // the semantics are DELIBERATELY today's — order-dependent, sibling
+        // stubs from the registry, pool fallback verbatim in the applier —
+        // and the byte-equal goldens are the proof. The behaviour changes at
+        // 12.1 (workspace re-resolve) and 12.2 (pool through the resolver).
         List<UnresolvedRequirement> unresolved = new ArrayList<>();
-        List<String> unresolvedRequires = new ArrayList<>();
-        for (String required : readManifestRequireBundle(projectPath)) {
-            Optional<org.eclipse.jdt.core.IJavaProject> sibling = workspaceManager == null
-                ? Optional.empty() : workspaceManager.resolveBundle(required);
-            if (sibling.isPresent()) {
-                IPath projPath = sibling.get().getPath();
-                if (addedProjectPaths.add(projPath)) {
-                    entries.add(JavaCore.newProjectEntry(projPath));
-                    bundleEntries++;
-                }
-            } else {
-                unresolvedRequires.add(required);
+        try {
+            Optional<org.jawata.core.resolve.BundleFacts> selfFacts =
+                org.jawata.core.resolve.BundleFacts.of(projectPath);
+            if (selfFacts.isPresent()) {
+                unresolved = resolveAndApplyPde(selfFacts.get(), cp, workspaceManager,
+                    entries, addedLibPaths, addedProjectPaths);
             }
-        }
-        List<String> importedPackages = readManifestImportPackage(projectPath);
-        List<String> junitBundles = junitContainerBundles(cp.containers());
-        if (!unresolvedRequires.isEmpty() || !importedPackages.isEmpty() || !junitBundles.isEmpty()) {
-            ExternalBundlePool pool = ExternalBundlePool.index(ExternalBundlePool.defaultPoolDirs());
-            int external = 0;
-
-            // Sprint 28 (mcp#3): the JDT JUnit container. Eclipse resolves
-            // JUNIT_CONTAINER/<n> to the JUnit runtime; jawata's synthetic
-            // project has no containers at all, so JUnit annotations did not
-            // resolve and find_tests reported ZERO test classes in a tree that
-            // had three test source folders — an honest-looking empty answer
-            // for a question that could not be asked.
-            for (String symbolicName : junitBundles) {
-                Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
-                if (jar.isPresent()) {
-                    IPath eclipsePath = new Path(jar.get().toString());
-                    if (addedLibPaths.add(eclipsePath)) {
-                        entries.add(JavaCore.newLibraryEntry(eclipsePath, null, null));
-                        external++;
-                    }
-                } else {
-                    log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
-                            symbolicName);
-                    unresolved.add(UnresolvedRequirement.junitContainer(symbolicName));
-                }
-            }
-            for (String required : unresolvedRequires) {
-                Optional<java.nio.file.Path> jar = pool.bundleJar(required);
-                if (jar.isPresent()) {
-                    IPath eclipsePath = new Path(jar.get().toString());
-                    if (addedLibPaths.add(eclipsePath)) {
-                        // exported=true: a required bundle's classes are part of
-                        // this project's runtime surface for dependents.
-                        entries.add(JavaCore.newLibraryEntry(eclipsePath, null, null, true));
-                        external++;
-                    }
-                } else {
-                    log.debug("Require-Bundle '{}' not found in workspace or external pools; skipping", required);
-                    unresolved.add(UnresolvedRequirement.requireBundle(required));
-                }
-            }
-            for (String pkg : importedPackages) {
-                Optional<java.nio.file.Path> jar = pool.packageProvider(pkg);
-                if (jar.isPresent()) {
-                    IPath eclipsePath = new Path(jar.get().toString());
-                    if (addedLibPaths.add(eclipsePath)) {
-                        entries.add(JavaCore.newLibraryEntry(eclipsePath, null, null, true));
-                        external++;
-                    }
-                } else {
-                    log.debug("Import-Package '{}' has no provider in the external pools; skipping", pkg);
-                    unresolved.add(UnresolvedRequirement.importPackage(pkg));
-                }
-            }
-            if (external > 0) {
-                log.info("Resolved {} PDE requirement(s) from the external bundle pools", external);
-            }
-        }
-        if (bundleEntries > 0) {
-            log.info("Resolved {} Require-Bundle entries from the workspace bundle pool", bundleEntries);
+        } catch (IOException e) {
+            log.warn("Cannot read bundle manifest at {}: {}", projectPath, e.getMessage());
         }
 
         log.info("Added {} dependency entries from {}", jars.size(), buildSystem);
         // EMPTY, never null: a caller must be able to tell "resolved everything"
         // from "was never asked", and a missing field reads as the second.
         return List.copyOf(unresolved);
+    }
+
+    /**
+     * The C11.3 pipeline bridge: build the inventory-so-far, resolve, apply.
+     *
+     * <p>"So far" is load-bearing and DELIBERATE at this checkpoint: the
+     * workspace view handed to the resolver contains the bundle itself plus a
+     * name-only stub for each required sibling the registry ALREADY answers
+     * for — exactly today's order-dependent semantics, proven by the
+     * byte-equal goldens. Stage 12.1 replaces this view with the complete
+     * inventory and the re-resolve; 12.2 routes the pool through the resolver
+     * (until then the pool list here is EMPTY and the applier's verbatim pool
+     * fallback carries it).</p>
+     */
+    private List<UnresolvedRequirement> resolveAndApplyPde(
+            org.jawata.core.resolve.BundleFacts selfFacts,
+            ClasspathInfo cp,
+            org.jawata.core.workspace.WorkspaceManager workspaceManager,
+            List<IClasspathEntry> entries,
+            Set<IPath> addedLibPaths,
+            Set<IPath> addedProjectPaths) {
+        java.util.Map<String, org.jawata.core.resolve.BundleFacts> workspaceView =
+            new java.util.LinkedHashMap<>();
+        // The resolver must not walk siblings' requirements yet (that is the
+        // 12.1 behaviour change) and must not resolve Import-Package against
+        // siblings (today never did) — a stub carries the NAME and nothing
+        // else, which pins both.
+        for (org.jawata.core.resolve.OsgiHeaders.Requirement req : selfFacts.requiredBundles()) {
+            boolean registered = workspaceManager != null
+                && workspaceManager.resolveBundle(req.name()).isPresent();
+            if (registered) {
+                workspaceView.put(req.name(), stubFacts(req.name()));
+            }
+        }
+        // Import-Package stays OUT of the resolver at this checkpoint: the
+        // applier's verbatim pool pass answers it exactly as today. Hand the
+        // resolver a copy of self WITHOUT imports so no import is double-
+        // reported.
+        org.jawata.core.resolve.BundleFacts selfForResolver =
+            new org.jawata.core.resolve.BundleFacts(
+                selfFacts.symbolicName(), selfFacts.version(), selfFacts.requiredBundles(),
+                List.of(), selfFacts.exportedPackages(), selfFacts.fragmentHost(),
+                selfFacts.bundleClassPath(), selfFacts.platformFilter());
+        workspaceView.put(selfForResolver.symbolicName(), selfForResolver);
+
+        org.jawata.core.resolve.PlatformResolver resolver =
+            new org.jawata.core.resolve.GraphWalkResolver();
+        org.jawata.core.resolve.PlatformResolver.Wiring wiring = resolver
+            .resolve(workspaceView, List.of(), currentPlatform())
+            .get(selfForResolver.symbolicName());
+
+        return ClasspathApplier.apply(wiring, selfFacts,
+            junitContainerBundles(cp.containers()), workspaceManager,
+            entries, addedLibPaths, addedProjectPaths);
+    }
+
+    /** A name-only sibling stub — see {@link #resolveAndApplyPde}. */
+    private static org.jawata.core.resolve.BundleFacts stubFacts(String symbolicName) {
+        return new org.jawata.core.resolve.BundleFacts(symbolicName, Optional.empty(),
+            List.of(), List.of(), List.of(), Optional.empty(), List.of(), Optional.empty());
+    }
+
+    /**
+     * The running machine's platform triple, injected ONCE here — the resolver
+     * never reads system properties (its fragment tests must be deterministic
+     * on every CI OS).
+     */
+    private static org.jawata.core.resolve.PlatformResolver.Platform currentPlatform() {
+        // Through the HOST BOUNDARY, not a raw os.name read — HostOS is the one
+        // place that classifies the OS (its own history: a contains("win")
+        // predicate once classified Darwin as Windows, because "darwin"
+        // contains "win", and no test could reach it).
+        String arch = "aarch64".equals(org.jawata.core.host.HostOS.osArch())
+            ? "aarch64" : "x86_64";
+        return switch (org.jawata.core.host.HostOS.current()) {
+            case WINDOWS -> new org.jawata.core.resolve.PlatformResolver.Platform(
+                "win32", "win32", arch);
+            case MACOS -> new org.jawata.core.resolve.PlatformResolver.Platform(
+                "macosx", "cocoa", arch);
+            case LINUX -> new org.jawata.core.resolve.PlatformResolver.Platform(
+                "linux", "gtk", arch);
+        };
     }
 
     /** The JDT JUnit classpath container, as written in a {@code .classpath}. */
@@ -2205,59 +2220,6 @@ public class ProjectImporter {
         } catch (IOException e) {
             log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
             return Optional.empty();
-        }
-    }
-
-    /**
-     * Read {@code Require-Bundle} from {@code META-INF/MANIFEST.MF} and
-     * return the list of required bundle symbolic names (without version
-     * or visibility directives).
-     *
-     * <p>Multi-line OSGi headers (continuation lines starting with a single
-     * space) are joined automatically by {@link Manifest}; this method
-     * handles the resulting comma-separated list and per-entry directives.</p>
-     */
-    public static List<String> readManifestRequireBundle(java.nio.file.Path projectRoot) {
-        java.nio.file.Path manifestPath = projectRoot.resolve("META-INF").resolve("MANIFEST.MF");
-        if (!Files.isRegularFile(manifestPath)) {
-            return List.of();
-        }
-        try (InputStream in = Files.newInputStream(manifestPath)) {
-            Manifest manifest = new Manifest(in);
-            // Stage 11.1 (R5): quote-aware TOP-LEVEL split. The old
-            // header.split(",") tore a quoted range —
-            // bundle-version="[1.0.0,2.0.0)" — into a phantom requirement
-            // (recorded red: [org.example.pinned, 2.0.0)", org.example.plain]).
-            // The old comment claimed ranges were "a problem in theory"; the
-            // fixture made them a problem in fact.
-            return org.jawata.core.resolve.OsgiHeaders.names(
-                manifest.getMainAttributes().getValue("Require-Bundle"));
-        } catch (IOException e) {
-            log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
-            return List.of();
-        }
-    }
-
-    /**
-     * Read {@code Import-Package} from {@code META-INF/MANIFEST.MF} and return
-     * the imported package names (attributes/directives stripped; {@code java.*}
-     * skipped — the JRE container provides those). Sprint 23 (D7): feeds the
-     * external-pool Export-Package resolution.
-     */
-    public static List<String> readManifestImportPackage(java.nio.file.Path projectRoot) {
-        java.nio.file.Path manifestPath = projectRoot.resolve("META-INF").resolve("MANIFEST.MF");
-        if (!Files.isRegularFile(manifestPath)) {
-            return List.of();
-        }
-        try (InputStream in = Files.newInputStream(manifestPath)) {
-            Manifest manifest = new Manifest(in);
-            return org.jawata.core.resolve.OsgiHeaders.names(
-                    manifest.getMainAttributes().getValue("Import-Package")).stream()
-                .filter(name -> !name.startsWith("java."))
-                .toList();
-        } catch (IOException e) {
-            log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
-            return List.of();
         }
     }
 

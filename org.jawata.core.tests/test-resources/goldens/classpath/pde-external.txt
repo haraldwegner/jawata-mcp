@@ -1,0 +1,14 @@
+== pde-external
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-external-HASH/src-0-src
+LIB ${DIST}/bundles/jackson-databind-2.19.0.jar exported
+LIB ${DIST}/slf4j-api-2.0.18.jar exported
+LIB ${DIST}/bundles/jackson-core-2.19.0.jar exported
+LIB ${DIST}/bundles/jackson-annotations-2.19.0.jar exported
+unresolved=0
+== pde-external-tests
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-external-tests-HASH/src-0-src
+PRJ /jawata-pde-external-HASH
+LIB ${DIST}/test-bundles/junit-jupiter-api-5.11.4.jar exported
+unresolved=0
