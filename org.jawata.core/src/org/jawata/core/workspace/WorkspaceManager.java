@@ -1,5 +1,7 @@
 package org.jawata.core.workspace;
 
+import java.util.UUID;
+
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
@@ -10,15 +12,9 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages Eclipse workspace programmatically for headless operation.
@@ -44,7 +40,6 @@ public class WorkspaceManager {
      * the watcher thread while the main thread is still configuring
      * a previously-added project.
      */
-    private final Map<String, IProject> bundlesBySymbolicName = new ConcurrentHashMap<>();
 
     public WorkspaceManager() {
         // Generate unique session ID for this instance
@@ -225,53 +220,4 @@ public class WorkspaceManager {
         root.refreshLocal(IWorkspaceRoot.DEPTH_INFINITE, new NullProgressMonitor());
     }
 
-    // ========== Sprint 11 Phase B — workspace bundle pool ==========
-
-    /**
-     * Register a loaded PDE bundle's symbolic name against the project
-     * that contributes it. Called by {@code JdtServiceImpl.loadInternal}
-     * after the {@link IProject} is created and before the classpath is
-     * configured, so {@code Require-Bundle} declarations on the same
-     * project (or on later-loaded projects) can resolve.
-     *
-     * <p>Re-registering the same symbolic name overwrites the previous
-     * mapping; the most recently loaded project wins. PDE forbids
-     * duplicate symbolic names within a workspace, so collisions
-     * indicate a misconfigured user setup — we accept the overwrite
-     * silently rather than failing the load.</p>
-     */
-    public void registerBundle(String symbolicName, IProject project) {
-        if (symbolicName == null || symbolicName.isBlank() || project == null) {
-            return;
-        }
-        bundlesBySymbolicName.put(symbolicName, project);
-    }
-
-    /**
-     * Resolve a {@code Require-Bundle} symbolic name to an
-     * {@link IJavaProject} loaded in this workspace. Returns
-     * {@code Optional.empty()} when the bundle is not loaded
-     * (typical for system bundles like {@code org.eclipse.osgi}
-     * which live in the target platform, not the workspace) or
-     * the previously-registered project no longer exists.
-     */
-    public Optional<IJavaProject> resolveBundle(String symbolicName) {
-        IProject project = bundlesBySymbolicName.get(symbolicName);
-        if (project == null || !project.exists()) {
-            return Optional.empty();
-        }
-        return Optional.of(JavaCore.create(project));
-    }
-
-    /**
-     * Drop every bundle registration that points at the given project.
-     * Called when {@code JdtServiceImpl.removeProject} unloads a project
-     * so its bundle no longer satisfies {@code Require-Bundle} lookups.
-     */
-    public void unregisterBundlesForProject(IProject project) {
-        if (project == null) {
-            return;
-        }
-        bundlesBySymbolicName.values().removeIf(p -> p.equals(project));
-    }
 }

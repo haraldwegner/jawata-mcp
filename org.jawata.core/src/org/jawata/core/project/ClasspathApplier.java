@@ -4,89 +4,108 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
+import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.jawata.core.resolve.BundleFacts;
 import org.jawata.core.resolve.PlatformResolver;
-import org.jawata.core.workspace.WorkspaceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * The Apply half of Inventory → Resolve → Apply: turn a bundle's computed
  * wiring into JDT classpath entries. Nothing here decides — the resolver
- * decided; this renders (the architect's reduction/rendering split, the same
- * ruling that fixed store_health).
+ * decided; this renders (the architect's reduction/rendering split).
  *
- * <p><b>Every wire-produced entry is MARKED</b> with the classpath attribute
- * {@link #WIRE_ATTRIBUTE} so the 12.1 delta-apply can replace exactly the
- * wired tail and never touch source entries, whose linked folders are
+ * <p><b>Every wire-produced entry is MARKED</b> with {@link #WIRE_ATTRIBUTE},
+ * which is what makes the 12.1 delta-apply safe: a re-resolve replaces exactly
+ * the wired tail and never touches source entries, whose linked folders are
  * delete+create (risk R3).</p>
  *
- * <p>At the C11.3 cutover the POOL half below is today's code MOVED VERBATIM
- * (same {@code ExternalBundlePool} calls, same order, same exported flags) —
- * the checkpoint changes shape, not behaviour, and the byte-equal goldens are
- * the proof. Stage 12.2 swaps this pool rendering for resolver-driven
- * selection (nested layout, fragments, the one-pass precedence fix).</p>
+ * <p>The POOL half below is the pre-pipeline code moved verbatim (same
+ * {@code ExternalBundlePool} calls, same order, same exported flags) — it
+ * dissolves into the resolver at 12.2.</p>
  */
-final class ClasspathApplier {
+public final class ClasspathApplier {
 
     private static final Logger log = LoggerFactory.getLogger(ClasspathApplier.class);
 
-    /** Marks an entry as wire-produced — the 12.1 delta-apply's selector. */
-    static final String WIRE_ATTRIBUTE = "jawata.wire";
+    /** Marks an entry as wire-produced — the delta-apply's selector. */
+    public static final String WIRE_ATTRIBUTE = "jawata.wire";
 
     private ClasspathApplier() {
     }
 
+    /** Is this entry one the wire owns (and may therefore replace)? */
+    public static boolean isWire(IClasspathEntry entry) {
+        for (IClasspathAttribute a : entry.getExtraAttributes()) {
+            if (WIRE_ATTRIBUTE.equals(a.getName()) && "true".equals(a.getValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** One bundle's computed wire tail plus its honest misses. */
+    public record WireResult(List<IClasspathEntry> entries, List<UnresolvedRequirement> unresolved) {
+    }
+
     /**
-     * Render one bundle's wiring plus the pool fallback.
+     * Compute one bundle's wire tail. Pure over its inputs — no workspace
+     * mutation happens here; the caller decides whether and how to apply.
      *
-     * @param wiring       the resolver's decision for this bundle (workspace half)
-     * @param facts        the bundle's own manifest facts
-     * @param junitBundles JUnit-container stand-in bundle names from the .classpath
-     * @return every requirement that could not be satisfied, with its reason
+     * @param wiring            the resolver's decision for this bundle
+     * @param facts             the bundle's own manifest facts
+     * @param junitBundles      JUnit-container stand-ins from the .classpath
+     * @param workspaceProjects symbolic name → live {@link IJavaProject} — a
+     *                          FUNCTION, not the old name registry, which 12.1
+     *                          deleted (name-only, last-writer-wins, never
+     *                          invalidated)
+     * @param occupiedLibs      absolute lib paths already on the non-wire
+     *                          classpath — the R25 dedupe across ALL sources
+     * @param occupiedProjects  project paths already present
      */
-    static List<UnresolvedRequirement> apply(PlatformResolver.Wiring wiring,
+    public static WireResult computeWire(PlatformResolver.Wiring wiring,
             BundleFacts facts,
             List<String> junitBundles,
-            WorkspaceManager workspaceManager,
-            List<IClasspathEntry> entries,
-            Set<IPath> addedLibPaths,
-            Set<IPath> addedProjectPaths) {
+            Function<String, Optional<IJavaProject>> workspaceProjects,
+            Set<IPath> occupiedLibs,
+            Set<IPath> occupiedProjects) {
+        List<IClasspathEntry> entries = new ArrayList<>();
         List<UnresolvedRequirement> unresolved = new ArrayList<>();
+        Set<IPath> libs = new HashSet<>(occupiedLibs);
+        Set<IPath> projects = new HashSet<>(occupiedProjects);
 
-        // 1. Workspace providers, in the resolver's (declaration) order.
-        int bundleEntries = 0;
+        // 1. Workspace providers, in the resolver's order.
         for (PlatformResolver.Provider provider : wiring.providers()) {
             if (provider.workspaceBundle().isEmpty()) {
                 continue; // jar providers arrive at 12.2, through the resolver
             }
-            Optional<org.eclipse.jdt.core.IJavaProject> sibling = workspaceManager == null
-                ? Optional.empty()
-                : workspaceManager.resolveBundle(provider.workspaceBundle().get());
+            Optional<IJavaProject> sibling =
+                workspaceProjects.apply(provider.workspaceBundle().get());
             if (sibling.isEmpty()) {
-                // The resolver saw a sibling the registry no longer answers for —
-                // a liveness gap, reported rather than silently skipped.
+                // The resolver wired a name the workspace no longer answers for —
+                // reported, never silently skipped.
                 unresolved.add(UnresolvedRequirement.requireBundle(
                     provider.workspaceBundle().get()));
                 continue;
             }
             IPath projPath = sibling.get().getPath();
-            if (addedProjectPaths.add(projPath)) {
+            if (projects.add(projPath)) {
                 entries.add(JavaCore.newProjectEntry(projPath, null, true,
                     new IClasspathAttribute[] {
                         JavaCore.newClasspathAttribute(WIRE_ATTRIBUTE, "true") },
                     false));
-                bundleEntries++;
             }
         }
 
-        // 2. The POOL fallback — today's code, moved verbatim (see class doc).
+        // 2. The POOL fallback — pre-pipeline code, verbatim (see class doc).
         List<String> unresolvedRequires = wiring.unresolved().stream()
             .filter(u -> "Require-Bundle".equals(u.kind()))
             .map(PlatformResolver.UnresolvedReport::name)
@@ -96,16 +115,15 @@ final class ClasspathApplier {
             ExternalBundlePool pool = ExternalBundlePool.index(ExternalBundlePool.defaultPoolDirs());
             int external = 0;
 
-            // Sprint 28 (mcp#3): the JDT JUnit container. Eclipse resolves
-            // JUNIT_CONTAINER/<n> to the JUnit runtime; jawata's synthetic
-            // project has no containers at all, so JUnit annotations did not
-            // resolve and find_tests reported ZERO test classes in a tree that
-            // had three test source folders.
+            // Sprint 28 (mcp#3): the JDT JUnit container — a synthetic project
+            // has no containers, so JUnit annotations did not resolve and
+            // find_tests reported ZERO test classes in a tree with three test
+            // source folders.
             for (String symbolicName : junitBundles) {
                 Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
                 if (jar.isPresent()) {
                     IPath eclipsePath = new Path(jar.get().toString());
-                    if (addedLibPaths.add(eclipsePath)) {
+                    if (libs.add(eclipsePath)) {
                         entries.add(wireLibrary(eclipsePath, false));
                         external++;
                     }
@@ -119,7 +137,7 @@ final class ClasspathApplier {
                 Optional<java.nio.file.Path> jar = pool.bundleJar(required);
                 if (jar.isPresent()) {
                     IPath eclipsePath = new Path(jar.get().toString());
-                    if (addedLibPaths.add(eclipsePath)) {
+                    if (libs.add(eclipsePath)) {
                         // exported=true: a required bundle's classes are part of
                         // this project's runtime surface for dependents.
                         entries.add(wireLibrary(eclipsePath, true));
@@ -135,7 +153,7 @@ final class ClasspathApplier {
                 Optional<java.nio.file.Path> jar = pool.packageProvider(pkg);
                 if (jar.isPresent()) {
                     IPath eclipsePath = new Path(jar.get().toString());
-                    if (addedLibPaths.add(eclipsePath)) {
+                    if (libs.add(eclipsePath)) {
                         entries.add(wireLibrary(eclipsePath, true));
                         external++;
                     }
@@ -145,13 +163,10 @@ final class ClasspathApplier {
                 }
             }
             if (external > 0) {
-                log.info("Resolved {} PDE requirement(s) from the external bundle pools", external);
+                log.debug("Resolved {} PDE requirement(s) from the external bundle pools", external);
             }
         }
-        if (bundleEntries > 0) {
-            log.info("Resolved {} Require-Bundle entries from the workspace bundle pool", bundleEntries);
-        }
-        return unresolved;
+        return new WireResult(List.copyOf(entries), List.copyOf(unresolved));
     }
 
     private static IClasspathEntry wireLibrary(IPath jar, boolean exported) {

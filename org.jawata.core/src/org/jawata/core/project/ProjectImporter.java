@@ -1010,7 +1010,6 @@ public class ProjectImporter {
         //      sibling.
         // First occurrence wins; subsequent duplicates are dropped silently.
         Set<IPath> addedLibPaths = new HashSet<>();
-        Set<IPath> addedProjectPaths = new HashSet<>();
 
         // Eclipse .classpath kind="lib" entries (ADR 0001).
         // Merged alongside build-system-resolved deps; pure-Eclipse projects without a pom
@@ -1054,32 +1053,10 @@ public class ProjectImporter {
             log.debug("Added {} library entries from .classpath", classpathLibCount);
         }
 
-        // Sprint 28 (mcp#3): required PROJECTS declared in .classpath as
-        // kind="src" path="/other.project". These are the sibling plug-ins a
-        // PDE tree compiles against. They used to be parsed as source folders
-        // and silently dropped, which is why a 5-reference project reached JDT
-        // with at most the one reference its Require-Bundle header happened to
-        // repeat. Resolved through the same workspace bundle registry the
-        // Require-Bundle pass uses: in a PDE workspace a project reference
-        // names a sibling whose bundle symbolic name is its project name.
-        int projectRefEntries = 0;
-        for (String refName : cp.projectRefs()) {
-            Optional<org.eclipse.jdt.core.IJavaProject> sibling = workspaceManager == null
-                ? Optional.empty() : workspaceManager.resolveBundle(refName);
-            if (sibling.isPresent()) {
-                IPath projPath = sibling.get().getPath();
-                if (addedProjectPaths.add(projPath)) {
-                    entries.add(JavaCore.newProjectEntry(projPath));
-                    projectRefEntries++;
-                }
-            } else {
-                log.debug("Required project '{}' from .classpath is not loaded in this workspace; skipping",
-                        refName);
-            }
-        }
-        if (projectRefEntries > 0) {
-            log.info("Resolved {} required project(s) from .classpath", projectRefEntries);
-        }
+        // .classpath kind="src" path="/other.project" references (mcp#3) are
+        // RESOLVER inputs now — they wire in resolveWorkspace exactly like
+        // Require-Bundle, which also makes them order-free (they used to
+        // resolve only when the sibling happened to load first).
 
         // Add compiled classes directories (Maven)
         addIfExists(entries, projectPath, "target/classes", addedLibPaths);
@@ -1088,110 +1065,17 @@ public class ProjectImporter {
         addIfExists(entries, projectPath, "build/classes/java/main", addedLibPaths);
         addIfExists(entries, projectPath, "build/classes/java/test", addedLibPaths);
 
-        // Stage 11.3: the PDE half is the Inventory -> Resolve -> Apply
-        // pipeline (ARCHITECTURE-workspace-resolution.md). At this checkpoint
-        // the semantics are DELIBERATELY today's — order-dependent, sibling
-        // stubs from the registry, pool fallback verbatim in the applier —
-        // and the byte-equal goldens are the proof. The behaviour changes at
-        // 12.1 (workspace re-resolve) and 12.2 (pool through the resolver).
-        List<UnresolvedRequirement> unresolved = new ArrayList<>();
-        try {
-            Optional<org.jawata.core.resolve.BundleFacts> selfFacts =
-                org.jawata.core.resolve.BundleFacts.of(projectPath);
-            if (selfFacts.isPresent()) {
-                unresolved = resolveAndApplyPde(selfFacts.get(), cp, workspaceManager,
-                    entries, addedLibPaths, addedProjectPaths);
-            }
-        } catch (IOException e) {
-            log.warn("Cannot read bundle manifest at {}: {}", projectPath, e.getMessage());
-        }
+        // Stage 12.1: PDE wiring no longer happens per project at import —
+        // the workspace re-resolve (JdtServiceImpl.resolveWorkspace) computes
+        // every bundle's wire tail against the COMPLETE inventory and applies
+        // it as a delta, which is what removed the order-dependence that
+        // produced the measured 431. This method is the non-PDE bypass.
+        List<UnresolvedRequirement> unresolved = List.of();
 
         log.info("Added {} dependency entries from {}", jars.size(), buildSystem);
         // EMPTY, never null: a caller must be able to tell "resolved everything"
         // from "was never asked", and a missing field reads as the second.
         return List.copyOf(unresolved);
-    }
-
-    /**
-     * The C11.3 pipeline bridge: build the inventory-so-far, resolve, apply.
-     *
-     * <p>"So far" is load-bearing and DELIBERATE at this checkpoint: the
-     * workspace view handed to the resolver contains the bundle itself plus a
-     * name-only stub for each required sibling the registry ALREADY answers
-     * for — exactly today's order-dependent semantics, proven by the
-     * byte-equal goldens. Stage 12.1 replaces this view with the complete
-     * inventory and the re-resolve; 12.2 routes the pool through the resolver
-     * (until then the pool list here is EMPTY and the applier's verbatim pool
-     * fallback carries it).</p>
-     */
-    private List<UnresolvedRequirement> resolveAndApplyPde(
-            org.jawata.core.resolve.BundleFacts selfFacts,
-            ClasspathInfo cp,
-            org.jawata.core.workspace.WorkspaceManager workspaceManager,
-            List<IClasspathEntry> entries,
-            Set<IPath> addedLibPaths,
-            Set<IPath> addedProjectPaths) {
-        java.util.Map<String, org.jawata.core.resolve.BundleFacts> workspaceView =
-            new java.util.LinkedHashMap<>();
-        // The resolver must not walk siblings' requirements yet (that is the
-        // 12.1 behaviour change) and must not resolve Import-Package against
-        // siblings (today never did) — a stub carries the NAME and nothing
-        // else, which pins both.
-        for (org.jawata.core.resolve.OsgiHeaders.Requirement req : selfFacts.requiredBundles()) {
-            boolean registered = workspaceManager != null
-                && workspaceManager.resolveBundle(req.name()).isPresent();
-            if (registered) {
-                workspaceView.put(req.name(), stubFacts(req.name()));
-            }
-        }
-        // Import-Package stays OUT of the resolver at this checkpoint: the
-        // applier's verbatim pool pass answers it exactly as today. Hand the
-        // resolver a copy of self WITHOUT imports so no import is double-
-        // reported.
-        org.jawata.core.resolve.BundleFacts selfForResolver =
-            new org.jawata.core.resolve.BundleFacts(
-                selfFacts.symbolicName(), selfFacts.version(), selfFacts.requiredBundles(),
-                List.of(), selfFacts.exportedPackages(), selfFacts.fragmentHost(),
-                selfFacts.bundleClassPath(), selfFacts.platformFilter());
-        workspaceView.put(selfForResolver.symbolicName(), selfForResolver);
-
-        org.jawata.core.resolve.PlatformResolver resolver =
-            new org.jawata.core.resolve.GraphWalkResolver();
-        org.jawata.core.resolve.PlatformResolver.Wiring wiring = resolver
-            .resolve(workspaceView, List.of(), currentPlatform())
-            .get(selfForResolver.symbolicName());
-
-        return ClasspathApplier.apply(wiring, selfFacts,
-            junitContainerBundles(cp.containers()), workspaceManager,
-            entries, addedLibPaths, addedProjectPaths);
-    }
-
-    /** A name-only sibling stub — see {@link #resolveAndApplyPde}. */
-    private static org.jawata.core.resolve.BundleFacts stubFacts(String symbolicName) {
-        return new org.jawata.core.resolve.BundleFacts(symbolicName, Optional.empty(),
-            List.of(), List.of(), List.of(), Optional.empty(), List.of(), Optional.empty());
-    }
-
-    /**
-     * The running machine's platform triple, injected ONCE here — the resolver
-     * never reads system properties (its fragment tests must be deterministic
-     * on every CI OS).
-     */
-    private static org.jawata.core.resolve.PlatformResolver.Platform currentPlatform() {
-        // Through the HOST BOUNDARY, not a raw os.name read — HostOS is the one
-        // place that classifies the OS (its own history: a contains("win")
-        // predicate once classified Darwin as Windows, because "darwin"
-        // contains "win", and no test could reach it).
-        String arch = "aarch64".equals(org.jawata.core.host.HostOS.osArch())
-            ? "aarch64" : "x86_64";
-        return switch (org.jawata.core.host.HostOS.current()) {
-            case WINDOWS -> new org.jawata.core.resolve.PlatformResolver.Platform(
-                "win32", "win32", arch);
-            case MACOS -> new org.jawata.core.resolve.PlatformResolver.Platform(
-                "macosx", "cocoa", arch);
-            case LINUX -> new org.jawata.core.resolve.PlatformResolver.Platform(
-                "linux", "gtk", arch);
-        };
     }
 
     /** The JDT JUnit classpath container, as written in a {@code .classpath}. */
@@ -1215,7 +1099,7 @@ public class ProjectImporter {
      *         in a stable order and without duplicates; empty when no JUnit
      *         container is declared
      */
-    static List<String> junitContainerBundles(List<String> containers) {
+    public static List<String> junitContainerBundles(List<String> containers) {
         List<String> junit4 = List.of("org.junit", "org.hamcrest.core");
         List<String> junit5 = List.of(
                 "org.junit.jupiter.api",
@@ -2127,7 +2011,7 @@ public class ProjectImporter {
      * absolute {@code /x}, which never exists, so every one of them was
      * silently dropped (Sprint 28, mcp#3).</p>
      */
-    record ClasspathInfo(List<java.nio.file.Path> srcPaths,
+    public record ClasspathInfo(List<java.nio.file.Path> srcPaths,
                           List<java.nio.file.Path> libPaths,
                           Optional<java.nio.file.Path> outputPath,
                           List<String> projectRefs,
@@ -2191,36 +2075,6 @@ public class ProjectImporter {
         return readPomPackaging(projectPath.resolve("pom.xml"))
             .map(ProjectImporter::isTychoPackaging)
             .orElse(false);
-    }
-
-    /**
-     * Read {@code Bundle-SymbolicName} from {@code META-INF/MANIFEST.MF},
-     * stripping any directives such as {@code ;singleton:=true}.
-     * Returns {@code Optional.empty()} when the manifest is absent, malformed,
-     * or has no {@code Bundle-SymbolicName} header.
-     *
-     * <p>Phase B (Sprint 11): used by the workspace bundle pool to register
-     * each loaded PDE bundle by its symbolic name so {@code Require-Bundle}
-     * dependencies between sibling projects in the same workspace resolve
-     * to project-typed classpath entries.</p>
-     */
-    public static Optional<String> readManifestSymbolicName(java.nio.file.Path projectRoot) {
-        java.nio.file.Path manifestPath = projectRoot.resolve("META-INF").resolve("MANIFEST.MF");
-        if (!Files.isRegularFile(manifestPath)) {
-            return Optional.empty();
-        }
-        try (InputStream in = Files.newInputStream(manifestPath)) {
-            Manifest manifest = new Manifest(in);
-            Attributes attrs = manifest.getMainAttributes();
-            String value = attrs.getValue("Bundle-SymbolicName");
-            if (value == null) {
-                return Optional.empty();
-            }
-            return Optional.of(org.jawata.core.resolve.OsgiHeaders.nameOf(value));
-        } catch (IOException e) {
-            log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
-            return Optional.empty();
-        }
     }
 
     /**
@@ -2288,7 +2142,7 @@ public class ProjectImporter {
      * (so "../lib/foo.jar"-style relative refs work).
      * Returns ClasspathInfo.empty() if .classpath is absent or malformed.
      */
-    static ClasspathInfo readEclipseClasspath(java.nio.file.Path projectRoot) {
+    public static ClasspathInfo readEclipseClasspath(java.nio.file.Path projectRoot) {
         java.nio.file.Path file = projectRoot.resolve(".classpath");
         if (!Files.isRegularFile(file)) {
             return ClasspathInfo.empty();

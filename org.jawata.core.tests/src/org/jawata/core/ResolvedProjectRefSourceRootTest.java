@@ -40,11 +40,13 @@ class ResolvedProjectRefSourceRootTest {
     @Test
     @DisplayName("a test/ file still resolves when the project's sibling reference IS loaded")
     void resolvesTestFileWhenProjectReferenceIsSatisfied() throws Exception {
-        // The referenced sibling is loaded FIRST, so resolveBundle() finds it
-        // and the reference becomes a real project entry — as in the fleet.
-        JdtServiceImpl service = helper.loadProject("pde-sibling");
+        // FLIPPED at Stage 12.1 (R13): load order is DELIBERATELY IRRELEVANT
+        // now — the workspace re-resolve wires the reference whichever side
+        // loads first, so this loads the REFERENCING project first: the order
+        // that used to leave the reference dangling.
+        JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
         Path pluginRoot = helper.getFixturePath("pde-nonstandard-layout");
-        service.addProject(pluginRoot);
+        service.addProject(helper.getFixturePath("pde-sibling"));
 
         ICompilationUnit cu = service.getCompilationUnit(
             pluginRoot.resolve("test/com/example/ns/GreeterTest.java"));

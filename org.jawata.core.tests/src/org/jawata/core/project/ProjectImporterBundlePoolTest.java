@@ -44,10 +44,10 @@ class ProjectImporterBundlePoolTest {
             "Bundle-SymbolicName: com.foo;singleton:=true\r\n" +
             "Bundle-Version: 1.0.0\r\n");
 
-        Optional<String> name = ProjectImporter.readManifestSymbolicName(tempDir);
+        org.jawata.core.resolve.BundleFacts facts =
+            org.jawata.core.resolve.BundleFacts.of(tempDir).orElseThrow();
 
-        assertTrue(name.isPresent());
-        assertEquals("com.foo", name.get(),
+        assertEquals("com.foo", facts.symbolicName(),
             "Symbolic name must be stripped of trailing ;directive=value pairs");
     }
 
@@ -77,10 +77,13 @@ class ProjectImporterBundlePoolTest {
     @Test
     @DisplayName("Require-Bundle resolves to a project entry when the sibling is loaded into the workspace")
     void requireBundle_resolvesWithinWorkspace() throws Exception {
-        // Load B FIRST so its symbolic name lands in the bundle pool before
-        // A's classpath is configured. Production users are expected to load
-        // dependents bottom-up; the workspace.json watcher orders writes from
-        // the manager to honour this naturally.
+        // FLIPPED at Stage 12.1 (R13): load order is DELIBERATELY IRRELEVANT
+        // now — the workspace re-resolve wires every bundle against the
+        // complete inventory. This test loads provider-first; its reversed
+        // twin (requireBundle_resolvesWhenDependentLoadsFirst in
+        // WorkspaceResolveRedTest) loads dependent-first, and BOTH must wire.
+        // The old comment here documented "load dependents bottom-up" as an
+        // expectation on production users; that expectation is retired.
         JdtServiceImpl service = helper.loadProject("pde-bundle-b");
         service.addProject(helper.getFixturePath("pde-bundle-a"));
 

@@ -341,12 +341,18 @@ class BuildSystemLoadTest {
         // external bundle pools — not a jar list in a build file. bundle-a
         // requires org.eclipse.osgi, which the pool has.
         //
+        // Loaded through the SERVICE, not the bare importer: since Stage 12.1
+        // dependency resolution is a WORKSPACE phase (Inventory → Resolve →
+        // Apply, run by JdtServiceImpl after import) — configureJavaProject
+        // alone deliberately wires no dependencies for a bundle project.
+        //
         // Guarded like the Gradle cell, and for the same reason: the pool is
         // ~/.p2/pool/plugins or -Djawata.dist.root, and a machine with neither
         // cannot resolve ANY bundle. That is an absent environment, not a
         // defect, and reporting it as a failure would train the reader to
         // ignore a red test.
-        IJavaProject jp = load("pde-bundle-a");
+        org.jawata.core.JdtServiceImpl service = helper.loadWorkspaceCopy("pde-bundle-a");
+        IJavaProject jp = service.allProjects().iterator().next().javaProject();
         List<String> entries = allClasspathEntries(jp);
         // Guard on LIBRARY entries, not on the string "org.eclipse" (C1 audit
         // round 3): the JRE container's own path is

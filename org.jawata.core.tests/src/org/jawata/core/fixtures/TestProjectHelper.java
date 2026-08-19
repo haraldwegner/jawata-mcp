@@ -136,6 +136,18 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
     }
 
     /**
+     * Copy a fixture to a CUSTOM-named subdirectory — for a second,
+     * independent copy of the same fixture in one test (ported from the
+     * mcp-side helper alongside loadWorkspaceCopy).
+     */
+    public Path copyFixtureAs(String fixtureName, String destName) throws IOException {
+        Path source = getFixturePath(fixtureName);
+        Path dest = tempDirectory.resolve(destName);
+        copyDirectory(source, dest);
+        return dest;
+    }
+
+    /**
      * Load a project from a temporary copy of a fixture.
      * Use this when tests need to modify project files.
      *

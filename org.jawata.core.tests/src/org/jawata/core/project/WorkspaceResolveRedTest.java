@@ -88,7 +88,6 @@ class WorkspaceResolveRedTest {
      * {@code import com.jats2.model cannot be resolved}, with both required
      * siblings LOADED. Order must not matter.
      */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.1")
     @Test
     @DisplayName("RED until C12.1: a Require-Bundle on a sibling loaded LATER still wires")
     void requireBundle_resolvesWhenDependentLoadsFirst() throws Exception {
@@ -102,7 +101,6 @@ class WorkspaceResolveRedTest {
     }
 
     /** Removing a provider must retro-unwire its dependents (pool failover or honest row). */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.1")
     @Test
     @DisplayName("RED until C12.1: removing a provider retro-unwires its dependents")
     void removeProvider_failsOverToPoolOrUnresolved() throws Exception {
@@ -124,7 +122,6 @@ class WorkspaceResolveRedTest {
     }
 
     /** The studio reads {@code LoadedProject.unresolved()}; adding the provider must refresh it. */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.1")
     @Test
     @DisplayName("RED until C12.1: adding a provider refreshes the dependent's unresolved count")
     void unresolvedCount_refreshesAfterProviderAdded() throws Exception {
@@ -144,7 +141,6 @@ class WorkspaceResolveRedTest {
     }
 
     /** Cycles are legal in the dev-time model; JDT's default makes them a hard ERROR. */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.1")
     @Test
     @DisplayName("RED until C12.1: a Require-Bundle cycle wires both ways with no ERROR marker")
     void cycle_bothDirectionsWire_noErrorMarker() throws Exception {

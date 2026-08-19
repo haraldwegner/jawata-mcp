@@ -1,38 +1,16 @@
 package org.jawata.core;
 
-import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.core.IPackageFragment;
-import org.eclipse.jdt.core.IPackageFragmentRoot;
-import org.eclipse.jdt.core.IType;
-import org.eclipse.jdt.core.JavaCore;
-import org.eclipse.jdt.core.JavaModelException;
-import org.eclipse.jdt.core.ISourceRange;
-import org.jawata.core.host.HostPaths;
-import org.jawata.core.host.HostPathsImpl;
-import org.jawata.core.project.ProjectImporter;
-import org.jawata.core.search.SearchService;
-import org.jawata.core.workspace.WorkspaceManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -41,7 +19,28 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Stream;
+
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.IClasspathEntry;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.core.IJavaProject;
+import org.eclipse.jdt.core.IPackageFragment;
+import org.eclipse.jdt.core.IPackageFragmentRoot;
+import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
+import org.jawata.core.host.HostPaths;
+import org.jawata.core.host.HostPathsImpl;
+import org.jawata.core.project.ProjectImporter;
+import org.jawata.core.search.SearchService;
+import org.jawata.core.workspace.WorkspaceManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Main JDT service implementation.
@@ -91,6 +90,31 @@ public class JdtServiceImpl implements IJdtService {
      * typo doesn't surface as "dropped" weeks later.
      */
     static final long DROP_TTL_MILLIS = 5L * 60 * 1000;
+
+    /**
+     * Stage 12.1 — the INVENTORY: every PDE project's manifest facts plus its
+     * .classpath project references and JUnit-container names, parsed ONCE at
+     * add and evicted at remove/wipe. The resolver reads this COMPLETE map,
+     * which is what removed the order-dependence (a project used to see only
+     * the siblings registered before it — the measured 431).
+     */
+    private final Map<String, PdeInputs> pdeInputsByKey = new ConcurrentHashMap<>();
+
+    /** One PDE project's resolver inputs — pure data, parsed at add. */
+    private record PdeInputs(org.jawata.core.resolve.BundleFacts facts,
+                             List<String> projectRefs,
+                             List<String> junitBundles) {
+    }
+
+    /**
+     * Stage 12.1 — THE RESOLVE LOCK. Nothing used to serialize the watcher
+     * thread against MCP request threads mutating the workspace (risk R1);
+     * every load/add/remove and the re-resolve itself now runs under this.
+     * Ordering is ENFORCED at acquisition, not documented: the lock is taken
+     * BEFORE any workspace scheduling rule, never from a resource listener —
+     * see {@link #assertNoWorkspaceRuleHeld()}.
+     */
+    private final Object resolveLock = new Object();
 
     // Workspace-scoped SearchService — searches across all loaded projects.
     // Lazily built on first access, invalidated whenever the project map
@@ -142,15 +166,26 @@ public class JdtServiceImpl implements IJdtService {
         // load-dependent lookup failures (dozens of dead projects, all linking
         // the same fixture dirs, kept the indexer and delta broadcaster busy
         // while live tests queried the model).
-        for (LoadedProject stale : projectsByKey.values()) {
-            deleteWorkspaceProject(stale);
-        }
-        projectsByKey.clear();
-        defaultProjectKey = null;
-        workspaceSearchService = null;
+        LoadedProject loaded;
+        synchronized (resolveLock) {
+            assertNoWorkspaceRuleHeld();
+            for (LoadedProject stale : projectsByKey.values()) {
+                deleteWorkspaceProject(stale);
+            }
+            projectsByKey.clear();
+            // Audit B2: the WIPE evicts the whole inventory. Leaving 29 dead
+            // projects' facts behind would wire the next resolve against
+            // deleted IProjects — the old code survived this only through the
+            // registry's read-time exists() check, which 12.1 deletes.
+            pdeInputsByKey.clear();
+            defaultProjectKey = null;
+            workspaceSearchService = null;
 
-        LoadedProject loaded = loadInternal(path);
-        defaultProjectKey = loaded.projectKey();
+            loaded = loadInternal(path);
+            defaultProjectKey = loaded.projectKey();
+            resolveWorkspaceLocked();
+            loaded = projectsByKey.getOrDefault(loaded.projectKey(), loaded);
+        }
 
         // Mirror the loaded project into the legacy single-project fields
         // so existing tools that read getJavaProject() / getProjectRoot()
@@ -172,17 +207,26 @@ public class JdtServiceImpl implements IJdtService {
      */
     public LoadedProject addProject(Path path) throws CoreException {
         log.info("Adding project to workspace: {}", path);
-        LoadedProject loaded = loadInternal(path);
-        workspaceSearchService = null;  // scope changed — rebuild on next access
-        // bugs.md #11 (Sprint 14): re-adding a project with the same key as a
-        // previously-dropped one clears the dropped-key entry. Otherwise the
-        // dropped marker would shadow the live project until TTL expiry.
-        droppedKeyTimestamps.remove(loaded.projectKey());
-        if (defaultProjectKey == null) {
-            // First project ever — promote to default so single-project
-            // tools have something to read.
-            defaultProjectKey = loaded.projectKey();
-            applyToLegacyFields(loaded);
+        LoadedProject loaded;
+        synchronized (resolveLock) {
+            assertNoWorkspaceRuleHeld();
+            loaded = loadInternal(path);
+            workspaceSearchService = null;  // scope changed — rebuild on next access
+            // bugs.md #11 (Sprint 14): re-adding a project with the same key as a
+            // previously-dropped one clears the dropped-key entry. Otherwise the
+            // dropped marker would shadow the live project until TTL expiry.
+            droppedKeyTimestamps.remove(loaded.projectKey());
+            resolveWorkspaceLocked();
+            // The POST-resolve record — the pre-resolve one snapshots an
+            // unresolved list the re-resolve may have just changed (audit B2's
+            // ordering-bug class).
+            loaded = projectsByKey.getOrDefault(loaded.projectKey(), loaded);
+            if (defaultProjectKey == null) {
+                // First project ever — promote to default so single-project
+                // tools have something to read.
+                defaultProjectKey = loaded.projectKey();
+                applyToLegacyFields(loaded);
+            }
         }
         log.info("Project added at {} with key '{}'", loaded.loadedAt(), loaded.projectKey());
         return loaded;
@@ -224,31 +268,223 @@ public class JdtServiceImpl implements IJdtService {
      * @return true if a project with that key was loaded and removed
      */
     public boolean removeProject(String projectKey) {
-        LoadedProject removed = projectsByKey.remove(projectKey);
-        if (removed == null) {
+        synchronized (resolveLock) {
+            assertNoWorkspaceRuleHeld();
+            LoadedProject removed = projectsByKey.remove(projectKey);
+            if (removed == null) {
+                return false;
+            }
+            // bugs.md #11 (Sprint 14): record the drop so a stale caller gets a
+            // distinct PROJECT_KEY_DROPPED instead of INVALID_PARAMETER.
+            droppedKeyTimestamps.put(projectKey, System.currentTimeMillis());
+            workspaceSearchService = null;  // scope changed — rebuild on next access
+            pdeInputsByKey.remove(projectKey);
+            // And actually delete it from the Eclipse workspace — "removed" used to
+            // mean "forgotten by the service but still alive in the model".
+            deleteWorkspaceProject(removed);
+            log.info("Removed project '{}' from workspace", projectKey);
+            // Stage 12.1 (R22): RETRO-UNWIRE the dependents — a project entry
+            // pointing at a deleted project is a hard error, and the miss
+            // becomes an honest row (pool failover arrives with 12.2's
+            // resolver-driven pool).
+            resolveWorkspaceLocked();
+            if (projectKey.equals(defaultProjectKey)) {
+                // Pick a new default deterministically: the first remaining key
+                // by natural string order, or null if no projects remain.
+                defaultProjectKey = projectsByKey.keySet().stream().sorted().findFirst().orElse(null);
+                if (defaultProjectKey != null) {
+                    applyToLegacyFields(projectsByKey.get(defaultProjectKey));
+                } else {
+                    clearLegacyFields();
+                }
+            }
+            return true;
+        }
+    }
+
+    /**
+     * Stage 12.1 — THE WORKSPACE RE-RESOLVE. One resolve over the COMPLETE
+     * inventory, one {@code IWorkspace.run} applying the deltas, one
+     * republication of the affected {@link LoadedProject} records.
+     *
+     * <p>Caller MUST hold {@link #resolveLock}. The whole body is the
+     * behaviour change this plan exists for: order stops mattering because
+     * the resolver sees everyone; the O(N²) initial-load storm is capped
+     * because the quadratic part is the PURE resolve over cached facts while
+     * classpath sets happen only for projects whose wiring actually CHANGED,
+     * all inside one workspace operation (one resource delta — and with
+     * autobuild measured ON, one deferred build pass, the recorded R10
+     * ruling).</p>
+     */
+    private void resolveWorkspaceLocked() {
+        if (pdeInputsByKey.isEmpty()) {
+            return; // a workspace of plain build units has nothing to wire
+        }
+        // The resolver's world: full facts per symbolic name, plus .classpath
+        // project references appended as Require-Bundle-equivalent
+        // requirements (they name a sibling by its project name, which in a
+        // PDE tree IS the symbolic name — and they used to wire only when the
+        // sibling happened to load first).
+        Map<String, org.jawata.core.resolve.BundleFacts> world = new LinkedHashMap<>();
+        Map<String, String> keyBySymbolicName = new LinkedHashMap<>();
+        for (Map.Entry<String, PdeInputs> e : pdeInputsByKey.entrySet()) {
+            PdeInputs in = e.getValue();
+            org.jawata.core.resolve.BundleFacts facts = in.facts();
+            if (!in.projectRefs().isEmpty()) {
+                List<org.jawata.core.resolve.OsgiHeaders.Requirement> merged =
+                    new ArrayList<>(facts.requiredBundles());
+                for (String ref : in.projectRefs()) {
+                    merged.add(new org.jawata.core.resolve.OsgiHeaders.Requirement(
+                        ref, Optional.empty(), false, false));
+                }
+                facts = new org.jawata.core.resolve.BundleFacts(facts.symbolicName(),
+                    facts.version(), merged, facts.importedPackages(),
+                    facts.exportedPackages(), facts.fragmentHost(),
+                    facts.bundleClassPath(), facts.platformFilter());
+            }
+            org.jawata.core.resolve.BundleFacts previous =
+                world.put(facts.symbolicName(), facts);
+            if (previous != null) {
+                log.warn("two loaded projects declare Bundle-SymbolicName '{}' — "
+                    + "the later one wins for resolution", facts.symbolicName());
+            }
+            keyBySymbolicName.put(facts.symbolicName(), e.getKey());
+        }
+
+        Map<String, org.jawata.core.resolve.PlatformResolver.Wiring> wirings =
+            new org.jawata.core.resolve.GraphWalkResolver()
+                .resolve(world, List.of(), currentPlatform());
+
+        java.util.function.Function<String, Optional<IJavaProject>> projectLookup = name -> {
+            String key = keyBySymbolicName.get(name);
+            if (key == null) {
+                return Optional.empty();
+            }
+            LoadedProject p = projectsByKey.get(key);
+            return p == null ? Optional.empty() : Optional.of(p.javaProject());
+        };
+
+        try {
+            ResourcesPlugin.getWorkspace().run(monitor -> {
+                for (Map.Entry<String, PdeInputs> e : pdeInputsByKey.entrySet()) {
+                    LoadedProject project = projectsByKey.get(e.getKey());
+                    org.jawata.core.resolve.PlatformResolver.Wiring wiring =
+                        wirings.get(e.getValue().facts().symbolicName());
+                    if (project == null || wiring == null) {
+                        continue;
+                    }
+                    applyWiring(project, e.getValue(), wiring, projectLookup);
+                }
+            }, ResourcesPlugin.getWorkspace().getRoot(), 0, new NullProgressMonitor());
+        } catch (CoreException e) {
+            log.error("workspace re-resolve failed: {}", e.getMessage(), e);
+        }
+        workspaceSearchService = null;
+    }
+
+    /**
+     * Delta-apply one project's wiring: preserve every non-wire entry
+     * VERBATIM (source entries' linked folders are delete+create — risk R3),
+     * replace the wire tail, skip the write entirely when nothing changed,
+     * and REPUBLISH the {@link LoadedProject} record when its unresolved list
+     * moved (the studio reads that record — risk R4).
+     */
+    private void applyWiring(LoadedProject project, PdeInputs inputs,
+            org.jawata.core.resolve.PlatformResolver.Wiring wiring,
+            java.util.function.Function<String, Optional<IJavaProject>> projectLookup)
+            throws CoreException {
+        IJavaProject jp = project.javaProject();
+        IClasspathEntry[] current = jp.getRawClasspath();
+        List<IClasspathEntry> preserved = new ArrayList<>();
+        List<IClasspathEntry> currentWire = new ArrayList<>();
+        Set<org.eclipse.core.runtime.IPath> occupiedLibs = new HashSet<>();
+        Set<org.eclipse.core.runtime.IPath> occupiedProjects = new HashSet<>();
+        for (IClasspathEntry entry : current) {
+            if (org.jawata.core.project.ClasspathApplier.isWire(entry)) {
+                currentWire.add(entry);
+                continue;
+            }
+            preserved.add(entry);
+            if (entry.getEntryKind() == IClasspathEntry.CPE_LIBRARY) {
+                occupiedLibs.add(entry.getPath());
+            } else if (entry.getEntryKind() == IClasspathEntry.CPE_PROJECT) {
+                occupiedProjects.add(entry.getPath());
+            }
+        }
+
+        org.jawata.core.project.ClasspathApplier.WireResult wire =
+            org.jawata.core.project.ClasspathApplier.computeWire(wiring, inputs.facts(),
+                inputs.junitBundles(), projectLookup, occupiedLibs, occupiedProjects);
+
+        if (!sameEntries(currentWire, wire.entries())) {
+            List<IClasspathEntry> next = new ArrayList<>(preserved);
+            next.addAll(wire.entries());
+            jp.setRawClasspath(next.toArray(new IClasspathEntry[0]),
+                jp.getOutputLocation(), new NullProgressMonitor());
+        }
+        if (!project.unresolved().equals(wire.unresolved())) {
+            // Republish: same key, same IJavaProject, SAME SearchService —
+            // only the unresolved list moves. An immutable record nobody
+            // republishes is how the studio reads stale rows forever.
+            projectsByKey.put(project.projectKey(), new LoadedProject(
+                project.projectKey(), project.projectRoot(), jp,
+                project.searchService(), project.pathUtils(), project.loadedAt(),
+                project.sourceFileCount(), project.packageCount(),
+                project.packages(), project.buildSystem(), wire.unresolved()));
+        }
+    }
+
+    /** Same wiring? Kind, path and exported flag — the three facts a wire entry carries. */
+    private static boolean sameEntries(List<IClasspathEntry> a, List<IClasspathEntry> b) {
+        if (a.size() != b.size()) {
             return false;
         }
-        // bugs.md #11 (Sprint 14): record the drop so a stale caller gets a
-        // distinct PROJECT_KEY_DROPPED instead of INVALID_PARAMETER.
-        droppedKeyTimestamps.put(projectKey, System.currentTimeMillis());
-        workspaceSearchService = null;  // scope changed — rebuild on next access
-        // Sprint 11 Phase B: drop bundle registrations contributed by this project.
-        workspaceManager.unregisterBundlesForProject(removed.javaProject().getProject());
-        // And actually delete it from the Eclipse workspace — "removed" used to
-        // mean "forgotten by the service but still alive in the model".
-        deleteWorkspaceProject(removed);
-        log.info("Removed project '{}' from workspace", projectKey);
-        if (projectKey.equals(defaultProjectKey)) {
-            // Pick a new default deterministically: the first remaining key
-            // by natural string order, or null if no projects remain.
-            defaultProjectKey = projectsByKey.keySet().stream().sorted().findFirst().orElse(null);
-            if (defaultProjectKey != null) {
-                applyToLegacyFields(projectsByKey.get(defaultProjectKey));
-            } else {
-                clearLegacyFields();
+        for (int i = 0; i < a.size(); i++) {
+            IClasspathEntry x = a.get(i);
+            IClasspathEntry y = b.get(i);
+            if (x.getEntryKind() != y.getEntryKind()
+                    || !x.getPath().equals(y.getPath())
+                    || x.isExported() != y.isExported()) {
+                return false;
             }
         }
         return true;
+    }
+
+    /**
+     * The lock-ordering ASSERTION (audit N7): the resolve lock is acquired
+     * BEFORE any workspace scheduling rule. A thread already inside a
+     * workspace operation taking the lock while another lock-holder waits for
+     * the workspace is the deadlock this fails loudly instead of.
+     */
+    private static void assertNoWorkspaceRuleHeld() {
+        org.eclipse.core.runtime.jobs.ISchedulingRule rule =
+            org.eclipse.core.runtime.jobs.Job.getJobManager().currentRule();
+        if (rule != null) {
+            throw new IllegalStateException(
+                "resolve lock acquired while holding workspace rule " + rule
+                    + " — lock BEFORE rule, never from inside a workspace "
+                    + "operation or resource listener");
+        }
+    }
+
+    /**
+     * The running machine's platform triple, injected ONCE — the resolver
+     * never reads system properties. Through the HOST BOUNDARY, not a raw
+     * os.name read (HostOS's own history: a contains(\"win\") predicate once
+     * classified Darwin as Windows).
+     */
+    private static org.jawata.core.resolve.PlatformResolver.Platform currentPlatform() {
+        String arch = "aarch64".equals(org.jawata.core.host.HostOS.osArch())
+            ? "aarch64" : "x86_64";
+        return switch (org.jawata.core.host.HostOS.current()) {
+            case WINDOWS -> new org.jawata.core.resolve.PlatformResolver.Platform(
+                "win32", "win32", arch);
+            case MACOS -> new org.jawata.core.resolve.PlatformResolver.Platform(
+                "macosx", "cocoa", arch);
+            case LINUX -> new org.jawata.core.resolve.PlatformResolver.Platform(
+                "linux", "gtk", arch);
+        };
     }
 
     /**
@@ -278,12 +514,6 @@ public class JdtServiceImpl implements IJdtService {
         String projectName = "jawata-" + absRoot.getFileName();
         IProject project = workspaceManager.createLinkedProject(projectName, absRoot);
 
-        // Sprint 11 Phase B: register the bundle in the workspace bundle pool
-        // BEFORE configureJavaProject runs, so this project's own classpath
-        // resolution (and subsequent siblings') can honour Require-Bundle.
-        ProjectImporter.readManifestSymbolicName(absRoot)
-            .ifPresent(symbolicName -> workspaceManager.registerBundle(symbolicName, project));
-
         org.jawata.core.project.ImportResult imported =
             projectImporter.configureJavaProject(project, absRoot, workspaceManager);
         IJavaProject jp = imported.javaProject();
@@ -294,6 +524,22 @@ public class JdtServiceImpl implements IJdtService {
             fileCount, pkgList.size(), pkgList, detected, imported.unresolved()
         );
         projectsByKey.put(key, loaded);
+
+        // Stage 12.1 — the inventory: parsed ONCE here, read by every
+        // subsequent resolve. A non-bundle project (no manifest) simply has
+        // no entry and bypasses the pipeline entirely.
+        try {
+            Optional<org.jawata.core.resolve.BundleFacts> facts =
+                org.jawata.core.resolve.BundleFacts.of(absRoot);
+            if (facts.isPresent()) {
+                org.jawata.core.project.ProjectImporter.ClasspathInfo cp =
+                    org.jawata.core.project.ProjectImporter.readEclipseClasspath(absRoot);
+                pdeInputsByKey.put(key, new PdeInputs(facts.get(), cp.projectRefs(),
+                    org.jawata.core.project.ProjectImporter.junitContainerBundles(cp.containers())));
+            }
+        } catch (java.io.IOException e) {
+            log.warn("Cannot read bundle manifest at {}: {}", absRoot, e.getMessage());
+        }
         return loaded;
     }
 
