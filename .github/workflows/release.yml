@@ -24,10 +24,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '21'
         distribution: 'temurin'
@@ -71,7 +71,7 @@ jobs:
       run: ./build/end-to-end-test.sh
 
     - name: Upload end-to-end log
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: always()
       with:
         name: end-to-end-log
@@ -84,7 +84,7 @@ jobs:
     # progress log survives every outcome (GitHub discards a cancelled step's
     # own log; this artifact is the insurance).
     - name: Upload test log
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: always()
       with:
         name: release-test-log

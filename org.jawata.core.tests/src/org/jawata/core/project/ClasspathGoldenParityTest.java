@@ -152,23 +152,35 @@ class ClasspathGoldenParityTest {
     }
 
     private String normalize(String path, LoadedProject self, List<LoadedProject> all) {
-        String s = path;
+        // SEPARATORS FIRST, and this is the whole Windows story: JDT reports a
+        // classpath entry with FORWARD slashes ("D:/a/.../dist/x.jar") while
+        // System.getProperty and Path.toString hand back the platform's own
+        // ("D:\a\...\dist"), so every substitution below silently missed and
+        // three goldens compared a machine-specific absolute path against
+        // ${DIST}. The classpaths were identical; only this method was
+        // platform-blind. Caught by CI on Windows, invisible on Linux.
+        String s = slashes(path);
         // Workspace project segments carry a path-derived hash: /jawata-<name>-<hash>
         s = s.replaceAll("/jawata-([^/]+?)-[0-9a-f]{8}", "/jawata-$1-HASH");
         // Absolute roots of the temp copies.
         for (LoadedProject p : all) {
-            s = s.replace(p.projectRoot().toString(),
+            s = s.replace(slashes(p.projectRoot().toString()),
                 "${PROJECT:" + p.projectRoot().getFileName() + "}");
         }
         String dist = System.getProperty("jawata.dist.root");
         if (dist != null) {
-            s = s.replace(dist, "${DIST}");
+            s = s.replace(slashes(dist), "${DIST}");
         }
         String home = System.getProperty("user.home");
         if (home != null && !home.isBlank()) {
-            s = s.replace(home, "${HOME}");
+            s = s.replace(slashes(home), "${HOME}");
         }
         return s;
+    }
+
+    /** One separator for every OS, so a golden is a fact about wiring, not about a filesystem. */
+    private static String slashes(String path) {
+        return path.replace('\\', '/');
     }
 
     private static String kind(int entryKind) {

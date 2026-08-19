@@ -8,6 +8,7 @@ import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.fixtures.TestJars;
 import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.core.host.HostOS;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -180,16 +181,36 @@ class WorkspaceResolveRedTest {
     @Test
     @DisplayName("RED until C12.2: a nested pool resolves host + CURRENT-platform fragment")
     void nestedPool_hostPlusCurrentPlatformFragmentResolve(@TempDir Path pool) throws Exception {
+        // THE PLATFORM IS THE MACHINE'S, NOT LINUX'S. This test drives the
+        // PRODUCTION path, which reads the running machine — so hard-coding
+        // gtk/linux made it fail on macOS and Windows while the product was
+        // behaving correctly there (Windows picked the win32 fragment, which
+        // is right). The fixture is now built from the running triple: one
+        // fragment FOR this machine, one for a machine this is not.
+        String os = HostOS.current() == HostOS.WINDOWS ? "win32"
+            : HostOS.current() == HostOS.MACOS ? "macosx" : "linux";
+        String ws = HostOS.current() == HostOS.WINDOWS ? "win32"
+            : HostOS.current() == HostOS.MACOS ? "cocoa" : "gtk";
+        String arch = "aarch64".equals(HostOS.osArch()) ? "aarch64" : "x86_64";
+        String mine = "org.example.host." + ws + "." + os + "." + arch;
+        String foreign = HostOS.current() == HostOS.LINUX
+            ? "org.example.host.win32.win32." + arch
+            : "org.example.host.gtk.linux." + arch;
+        String foreignFilter = HostOS.current() == HostOS.LINUX
+            ? "(& (osgi.os=win32) (osgi.ws=win32) (osgi.arch=" + arch + "))"
+            : "(& (osgi.os=linux) (osgi.ws=gtk) (osgi.arch=" + arch + "))";
+
         TestJars.nestedPoolBundle(pool, "org.example.host", "1.1.0",
             Map.of("Export-Package", "org.example.widgets"));
-        TestJars.nestedPoolBundle(pool, "org.example.host.gtk.linux.x86_64", "1.0.0",
+        TestJars.nestedPoolBundle(pool, mine, "1.0.0",
             Map.of("Fragment-Host", "org.example.host"));
-        TestJars.nestedPoolBundle(pool, "org.example.host.gtk.linux.x86_64", "1.1.0",
+        TestJars.nestedPoolBundle(pool, mine, "1.1.0",
             Map.of("Fragment-Host", "org.example.host",
-                   "Eclipse-PlatformFilter", "(& (osgi.os=linux) (osgi.ws=gtk) (osgi.arch=x86_64))"));
-        TestJars.nestedPoolBundle(pool, "org.example.host.win32.win32.x86_64", "1.1.0",
+                   "Eclipse-PlatformFilter",
+                   "(& (osgi.os=" + os + ") (osgi.ws=" + ws + ") (osgi.arch=" + arch + "))"));
+        TestJars.nestedPoolBundle(pool, foreign, "1.1.0",
             Map.of("Fragment-Host", "org.example.host",
-                   "Eclipse-PlatformFilter", "(& (osgi.os=win32) (osgi.ws=win32) (osgi.arch=x86_64))"));
+                   "Eclipse-PlatformFilter", foreignFilter));
 
         String before = System.getProperty("jawata.bundle.pools");
         System.setProperty("jawata.bundle.pools", pool.toString());
@@ -209,13 +230,14 @@ class WorkspaceResolveRedTest {
                 assertTrue(libs.stream().anyMatch(l -> l.contains("org.example.host-1.1.0")),
                     "the HOST must resolve from the nested pool: " + libs);
                 long fragments = libs.stream()
-                    .filter(l -> l.contains("org.example.host.gtk.linux.x86_64-1.1.0")).count();
+                    .filter(l -> l.contains(mine + "-1.1.0")).count();
                 assertEquals(1, fragments,
-                    "exactly the CURRENT platform's newest fragment rides with the host "
-                        + "(gtk/linux/x86_64 on this machine — the triple is injected in "
-                        + "production, and win32 must NOT appear): " + libs);
-                assertTrue(libs.stream().noneMatch(l -> l.contains("win32")),
-                    "the win32 fragment must not leak onto a linux classpath: " + libs);
+                    "exactly THIS machine's newest fragment rides with the host (" + mine
+                        + "; the older 1.0.0 must lose and the foreign one must not appear): "
+                        + libs);
+                assertTrue(libs.stream().noneMatch(l -> l.contains(foreign)),
+                    "a fragment for another platform (" + foreign
+                        + ") must not leak onto this classpath: " + libs);
             } finally {
                 service.dispose();
             }
