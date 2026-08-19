@@ -14,6 +14,9 @@ SHARDS="${1:-4}"
 TIMINGS="${TIMINGS:-$ROOT/docs/sprints/dossier-23-timings.txt}"
 DEFAULT_SECS="${DEFAULT_SECS:-15}"
 DIST="$ROOT/build/dist/target/dist"
+# Stage 6b: --impacted is OPT-IN and never the gate path (see the safety rule below).
+IMPACTED=0
+for a in "$@"; do [ "$a" = "--impacted" ] && IMPACTED=1; done
 FIXTURES="$ROOT/org.jawata.core.tests/test-resources/sample-projects"
 # PER-RUN output dir. Two concurrent runs used to share $DIST/suite-shards and
 # both `rm -rf` it, so the loser found no summaries and reported
@@ -50,6 +53,58 @@ for jar in "$DIST"/test-bundles/org.jawata.*.jar; do
 done | sort -u > "$ALL_CLASSES"
 TOTAL_CLASSES=$(wc -l < "$ALL_CLASSES")
 echo "Discovered $TOTAL_CLASSES test classes across $SHARDS shards"
+
+# 1b. IMPACTED-TEST SELECTION (Stage 6b, G4) — OPT-IN, INNER LOOP ONLY.
+#
+# THE BINDING SAFETY RULE: selection narrows the INNER loop and nothing else.
+# Every checkpoint gate calls this script WITHOUT --impacted and therefore runs
+# the full suite. We are not building a false-green machine.
+#
+# It narrows only when the evidence can carry the claim, and SAYS WHY whenever
+# it does not:
+#   * no --impacted flag                  -> full (the default, and the gate path)
+#   * no resident to ask                  -> full, reason printed
+#   * the tool reports no attribution     -> full, reason printed
+#   * the tool names zero impacted tests  -> full, reason printed (a diff that
+#                                            touches code nothing covers is the
+#                                            LAST thing to run narrowly)
+#   * the artifact is PARTIAL             -> full, reason printed. jawata's own
+#                                            suite splits between plain-JVM tests
+#                                            and tests that need the Eclipse
+#                                            workspace; the forked runner cannot
+#                                            run the latter, so their coverage is
+#                                            absent from any artifact it produced.
+#                                            Narrowing on evidence that structurally
+#                                            cannot see half the suite is exactly
+#                                            the false green this rule forbids.
+if [ "$IMPACTED" = "1" ]; then
+    reason=""
+    if [ -z "${JAWATA_URL:-}" ] || [ -z "${JAWATA_TOKEN:-}" ]; then
+        reason="no JAWATA_URL/JAWATA_TOKEN — nothing to ask for attribution"
+    else
+        SEL="$OUT/impacted.txt"
+        if ! "$ROOT/build/impacted-tests.sh" > "$SEL" 2> "$OUT/impacted.err"; then
+            reason="$(cat "$OUT/impacted.err" | tail -1)"
+        elif [ ! -s "$SEL" ]; then
+            reason="the tool named no impacted test classes"
+        else
+            # Intersect with what actually exists in this dist: a stale
+            # attribution row naming a deleted class must not shrink the run.
+            comm -12 "$SEL" "$ALL_CLASSES" > "$OUT/impacted-live.txt"
+            SEL_COUNT=$(wc -l < "$OUT/impacted-live.txt")
+            if [ "$SEL_COUNT" -eq 0 ]; then
+                reason="none of the impacted classes exist in this dist"
+            else
+                cp "$OUT/impacted-live.txt" "$ALL_CLASSES"
+                TOTAL_CLASSES="$SEL_COUNT"
+                echo "IMPACTED SELECTION: running $SEL_COUNT of the discovered classes"
+            fi
+        fi
+    fi
+    if [ -n "$reason" ]; then
+        echo "IMPACTED SELECTION UNAVAILABLE -> running the FULL suite. Reason: $reason"
+    fi
+fi
 
 # 2. Greedy balance by measured time (longest-first onto the lightest shard).
 awk -v shards="$SHARDS" -v deflt="$DEFAULT_SECS" -v timings="$TIMINGS" -v out="$OUT" '
