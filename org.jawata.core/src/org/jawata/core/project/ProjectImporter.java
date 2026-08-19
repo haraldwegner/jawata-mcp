@@ -2201,7 +2201,7 @@ public class ProjectImporter {
             if (value == null) {
                 return Optional.empty();
             }
-            return Optional.of(stripDirectives(value));
+            return Optional.of(org.jawata.core.resolve.OsgiHeaders.nameOf(value));
         } catch (IOException e) {
             log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
             return Optional.empty();
@@ -2224,21 +2224,14 @@ public class ProjectImporter {
         }
         try (InputStream in = Files.newInputStream(manifestPath)) {
             Manifest manifest = new Manifest(in);
-            String header = manifest.getMainAttributes().getValue("Require-Bundle");
-            if (header == null || header.isBlank()) {
-                return List.of();
-            }
-            // Split on commas at the top level (commas inside quoted version
-            // ranges would be a problem in theory; in practice OSGi version
-            // ranges use semicolons after the comma-separated entries).
-            List<String> result = new ArrayList<>();
-            for (String entry : header.split(",")) {
-                String name = stripDirectives(entry).trim();
-                if (!name.isEmpty()) {
-                    result.add(name);
-                }
-            }
-            return result;
+            // Stage 11.1 (R5): quote-aware TOP-LEVEL split. The old
+            // header.split(",") tore a quoted range —
+            // bundle-version="[1.0.0,2.0.0)" — into a phantom requirement
+            // (recorded red: [org.example.pinned, 2.0.0)", org.example.plain]).
+            // The old comment claimed ranges were "a problem in theory"; the
+            // fixture made them a problem in fact.
+            return org.jawata.core.resolve.OsgiHeaders.names(
+                manifest.getMainAttributes().getValue("Require-Bundle"));
         } catch (IOException e) {
             log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
             return List.of();
@@ -2258,28 +2251,14 @@ public class ProjectImporter {
         }
         try (InputStream in = Files.newInputStream(manifestPath)) {
             Manifest manifest = new Manifest(in);
-            String header = manifest.getMainAttributes().getValue("Import-Package");
-            if (header == null || header.isBlank()) {
-                return List.of();
-            }
-            List<String> result = new ArrayList<>();
-            for (String entry : ExternalBundlePool.splitTopLevel(header)) {
-                String name = stripDirectives(entry).trim();
-                if (!name.isEmpty() && !name.startsWith("java.")) {
-                    result.add(name);
-                }
-            }
-            return result;
+            return org.jawata.core.resolve.OsgiHeaders.names(
+                    manifest.getMainAttributes().getValue("Import-Package")).stream()
+                .filter(name -> !name.startsWith("java."))
+                .toList();
         } catch (IOException e) {
             log.warn("Failed to parse MANIFEST.MF at {}: {}", manifestPath, e.getMessage());
             return List.of();
         }
-    }
-
-    /** Strip OSGi attribute / directive suffixes (e.g. {@code ;singleton:=true}). */
-    private static String stripDirectives(String value) {
-        int semi = value.indexOf(';');
-        return (semi == -1 ? value : value.substring(0, semi)).trim();
     }
 
     /**

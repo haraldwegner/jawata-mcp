@@ -314,7 +314,6 @@ class WorkspaceResolveRedTest {
     // ------------------------------------------------------------------
 
     /** The naive split(",") breaks a quoted version range into phantom requirements. */
-    @Disabled("RED, recorded at C11.0 — enabled at C11.1")
     @Test
     @DisplayName("RED until C11.1: a quoted version range is ONE requirement, not two")
     void requireBundle_quotedVersionRange_parsesAsOneEntry(@TempDir Path project) throws Exception {

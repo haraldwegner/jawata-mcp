@@ -1,4 +1,5 @@
 org.jawata.core.JdtServiceImpl#dispose()
+org.jawata.core.resolve.BundleFacts#of(Path)
 org.jawata.core.search.SearchService#findReadAccesses(IJavaElement,int)
 org.jawata.core.search.SearchService#getAllSupertypes(IType)
 org.jawata.core.search.SearchService#getProject()

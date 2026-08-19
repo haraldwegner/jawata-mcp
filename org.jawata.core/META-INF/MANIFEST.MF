@@ -12,6 +12,7 @@ Export-Package: org.jawata.core,
  org.jawata.core.exceptions,
  org.jawata.core.host,
  org.jawata.core.project,
+ org.jawata.core.resolve,
  org.jawata.core.search,
  org.jawata.core.workspace
 Import-Package: com.fasterxml.jackson.core,
