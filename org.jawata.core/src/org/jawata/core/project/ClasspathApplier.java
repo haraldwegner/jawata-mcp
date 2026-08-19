@@ -53,7 +53,20 @@ public final class ClasspathApplier {
     }
 
     /** One bundle's computed wire tail plus its honest misses. */
-    public record WireResult(List<IClasspathEntry> entries, List<UnresolvedRequirement> unresolved) {
+    /**
+     * @param entries        the wire tail to apply
+     * @param unresolved     the honest misses
+     * @param exportUpgrades absolute jar paths a {@code Bundle-ClassPath}
+     *                       declares that an existing NON-WIRE {@code .classpath}
+     *                       entry already occupies — the manifest makes them the
+     *                       bundle's surface, so the surviving entry must become
+     *                       {@code exported=true} (found live at C13.2: the
+     *                       com.jats2.libs pattern — dedupe kept the entry and
+     *                       lost the visibility, and 33 of 41 residual errors
+     *                       were dependents not seeing slf4j through it)
+     */
+    public record WireResult(List<IClasspathEntry> entries, List<UnresolvedRequirement> unresolved,
+            java.util.Set<IPath> exportUpgrades) {
     }
 
     /**
@@ -146,6 +159,7 @@ public final class ClasspathApplier {
         // flag the lib-container pattern contributes NOTHING to dependents. A
         // jar the .classpath ALSO names dedupes by absolute path (R25); a
         // declared-but-missing jar is an honest row, never silence.
+        java.util.Set<IPath> exportUpgrades = new HashSet<>();
         for (String bcp : facts.bundleClassPath()) {
             String entry = bcp.trim();
             if (entry.isEmpty() || ".".equals(entry)) {
@@ -156,7 +170,20 @@ public final class ClasspathApplier {
                 IPath eclipsePath = new Path(nested.toString());
                 if (libs.add(eclipsePath)) {
                     entries.add(wireLibrary(eclipsePath, true));
+                } else if (occupiedLibs.contains(eclipsePath)) {
+                    // Occupied — usually by the .classpath naming the same jar
+                    // (R25). The entry survives ONCE, but the manifest makes it
+                    // part of the bundle's surface: the survivor must be
+                    // exported, or dependents lose every class in it.
+                    exportUpgrades.add(eclipsePath);
                 }
+            } else if (java.nio.file.Files.isDirectory(nested)) {
+                // A Bundle-ClassPath DIRECTORY (e.g. a resources/ folder) is
+                // bundle layout, not a missing jar — its content rides the
+                // source roots at dev time. No entry, no row. (Found live at
+                // C13.2: com.jats2.model declares src/.../resources/ and got a
+                // false miss-row.)
+                continue;
             } else {
                 unresolved.add(new UnresolvedRequirement("Bundle-ClassPath", entry,
                     "declared by the manifest, but no such file under the project root"));
@@ -190,7 +217,8 @@ public final class ClasspathApplier {
                 ? UnresolvedRequirement.importPackage(report.name())
                 : new UnresolvedRequirement(report.kind(), report.name(), report.reason()));
         }
-        return new WireResult(List.copyOf(entries), List.copyOf(unresolved));
+        return new WireResult(List.copyOf(entries), List.copyOf(unresolved),
+            java.util.Set.copyOf(exportUpgrades));
     }
 
     private static IClasspathEntry wireLibrary(IPath jar, boolean exported) {

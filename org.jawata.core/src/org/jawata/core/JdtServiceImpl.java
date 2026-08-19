@@ -433,7 +433,25 @@ public class JdtServiceImpl implements IJdtService {
                 inputs.facts(), project.projectRoot(),
                 inputs.junitBundles(), projectLookup, occupiedLibs, occupiedProjects);
 
-        if (!sameEntries(currentWire, wire.entries())) {
+        // Export upgrades (C13.2, the com.jats2.libs pattern): a non-wire
+        // .classpath entry occupying a Bundle-ClassPath jar keeps its place
+        // but GAINS exported=true — the manifest, not the .classpath flag,
+        // decides the bundle's surface. Everything else about the entry is
+        // preserved verbatim (same path, same attributes — no folder churn).
+        boolean upgraded = false;
+        if (!wire.exportUpgrades().isEmpty()) {
+            for (int i = 0; i < preserved.size(); i++) {
+                IClasspathEntry e = preserved.get(i);
+                if (e.getEntryKind() == IClasspathEntry.CPE_LIBRARY && !e.isExported()
+                        && wire.exportUpgrades().contains(e.getPath())) {
+                    preserved.set(i, org.eclipse.jdt.core.JavaCore.newLibraryEntry(e.getPath(),
+                        e.getSourceAttachmentPath(), e.getSourceAttachmentRootPath(),
+                        e.getAccessRules(), e.getExtraAttributes(), true));
+                    upgraded = true;
+                }
+            }
+        }
+        if (upgraded || !sameEntries(currentWire, wire.entries())) {
             List<IClasspathEntry> next = new ArrayList<>(preserved);
             next.addAll(wire.entries());
             jp.setRawClasspath(next.toArray(new IClasspathEntry[0]),

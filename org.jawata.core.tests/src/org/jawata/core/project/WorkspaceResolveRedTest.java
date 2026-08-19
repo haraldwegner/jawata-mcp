@@ -299,6 +299,17 @@ class WorkspaceResolveRedTest {
                     + "by the .classpath, and the overlap must dedupe, not duplicate or drop: "
                     + libs);
             assertEquals(1, second, "second.jar comes only from Bundle-ClassPath: " + libs);
+            // C13.2's live finding (the com.jats2.libs pattern): the .classpath
+            // entry SURVIVES the dedupe but the manifest owns the visibility —
+            // the surviving first.jar entry must be EXPORTED or dependents lose
+            // every class in it.
+            for (IClasspathEntry e : cont.javaProject().getRawClasspath()) {
+                if (e.getEntryKind() == IClasspathEntry.CPE_LIBRARY
+                        && e.getPath().toString().endsWith("first.jar")) {
+                    assertTrue(e.isExported(),
+                        "the occupied Bundle-ClassPath jar must be upgraded to exported=true: " + e);
+                }
+            }
         } finally {
             service.dispose();
         }
