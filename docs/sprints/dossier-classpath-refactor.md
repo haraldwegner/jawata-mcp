@@ -40,7 +40,12 @@ per-project fixing removes that class of defect; only a resolve *phase* does.
 | 29-project load wall-clock | ~89 s (live fleet, v3.11.1) | **75 s** |
 | Platform source | none found (headless dist only) | Tycho p2 cache, **673 jars**: first index **243 ms**, cached **16 ms** |
 
-## The honest residual
+## The final number
+
+After the two follow-up fixes below, the live 29-project re-measure reads
+**0 errors — 1229 → 0.**
+
+## The honest residual (and what it really was)
 
 The 58 remaining errors are all in `com.jats2.model`, and they are **newly visible
 truth, not regression**: before the fix, that project's build *aborted* on an
@@ -48,15 +53,20 @@ incomplete build path (a missing indirect log4j reference), so most of its files
 were never compiled at all — it reported 2 errors while hiding 58. With the build
 path complete, its real state surfaced:
 
-- **48 × language level** — a source level below Java 14 is applied while the code
-  uses switch expressions and type patterns. jawata derives PDE compliance from the
-  manifest's `Bundle-RequiredExecutionEnvironment`; the Tycho pom (deliberately
-  unread, by ruling) compiles at a newer level.
-- **10 × JUnit vintage** — `assertNotEquals` needs junit ≥ 4.11; the pool's wired
-  junit is older.
+- **48 × language level** — first diagnosed as a stale BREE; the TRUE cause, found
+  by the JATS-side session at the stop: `.settings/org.eclipse.jdt.core.prefs`
+  contained **committed git merge-conflict markers** — all three compiler keys
+  appeared twice (one side 12, one side 21), and every tool parsing the file read
+  garbage or the 12 side. Eclipse had tolerated the broken file silently since the
+  merge that committed it. Fix: resolve to the 21 side (JATS `ddf413ba`).
+- **10 × JUnit vintage** — `assertNotEquals` needs junit ≥ 4.11. The cache HAD
+  4.13.2; the defect was jawata's wire ORDER: a sibling bundle's re-exported
+  junit-4.5.jar preceded the JUnit container's 4.13.2. Fix: container bundles render
+  first in the wire tail — the framework the `.classpath` asks for outranks what a
+  sibling happens to re-export.
 
-Both classes are named, mapped, and stopped on for a ruling — never passed
-silently.
+Both classes were named, mapped, stopped on for a ruling, and then closed —
+never passed silently.
 
 ## The marketing story (ruled in, 2026-08-19)
 
@@ -67,8 +77,10 @@ papered over it from the pom, and the project's error view showed 2 errors while
 48 language-level violations and a stale JUnit constraint sat invisible behind an
 aborted build. jawata's resolve phase did not just fix jawata's own numbers: **it
 found real, actionable defects in the customer's own project metadata that no
-other tool on the machine reported.** The fix it pointed to is one line in one
-manifest — in the customer's repo, named precisely. That is the product claim in
+other tool on the machine reported** — including a prefs file carrying committed
+merge-conflict markers that Eclipse had parsed without complaint since the day of
+the bad merge. The fix it pointed to was twelve lines in one prefs file — in the
+customer's repo, named precisely. That is the product claim in
 one sentence: *compiler-accurate honesty surfaces what your IDE has learned to
 ignore.*
 
