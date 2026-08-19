@@ -309,7 +309,6 @@ class WorkspaceResolveRedTest {
     // ------------------------------------------------------------------
 
     /** A requires B; B requires C with {@code visibility:=reexport}; A must reach C. */
-    @Disabled("RED, recorded at C11.0 — enabled at C13.1")
     @Test
     @DisplayName("RED until C13.1: visibility:=reexport carries a transitive provider")
     void reexportClosure_transitiveTypeResolves() throws Exception {
