@@ -58,6 +58,20 @@ path complete, its real state surfaced:
 Both classes are named, mapped, and stopped on for a ruling — never passed
 silently.
 
+## The marketing story (ruled in, 2026-08-19)
+
+The residual is itself the sales pitch. On a mature production codebase, the IDE
+had been compiling `com.jats2.model` for years while its manifest declared a Java
+level far below what the code uses — Eclipse's PDE tolerated it, the Tycho build
+papered over it from the pom, and the project's error view showed 2 errors while
+48 language-level violations and a stale JUnit constraint sat invisible behind an
+aborted build. jawata's resolve phase did not just fix jawata's own numbers: **it
+found real, actionable defects in the customer's own project metadata that no
+other tool on the machine reported.** The fix it pointed to is one line in one
+manifest — in the customer's repo, named precisely. That is the product claim in
+one sentence: *compiler-accurate honesty surfaces what your IDE has learned to
+ignore.*
+
 ## The transferable lesson
 
 Resolution is a *workspace* phase, never an *import* step. Any system that lets a
