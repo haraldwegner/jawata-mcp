@@ -80,6 +80,7 @@ public final class H2ExperienceStore implements ExperienceStore {
      *  a statement that failed mid-write may sit on a connection {@code isValid}
      *  still blesses (auto-server handoff, lock-timeout aftermath). */
     void invalidateSharedConnection() {
+        discardReadPool();
         try {
             if (conn != null && !conn.isClosed()) {
                 conn.close();
@@ -158,6 +159,160 @@ public final class H2ExperienceStore implements ExperienceStore {
             throw new IllegalStateException("failed to re-open store connection: " + e.getMessage(), e);
         }
         return conn;
+    }
+
+    // ---------------------------------------------------------------- reads
+    //
+    // Stage 3 (#37 structural half) — THE DISPOSITION TABLE. Every consumer of
+    // this store, and which connection it uses:
+    //
+    //   consumer              path    connection            lock
+    //   --------------------  ------  --------------------  ----------------------
+    //   put/putWithSource,    WRITE   the shared `conn`     this instance's monitor
+    //   deleteBySource,wipe,
+    //   setStatus, update*,
+    //   importEntries,
+    //   pruneAged, compact,
+    //   recoverOrphans
+    //   LearnerEventStore     WRITE   the shared `conn`     this instance's monitor
+    //   ToolExperienceStore   WRITE   the shared `conn`     this instance's monitor
+    //   QualityLedger         WRITE   the shared `conn`     this instance's monitor
+    //   all/get/query/byIds,  READ    a POOLED connection   none (pool slot only)
+    //   count/listEntries/
+    //   exportEntries/stats
+    //   EmbeddingIndex        READ    the shared `conn`     this instance's monitor
+    //
+    // What replaces "one monitor ⇒ writers never interleave": nothing, because
+    // nothing needed replacing. Every WRITER still takes this instance's
+    // monitor and still uses the one shared connection, so the invariant
+    // LearnerEventStore's javadoc states is untouched, and it is pinned by a
+    // test. What changed is that READERS no longer take that monitor at all —
+    // which is the whole defect: one reader parked in a socket read used to
+    // stop every writer, every learner event, and every tool call on the
+    // resident (measured live 2026-08-19: `search_symbols` timing out behind
+    // `ToolExperienceStore.append` waiting on a monitor held by a thread in
+    // `Net.poll`).
+    //
+    // A reader that parks now costs ONE pool slot. Concurrent readers proceed
+    // in parallel up to the pool size; past it they wait for a slot, and a
+    // wait that expires is reported as BUSY — never as "wedged", because eight
+    // healthy concurrent reads look identical to eight stuck ones from here
+    // (C2 audit), and only the operation deadline at the retrieval boundary
+    // can tell those apart.
+
+    /** How many reads may be in flight at once. */
+    static final int READ_POOL_SIZE = 4;
+
+    /** How long a read waits for a pool slot before reporting the store busy. */
+    static final long READ_BORROW_TIMEOUT_MILLIS = 5_000;
+
+    private final java.util.concurrent.ArrayBlockingQueue<Connection> readPool =
+        new java.util.concurrent.ArrayBlockingQueue<>(READ_POOL_SIZE);
+    private final java.util.concurrent.atomic.AtomicInteger readConnections =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Work that needs a connection and may fail the way JDBC fails. */
+    private interface ReadWork<T> {
+        T apply(Connection c) throws SQLException;
+    }
+
+    /**
+     * Run a read OFF the instance monitor, on its own connection.
+     *
+     * <p>FALLS BACK to the shared connection under the monitor when a second
+     * connection cannot be opened — today every store URL permits one
+     * ({@code AUTO_SERVER} for files, {@code DB_CLOSE_DELAY=-1} in memory), but
+     * a URL that does not must keep working exactly as it did rather than lose
+     * its reads.</p>
+     */
+    private <T> T withRead(String what, ReadWork<T> work) {
+        Connection c = borrowRead();
+        if (c == null) {
+            synchronized (this) {
+                try {
+                    return work.apply(live());
+                } catch (SQLException e) {
+                    throw new IllegalStateException("failed to " + what + ": " + e.getMessage(), e);
+                }
+            }
+        }
+        boolean healthy = true;
+        try {
+            return work.apply(c);
+        } catch (SQLException e) {
+            healthy = false;
+            throw new IllegalStateException("failed to " + what + ": " + e.getMessage(), e);
+        } finally {
+            releaseRead(c, healthy);
+        }
+    }
+
+    /** A pooled read connection, or null when the store cannot give one out. */
+    Connection borrowRead() {
+        Connection pooled = readPool.poll();
+        if (pooled != null) {
+            return validOrReplaced(pooled);
+        }
+        if (readConnections.get() < READ_POOL_SIZE
+                && readConnections.incrementAndGet() <= READ_POOL_SIZE) {
+            try {
+                return openBound(url);
+            } catch (SQLException e) {
+                readConnections.decrementAndGet();
+                log.debug("read connection unavailable, falling back to the shared one: {}",
+                    e.getMessage());
+                return null;
+            }
+        } else {
+            readConnections.decrementAndGet();
+        }
+        try {
+            Connection waited = readPool.poll(READ_BORROW_TIMEOUT_MILLIS,
+                java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (waited != null) {
+                return validOrReplaced(waited);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        throw new IllegalStateException("experience store is BUSY: all " + READ_POOL_SIZE
+            + " read slots are in use and none freed within " + READ_BORROW_TIMEOUT_MILLIS
+            + " ms. This says the store is saturated, NOT that it is wedged —"
+            + " concurrent healthy reads look the same from here.");
+    }
+
+    private Connection validOrReplaced(Connection pooled) {
+        try {
+            if (!pooled.isClosed() && pooled.isValid(1)) {
+                return pooled;
+            }
+        } catch (SQLException e) {
+            log.debug("pooled read connection is unusable: {}", e.getMessage());
+        }
+        closeQuietly(pooled);
+        try {
+            return openBound(url);
+        } catch (SQLException e) {
+            readConnections.decrementAndGet();
+            return null;
+        }
+    }
+
+    void releaseRead(Connection c, boolean healthy) {
+        if (!healthy || !readPool.offer(c)) {
+            closeQuietly(c);
+            readConnections.decrementAndGet();
+        }
+    }
+
+    /** Drop every pooled read connection — the database went away under them. */
+    private void discardReadPool() {
+        Connection c;
+        while ((c = readPool.poll()) != null) {
+            closeQuietly(c);
+        }
+        readConnections.set(0);
     }
 
     private H2ExperienceStore(Connection conn, String url, Path storeDir, Path storeFile)
@@ -510,19 +665,19 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     @Override
-    public synchronized List<StoredEntry> all() {
-        List<StoredEntry> out = new ArrayList<>();
-        try (Statement s = live().createStatement();
-                ResultSet rs = s.executeQuery(
-                    "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
-                    + "external_system,summary,body_json,workspace_id,created_at FROM experience_entry")) {
-            while (rs.next()) {
-                out.add(mapRow(rs));
+    public List<StoredEntry> all() {
+        return withRead("list entries", c -> {
+            List<StoredEntry> out = new ArrayList<>();
+            try (Statement s = c.createStatement();
+                    ResultSet rs = s.executeQuery(
+                        "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
+                        + "external_system,summary,body_json,workspace_id,created_at FROM experience_entry")) {
+                while (rs.next()) {
+                    out.add(mapRow(rs, c));
+                }
             }
             return out;
-        } catch (SQLException e) {
-            throw new IllegalStateException("failed to list entries: " + e.getMessage(), e);
-        }
+        });
     }
 
     @Override
@@ -596,24 +751,30 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     @SuppressWarnings("unchecked")
-    public synchronized Optional<Map<String, Object>> get(String id) {
-        try (PreparedStatement ps =
-                live().prepareStatement("SELECT body_json FROM experience_entry WHERE id = ?")) {
-            ps.setString(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
+    public Optional<Map<String, Object>> get(String id) {
+        return withRead("get entry", c -> {
+            try (PreparedStatement ps =
+                    c.prepareStatement("SELECT body_json FROM experience_entry WHERE id = ?")) {
+                ps.setString(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    try {
+                        return Optional.of((Map<String, Object>)
+                            json.readValue(rs.getString(1), LinkedHashMap.class));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                        throw new IllegalStateException(
+                            "failed to get entry: " + e.getMessage(), e);
+                    }
                 }
-                return Optional.of(json.readValue(rs.getString(1), LinkedHashMap.class));
             }
-        } catch (Exception e) {
-            throw new IllegalStateException("failed to get entry: " + e.getMessage(), e);
-        }
+        });
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public synchronized List<StoredEntry> query(RecallQuery q) {
+    public List<StoredEntry> query(RecallQuery q) {
         if (q == null || q.isEmpty()) {
             return List.of();
         }
@@ -673,24 +834,24 @@ public final class H2ExperienceStore implements ExperienceStore {
             + ") AND status NOT IN ('rejected', 'superseded') ORDER BY created_at DESC";
 
         List<StoredEntry> out = new ArrayList<>();
-        try (PreparedStatement ps = live().prepareStatement(sql)) {
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(mapRow(rs));
+        return withRead("query entries", c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                for (int i = 0; i < params.size(); i++) {
+                    ps.setObject(i + 1, params.get(i));
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(mapRow(rs, c));
+                    }
                 }
             }
             return out;
-        } catch (SQLException e) {
-            throw new IllegalStateException("failed to query entries: " + e.getMessage(), e);
-        }
+        });
     }
 
     /** Map a row (selecting the projection columns below) to a {@link StoredEntry}. */
     @SuppressWarnings("unchecked")
-    private StoredEntry mapRow(ResultSet rs) throws SQLException {
+    private StoredEntry mapRow(ResultSet rs, Connection c) throws SQLException {
         String id = rs.getString("id");
         Map<String, Object> body;
         try {
@@ -710,7 +871,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             rs.getString("language"),
             rs.getString("external_system"),
             rs.getString("summary"),
-            loadSymptoms(id),
+            loadSymptoms(id, c),
             rs.getString("source_ref"),
             rs.getString("scope_kind"),
             rs.getString("workspace_id"),
@@ -718,9 +879,9 @@ public final class H2ExperienceStore implements ExperienceStore {
             body);
     }
 
-    private List<String> loadSymptoms(String id) throws SQLException {
+    private List<String> loadSymptoms(String id, Connection c) throws SQLException {
         List<String> symptoms = new ArrayList<>();
-        try (PreparedStatement ps = live().prepareStatement(
+        try (PreparedStatement ps = c.prepareStatement(
                 "SELECT symptom FROM experience_symptom WHERE entry_id = ?")) {
             ps.setString(1, id);
             try (ResultSet rs = ps.executeQuery()) {
@@ -742,24 +903,30 @@ public final class H2ExperienceStore implements ExperienceStore {
      * set, never a wrong answer.</p>
      */
     @Override
-    public synchronized List<StoredEntry> byIds(List<String> ids) {
+    public List<StoredEntry> byIds(List<String> ids) {
         if (ids == null || ids.isEmpty()) {
             return List.of();
         }
         Map<String, StoredEntry> found = new LinkedHashMap<>();
         String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
-        try (PreparedStatement ps = live().prepareStatement(
-                "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE id IN (" + placeholders + ")")) {
-            for (int i = 0; i < ids.size(); i++) {
-                ps.setString(i + 1, ids.get(i));
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    StoredEntry e = mapRow(rs);
-                    found.put(e.id(), e);
+        try {
+            withRead("look entries up by id", c -> {
+                try (PreparedStatement ps = c.prepareStatement(
+                        "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE id IN ("
+                            + placeholders + ")")) {
+                    for (int i = 0; i < ids.size(); i++) {
+                        ps.setString(i + 1, ids.get(i));
+                    }
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            StoredEntry e = mapRow(rs, c);
+                            found.put(e.id(), e);
+                        }
+                    }
                 }
-            }
-        } catch (SQLException e) {
+                return null;
+            });
+        } catch (RuntimeException e) {
             log.error("byIds lookup FAILED; semantic nomination contributes nothing"
                 + " for this cue rather than a partial list", e);
             return List.of();
@@ -775,13 +942,13 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     @Override
-    public synchronized long count() {
-        try (Statement s = live().createStatement();
-                ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM experience_entry")) {
-            return rs.next() ? rs.getLong(1) : 0L;
-        } catch (SQLException e) {
-            throw new IllegalStateException("failed to count entries: " + e.getMessage(), e);
-        }
+    public long count() {
+        return withRead("count entries", c -> {
+            try (Statement s = c.createStatement();
+                    ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM experience_entry")) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
+        });
     }
 
     // --- Sprint 21a (item G): curation — export / import / list -------------------------
@@ -793,7 +960,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     @SuppressWarnings("unchecked")
-    public synchronized List<Map<String, Object>> exportEntries(String status, String type) {
+    public List<Map<String, Object>> exportEntries(String status, String type) {
         List<String> clauses = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         if (status != null && !status.isBlank()) {
@@ -808,7 +975,8 @@ public final class H2ExperienceStore implements ExperienceStore {
             + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
             + " ORDER BY created_at";
         List<Map<String, Object>> out = new ArrayList<>();
-        try (PreparedStatement ps = live().prepareStatement(sql)) {
+        return withRead("export entries", c -> {
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
             }
@@ -839,21 +1007,20 @@ public final class H2ExperienceStore implements ExperienceStore {
                     } catch (Exception e) {
                         row.put("body", new LinkedHashMap<>());
                     }
-                    List<String> symptoms = loadSymptoms(id);
+                    List<String> symptoms = loadSymptoms(id, c);
                     if (!symptoms.isEmpty()) {
                         row.put("symptoms", symptoms);
                     }
-                    List<Map<String, Object>> links = loadLinks(id);
+                    List<Map<String, Object>> links = loadLinks(id, c);
                     if (!links.isEmpty()) {
                         row.put("links", links);
                     }
                     out.add(row);
                 }
             }
-            return out;
-        } catch (SQLException e) {
-            throw new IllegalStateException("failed to export entries: " + e.getMessage(), e);
         }
+        return out;
+        });
     }
 
     @Override
@@ -930,7 +1097,7 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     @Override
-    public synchronized List<StoredEntry> listEntries(String type, String status, String scope,
+    public List<StoredEntry> listEntries(String type, String status, String scope,
             String language, int limit) {
         List<String> clauses = new ArrayList<>();
         List<Object> params = new ArrayList<>();
@@ -958,19 +1125,19 @@ public final class H2ExperienceStore implements ExperienceStore {
             + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
             + " ORDER BY created_at DESC LIMIT " + Math.max(1, limit);
         List<StoredEntry> out = new ArrayList<>();
-        try (PreparedStatement ps = live().prepareStatement(sql)) {
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(mapRow(rs));
+        return withRead("list entries", c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                for (int i = 0; i < params.size(); i++) {
+                    ps.setObject(i + 1, params.get(i));
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(mapRow(rs, c));
+                    }
                 }
             }
             return out;
-        } catch (SQLException e) {
-            throw new IllegalStateException("failed to list entries: " + e.getMessage(), e);
-        }
+        });
     }
 
     // --- Sprint 21a (item G): hygiene — prune / compact ---------------------------------
@@ -1054,11 +1221,13 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     @Override
-    public synchronized Map<String, Object> stats() {
+    public Map<String, Object> stats() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", count());
-        out.put("by_status", groupCount("status"));
-        out.put("by_language", groupCount("language"));
+        Map<String, Object> byStatus = withRead("group by status", c -> groupCount("status", c));
+        Map<String, Object> byLanguage = withRead("group by language", c -> groupCount("language", c));
+        out.put("by_status", byStatus);
+        out.put("by_language", byLanguage);
         Map<String, Object> store = new LinkedHashMap<>();
         if (storeFile != null) {
             store.put("file", storeFile.toAbsolutePath().toString());
@@ -1070,9 +1239,9 @@ public final class H2ExperienceStore implements ExperienceStore {
         return out;
     }
 
-    private Map<String, Object> groupCount(String column) {
+    private Map<String, Object> groupCount(String column, Connection c) {
         Map<String, Object> counts = new LinkedHashMap<>();
-        try (Statement s = live().createStatement();
+        try (Statement s = c.createStatement();
                 ResultSet rs = s.executeQuery(
                     "SELECT " + column + ", COUNT(*) FROM experience_entry GROUP BY " + column
                     + " ORDER BY " + column)) {
@@ -1086,7 +1255,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         return counts;
     }
 
-    private List<Map<String, Object>> loadLinks(String id) throws SQLException {
+    private List<Map<String, Object>> loadLinks(String id, Connection c) throws SQLException {
         List<Map<String, Object>> links = new ArrayList<>();
         try (PreparedStatement ps = live().prepareStatement(
                 "SELECT rel, target FROM experience_link WHERE entry_id = ?")) {
@@ -1276,6 +1445,7 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized void close() {
+        discardReadPool();
         try {
             if (conn != null && !conn.isClosed()) {
                 conn.close();
