@@ -138,6 +138,10 @@ class WorkspaceResolveRedTest {
             aAfter.unresolved().stream().noneMatch(u -> u.name().contains("org.jawata.fixture.b")),
             "B is now loaded; the stale row must be gone (the record must be REPUBLISHED, "
                 + "not snapshotted forever): " + aAfter.unresolved());
+        org.junit.jupiter.api.Assertions.assertSame(a.searchService(), aAfter.searchService(),
+            "republication copies the record — the SAME SearchService instance, never a "
+                + "rebuilt one (C12.1 audit: a new SearchService per re-resolve left every "
+                + "test green while discarding the index)");
     }
 
     /** Cycles are legal in the dev-time model; JDT's default makes them a hard ERROR. */
@@ -173,7 +177,6 @@ class WorkspaceResolveRedTest {
      * platform fragments. The flat indexer sees NOTHING here today, and SWT's
      * classes live in the FRAGMENT (the live workspace's #11 case).
      */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.2")
     @Test
     @DisplayName("RED until C12.2: a nested pool resolves host + CURRENT-platform fragment")
     void nestedPool_hostPlusCurrentPlatformFragmentResolve(@TempDir Path pool) throws Exception {
@@ -230,7 +233,6 @@ class WorkspaceResolveRedTest {
      * highest version while {@code byExportedPackage.putIfAbsent} keeps the
      * first jar seen — one bundle, two different jars.
      */
-    @Disabled("RED, recorded at C11.0 — enabled at C12.2")
     @Test
     @DisplayName("RED until C12.2: the exported-package map agrees with the symbolic-name winner")
     void exportedPackageMap_agreesWithSymbolicNameWinner(@TempDir Path pool) throws Exception {
@@ -251,9 +253,24 @@ class WorkspaceResolveRedTest {
 
         ExternalBundlePool indexed = ExternalBundlePool.index(List.of(pool));
         Path winner = indexed.bundleJar("org.example.dup").orElseThrow();
-        Path provider = indexed.packageProvider("org.example.api").orElseThrow();
-        assertEquals(winner, provider,
-            "one bundle, one jar: the package map must answer with the same jar the "
+        // The package view is the RESOLVER's selection since 12.2 — the pool
+        // no longer carries a second map that could disagree. Resolve a
+        // consumer importing the package and assert the wired jar IS the
+        // symbolic-name winner.
+        org.jawata.core.resolve.BundleFacts consumer = new org.jawata.core.resolve.BundleFacts(
+            "org.example.consumer", java.util.Optional.of("1.0.0"), List.of(),
+            List.of("org.example.api"), List.of(), java.util.Optional.empty(),
+            List.of(), java.util.Optional.empty());
+        org.jawata.core.resolve.PlatformResolver.Wiring wiring =
+            new org.jawata.core.resolve.GraphWalkResolver()
+                .resolve(java.util.Map.of("org.example.consumer", consumer),
+                    indexed.poolBundles(),
+                    new org.jawata.core.resolve.PlatformResolver.Platform("linux", "gtk", "x86_64"))
+                .get("org.example.consumer");
+        List<Path> jars = wiring.providers().stream()
+            .map(pr -> pr.jar().orElseThrow()).toList();
+        assertEquals(List.of(winner), jars,
+            "one bundle, one jar: the package view must answer with the same jar the "
                 + "symbolic-name arbitration chose");
     }
 

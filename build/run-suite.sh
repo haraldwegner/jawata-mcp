@@ -109,6 +109,7 @@ PIDS=()
 for s in $(seq 0 $((SHARDS - 1))); do
     java $JVM_OPTS \
          -Djawata.test.fixtures="$FIXTURES" \
+         -Djawata.bundle.pools.machine=off \
          -Djawata.test.classlist="$OUT/shard-$s.txt" \
          -jar "$DIST/jawata.jar" -runTests > "$OUT/shard-$s.log" 2>&1 &
     PIDS+=($!)

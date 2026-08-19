@@ -262,4 +262,13 @@ public interface IJdtService {
     default boolean removeProject(String projectKey) {
         return false;
     }
+
+    /**
+     * Clear the external bundle-pool caches and re-run the workspace resolve
+     * phase against freshly-read pool facts ({@code refresh_workspace}'s
+     * reconcile contract — a cleared cache with stale wiring would silently
+     * contradict it). ABSTRACT deliberately: a defaulted no-op would let an
+     * implementation look complete while the reconcile silently never fires.
+     */
+    void reresolveWorkspace();
 }

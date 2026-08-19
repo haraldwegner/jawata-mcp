@@ -93,7 +93,9 @@ public class RefreshWorkspaceTool extends AbstractTool {
             3. Collect IMarker.PROBLEM markers from the rebuilt projects.
 
             Result:
-              { operation, refreshedProjects: [...],
+              { operation, wiringRecomputed (the bundle-pool caches were
+                cleared and the workspace resolve phase re-ran),
+                refreshedProjects: [...],
                 summary: { filesRefreshed, classFilesInvalidated,
                            errorCount, warningCount },
                 diagnostics: [{filePath, line, column, severity, message,
@@ -137,6 +139,11 @@ public class RefreshWorkspaceTool extends AbstractTool {
         }
 
         try {
+            // Stage 12.2 (audit N2): a reconcile that cleared the bundle-pool
+            // cache but kept the old wiring would silently contradict this
+            // tool's contract — so the resolve phase re-runs, and the
+            // response SAYS so.
+            service.reresolveWorkspace();
             int errorCount = 0;
             int warningCount = 0;
             int filesRefreshed = 0;
@@ -192,6 +199,7 @@ public class RefreshWorkspaceTool extends AbstractTool {
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "refresh_workspace");
+            data.put("wiringRecomputed", true);
             data.put("refreshedProjects", refreshedProjects);
             data.put("summary", summary);
             data.put("diagnostics", diagnostics);

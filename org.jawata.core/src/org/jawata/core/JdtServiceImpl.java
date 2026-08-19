@@ -167,8 +167,8 @@ public class JdtServiceImpl implements IJdtService {
         // the same fixture dirs, kept the indexer and delta broadcaster busy
         // while live tests queried the model).
         LoadedProject loaded;
+        assertNoWorkspaceRuleHeld();
         synchronized (resolveLock) {
-            assertNoWorkspaceRuleHeld();
             for (LoadedProject stale : projectsByKey.values()) {
                 deleteWorkspaceProject(stale);
             }
@@ -208,8 +208,8 @@ public class JdtServiceImpl implements IJdtService {
     public LoadedProject addProject(Path path) throws CoreException {
         log.info("Adding project to workspace: {}", path);
         LoadedProject loaded;
+        assertNoWorkspaceRuleHeld();
         synchronized (resolveLock) {
-            assertNoWorkspaceRuleHeld();
             loaded = loadInternal(path);
             workspaceSearchService = null;  // scope changed — rebuild on next access
             // bugs.md #11 (Sprint 14): re-adding a project with the same key as a
@@ -268,8 +268,8 @@ public class JdtServiceImpl implements IJdtService {
      * @return true if a project with that key was loaded and removed
      */
     public boolean removeProject(String projectKey) {
+        assertNoWorkspaceRuleHeld();
         synchronized (resolveLock) {
-            assertNoWorkspaceRuleHeld();
             LoadedProject removed = projectsByKey.remove(projectKey);
             if (removed == null) {
                 return false;
@@ -284,9 +284,9 @@ public class JdtServiceImpl implements IJdtService {
             deleteWorkspaceProject(removed);
             log.info("Removed project '{}' from workspace", projectKey);
             // Stage 12.1 (R22): RETRO-UNWIRE the dependents — a project entry
-            // pointing at a deleted project is a hard error, and the miss
-            // becomes an honest row (pool failover arrives with 12.2's
-            // resolver-driven pool).
+            // pointing at a deleted project is a hard error. Since 12.2 the
+            // re-resolve consults the pools, so a same-name pool jar FAILS
+            // OVER; only a true miss becomes an honest row.
             resolveWorkspaceLocked();
             if (projectKey.equals(defaultProjectKey)) {
                 // Pick a new default deterministically: the first remaining key
@@ -316,6 +316,15 @@ public class JdtServiceImpl implements IJdtService {
      * autobuild measured ON, one deferred build pass, the recorded R10
      * ruling).</p>
      */
+    @Override
+    public void reresolveWorkspace() {
+        assertNoWorkspaceRuleHeld();
+        synchronized (resolveLock) {
+            org.jawata.core.project.ExternalBundlePool.clearCaches();
+            resolveWorkspaceLocked();
+        }
+    }
+
     private void resolveWorkspaceLocked() {
         if (pdeInputsByKey.isEmpty()) {
             return; // a workspace of plain build units has nothing to wire
@@ -351,9 +360,15 @@ public class JdtServiceImpl implements IJdtService {
             keyBySymbolicName.put(facts.symbolicName(), e.getKey());
         }
 
+        // The pool is indexed ONCE per re-resolve (R2/R17) and handed to the
+        // resolver as data — jar arbitration, fragments and re-export closure
+        // are the resolver's job (12.2), the pool only reads manifests.
+        org.jawata.core.project.ExternalBundlePool pool =
+            org.jawata.core.project.ExternalBundlePool.index(
+                org.jawata.core.project.ExternalBundlePool.defaultPoolDirs());
         Map<String, org.jawata.core.resolve.PlatformResolver.Wiring> wirings =
             new org.jawata.core.resolve.GraphWalkResolver()
-                .resolve(world, List.of(), currentPlatform());
+                .resolve(world, pool.poolBundles(), currentPlatform());
 
         java.util.function.Function<String, Optional<IJavaProject>> projectLookup = name -> {
             String key = keyBySymbolicName.get(name);
@@ -373,7 +388,7 @@ public class JdtServiceImpl implements IJdtService {
                     if (project == null || wiring == null) {
                         continue;
                     }
-                    applyWiring(project, e.getValue(), wiring, projectLookup);
+                    applyWiring(project, e.getValue(), wiring, pool, projectLookup);
                 }
             }, ResourcesPlugin.getWorkspace().getRoot(), 0, new NullProgressMonitor());
         } catch (CoreException e) {
@@ -391,6 +406,7 @@ public class JdtServiceImpl implements IJdtService {
      */
     private void applyWiring(LoadedProject project, PdeInputs inputs,
             org.jawata.core.resolve.PlatformResolver.Wiring wiring,
+            org.jawata.core.project.ExternalBundlePool pool,
             java.util.function.Function<String, Optional<IJavaProject>> projectLookup)
             throws CoreException {
         IJavaProject jp = project.javaProject();
@@ -413,7 +429,7 @@ public class JdtServiceImpl implements IJdtService {
         }
 
         org.jawata.core.project.ClasspathApplier.WireResult wire =
-            org.jawata.core.project.ClasspathApplier.computeWire(wiring, inputs.facts(),
+            org.jawata.core.project.ClasspathApplier.computeWire(wiring, pool,
                 inputs.junitBundles(), projectLookup, occupiedLibs, occupiedProjects);
 
         if (!sameEntries(currentWire, wire.entries())) {
@@ -452,10 +468,11 @@ public class JdtServiceImpl implements IJdtService {
     }
 
     /**
-     * The lock-ordering ASSERTION (audit N7): the resolve lock is acquired
-     * BEFORE any workspace scheduling rule. A thread already inside a
-     * workspace operation taking the lock while another lock-holder waits for
-     * the workspace is the deadlock this fails loudly instead of.
+     * The lock-ordering ASSERTION (audit N7, placement fixed at the C12.1
+     * audit's B2): the resolve lock is acquired BEFORE any workspace
+     * scheduling rule — and the check runs BEFORE monitor-enter, because a
+     * rule-holding thread blocked AT the monitor would deadlock without the
+     * assertion ever executing. Checked first, it fails loudly instead.
      */
     private static void assertNoWorkspaceRuleHeld() {
         org.eclipse.core.runtime.jobs.ISchedulingRule rule =
@@ -572,14 +589,22 @@ public class JdtServiceImpl implements IJdtService {
      * churning underneath every later test in the same JVM.
      */
     public void dispose() {
-        for (LoadedProject lp : projectsByKey.values()) {
-            deleteWorkspaceProject(lp);
+        // Under the SAME lock as every other mutator (C12.1 audit M4): an
+        // unlocked dispose racing a re-resolve tears the maps — and like the
+        // loadProject wipe, it must evict the INVENTORY, or stale facts wire
+        // the next service's resolve against deleted IProjects.
+        assertNoWorkspaceRuleHeld();
+        synchronized (resolveLock) {
+            for (LoadedProject lp : projectsByKey.values()) {
+                deleteWorkspaceProject(lp);
+            }
+            projectsByKey.clear();
+            pdeInputsByKey.clear();
+            droppedKeyTimestamps.clear();
+            defaultProjectKey = null;
+            workspaceSearchService = null;
+            clearLegacyFields();
         }
-        projectsByKey.clear();
-        droppedKeyTimestamps.clear();
-        defaultProjectKey = null;
-        workspaceSearchService = null;
-        clearLegacyFields();
     }
 
     /** Mirror a LoadedProject into the legacy single-project fields. */

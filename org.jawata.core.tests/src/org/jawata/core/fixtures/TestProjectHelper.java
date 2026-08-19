@@ -32,6 +32,15 @@ import java.util.Comparator;
  */
 public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback {
 
+    static {
+        // Test hermeticity (Stage 12.2): the MACHINE pools (~/.p2, the ~/.m2
+        // Tycho cache) are excluded for every test that touches this helper —
+        // a golden or fixture assertion that resolves against the machine's
+        // own caches passes here and fails on every other machine. Hermetic
+        // pool coverage uses jawata.bundle.pools against a @TempDir pool.
+        System.setProperty("jawata.bundle.pools.machine", "off");
+    }
+
     private static final String FIXTURES_PROPERTY = "jawata.test.fixtures";
 
     private Path tempDirectory;

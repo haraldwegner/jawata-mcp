@@ -98,9 +98,14 @@ class WorkspaceResolveBehaviourTest {
 
         LoadedProject after = service.getProject(a.projectKey()).orElseThrow();
         assertEquals(1, projectEntries(after.javaProject()).size(), "the wire changed");
-        assertEquals(entryPaths(sourcesBefore), entryPaths(sourceEntries(after.javaProject())),
-            "and the source entries are byte-for-byte the ones from before — "
-                + "re-running addSourceEntries would delete+recreate linked folders (R3)");
+        List<IClasspathEntry> sourcesAfter = sourceEntries(after.javaProject());
+        assertEquals(sourcesBefore.size(), sourcesAfter.size(), "same source-entry count");
+        for (int i = 0; i < sourcesBefore.size(); i++) {
+            assertEquals(sourcesBefore.get(i), sourcesAfter.get(i),
+                "source entry " + i + " is THE ENTRY from before, full equality — a "
+                    + "path-only check passes a delete+recreate of identical linked "
+                    + "folders, which is exactly R3's churn (C12.1 audit)");
+        }
     }
 
     /**
@@ -125,6 +130,52 @@ class WorkspaceResolveBehaviourTest {
         assertTrue(a2.unresolved().stream()
                 .anyMatch(u -> u.name().contains("org.jawata.fixture.b")),
             "and the miss is an honest row: " + a2.unresolved());
+
+        // The half a dangling-lookup guard cannot cover (C12.1 audit): re-add
+        // the SAME symbolic name from a NEW directory. A stale inventory entry
+        // for the wiped b can nondeterministically win keyBySymbolicName and
+        // leave the dependent wired to the dead project instead of this one.
+        LoadedProject b2 = service.addProject(helper.copyFixtureAs("pde-bundle-b", "b-second"));
+        LoadedProject a3 = service.getProject(a2.projectKey()).orElseThrow();
+        List<IClasspathEntry> prj = projectEntries(a3.javaProject());
+        assertEquals(1, prj.size(), "the dependent wires to the RE-ADDED provider: " + prj);
+        assertEquals(b2.javaProject().getPath(), prj.get(0).getPath(),
+            "and to the NEW b's project, not a stale ghost: " + prj);
+    }
+
+    /**
+     * C12.1 audit B1 — the {@code jawata.wire} restart-persistence pin, and it
+     * names the implementation's choice: a restarted resident STARTS FRESH.
+     * Project names carry a per-session id, so a new service never adopts a
+     * prior session's IProject or its persisted wire entries; its own resolve
+     * builds the wiring from scratch, independent of anything the old session
+     * wrote to disk.
+     */
+    @Test
+    @DisplayName("a restarted service starts FRESH — wire entries rebuilt, never inherited")
+    void restartStartsFreshNeverInheritsWireEntries() throws Exception {
+        JdtServiceImpl first = helper.loadWorkspaceCopy("pde-bundle-a", "pde-bundle-b");
+        LoadedProject a1 = byFixture(first, "pde-bundle-a");
+        assertEquals(1, projectEntries(a1.javaProject()).size(), "session 1 wired");
+        Path aDir = a1.projectRoot();
+        Path bDir = byFixture(first, "pde-bundle-b").projectRoot();
+        // NO dispose — a real restart leaves the old session's projects and
+        // their persisted .classpath (wire entries included) behind on disk.
+
+        JdtServiceImpl second = new JdtServiceImpl();
+        try {
+            second.loadProject(aDir);
+            LoadedProject a2 = second.addProject(bDir) != null
+                ? byFixture(second, "pde-bundle-a") : null;
+            List<IClasspathEntry> wire = projectEntries(a2.javaProject());
+            assertEquals(1, wire.size(),
+                "session 2 resolves the same workspace correctly on its own: " + wire);
+            assertTrue(wire.get(0).getPath().toString().contains("pde-bundle-b"),
+                "wired to session 2's OWN b project — persisted session-1 entries were "
+                    + "not adopted, not doubled: " + wire);
+        } finally {
+            second.dispose();
+        }
     }
 
     /**

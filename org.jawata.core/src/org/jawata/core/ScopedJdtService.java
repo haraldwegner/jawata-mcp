@@ -260,4 +260,9 @@ public class ScopedJdtService implements IJdtService {
     public Optional<Long> wasRecentlyDropped(String projectKey) {
         return delegate.wasRecentlyDropped(projectKey);
     }
+
+    @Override
+    public void reresolveWorkspace() {
+        delegate.reresolveWorkspace();
+    }
 }

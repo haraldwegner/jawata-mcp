@@ -37,7 +37,7 @@ public record UnresolvedRequirement(String kind, String name, String reason) {
     /** A PDE {@code Import-Package} no indexed bundle exports. */
     public static UnresolvedRequirement importPackage(String packageName) {
         return new UnresolvedRequirement("Import-Package", packageName,
-            "no jar in the external bundle pools exports this package");
+            "no workspace project and no jar in the external bundle pools exports this package");
     }
 
     /** A JDT JUnit-container bundle missing from the pools. */

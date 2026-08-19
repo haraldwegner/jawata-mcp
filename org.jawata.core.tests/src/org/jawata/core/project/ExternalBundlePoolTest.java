@@ -26,7 +26,7 @@ class ExternalBundlePoolTest {
     @Test
     @DisplayName("splitTopLevel honours quoted commas (uses/version-range attributes)")
     void splitTopLevel_quotedCommas() {
-        List<String> parts = ExternalBundlePool.splitTopLevel(
+        List<String> parts = org.jawata.core.resolve.OsgiHeaders.splitTopLevel(
             "org.foo;uses:=\"a.b,c.d\";version=\"1.0\",org.bar;version=\"[1.0,2.0)\",org.baz");
         assertEquals(3, parts.size(), "got: " + parts);
         assertTrue(parts.get(0).startsWith("org.foo"), "got: " + parts);
@@ -57,11 +57,12 @@ class ExternalBundlePoolTest {
         assertEquals("libx-2.3.0.jar",
             indexed.bundleJar("org.example.libx").orElseThrow().getFileName().toString(),
             "highest version must win");
-        assertEquals("liby-1.0.0.jar",
-            indexed.packageProvider("org.example.liby.spi").orElseThrow().getFileName().toString(),
-            "exported package (with quoted uses) must map to its jar");
+        assertTrue(indexed.poolBundles().stream()
+                .filter(b -> b.jar().getFileName().toString().equals("liby-1.0.0.jar"))
+                .anyMatch(b -> b.facts().exportedPackages().contains("org.example.liby.spi")),
+            "exported package (with quoted uses) must be read into the jar's facts — "
+                + "package SELECTION is the resolver's job since 12.2");
         assertTrue(indexed.bundleJar("org.example.absent").isEmpty());
-        assertTrue(indexed.packageProvider("no.such.pkg").isEmpty());
     }
 
     private static void writeBundleJar(Path jar, String symbolicName, String version,

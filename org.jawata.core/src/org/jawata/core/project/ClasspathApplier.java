@@ -72,7 +72,7 @@ public final class ClasspathApplier {
      * @param occupiedProjects  project paths already present
      */
     public static WireResult computeWire(PlatformResolver.Wiring wiring,
-            BundleFacts facts,
+            ExternalBundlePool pool,
             List<String> junitBundles,
             Function<String, Optional<IJavaProject>> workspaceProjects,
             Set<IPath> occupiedLibs,
@@ -82,10 +82,14 @@ public final class ClasspathApplier {
         Set<IPath> libs = new HashSet<>(occupiedLibs);
         Set<IPath> projects = new HashSet<>(occupiedProjects);
 
-        // 1. Workspace providers, in the resolver's order.
+        // Providers in the resolver's order — workspace projects rendered
+        // inline, jar providers collected and rendered AFTER the JUnit
+        // bundles (the pre-12.2 entry order, which the goldens pin).
+        List<PlatformResolver.Provider> jarProviders = new ArrayList<>();
         for (PlatformResolver.Provider provider : wiring.providers()) {
             if (provider.workspaceBundle().isEmpty()) {
-                continue; // jar providers arrive at 12.2, through the resolver
+                jarProviders.add(provider);
+                continue;
             }
             Optional<IJavaProject> sibling =
                 workspaceProjects.apply(provider.workspaceBundle().get());
@@ -105,66 +109,43 @@ public final class ClasspathApplier {
             }
         }
 
-        // 2. The POOL fallback — pre-pipeline code, verbatim (see class doc).
-        List<String> unresolvedRequires = wiring.unresolved().stream()
-            .filter(u -> "Require-Bundle".equals(u.kind()))
-            .map(PlatformResolver.UnresolvedReport::name)
-            .toList();
-        List<String> importedPackages = facts.importedPackages();
-        if (!unresolvedRequires.isEmpty() || !importedPackages.isEmpty() || !junitBundles.isEmpty()) {
-            ExternalBundlePool pool = ExternalBundlePool.index(ExternalBundlePool.defaultPoolDirs());
-            int external = 0;
+        // Sprint 28 (mcp#3): the JDT JUnit container — a synthetic project
+        // has no containers, so JUnit annotations did not resolve and
+        // find_tests reported ZERO test classes in a tree with three test
+        // source folders.
+        for (String symbolicName : junitBundles) {
+            Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
+            if (jar.isPresent()) {
+                IPath eclipsePath = new Path(jar.get().toString());
+                if (libs.add(eclipsePath)) {
+                    entries.add(wireLibrary(eclipsePath, false));
+                }
+            } else {
+                log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
+                        symbolicName);
+                unresolved.add(UnresolvedRequirement.junitContainer(symbolicName));
+            }
+        }
 
-            // Sprint 28 (mcp#3): the JDT JUnit container — a synthetic project
-            // has no containers, so JUnit annotations did not resolve and
-            // find_tests reported ZERO test classes in a tree with three test
-            // source folders.
-            for (String symbolicName : junitBundles) {
-                Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
-                if (jar.isPresent()) {
-                    IPath eclipsePath = new Path(jar.get().toString());
-                    if (libs.add(eclipsePath)) {
-                        entries.add(wireLibrary(eclipsePath, false));
-                        external++;
-                    }
-                } else {
-                    log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
-                            symbolicName);
-                    unresolved.add(UnresolvedRequirement.junitContainer(symbolicName));
-                }
+        // Jar providers from the resolver — Require-Bundle, Import-Package,
+        // re-export closure and platform-matched fragments alike (12.2: the
+        // pool-fallback that used to live HERE dissolved into the resolver).
+        // exported=true: a required bundle's classes are part of this
+        // project's runtime surface for dependents.
+        for (PlatformResolver.Provider provider : jarProviders) {
+            IPath eclipsePath = new Path(provider.jar().orElseThrow().toString());
+            if (libs.add(eclipsePath)) {
+                entries.add(wireLibrary(eclipsePath, true));
             }
-            for (String required : unresolvedRequires) {
-                Optional<java.nio.file.Path> jar = pool.bundleJar(required);
-                if (jar.isPresent()) {
-                    IPath eclipsePath = new Path(jar.get().toString());
-                    if (libs.add(eclipsePath)) {
-                        // exported=true: a required bundle's classes are part of
-                        // this project's runtime surface for dependents.
-                        entries.add(wireLibrary(eclipsePath, true));
-                        external++;
-                    }
-                } else {
-                    log.debug("Require-Bundle '{}' not found in workspace or external pools; skipping",
-                            required);
-                    unresolved.add(UnresolvedRequirement.requireBundle(required));
-                }
-            }
-            for (String pkg : importedPackages) {
-                Optional<java.nio.file.Path> jar = pool.packageProvider(pkg);
-                if (jar.isPresent()) {
-                    IPath eclipsePath = new Path(jar.get().toString());
-                    if (libs.add(eclipsePath)) {
-                        entries.add(wireLibrary(eclipsePath, true));
-                        external++;
-                    }
-                } else {
-                    log.debug("Import-Package '{}' has no provider in the external pools; skipping", pkg);
-                    unresolved.add(UnresolvedRequirement.importPackage(pkg));
-                }
-            }
-            if (external > 0) {
-                log.debug("Resolved {} PDE requirement(s) from the external bundle pools", external);
-            }
+        }
+
+        // The resolver's misses. Import-Package has ONE miss shape, so it
+        // routes through the canonical factory (kind string + reason live in
+        // one place); Require-Bundle reasons vary per case and travel verbatim.
+        for (PlatformResolver.UnresolvedReport report : wiring.unresolved()) {
+            unresolved.add("Import-Package".equals(report.kind())
+                ? UnresolvedRequirement.importPackage(report.name())
+                : new UnresolvedRequirement(report.kind(), report.name(), report.reason()));
         }
         return new WireResult(List.copyOf(entries), List.copyOf(unresolved));
     }
