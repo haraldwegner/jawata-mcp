@@ -97,6 +97,31 @@ public final class ClasspathApplier {
         Set<IPath> libs = new HashSet<>(occupiedLibs);
         Set<IPath> projects = new HashSet<>(occupiedProjects);
 
+        // Sprint 28 (mcp#3): the JDT JUnit container — a synthetic project
+        // has no containers, so JUnit annotations did not resolve and
+        // find_tests reported ZERO test classes in a tree with three test
+        // source folders.
+        //
+        // Rendered FIRST in the wire tail (C13.2's live finding): the test
+        // framework the .classpath explicitly asks for must outrank whatever
+        // a sibling bundle happens to (re-)export — com.jats2.libs' exported
+        // junit-4.5.jar arrived through a PRJ entry ahead of the container's
+        // org.junit 4.13.2 and shadowed assertNotEquals. Eclipse's own
+        // container wins the same way, by order.
+        for (String symbolicName : junitBundles) {
+            Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
+            if (jar.isPresent()) {
+                IPath eclipsePath = new Path(jar.get().toString());
+                if (libs.add(eclipsePath)) {
+                    entries.add(wireLibrary(eclipsePath, false));
+                }
+            } else {
+                log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
+                        symbolicName);
+                unresolved.add(UnresolvedRequirement.junitContainer(symbolicName));
+            }
+        }
+
         // Providers in the resolver's order — workspace projects rendered
         // inline, jar providers collected and rendered AFTER the JUnit
         // bundles (the pre-12.2 entry order, which the goldens pin).
@@ -121,24 +146,6 @@ public final class ClasspathApplier {
                     new IClasspathAttribute[] {
                         JavaCore.newClasspathAttribute(WIRE_ATTRIBUTE, "true") },
                     false));
-            }
-        }
-
-        // Sprint 28 (mcp#3): the JDT JUnit container — a synthetic project
-        // has no containers, so JUnit annotations did not resolve and
-        // find_tests reported ZERO test classes in a tree with three test
-        // source folders.
-        for (String symbolicName : junitBundles) {
-            Optional<java.nio.file.Path> jar = pool.bundleJar(symbolicName);
-            if (jar.isPresent()) {
-                IPath eclipsePath = new Path(jar.get().toString());
-                if (libs.add(eclipsePath)) {
-                    entries.add(wireLibrary(eclipsePath, false));
-                }
-            } else {
-                log.debug("JUnit container bundle '{}' not found in the external pools; skipping",
-                        symbolicName);
-                unresolved.add(UnresolvedRequirement.junitContainer(symbolicName));
             }
         }
 
