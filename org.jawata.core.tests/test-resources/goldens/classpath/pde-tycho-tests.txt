@@ -1,0 +1,4 @@
+== pde-tycho-tests
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-tycho-tests-HASH/src-0-src
+unresolved=0

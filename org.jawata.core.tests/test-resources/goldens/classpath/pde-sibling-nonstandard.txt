@@ -1,0 +1,10 @@
+== pde-nonstandard-layout
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-nonstandard-layout-HASH/src-0-src
+SRC /jawata-pde-nonstandard-layout-HASH/src-1-test
+PRJ /jawata-pde-sibling-HASH
+unresolved=0
+== pde-sibling
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-sibling-HASH/src-0-src
+unresolved=0

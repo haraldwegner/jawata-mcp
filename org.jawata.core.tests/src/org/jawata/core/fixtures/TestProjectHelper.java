@@ -152,6 +152,35 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
     }
 
     /**
+     * Load multiple fixtures into a shared multi-project workspace, each
+     * copied to its own temp directory so the original fixtures stay clean.
+     *
+     * <p>Ported from the mcp-side helper (Stage 11.0): core tests used to
+     * hand-roll multi-project loads against the ORIGINAL fixture directories
+     * ({@code helper.loadProject("pde-bundle-b"); service.addProject(
+     * helper.getFixturePath("pde-bundle-a"))}), which both leaked linked
+     * projects onto shared fixture dirs and hard-coded a load ORDER — the
+     * exact variable the workspace-resolve stages exist to remove.</p>
+     *
+     * @param fixtureNames One or more fixture names (e.g. {@code "pde-bundle-a"})
+     * @return Configured JdtServiceImpl with every fixture added as a project
+     * @throws IllegalArgumentException if no fixture names are passed
+     * @throws CoreException if any project fails to register
+     * @throws IOException   if any fixture copy fails
+     */
+    public JdtServiceImpl loadWorkspaceCopy(String... fixtureNames) throws CoreException, IOException {
+        if (fixtureNames == null || fixtureNames.length == 0) {
+            throw new IllegalArgumentException("at least one fixture name is required");
+        }
+        loadedService = new JdtServiceImpl();
+        for (String name : fixtureNames) {
+            Path projectPath = copyFixture(name);
+            loadedService.addProject(projectPath);
+        }
+        return loadedService;
+    }
+
+    /**
      * Get the temporary directory for this test.
      *
      * @return Temporary directory path

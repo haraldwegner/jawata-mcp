@@ -1,0 +1,5 @@
+== maven-custom-testdir
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-maven-custom-testdir-HASH/src-0-code-src
+SRC /jawata-maven-custom-testdir-HASH/src-1-tests-src
+unresolved=0

@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: PDE Reexport B
+Bundle-SymbolicName: org.jawata.fixture.re.b
+Bundle-Version: 1.0.0
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Require-Bundle: org.jawata.fixture.re.c;visibility:=reexport
+Export-Package: com.example.reb

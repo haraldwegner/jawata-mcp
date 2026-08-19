@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: PDE Cycle A
+Bundle-SymbolicName: org.jawata.fixture.cycle.a
+Bundle-Version: 1.0.0
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Require-Bundle: org.jawata.fixture.cycle.b
+Export-Package: com.example.cyclea

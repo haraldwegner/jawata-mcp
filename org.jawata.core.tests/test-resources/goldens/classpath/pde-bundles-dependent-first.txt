@@ -1,0 +1,9 @@
+== pde-bundle-a
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-bundle-a-HASH/src-0-src
+LIB ${DIST}/org.eclipse.osgi-3.24.200.jar exported
+unresolved=1
+== pde-bundle-b
+CON org.eclipse.jdt.launching.JRE_CONTAINER
+SRC /jawata-pde-bundle-b-HASH/src-0-src
+unresolved=0
