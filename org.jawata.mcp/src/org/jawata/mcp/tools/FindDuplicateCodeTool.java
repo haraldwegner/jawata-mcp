@@ -1,6 +1,15 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
@@ -12,21 +21,11 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.TokenShape;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 14 Phase B.3 (v1.8.0) — {@code find_duplicate_code}: scan every
@@ -310,27 +309,11 @@ public class FindDuplicateCodeTool extends AbstractTool {
             // Sprint 14b: deterministic id — hash of the normalized token
             // sequence, so the same clone shape yields the same id across
             // calls and replace_duplicates can re-resolve it statelessly.
-            group.put("groupId", groupIdOf(entry.getKey()));
+            group.put("groupId", TokenShape.groupIdOf(entry.getKey()));
             group.put("instances", instances);
             groups.add(group);
         }
         return groups;
-    }
-
-    /** Stable id for a clone shape: SHA-1 of the normalized token sequence. */
-    static String groupIdOf(String normalizedSeq) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-1");
-            byte[] hash = digest.digest(normalizedSeq.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < 6 && i < hash.length; i++) {
-                hex.append(String.format("%02x", hash[i]));
-            }
-            return hex.toString();
-        } catch (java.security.NoSuchAlgorithmException e) {
-            // SHA-1 is mandatory on every JRE; fall back to a plain hash.
-            return Integer.toHexString(normalizedSeq.hashCode());
-        }
     }
 
     /**
@@ -491,7 +474,7 @@ public class FindDuplicateCodeTool extends AbstractTool {
             String source = method.getSource();
             if (source == null || source.isBlank()) return null;
             StringBuilder seq = new StringBuilder();
-            int tokenCount = countAndNormalize(source.toCharArray(), seq);
+            int tokenCount = TokenShape.countAndNormalize(source.toCharArray(), seq);
             if (tokenCount == 0) return null;
 
             MethodFingerprint fp = new MethodFingerprint();
@@ -534,144 +517,6 @@ public class FindDuplicateCodeTool extends AbstractTool {
         } catch (Exception ignore) {
             return 0;
         }
-    }
-
-    private static final Pattern TOKEN_PATTERN = Pattern.compile(
-        "\"(?:\\\\.|[^\"\\\\])*\"" +                                            // string literal
-        "|'(?:\\\\.|[^'\\\\])*'" +                                              // char literal
-        "|\\d+\\.\\d+(?:[eE][+-]?\\d+)?[fFdD]?|\\.\\d+(?:[eE][+-]?\\d+)?[fFdD]?" + // float literal
-        "|\\d+[eE][+-]?\\d+[fFdD]?" +                                           // float scientific without dot
-        "|\\d+[lL]?" +                                                          // int / long literal
-        "|[a-zA-Z_$][a-zA-Z0-9_$]*" +                                           // identifier / keyword
-        "|<<=|>>>=|>>=|<<|>>>|>>|<=|>=|==|!=|&&|\\|\\||\\+\\+|--|->|::" +       // multi-char operators
-        "|[+\\-*/%&|^~?:;,(){}\\[\\]<>=!.@]"                                    // single-char operators/punctuation
-    );
-
-    private static final Set<String> JAVA_KEYWORDS = Set.of(
-        "abstract", "assert", "boolean", "break", "byte", "case", "catch",
-        "char", "class", "const", "continue", "default", "do", "double",
-        "else", "enum", "extends", "final", "finally", "float", "for",
-        "goto", "if", "implements", "import", "instanceof", "int",
-        "interface", "long", "native", "new", "package", "private",
-        "protected", "public", "return", "short", "static", "strictfp",
-        "super", "switch", "synchronized", "this", "throw", "throws",
-        "transient", "try", "void", "volatile", "while",
-        "var", "yield", "record", "sealed", "permits"
-        // "non-sealed" is hyphenated; handled by the operator branch via "-" between two ID tokens.
-    );
-
-    /**
-     * Regex-based tokenizer. JDT's {@code IScanner} would be ideal but is in
-     * {@code org.eclipse.jdt.core.compiler}, which the headless Tycho test
-     * runtime fails to resolve at OSGi load — Sprint 14 Stage 10 noted this
-     * during integration. Regex tokenization is portable, fast enough, and
-     * sufficient for clone detection (the normalization step throws away
-     * exactness anyway).
-     */
-    private static int countAndNormalize(char[] source, StringBuilder seq) {
-        String src = collapseNoise(new String(source));
-        Matcher m = TOKEN_PATTERN.matcher(src);
-        int count = 0;
-        while (m.find()) {
-            String tok = m.group();
-            String norm = normalize(tok);
-            if (norm == null) continue;
-            if (seq.length() > 0) seq.append(' ');
-            seq.append(norm);
-            count++;
-        }
-        return count;
-    }
-
-    /**
-     * v2.7.1 — linear single-pass scanner: drops comments and collapses
-     * string / char / text-block literals to short placeholders BEFORE the
-     * regex tokenizer runs.
-     *
-     * <p>Why not regex: the tokenizer's quantified-alternation literal
-     * branches ({@code "(?:\\.|[^"\\])*"}) burn one backtracking frame per
-     * matched char — a string literal past ~2k chars overflows the stack.
-     * {@link StackOverflowError} is an {@link Error}, so it sailed past every
-     * {@code catch (Exception)} and killed the transport worker (dogfood find
-     * 2026-07-10: jawata-mcp's own tool descriptions are text blocks far past
-     * the threshold — self-scan dropped the socket). A hand scan is O(n) with
-     * zero recursion, and also lexes text blocks correctly, which the old
-     * regex mis-read as an empty string plus a dangling quote.</p>
-     */
-    static String collapseNoise(String src) {
-        StringBuilder out = new StringBuilder(src.length());
-        int i = 0;
-        final int n = src.length();
-        while (i < n) {
-            char c = src.charAt(i);
-            if (c == '/' && i + 1 < n && src.charAt(i + 1) == '/') {
-                // line comment — drop to EOL
-                while (i < n && src.charAt(i) != '\n') i++;
-                out.append(' ');
-            } else if (c == '/' && i + 1 < n && src.charAt(i + 1) == '*') {
-                // block comment / Javadoc — drop to */
-                i += 2;
-                while (i + 1 < n && !(src.charAt(i) == '*' && src.charAt(i + 1) == '/')) i++;
-                i = Math.min(i + 2, n);
-                out.append(' ');
-            } else if (c == '"' && i + 2 < n
-                    && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"') {
-                // text block — collapse to a short string placeholder
-                i += 3;
-                while (i + 2 < n && !(src.charAt(i) == '"'
-                        && src.charAt(i + 1) == '"' && src.charAt(i + 2) == '"')) {
-                    if (src.charAt(i) == '\\') i++;
-                    i++;
-                }
-                i = Math.min(i + 3, n);
-                out.append("\"S\"");
-            } else if (c == '"') {
-                // string literal — collapse (escape-aware)
-                i++;
-                while (i < n && src.charAt(i) != '"') {
-                    if (src.charAt(i) == '\\') i++;
-                    i++;
-                }
-                i = Math.min(i + 1, n);
-                out.append("\"S\"");
-            } else if (c == '\'') {
-                // char literal — collapse (escape-aware)
-                i++;
-                while (i < n && src.charAt(i) != '\'') {
-                    if (src.charAt(i) == '\\') i++;
-                    i++;
-                }
-                i = Math.min(i + 1, n);
-                out.append("'c'");
-            } else {
-                out.append(c);
-                i++;
-            }
-        }
-        return out.toString();
-    }
-
-    private static String normalize(String token) {
-        if (token.isEmpty()) return null;
-        char first = token.charAt(0);
-        if (first == '"') return "STR";
-        if (first == '\'') return "CHAR";
-        if (Character.isDigit(first) || (first == '.' && token.length() > 1 && Character.isDigit(token.charAt(1)))) {
-            char last = token.charAt(token.length() - 1);
-            if (token.contains(".") || token.contains("e") || token.contains("E")
-                || last == 'f' || last == 'F' || last == 'd' || last == 'D') {
-                return "FLT";
-            }
-            return "INT";
-        }
-        if (Character.isJavaIdentifierStart(first)) {
-            if ("null".equals(token)) return "NULL";
-            if ("true".equals(token) || "false".equals(token)) return "BOOL";
-            if (JAVA_KEYWORDS.contains(token)) return token;
-            return "ID";
-        }
-        // Operator / punctuation: keep verbatim
-        return token;
     }
 
     /** Package-visible so replace_duplicates can reuse the detection pool. */

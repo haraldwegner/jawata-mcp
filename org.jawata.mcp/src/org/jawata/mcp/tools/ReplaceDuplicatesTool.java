@@ -14,6 +14,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.FindDuplicateCodeTool.MethodFingerprint;
+import org.jawata.mcp.tools.shared.TokenShape;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -135,7 +136,7 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool {
         List<MethodFingerprint> bucket = null;
         for (Map.Entry<String, List<MethodFingerprint>> entry : pool.entrySet()) {
             if (entry.getValue().size() >= 2
-                    && FindDuplicateCodeTool.groupIdOf(entry.getKey()).equals(cloneGroupId)) {
+                    && TokenShape.groupIdOf(entry.getKey()).equals(cloneGroupId)) {
                 bucket = entry.getValue();
                 break;
             }
