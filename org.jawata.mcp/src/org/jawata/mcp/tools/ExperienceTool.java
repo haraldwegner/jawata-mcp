@@ -60,7 +60,7 @@ public final class ExperienceTool implements Tool {
         this(serviceSupplier, store, List::of);
     }
 
-    /**
+/**
      * Sprint 27 D6: install measurement. The ledger is handed to the retrieval
      * this tool owns as well, so the recall surfaces count without the caller
      * having to know they exist.
@@ -226,7 +226,8 @@ public final class ExperienceTool implements Tool {
             "description", "reseed: REQUIRED true (wipes first). dedup: true = merge the groups."));
         props.put("days", Map.of("type", "integer",
             "description", "prune: age threshold in days for rejected/superseded (default 30)."));
-        props.put("id", Map.of("type", "string", "description", "promote: the entry id to re-status."));
+        props.put("id", Map.of("type", "string", "description",
+            "promote: the entry id to re-status."));
         props.put("limit", Map.of("type", "integer",
             "description", "primer: max domain nodes (default 20); list: max rows (default 50)."));
         props.put("format", Map.of("type", "string", "enum", List.of("json", "text"),
@@ -244,6 +245,35 @@ public final class ExperienceTool implements Tool {
             + " (a heading-shaped summary is refused)."));
         props.put("confidence", Map.of("type", "string", "enum", List.of("low", "medium", "high"),
             "description", "record: default medium."));
+        // Sprint 28c (D3) — the experience form. REQUIRED for lesson and
+        // failure_mode, because for those the situation and the outcome ARE the
+        // knowledge; optional for a domain fact, an api_contract or a naming
+        // convention, which are retrieved by their anchor and did not turn out
+        // any way at all.
+        props.put("situation", Map.of("type", "string", "description",
+            "record: WHEN this applies, as a condition in words — \"when amending an order that"
+            + " is already partially filled\". Never a package or a symbol: a location matches"
+            + " everything inside it and distinguishes nothing. REQUIRED for lesson and"
+            + " failure_mode."));
+        // The enum is DERIVED from the gate's own set, never re-typed here: a
+        // second copy of a closed vocabulary drifts from the first with no test
+        // noticing, which is the exact drift EntryForm's javadoc condemns about
+        // AdmissionPolicy. Sorted so the served schema is stable across runs
+        // (Set.of has no iteration order).
+        props.put("verdict", Map.of("type", "string",
+            "enum", org.jawata.mcp.knowledge.EntryForm.VERDICTS.stream().sorted().toList(),
+            "description", "record: how it turned out. REQUIRED for lesson and failure_mode —"
+            + " for those the outcome IS the lesson. Use 'unproven' when it genuinely has not"
+            + " been settled; that is an answer, and inventing a verdict is not."));
+        props.put("situation_scope", Map.of("type", "string",
+            "enum", List.of("conditional", "always"),
+            "description", "record: 'conditional' (default — matched per call) or 'always'"
+            + " (a workspace-wide rule, injected once per session rather than per call)."));
+        props.put("capability", Map.of("type", "string",
+            "enum", List.of("advisory", "performable"),
+            "description", "record: whether jawata can PERFORM this or only advise it. Must match"
+            + " actual capability — never label a pattern performable ahead of the tool that"
+            + " performs it."));
         props.put("symbol", Map.of("type", "string",
             "description", "record: anchor FQN (mutually exclusive with packages/symbols)."));
         props.put("language", Map.of("type", "string",
@@ -729,8 +759,17 @@ public final class ExperienceTool implements Tool {
         // teaching redirect, at the one call every agent uses. New writes only;
         // importEntries/restore round-trip untouched. Patterns: AdmissionPolicy
         // (derived from the observed misplaced content — dossier-27a).
-        var admission = org.jawata.mcp.knowledge.AdmissionPolicy.check(
-            summary, strings(args, "symptoms"));
+        //
+        // Sprint 28c (D3) — the FORM gate now composes that check and adds the
+        // experience requirements on top. It is deliberately type-aware: a
+        // lesson owes a situation and an outcome, because the outcome IS the
+        // lesson; a domain fact owes neither, and demanding one would teach
+        // authors to attach verdicts they never earned (Harald, 2026-08-21:
+        // "you cannot just form everything upfront into lessons").
+        String situation = text(args, "situation");
+        String verdict = text(args, "verdict");
+        var admission = org.jawata.mcp.knowledge.EntryForm.check(
+            type, summary, strings(args, "symptoms"), situation, verdict);
         if (admission.isPresent()) {
             return ToolResponse.invalidParameter(
                 admission.get().field(), admission.get().message());
@@ -761,7 +800,18 @@ public final class ExperienceTool implements Tool {
             .symptoms(strings(args, "symptoms"))
             .faultOwner(text(args, "fault_owner"))
             .externalSystem(text(args, "external_system"))
-            .language(text(args, "language"));
+            .language(text(args, "language"))
+            // Sprint 28c (D3): the facets the gate just validated. `form` is
+            // stamped by the ENGINE, not accepted from the caller — it records
+            // whether the entry arrived in the 28c shape, and a caller that
+            // could set it could claim a shape it does not have. An entry with
+            // a situation is form 1; anything else stays unclassified, which is
+            // exactly what distinguishes it from a migrated legacy row.
+            .situation(situation)
+            .situationScope(text(args, "situation_scope"))
+            .verdict(verdict)
+            .provenanceKind("recorded")
+            .form(org.jawata.mcp.knowledge.EntryForm.formOf(situation));
         if (args != null && args.has("links") && args.get("links").isArray()) {
             for (JsonNode l : args.get("links")) {
                 String rel = l.path("rel").asText(null);
@@ -771,6 +821,7 @@ public final class ExperienceTool implements Tool {
                 }
             }
         }
+
 
         ExperienceEntry entry = eb.build();
         String id = store.put(entry);

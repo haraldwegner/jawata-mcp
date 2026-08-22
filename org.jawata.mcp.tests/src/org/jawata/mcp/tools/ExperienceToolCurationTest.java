@@ -59,6 +59,12 @@ class ExperienceToolCurationTest {
         if (symptom != null) {
             a.putArray("symptoms").add(symptom);
         }
+        // Sprint 28c: every call below records a lesson or a failure_mode, both
+        // EXPERIENCES, which owe the situation they arose in and how they turned
+        // out. Supplied here rather than the gate relaxed — this class is about
+        // export/import/list, and none of its assertions read these two fields.
+        a.put("situation", "when a scheduled task overlaps the previous run");
+        a.put("verdict", "worked");
         return (String) data(tool.execute(a)).get("id");
     }
 

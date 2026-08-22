@@ -265,6 +265,25 @@ public final class ExperienceRetrieval {
             return out;
         }
 
+        // Sprint 28c: an `always`-scoped entry belongs to the primer, which
+        // pushes it ONCE at session start — so it is dropped from the per-call
+        // answer here. Left in, it would match every cue by construction and
+        // spend, on every single call, budget that belongs to the entries the
+        // cue actually selected: the broadest knowledge in the store would also
+        // be its loudest, which is the crowding the v3.13.0 dogfood found.
+        //
+        // Dropped only when something else fits. An `always` entry is real
+        // knowledge, and answering "nothing" while holding it would be
+        // manufacturing an absence — the one failure this file exists to
+        // prevent.
+        if (fitting.size() > 1) {
+            List<StoredEntry> conditional = new ArrayList<>(fitting);
+            conditional.removeIf(e -> e.facets().isAlways());
+            if (!conditional.isEmpty()) {
+                fitting = conditional;
+            }
+        }
+
         // Sprint 21c (item B): the section IS the fact — when a section and its
         // file-parent both fit (same source_ref), drop the PARENT bundle; recall
         // answers with the fact and injection pays only the fact's tokens. Sibling
@@ -744,7 +763,14 @@ public final class ExperienceRetrieval {
             String type = e.type() == null ? "" : e.type().toLowerCase(Locale.ROOT);
             Object sk = e.body().get("scope_kind");
             String scopeKind = sk == null ? "" : sk.toString().toLowerCase(Locale.ROOT);
-            if (DOMAIN_TYPES.contains(type) || DOMAIN_SCOPES.contains(scopeKind)) {
+            // Sprint 28c: an entry whose situation_scope is `always` says it
+            // applies to every call in the session, not under a condition — so
+            // it belongs to the ALWAYS-ON layer the primer pushes once, and NOT
+            // to the per-call cue path where it would fire on everything and
+            // spend the budget an answer has. The type-based rule stays: this
+            // widens the primer's population, it does not replace it.
+            if (DOMAIN_TYPES.contains(type) || DOMAIN_SCOPES.contains(scopeKind)
+                    || e.facets().isAlways()) {
                 domain.add(e);
             }
         }
@@ -880,12 +906,46 @@ public final class ExperienceRetrieval {
         return sb.toString();
     }
 
+    /**
+     * The line writes "when X", and authors are TOLD to phrase a situation as
+     * "when …" — so the two together produce "when when …". Strip one, rather
+     * than dropping the word from the line (a situation with no marker reads as
+     * part of the summary) or dropping it from the guidance (the phrasing is
+     * what keeps a situation a condition instead of a topic).
+     */
+    private static String stripLeadingWhen(String situation) {
+        String s = situation.strip();
+        return s.regionMatches(true, 0, "when ", 0, 5) ? s.substring(5).strip() : s;
+    }
+
     static String renderEntryLine(Map<String, Object> e) {
         StringBuilder sb = new StringBuilder();
         sb.append('[').append(san(e.get("type"))).append("] ").append(san(e.get("summary")));
         Object status = e.get("status");
         if (status != null) {
             sb.append(" (").append(san(status)).append(')');
+        }
+        // Sprint 28c: a form-1 entry states WHEN it applies and HOW it turned
+        // out, on the line the hooks already pass through — no second surface.
+        // The situation comes FIRST because it is what lets a reader decide the
+        // entry is relevant at all; a summary alone can only be judged by
+        // resemblance, which is the failure this sprint is about.
+        //
+        // Both go through san(), like every other field here: the line contract
+        // is one line, and a stored newline would otherwise split one entry into
+        // two and hand the second half to a reader as if it were an entry.
+        Object situation = e.get("situation");
+        if (situation != null) {
+            sb.append(" · when ").append(stripLeadingWhen(san(situation)));
+        }
+        Object verdict = e.get("verdict");
+        if (verdict != null) {
+            sb.append(" · ").append(san(verdict));
+        }
+        if (Boolean.TRUE.equals(e.get("evidence_dead"))) {
+            // Said, not implied. The knowledge stands; what it was learned from
+            // is gone and nobody has ruled on it yet.
+            sb.append(" · evidence gone, not yet reviewed");
         }
         // Sprint 27 D4: for a seat run the dispatch facts REPLACE the raw
         // journal blob — a truncated JSON string is where the seat and the
@@ -895,10 +955,12 @@ public final class ExperienceRetrieval {
             return sb.append(" — ").append(renderDispatch(d)).toString();
         }
         Object details = e.get("details");
+        boolean elided = false;
         if (details != null) {
             String d = san(details);
             if (d.length() > 160) {
                 d = d.substring(0, 157) + "...";
+                elided = true;
             }
             sb.append(" — ").append(d);
         }
@@ -1055,6 +1117,27 @@ public final class ExperienceRetrieval {
         // statement about code unless it actually is one.
         KnowledgeKind kind = KnowledgeKind.of(e);
         m.put("kind", kind.isFact() ? "fact" : "experience");
+        // Sprint 28c: a form-1 entry says WHEN it applies and HOW it turned out,
+        // and both belong in the answer. Without the situation the reader cannot
+        // judge whether the entry is relevant to the call in front of them, and
+        // without the outcome they cannot tell a practice that worked from one
+        // that cost somebody a day — which is the difference between knowledge
+        // and a note. Only emitted when present: a fact owes neither, and an
+        // absent key is how this store says "unclassified" rather than
+        // manufacturing a default.
+        StoredEntry.Facets f = e.facets();
+        if (f.situation() != null && !f.situation().isBlank()) {
+            m.put("situation", f.situation());
+        }
+        if (f.verdict() != null && !f.verdict().isBlank()) {
+            m.put("verdict", f.verdict());
+        }
+        if (f.hasDeadEvidence()) {
+            // Said plainly rather than left for the reader to infer from a
+            // pointer that no longer resolves: the knowledge stands, the thing
+            // it was learned from is gone, and a human has not yet ruled.
+            m.put("evidence_dead", true);
+        }
         // Sprint 27 D4: a seat run reached by a scoped cue (operation="seat:x")
         // states the same dispatch facts the analogy path states — the facts
         // must not depend on WHICH nominator found the run.

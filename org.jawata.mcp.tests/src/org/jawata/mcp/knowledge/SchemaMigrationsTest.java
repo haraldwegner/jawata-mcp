@@ -118,6 +118,22 @@ class SchemaMigrationsTest {
         // Sprint 21b (v3): the skip-unchanged hash column exists on a fresh install.
         assertNull(scalar(dir, "SELECT source_hash FROM experience_entry WHERE id = '" + id + "'"),
             "plain put has no source hash (column exists, value null)");
+        // Sprint 28c (v10): the knowledge spine is present on a FRESH install too.
+        // Asserting only `version == LATEST` would pass with an entirely empty
+        // rung, because writeVersion runs unconditionally — and a fresh install
+        // is the majority case, so it is the worst one to leave uncovered.
+        for (String column : V10_COLUMNS) {
+            assertNull(scalar(dir, "SELECT " + column + " FROM experience_entry WHERE id = '" + id + "'"),
+                "v10 column " + column + " exists on a fresh store (value null for a plain put)");
+        }
+        // The inverse assertion, and it is the one that keeps the scope decision
+        // honest: a later edit that quietly re-adds excluded schema goes red here
+        // instead of shipping three tables nothing reads.
+        for (String table : V10_TABLES_NOT_CREATED) {
+            assertFalse(tableExists(dir, table),
+                table + " is NOT created by the rescue's v10 — the work it belongs to"
+                    + " is out of this sprint, and schema for excluded work is dead schema");
+        }
     }
 
     @Test
@@ -143,6 +159,130 @@ class SchemaMigrationsTest {
             assertTrue(files.anyMatch(p -> p.getFileName().toString().startsWith("experience-pre-migration-v1")),
                 "a real migration writes a backup first");
         }
+    }
+
+    /** True when the store has such a table — asked of INFORMATION_SCHEMA, so an
+     *  absent table is an answer rather than an exception. */
+    private static boolean tableExists(Path dir, String table) throws Exception {
+        return !"0".equals(scalar(dir,
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '"
+            + table.toUpperCase(java.util.Locale.ROOT) + "'"));
+    }
+
+    /** The columns v10 adds — named once, used by the tests below. */
+    private static final String[] V10_COLUMNS = {
+        "situation", "situation_scope", "verdict",
+        "provenance_kind", "form", "evidence_dead"
+    };
+
+    /**
+     * What v10 deliberately does NOT create, asserted so the scope decision is
+     * pinned rather than remembered.
+     *
+     * <p>An unreleased v10 on the abandoned branch {@code 784a43d} created these
+     * three tables for frozen snippets, embodiment links and an advice journal.
+     * None of that work is in this sprint, and shipping its schema anyway would
+     * put three empty tables in every store with nothing that ever reads them.
+     * If a later sprint wants them it adds a NEW rung — editing this one would
+     * reach fresh installs only, which is the mistake {@code migrateToV8}
+     * exists to document.</p>
+     */
+    private static final String[] V10_TABLES_NOT_CREATED = {
+        "experience_snippet", "experience_embodiment", "advice_event"
+    };
+
+    /**
+     * Rewind a migrated store to v9 by removing exactly what v10 added.
+     *
+     * <p>Hand-building a v9 schema would mean a second copy of nine rungs' worth
+     * of DDL, which drifts from the real ladder and quietly stops testing it.
+     * Migrating forward and stepping one rung back exercises the REAL v10 rung
+     * against a store the REAL ladder produced.</p>
+     */
+    private static void rewindToV9(Path dir) throws Exception {
+        try (Connection c = connect(dir); Statement s = c.createStatement()) {
+            for (String column : V10_COLUMNS) {
+                s.execute("ALTER TABLE experience_entry DROP COLUMN IF EXISTS " + column);
+            }
+            s.execute("UPDATE schema_version SET version = 9");
+        }
+    }
+
+    @Test
+    void a_v9_store_gains_the_knowledge_spine_and_keeps_every_entry(@TempDir Path dir)
+            throws Exception {
+        createV1Fixture(dir, "legacy-1");
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1L, store.count(), "precondition: the fixture row is there");
+        }
+        rewindToV9(dir);
+        assertEquals("9", scalar(dir, "SELECT version FROM schema_version"),
+            "precondition: the store is genuinely at v9 before the rung runs");
+
+        // Assert the REPORT, not just its consequences. Opening the store
+        // discards the map — H2ExperienceStore reads only `migrated` and logs
+        // the rest — so a test that migrates by opening can only infer from/to
+        // from the zip's filename and the resulting version. The report is the
+        // artifact the exit criterion names, and curation reads it, so it is
+        // asserted directly.
+        try (Connection c = connect(dir)) {
+            java.util.Map<String, Object> report =
+                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
+            assertEquals(9, report.get("from"), "the rung ran FROM v9");
+            assertEquals(10, report.get("to"), "and TO v10");
+            assertEquals(true, report.get("migrated"), "and it actually did something");
+        }
+
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1L, store.count(), "the pre-existing entry survives the rung");
+            assertTrue(store.get("legacy-1").isPresent(), "and is still readable");
+            assertEquals("a v2.0.0-era lesson", store.get("legacy-1").get().get("summary"),
+                "v10 is additive — it must not rewrite a single existing value");
+        }
+
+        assertEquals(String.valueOf(SchemaMigrations.LATEST),
+            scalar(dir, "SELECT version FROM schema_version"), "the store lands at LATEST");
+
+        for (String column : V10_COLUMNS) {
+            assertNull(
+                scalar(dir, "SELECT " + column + " FROM experience_entry WHERE id = 'legacy-1'"),
+                "a legacy row has no " + column + " — the column exists, the value is null. "
+                    + "form being null rather than 1 is what lets retrieval tell the legacy and "
+                    + "28c corpora apart without guessing.");
+        }
+        for (String table : V10_TABLES_NOT_CREATED) {
+            assertFalse(tableExists(dir, table),
+                table + " is NOT created when a v9 store migrates either");
+        }
+
+        try (Stream<Path> files = Files.list(dir.resolve("jawata-experience"))) {
+            assertTrue(
+                files.anyMatch(p -> p.getFileName().toString()
+                    .startsWith("experience-pre-migration-v9")),
+                "the ladder backs the file up BEFORE running a real migration — that zip is the "
+                    + "only thing between a bad rung and every experience in the store");
+        }
+    }
+
+    @Test
+    void the_situation_column_holds_the_widest_condition_the_corpus_actually_has(
+            @TempDir Path dir) throws Exception {
+        // D2 measured the applicability text of all 187 pattern READMEs: median 339
+        // characters, max 3,314 (abstract-document), four modules over 1024. The column
+        // is VARCHAR(4096) for that reason and not by preference — a silently truncated
+        // condition would match the WRONG situations, which is worse than a wide column.
+        createV1Fixture(dir, "legacy-1");
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1L, store.count());
+        }
+        String widest = "x".repeat(3314);
+        try (Connection c = connect(dir); Statement s = c.createStatement()) {
+            s.execute("UPDATE experience_entry SET situation = '" + widest
+                + "' WHERE id = 'legacy-1'");
+        }
+        assertEquals("3314",
+            scalar(dir, "SELECT LENGTH(situation) FROM experience_entry WHERE id = 'legacy-1'"),
+            "the widest condition the corpus actually contains must round-trip whole");
     }
 
     @Test

@@ -126,6 +126,11 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public boolean markEvidenceDead(String id) {
+        throw boom();
+    }
+
+    @Override
     public long count() {
         throw boom();
     }

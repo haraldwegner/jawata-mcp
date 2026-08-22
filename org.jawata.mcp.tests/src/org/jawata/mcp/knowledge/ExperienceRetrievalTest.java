@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,6 +51,174 @@ class ExperienceRetrievalTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> entries(Map<String, Object> result) {
         return (List<Map<String, Object>>) result.get("entries");
+    }
+
+    /**
+     * Sprint 28c: an `always`-scoped entry belongs to the ALWAYS-ON layer — the
+     * primer pushes it once at session start, and the per-call path leaves it
+     * alone. Asserted as BOTH halves in one test, because either alone permits
+     * the wrong answer: routing it to the primer while also matching every cue
+     * would double it, and dropping it from the cue path without adding it to
+     * the primer would lose it entirely.
+     */
+    @Test
+    void an_always_scoped_entry_reaches_the_primer_and_not_the_per_call_answer() {
+        String standing = store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "run the compile gate before calling a change done",
+                    Confidence.HIGH).symbol("com.example.orders.RetryLoop").build())
+            .status(ExperienceEntry.ACCEPTED)
+            .situation("whenever a change is about to be called done")
+            .situationScope("always")
+            .verdict("worked")
+            .form(1)
+            .build());
+        String conditional = putSymbol("lesson",
+            "re-read the queue head before re-arming the retry",
+            "com.example.orders.RetryLoop");
+
+        List<Map<String, Object>> hits = entries(retrieval.recall(
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+        assertTrue(ids(hits).contains(conditional), "the cue's own answer is returned");
+        assertFalse(ids(hits).contains(standing),
+            "and the standing rule is NOT repeated per call — it would match every cue"
+                + " by construction and spend the answer's budget: " + hits);
+
+        assertTrue(ids(entries(retrieval.primer(20, 0)))
+                .contains(standing),
+            "the primer is where it belongs, pushed once for the session");
+    }
+
+    /**
+     * The absence guard on that rule: when the standing entry is the ONLY thing
+     * that fits, it is returned. Answering "nothing" while holding knowledge
+     * would be manufacturing an absence — the failure this whole file exists to
+     * prevent.
+     */
+    @Test
+    void an_always_scoped_entry_is_still_answered_when_it_is_all_there_is() {
+        String only = store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "run the compile gate before calling a change done",
+                    Confidence.HIGH).symbol("com.example.orders.RetryLoop").build())
+            .status(ExperienceEntry.ACCEPTED)
+            .situation("whenever a change is about to be called done")
+            .situationScope("always")
+            .verdict("worked")
+            .form(1)
+            .build());
+
+        List<Map<String, Object>> hits = entries(retrieval.recall(
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+
+        assertTrue(ids(hits).contains(only),
+            "held knowledge is never withheld to keep a routing rule tidy: " + hits);
+    }
+
+    /**
+     * Sprint 28c: a form-1 entry's line states WHEN it applies and HOW it turned
+     * out — on the line the deployed hooks already pass through, not a new
+     * surface. Without the situation a reader can only judge the entry by
+     * resemblance, which is the failure this sprint is about.
+     */
+    @Test
+    void a_form_one_line_carries_its_situation_and_its_outcome() {
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "re-read the queue head before re-arming the retry",
+                    Confidence.HIGH).symbol("com.example.orders.RetryLoop").build())
+            .situation("when a consumer reconnects mid-batch")
+            .verdict("failed_avoid")
+            .form(1)
+            .build());
+
+        String text = ExperienceRetrieval.renderText(retrieval.recall(
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+
+        assertTrue(text.contains("when a consumer reconnects mid-batch"),
+            "the condition is on the line: " + text);
+        assertTrue(text.contains("failed_avoid"),
+            "and so is the outcome — a practice that worked and one that cost a day"
+                + " must not read alike: " + text);
+        assertFalse(text.contains("when when"),
+            "and the line's own 'when' does not double the author's: " + text);
+    }
+
+    /**
+     * A legacy entry's line is UNCHANGED. The form is additive: the hooks parse
+     * these lines, and a marker appearing on rows that carry no form would make
+     * every pre-28c entry look classified.
+     */
+    @Test
+    void a_legacy_line_gains_nothing() {
+        putSymbol("lesson", "the retry loop re-reads the queue head",
+            "com.example.orders.RetryLoop");
+
+        String text = ExperienceRetrieval.renderText(retrieval.recall(
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+
+        assertFalse(text.contains(" · when "),
+            "no situation marker on a row that has no situation: " + text);
+        assertFalse(text.contains("evidence gone"),
+            "and no evidence note on a row nobody has judged: " + text);
+    }
+
+    /**
+     * THE LINE CONTRACT: one entry is one line. A stored situation containing a
+     * newline would otherwise split an entry in two and hand the second half to
+     * the reader as though it were an entry of its own — which is how a
+     * sanitized carrier stops being sanitized.
+     */
+    @Test
+    void a_multiline_situation_cannot_split_the_line() {
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "re-read the queue head before re-arming the retry",
+                    Confidence.HIGH).symbol("com.example.orders.RetryLoop").build())
+            .situation("when a consumer reconnects\nmid-batch")
+            .verdict("worked")
+            .form(1)
+            .build());
+
+        String text = ExperienceRetrieval.renderText(retrieval.recall(
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+
+        assertEquals(1, text.split("\n").length,
+            "one entry, one line, whatever the stored text contains: " + text);
+    }
+
+    /**
+     * Sprint 28c, from the v3.13.0 dogfood: a recall anchored to a one-hour-old
+     * symbol came back led by two package-anchored rows about a sprint that had
+     * closed weeks earlier. The wider the anchor, the more often its entry
+     * surfaces — so the broadest rows in a store are also its loudest.
+     *
+     * <p>Pinned rather than changed: the ordering contract already leads with
+     * specificity, so a symbol-exact entry outranks a package one today. The
+     * finding asked for the rule to be held, and an unpinned rule is one
+     * refactor away from being an accident. Reverse the specificity comparator
+     * and this goes red.</p>
+     *
+     * <p>Note what is NOT claimed: the package row is still RETURNED. It is
+     * legitimately anchored to a package the symbol lives in, and dropping it
+     * would be inventing an absence. The defect the dogfood found is that such
+     * rows go stale and crowd — which is content, not order, and is Stage 9's
+     * disposition work.</p>
+     */
+    @Test
+    void a_package_anchored_entry_never_displaces_a_symbol_exact_one() {
+        String broad = putPackage("domain_fact",
+            "the ordering service keeps its own clock", "com.example.orders");
+        String exact = putSymbol("lesson",
+            "re-read the queue head before re-arming the retry",
+            "com.example.orders.RetryLoop");
+
+        List<Map<String, Object>> hits = entries(retrieval.recall(
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+
+        assertFalse(hits.isEmpty(), "the anchored cue finds something");
+        assertEquals(exact, hits.get(0).get("id"),
+            "the symbol-exact entry leads; a package row must not take the top slot"
+                + " just for being anchored more widely");
+        assertTrue(ids(hits).contains(broad),
+            "and the package row is still RETURNED — it is genuinely anchored to a"
+                + " package this symbol lives in, and dropping it would invent an absence");
     }
 
     /** Sprint 21c: a file-backed family member (parent or section) sharing a source_ref. */

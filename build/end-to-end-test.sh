@@ -164,6 +164,8 @@ fi
 # --- recall-by-meaning: recall by MEANING, the release's central claim ---------------------
 call experience '{"kind":"record","type":"lesson",
   "summary":"the roof leaked because nobody swept the gutters in autumn",
+  "situation":"when a season of leaf fall has passed without maintenance",
+  "verdict":"failed_avoid",
   "operation":"end-to-end-test","language":"process"}' >/dev/null
 R="$(call experience '{"kind":"recall",
   "symptom":"water came through the ceiling after the drains clogged with leaves",
@@ -173,9 +175,85 @@ case "$R" in
     *) fail "recall-by-meaning RECALL BY MEANING IS NOT RUNNING IN THE PRODUCT" ;;
 esac
 
+# --- entry-form: the store refuses what is not knowledge, and says how to fix it ------
+# Sprint 28c S3/S4. The gate lives at the record verb in the SHIPPED dist, not in a
+# test harness: an outcome-less lesson is refused, the refusal teaches, nothing is
+# stored, and the well-formed twin of the same knowledge comes back on recall. The
+# pair is the point — a refusal alone could mean the verb is broken.
+BAD="$(call experience '{"kind":"record","type":"lesson",
+  "summary":"the pump seized after the filter was left unchanged for a year",
+  "operation":"end-to-end-test","language":"process"}')"
+case "$BAD" in
+    *REPHRASE:*)
+        pass "entry-form an outcome-less lesson is refused with a rephrase" ;;
+    *)
+        fail "entry-form the form gate is NOT running in the product; got: $(printf '%s' "$BAD" | head -c 200)" ;;
+esac
+
+call experience '{"kind":"record","type":"lesson",
+  "summary":"the pump seized after the filter was left unchanged for a year",
+  "situation":"when a service interval has been skipped on a sealed pump",
+  "verdict":"failed_avoid",
+  "operation":"end-to-end-test","language":"process"}' >/dev/null
+FR="$(call experience '{"kind":"recall","symptom":"the pump seized","format":"text"}')"
+case "$FR" in
+    *"pump seized"*)
+        pass "entry-form the well-formed twin is recalled back through the front door" ;;
+    *)
+        fail "entry-form a well-formed record did not come back on recall: $(printf '%s' "$FR" | head -c 200)" ;;
+esac
+
+# A domain fact owes NO outcome — the form binds where it means something, and this
+# is the half a one-sided test cannot see (Harald, 2026-08-21: "you cannot just form
+# everything upfront into lessons").
+FACT="$(call experience '{"kind":"record","type":"domain_fact",
+  "summary":"the resident writes its store as one file under the data directory",
+  "operation":"end-to-end-test","language":"process"}')"
+case "$FACT" in
+    *REPHRASE:*)
+        fail "entry-form a domain fact was held to the experience form: $(printf '%s' "$FACT" | head -c 200)" ;;
+    *'"id"'*)
+        pass "entry-form a domain fact is admitted without a verdict" ;;
+    *)
+        fail "entry-form a domain fact was rejected for some other reason: $(printf '%s' "$FACT" | head -c 200)" ;;
+esac
+
+# --- form-line: a recalled form-1 entry states its condition and its outcome ---------
+# Sprint 28c S5. The line the deployed hooks pass through is the one asserted here:
+# without the situation a reader can only judge an entry by resemblance, and
+# without the outcome a practice that worked reads like one that cost a day.
+call experience '{"kind":"record","type":"lesson",
+  "summary":"the kiln cooled too fast and the glaze crazed across the shoulder",
+  "situation":"when a load is drawn below 600C in under an hour",
+  "verdict":"failed_avoid",
+  "operation":"end-to-end-test","language":"process"}' >/dev/null
+FL="$(call experience '{"kind":"recall","symptom":"the glaze crazed","format":"text"}')"
+case "$FL" in
+    *"when a load is drawn below 600C in under an hour"*)
+        pass "form-line the recalled line carries the condition it applies under" ;;
+    *)
+        fail "form-line no situation on the rendered line: $(printf '%s' "$FL" | head -c 200)" ;;
+esac
+case "$FL" in
+    *failed_avoid*)
+        pass "form-line and the outcome, so a costly practice does not read as a safe one" ;;
+    *)
+        fail "form-line no verdict on the rendered line: $(printf '%s' "$FL" | head -c 200)" ;;
+esac
+# One entry is ONE line: a stored newline must not split an entry and hand the
+# second half to a reader as though it were an entry of its own.
+case "$FL" in
+    *"when when"*)
+        fail "form-line the line's own 'when' doubled the author's" ;;
+    *)
+        pass "form-line the condition reads once, not twice" ;;
+esac
+
 # --- write-dedup: recording a near-duplicate proposes a merge ------------------------
 D="$(call experience '{"kind":"record","type":"lesson",
   "summary":"the roof leaked because nobody swept the gutters in autumn",
+  "situation":"when a season of leaf fall has passed without maintenance",
+  "verdict":"failed_avoid",
   "operation":"end-to-end-test","language":"process"}')"
 case "$D" in
     *duplicate_of*) pass "write-dedup a re-recorded entry is flagged as a duplicate" ;;
@@ -224,11 +302,16 @@ else
 fi
 
 # --- admission-gate: a wrong-kind record is refused with the teaching redirect -----
+# The situation and verdict are supplied so this probe can fail for exactly ONE
+# reason — the misplaced SYMPTOM. Without them the form gate refuses first, on a
+# different field, and the check passes while proving nothing about symptoms.
 A="$(call experience '{"kind":"record","type":"lesson",
   "summary":"a lesson about the ordering notes",
+  "situation":"when reading ordering notes alongside the code",
+  "verdict":"worked",
   "symptoms":["client-app/docs/ordering-notes.md"]}')"
 case "$A" in
-    *REPHRASE*) pass "admission-gate a path standing as a symptom is refused with the teaching message" ;;
+    *"WHERE IT BELONGS"*) pass "admission-gate a path standing as a symptom is refused with the teaching message" ;;
     *'"stored":true'*) fail "admission-gate THE ADMISSION GATE IS NOT RUNNING (garbage stored)" ;;
     *) fail "admission-gate unexpected admission response: $(printf '%s' "$A" | head -c 200)" ;;
 esac
@@ -238,6 +321,8 @@ esac
 # proposes, and only for near-identical wording)
 P="$(call experience '{"kind":"record","type":"lesson",
   "summary":"crawling glaze at cone six traces back to dust left on the pots",
+  "situation":"when pots are handled between bisque and glazing",
+  "verdict":"failed_avoid",
   "operation":"end-to-end-test"}')"
 case "$P" in
     *duplicate_of*) fail "paraphrase-not-duplicate a genuine paraphrase was flagged — the corrected claim is false" ;;
@@ -246,7 +331,7 @@ case "$P" in
 esac
 
 # --- ingest-route-report: the memory-file ingest reports its routing -------------------
-printf -- "---\nname: e2e-load-probe\ndescription: a probe note for the load report\ntype: lesson\n---\nThe \`WidgetRenderer.paint()\` call fails on scale change.\n\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n" > "$WS/mem.md"
+printf -- "---\nname: e2e-load-probe\ndescription: a probe note for the load report\ntype: reference\n---\nThe \`WidgetRenderer.paint()\` call fails on scale change.\n\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n" > "$WS/mem.md"
 L="$(call experience "{\"kind\":\"load\",\"path\":\"$WS/mem.md\"}")"
 case "$L" in
     *keywords_suppressed*) pass "ingest-route-report the load report carries the route/skip count" ;;
@@ -420,6 +505,8 @@ esac
 # pre-advice seeding: a prose lesson the refactor's pre-advice can reach
 call experience '{"kind":"record","type":"lesson",
   "summary":"renaming a method that a test references by its string name breaks the test silently",
+  "situation":"when renaming a method a test names as a string",
+  "verdict":"failed_avoid",
   "operation":"end-to-end-test"}' >/dev/null
 
 REN="$(call rename_symbol '{"symbol":"com.example.Clean#greet","newName":"salute"}')"
@@ -494,6 +581,12 @@ case "$SQ" in
     *'outcome_after":{"'*) pass "choke-gate the outcome-after counter FILLS — the cycle closes" ;;
     *) fail "choke-gate the warning cycle never closed (outcome_after empty)" ;;
 esac
+
+# --- two-stage delivery: NOT IN THE RESCUE -----------------------------------
+# The abandoned branch probed a fetch/dispose chain and a frozen code slice here.
+# Snippets, the advice journal and the fetch verb are out of this sprint by the
+# rescue plan, so those checks are removed rather than left to fail. Stated here
+# rather than silently deleted: a missing probe should say why it is missing.
 
 stop_resident
 
@@ -602,11 +695,15 @@ case "$G3" in
     *) pass "rejected-stays-gone-degraded the rejected note stays gone by words too" ;;
 esac
 
+# Same discipline as the embedder-on probe above: give it a valid form so the
+# only thing left wrong is the flag standing as a symptom.
 A3="$(call experience '{"kind":"record","type":"lesson",
   "summary":"another lesson about ordering notes",
+  "situation":"when a preview flag is needed to reproduce",
+  "verdict":"worked",
   "symptoms":["--enable-preview"]}')"
 case "$A3" in
-    *REPHRASE*) pass "admission-gate-degraded the admission gate holds with no embedder" ;;
+    *"WHERE IT BELONGS"*) pass "admission-gate-degraded the admission gate holds with no embedder" ;;
     *) fail "admission-gate-degraded the admission gate needs the embedder (it must not)" ;;
 esac
 

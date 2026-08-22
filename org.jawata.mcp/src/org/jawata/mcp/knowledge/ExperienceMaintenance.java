@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -156,6 +157,7 @@ public final class ExperienceMaintenance {
         // ~/CLAUDE.md) are idempotent per SOURCE PATH but double-ingested the
         // same knowledge under two source refs. Dedup by CONTENT across the run.
         java.util.Set<String> seenContent = new java.util.HashSet<>();
+        int formRefused = 0;                 // Sprint 28c: reported, never silent
 
         for (Path root : roots) {
             if (Files.isDirectory(root)) {
@@ -235,6 +237,49 @@ public final class ExperienceMaintenance {
                 }
                 continue;
             }
+            // Sprint 28c (D3): THE SAME FILTER as the record verb — the type
+            // decides what is owed, not the surface. A file typed lesson owes a
+            // situation and an outcome; one typed domain_fact (or typed nothing,
+            // and defaulting to "note") owes only the shape checks.
+            //
+            // Measured before wiring, because the obvious worry is that this
+            // turns away a corpus of pre-28c memory files: across 1,932 markdown
+            // files under the configured roots, the number declaring lesson or
+            // failure_mode is ZERO. Nobody writes an experience type in
+            // frontmatter; the frontmatter vocabulary in real use is feedback /
+            // project / domain_fact / reference. So the strict filter costs
+            // nothing real, and the loose one would have been a design change
+            // bought with an imagined corpus.
+            //
+            // The refusal is a LOUD skip carrying the whole teaching message: it
+            // lands in the report's `skipped` list and the file's links are still
+            // followed, so one malformed note can neither vanish silently nor cut
+            // the crawl short.
+            Optional<EntryForm.Refusal> refused = EntryForm.check(
+                doc.type, doc.summary(), List.of(), doc.situation, doc.verdict);
+            if (refused.isPresent()) {
+                formRefused++;
+                skipped.add(Map.of("source", f.toString(),
+                    "reason", "form — " + refused.get().field() + ": "
+                        + refused.get().message()));
+                List<Path> onward = resolveLinks(doc, f.getParent(), rootDirs);
+                if (!onward.isEmpty() && item.depth() >= maxDepth) {
+                    // The admitted path reports this; so must the refused one, or
+                    // a refusal at the depth boundary drops links SILENTLY, which
+                    // is a worse failure than the refusal it accompanies.
+                    skipped.add(Map.of("source", f.toString(),
+                        "reason", "max-depth (" + maxDepth + ") — " + onward.size()
+                            + " link(s) not followed"));
+                }
+                for (Path t : onward) {
+                    Path norm = t.toAbsolutePath().normalize();
+                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                        queue.add(new Item(norm, item.depth() + 1));
+                        linked++;
+                    }
+                }
+                continue;
+            }
             String sourceRef = "memory:" + f;
 
             // Sprint 21b: an unchanged source causes NO write at all (the delete+insert
@@ -286,7 +331,14 @@ public final class ExperienceMaintenance {
             }
             ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
                 .status(ExperienceEntry.ACCEPTED)
-                .language(doc.language);
+                .language(doc.language)
+                // Sprint 28c: a file that declared its form keeps it. The gate
+                // above already refused an experience type that declared none, so
+                // reaching here with a null situation means the type owed nothing.
+                .situation(doc.situation)
+                .verdict(doc.verdict)
+                .provenanceKind("ingested")
+                .form(EntryForm.formOf(doc.situation));
             // v2.2.5 (find #13): the NAME is where cue-dense phrasing lives ("…renders
             // blank on aarch64") — index it as a symptom so recall can reach it.
             // Sprint 27a D10: PROSIFIED — the slug's hyphens/underscores become
@@ -331,10 +383,23 @@ public final class ExperienceMaintenance {
                 if (!s.body().isBlank()) {
                     sf.details(s.body().strip());
                 }
+                // Sprint 28c: a section inherits the FILE's form and provenance.
+                // It has to: the gate above ran once, on the file, and these rows
+                // are minted from the same declaration — so without this a file
+                // that declares situation+verdict produces a form-1 parent and
+                // form-null children from ONE write, and Stage 6, which sorts the
+                // two corpora on `form`, puts half of every ingested file in the
+                // legacy lane. Sections cannot carry frontmatter of their own
+                // (see the auto-anchor note below), so inheritance is the only
+                // channel they have.
                 ExperienceEntry.Builder sb = ExperienceEntry.of(sf.build())
                     .status(ExperienceEntry.ACCEPTED)
                     .language(doc.language)
-                    .scopeKind("section");
+                    .scopeKind("section")
+                    .situation(doc.situation)
+                    .verdict(doc.verdict)
+                    .provenanceKind("ingested")
+                    .form(EntryForm.formOf(doc.situation));
                 List<String> sectionAdmissible = admissibleKeywords(s.keywords());
                 keywordsSuppressed += s.keywords().size() - sectionAdmissible.size();
                 if (addKeywords(sb, sectionAdmissible)) {
@@ -385,6 +450,12 @@ public final class ExperienceMaintenance {
         }
         if (duplicateContent > 0) {
             report.put("duplicate_content", duplicateContent);
+        }
+        // Sprint 28c: files the form gate refused. Counted separately from the
+        // other skips because this one is ACTIONABLE — each entry in `skipped`
+        // carries the rephrase that would let the file in.
+        if (formRefused > 0) {
+            report.put("form_refused", formRefused);
         }
         // Sprint 27a D10: the route/skip report — a silent drop is this
         // project's recorded deepest bug class, so the suppression count is
@@ -502,6 +573,10 @@ public final class ExperienceMaintenance {
         List<Map<String, Object>> cleared = new ArrayList<>();
         List<StoredEntry> plannedStale = new ArrayList<>();
         List<StoredEntry> plannedClear = new ArrayList<>();
+        // Sprint 28c: form-1 entries whose anchor no longer resolves. NOT a
+        // planned status change — these are marked and left active.
+        List<StoredEntry> formEvidenceDead = new ArrayList<>();
+        List<Map<String, Object>> evidenceDead = new ArrayList<>();
         int checked = 0;
         int resolved = 0;
         int skipped = 0;
@@ -540,6 +615,21 @@ public final class ExperienceMaintenance {
                 skipped++;                         // no project / unknown — do not flag
             } else if (ok) {
                 resolved++;
+            } else if (e.facets().isForm1()) {
+                // Sprint 28c: a FORM-1 entry is never superseded or cleared by
+                // anchor resolution. The two carry different claims. An anchor
+                // says WHERE the knowledge was learned; a situation says WHEN it
+                // applies — and a lesson about amending a partially filled order
+                // keeps applying after the class that taught it is renamed,
+                // moved or deleted. Superseding on the anchor would retire the
+                // knowledge because the evidence moved, which is precisely the
+                // design flaw this sprint exists to fix: keying knowledge to
+                // code locations rather than to conditions.
+                //
+                // The dead pointer is still a FACT, so it is recorded as one:
+                // evidence_dead is set for human curation and the STATUS is left
+                // alone. A human retires an entry; a resolver never does.
+                formEvidenceDead.add(e);
             } else if (isAssertedAnchor(e)) {
                 // The author asserted this pointer (frontmatter `symbol:` or agent
                 // `record(symbol=…)` — the fact-map key in the frozen body) — an
@@ -567,6 +657,18 @@ public final class ExperienceMaintenance {
                 store.updateSymbolAnchor(e.id(), null);
                 cleared.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
             }
+        }
+        // Sprint 28c: marked whether or not the breaker tripped, because this
+        // changes no status and can therefore do no harm — and the breaker
+        // exists to stop a broken workspace RETIRING knowledge, not to stop it
+        // recording an observation a human will read.
+        for (StoredEntry e : formEvidenceDead) {
+            if (!e.facets().hasDeadEvidence() && store.markEvidenceDead(e.id())) {
+                evidenceDead.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
+            }
+        }
+        if (!evidenceDead.isEmpty()) {
+            report.put("evidence_dead", evidenceDead);
         }
         report.put("checked", checked);
         report.put("resolved", resolved);
@@ -723,8 +825,8 @@ public final class ExperienceMaintenance {
     // --- frontmatter parsing ------------------------------------------------------------
 
     private record MemoryDoc(String name, String description, String type, String symbol,
-                             String language, String body, List<String> links,
-                             List<String> fileLinks, List<String> keywords,
+                             String language, String situation, String verdict, String body,
+                             List<String> links, List<String> fileLinks, List<String> keywords,
                              String preamble, List<Section> sections) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
         String summary() {
@@ -768,6 +870,10 @@ public final class ExperienceMaintenance {
         String type = null;
         String symbol = null;
         String language = null;
+        // Sprint 28c: a memory file that records an EXPERIENCE can carry its form
+        // in frontmatter, exactly as the record verb carries it in arguments.
+        String situation = null;
+        String verdict = null;
         StringBuilder body = new StringBuilder();
 
         String[] lines = content.split("\n", -1);
@@ -792,6 +898,8 @@ public final class ExperienceMaintenance {
                     case "type" -> { if (type == null) { type = emptyToNull(v); } }  // top-level or metadata.type
                     case "symbol" -> symbol = emptyToNull(v);
                     case "language" -> language = emptyToNull(v);
+                    case "situation" -> situation = emptyToNull(v);
+                    case "verdict" -> verdict = emptyToNull(v);
                     default -> { }
                 }
             }
@@ -823,8 +931,8 @@ public final class ExperienceMaintenance {
         // section harvests its own body (Sprint 21c item B).
         List<String> keywords =
             harvestKeywords(split.sections().isEmpty() ? bodyStr : split.preamble());
-        return new MemoryDoc(name, description, type, symbol, language, bodyStr,
-            links, fileLinks, keywords, split.preamble(), split.sections());
+        return new MemoryDoc(name, description, type, symbol, language, situation, verdict,
+            bodyStr, links, fileLinks, keywords, split.preamble(), split.sections());
     }
 
     /** Sprint 21c (item B): a heading-bounded body slice — the atomic fact. */

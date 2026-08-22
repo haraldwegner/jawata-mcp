@@ -54,7 +54,7 @@ class SymbolAnchorResolutionTest {
                 ---
                 name: greeting-release-lesson
                 description: the greeting release path misses state
-                type: lesson
+                type: reference
                 ---
                 """, "The bug lives in `HelloWorld.printGreeting` — the greeting release path.\n");
             Map<String, Object> report = maint(store, service).load(dir);
@@ -76,7 +76,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: dead symbol lesson
-                type: lesson
+                type: reference
                 ---
                 """, "The old `DoesNotExistAnywhere.frob` path was removed long ago.\n");
             maint(store, service).load(dir);
@@ -92,7 +92,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: library type lesson
-                type: lesson
+                type: reference
                 ---
                 """, "Prefer `java.util.List` over arrays; `String` interning surprises.\n");
             maint(store, service).load(dir);
@@ -114,7 +114,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: ambiguous type lesson
-                type: lesson
+                type: reference
                 ---
                 """, "The `HelloWorld` type is mentioned, twice even: `HelloWorld`.\n");
             maint(store, service).load(dir);
@@ -130,7 +130,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: tie lesson
-                type: lesson
+                type: reference
                 ---
                 """, "`HelloWorld` and `NamingTargets` appear exactly once each.\n");
             maint(store, service).load(dir);
@@ -146,7 +146,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: filename mention lesson
-                type: lesson
+                type: reference
                 ---
                 """, "See `HelloWorld.java` for the whole story.\n");
             maint(store, service).load(dir);
@@ -163,7 +163,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: asserted anchor lesson
-                type: lesson
+                type: reference
                 symbol: com.example.NamingTargets
                 ---
                 """, "Text dominated by `HelloWorld.printGreeting` and `HelloWorld` mentions.\n");
@@ -183,7 +183,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: split doc lesson
-                type: lesson
+                type: reference
                 ---
                 """, """
                 Preamble without any code tokens at all.
@@ -211,7 +211,7 @@ class SymbolAnchorResolutionTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: pre-project lesson
-                type: lesson
+                type: reference
                 ---
                 """, "Mentions `HelloWorld.printGreeting` before any project is loaded.\n");
             new ExperienceMaintenance(store, fqn -> null, List::of, () -> null).load(dir);

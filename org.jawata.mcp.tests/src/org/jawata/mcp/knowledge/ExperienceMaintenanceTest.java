@@ -65,7 +65,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_is_idempotent_per_source(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: n\ndescription: d\ntype: lesson", "body");
+        writeMemory(dir, "a.md", "name: n\ndescription: d\ntype: reference", "body");
         maint(fqn -> null).load(dir);
         maint(fqn -> null).load(dir);   // re-load same source
         assertEquals(1L, store.count(), "re-load replaces, not duplicates");
@@ -84,7 +84,7 @@ class ExperienceMaintenanceTest {
     void load_routes_misplaced_harvest_and_reports_the_suppression(@TempDir Path dir)
             throws IOException {
         writeMemory(dir, "renders-blank-on-aarch64.md",
-            "name: renders-blank-on-aarch64\ndescription: the view renders blank on aarch64\ntype: lesson",
+            "name: renders-blank-on-aarch64\ndescription: the view renders blank on aarch64\ntype: reference",
             "Pass **--no-verify** to reproduce and inspect \"src/main/Renderer.java\" for the trace.\n"
             + "\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n");
 
@@ -123,7 +123,7 @@ class ExperienceMaintenanceTest {
     @Test
     void load_flags_stale_symbol_on_ingest(@TempDir Path dir) throws IOException {
         writeMemory(dir, "s.md",
-            "name: n\ndescription: d\ntype: lesson\nsymbol: com.gone.Removed", "body");
+            "name: n\ndescription: d\ntype: reference\nsymbol: com.gone.Removed", "body");
         Map<String, Object> report = maint(fqn -> Boolean.FALSE).load(dir);
         assertEquals(1, ((List<?>) report.get("stale")).size(), "unresolvable pointer flagged at ingest");
     }
@@ -135,7 +135,7 @@ class ExperienceMaintenanceTest {
         // unquoted FQN. Before the fix the quotes were kept, so recall-by-symbol
         // (which reads the raw symbol_fqn column) never matched.
         writeMemory(dir, "q.md",
-            "name: n\ndescription: d\ntype: lesson\nsymbol: \"com.example.HelloWorld#greet\"", "body");
+            "name: n\ndescription: d\ntype: reference\nsymbol: \"com.example.HelloWorld#greet\"", "body");
         AtomicReference<String> seen = new AtomicReference<>();
         maint(fqn -> { seen.set(fqn); return Boolean.TRUE; }).load(dir);
 
@@ -159,6 +159,64 @@ class ExperienceMaintenanceTest {
         StoredEntry after = store.all().stream().filter(e -> e.id().equals(id)).findFirst().orElseThrow();
         assertEquals(ExperienceEntry.SUPERSEDED, after.status());
         assertTrue(store.query(new RecallQuery("com.gone.Removed", null, null, null, null)).isEmpty());
+    }
+
+    /**
+     * Sprint 28c — THE PAIR to the test above, and the sprint's premise in one
+     * assertion: a form-1 entry with a dead anchor is NOT superseded.
+     *
+     * <p>The two carry different claims. An anchor says WHERE the knowledge was
+     * learned; a situation says WHEN it applies. A lesson about amending a
+     * partially filled order keeps applying after the class that taught it is
+     * renamed, moved or deleted — and superseding it on the anchor retires the
+     * knowledge because the evidence moved, which is exactly the design flaw
+     * this sprint exists to fix.</p>
+     *
+     * <p>The dead pointer is still a fact, so it is recorded as one and a human
+     * decides. A resolver may mark; it may never retire.</p>
+     */
+    @Test
+    void refresh_never_supersedes_a_form_one_entry_and_marks_its_evidence_dead() {
+        String id = store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "re-read the queue head before re-arming the retry",
+                    Confidence.HIGH).symbol("com.gone.Removed").build())
+            .situation("when a consumer reconnects mid-batch")
+            .verdict("worked")
+            .form(1)
+            .build());
+
+        Map<String, Object> report = maint(fqn -> Boolean.FALSE).refresh();
+
+        assertEquals(1, report.get("checked"), "the anchor WAS judged");
+        assertTrue(((List<?>) report.get("staled")).isEmpty(),
+            "and judged dead — but a form-1 entry is never superseded for it: " + report);
+
+        StoredEntry after = store.all().stream()
+            .filter(e -> e.id().equals(id)).findFirst().orElseThrow();
+        assertEquals(ExperienceEntry.CANDIDATE, after.status(),
+            "the status is untouched — retiring knowledge is a human's decision");
+        assertTrue(after.facets().hasDeadEvidence(),
+            "and the dead pointer is RECORDED, so the human has something to act on");
+        assertEquals(1, ((List<?>) report.get("evidence_dead")).size(),
+            "the report names it rather than passing over it in silence: " + report);
+    }
+
+    /** Marking is idempotent: a second refresh re-reports nothing and rewrites nothing. */
+    @Test
+    void a_second_refresh_does_not_re_mark_the_same_dead_evidence() {
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("lesson", "re-read the queue head before re-arming the retry",
+                    Confidence.HIGH).symbol("com.gone.Removed").build())
+            .situation("when a consumer reconnects mid-batch")
+            .verdict("worked")
+            .form(1)
+            .build());
+        ExperienceMaintenance m = maint(fqn -> Boolean.FALSE);
+
+        assertEquals(1, ((List<?>) m.refresh().get("evidence_dead")).size());
+        assertFalse(m.refresh().containsKey("evidence_dead"),
+            "the second pass writes nothing — an UPDATE per entry per refresh is how"
+                + " the store file grew on every click");
     }
 
     @Test
@@ -194,11 +252,11 @@ class ExperienceMaintenanceTest {
         Files.createDirectory(dir.resolve("sub"));
         Files.writeString(dir.resolve("MEMORY.md"),
             "- [Fact A](fact-a.md) — hook\n- see also [[fact-b]]\n");
-        writeMemory(dir, "fact-a.md", "name: fact-a\ndescription: fact a\ntype: lesson",
+        writeMemory(dir, "fact-a.md", "name: fact-a\ndescription: fact a\ntype: reference",
             "a links onward to [b2](sub/fact-c.md)");
-        writeMemory(dir, "fact-b.md", "name: fact-b\ndescription: fact b\ntype: lesson", "leaf");
+        writeMemory(dir, "fact-b.md", "name: fact-b\ndescription: fact b\ntype: reference", "leaf");
         Files.writeString(dir.resolve("sub").resolve("fact-c.md"),
-            "---\nname: fact-c\ndescription: fact c\ntype: lesson\n---\nleaf");
+            "---\nname: fact-c\ndescription: fact c\ntype: reference\n---\nleaf");
 
         Map<String, Object> report = maint(fqn -> null)
             .loadSources(List.of(dir.resolve("MEMORY.md")), false, 5, 200, 2_000_000L);
@@ -210,8 +268,8 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_link_cycle_terminates(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: a\ndescription: a\ntype: lesson", "see [[b]]");
-        writeMemory(dir, "b.md", "name: b\ndescription: b\ntype: lesson", "see [[a]]");
+        writeMemory(dir, "a.md", "name: a\ndescription: a\ntype: reference", "see [[b]]");
+        writeMemory(dir, "b.md", "name: b\ndescription: b\ntype: reference", "see [[a]]");
         Map<String, Object> report = maint(fqn -> null)
             .loadSources(List.of(dir.resolve("a.md")), false, 5, 200, 2_000_000L);
         assertEquals(2, report.get("loaded"), "a↔b crawled once each");
@@ -219,9 +277,9 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_caps_are_honest_not_silent(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: a\ndescription: a\ntype: lesson", "x");
-        writeMemory(dir, "b.md", "name: b\ndescription: b\ntype: lesson", "x");
-        writeMemory(dir, "c.md", "name: c\ndescription: c\ntype: lesson", "x");
+        writeMemory(dir, "a.md", "name: a\ndescription: a\ntype: reference", "x");
+        writeMemory(dir, "b.md", "name: b\ndescription: b\ntype: reference", "x");
+        writeMemory(dir, "c.md", "name: c\ndescription: c\ntype: reference", "x");
         Map<String, Object> report = maint(fqn -> null)
             .loadSources(List.of(dir), false, 5, 2, 2_000_000L);
         assertEquals(2, report.get("loaded"), "max-files cap");
@@ -232,7 +290,7 @@ class ExperienceMaintenanceTest {
     void load_recursive_walks_subdirectories(@TempDir Path dir) throws IOException {
         Files.createDirectory(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested").resolve("deep.md"),
-            "---\nname: deep\ndescription: deep note\ntype: lesson\n---\nbody");
+            "---\nname: deep\ndescription: deep note\ntype: reference\n---\nbody");
         assertEquals(0, maint(fqn -> null).load(dir, false).get("loaded"),
             "top-level listing does not see nested files");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"),
@@ -243,8 +301,8 @@ class ExperienceMaintenanceTest {
     void load_skips_unchanged_files_entirely(@TempDir Path dir) throws IOException {
         // Sprint 21b (Harald): every load rewrote every entry — logical count stable but
         // the H2 file grew each click. An unchanged source must cause NO write at all.
-        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: lesson", "body a");
-        writeMemory(dir, "b.md", "name: b\ndescription: fact b\ntype: lesson", "body b");
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: reference", "body a");
+        writeMemory(dir, "b.md", "name: b\ndescription: fact b\ntype: reference", "body b");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
 
@@ -254,7 +312,7 @@ class ExperienceMaintenanceTest {
         assertEquals(2, second.get("files"), "files = loaded + unchanged");
         assertEquals(2L, store.count());
 
-        writeMemory(dir, "a.md", "name: a\ndescription: fact a CHANGED\ntype: lesson", "body a2");
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a CHANGED\ntype: reference", "body a2");
         Map<String, Object> third = m.load(dir, true);
         assertEquals(1, third.get("loaded"), "changed source is re-ingested");
         assertEquals(1, third.get("unchanged"));
@@ -266,7 +324,7 @@ class ExperienceMaintenanceTest {
         // v2.2.6 (find #14): skip-unchanged blocked retroactive enrichment — an entry
         // stored under an OLDER loader fingerprint must re-ingest even though the file
         // bytes are identical; within one version idempotency stays byte-strict.
-        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: lesson", "body");
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: reference", "body");
         String content = java.nio.file.Files.readString(dir.resolve("a.md"));
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(1, m.load(dir, true).get("loaded"));
@@ -308,11 +366,244 @@ class ExperienceMaintenanceTest {
     void load_skips_contentless_index_files_but_follows_their_links(@TempDir Path dir) throws IOException {
         // v2.2.3 dogfood find: MEMORY.md-style indexes ingested as junk rows ("MEMORY", "''").
         Files.writeString(dir.resolve("MEMORY.md"), "- [Fact](fact.md) — hook\n");
-        writeMemory(dir, "fact.md", "name: f\ndescription: a real fact\ntype: lesson", "body");
+        writeMemory(dir, "fact.md", "name: f\ndescription: a real fact\ntype: reference", "body");
         Map<String, Object> report = maint(fqn -> null).loadSources(
             java.util.List.of(dir.resolve("MEMORY.md")), false, 5, 200, 2_000_000L);
         assertEquals(1, report.get("loaded"), "index skipped, linked fact ingested");
         assertEquals(1L, store.count());
+    }
+
+    // --- Sprint 28c (D3): the form gate, in its LOADED stance ---------------------------
+
+    /**
+     * The half that BINDS on a crawl. A heading is not knowledge whoever wrote
+     * it, and this path is where headings get in: the section splitter mints one
+     * entry per heading, which is how "Test plan" and "Required follow-up" became
+     * rows in this store. The refusal is loud — reported and counted — because a
+     * silent drop is the failure this project keeps re-learning.
+     */
+    @Test
+    void a_heading_shaped_memory_file_is_refused_and_the_refusal_is_reported(@TempDir Path dir)
+            throws IOException {
+        // Typed as a FACT deliberately: the shape check binds on every type, so
+        // this must refuse even where the experience form does not apply.
+        writeMemory(dir, "h.md", "name: h\ndescription: Critical bugs found:\ntype: domain_fact",
+            "body");
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+
+        assertEquals(0, report.get("loaded"), "a heading is not an entry");
+        assertEquals(0L, store.count());
+        assertEquals(1, report.get("form_refused"), "the count is in the report");
+        List<?> skipped = (List<?>) report.get("skipped");
+        assertEquals(1, skipped.size(), "and the file is named in the skip list");
+        String reason = String.valueOf(((Map<?, ?>) skipped.get(0)).get("reason"));
+        assertTrue(reason.contains("RULE:"), "the skip carries the rule: " + reason);
+        assertTrue(reason.contains("REPHRASE:"),
+            "and the rephrase that would let the file in: " + reason);
+    }
+
+    /**
+     * The SAME FILTER as the record verb — the type decides what is owed, not
+     * the surface a file arrives through. A file typed {@code lesson} without an
+     * outcome is refused here exactly as it is at {@code record}.
+     *
+     * <p>The obvious worry is that this turns away a corpus of pre-28c memory
+     * files, and it was MEASURED rather than argued: across 1,932 markdown files
+     * under the configured roots, the count declaring {@code lesson} or
+     * {@code failure_mode} is ZERO. The frontmatter vocabulary in real use is
+     * feedback / project / domain_fact / reference. The strict filter costs
+     * nothing real; a looser one would have been a design change bought with an
+     * imagined corpus.</p>
+     */
+    @Test
+    void a_loaded_lesson_without_an_outcome_is_refused_exactly_as_a_recorded_one(
+            @TempDir Path dir) throws IOException {
+        writeMemory(dir, "l.md",
+            "name: l\ndescription: re-read the queue head before re-arming the retry\ntype: lesson",
+            "body");
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+
+        assertEquals(0, report.get("loaded"), "a lesson with no situation is refused");
+        assertEquals(1, report.get("form_refused"));
+        assertEquals(0L, store.count());
+    }
+
+    /**
+     * The OUTCOME half, discriminated on its own. The test above supplies neither
+     * field, so the gate refuses on `situation` and returns before the verdict
+     * branch is ever reached — delete the verdict branch entirely and it stays
+     * green. This one gives a valid situation and withholds only the outcome, so
+     * it can fail for exactly one reason, and it names the field to prove which.
+     */
+    @Test
+    void a_loaded_lesson_with_a_situation_but_no_outcome_is_refused_on_the_verdict(
+            @TempDir Path dir) throws IOException {
+        writeMemory(dir, "v.md",
+            "name: v\ndescription: re-read the queue head before re-arming the retry\n"
+                + "type: lesson\nsituation: when a consumer reconnects mid-batch",
+            "body");
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+
+        assertEquals(0, report.get("loaded"));
+        assertEquals(1, report.get("form_refused"));
+        String reason = String.valueOf(
+            ((Map<?, ?>) ((List<?>) report.get("skipped")).get(0)).get("reason"));
+        assertTrue(reason.contains("form — verdict:"),
+            "refused on the OUTCOME, not on the situation it did supply: " + reason);
+    }
+
+    /**
+     * THE PAIR, and the half a one-sided test cannot see: the same file typed as
+     * a FACT lands untouched. Without this, "refused" above could mean the ingest
+     * is simply broken — and it pins the type-awareness that Harald ruled on
+     * (2026-08-21: "you cannot just form everything upfront into lessons").
+     */
+    @Test
+    void the_same_file_typed_as_a_fact_lands_unclassified(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "l.md",
+            "name: l\ndescription: the retry loop re-reads the queue head before re-arming\n"
+                + "type: domain_fact",
+            "body");
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+
+        assertEquals(1, report.get("loaded"), "a fact owes no outcome and is not held to one");
+        assertEquals(null, report.get("form_refused"), "and nothing was refused");
+        Map<String, Object> landed = store.exportEntries(null, null).get(0);
+        assertFalse(landed.containsKey("situation"),
+            "stored as what it honestly is — no situation was invented for it");
+        assertFalse(landed.containsKey("form"),
+            "form is ABSENT (unclassified), never 0 dressed up as a decision");
+    }
+
+    /**
+     * A refused file must not cut the crawl short. Without this test, deleting
+     * the link-following in the refusal branch leaves the whole suite green —
+     * and a silent drop is this project's recorded deepest bug class, so the
+     * claim "the links are still followed" cannot rest on reading the code.
+     */
+    @Test
+    void a_refused_file_still_yields_its_links(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "bad.md",
+            "name: bad\ndescription: re-read the queue head before re-arming the retry\ntype: lesson",
+            "onward to [[good]]");
+        writeMemory(dir, "good.md",
+            "name: good\ndescription: the retry loop re-reads the queue head first\n"
+                + "type: reference",
+            "leaf");
+
+        Map<String, Object> report = maint(fqn -> null)
+            .loadSources(List.of(dir.resolve("bad.md")), false, 5, 200, 2_000_000L);
+
+        assertEquals(1, report.get("form_refused"), "the malformed file is refused");
+        assertEquals(1, report.get("loaded"),
+            "and the file it points at is still reached — one bad note does not"
+                + " end the crawl behind it");
+    }
+
+    /**
+     * The OTHER half of that fix, which the test above cannot reach: at the depth
+     * boundary the refused file's links are dropped, and the drop must be
+     * REPORTED, exactly as the admitted path reports it.
+     *
+     * <p>Written because round 2 of the checkpoint audit caught the first version
+     * of this pair proving only half of what it claimed — the seed sits at depth
+     * 0, so with any sane {@code maxDepth} the boundary branch never executes and
+     * deleting it left the whole suite green. {@code maxDepth = 0} is the only
+     * value that puts the seed itself on the boundary.</p>
+     */
+    @Test
+    void a_refusal_at_the_depth_boundary_reports_the_links_it_drops(@TempDir Path dir)
+            throws IOException {
+        writeMemory(dir, "bad.md",
+            "name: bad\ndescription: re-read the queue head before re-arming the retry\ntype: lesson",
+            "onward to [[good]]");
+        writeMemory(dir, "good.md",
+            "name: good\ndescription: the retry loop re-reads the queue head first\n"
+                + "type: reference",
+            "leaf");
+
+        Map<String, Object> report = maint(fqn -> null)
+            .loadSources(List.of(dir.resolve("bad.md")), false, 0, 200, 2_000_000L);
+
+        assertEquals(1, report.get("form_refused"));
+        assertEquals(0, report.get("loaded"), "at depth 0 the link is not followed");
+        List<?> skipped = (List<?>) report.get("skipped");
+        assertTrue(
+            skipped.stream().map(String::valueOf).anyMatch(s -> s.contains("max-depth (0)")),
+            "the dropped link is REPORTED, not swallowed by the refusal that"
+                + " accompanies it: " + skipped);
+    }
+
+    /**
+     * A file that DOES declare its form keeps it — the write path carries the new
+     * fields on this path too, not only through the record verb.
+     */
+    @Test
+    void a_loaded_file_that_declares_its_form_keeps_it(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "f.md",
+            "name: f\ndescription: re-read the queue head before re-arming the retry\n"
+                + "type: reference\nsituation: when a consumer reconnects mid-batch\n"
+                + "verdict: worked",
+            "body");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+
+        Map<String, Object> landed = store.exportEntries(null, null).get(0);
+        assertEquals("when a consumer reconnects mid-batch", landed.get("situation"));
+        assertEquals("worked", landed.get("verdict"));
+        assertEquals(1, landed.get("form"), "declared form is form-1");
+        // The vocabulary is the architecture's, not a synonym of my choosing:
+        // ARCHITECTURE-knowledge-layer.md names recorded | ingested | catalog |
+        // seat_run, and Stage 9's disposition report groups on exactly these.
+        assertEquals("ingested", landed.get("provenance_kind"),
+            "and it says where it came from — an ingested row is not a recorded one");
+    }
+
+    /**
+     * A SECTIONED file's children inherit the file's form. One write must not
+     * produce a form-1 parent and form-null children: Stage 6 sorts the two
+     * corpora on `form`, so that split would drop half of every ingested file
+     * into the legacy lane. Sections carry no frontmatter of their own, so
+     * inheritance is the only channel they have.
+     */
+    @Test
+    void the_sections_of_a_form_carrying_file_inherit_its_form(@TempDir Path dir)
+            throws IOException {
+        writeMemory(dir, "s.md",
+            "name: s\ndescription: re-read the queue head before re-arming the retry\n"
+                + "type: lesson\nsituation: when a consumer reconnects mid-batch\n"
+                + "verdict: worked",
+            "preamble text\n\n## Draining the batch\n\nThe head moves under you.\n");
+        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+
+        List<Map<String, Object>> rows = store.exportEntries(null, null);
+        assertEquals(2, rows.size(), "a parent and one section");
+        for (Map<String, Object> row : rows) {
+            assertEquals(1, row.get("form"),
+                "every row from one declaration carries the same form: " + row.get("summary"));
+            assertEquals("when a consumer reconnects mid-batch", row.get("situation"));
+            assertEquals("ingested", row.get("provenance_kind"),
+                "including the section — Stage 9's report groups on this column");
+        }
+    }
+
+    /**
+     * A situation that is a LOCATION is refused on this path too. A wrong
+     * condition is worse than a missing one, because it matches confidently — so
+     * this check binds even where the form itself does not.
+     */
+    @Test
+    void a_loaded_situation_that_is_a_path_is_refused(@TempDir Path dir) throws IOException {
+        writeMemory(dir, "p.md",
+            "name: p\ndescription: re-read the queue head before re-arming the retry\n"
+                + "type: reference\nsituation: src/main/java/com/example/Retry.java",
+            "body");
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+
+        assertEquals(0, report.get("loaded"));
+        assertEquals(1, report.get("form_refused"));
+        String reason = String.valueOf(
+            ((Map<?, ?>) ((List<?>) report.get("skipped")).get(0)).get("reason"));
+        assertTrue(reason.contains("situation"), "the field is named: " + reason);
     }
 
     @Test
@@ -320,7 +611,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21c (item A): headings, **bold** phrases, `backticked` terms and
         // [[wikilink]] names are the cue-dense keyword surface the matcher never saw.
         writeMemory(dir, "k.md",
-            "name: k\ndescription: keyword harvest fixture\ntype: lesson",
+            "name: k\ndescription: keyword harvest fixture\ntype: reference",
             "## Loader fingerprint self-heal\n\n"
                 + "The **skip-unchanged hash** mixes in `LOADER_VERSION` so a bump\n"
                 + "re-ingests the corpus once. See [[recall-gap-lesson]].\n");
@@ -354,7 +645,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21c (item A, audit finding): code is not a cue source — bold/backtick
         // inside ``` fences must not become symptom rows.
         writeMemory(dir, "c.md",
-            "name: c\ndescription: fenced fixture\ntype: lesson",
+            "name: c\ndescription: fenced fixture\ntype: reference",
             "Real cue: **dmabuf renderer disable**.\n"
                 + "```bash\n"
                 + "echo **shellglobnoise** `fencedterm`\n"
@@ -384,7 +675,7 @@ class ExperienceMaintenanceTest {
         for (int i = 0; i < 40; i++) {
             body.append("**unique term number ").append(i).append("** and ");
         }
-        writeMemory(dir, "big.md", "name: big\ndescription: cap fixture\ntype: lesson", body.toString());
+        writeMemory(dir, "big.md", "name: big\ndescription: cap fixture\ntype: reference", body.toString());
 
         Map<String, Object> report = maint(fqn -> null).load(dir, true);
         assertEquals(1, report.get("loaded"));
@@ -398,7 +689,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21c (item B): files are bundles — one entry per heading section plus a
         // thin file-level parent, so the fit gate can answer with the FACT.
         writeMemory(dir, "bundle.md",
-            "name: bundle\ndescription: two facts wearing one coat\ntype: lesson",
+            "name: bundle\ndescription: two facts wearing one coat\ntype: reference",
             "Preamble before any heading.\n\n"
                 + "## First atomic fact\n\nbody one with [[linked-note]].\n\n"
                 + "## Second atomic fact\n\nbody two.\n");
@@ -421,15 +712,15 @@ class ExperienceMaintenanceTest {
 
     @Test
     void section_family_reingests_as_one_unit(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: lesson",
+        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: reference",
             "## A one\n\nx\n\n## A two\n\ny\n");
-        writeMemory(dir, "b.md", "name: b\ndescription: db\ntype: lesson",
+        writeMemory(dir, "b.md", "name: b\ndescription: db\ntype: reference",
             "## B one\n\nz\n");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
         assertEquals(5L, store.count(), "(parent+2) + (parent+1)");
 
-        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: lesson",
+        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: reference",
             "## A one\n\nx CHANGED\n\n## A two\n\ny\n");
         Map<String, Object> second = m.load(dir, true);
         assertEquals(1, second.get("loaded"), "only the changed file re-ingests");
@@ -439,7 +730,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void headingless_files_stay_single_entries(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "flat.md", "name: flat\ndescription: no headings\ntype: lesson",
+        writeMemory(dir, "flat.md", "name: flat\ndescription: no headings\ntype: reference",
             "just prose with **a phrase** and nothing else.\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
         assertEquals(1L, store.count(), "no headings, no split — exactly today's shape");
@@ -448,7 +739,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void fenced_heading_lines_do_not_split(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "f.md", "name: f\ndescription: fence fixture\ntype: lesson",
+        writeMemory(dir, "f.md", "name: f\ndescription: fence fixture\ntype: reference",
             "prose\n```md\n# not a heading\n```\nmore prose\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
         assertEquals(1L, store.count(), "a heading inside a fence is code, not a boundary");
@@ -459,9 +750,9 @@ class ExperienceMaintenanceTest {
         // Sprint 21c plan finding: generic headings ("Context", "DoD") repeat ACROSS
         // files — the clean-up chain must not eat sections. Files are the source of
         // truth and families are idempotent; duplicates are fixed in the files.
-        writeMemory(dir, "one.md", "name: one\ndescription: d1\ntype: lesson",
+        writeMemory(dir, "one.md", "name: one\ndescription: d1\ntype: reference",
             "## Context\n\nfact one.\n");
-        writeMemory(dir, "two.md", "name: two\ndescription: d2\ntype: lesson",
+        writeMemory(dir, "two.md", "name: two\ndescription: d2\ntype: reference",
             "## Context\n\nfact two.\n");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
@@ -476,7 +767,7 @@ class ExperienceMaintenanceTest {
     void harvest_indexes_quoted_error_strings_as_cues(@TempDir Path dir) throws IOException {
         // Sprint 21c C4 live-gate finding: "Lock file recently modified" lived only in
         // prose details — quoted strings are the classic error-message symptom cue.
-        writeMemory(dir, "q.md", "name: q\ndescription: quote fixture\ntype: lesson",
+        writeMemory(dir, "q.md", "name: q\ndescription: quote fixture\ntype: reference",
             "The swap race surfaced as \"Lock file recently modified\" during boot.\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
 
@@ -490,7 +781,7 @@ class ExperienceMaintenanceTest {
     void harvest_truncates_oversize_phrases_to_the_column_limit(@TempDir Path dir) throws IOException {
         // experience_symptom.symptom is VARCHAR(512) — an oversize bold phrase must not
         // break the insert.
-        writeMemory(dir, "l.md", "name: l\ndescription: long fixture\ntype: lesson",
+        writeMemory(dir, "l.md", "name: l\ndescription: long fixture\ntype: reference",
             "**" + "x".repeat(600) + "**\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"),
             "oversize phrase truncated, ingest survives");
@@ -528,7 +819,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21b (item C2): Cursor project rules are .mdc — directory crawls accept them.
         Files.writeString(dir.resolve("rule.mdc"),
             "---\ndescription: prefer composition\n---\nCursor rule body");
-        writeMemory(dir, "plain.md", "name: p\ndescription: plain\ntype: lesson", "x");
+        writeMemory(dir, "plain.md", "name: p\ndescription: plain\ntype: reference", "x");
         assertEquals(2, maint(fqn -> null).load(dir, true).get("loaded"),
             ".mdc crawled alongside .md");
     }
@@ -538,7 +829,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21b (item C): "I want everything you can find" — a memory tree LARGER than
         // the old tuning caps (depth 5 / 200 files) must ingest COMPLETELY with the defaults.
         for (int i = 0; i < 210; i++) {
-            writeMemory(dir, "n" + i + ".md", "name: n" + i + "\ndescription: note " + i + "\ntype: lesson", "x");
+            writeMemory(dir, "n" + i + ".md", "name: n" + i + "\ndescription: note " + i + "\ntype: reference", "x");
         }
         Path deep = dir;
         for (int i = 0; i < 7; i++) {
@@ -546,7 +837,7 @@ class ExperienceMaintenanceTest {
         }
         Files.createDirectories(deep);
         Files.writeString(deep.resolve("deepest.md"),
-            "---\nname: deepest\ndescription: seven levels down\ntype: lesson\n---\nbody");
+            "---\nname: deepest\ndescription: seven levels down\ntype: reference\n---\nbody");
 
         Map<String, Object> report = maint(fqn -> null).load(dir, true);
         assertEquals(211, report.get("loaded"), "210 flat + 1 at depth 7 — nothing dropped");
@@ -596,7 +887,7 @@ class ExperienceMaintenanceTest {
     @Test
     void load_does_not_flag_non_java_symbols_stale(@TempDir Path dir) throws IOException {
         writeMemory(dir, "rust.md",
-            "name: n\ndescription: d\ntype: lesson\nsymbol: gateway::forward\nlanguage: rust", "body");
+            "name: n\ndescription: d\ntype: reference\nsymbol: gateway::forward\nlanguage: rust", "body");
         Map<String, Object> report = maint(fqn -> Boolean.FALSE).load(dir);
         assertEquals(1, report.get("loaded"));
         assertEquals(0, ((List<?>) report.get("stale")).size(),

@@ -577,8 +577,14 @@ public final class H2ExperienceStore implements ExperienceStore {
                     "INSERT INTO experience_entry"
                     + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                     + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
-                    + "workspace_id,project_id,language,source_hash,embedding,embedder_identity) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "workspace_id,project_id,language,source_hash,embedding,embedder_identity,"
+                    // Sprint 28c (v10): the knowledge-spine facets. Widened HERE
+                    // together with ALL_COLUMNS and importEntries — a column that
+                    // is written but not exported is a column that survives a
+                    // round trip only by accident.
+                    + "situation,situation_scope,verdict,provenance_kind,"
+                    + "form,evidence_dead) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -612,6 +618,24 @@ public final class H2ExperienceStore implements ExperienceStore {
                                             str(entry.toMap().get("details"))));
                 ps.setBytes(20, EmbeddingService.toBytes(vector));
                 ps.setString(21, vector == null ? null : EmbeddingService.shared().identityKey());
+                // Sprint 28c: nulls are the legacy shape and are meaningful — an
+                // absent `form` is what distinguishes a pre-28c row from a
+                // deliberately form-1 one, so these are set as given and never
+                // defaulted on the way in.
+                ps.setString(22, entry.situation());
+                ps.setString(23, entry.situationScope());
+                ps.setString(24, entry.verdict());
+                ps.setString(25, entry.provenanceKind());
+                setIntOrNull(ps, 26, entry.form());
+                // Always NULL on the way in, and that is the semantics, not a
+                // gap: evidence_dead means "a human has been told the code this
+                // entry points at is gone", which cannot be true of an entry
+                // being recorded for the first time. It is written later by
+                // markEvidenceDead (an UPDATE, from ExperienceMaintenance.refresh)
+                // and carried verbatim by export/import and orphan recovery — all
+                // of which bind it from the stored row, never from a builder. A
+                // setter here would be a door nothing in production walks through.
+                ps.setNull(27, java.sql.Types.BOOLEAN);
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
@@ -619,6 +643,64 @@ public final class H2ExperienceStore implements ExperienceStore {
             return id;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to put entry: " + e.getMessage(), e);
+        }
+    }
+
+    /** An exported facet may arrive as a number or as its string form; absent stays absent. */
+    private static Integer intOrNull(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value).strip());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Sprint 28c: bind a nullable Integer without collapsing null to 0.
+     *
+     * <p>{@code setInt} takes a primitive, so an unboxed null throws and an
+     * eagerly-defaulted one writes a 0 that is indistinguishable from a real
+     * value. {@code form = 0} and {@code form = null} mean different things —
+     * a row deliberately marked legacy versus a row nobody has classified — so
+     * the difference has to survive the write.</p>
+     */
+    private static void setIntOrNull(PreparedStatement ps, int index, Integer value)
+            throws SQLException {
+        if (value == null) {
+            ps.setNull(index, java.sql.Types.INTEGER);
+        } else {
+            ps.setInt(index, value);
+        }
+    }
+
+    /**
+     * Sprint 28c: set {@code evidence_dead} and nothing else — deliberately NOT
+     * {@code status}. See {@link ExperienceStore#markEvidenceDead}.
+     *
+     * <p>The {@code IS DISTINCT FROM TRUE} guard makes it idempotent AND makes
+     * the return value mean "newly marked", so the refresh report counts real
+     * transitions rather than re-reporting the same dead anchor on every pass —
+     * which is how an earlier auto-refresh grew the store file on every click.</p>
+     */
+    @Override
+    public synchronized boolean markEvidenceDead(String id) {
+        if (id == null) {
+            return false;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET evidence_dead = TRUE, updated_at = ?"
+                + " WHERE id = ? AND evidence_dead IS DISTINCT FROM TRUE")) {
+            ps.setTimestamp(1, Timestamp.from(Instant.now()));
+            ps.setString(2, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to mark evidence dead: " + e.getMessage(), e);
         }
     }
 
@@ -670,8 +752,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             List<StoredEntry> out = new ArrayList<>();
             try (Statement s = c.createStatement();
                     ResultSet rs = s.executeQuery(
-                        "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
-                        + "external_system,summary,body_json,workspace_id,created_at FROM experience_entry")) {
+                        "SELECT " + ALL_COLUMNS + " FROM experience_entry")) {
                 while (rs.next()) {
                     out.add(mapRow(rs, c));
                 }
@@ -828,8 +909,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 clauses.add("(" + String.join(" AND ", tokenClauses) + ")");
             }
         }
-        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
-            + "external_system,summary,body_json,workspace_id,created_at FROM experience_entry WHERE ("
+        String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE ("
             + String.join(" OR ", clauses)
             + ") AND status NOT IN ('rejected', 'superseded') ORDER BY created_at DESC";
 
@@ -876,7 +956,39 @@ public final class H2ExperienceStore implements ExperienceStore {
             rs.getString("scope_kind"),
             rs.getString("workspace_id"),
             ts == null ? null : ts.toInstant(),
-            body);
+            body,
+            facetsOf(rs));
+    }
+
+    /**
+     * Sprint 28c: project the v10 spine onto the row.
+     *
+     * <p>Read defensively by NAME with a column-presence check rather than
+     * assuming the rung has run: {@code mapRow} is reached from several
+     * projections, and a caller that selects a narrower column list would
+     * otherwise throw instead of simply having no facets. An absent column and
+     * a null value mean the same thing here — unclassified.</p>
+     */
+    private static StoredEntry.Facets facetsOf(ResultSet rs) throws SQLException {
+        java.sql.ResultSetMetaData md = rs.getMetaData();
+        java.util.Set<String> cols = new java.util.HashSet<>();
+        for (int i = 1; i <= md.getColumnCount(); i++) {
+            cols.add(md.getColumnLabel(i).toLowerCase(java.util.Locale.ROOT));
+        }
+        if (!cols.contains("form")) {
+            return StoredEntry.Facets.NONE;
+        }
+        Boolean dead = rs.getBoolean("evidence_dead");
+        if (rs.wasNull()) {
+            dead = null;
+        }
+        return new StoredEntry.Facets(
+            rs.getString("situation"),
+            rs.getString("situation_scope"),
+            rs.getString("verdict"),
+            rs.getString("provenance_kind"),
+            intOrNull(rs.getObject("form")),
+            dead);
     }
 
     private List<String> loadSymptoms(String id, Connection c) throws SQLException {
@@ -953,10 +1065,22 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     // --- Sprint 21a (item G): curation — export / import / list -------------------------
 
+    /**
+     * The export/import projection — the lossless round-trip contract.
+     *
+     * <p>This list, {@code importEntries}' bind list and {@code exportEntries}'
+     * row assembly are ONE contract in three places. Widening any of them alone
+     * silently drops a column on every round trip, and the identity test would
+     * not catch it: it would still pass on legacy rows, whose new columns are
+     * null either way, and fail only once a form-1 row existed to lose.</p>
+     */
     private static final String ALL_COLUMNS =
         "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
-        + "workspace_id,project_id,language";
+        + "workspace_id,project_id,language,"
+        // Sprint 28c (v10) — the knowledge-spine facets.
+        + "situation,situation_scope,verdict,provenance_kind,"
+        + "form,evidence_dead";
 
     @Override
     @SuppressWarnings("unchecked")
@@ -988,11 +1112,28 @@ public final class H2ExperienceStore implements ExperienceStore {
                     for (String col : new String[] {"type", "scope_kind", "symbol_fqn",
                             "package_name", "operation", "status", "confidence", "fault_owner",
                             "external_system", "summary", "source_ref", "workspace_id",
-                            "project_id", "language"}) {
+                            "project_id", "language",
+                            // Sprint 28c — read back as strings like every other
+                            // text facet; importEntries parses the numeric one and
+                            // the boolean on the way in.
+                            "situation", "situation_scope", "verdict",
+                            "provenance_kind"}) {
                         Object v = rs.getString(col);
                         if (v != null) {
                             row.put(col, v);
                         }
+                    }
+                    // Nullable non-text facets: absent means absent. Writing a 0
+                    // or a false here would turn "nobody classified this row"
+                    // into "somebody classified it as legacy", which is a
+                    // different claim and would survive the round trip as fact.
+                    int form = rs.getInt("form");
+                    if (!rs.wasNull()) {
+                        row.put("form", form);
+                    }
+                    boolean evidenceDead = rs.getBoolean("evidence_dead");
+                    if (!rs.wasNull()) {
+                        row.put("evidence_dead", evidenceDead);
                     }
                     Timestamp created = rs.getTimestamp("created_at");
                     Timestamp updated = rs.getTimestamp("updated_at");
@@ -1044,7 +1185,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
                 try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
-                        + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                        // 24 placeholders — one per ALL_COLUMNS entry. Kept in
+                        // step BY TEST, not by eye: the count is invisible to the
+                        // compiler and a surplus throws only at import time.
+                        + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+                        + "?,?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -1064,6 +1209,23 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ps.setString(17, str(row.get("project_id")));
                     String lang = str(row.get("language"));
                     ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                    // Sprint 28c: the facets, bound in the SAME edit as the
+                    // export projection and the write path. An export that
+                    // carries a column its import cannot bind loses that column
+                    // silently on every round trip — the identity test would
+                    // still pass on legacy rows and fail only on the new ones.
+                    // An OLD export simply has no such keys, and reads as
+                    // legacy: nulls throughout, form absent.
+                    ps.setString(19, str(row.get("situation")));
+                    ps.setString(20, str(row.get("situation_scope")));
+                    ps.setString(21, str(row.get("verdict")));
+                    ps.setString(22, str(row.get("provenance_kind")));
+                    setIntOrNull(ps, 23, intOrNull(row.get("form")));
+                    if (row.get("evidence_dead") == null) {
+                        ps.setNull(24, java.sql.Types.BOOLEAN);
+                    } else {
+                        ps.setBoolean(24, Boolean.parseBoolean(String.valueOf(row.get("evidence_dead"))));
+                    }
                     ps.executeUpdate();
                 }
                 if (row.get("symptoms") instanceof List<?> symptoms) {
@@ -1120,8 +1282,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             clauses.add("LOWER(language) = LOWER(?)");
             params.add(language);
         }
-        String sql = "SELECT id,type,symbol_fqn,package_name,operation,status,confidence,language,source_ref,scope_kind,"
-            + "external_system,summary,body_json,workspace_id,created_at FROM experience_entry"
+        String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry"
             + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
             + " ORDER BY created_at DESC LIMIT " + Math.max(1, limit);
         List<StoredEntry> out = new ArrayList<>();
@@ -1334,7 +1495,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                         sources.add(Map.of("source", name, "skipped", "newer schema v" + version));
                         continue;
                     }
-                    int[] counts = importFrom(orphan, version >= 2);
+                    int[] counts = importFrom(orphan, version);
                     imported += counts[0];
                     duplicates += counts[1];
                     sources.add(Map.of("source", name, "imported", counts[0], "duplicates", counts[1]));
@@ -1361,11 +1522,31 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
-    /** Copy every entry (+ symptoms + links) from an orphan store; dedup by id. */
-    private int[] importFrom(Connection orphan, boolean hasFacets) throws SQLException {
+    /**
+     * Copy every entry (+ symptoms + links) from an orphan store; dedup by id.
+     *
+     * <p>Sprint 28c: this is the FOURTH place the row shape is written out, after
+     * {@code insert}, {@code ALL_COLUMNS} and {@code importEntries} — and the one
+     * where dropping a column is not recoverable. {@code recoverOrphans} writes a
+     * {@code .jawata-recovered} marker afterwards, so the source is never swept
+     * again: whatever this method fails to carry is gone for good, with no error
+     * and no second chance. It was missed when the other three were widened
+     * together, which is exactly the failure the "widen them together" rule
+     * exists to prevent.</p>
+     *
+     * @param version the orphan's schema version — v2 added the workspace/project
+     *                /language facets, v10 the knowledge-spine columns. Reading a
+     *                column an older orphan does not have is an error, so each
+     *                group is selected only when its rung has run.
+     */
+    private int[] importFrom(Connection orphan, int version) throws SQLException {
+        boolean hasFacets = version >= 2;
+        boolean hasForm = version >= 10;
         String cols = "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
             + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at"
-            + (hasFacets ? ",workspace_id,project_id,language" : "");
+            + (hasFacets ? ",workspace_id,project_id,language" : "")
+            + (hasForm ? ",situation,situation_scope,verdict,provenance_kind,"
+                + "form,evidence_dead" : "");
         int imported = 0;
         int duplicates = 0;
         try (Statement s = orphan.createStatement();
@@ -1380,7 +1561,10 @@ public final class H2ExperienceStore implements ExperienceStore {
                         "INSERT INTO experience_entry"
                         + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
-                        + "workspace_id,project_id,language) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                        + "workspace_id,project_id,language,"
+                        + "situation,situation_scope,verdict,provenance_kind,"
+                        + "form,evidence_dead)"
+                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     for (int i = 1; i <= 13; i++) {
                         ps.setString(i, rs.getString(i));
                     }
@@ -1392,6 +1576,23 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ps.setString(16, ws != null ? ws : workspaceId);
                     ps.setString(17, proj != null ? proj : projectId);
                     ps.setString(18, lang != null ? lang : "java");
+                    // A pre-v10 orphan has no facets to carry, and NULL is the
+                    // honest value: unclassified, never "classified as legacy".
+                    ps.setString(19, hasForm ? rs.getString("situation") : null);
+                    ps.setString(20, hasForm ? rs.getString("situation_scope") : null);
+                    ps.setString(21, hasForm ? rs.getString("verdict") : null);
+                    ps.setString(22, hasForm ? rs.getString("provenance_kind") : null);
+                    setIntOrNull(ps, 23, hasForm ? intOrNull(rs.getObject("form")) : null);
+                    if (hasForm) {
+                        boolean dead = rs.getBoolean("evidence_dead");
+                        if (rs.wasNull()) {
+                            ps.setNull(24, java.sql.Types.BOOLEAN);
+                        } else {
+                            ps.setBoolean(24, dead);
+                        }
+                    } else {
+                        ps.setNull(24, java.sql.Types.BOOLEAN);
+                    }
                     ps.executeUpdate();
                 }
                 copyChildren(orphan, id);
@@ -1401,7 +1602,25 @@ public final class H2ExperienceStore implements ExperienceStore {
         return new int[] {imported, duplicates};
     }
 
-    private void copyChildren(Connection orphan, String id) throws SQLException {
+    /**
+     * Copies an orphan's child rows.
+     *
+     * <p>Orphan recovery is where a dropped child row is PERMANENT: the sweep
+     * marks the source {@code .jawata-recovered} and never reads it again. So
+     * every child table an entry can own is copied here, and adding one without
+     * adding it here loses it silently and irreversibly.</p>
+     *
+     * <p>The orphan connection is never migrated — it is read at whatever schema
+     * version it was left at. Any table this method reads must therefore exist in
+     * EVERY version an orphan can be, or the read must be gated on the source's
+     * version; an ungated select throws, the throw is caught per-orphan, and the
+     * whole recovery then reports zero imported.</p>
+     *
+     * @param orphan connection to the orphaned store being recovered
+     * @param id     the entry whose children to copy
+     */
+    private void copyChildren(Connection orphan, String id)
+            throws SQLException {
         try (PreparedStatement q = orphan.prepareStatement(
                 "SELECT symptom FROM experience_symptom WHERE entry_id = ?")) {
             q.setString(1, id);

@@ -40,6 +40,14 @@ class ExperienceToolRecallTest {
         a.put("type", type);
         a.put("summary", summary);
         a.put("symbol", symbol);
+        // Sprint 28c: both types this helper is called with — lesson and
+        // failure_mode — are EXPERIENCES, and an experience owes the situation it
+        // arose in and how it turned out. These fixtures predate the form and
+        // supplied neither. Filled in here rather than relaxed in the gate: this
+        // class is about RECALL (does a cue find the entry), and every recall
+        // assertion below is untouched by the two added fields.
+        a.put("situation", "when a job is still running as the view is torn down");
+        a.put("verdict", "worked");
         return a;
     }
 

@@ -50,6 +50,11 @@ class ExperienceToolMaintenanceTest {
         a.put("type", "lesson");
         a.put("summary", "guard lifecycle");
         a.put("symbol", "com.example.WorkflowCoordinator");
+        // Sprint 28c: a lesson owes a situation and an outcome. Supplied rather
+        // than the gate relaxed — this class is about load/refresh/anchor
+        // resolution, and none of its assertions read these fields.
+        a.put("situation", "when a view is disposed while one of its jobs still runs");
+        a.put("verdict", "worked");
         return (String) data(tool.execute(a)).get("id");
     }
 
@@ -70,7 +75,7 @@ class ExperienceToolMaintenanceTest {
         // Sprint 21b (item C): the crawler finds everything — recursive is the DEFAULT.
         Files.createDirectory(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested").resolve("deep.md"),
-            "---\nname: deep\ndescription: nested note\ntype: lesson\n---\nbody");
+            "---\nname: deep\ndescription: nested note\ntype: reference\n---\nbody");
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
         a.put("path", dir.toString());
@@ -81,7 +86,7 @@ class ExperienceToolMaintenanceTest {
     void load_recursive_false_stays_flat(@TempDir Path dir) throws IOException {
         Files.createDirectory(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested").resolve("deep.md"),
-            "---\nname: deep\ndescription: nested note\ntype: lesson\n---\nbody");
+            "---\nname: deep\ndescription: nested note\ntype: reference\n---\nbody");
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
         a.put("path", dir.toString());
@@ -111,8 +116,18 @@ class ExperienceToolMaintenanceTest {
         Map<String, Object> d = data(staleWorld.execute(a));
         assertEquals(1, d.get("loaded"));
         Map<?, ?> refresh = (Map<?, ?>) d.get("refresh");
-        assertEquals(1, ((java.util.List<?>) refresh.get("staled")).size(),
-            "pre-existing dead pointer flagged by load itself — no explicit refresh call");
+        // Sprint 28c: this test is about the auto-refresh FIRING — that a load
+        // judges pre-existing anchors with no explicit refresh call. The fixture
+        // is form-1 (a lesson owes a situation), so a dead anchor now marks its
+        // evidence rather than superseding it: an anchor says where knowledge
+        // was learned, a situation says when it applies, and the second outlives
+        // the first. Asserting `staled` here would demand the old behaviour that
+        // the staleness guard deliberately removed.
+        assertTrue(((java.util.List<?>) refresh.get("evidence_dead")).size() == 1,
+            "pre-existing dead pointer flagged by load itself — no explicit refresh"
+                + " call: " + refresh);
+        assertTrue(((java.util.List<?>) refresh.get("staled")).isEmpty(),
+            "and a form-1 entry is marked, never retired, by a resolver: " + refresh);
     }
 
     @Test
@@ -132,8 +147,15 @@ class ExperienceToolMaintenanceTest {
         im.set("entries", mapper.valueToTree(entries));
         Map<String, Object> d = data(staleWorld.execute(im));
         Map<?, ?> refresh = (Map<?, ?>) d.get("refresh");
-        assertEquals(1, ((java.util.List<?>) refresh.get("staled")).size(),
-            "imported dead pointer flagged by import itself");
+        // Same as above, and it proves one thing more: the form survived the
+        // export/wipe/import round trip. If any of those three dropped the
+        // facets, the imported row would read as legacy and be SUPERSEDED here
+        // instead — so this assertion fails loudly on a lossy round trip.
+        assertTrue(((java.util.List<?>) refresh.get("evidence_dead")).size() == 1,
+            "imported dead pointer flagged by import itself: " + refresh);
+        assertTrue(((java.util.List<?>) refresh.get("staled")).isEmpty(),
+            "and the round trip kept the form — a legacy row would have been"
+                + " superseded here: " + refresh);
     }
 
     @Test
@@ -196,6 +218,10 @@ class ExperienceToolMaintenanceTest {
         a.put("kind", "record");
         a.put("type", "lesson");
         a.put("summary", "to be wiped");
+        // Sprint 28c: a lesson owes a situation and an outcome, and this record
+        // must LAND or the wipe below removes nothing and proves nothing.
+        a.put("situation", "when a store is seeded by hand before a reseed");
+        a.put("verdict", "worked");
         t.execute(a);
     }
 

@@ -18,6 +18,26 @@ import java.util.Optional;
  */
 public interface ExperienceStore extends AutoCloseable {
 
+    /**
+     * Sprint 28c: record that the evidence behind an entry is gone — the anchor
+     * no longer resolves, the source file is missing — WITHOUT touching status.
+     *
+     * <p>The separation is the point. Superseding an entry says "this is no
+     * longer true"; this says "the thing it pointed at has moved, and a human
+     * should look". For a form-1 entry those are different claims, because its
+     * situation says when it applies and the anchor only says where it was
+     * learned. Retiring knowledge because the evidence moved is the design flaw
+     * this sprint exists to fix, so a resolver may mark but never retire.</p>
+     *
+     * <p>ABSTRACT, not defaulted: a default here would let a wrapper silently
+     * swallow the mark, which is the degradedNotice lesson. The compiler names
+     * every implementation that must forward it.</p>
+     *
+     * @return true when the flag was newly set; false when it was already set
+     *         or the entry is gone
+     */
+    boolean markEvidenceDead(String id);
+
     /** Persist a fact as a {@code candidate} entry; returns the generated entry id. */
     String put(SymbolFact fact);
 

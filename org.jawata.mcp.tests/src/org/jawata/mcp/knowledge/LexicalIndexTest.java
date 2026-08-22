@@ -27,7 +27,11 @@ class LexicalIndexTest {
                                    String... symptoms) {
         return new StoredEntry(id, "lesson", null, null, null, "accepted", "medium",
             "java", null, summary, List.of(symptoms), null, null, null,
-            Instant.EPOCH, details == null ? Map.of() : Map.of("details", details));
+            Instant.EPOCH, details == null ? Map.of() : Map.of("details", details),
+            // A legacy row: the word index is deliberately blind to the form —
+            // BM25 scores text, and a form-1 entry must not out-rank a legacy
+            // one for carrying facets rather than for matching better.
+            StoredEntry.Facets.NONE);
     }
 
     /** Ids best-first, so a test can assert an ORDER rather than a raw score. */

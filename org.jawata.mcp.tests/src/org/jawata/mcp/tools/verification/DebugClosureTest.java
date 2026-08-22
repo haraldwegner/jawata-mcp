@@ -196,6 +196,11 @@ class DebugClosureTest {
         record.put("summary", "computeSignal returns iteration*2 + offset(); observed live at a "
             + "breakpoint during Sprint 24 closure");
         record.put("symbol", symbol);
+        // Sprint 28c: a lesson owes the situation it arose in and how it turned
+        // out. Here both are real rather than invented — the situation IS the
+        // breakpoint, which is the whole point of the closure this test pins.
+        record.put("situation", "when stopped at a breakpoint in a running target");
+        record.put("verdict", "worked");
         record.put("confidence", "high");
         ToolResponse recorded = experience.execute(record);
         assertTrue(recorded.isSuccess(), "a runtime finding must be recordable: "
@@ -230,6 +235,10 @@ class DebugClosureTest {
         seed.put("summary", "computeSignal overflowed on iteration 46000 last time — the known "
             + "incident on this seam");
         seed.put("symbol", priorSymbol);
+        // Sprint 28c: a failure_mode is an experience — the situation it arose
+        // in, and the outcome, which for a known incident is failed_avoid.
+        seed.put("situation", "when the iteration counter passes 46000 on this seam");
+        seed.put("verdict", "failed_avoid");
         seed.put("confidence", "high");
         seed.put("status", "accepted");   // a settled, recallable incident
         assertTrue(experience.execute(seed).isSuccess(), "seed the prior incident");

@@ -57,6 +57,11 @@ class ExperienceToolTest {
         args.put("kind", "record");
         args.put("type", "lesson");
         args.put("summary", "guard the workbench lifecycle before disposing views");
+        // Sprint 28c: a lesson owes a situation and an outcome. Supplied rather
+        // than the type weakened — the assertions below are about the RECORD
+        // round trip (id, status, symbol, symptoms, links), all untouched.
+        args.put("situation", "when disposing a view while one of its jobs is still running");
+        args.put("verdict", "worked");
         args.put("confidence", "high");
         args.put("symbol", "com.example.WorkflowCoordinator");
         args.put("details", "double-dispose crashes when a job is still running");

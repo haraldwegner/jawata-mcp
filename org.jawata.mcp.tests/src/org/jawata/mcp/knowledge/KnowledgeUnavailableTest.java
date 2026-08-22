@@ -118,6 +118,11 @@ class KnowledgeUnavailableTest {
             record.put("type", "lesson");
             record.put("summary", "recorded while the store was degraded");
             record.put("symbol", "com.example.WrittenWhileDegraded");
+            // Sprint 28c: a lesson owes a situation and an outcome, and this
+            // record MUST succeed or the recall below has nothing to hit —
+            // which would turn the discriminator into a test of the empty case.
+            record.put("situation", "when the store is serving from its in-memory fallback");
+            record.put("verdict", "worked");
             tool.execute(record);
 
             ToolResponse r = tool.execute(recall("com.example.WrittenWhileDegraded"));

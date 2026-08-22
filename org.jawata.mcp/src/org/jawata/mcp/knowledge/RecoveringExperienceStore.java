@@ -201,6 +201,13 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public boolean markEvidenceDead(String id) {
+        synchronized (lock) {
+            return delegate.markEvidenceDead(id);
+        }
+    }
+
+    @Override
     public long count() {
         return delegate.count();
     }

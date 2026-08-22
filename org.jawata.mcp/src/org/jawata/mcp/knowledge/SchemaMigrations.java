@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 9;
+    static final int LATEST = 10;
 
     private SchemaMigrations() {
     }
@@ -100,6 +100,9 @@ final class SchemaMigrations {
         }
         if (from < 9) {
             migrateToV9(conn);
+        }
+        if (from < 10) {
+            migrateToV10(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -478,6 +481,64 @@ final class SchemaMigrations {
             + "under [artifacts]; {} normalized table row(s) deleted; prose and plain "
             + "words kept; summaries untouched",
             misplacedItems, entriesTouched, dropped, moved, rowsDeleted);
+    }
+
+    /**
+     * v10 — Sprint 28c, the experience form.
+     *
+     * <p>An entry becomes an EXPERIENCE rather than a note: <i>situation</i> (the
+     * condition under which it applies), <i>principle</i> (today's {@code summary}),
+     * <i>outcome</i> ({@code verdict}: worked / failed_avoid / unproven) and
+     * <i>provenance</i> as a FIELD rather than as content.</p>
+     *
+     * <p><b>The point of this rung is that none of it is a code address.</b> An
+     * experience is identified by its own id and described by its own situation, so
+     * losing a symbol, a package or an operation cannot make it unreachable — which
+     * is the sprint's acceptance sentence: "Experience is experience without any
+     * code!" {@code evidence_dead} exists for exactly that case: when optional code
+     * provenance stops resolving, the entry is FLAGGED for a human, never retired.</p>
+     *
+     * <p><b>Additive and entirely nullable, deliberately.</b> A v9 store keeps
+     * answering mid-rollout, an old export still imports (its absent columns read as
+     * legacy), and {@code form} — null for legacy, 1 for the 28c shape — lets
+     * retrieval and curation tell the two corpora apart without guessing. Nothing
+     * here is rewritten by this rung; the form transform is a separate,
+     * confirm-gated verb, because deriving a situation from stored prose is
+     * authorship-adjacent and owes the user a reviewable report first.</p>
+     *
+     * <p>Heeding v8's lesson (see {@link #migrateToV8}): this is a NEW rung, not an
+     * edit to a released one, so it reaches installed stores and not only fresh
+     * ones.</p>
+     *
+     * <p>{@code situation} is VARCHAR(4096), not the 1024 first drafted, and the
+     * size is measured rather than chosen: the corpus analysis measured the
+     * applicability text of all 187 pattern READMEs at median 339 characters but max
+     * 3,314 ({@code abstract-document}), with four modules over 1024. A column that
+     * silently truncated a condition would produce entries that match the wrong
+     * situations — worse than one that is a little wide.</p>
+     *
+     * <p><b>DIVERGENCE FROM THE ABANDONED BRANCH, stated so a table-set comparison
+     * is not a surprise.</b> An earlier, unreleased v10 on the abandoned branch
+     * {@code 784a43d} also created {@code experience_snippet}, {@code
+     * experience_embodiment} and {@code advice_event}, and two further columns
+     * ({@code verdict_version}, {@code capability}). None of that is created here:
+     * frozen snippets, embodiment links and the advice journal are out of this
+     * sprint's scope, {@code verdict_version} existed only to bind a verdict to a
+     * snippet version, and {@code capability} only to carry a catalogue label this
+     * sprint does not assign. Shipping schema for excluded work is how dead columns
+     * are born. A store that was opened by one of those unreleased builds already
+     * reports version 10 and therefore SKIPS this rung entirely: it keeps the extra
+     * tables as inert leftovers, and the code here never reads them.</p>
+     */
+    private static void migrateToV10(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS situation VARCHAR(4096)");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS situation_scope VARCHAR(16)");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS verdict VARCHAR(16)");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS provenance_kind VARCHAR(32)");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS form INT");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS evidence_dead BOOLEAN");
+        }
     }
 
     private static void writeVersion(Connection conn, int version) throws SQLException {

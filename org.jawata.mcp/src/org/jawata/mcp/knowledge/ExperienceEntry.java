@@ -26,11 +26,27 @@ public final class ExperienceEntry {
     private final String operation;
     private final List<String> symptoms;
     private final List<Link> links;
+
     private final String faultOwner;
     private final String externalSystem;
     /** Sprint 21a (item I): anchor language; null/blank = java. Non-Java anchors are
      *  opaque to JDT maintenance (never staled by a resolver that cannot see them). */
     private final String language;
+
+    // Sprint 28c (D3) — the knowledge-spine facets. All nullable: an entry that
+    // carries none of them is a legacy row, and `form` is what says so without
+    // guessing. Only lessons and failure modes are REQUIRED to carry situation
+    // and verdict (EntryForm); a domain fact legitimately has neither.
+    /** When this entry applies, as a condition — never package geography. */
+    private final String situation;
+    /** {@code conditional} (matched per call) or {@code always} (primer, once a session). */
+    private final String situationScope;
+    /** worked / failed_avoid / unproven. */
+    private final String verdict;
+    /** recorded / ingested / catalog / seat_run / migrated. Provenance is a FIELD, not content. */
+    private final String provenanceKind;
+    /** null/0 = legacy row, 1 = the 28c form. */
+    private final Integer form;
 
     /** A typed graph edge; {@code rel} ∈ {handled_by, fixed_by, detected_by, supersedes}. */
     public record Link(String rel, String target) {}
@@ -45,13 +61,18 @@ public final class ExperienceEntry {
         this.faultOwner = b.faultOwner;
         this.externalSystem = b.externalSystem;
         this.language = b.language;
+        this.situation = b.situation;
+        this.situationScope = b.situationScope;
+        this.verdict = b.verdict;
+        this.provenanceKind = b.provenanceKind;
+        this.form = b.form;
     }
 
     public static Builder of(SymbolFact fact) {
         return new Builder(fact);
     }
 
-    /** Convenience: a {@code candidate} entry wrapping just a fact. */
+/** Convenience: a {@code candidate} entry wrapping just a fact. */
     public static ExperienceEntry candidate(SymbolFact fact) {
         return of(fact).build();
     }
@@ -74,6 +95,28 @@ public final class ExperienceEntry {
 
     public List<String> symptoms() {
         return symptoms;
+    }
+
+    // Sprint 28c (D3) — the knowledge-spine facets. Null on a legacy row.
+
+    public String situation() {
+        return situation;
+    }
+
+    public String situationScope() {
+        return situationScope;
+    }
+
+    public String verdict() {
+        return verdict;
+    }
+
+    public String provenanceKind() {
+        return provenanceKind;
+    }
+
+    public Integer form() {
+        return form;
     }
 
     public List<Link> links() {
@@ -134,6 +177,12 @@ public final class ExperienceEntry {
         private String faultOwner;
         private String externalSystem;
         private String language;
+        // Sprint 28c (D3) facets — see the outer class's fields.
+        private String situation;
+        private String situationScope;
+        private String verdict;
+        private String provenanceKind;
+        private Integer form;
 
         private Builder(SymbolFact fact) {
             if (fact == null) {
@@ -191,6 +240,36 @@ public final class ExperienceEntry {
 
         public Builder language(String language) {
             this.language = language;
+            return this;
+        }
+
+        // Sprint 28c (D3) — the knowledge-spine facets. Every one is optional
+        // here; EntryForm decides which are REQUIRED, and it decides by type,
+        // because a domain fact has no outcome and demanding one would teach
+        // authors to invent verdicts.
+
+        public Builder situation(String situation) {
+            this.situation = situation;
+            return this;
+        }
+
+        public Builder situationScope(String situationScope) {
+            this.situationScope = situationScope;
+            return this;
+        }
+
+        public Builder verdict(String verdict) {
+            this.verdict = verdict;
+            return this;
+        }
+
+        public Builder provenanceKind(String provenanceKind) {
+            this.provenanceKind = provenanceKind;
+            return this;
+        }
+
+        public Builder form(Integer form) {
+            this.form = form;
             return this;
         }
 

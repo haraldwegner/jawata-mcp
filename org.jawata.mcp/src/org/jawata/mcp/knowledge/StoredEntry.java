@@ -15,7 +15,51 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
                           String operation, String status, String confidence, String language,
                           String externalSystem, String summary, List<String> symptoms,
                           String sourceRef, String scopeKind, String workspaceId,
-                          Instant createdAt, Map<String, Object> body) {
+                          Instant createdAt, Map<String, Object> body, Facets facets) {
+
+    /**
+     * Sprint 28c — the experience form, projected as ONE component rather
+     * than six more positional fields.
+     *
+     * <p>Six more components on a record that already has sixteen makes every
+     * construction site a counting exercise, and the questions callers actually
+     * ask ("is this the new form?", "is its evidence dead?") are answered here
+     * rather than re-derived at each call site from a null check.</p>
+     *
+     * <p>Every field is nullable and null MEANS something: unclassified, not
+     * "classified as legacy". {@code form} is deliberately {@code Integer}, not
+     * {@code int}, so the difference survives the projection.</p>
+     */
+    public record Facets(String situation, String situationScope, String verdict,
+                         String provenanceKind, Integer form, Boolean evidenceDead) {
+
+        /** A legacy row: no facets at all, which is what every pre-28c entry is. */
+        public static final Facets NONE = new Facets(null, null, null, null, null, null);
+
+        /** True when the entry arrived in the 28c form — it carries a situation. */
+        public boolean isForm1() {
+            return form != null && form == 1;
+        }
+
+        /**
+         * True when the entry says it applies ALWAYS, not under a condition —
+         * the primer's population, pushed once per session rather than matched
+         * per call.
+         */
+        public boolean isAlways() {
+            return "always".equals(situationScope);
+        }
+
+        /** True when a human has been told the evidence behind this entry is gone. */
+        public boolean hasDeadEvidence() {
+            return Boolean.TRUE.equals(evidenceDead);
+        }
+    }
+
+    /** Never null: a legacy row projects {@link Facets#NONE}. */
+    public Facets facets() {
+        return facets == null ? Facets.NONE : facets;
+    }
 
     /** Sprint 21c: a section entry split out of a memory file ({@code scope_kind} marker). */
     public boolean isSection() {

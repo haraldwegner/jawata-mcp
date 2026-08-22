@@ -51,7 +51,7 @@ class AnchorBackfillAndRefreshTest {
             writeMemory(dir, "lesson.md", """
                 ---
                 description: pre-project greeting lesson
-                type: lesson
+                type: reference
                 ---
                 """, "State release lives in `HelloWorld.printGreeting`.\n");
 

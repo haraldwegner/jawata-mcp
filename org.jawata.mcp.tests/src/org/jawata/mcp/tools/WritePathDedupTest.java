@@ -60,6 +60,13 @@ class WritePathDedupTest {
         if (details != null) {
             a.put("details", details);
         }
+        // Sprint 28c: a lesson owes a situation and an outcome. Safe for THIS
+        // class specifically: the dedup decision embeds
+        // EmbeddingService.textOf(summary, details) and nothing else, so the two
+        // added fields cannot move a similarity score. The same constant on
+        // every fixture would otherwise be a shared-text confound.
+        a.put("situation", "when the same knowledge is written down a second time");
+        a.put("verdict", "worked");
         return a;
     }
 

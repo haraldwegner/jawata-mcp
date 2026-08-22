@@ -11,6 +11,8 @@ import java.sql.Statement;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -192,6 +194,84 @@ class ExperienceStoreLocationTest {
             Map<String, Object> second = store.recoverOrphans(workspaceRoot);
             assertEquals(0, second.get("imported"), "second sweep is a no-op");
             assertEquals(2L, store.count());
+        }
+    }
+
+    /**
+     * Sprint 28c — recovery must carry the knowledge spine, and this is the one
+     * write path where losing a column cannot be undone.
+     *
+     * <p>{@code recoverOrphans} writes a {@code .jawata-recovered} marker when it
+     * finishes, so the source is never swept again: whatever the import fails to
+     * carry is gone for good, silently, with no second chance. {@code importFrom}
+     * is the FOURTH place the row shape is spelled out — after {@code insert},
+     * {@code ALL_COLUMNS} and {@code importEntries} — and it was missed when
+     * those three were widened together, which is exactly the failure the
+     * "widen them together" rule exists to prevent.</p>
+     *
+     * <p>The orphan is built through the PRODUCTION store rather than hand-rolled
+     * DDL, so the v10 rung really runs and the row really carries facets. A
+     * fixture that wrote the columns by hand could pass while the real writer
+     * was broken.</p>
+     */
+    @Test
+    void recovery_carries_the_form_of_a_v10_orphan(
+            @TempDir Path workspaceRoot, @TempDir Path storeDir) throws Exception {
+        Path orphanDir = workspaceRoot.resolve("ccc33333").resolve("jawata-experience");
+        Files.createDirectories(orphanDir);
+        try (H2ExperienceStore orphan = H2ExperienceStore.openAt(orphanDir)) {
+            orphan.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson",
+                        "Re-read the queue head before re-arming the retry.",
+                        Confidence.HIGH).symbol("com.example.Retry").build())
+                .status(ExperienceEntry.ACCEPTED)
+                // All SIX, with DISTINCT values per column. Fewer would leave a
+                // swap between two same-typed VARCHAR binds — situation_scope and
+                // provenance_kind — passing undetected, which is the failure mode
+                // a hand-written 24-placeholder INSERT actually has, and which the
+                // rescue's renumbering (two binds removed) could have introduced.
+                .situation("when a consumer reconnects mid-batch")
+                .situationScope("conditional")
+                .verdict("failed_avoid")
+                .provenanceKind("recorded")
+                .form(1)
+                .build());
+        }
+
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(storeDir)) {
+            assertEquals(1, store.recoverOrphans(workspaceRoot).get("imported"));
+
+            Map<String, Object> row = store.exportEntries(null, null).get(0);
+            assertEquals("when a consumer reconnects mid-batch", row.get("situation"),
+                "the situation survived a recovery that can never be repeated");
+            assertEquals("conditional", row.get("situation_scope"));
+            assertEquals("failed_avoid", row.get("verdict"));
+            assertEquals("recorded", row.get("provenance_kind"));
+            assertEquals(1, row.get("form"),
+                "and it is still form-1 — not silently demoted to unclassified");
+            // Absent, not false: this orphan was never marked, and "nobody has
+            // been told the evidence is gone" must not round-trip as "somebody
+            // checked and it is fine".
+            assertNull(row.get("evidence_dead"),
+                "an unmarked entry recovers with evidence_dead ABSENT, never false");
+        }
+    }
+
+    /** A PRE-v10 orphan still recovers, and its facets read as absent, not as zero. */
+    @Test
+    void recovery_of_a_legacy_orphan_leaves_the_facets_absent(
+            @TempDir Path workspaceRoot, @TempDir Path storeDir) throws Exception {
+        createOrphan(workspaceRoot.resolve("ddd44444"), "legacy-1");
+
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(storeDir)) {
+            assertEquals(1, store.recoverOrphans(workspaceRoot).get("imported"));
+
+            Map<String, Object> row = store.exportEntries(null, null).get(0);
+            assertFalse(row.containsKey("form"),
+                "an orphan from before the columns existed is UNCLASSIFIED, never"
+                    + " classified-as-legacy: " + row);
+            assertFalse(row.containsKey("verdict"));
+            assertFalse(row.containsKey("situation"));
         }
     }
 

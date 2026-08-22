@@ -53,6 +53,14 @@ class AdmissionGateTest {
         args.put("kind", "record");
         args.put("type", "lesson");
         args.put("summary", summary);
+        // Sprint 28c: a lesson owes a situation and an outcome — for a lesson
+        // the outcome IS the knowledge. These fixtures predate that and recorded
+        // neither, so the form gate now refuses them, correctly. Supplied here
+        // rather than weakening the gate: this class is about SHAPE refusals
+        // (paths and headings standing in for prose), and those assertions are
+        // untouched.
+        args.put("situation", "when reviewing what an agent recorded after a tool call");
+        args.put("verdict", "worked");
         if (symptoms.length > 0) {
             ArrayNode arr = args.putArray("symptoms");
             for (String s : symptoms) {
@@ -123,6 +131,55 @@ class AdmissionGateTest {
         assertFalse(resp.isSuccess());
         assertTrue(resp.getError().getMessage().contains("2 more misplaced items"),
             "the tail names the remaining count: " + resp.getError().getMessage());
+    }
+
+    /**
+     * The OUTCOME branch, discriminated THROUGH THE TOOL. Every other
+     * outcome-less fixture in this sprint also lacks a situation, so the gate
+     * refuses on `situation` and returns before the verdict branch runs — those
+     * tests stay green with the verdict branch deleted. This one supplies a
+     * valid situation and withholds only the outcome.
+     *
+     * <p>It lives HERE rather than only in {@code EntryFormTest} for the reason
+     * this class's own header gives: a directly-tested validator proves nothing
+     * about wiring.</p>
+     */
+    @Test
+    void a_recorded_lesson_with_a_situation_but_no_outcome_is_refused_on_the_verdict() {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "record");
+        args.put("type", "lesson");
+        args.put("summary", "re-read the queue head before re-arming the retry");
+        args.put("situation", "when a consumer reconnects mid-batch");
+        // verdict deliberately absent — the ONLY thing wrong with this record
+
+        ToolResponse resp = tool.execute(args);
+        assertFalse(resp.isSuccess(), "an experience with no outcome teaches nothing");
+        String msg = resp.getError().getMessage();
+        assertTrue(msg.contains("verdict") || msg.contains("outcome"),
+            "and it is refused on the OUTCOME, not on the situation it supplied: " + msg);
+        assertTrue(msg.contains("worked") && msg.contains("failed_avoid")
+                && msg.contains("unproven"),
+            "the closed vocabulary is NAMED — enforcing a closed set without listing"
+                + " it makes authors guess: " + msg);
+        assertEquals(0L, store.count(), "nothing stored on refusal");
+    }
+
+    /** A verdict outside the vocabulary is refused too, and says what is allowed. */
+    @Test
+    void a_verdict_outside_the_vocabulary_is_refused() {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "record");
+        args.put("type", "lesson");
+        args.put("summary", "re-read the queue head before re-arming the retry");
+        args.put("situation", "when a consumer reconnects mid-batch");
+        args.put("verdict", "went_great");
+
+        ToolResponse resp = tool.execute(args);
+        assertFalse(resp.isSuccess());
+        assertTrue(resp.getError().getMessage().contains("went_great"),
+            "the message names the value it rejected: " + resp.getError().getMessage());
+        assertEquals(0L, store.count());
     }
 
     /** The gate guards NEW records only: an import (restore/backup) of rows

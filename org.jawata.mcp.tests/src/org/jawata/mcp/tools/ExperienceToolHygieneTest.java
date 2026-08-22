@@ -51,6 +51,11 @@ class ExperienceToolHygieneTest {
         if (symbol != null) {
             a.put("symbol", symbol);
         }
+        // Sprint 28c: a lesson owes a situation and an outcome. Supplied rather
+        // than the gate relaxed — this class is about prune/dedup/compact, none
+        // of which reads these fields.
+        a.put("situation", "when a scheduled task overlaps the previous run");
+        a.put("verdict", "worked");
         return (String) data(tool.execute(a)).get("id");
     }
 
@@ -129,6 +134,10 @@ class ExperienceToolHygieneTest {
                 a.put("kind", "record");
                 a.put("type", "lesson");
                 a.put("summary", "churn " + i + " ".repeat(500));
+                // Sprint 28c: bulk churn, but it must LAND — the point of this
+                // test is the file GROWING before compact reclaims it.
+                a.put("situation", "when a store has been written and wiped repeatedly");
+                a.put("verdict", "worked");
                 fileTool.execute(a);
             }
             ObjectNode wipe = mapper.createObjectNode();
@@ -147,6 +156,8 @@ class ExperienceToolHygieneTest {
             after.put("kind", "record");
             after.put("type", "lesson");
             after.put("summary", "post-compact write");
+            after.put("situation", "when the connection has been swapped by a compact");
+            after.put("verdict", "worked");
             assertTrue(fileTool.execute(after).isSuccess(), "store usable after compact reopen");
             assertEquals(1L, fileStore.count());
         }
@@ -170,6 +181,10 @@ class ExperienceToolHygieneTest {
         rust.put("type", "lesson");
         rust.put("summary", "rust note");
         rust.put("language", "rust");
+        // Sprint 28c: this row is COUNTED by the assertions below (by_language
+        // rust=1, total=3), so a refusal here would silently change the arithmetic.
+        rust.put("situation", "when a non-Java anchor carries the entry");
+        rust.put("verdict", "worked");
         data(tool.execute(rust));
 
         Map<String, Object> stats = data(exec("stats", a -> { }));
