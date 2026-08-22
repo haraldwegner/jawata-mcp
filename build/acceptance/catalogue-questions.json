@@ -1,0 +1,19 @@
+{
+  "fixture": "catalogue-questions",
+  "frozen": "2026-08-22",
+  "frozen_before": "the extractor and seeder existed",
+  "contract": [
+    "Five prose design questions with the pattern each must return.",
+    "Every question is worded as a predev design problem: no symbol, no package,",
+    "no operation, no class name, and no pattern name. A question naming its own",
+    "pattern would be answerable by string matching and would prove nothing.",
+    "Expected slugs are directory names in the pinned java-design-patterns fork."
+  ],
+  "questions": [
+    { "question": "one of the services we depend on keeps going unresponsive and our retries are dragging the rest of the system down with it", "expect_slug": "circuit-breaker" },
+    { "question": "we pick between several pricing algorithms with a chain of conditionals and need to swap them while the program runs", "expect_slug": "strategy" },
+    { "question": "a single business transaction spans four microservices and we cannot use a two-phase commit", "expect_slug": "saga" },
+    { "question": "when one object changes state an unknown number of others need to hear about it without being tightly coupled to it", "expect_slug": "observer" },
+    { "question": "assembling this object takes many steps in a fixed order and we need different representations out of the same process", "expect_slug": "builder" }
+  ]
+}

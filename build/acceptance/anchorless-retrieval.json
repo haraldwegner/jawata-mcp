@@ -1,0 +1,72 @@
+{
+  "fixture": "anchorless-retrieval",
+  "frozen": "2026-08-22",
+  "frozen_before": "any rescue retrieval code existed",
+  "contract": [
+    "This fixture is the instrument for Sprint 28c's acceptance sentence:",
+    "an experience must be reachable with NO code reference of any kind.",
+    "",
+    "THE DISCRIMINATING PROPERTY, and the reason this fixture can fail:",
+    "every positive question is worded from its record's SITUATION and shares",
+    "NO content word with that record's PRINCIPLE. The pre-rescue store indexes",
+    "the principle (summary) and not the situation, so it CANNOT answer these",
+    "questions. A gate whose questions borrowed principle words would pass on",
+    "the broken store and prove nothing.",
+    "",
+    "Records carry no symbol, no package, no operation and no snippet. Supplying",
+    "one to make an expected entry reachable fails the sprint by definition."
+  ],
+  "records": [
+    {
+      "id": "acc00001-0000-4000-8000-000000000001",
+      "type": "lesson",
+      "situation": "when a nightly batch reconciles ledgers across time zones and the clock rolls backward for daylight saving",
+      "summary": "Store every instant in UTC and convert only at the display boundary.",
+      "verdict": "worked"
+    },
+    {
+      "id": "acc00002-0000-4000-8000-000000000002",
+      "type": "lesson",
+      "situation": "when a support representative must explain months later why an automated decision came out the way it did",
+      "summary": "Persist the inputs and the rule version beside the result, never the result alone.",
+      "verdict": "worked"
+    },
+    {
+      "id": "acc00003-0000-4000-8000-000000000003",
+      "type": "failure_mode",
+      "situation": "when a release ships on a Friday afternoon and the on-call rotation hands over during the weekend",
+      "summary": "Gate the deployment on whether the person who can reverse it is reachable.",
+      "verdict": "failed_avoid"
+    },
+    {
+      "id": "acc00004-0000-4000-8000-000000000004",
+      "type": "lesson",
+      "situation": "when two groups own adjacent halves of one workflow and nobody is accountable for the seam between them",
+      "summary": "Assign the interface one custodian and a written contract, agreed before either party tunes anything.",
+      "verdict": "worked"
+    },
+    {
+      "id": "acc00005-0000-4000-8000-000000000005",
+      "type": "failure_mode",
+      "situation": "when a number invented to diagnose a problem becomes the figure leadership reviews every week",
+      "summary": "Keep the instrument separate from the target, or it stops measuring what it was built for.",
+      "verdict": "failed_avoid"
+    }
+  ],
+  "positive_questions": [
+    { "question": "our overnight reconciliation drifts by an hour when the clocks roll backward", "expect_id": "acc00001-0000-4000-8000-000000000001" },
+    { "question": "someone in support has to explain an automated decision from months ago", "expect_id": "acc00002-0000-4000-8000-000000000002" },
+    { "question": "we keep shipping Friday afternoon and then the on-call rotation changes over the weekend", "expect_id": "acc00003-0000-4000-8000-000000000003" },
+    { "question": "two groups each own half a workflow and nobody is accountable for the seam", "expect_id": "acc00004-0000-4000-8000-000000000004" },
+    { "question": "a number we invented to find problems has become a weekly leadership review figure", "expect_id": "acc00005-0000-4000-8000-000000000005" }
+  ],
+  "unrelated_questions": [
+    "how do I set the compression level for a cold archive tier",
+    "which font pairing works on a printed conference badge",
+    "should greenhouse irrigation run before or after sunrise",
+    "what current does a three-phase motor draw at startup",
+    "what is the right sequence for descaling an espresso machine",
+    "how do I keep pigeons from roosting on a balcony railing",
+    "which knot holds best on a wet mooring line"
+  ]
+}
