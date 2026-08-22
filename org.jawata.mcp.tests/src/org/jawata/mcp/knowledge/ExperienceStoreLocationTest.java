@@ -226,8 +226,8 @@ class ExperienceStoreLocationTest {
                         Confidence.HIGH).symbol("com.example.Retry").build())
                 .status(ExperienceEntry.ACCEPTED)
                 // All FIVE, with DISTINCT values per column. Fewer would leave a
-                // swap between the two same-typed VARCHAR binds — situation and
-                // provenance_kind — passing undetected, which is the failure mode
+                // swap between the THREE same-typed VARCHAR binds — situation,
+                // verdict and provenance_kind — passing undetected: the failure mode
                 // a hand-written 23-placeholder INSERT actually has, and which the
                 // rescue's two rounds of renumbering could each have introduced.
                 .situation("when a consumer reconnects mid-batch")

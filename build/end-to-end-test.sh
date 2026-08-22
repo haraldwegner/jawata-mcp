@@ -355,10 +355,16 @@ esac
 # distinction is the whole sprint. Written first the other way round, this probe FAILED:
 # querying the situation the file itself declares returned the entry only as an
 # "In a similar situation" nominee, never as an answer. That is the defect the rescue
-# exists to fix, reproduced at the front door — and it is measured, with a number that
-# must move, by the frozen fixture in build/acceptance/ (0 of 5 today). It is not
-# re-measured here, because a second copy of an acceptance gate is a second thing to
-# quietly relax. What THIS probe owns is the ingest write surface Stage 0 added.
+# exists to fix, reproduced at the front door.
+#
+# It is NOT asserted here, and the reason is worth stating precisely rather than
+# gesturing at another gate. build/acceptance/ FREEZES the questions and their expected
+# answers — a digest pin, so they cannot be quietly relaxed once a reading is in hand —
+# but no committed gate READS them against a running store yet. The "0 of 5" recorded in
+# AcceptanceFixtureTest's javadoc is a measurement taken by hand against the abandoned
+# build, not a number any gate produces today. The gate that produces it is C1 clause 2,
+# and until that exists this defect has a frozen instrument and no automated reading.
+# What THIS probe owns is the ingest write surface Stage 0 added, and nothing more.
 FR="$(call experience '{"kind":"recall","symptom":"size the native buffer once the scale factor is known","format":"text"}')"
 case "$FR" in
     *"scale factor is known"*) pass "ingest-carries-the-form the ingested lesson round-trips to a recall of the built product" ;;

@@ -520,7 +520,7 @@ final class SchemaMigrations {
      * <p><b>DIVERGENCE FROM THE ABANDONED BRANCH, stated so a table-set comparison
      * is not a surprise.</b> An earlier, unreleased v10 on the abandoned branch
      * {@code 784a43d} also created {@code experience_snippet}, {@code
-     * experience_embodiment} and {@code advice_event}, and two further columns
+     * experience_embodiment} and {@code advice_event}, and three further columns
      * ({@code verdict_version}, {@code capability}, {@code situation_scope}). None of
      * that is created here:
      * frozen snippets, embodiment links and the advice journal are out of this

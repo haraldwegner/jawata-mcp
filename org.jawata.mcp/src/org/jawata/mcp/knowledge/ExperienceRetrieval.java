@@ -265,24 +265,6 @@ public final class ExperienceRetrieval {
             return out;
         }
 
-        // Sprint 28c: an `always`-scoped entry belongs to the primer, which
-        // pushes it ONCE at session start — so it is dropped from the per-call
-        // answer here. Left in, it would match every cue by construction and
-        // spend, on every single call, budget that belongs to the entries the
-        // cue actually selected: the broadest knowledge in the store would also
-        // be its loudest, which is the crowding the v3.13.0 dogfood found.
-        //
-        // Dropped only when something else fits. An `always` entry is real
-        // knowledge, and answering "nothing" while holding it would be
-        // manufacturing an absence — the one failure this file exists to
-        // prevent.
-        if (fitting.size() > 1) {
-            List<StoredEntry> conditional = new ArrayList<>(fitting);
-            if (!conditional.isEmpty()) {
-                fitting = conditional;
-            }
-        }
-
         // Sprint 21c (item B): the section IS the fact — when a section and its
         // file-parent both fit (same source_ref), drop the PARENT bundle; recall
         // answers with the fact and injection pays only the fact's tokens. Sibling

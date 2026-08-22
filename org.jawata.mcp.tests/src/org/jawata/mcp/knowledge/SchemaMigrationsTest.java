@@ -83,9 +83,9 @@ class SchemaMigrationsTest {
      * every row, and is left alone.
      *
      * <p>This is not hypothetical and it is not a fresh install: the user's own store
-     * was migrated by an abandoned build that created three extra tables and two extra
-     * columns. It reports version 10, so the rescue's rung never runs on it, and it
-     * therefore has a shape no fresh install can produce — permanently.</p>
+     * was migrated by an abandoned build that created three extra tables and three
+     * extra columns. It reports version 10, so the rescue's rung never runs on it, and
+     * it therefore has a shape no fresh install can produce — permanently.</p>
      *
      * <p>Every other case in this class starts from a schema the current ladder built.
      * This one starts from a schema it did NOT build, which is exactly why it was the
@@ -100,7 +100,7 @@ class SchemaMigrationsTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
             assertEquals(2L, store.count(), "precondition: the ladder built a current v10");
         }
-        // Widen it the way the abandoned build did: two extra columns and the three
+        // Widen it the way the abandoned build did: three extra columns and the three
         // tables this rung deliberately does not create.
         try (Connection c = connect(dir); Statement s = c.createStatement()) {
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS verdict_version INT");
