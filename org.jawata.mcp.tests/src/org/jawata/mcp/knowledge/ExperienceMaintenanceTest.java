@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Sprint 21 Stage 4 — initial_load ingest + refresh/wipe maintenance. */
@@ -199,6 +200,53 @@ class ExperienceMaintenanceTest {
             "and the dead pointer is RECORDED, so the human has something to act on");
         assertEquals(1, ((List<?>) report.get("evidence_dead")).size(),
             "the report names it rather than passing over it in silence: " + report);
+    }
+
+    /**
+     * A broken workspace does NOT stamp "the evidence is gone" on a whole corpus of
+     * experiences.
+     *
+     * <p>The mass-stale breaker holds status changes when many anchors are judged and
+     * not one resolves, because that pattern means the workspace is unloaded, not that
+     * the code vanished. Marking evidence dead was originally exempt from it, on the
+     * reasoning that a mark changes no status and so can do no harm. It can: the mark
+     * is rendered to the agent, it survives export and import, and nothing clears
+     * it — there is no inverse of markEvidenceDead. A minute of an unloaded project
+     * would have written it, permanently, on every anchored experience in the store.</p>
+     *
+     * <p>Worse, on a corpus where EVERY entry is form-1 — which is exactly what the
+     * form migration produces — the breaker could not trip at all: an unresolvable
+     * form-1 anchor lands in neither planned list, so the condition that requires a
+     * planned change to be pending was never satisfied. The population most exposed
+     * to this was the one population the breaker could not protect.</p>
+     */
+    @Test
+    void a_suspect_workspace_does_not_mark_a_whole_form_one_corpus_evidence_dead() {
+        // Three is MASS_STALE_MIN_CHECKED: enough judged anchors for "not one
+        // resolved" to mean the workspace rather than the code.
+        for (int i = 1; i <= 3; i++) {
+            store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "re-read the queue head before re-arming " + i,
+                        Confidence.HIGH).symbol("com.gone.Removed" + i).build())
+                .situation("when a consumer reconnects mid-batch")
+                .verdict("worked")
+                .form(1)
+                .build());
+        }
+
+        Map<String, Object> report = maint(fqn -> Boolean.FALSE).refresh();
+
+        assertEquals(3, report.get("checked"), "all three anchors were judged");
+        assertEquals(0, report.get("resolved"), "and not one of them resolved");
+        assertNull(report.get("evidence_dead"),
+            "so NOTHING is marked: the breaker holds the marks exactly as it holds a "
+                + "supersede, because a mark withheld is recoverable on the next healthy "
+                + "refresh and a mark wrongly written is not. Report: " + report);
+
+        for (StoredEntry e : store.all()) {
+            assertFalse(e.facets().hasDeadEvidence(),
+                "no entry carries a mark a broken workspace produced: " + e.id());
+        }
     }
 
     /** Marking is idempotent: a second refresh re-reports nothing and rewrites nothing. */

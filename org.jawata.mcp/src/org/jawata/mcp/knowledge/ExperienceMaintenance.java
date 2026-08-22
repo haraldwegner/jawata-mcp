@@ -643,8 +643,14 @@ public final class ExperienceMaintenance {
                 plannedClear.add(e);
             }
         }
+        // formEvidenceDead counts toward the breaker, and leaving it out was a real
+        // hole rather than an omission of detail. On a corpus where every entry is
+        // form-1 — which is exactly what the form migration produces — an
+        // unresolvable anchor lands in NEITHER planned list, so the third conjunct
+        // was false, so the breaker could not trip at all on the population it most
+        // needed to protect.
         boolean workspaceSuspect = checked >= MASS_STALE_MIN_CHECKED && resolved == 0
-            && !(plannedStale.isEmpty() && plannedClear.isEmpty());
+            && !(plannedStale.isEmpty() && plannedClear.isEmpty() && formEvidenceDead.isEmpty());
         if (workspaceSuspect) {
             log.warn("refresh: {} anchors judged, ZERO resolved — workspace suspect, holding "
                 + "{} planned status changes", checked, plannedStale.size() + plannedClear.size());
@@ -657,14 +663,22 @@ public final class ExperienceMaintenance {
                 store.updateSymbolAnchor(e.id(), null);
                 cleared.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
             }
-        }
-        // Sprint 28c: marked whether or not the breaker tripped, because this
-        // changes no status and can therefore do no harm — and the breaker
-        // exists to stop a broken workspace RETIRING knowledge, not to stop it
-        // recording an observation a human will read.
-        for (StoredEntry e : formEvidenceDead) {
-            if (!e.facets().hasDeadEvidence() && store.markEvidenceDead(e.id())) {
-                evidenceDead.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
+            // Held by the breaker like the other two, and the reasoning that once
+            // exempted it was wrong. It said the mark "changes no status and can
+            // therefore do no harm". It does: evidence_dead is rendered to the
+            // agent on every line the entry appears in, it survives export and
+            // import, and there is NO path that clears it — markEvidenceDead has
+            // no inverse. So a workspace that is merely unloaded for a minute
+            // would stamp "the evidence behind this is gone" on every anchored
+            // experience in the store, permanently, and a human would have to
+            // disbelieve each one by hand.
+            //
+            // A mark withheld is recoverable: the next refresh on a healthy
+            // workspace makes it. A mark wrongly written is not.
+            for (StoredEntry e : formEvidenceDead) {
+                if (!e.facets().hasDeadEvidence() && store.markEvidenceDead(e.id())) {
+                    evidenceDead.add(Map.of("id", e.id(), "symbol", e.symbolFqn()));
+                }
             }
         }
         if (!evidenceDead.isEmpty()) {

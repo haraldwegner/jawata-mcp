@@ -196,5 +196,32 @@ done
 
 echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD"
 [ "$SUMMARIES" -eq "$SHARDS" ] || { echo "FAILED: $((SHARDS - SUMMARIES)) shard(s) produced no summary"; exit 3; }
+
+# Every PLANNED test must have produced a verdict. Without this the runner is
+# blind to the one failure mode it most needs to see: a container-level throw.
+#
+# A @BeforeAll that throws takes its whole class down BEFORE any test exists to
+# blame, so JUnit attributes the loss to no test at all — the class's tests are
+# counted in `total` and appear in NO bucket. The old condition asked only
+# whether anything reported failure, so it read that as failed=0 and exited 0.
+# It happened here, and for two sprints: a committed corpus went missing from
+# the branch, the calibration gate's @BeforeAll threw, both its tests silently
+# stopped existing, and the suite reported green on every run.
+#
+# That is this project's deepest recorded bug class — an empty result on
+# failure, reported as success — living inside the gate that is supposed to
+# catch it. A number that cannot distinguish "1985 passed" from "1982 passed
+# and 3 vanished" is not a gate.
+ACCOUNTED=$((PASS + FAIL + ABORT + SKIP + UNLOAD))
+if [ "$ACCOUNTED" -ne "$TOT" ]; then
+    echo "FAILED: $((TOT - ACCOUNTED)) planned test(s) produced NO verdict —" \
+         "neither passed, failed, aborted, skipped nor unloadable."
+    echo "  This is almost always a @BeforeAll/@BeforeEach or class-initializer" \
+         "throw, or a missing test resource. Search the shard logs for the" \
+         "class that reported fewer results than it planned:"
+    echo "    grep -n 'FAILED:\|Exception\|Error' $OUT/shard-*.log | head"
+    exit 4
+fi
+
 [ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] || exit 1
 exit 0

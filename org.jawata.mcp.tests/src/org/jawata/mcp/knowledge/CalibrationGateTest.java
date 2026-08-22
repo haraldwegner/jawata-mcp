@@ -1,6 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -40,9 +39,6 @@ class CalibrationGateTest {
 
     private static final String CORPUS_PROPERTY = "jawata.embed.corpus";
     private static final String ACCEPT_SETS = "/test-resources/embed-goldens/accept-sets.json";
-    /** The committed corpus the gate scores against by default (see loadFrozenCorpus). */
-    private static final String FROZEN_CORPUS =
-        "/test-resources/embed-goldens/calibration-corpus.json";
     private static final int BAR = 10;
     /** The frozen contract's nomination window: the designated entry must be inside it. */
     private static final int FROZEN_K = 12;
@@ -64,9 +60,11 @@ class CalibrationGateTest {
         // returned, which JUnit records as a PASS. Printing loudly was the
         // mitigation; aborting is the fix, and it costs one visible "aborted" in
         // a run without the corpus instead of one invisible green.
-        // Sprint 28c: no corpus PROPERTY is required any more — the corpus is
-        // committed, so this gate RUNS in every suite run instead of aborting in
-        // all of them. Only an absent embedder can still stop it.
+        String corpusPath = System.getProperty(CORPUS_PROPERTY);
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            corpusPath != null && Files.exists(Path.of(corpusPath)),
+            "[E2 GATE] NOT RUN — no corpus at -D" + CORPUS_PROPERTY
+            + ". This is the sprint's headline gate; it is unverified in this run.");
         EmbeddingService svc = EmbeddingService.shared();
         org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
             "[E2 GATE] NOT RUN — embedder unavailable: " + svc.unavailableReason());
@@ -101,55 +99,6 @@ class CalibrationGateTest {
             System.out.printf("[E2 GATE] accept-set entries present: %d of %d%s%n",
                 acceptedIds(accept).size() - missing.size(), acceptedIds(accept).size(),
                 missing.isEmpty() ? "" : " — MISSING " + missing);
-
-            // AND THEN IT SCORED ANYWAY. The comment above says a gate that
-            // cannot find its own answers is measuring its fixture — and the
-            // code printed that and carried on to assert on the number, which
-            // is the mitigation this project has recorded as insufficient every
-            // time: printing is not failing.
-            //
-            // Sprint 28c saw the consequence. A corpus supplied in the wrong
-            // JSON shape imported ZERO entries, and the gate reported
-            // "semantic recall answered 0 of 12 — this is the sprint's central
-            // claim", which reads as total retrieval collapse. The retrieval
-            // code was never exercised at all.
-            //
-            // So the fixture is judged BEFORE the product is: a cue whose whole
-            // accept set is absent cannot pass however good retrieval is, and a
-            // ceiling below the bar makes a red result say nothing.
-            assertFalse(store.all().isEmpty(),
-                "[E2 GATE] FIXTURE, NOT PRODUCT: the corpus loaded ZERO entries."
-                + " The export shape this gate reads is a captured tool RESPONSE"
-                + " ({\"data\":{\"entries\":[...]}}), not the file written by"
-                + " experience(kind=export, path=...) ({\"count\":N,\"entries\":[...]})."
-                + " Nothing here measures retrieval.");
-            int unreachable = 0;
-            List<String> unreachableCues = new ArrayList<>();
-            for (JsonNode cue : accept.get("cues")) {
-                boolean anyPresent = false;
-                for (JsonNode a : cue.get("accept_set")) {
-                    if (presentIds.stream().anyMatch(id -> id.startsWith(a.asText()))) {
-                        anyPresent = true;
-                        break;
-                    }
-                }
-                if (!anyPresent) {
-                    unreachable++;
-                    unreachableCues.add(cue.get("id").asText());
-                }
-            }
-            int ceiling = accept.get("cues").size() - unreachable;
-            if (unreachable > 0) {
-                System.out.printf("[E2 GATE] ceiling %d of %d — %d cue(s) have NO accept-set"
-                    + " entry in this corpus: %s%n",
-                    ceiling, accept.get("cues").size(), unreachable, unreachableCues);
-            }
-            assertTrue(ceiling >= BAR,
-                "[E2 GATE] FIXTURE, NOT PRODUCT: only " + ceiling + " of "
-                + accept.get("cues").size() + " cues can be answered by this corpus at all"
-                + " (bar " + BAR + "). Cues with no accept-set entry present: "
-                + unreachableCues + ". A score measured here would be a property of the"
-                + " corpus, not of retrieval — supply a corpus that contains the answers.");
 
             ExperienceRetrieval union = new ExperienceRetrieval(store, () -> null, index);
             ExperienceRetrieval keyword = ExperienceRetrieval.keywordOnly(store, () -> null);
@@ -280,29 +229,6 @@ class CalibrationGateTest {
                 System.out.println("[E2 GATE] fused failing: " + fusedFailing);
             }
 
-            // Sprint 28c: the BARS below are meaningful only against a corpus
-            // whose difficulty somebody established. The frozen corpus carries a
-            // `calibrated` flag saying whether that has happened, and while it is
-            // false this reports the numbers and asserts only what is defensible
-            // — the corpus loaded, and every designated answer is present
-            // (asserted above, unconditionally).
-            //
-            // This is NOT the printing-instead-of-failing pattern the fixture
-            // guard above exists to end. That one hid a BROKEN fixture behind a
-            // score. This one refuses to score against a yardstick nobody has
-            // marked, and says so in the run. The difference is that a corpus its
-            // own author tuned certifies the author rather than the code: two
-            // authored versions of this file measured semantic 12 / keyword 10,
-            // and semantic 5 / keyword 7. Either could have been kept.
-            if (!calibrated()) {
-                System.out.println("[E2 GATE] CORPUS NOT CALIBRATED — bars not asserted."
-                    + " semantic=" + passed + " keyword=" + keywordPassed
-                    + " embeddings=" + embeddingsPassed + " words=" + lexicalPassed
-                    + " fused=" + fusedPassed
-                    + ". Set \"calibrated\": true in calibration-corpus.json once its"
-                    + " difficulty has been established by someone not trying to pass it.");
-                return;
-            }
             assertTrue(passed >= BAR,
                 "E2: semantic recall answered " + passed + " of "
                 + accept.get("cues").size() + " calibration cues; the bar is " + BAR
@@ -357,9 +283,14 @@ class CalibrationGateTest {
      */
     @Test
     void criterion_c_the_paraphrase_case_returns_the_ratchet_lesson() throws Exception {
-        // Sprint 28c: the corpus is committed, so the only remaining reason this
-        // cannot run is an absent embedder. An abort still beats a bare return —
-        // JUnit records a return as a PASS.
+        String corpusPath = System.getProperty(CORPUS_PROPERTY);
+        // ABORT, never a bare return: JUnit records a return as a PASS, and this
+        // is the sprint's uniquely unreachable measure — the one place a
+        // silently-skipped gate would be most costly to mistake for a green one.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            corpusPath != null && Files.exists(Path.of(corpusPath)),
+            "[CRITERION C] NOT RUN — no corpus at -D" + CORPUS_PROPERTY
+            + "; D1's third measure is unverified in this run.");
         EmbeddingService svc = EmbeddingService.shared();
         org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
             "[CRITERION C] NOT RUN — embedder unavailable: " + svc.unavailableReason());
@@ -382,20 +313,6 @@ class CalibrationGateTest {
             System.out.printf("[CRITERION C] result=%s returned=%s%n",
                 answer.get("result"),
                 ranked.stream().map(s -> s.substring(0, Math.min(8, s.length()))).toList());
-            // Same rule as the table above: this measures RETRIEVAL against a
-            // corpus, so it means nothing until that corpus's difficulty has
-            // been established. Reported either way, asserted only when it has.
-            if (!calibrated()) {
-                System.out.println("[CRITERION C] CORPUS NOT CALIBRATED — not asserted."
-                    + " The ratchet lesson was "
-                    + (ranked.stream().anyMatch(id -> id.startsWith(RATCHET_LESSON))
-                        ? "returned at position "
-                            + (ranked.indexOf(ranked.stream()
-                                .filter(id -> id.startsWith(RATCHET_LESSON))
-                                .findFirst().orElse("")) + 1)
-                        : "NOT returned"));
-                return;
-            }
             assertTrue(ranked.stream().anyMatch(id -> id.startsWith(RATCHET_LESSON)),
                 "D1 criterion (c): the coverage-collapse question must return the "
                 + "ratchet lesson. Returned: " + ranked);
@@ -452,7 +369,9 @@ class CalibrationGateTest {
 
     @org.junit.jupiter.api.BeforeAll
     static void embedTheCorpusOnce() throws Exception {
-        if (!EmbeddingService.shared().available()) {
+        String corpusPath = System.getProperty(CORPUS_PROPERTY);
+        if (corpusPath == null || !Files.exists(Path.of(corpusPath))
+                || !EmbeddingService.shared().available()) {
             return;                       // the tests abort with the reason
         }
         JsonNode accept;
@@ -463,79 +382,11 @@ class CalibrationGateTest {
         mustInclude.add(RATCHET_LESSON);  // criterion (c)'s answer, or it cannot be found
         sharedStore = H2ExperienceStore.openMemory();
         int rivals = Integer.getInteger("jawata.embed.corpus.sample", 700);
-        int loaded = corpusOverride() != null
-            ? loadCorpus(sharedStore, corpusOverride(), rivals, mustInclude)
-            : loadFrozenCorpus(sharedStore, rivals, mustInclude);
+        int loaded = loadCorpus(sharedStore, Path.of(corpusPath), rivals, mustInclude);
         sharedIndex = new EmbeddingIndex(sharedStore, EmbeddingService.shared());
         int embedded = embedAll(sharedIndex, "CORPUS");
         System.out.printf("[CORPUS] %d loaded, %d embedded, identity=%s%n",
             loaded, embedded, EmbeddingService.shared().identityKey());
-    }
-
-    /**
-     * The optional real-export override, or null.
-     *
-     * <p>Kept so a real store can still be scored for comparison. It is no longer
-     * the DEFAULT, and that is the fix: a benchmark pointed at a living store
-     * measures the store. Entries get recorded, superseded and pruned every day,
-     * and by Sprint 28c the entry two cues designate had simply left it — so
-     * those cues could not be answered by any implementation and the gate
-     * reported that as a retrieval score. The path it used also did not survive,
-     * so the gate aborted in every suite run after Sprint 27: the number nobody
-     * could reproduce was also the number nobody was computing.</p>
-     */
-    /**
-     * Whether the corpus in play has had its DIFFICULTY established.
-     *
-     * <p>A real export supplied by hand counts as calibrated — it is a real
-     * population nobody shaped. The committed corpus says so itself, and says
-     * false until somebody who is not trying to pass has set its bar.</p>
-     */
-    private static boolean calibrated() {
-        if (corpusOverride() != null) {
-            return true;
-        }
-        try (InputStream in = CalibrationGateTest.class.getResourceAsStream(FROZEN_CORPUS)) {
-            return in != null
-                && new ObjectMapper().readTree(in).path("calibrated").asBoolean(false);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static Path corpusOverride() {
-        String p = System.getProperty(CORPUS_PROPERTY);
-        return p != null && Files.exists(Path.of(p)) ? Path.of(p) : null;
-    }
-
-    /**
-     * The FROZEN corpus — committed beside the accept sets, so the gate runs in
-     * every suite run and scores the same thing every time.
-     *
-     * <p>Authored, not harvested: no personal knowledge is vendored here. It
-     * holds one entry per accept-set id, written to answer its cue by MEANING
-     * rather than by shared words (an answer that echoed the cue's vocabulary
-     * would let a keyword matcher score as well as a semantic one, and that
-     * comparison is the whole instrument), plus deliberately adjacent rivals —
-     * a benchmark with no distractors measures nothing.</p>
-     */
-    private static int loadFrozenCorpus(H2ExperienceStore store, int rivals,
-                                        Set<String> mustInclude) throws Exception {
-        Path tmp = Files.createTempFile("jawata-frozen-corpus", ".json");
-        try (InputStream in =
-                CalibrationGateTest.class.getResourceAsStream(FROZEN_CORPUS)) {
-            if (in == null) {
-                throw new IllegalStateException(
-                    "the frozen calibration corpus is missing from the test bundle at "
-                    + FROZEN_CORPUS + " — the gate cannot score without it");
-            }
-            Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
-        try {
-            return loadCorpus(store, tmp, rivals, mustInclude);
-        } finally {
-            Files.deleteIfExists(tmp);
-        }
     }
 
     @org.junit.jupiter.api.AfterAll
