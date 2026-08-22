@@ -38,7 +38,6 @@ class FormRoundTripTest {
                     Confidence.HIGH).symbol("com.example.Orders").build())
             .status(ExperienceEntry.ACCEPTED)
             .situation("when amending an order that is already partially filled")
-            .situationScope("conditional")
             .verdict("failed_avoid")
             .provenanceKind("recorded")
             .form(1)
@@ -76,7 +75,6 @@ class FormRoundTripTest {
         Map<String, Object> lesson = rowFor(exported, "Amending");
         assertEquals("when amending an order that is already partially filled",
             lesson.get("situation"), "the situation must be exported at all");
-        assertEquals("conditional", lesson.get("situation_scope"));
         assertEquals("failed_avoid", lesson.get("verdict"));
         assertEquals("recorded", lesson.get("provenance_kind"));
         assertEquals(1, lesson.get("form"));
@@ -87,7 +85,7 @@ class FormRoundTripTest {
         // exported row must not gain a form of 0 or an evidence_dead of false
         // just by passing through.
         Map<String, Object> fact = rowFor(exported, "The store is one file");
-        for (String facet : new String[] {"situation", "situation_scope", "verdict",
+        for (String facet : new String[] {"situation", "verdict",
                 "provenance_kind", "form", "evidence_dead"}) {
             assertFalse(fact.containsKey(facet),
                 "an unclassified row must export WITHOUT " + facet

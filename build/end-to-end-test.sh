@@ -338,6 +338,43 @@ case "$L" in
     *) fail "ingest-route-report NO ROUTE/SKIP REPORT from the ingest (v3.4.1 shape)" ;;
 esac
 
+# --- ingest-carries-the-form: a memory file DECLARING the form arrives as form-1 -------
+# The probe above deliberately declares `reference`, which owes no situation, so it
+# routes AROUND the form gate rather than through it. That leaves the ingest half of
+# the gate — the second write surface — unexercised at the front door, which is where
+# the C0 audit found the hole. This probe declares a `lesson` WITH its two required
+# fields and proves the whole path: gate admits it, the situation is stored, and it
+# comes back on a recall of the built product.
+printf -- "---\nname: e2e-form-ingest\ndescription: size the native buffer only once the scale factor is known\ntype: lesson\nsituation: when a scale change arrives after the buffer is sized\nverdict: failed_avoid\n---\nSizing it earlier leaves the buffer wrong for the whole frame.\n" > "$WS/form.md"
+FI="$(call experience "{\"kind\":\"load\",\"path\":\"$WS/form.md\"}")"
+case "$FI" in
+    *form_refused*) fail "ingest-carries-the-form a well-formed lesson was REFUSED by the ingest gate: $(printf '%s' "$FI" | head -c 300)" ;;
+    *) pass "ingest-carries-the-form the ingest admits a lesson that declares situation and verdict" ;;
+esac
+# Reachability is asserted by the PRINCIPLE's words, not the situation's, and the
+# distinction is the whole sprint. Written first the other way round, this probe FAILED:
+# querying the situation the file itself declares returned the entry only as an
+# "In a similar situation" nominee, never as an answer. That is the defect the rescue
+# exists to fix, reproduced at the front door — and it is measured, with a number that
+# must move, by the frozen fixture in build/acceptance/ (0 of 5 today). It is not
+# re-measured here, because a second copy of an acceptance gate is a second thing to
+# quietly relax. What THIS probe owns is the ingest write surface Stage 0 added.
+FR="$(call experience '{"kind":"recall","symptom":"size the native buffer once the scale factor is known","format":"text"}')"
+case "$FR" in
+    *"scale factor is known"*) pass "ingest-carries-the-form the ingested lesson round-trips to a recall of the built product" ;;
+    *) fail "ingest-carries-the-form the ingested lesson did not come back: $(printf '%s' "$FR" | head -c 300)" ;;
+esac
+
+# The other half, and the one that makes the pair discriminating: an ingested lesson
+# that declares NO situation must be refused, or the gate is not running on this
+# surface at all and the admission above proves nothing.
+printf -- "---\nname: e2e-form-ingest-bad\ndescription: an ingested lesson missing its form\ntype: lesson\n---\nThe buffer is sized before the scale factor arrives.\n" > "$WS/formbad.md"
+FB="$(call experience "{\"kind\":\"load\",\"path\":\"$WS/formbad.md\"}")"
+case "$FB" in
+    *REPHRASE*) pass "ingest-carries-the-form an outcome-less lesson is refused AT THE INGEST too" ;;
+    *) fail "ingest-carries-the-form THE FORM GATE IS NOT RUNNING ON THE INGEST: $(printf '%s' "$FB" | head -c 300)" ;;
+esac
+
 # ==================== 28b: the field lane, at the front door =================
 # Sprint 28b's Stage-6 proof was run by hand and left NOTHING behind, so its
 # claims would not exist at release time or in CI (28b closing audit, F9).

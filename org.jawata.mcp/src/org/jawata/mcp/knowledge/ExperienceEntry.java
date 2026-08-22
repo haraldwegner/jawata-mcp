@@ -39,8 +39,6 @@ public final class ExperienceEntry {
     // and verdict (EntryForm); a domain fact legitimately has neither.
     /** When this entry applies, as a condition — never package geography. */
     private final String situation;
-    /** {@code conditional} (matched per call) or {@code always} (primer, once a session). */
-    private final String situationScope;
     /** worked / failed_avoid / unproven. */
     private final String verdict;
     /** recorded / ingested / catalog / seat_run / migrated. Provenance is a FIELD, not content. */
@@ -62,7 +60,6 @@ public final class ExperienceEntry {
         this.externalSystem = b.externalSystem;
         this.language = b.language;
         this.situation = b.situation;
-        this.situationScope = b.situationScope;
         this.verdict = b.verdict;
         this.provenanceKind = b.provenanceKind;
         this.form = b.form;
@@ -72,7 +69,7 @@ public final class ExperienceEntry {
         return new Builder(fact);
     }
 
-/** Convenience: a {@code candidate} entry wrapping just a fact. */
+    /** Convenience: a {@code candidate} entry wrapping just a fact. */
     public static ExperienceEntry candidate(SymbolFact fact) {
         return of(fact).build();
     }
@@ -101,10 +98,6 @@ public final class ExperienceEntry {
 
     public String situation() {
         return situation;
-    }
-
-    public String situationScope() {
-        return situationScope;
     }
 
     public String verdict() {
@@ -179,7 +172,6 @@ public final class ExperienceEntry {
         private String language;
         // Sprint 28c (D3) facets — see the outer class's fields.
         private String situation;
-        private String situationScope;
         private String verdict;
         private String provenanceKind;
         private Integer form;
@@ -250,11 +242,6 @@ public final class ExperienceEntry {
 
         public Builder situation(String situation) {
             this.situation = situation;
-            return this;
-        }
-
-        public Builder situationScope(String situationScope) {
-            this.situationScope = situationScope;
             return this;
         }
 

@@ -278,7 +278,6 @@ public final class ExperienceRetrieval {
         // prevent.
         if (fitting.size() > 1) {
             List<StoredEntry> conditional = new ArrayList<>(fitting);
-            conditional.removeIf(e -> e.facets().isAlways());
             if (!conditional.isEmpty()) {
                 fitting = conditional;
             }
@@ -763,14 +762,7 @@ public final class ExperienceRetrieval {
             String type = e.type() == null ? "" : e.type().toLowerCase(Locale.ROOT);
             Object sk = e.body().get("scope_kind");
             String scopeKind = sk == null ? "" : sk.toString().toLowerCase(Locale.ROOT);
-            // Sprint 28c: an entry whose situation_scope is `always` says it
-            // applies to every call in the session, not under a condition — so
-            // it belongs to the ALWAYS-ON layer the primer pushes once, and NOT
-            // to the per-call cue path where it would fire on everything and
-            // spend the budget an answer has. The type-based rule stays: this
-            // widens the primer's population, it does not replace it.
-            if (DOMAIN_TYPES.contains(type) || DOMAIN_SCOPES.contains(scopeKind)
-                    || e.facets().isAlways()) {
+            if (DOMAIN_TYPES.contains(type) || DOMAIN_SCOPES.contains(scopeKind)) {
                 domain.add(e);
             }
         }
@@ -955,12 +947,10 @@ public final class ExperienceRetrieval {
             return sb.append(" — ").append(renderDispatch(d)).toString();
         }
         Object details = e.get("details");
-        boolean elided = false;
         if (details != null) {
             String d = san(details);
             if (d.length() > 160) {
                 d = d.substring(0, 157) + "...";
-                elided = true;
             }
             sb.append(" — ").append(d);
         }

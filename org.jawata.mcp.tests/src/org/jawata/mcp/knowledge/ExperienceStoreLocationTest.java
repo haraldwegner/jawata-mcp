@@ -225,13 +225,12 @@ class ExperienceStoreLocationTest {
                         "Re-read the queue head before re-arming the retry.",
                         Confidence.HIGH).symbol("com.example.Retry").build())
                 .status(ExperienceEntry.ACCEPTED)
-                // All SIX, with DISTINCT values per column. Fewer would leave a
-                // swap between two same-typed VARCHAR binds — situation_scope and
+                // All FIVE, with DISTINCT values per column. Fewer would leave a
+                // swap between the two same-typed VARCHAR binds — situation and
                 // provenance_kind — passing undetected, which is the failure mode
-                // a hand-written 24-placeholder INSERT actually has, and which the
-                // rescue's renumbering (two binds removed) could have introduced.
+                // a hand-written 23-placeholder INSERT actually has, and which the
+                // rescue's two rounds of renumbering could each have introduced.
                 .situation("when a consumer reconnects mid-batch")
-                .situationScope("conditional")
                 .verdict("failed_avoid")
                 .provenanceKind("recorded")
                 .form(1)
@@ -244,7 +243,6 @@ class ExperienceStoreLocationTest {
             Map<String, Object> row = store.exportEntries(null, null).get(0);
             assertEquals("when a consumer reconnects mid-batch", row.get("situation"),
                 "the situation survived a recovery that can never be repeated");
-            assertEquals("conditional", row.get("situation_scope"));
             assertEquals("failed_avoid", row.get("verdict"));
             assertEquals("recorded", row.get("provenance_kind"));
             assertEquals(1, row.get("form"),

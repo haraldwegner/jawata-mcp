@@ -1,16 +1,15 @@
 package org.jawata.mcp.knowledge;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Sprint 21 Stage 2 — the two-phase, fit-gated, terminal retrieval contract. Runs with a
@@ -51,66 +50,6 @@ class ExperienceRetrievalTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> entries(Map<String, Object> result) {
         return (List<Map<String, Object>>) result.get("entries");
-    }
-
-    /**
-     * Sprint 28c: an `always`-scoped entry belongs to the ALWAYS-ON layer — the
-     * primer pushes it once at session start, and the per-call path leaves it
-     * alone. Asserted as BOTH halves in one test, because either alone permits
-     * the wrong answer: routing it to the primer while also matching every cue
-     * would double it, and dropping it from the cue path without adding it to
-     * the primer would lose it entirely.
-     */
-    @Test
-    void an_always_scoped_entry_reaches_the_primer_and_not_the_per_call_answer() {
-        String standing = store.put(ExperienceEntry.of(
-                SymbolFact.of("lesson", "run the compile gate before calling a change done",
-                    Confidence.HIGH).symbol("com.example.orders.RetryLoop").build())
-            .status(ExperienceEntry.ACCEPTED)
-            .situation("whenever a change is about to be called done")
-            .situationScope("always")
-            .verdict("worked")
-            .form(1)
-            .build());
-        String conditional = putSymbol("lesson",
-            "re-read the queue head before re-arming the retry",
-            "com.example.orders.RetryLoop");
-
-        List<Map<String, Object>> hits = entries(retrieval.recall(
-            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
-        assertTrue(ids(hits).contains(conditional), "the cue's own answer is returned");
-        assertFalse(ids(hits).contains(standing),
-            "and the standing rule is NOT repeated per call — it would match every cue"
-                + " by construction and spend the answer's budget: " + hits);
-
-        assertTrue(ids(entries(retrieval.primer(20, 0)))
-                .contains(standing),
-            "the primer is where it belongs, pushed once for the session");
-    }
-
-    /**
-     * The absence guard on that rule: when the standing entry is the ONLY thing
-     * that fits, it is returned. Answering "nothing" while holding knowledge
-     * would be manufacturing an absence — the failure this whole file exists to
-     * prevent.
-     */
-    @Test
-    void an_always_scoped_entry_is_still_answered_when_it_is_all_there_is() {
-        String only = store.put(ExperienceEntry.of(
-                SymbolFact.of("lesson", "run the compile gate before calling a change done",
-                    Confidence.HIGH).symbol("com.example.orders.RetryLoop").build())
-            .status(ExperienceEntry.ACCEPTED)
-            .situation("whenever a change is about to be called done")
-            .situationScope("always")
-            .verdict("worked")
-            .form(1)
-            .build());
-
-        List<Map<String, Object>> hits = entries(retrieval.recall(
-            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
-
-        assertTrue(ids(hits).contains(only),
-            "held knowledge is never withheld to keep a routing rule tidy: " + hits);
     }
 
     /**

@@ -78,6 +78,74 @@ class SchemaMigrationsTest {
         }
     }
 
+    /**
+     * A store an UNRELEASED build already migrated to a WIDER v10 still opens, keeps
+     * every row, and is left alone.
+     *
+     * <p>This is not hypothetical and it is not a fresh install: the user's own store
+     * was migrated by an abandoned build that created three extra tables and two extra
+     * columns. It reports version 10, so the rescue's rung never runs on it, and it
+     * therefore has a shape no fresh install can produce — permanently.</p>
+     *
+     * <p>Every other case in this class starts from a schema the current ladder built.
+     * This one starts from a schema it did NOT build, which is exactly why it was the
+     * missing case: the store the real migration must reconcile counts against is the
+     * one no test described.</p>
+     */
+    @Test
+    void a_store_already_at_a_wider_v10_is_readable_and_untouched(@TempDir Path dir)
+            throws Exception {
+        createV1Fixture(dir, "wide-1");
+        addLegacyRow(dir, "wide-2");
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(2L, store.count(), "precondition: the ladder built a current v10");
+        }
+        // Widen it the way the abandoned build did: two extra columns and the three
+        // tables this rung deliberately does not create.
+        try (Connection c = connect(dir); Statement s = c.createStatement()) {
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS verdict_version INT");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS capability VARCHAR(16)");
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS situation_scope VARCHAR(16)");
+            for (String table : V10_TABLES_NOT_CREATED) {
+                s.execute("CREATE TABLE IF NOT EXISTS " + table + " (entry_id VARCHAR(64))");
+            }
+        }
+
+        try (Connection c = connect(dir)) {
+            java.util.Map<String, Object> report =
+                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
+            assertEquals(10, report.get("from"), "it already reports v10");
+            assertEquals(10, report.get("to"), "so there is nowhere to migrate to");
+            assertEquals(false, report.get("migrated"),
+                "and the rung must NOT run — re-running it on a wider store is how a "
+                    + "migration turns into a mutation nobody asked for");
+        }
+
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(2L, store.count(), "both rows are readable through the widened shape");
+            assertTrue(store.get("wide-1").isPresent());
+            assertTrue(store.get("wide-2").isPresent());
+            assertEquals("a v2.0.0-era lesson", store.get("wide-1").get().get("summary"),
+                "reads select by NAME, so extra columns cannot shift a value");
+        }
+        for (String table : V10_TABLES_NOT_CREATED) {
+            assertTrue(tableExists(dir, table),
+                table + " is left in place — the leftovers are inert, and DROPPING them "
+                    + "would be this product destroying data it did not create");
+        }
+    }
+
+    /** A second, third, … legacy row on a fixture {@link #createV1Fixture} already built. */
+    private static void addLegacyRow(Path dir, String entryId) throws Exception {
+        try (Connection c = connect(dir); Statement s = c.createStatement()) {
+            s.execute("INSERT INTO experience_entry (id, type, symbol_fqn, status, confidence,"
+                + " summary, body_json, created_at, updated_at) VALUES ('" + entryId + "',"
+                + " 'lesson', 'com.example.Legacy', 'accepted', 'high', 'a v2.0.0-era lesson',"
+                + " '{\"type\":\"lesson\",\"summary\":\"a v2.0.0-era lesson\",\"status\":\"accepted\"}',"
+                + " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        }
+    }
+
     private static String scalar(Path dir, String sql) throws Exception {
         try (Connection c = connect(dir); Statement s = c.createStatement();
                 ResultSet rs = s.executeQuery(sql)) {
@@ -171,7 +239,7 @@ class SchemaMigrationsTest {
 
     /** The columns v10 adds — named once, used by the tests below. */
     private static final String[] V10_COLUMNS = {
-        "situation", "situation_scope", "verdict",
+        "situation", "verdict",
         "provenance_kind", "form", "evidence_dead"
     };
 
@@ -211,9 +279,16 @@ class SchemaMigrationsTest {
     @Test
     void a_v9_store_gains_the_knowledge_spine_and_keeps_every_entry(@TempDir Path dir)
             throws Exception {
+        // FOUR rows, not one. A single-row fixture satisfies "row count and UUIDs
+        // unchanged" literally while being unable to detect the failure that
+        // sentence exists to catch: a rung that drops one row of N. One row can
+        // only be all-or-nothing.
         createV1Fixture(dir, "legacy-1");
+        addLegacyRow(dir, "legacy-2");
+        addLegacyRow(dir, "legacy-3");
+        addLegacyRow(dir, "legacy-4");
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            assertEquals(1L, store.count(), "precondition: the fixture row is there");
+            assertEquals(4L, store.count(), "precondition: all four fixture rows are there");
         }
         rewindToV9(dir);
         assertEquals("9", scalar(dir, "SELECT version FROM schema_version"),
@@ -234,10 +309,15 @@ class SchemaMigrationsTest {
         }
 
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            assertEquals(1L, store.count(), "the pre-existing entry survives the rung");
-            assertTrue(store.get("legacy-1").isPresent(), "and is still readable");
-            assertEquals("a v2.0.0-era lesson", store.get("legacy-1").get().get("summary"),
-                "v10 is additive — it must not rewrite a single existing value");
+            assertEquals(4L, store.count(), "every pre-existing entry survives the rung");
+            // Each id individually, not just the count: a rung that dropped one row
+            // and duplicated another would keep the count and still have lost an
+            // experience, which is the loss this clause exists to forbid.
+            for (String id : new String[] {"legacy-1", "legacy-2", "legacy-3", "legacy-4"}) {
+                assertTrue(store.get(id).isPresent(), id + " is still readable");
+                assertEquals("a v2.0.0-era lesson", store.get(id).get().get("summary"),
+                    "v10 is additive — it must not rewrite a single existing value");
+            }
         }
 
         assertEquals(String.valueOf(SchemaMigrations.LATEST),

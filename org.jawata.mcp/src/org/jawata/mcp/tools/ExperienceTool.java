@@ -60,7 +60,7 @@ public final class ExperienceTool implements Tool {
         this(serviceSupplier, store, List::of);
     }
 
-/**
+    /**
      * Sprint 27 D6: install measurement. The ledger is handed to the retrieval
      * this tool owns as well, so the recall surfaces count without the caller
      * having to know they exist.
@@ -265,15 +265,6 @@ public final class ExperienceTool implements Tool {
             "description", "record: how it turned out. REQUIRED for lesson and failure_mode —"
             + " for those the outcome IS the lesson. Use 'unproven' when it genuinely has not"
             + " been settled; that is an answer, and inventing a verdict is not."));
-        props.put("situation_scope", Map.of("type", "string",
-            "enum", List.of("conditional", "always"),
-            "description", "record: 'conditional' (default — matched per call) or 'always'"
-            + " (a workspace-wide rule, injected once per session rather than per call)."));
-        props.put("capability", Map.of("type", "string",
-            "enum", List.of("advisory", "performable"),
-            "description", "record: whether jawata can PERFORM this or only advise it. Must match"
-            + " actual capability — never label a pattern performable ahead of the tool that"
-            + " performs it."));
         props.put("symbol", Map.of("type", "string",
             "description", "record: anchor FQN (mutually exclusive with packages/symbols)."));
         props.put("language", Map.of("type", "string",
@@ -808,7 +799,6 @@ public final class ExperienceTool implements Tool {
             // a situation is form 1; anything else stays unclassified, which is
             // exactly what distinguishes it from a migrated legacy row.
             .situation(situation)
-            .situationScope(text(args, "situation_scope"))
             .verdict(verdict)
             .provenanceKind("recorded")
             .form(org.jawata.mcp.knowledge.EntryForm.formOf(situation));
@@ -821,7 +811,6 @@ public final class ExperienceTool implements Tool {
                 }
             }
         }
-
 
         ExperienceEntry entry = eb.build();
         String id = store.put(entry);

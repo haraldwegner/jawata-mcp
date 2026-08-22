@@ -582,9 +582,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // together with ALL_COLUMNS and importEntries — a column that
                     // is written but not exported is a column that survives a
                     // round trip only by accident.
-                    + "situation,situation_scope,verdict,provenance_kind,"
+                    + "situation,verdict,provenance_kind,"
                     + "form,evidence_dead) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -623,10 +623,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // deliberately form-1 one, so these are set as given and never
                 // defaulted on the way in.
                 ps.setString(22, entry.situation());
-                ps.setString(23, entry.situationScope());
-                ps.setString(24, entry.verdict());
-                ps.setString(25, entry.provenanceKind());
-                setIntOrNull(ps, 26, entry.form());
+                ps.setString(23, entry.verdict());
+                ps.setString(24, entry.provenanceKind());
+                setIntOrNull(ps, 25, entry.form());
                 // Always NULL on the way in, and that is the semantics, not a
                 // gap: evidence_dead means "a human has been told the code this
                 // entry points at is gone", which cannot be true of an entry
@@ -635,7 +634,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // and carried verbatim by export/import and orphan recovery — all
                 // of which bind it from the stored row, never from a builder. A
                 // setter here would be a door nothing in production walks through.
-                ps.setNull(27, java.sql.Types.BOOLEAN);
+                ps.setNull(26, java.sql.Types.BOOLEAN);
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
@@ -984,7 +983,6 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
         return new StoredEntry.Facets(
             rs.getString("situation"),
-            rs.getString("situation_scope"),
             rs.getString("verdict"),
             rs.getString("provenance_kind"),
             intOrNull(rs.getObject("form")),
@@ -1079,7 +1077,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
         + "workspace_id,project_id,language,"
         // Sprint 28c (v10) — the knowledge-spine facets.
-        + "situation,situation_scope,verdict,provenance_kind,"
+        + "situation,verdict,provenance_kind,"
         + "form,evidence_dead";
 
     @Override
@@ -1116,7 +1114,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                             // Sprint 28c — read back as strings like every other
                             // text facet; importEntries parses the numeric one and
                             // the boolean on the way in.
-                            "situation", "situation_scope", "verdict",
+                            "situation", "verdict",
                             "provenance_kind"}) {
                         Object v = rs.getString(col);
                         if (v != null) {
@@ -1189,7 +1187,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                         // step BY TEST, not by eye: the count is invisible to the
                         // compiler and a surplus throws only at import time.
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                        + "?,?,?,?,?,?)")) {
+                        + "?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -1217,14 +1215,13 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // An OLD export simply has no such keys, and reads as
                     // legacy: nulls throughout, form absent.
                     ps.setString(19, str(row.get("situation")));
-                    ps.setString(20, str(row.get("situation_scope")));
-                    ps.setString(21, str(row.get("verdict")));
-                    ps.setString(22, str(row.get("provenance_kind")));
-                    setIntOrNull(ps, 23, intOrNull(row.get("form")));
+                    ps.setString(20, str(row.get("verdict")));
+                    ps.setString(21, str(row.get("provenance_kind")));
+                    setIntOrNull(ps, 22, intOrNull(row.get("form")));
                     if (row.get("evidence_dead") == null) {
-                        ps.setNull(24, java.sql.Types.BOOLEAN);
+                        ps.setNull(23, java.sql.Types.BOOLEAN);
                     } else {
-                        ps.setBoolean(24, Boolean.parseBoolean(String.valueOf(row.get("evidence_dead"))));
+                        ps.setBoolean(23, Boolean.parseBoolean(String.valueOf(row.get("evidence_dead"))));
                     }
                     ps.executeUpdate();
                 }
@@ -1545,7 +1542,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         String cols = "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
             + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at"
             + (hasFacets ? ",workspace_id,project_id,language" : "")
-            + (hasForm ? ",situation,situation_scope,verdict,provenance_kind,"
+            + (hasForm ? ",situation,verdict,provenance_kind,"
                 + "form,evidence_dead" : "");
         int imported = 0;
         int duplicates = 0;
@@ -1562,9 +1559,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                         + "(id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
                         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
                         + "workspace_id,project_id,language,"
-                        + "situation,situation_scope,verdict,provenance_kind,"
+                        + "situation,verdict,provenance_kind,"
                         + "form,evidence_dead)"
-                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     for (int i = 1; i <= 13; i++) {
                         ps.setString(i, rs.getString(i));
                     }
@@ -1579,19 +1576,18 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // A pre-v10 orphan has no facets to carry, and NULL is the
                     // honest value: unclassified, never "classified as legacy".
                     ps.setString(19, hasForm ? rs.getString("situation") : null);
-                    ps.setString(20, hasForm ? rs.getString("situation_scope") : null);
-                    ps.setString(21, hasForm ? rs.getString("verdict") : null);
-                    ps.setString(22, hasForm ? rs.getString("provenance_kind") : null);
-                    setIntOrNull(ps, 23, hasForm ? intOrNull(rs.getObject("form")) : null);
+                    ps.setString(20, hasForm ? rs.getString("verdict") : null);
+                    ps.setString(21, hasForm ? rs.getString("provenance_kind") : null);
+                    setIntOrNull(ps, 22, hasForm ? intOrNull(rs.getObject("form")) : null);
                     if (hasForm) {
                         boolean dead = rs.getBoolean("evidence_dead");
                         if (rs.wasNull()) {
-                            ps.setNull(24, java.sql.Types.BOOLEAN);
+                            ps.setNull(23, java.sql.Types.BOOLEAN);
                         } else {
-                            ps.setBoolean(24, dead);
+                            ps.setBoolean(23, dead);
                         }
                     } else {
-                        ps.setNull(24, java.sql.Types.BOOLEAN);
+                        ps.setNull(23, java.sql.Types.BOOLEAN);
                     }
                     ps.executeUpdate();
                 }

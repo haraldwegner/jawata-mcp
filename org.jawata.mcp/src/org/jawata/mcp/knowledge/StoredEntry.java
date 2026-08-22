@@ -19,9 +19,9 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
 
     /**
      * Sprint 28c — the experience form, projected as ONE component rather
-     * than six more positional fields.
+     * than five more positional fields.
      *
-     * <p>Six more components on a record that already has sixteen makes every
+     * <p>Five more components on a record that already has sixteen makes every
      * construction site a counting exercise, and the questions callers actually
      * ask ("is this the new form?", "is its evidence dead?") are answered here
      * rather than re-derived at each call site from a null check.</p>
@@ -30,24 +30,15 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
      * "classified as legacy". {@code form} is deliberately {@code Integer}, not
      * {@code int}, so the difference survives the projection.</p>
      */
-    public record Facets(String situation, String situationScope, String verdict,
+    public record Facets(String situation, String verdict,
                          String provenanceKind, Integer form, Boolean evidenceDead) {
 
         /** A legacy row: no facets at all, which is what every pre-28c entry is. */
-        public static final Facets NONE = new Facets(null, null, null, null, null, null);
+        public static final Facets NONE = new Facets(null, null, null, null, null);
 
         /** True when the entry arrived in the 28c form — it carries a situation. */
         public boolean isForm1() {
             return form != null && form == 1;
-        }
-
-        /**
-         * True when the entry says it applies ALWAYS, not under a condition —
-         * the primer's population, pushed once per session rather than matched
-         * per call.
-         */
-        public boolean isAlways() {
-            return "always".equals(situationScope);
         }
 
         /** True when a human has been told the evidence behind this entry is gone. */

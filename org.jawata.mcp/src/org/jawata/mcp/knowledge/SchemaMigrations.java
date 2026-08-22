@@ -521,7 +521,8 @@ final class SchemaMigrations {
      * is not a surprise.</b> An earlier, unreleased v10 on the abandoned branch
      * {@code 784a43d} also created {@code experience_snippet}, {@code
      * experience_embodiment} and {@code advice_event}, and two further columns
-     * ({@code verdict_version}, {@code capability}). None of that is created here:
+     * ({@code verdict_version}, {@code capability}, {@code situation_scope}). None of
+     * that is created here:
      * frozen snippets, embodiment links and the advice journal are out of this
      * sprint's scope, {@code verdict_version} existed only to bind a verdict to a
      * snippet version, and {@code capability} only to carry a catalogue label this
@@ -533,7 +534,6 @@ final class SchemaMigrations {
     private static void migrateToV10(Connection conn) throws SQLException {
         try (Statement s = conn.createStatement()) {
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS situation VARCHAR(4096)");
-            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS situation_scope VARCHAR(16)");
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS verdict VARCHAR(16)");
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS provenance_kind VARCHAR(32)");
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS form INT");
