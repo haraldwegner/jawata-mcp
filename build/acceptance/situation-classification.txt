@@ -1,0 +1,24 @@
+# Situation classification of every top-level pattern README
+# Fork pinned at 22a34127d0b08449c24cf7e230c04a097deca2f3
+# Body = the 'When to Use' / 'Applicability' section, classified PATH then CODE,
+# the same order the admission gate applies; regexes copied verbatim from the policy.
+#
+# TOTAL 187
+# PROSE       175
+# CODE        8
+# PATH        4
+# NO_SECTION  0
+# REFUSED (CODE+PATH) 12
+
+PATH        acyclic-visitor                    / ConfigureForUnix /
+PATH        arrange-act-assert                 /Act/
+CODE        dao-factory                        NoSQL
+PATH        data-mapper                        //java-design-patterns.com/principles/#single-responsibility
+CODE        immutable                          `hashCode`
+CODE        map-reduce                         MapReduce
+CODE        microservices-self-registration    DevOps
+PATH        model-view-presenter               //java-design-patterns.com/principles/
+CODE        model-view-viewmodel               ViewModel
+CODE        rate-limiting-pattern              DoS
+CODE        rule-engine                        `if/else`
+CODE        thread-specific-storage            SimpleDateFormat
