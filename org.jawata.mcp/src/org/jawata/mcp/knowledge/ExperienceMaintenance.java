@@ -656,7 +656,19 @@ public final class ExperienceMaintenance {
         // status alone, so counting it under that label would make the number disagree
         // with its own name — and this number is what a human reads to decide whether
         // the refresh is worth re-running once the workspace is back.
-        int held = plannedStale.size() + plannedClear.size() + formEvidenceDead.size();
+        //
+        // It counts the marks that are actually PENDING, mirroring the else branch's own
+        // condition rather than the list length. An entry already carrying the mark sits
+        // in formEvidenceDead but would cost a healthy re-run nothing, so counting it
+        // would promise work that does not exist — the same disagreement between a number
+        // and its meaning as the label above, pointed the other way.
+        int marksPending = 0;
+        for (StoredEntry e : formEvidenceDead) {
+            if (!e.facets().hasDeadEvidence()) {
+                marksPending++;
+            }
+        }
+        int held = plannedStale.size() + plannedClear.size() + marksPending;
         if (workspaceSuspect) {
             log.warn("refresh: {} anchors judged, ZERO resolved — workspace suspect, holding "
                 + "{} planned change(s)", checked, held);

@@ -260,6 +260,44 @@ class ExperienceMaintenanceTest {
                 + "category understates the work a healthy re-run would do. Report: " + report);
     }
 
+    /**
+     * <p>The held count promises exactly the work a healthy re-run would do — no more.
+     * An entry that already carries the mark still lands in the withheld list, because
+     * the list is built before anything looks at what is already marked; but marking it
+     * again is a no-op, so counting it would overstate what the breaker is costing. The
+     * count therefore mirrors the marking loop's own condition rather than the list
+     * length.</p>
+     *
+     * <p>Both directions of this number have now been wrong: it first omitted the whole
+     * mark category and under-reported, and the fix for that over-reported. A count in a
+     * machine-readable field is worth only what its assertion says it is.</p>
+     */
+    @Test
+    void the_held_count_promises_only_the_work_a_healthy_rerun_would_do() {
+        for (int i = 1; i <= 3; i++) {
+            store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "drain the retry queue before closing " + i,
+                        Confidence.HIGH).symbol("com.gone.Vanished" + i).build())
+                .situation("when a consumer reconnects mid-batch")
+                .verdict("worked")
+                .form(1)
+                .build());
+        }
+        // One of them was already marked by an earlier refresh on a healthy workspace.
+        StoredEntry alreadyMarked = store.all().iterator().next();
+        assertTrue(store.markEvidenceDead(alreadyMarked.id()),
+            "the fixture's precondition: this entry carries the mark before the refresh runs");
+
+        Map<String, Object> report = maint(fqn -> Boolean.FALSE).refresh();
+
+        assertEquals(Boolean.TRUE, report.get("workspace_suspect"),
+            "three judged, none resolved — the breaker trips. Report: " + report);
+        assertEquals(2, report.get("held"),
+            "only the two UNMARKED entries are work a healthy re-run would do; re-marking "
+                + "the third is a no-op, so counting it would promise work that does not "
+                + "exist. Report: " + report);
+    }
+
     /** Marking is idempotent: a second refresh re-reports nothing and rewrites nothing. */
     @Test
     void a_second_refresh_does_not_re_mark_the_same_dead_evidence() {

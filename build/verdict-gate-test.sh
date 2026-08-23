@@ -55,6 +55,10 @@ expect "aborted and skipped count as verdicts" 0 - 100 90 0 7 3
 
 # A garbled summary line must not be read as a healthy run.
 expect "a non-numeric counter is refused, not defaulted" 2 "non-numeric" 1986 "" 0 0 0
+# TOTAL specifically: it is the left-hand side of the identity, so a mutation that drops
+# it from the guard loop makes the gate return 0 on a garbled summary — a false green,
+# and the only mutation of the gate the other cases here do not catch.
+expect "a non-numeric TOTAL is refused too" 2 "non-numeric" "abc" 1983 0 3 0
 expect "too few counters are refused" 2 "usage" 1986 1983 0
 
 if [ "$FAILURES" -ne 0 ]; then
