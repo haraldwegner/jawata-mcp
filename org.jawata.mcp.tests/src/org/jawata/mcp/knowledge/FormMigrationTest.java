@@ -201,6 +201,39 @@ class FormMigrationTest {
     }
 
     /**
+     * The store's own guard, tested at the store — because the migration never
+     * reaches it.
+     *
+     * <p>{@link FormMigration} skips a formed row before calling
+     * {@code setForm}, so every test that goes through the migration leaves the
+     * {@code form IS NULL} clause unexercised. That was found by arming the
+     * clause as a control and watching the whole suite stay green: a second
+     * line of defence nothing tests is a claim, and the day someone removes the
+     * Java-side check it becomes the only one.</p>
+     */
+    @Test
+    void the_store_itself_refuses_to_overwrite_a_form_that_is_already_set(
+            @TempDir Path dir) throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            String id = store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "Authored, not derived.", Confidence.HIGH)
+                        .symbol("com.example.Thing").build())
+                .status(ExperienceEntry.ACCEPTED)
+                .situation("when the author said so themselves")
+                .verdict("worked")
+                .form(1)
+                .build());
+
+            boolean wrote = store.setForm(id, "when a rule guessed instead", "failed_avoid");
+
+            assertFalse(wrote, "setForm must report that it did not write");
+            assertEquals("when the author said so themselves",
+                store.byIds(List.of(id)).get(0).facets().situation(),
+                "and must actually not have written");
+        }
+    }
+
+    /**
      * The report groups on {@code provenance_kind}, which is what gives that
      * column a reader rather than merely a writer.
      */
