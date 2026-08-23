@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -117,17 +116,6 @@ public final class ApplicabilityDecision {
         String queryId = UUID.randomUUID().toString();
         open.put(queryId, new Open(question, List.copyOf(candidateIds)));
         return queryId;
-    }
-
-    /** The candidates a nomination offered, or empty when it is unknown or evicted. */
-    public synchronized Optional<List<String>> candidatesOf(String queryId) {
-        Open o = open.get(queryId);
-        return o == null ? Optional.empty() : Optional.of(o.candidateIds());
-    }
-
-    /** How many nominations are currently open. */
-    public synchronized int openCount() {
-        return open.size();
     }
 
     /**

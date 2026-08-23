@@ -821,5 +821,28 @@ else
     fail "fixture-import THE RUN MUTATED THE COMMITTED FIXTURE"
 fi
 
+# --- the architect seat's own protocol, end to end --------------------------
+# Sprint 28c Stage 1 clause 7. The block above proves the two verbs answer; this
+# proves the SEAT's documented D-FOUR loop — nominate, read the situations,
+# decide — runs over the wire and produces BOTH outcomes across the whole frozen
+# fixture: a match on each of the five positives, an absence on each of the seven
+# unrelated controls.
+#
+# It runs here, after stop_resident, on its own port and its own throwaway store,
+# because it boots a resident of its own. Calling it from the gate is the point:
+# a probe nothing invokes is the unwired-capability failure this sprint keeps
+# finding, wearing a gate's clothes.
+SEAT_PROBE="$(cd "$(dirname "$0")" && pwd)/architect-seat-probe.sh"
+if [ -x "$SEAT_PROBE" ]; then
+    if JAWATA_PROBE_PORT="${JAWATA_SEAT_PROBE_PORT:-8901}" "$SEAT_PROBE" "$DIST" > "$WS/seat-probe.log" 2>&1; then
+        pass "architect-seat the seat's nominate-read-decide loop answers all 12 frozen questions ($(grep -c '  ok' "$WS/seat-probe.log") claims)"
+    else
+        fail "architect-seat the seat's own protocol failed over the front door:"
+        sed 's/^/        /' "$WS/seat-probe.log" >&2
+    fi
+else
+    fail "architect-seat the seat probe is missing or not executable at $SEAT_PROBE"
+fi
+
 echo "end-to-end test: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ] || exit 1

@@ -120,13 +120,15 @@ class ApplicabilityDecisionTest {
             d.nominate(Q + " #" + i, List.of("a"));
         }
 
-        assertEquals(ApplicabilityDecision.MAX_OPEN, d.openCount(),
-            "the register is bounded: a caller that nominates and never decides leaks "
-                + "nothing, because an unbounded map here is how a forgetful client "
-                + "becomes a memory incident");
+        // Asserted through the CONTRACT, not through a size accessor. If the register
+        // were unbounded the oldest nomination would still be open and this would come
+        // back a Decision; the refusal IS the eviction, observed the only way a caller
+        // can observe it. (The accessor that used to be read here had no production
+        // caller, which the wiring gate reported at C1.)
         assertInstanceOf(ApplicabilityDecision.Refusal.class, d.decide(first, List.of()),
-            "and the evicted one is refused with its reason rather than answered as an "
-                + "absence — it was never decided by anybody");
+            "the register is bounded — a caller that nominates and never decides leaks "
+                + "nothing — and the evicted one is refused with its reason rather than "
+                + "answered as an absence, because it was never decided by anybody");
     }
 
     @Test
@@ -134,14 +136,18 @@ class ApplicabilityDecisionTest {
         ApplicabilityDecision d = new ApplicabilityDecision();
         String queryId = d.nominate("what colour is the number seven?", List.of());
 
-        assertEquals(List.of(), d.candidatesOf(queryId).orElseThrow(),
-            "offering nothing is a real answer to a question the corpus has no "
-                + "neighbours for, and it must be representable — the alternative is "
-                + "returning the least-bad rows, which is exactly what produced eleven "
-                + "suggestions for seven nonsense questions");
+        // Again through the contract. An empty candidate list that was never REGISTERED
+        // would make decide refuse with "not open"; a Decision proves the nomination is
+        // real, and isAbsence proves what it means. Offering nothing is a legitimate
+        // nomination for a question the corpus has no neighbours for — the alternative
+        // is returning the least-bad rows, which is exactly what produced eleven
+        // suggestions for each of seven nonsense questions.
         ApplicabilityDecision.Decision decision = assertInstanceOf(
-            ApplicabilityDecision.Decision.class, d.decide(queryId, List.of()));
+            ApplicabilityDecision.Decision.class, d.decide(queryId, List.of()),
+            "a nomination with no candidates is still open and still decidable");
         assertTrue(decision.isAbsence());
+        assertEquals(List.of(), decision.selected(),
+            "and it selects nothing, because nothing was offered");
     }
 
     @Test
