@@ -42,6 +42,13 @@ for d in "$DIST/bundles" "$DIST/test-bundles"; do
     fi
 done
 
+# The verdict gate proves its own arithmetic before it is trusted to judge a
+# run. It costs milliseconds and runs FIRST so a broken gate costs a re-run
+# rather than a whole suite. A gate that certifies a run is worth no more than
+# the last time anything checked it, and this one shipped a unit error twice.
+"$ROOT/build/verdict-gate-test.sh" --quiet \
+    || { echo "FATAL: the suite's verdict gate fails its own self-test — refusing to certify a run with it."; exit 2; }
+
 rm -rf "$OUT"; mkdir -p "$OUT"
 ln -sfn "$OUT" "$DIST/suite-shards"
 
@@ -197,31 +204,12 @@ done
 echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD"
 [ "$SUMMARIES" -eq "$SHARDS" ] || { echo "FAILED: $((SHARDS - SUMMARIES)) shard(s) produced no summary"; exit 3; }
 
-# Every PLANNED test must have produced a verdict. Without this the runner is
-# blind to the one failure mode it most needs to see: a container-level throw.
-#
-# A @BeforeAll that throws takes its whole class down BEFORE any test exists to
-# blame, so JUnit attributes the loss to no test at all — the class's tests are
-# counted in `total` and appear in NO bucket. The old condition asked only
-# whether anything reported failure, so it read that as failed=0 and exited 0.
-# It happened here, and for two sprints: a committed corpus went missing from
-# the branch, the calibration gate's @BeforeAll threw, both its tests silently
-# stopped existing, and the suite reported green on every run.
-#
-# That is this project's deepest recorded bug class — an empty result on
-# failure, reported as success — living inside the gate that is supposed to
-# catch it. A number that cannot distinguish "1985 passed" from "1982 passed
-# and 3 vanished" is not a gate.
-ACCOUNTED=$((PASS + FAIL + ABORT + SKIP + UNLOAD))
-if [ "$ACCOUNTED" -ne "$TOT" ]; then
-    echo "FAILED: $((TOT - ACCOUNTED)) planned test(s) produced NO verdict —" \
-         "neither passed, failed, aborted, skipped nor unloadable."
-    echo "  This is almost always a @BeforeAll/@BeforeEach or class-initializer" \
-         "throw, or a missing test resource. Search the shard logs for the" \
-         "class that reported fewer results than it planned:"
-    echo "    grep -n 'FAILED:\|Exception\|Error' $OUT/shard-*.log | head"
-    exit 4
-fi
+# Every PLANNED test must have produced a verdict — the runner's blind spot is a
+# container-level throw, which belongs to no test and so shows up in no bucket.
+# The gate lives in its own script so it can be exercised with counters that a
+# real run almost never produces (see build/verdict-gate-test.sh); inline, its
+# unloadable-vs-total unit error was unreachable by any test and shipped.
+"$ROOT/build/verdict-gate.sh" "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$OUT/shard-*.log" || exit $?
 
 [ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] || exit 1
 exit 0

@@ -247,6 +247,17 @@ class ExperienceMaintenanceTest {
             assertFalse(e.facets().hasDeadEvidence(),
                 "no entry carries a mark a broken workspace produced: " + e.id());
         }
+
+        // And the report SAYS what it withheld. `held` counted only the two status
+        // lists, so once the marks joined them the breaker reported "held: 0" while
+        // holding three — a machine-readable field, read by curation, silently wrong.
+        // Nothing asserted it, which is why moving the marks under the breaker could
+        // change its meaning without a single test noticing.
+        assertEquals(Boolean.TRUE, report.get("workspace_suspect"),
+            "the breaker tripped, so it owes an account of what it held. Report: " + report);
+        assertEquals(3, report.get("held"),
+            "all three withheld marks are counted — a held count that omits a whole "
+                + "category understates the work a healthy re-run would do. Report: " + report);
     }
 
     /** Marking is idempotent: a second refresh re-reports nothing and rewrites nothing. */

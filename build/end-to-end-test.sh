@@ -347,9 +347,14 @@ esac
 # comes back on a recall of the built product.
 printf -- "---\nname: e2e-form-ingest\ndescription: size the native buffer only once the scale factor is known\ntype: lesson\nsituation: when a scale change arrives after the buffer is sized\nverdict: failed_avoid\n---\nSizing it earlier leaves the buffer wrong for the whole frame.\n" > "$WS/form.md"
 FI="$(call experience "{\"kind\":\"load\",\"path\":\"$WS/form.md\"}")"
+# The catch-all arm below used to be a bare `*)`, which passed on a transport
+# error, an empty body, or any response that simply failed to mention refusal —
+# an absence read as a success. It now demands positive evidence that the load
+# actually ran: the report names the source it ingested.
 case "$FI" in
     *form_refused*) fail "ingest-carries-the-form a well-formed lesson was REFUSED by the ingest gate: $(printf '%s' "$FI" | head -c 300)" ;;
-    *) pass "ingest-carries-the-form the ingest admits a lesson that declares situation and verdict" ;;
+    *'"loaded":1'*) pass "ingest-carries-the-form the ingest admits a lesson that declares situation and verdict" ;;
+    *) fail "ingest-carries-the-form the load reported neither a refusal nor a loaded file — the ingest did not run: $(printf '%s' "$FI" | head -c 300)" ;;
 esac
 # Reachability is asserted by the PRINCIPLE's words, not the situation's, and the
 # distinction is the whole sprint. Written first the other way round, this probe FAILED:

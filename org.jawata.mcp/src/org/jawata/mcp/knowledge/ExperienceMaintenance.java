@@ -651,9 +651,15 @@ public final class ExperienceMaintenance {
         // needed to protect.
         boolean workspaceSuspect = checked >= MASS_STALE_MIN_CHECKED && resolved == 0
             && !(plannedStale.isEmpty() && plannedClear.isEmpty() && formEvidenceDead.isEmpty());
+        // What the breaker holds is all THREE lists, so the count says three. It also
+        // stops saying "status changes": an evidence-dead mark deliberately leaves the
+        // status alone, so counting it under that label would make the number disagree
+        // with its own name — and this number is what a human reads to decide whether
+        // the refresh is worth re-running once the workspace is back.
+        int held = plannedStale.size() + plannedClear.size() + formEvidenceDead.size();
         if (workspaceSuspect) {
             log.warn("refresh: {} anchors judged, ZERO resolved — workspace suspect, holding "
-                + "{} planned status changes", checked, plannedStale.size() + plannedClear.size());
+                + "{} planned change(s)", checked, held);
         } else {
             for (StoredEntry e : plannedStale) {
                 store.setStatus(e.id(), ExperienceEntry.SUPERSEDED);
@@ -691,7 +697,7 @@ public final class ExperienceMaintenance {
         report.put("staled", staled);
         if (workspaceSuspect) {
             report.put("workspace_suspect", true);
-            report.put("held", plannedStale.size() + plannedClear.size());
+            report.put("held", held);
         }
         if (foreign > 0) {
             report.put("foreign", foreign);
