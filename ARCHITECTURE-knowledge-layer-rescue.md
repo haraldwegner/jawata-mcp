@@ -280,8 +280,29 @@ for exactly this and are already forwarded by the decorator:
 implemented `H2ExperienceStore.java:551–565`) and
 `ExperienceStore#putWithSource(entry, sourceRef, sourceHash)` (`ExperienceStore.java:56`,
 implemented `H2ExperienceStore.java:545`). Per-pattern `sourceRef` is
-`catalogue:java-design-patterns@<pinned-commit>/<slug>/README.md`; `sourceHash` is the
-SHA-256 of that README's extracted record.
+**`catalogue:java-design-patterns/<slug>/README.md` — carrying NO commit**; `sourceHash`
+is the SHA-256 of that README's extracted record.
+
+**The commit is provenance, never identity, and getting that wrong would have made D6
+impossible.** An earlier draft wrote `...@<pinned-commit>/<slug>/README.md`.
+`sourceUnchanged` is `WHERE source_ref = ? AND source_hash = ?`
+(`H2ExperienceStore.java:551-565`), so a ref containing the commit changes for EVERY
+pattern at a new snapshot, no stored row matches any new ref, and Seam 2's table below
+would classify all 187 as "absent -> insert, report as added". Rows 2, 3 and 4 of that
+table — the no-op, the successor, the upstream retirement — would have been unreachable
+by construction, and D6 would have failed on a design defect rather than on code. The
+slug is the pattern's stable identity across snapshots; the commit lives in `details` and
+in the report.
+
+**The read that supplies the older row's id, named — because `sourceUnchanged` cannot.**
+It returns a boolean, and no lookup by `source_ref` exists on the port. The loader makes
+**one `store.all()` pass at start**, building `sourceRef -> (id, sourceHash)` over the
+rows whose `provenance_kind` is `catalog`, and works from that map: hash equal -> no-op;
+hash differs -> insert a successor linked to the id the map holds; ref absent -> insert;
+a stored ref missing from the snapshot -> retired upstream. This adds no port method and
+no column, so the target sentence stays true, and the cost is measured rather than
+assumed: `store.all()` over 2,500 rows is **25 ms** (Stage 1's clause-6d measurement) —
+one traversal per start, beside the orphan sweep already running there.
 
 **Deliberately NOT the `.jawata-recovered` marker idiom** (`H2ExperienceStore.java:1481`,
 `:1506`): that marker means "swept, never look again", which is right for a one-time
@@ -384,10 +405,14 @@ and the human sees both in the candidate list.
 
 **The one-mechanism property is CHECKED, not merely designed.** R5 binds the design to a
 single update path, and nothing in the first draft would fail if a second catalogue
-writer or a fetch path were added later. The env-independent tier now asserts it by
-call hierarchy, in the style the wiring gate already uses: **the only production caller
-of the catalogue write path is `PatternCatalogueLoader#load`, and its only production
-caller is `JawataApplication#openRealStore`.**
+writer or a fetch path were added later. The BOUNDARY tier asserts it by call
+hierarchy — a loaded workspace is needed, so it cannot be environment-independent — in
+the style the wiring gate already uses: **the only production caller of the catalogue
+write path is `PatternCatalogueLoader#load`, and it is reached only from
+`JawataApplication#openRealStore`, through exactly one extracted method after M4.** What
+a call hierarchy does NOT prove is that nothing else writes `provenance_kind='catalog'`,
+which is the property R5 actually binds — so the boundary tier asserts the write set
+directly as well.
 
 **Smell prevented.** *Speculative generality* — R5's ruling in code form: one mechanism
 whose update behaviour is a branch on a hash it already computes, rather than a second
@@ -498,12 +523,18 @@ clauses of Harald's 2026-08-21 ruling and this addendum addressed one. The other
 - **Design mode uses tools.** `seats/architect.md:7` declares `tools: []`, while the same
   file's rule 5(a) (`:99`) demands *"DERIVE the consumer set. Never state it from
   memory"* and D-FOUR requires two `experience(…)` calls — a declaration that contradicts
-  the seat's own instructions. Measured: the field is **inert today** — `SeatDefinition
-  .tools` is parsed at `runner.rs:183`/`:224` and read only inside `#[cfg(test)]`
-  (`runner.rs:2459`); no `--allowedTools` flag is ever built, so the key neither grants
-  nor denies. M9b therefore sets `tools:` to the design-mode set AND the boundary tier
-  asserts the declared set is consistent with what design mode must call — a signed
-  sentence must not rest on a field that decides nothing.
+  the seat's own instructions. Measured twice, and the second measurement changes the fix. First: the field is
+  **inert** — `SeatDefinition.tools` is parsed at `runner.rs:183`/`:224` and read only
+  inside `#[cfg(test)]` (`runner.rs:2459`); no `--allowedTools` flag is ever built.
+  Second: **the key is never deployed at all** — `render_claude_skill`
+  (`conductor.rs:261-278`) emits `name`, `description`, the lane-1 contract and the
+  seat's `stance` BODY; `tools:` is frontmatter and is not rendered, which the live
+  artefact confirms (`~/.claude/skills/refactor/SKILL.md` carries `name` and
+  `description` only). Setting it would fix nothing and could not be checked. **M9b
+  instead states the rule where agents actually read it — a sentence in the stance
+  body**, which is rendered verbatim, and the boundary tier asserts the deployed file
+  carries it. Changing `tools:` is deliberately left out: it needs a reader first, and
+  naming that reader is 28f's seat work.
 - **Watch mode consults and does not re-derive**, and a watch-mode "no" is a DECISION that
   stops for the human's word. The deployed WATCH MODE block (`seats/architect.md:73–76`)
   says only "read detector evidence and reviewed diffs, and argue for DESIGN-level
@@ -731,7 +762,8 @@ Reverse: revert this commit; the seat is untouched.
 **M9b — the seat (jawata-studio).** *Authored.* Extend `seats/architect.md` D-FOUR
 (`:56–71`) to require naming intent, consequences and the resolving address, or saying
 the store had nothing; add the two WATCH MODE clauses (consult without re-deriving; a
-"no" stops for the human's word); set `tools:` to the design-mode set.
+"no" stops for the human's word); and add the design-mode-uses-tools sentence to the
+stance BODY — not the `tools:` frontmatter, which `render_claude_skill` never emits.
 **`seats/architect.md` is the ONLY seat file this sprint edits** — the auditor and
 communicator placement is 28f's. Verify: redeploy, then read
 `~/.claude/skills/refactor/SKILL.md` and confirm the text is in the **deployed** file
@@ -812,11 +844,13 @@ it reports the ceiling by name. Reverse: revert.
 - a seat definition carrying `max_tool_steps` parses; an unknown key still errors;
 - the architect seat's declared `tools:` set is consistent with what design mode must
   call — the signed sentence must not rest on a field nothing reads;
-- the deployed skill carries the TWO clauses this sprint puts in it — design mode uses
-  tools, and the two WATCH MODE clauses in the watch block — and does **not** carry the
-  tool-less-roles clause, which is 28f's. (The ruling's fourth clause, the tool-step
-  ceiling, is a `runner.rs` change, not skill text, and is checked separately below.)
-  A test demanding all four would either fail by construction or drag deferred scope in;
+- the deployed skill's BODY carries the three stance sentences this sprint puts there —
+  design mode uses tools; watch mode consults and does not re-derive; a watch-mode "no"
+  stops for the human's word — and does **not** carry the tool-less-roles clause, which
+  is 28f's. (The ruling's fourth clause, the tool-step ceiling, is a `runner.rs` change,
+  not skill text, and is checked below; `tools:` frontmatter is not rendered at all, so
+  no test may look for it.) A test demanding all four would fail by construction or drag
+  deferred scope in;
 - `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains the consultation text —
   the source file being right is explicitly not this check.
 
