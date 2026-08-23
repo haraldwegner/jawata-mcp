@@ -299,8 +299,13 @@ It returns a boolean, and no lookup by `source_ref` exists on the port. The load
 **one `store.all()` pass at start** over the rows whose `provenance_kind` is `catalog`.
 
 **`source_ref` is NOT unique, and the design must not pretend it is.** Row 3 below inserts
-a successor carrying the SAME `source_ref` and keeps the old row (`insert` at
-`H2ExperienceStore.java:567` is a bare INSERT with no delete), so after one supersede two
+a successor carrying the SAME `source_ref` and keeps the old row (`putWithSource` reaches `insert`
+(`H2ExperienceStore.java:545` → `:567`), a bare INSERT with no delete — **while the PORT's
+javadoc says the opposite**: `ExperienceStore.java:47–52` documents that a re-load of the
+same `sourceRef` "is made idempotent by `deleteBySource` first", and the adapter never
+calls it. D6's "never written over it" therefore rests on adapter behaviour its own
+contract contradicts; the "zero deletions" assertions below are what catch a regression,
+and the stale javadoc is filed rather than relied on), so after one supersede two
 rows share the ref — and after two, three. A single-valued `sourceRef -> id` map would
 hold an arbitrary one of them, and "hash equal -> no-op" could miss, writing a fresh
 successor at EVERY server start. That is the first draft's unreachability defect in
@@ -372,7 +377,7 @@ string.
 store, stamps provenance, sweeps orphans and parses a catalogue changes for four
 unrelated reasons.
 
-**Production caller.** `org.jawata.mcp.JawataApplication#openRealStore`
+**Production caller** (direct before M4, transitive after). `org.jawata.mcp.JawataApplication#openRealStore`
 (`JawataApplication.java:652`, main source root `org.jawata.mcp/src`), one statement
 after `:668`. This is the point of the seam: `build/unwired-baseline.txt` already lists
 `ExperienceMaintenance#load(Path)` as a capability with only test callers, and the
@@ -435,7 +440,7 @@ whose update behaviour is a branch on a hash it already computes, rather than a 
 pipeline with its own scheduling, failure modes and tests, for a corpus that gains about
 three patterns in a busy month.
 
-**Production caller.** Identical to D5 — `JawataApplication#openRealStore:652`. The
+**Production caller** (direct before M4, transitive after). Identical to D5 — `JawataApplication#openRealStore:652`. The
 report accessor's production caller is `ExperienceTool#stats` (`:391`), reached from the
 `stats` verb at `:376`. D6 adds no capability needing its own wire; it adds branches to
 one that has one.
@@ -709,7 +714,11 @@ fork, one verdict, and per-entry is what the sentence says. Verify: 187 records;
 
 **M2 — author the loader, unwired.** *Authored, new class.*
 `org.jawata.mcp.knowledge.PatternCatalogueLoader#load(ExperienceStore)` returning a report
-record, using only `sourceUnchanged` and `putWithSource`. **Sample before bulk** (D5's own
+record, using `sourceUnchanged`, `putWithSource`, **and one `store.all()` pass at start
+indexing the rows whose `facets().provenanceKind()` is `catalog` by `sourceRef` to that
+ref's chain head** (Seam 1's two-read split). **It also flags the two spellings that meet
+here:** the ref prefix and the resource directory are `catalogue`, the `provenance_kind`
+VALUE is `catalog` — neither is to be "corrected" into the other. **Sample before bulk** (D5's own
 requirement): a bounded-count mode, so M3's first verification loads one pattern and reads
 it back before the full snapshot is enabled. Verify: `compile_workspace` 0/0; a
 memory-store test seeds twice with no second-run additions. Reverse: delete the class.
@@ -750,7 +759,9 @@ block naming the `experience(kind=list, status="candidate")` review query. Rever
 > installed-product observation. The migrated real store carries the catalogue per D3.
 
 **M6 — the update branches.** *Authored, inside the M2 class.* The changed-hash branch:
-new row, `status = CANDIDATE`, `addLink("supersedes", olderId)`. No new rel, no schema
+new row, `status = CANDIDATE`, `addLink("supersedes", olderId)` — **`olderId` being the
+chain head from M2's `store.all()` index, never an arbitrary row sharing the ref**. No
+new rel, no schema
 change, no write to the older row. Verify: the snapshot-N-then-N+1 boundary test — added
 rows appear, one successor per changed pattern, zero updates to existing rows, zero
 deletions; loading N+1 twice adds nothing. Reverse: revert; M1–M5 keep working.
@@ -779,9 +790,15 @@ then D8's real measure — an installed client session whose prompt carries a sy
 a symptom cue that each have a recorded experience injects both. Reverse: revert; the
 store's array support is inert without a sender.
 
-**M9a — the entry payload (jawata-mcp).** *Authored.* Loader writes `type = "lesson"`
-(an `EntryForm.EXPERIENCE_TYPES` member, so `verdict` is meaningful on the row and D3's
-"an `unproven` experience" is literally true), intent into `summary`,
+**M9a — D7's addition to the entry payload (jawata-mcp).** *Authored.* **Only the
+reference-implementation TYPE line** belongs here: it is D7's requirement and D7 ships in
+Release 3. **Everything else D5 and D3 require of the payload is authored in M2, BEFORE
+the Release-2 fence** — that fence declares D5 complete and D3's catalogue carried, so a
+payload step after it would let M9a's "Reverse: revert this commit" un-deliver an
+already-released deliverable. M2 therefore writes `type = "lesson"`
+(an `EntryForm.EXPERIENCE_TYPES` member, so `verdict` is meaningful on the row),
+**`provenance_kind = "catalog"` and `verdict = "unproven"`** — both required in six places
+below and assigned by no step until now — intent into `summary`,
 "When to Use" into `situation`, and into `details` — unparaphrased — the consequences,
 the MIT attribution, and the reference-implementation TYPE as a labelled text line;
 the repository path into `source_ref` (slug only) and the pinned commit into the
@@ -840,6 +857,10 @@ it reports the ceiling by name. Reverse: revert.
   catalogue stayed anchor-free;
 - a second load at the same snapshot writes nothing — asserted on the WRITE COUNT, not
   only the row count, so a delete-then-reinsert cannot pass;
+- **a pattern that changes TWICE** (N → N+1 → N+2): the second successor's `supersedes`
+  names the N+1 row, not the N row; the ref then holds three rows; re-loading N+2 adds
+  zero. The only case distinguishing the chain head from a superseded ancestor, and the
+  property the two-read split exists for — one supersede does not exercise it;
 - snapshot N → N+1: added rows are candidates; each changed pattern yields one new row
   carrying `supersedes` → the older id; the older row's `status`, `verdict` and body are
   byte-identical before and after; an upstream-deleted pattern's row survives;
@@ -853,7 +874,8 @@ it reports the ceiling by name. Reverse: revert.
 - an arrays-only `RecallQuery` is NOT empty — the emptiness rule counts the new
   components, so the widening does not hold merely by the caller also sending scalars;
 
-**Boundary tests** (a real H2 file, a real resource, a real seat file, a real front door):
+**Boundary tests** (a real H2 file, a real resource, a real seat file, a real front
+door, a loaded workspace):
 
 - **a `recall` call carrying `symbols`/`symptoms` arrays over JSON-RPC reaches `query`
   with both populated** — the check that fails if `ExperienceTool#recall` is left on the
@@ -871,6 +893,11 @@ it reports the ceiling by name. Reverse: revert.
 - `experience(kind=list, status="candidate")` returns exactly the rows the report named;
 - the loader does not run when `openRealStore` throws — a `RecoveringExperienceStore`
   fallback is never seeded;
+- **the 187 catalogue rows are embedded**, so D2's nomination — the path D7's seat uses,
+  ranking from indexed `situation + principle` — can rank them at all. The write path
+  embeds on insert (Stage 1 measured 2,500 rows seeded in 134 s, dominated by embedding),
+  so it holds by construction; asserting it makes an unembedded catalogue fail here
+  rather than at Release 3's live seat run;
 - **one catalogue writer** (R5's one-mechanism property), in BOTH halves, because the
   call hierarchy alone cannot carry it: (a) the only production caller of the catalogue
   write path is `PatternCatalogueLoader#load`, reached only from
@@ -890,10 +917,13 @@ it reports the ceiling by name. Reverse: revert.
   not skill text, and is checked below; `tools:` frontmatter is not rendered at all, so
   no test may look for it.) A test demanding all four would fail by construction or drag
   deferred scope in;
-- `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains the NEW requirement
-  this sprint adds — name the pattern's intent, its consequences and its resolving
-  address, or say the store had nothing — and not merely the D-FOUR text studio
-  `3dc39a6` already deployed —
+- `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains **D-FOUR's own
+  nominate→decide instruction AND this sprint's addition** (name the pattern's intent,
+  its consequences and its resolving address, or say the store had nothing). **The
+  deployed file carries NEITHER today** — measured: 154 lines running D-ONE → D-TWO →
+  D-THREE → WATCH MODE, zero occurrences of "D-FOUR", because studio `3dc39a6` is held
+  unreleased per D4b. An earlier draft scoped D-FOUR out as "already deployed", stated
+  from memory two lines after the same file had been inspected correctly —
   the source file being right is explicitly not this check.
 
 **Reality-only — nothing else can establish these:**
