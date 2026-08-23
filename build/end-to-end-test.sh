@@ -559,7 +559,14 @@ esac
 
 # And the door the query_id exists to close: an id the nomination never offered is
 # refused, so a caller cannot vouch for an arbitrary entry through the decide verb.
-BAD="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID\",\"selected_ids\":[\"not-a-candidate\"]}")"
+#
+# A FRESH nomination, because deciding CONSUMES one — the probe above already spent
+# $QID. Reusing it here tested the already-decided refusal instead, which is a real
+# behaviour but not this one; the tightened assertion is what surfaced the mix-up.
+NOM2="$(call experience '{"kind":"nominate",
+  "question":"the marzipan barometer forgot its velvet inventory"}')"
+QID2="$(printf '%s' "$NOM2" | sed -n 's/.*"query_id":"\([^"]*\)".*/\1/p')"
+BAD="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID2\",\"selected_ids\":[\"not-a-candidate\"]}")"
 # Positive evidence only. A bare catch-all here would pass on a transport error,
 # on an empty body, and — measured — on the decide verb bypassed to plain recall.
 case "$BAD" in
