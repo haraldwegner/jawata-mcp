@@ -402,8 +402,8 @@ intent, consequences and a resolving address without reaching back into the fork
 | how it turned out | `verdict = "unproven"` | `EntryForm.VERDICTS` (`EntryForm.java:41`) |
 
 **No new column is justified, and the address is the check that settles it — with one
-correction to this addendum's first draft, made at GATE 2.** The resolving address for a
-pattern is its Java package in the `patterns` workspace — `com.iluwatar.circuitbreaker`,
+correction to this addendum's first draft, made at GATE 2.** The first draft took the
+resolving address to be a pattern's Java package in the `patterns` workspace — `com.iluwatar.circuitbreaker`,
 `com.iluwatar.strategy` (verified in the pinned fork, `circuit-breaker` App at line 25).
 The first draft put it in the indexed `package_name` column, because jawata can resolve
 that directly. **That was wrong and is retracted.** The signed spec's acceptance
