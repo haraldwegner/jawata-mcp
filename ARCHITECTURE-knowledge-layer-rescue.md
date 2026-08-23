@@ -364,7 +364,7 @@ written on the NEW row pointing at the older one**, through the existing
 `ExperienceEntry.Builder#addLink(rel, target)` (`ExperienceEntry.java:218`; the `Link`
 record at `:50`). Adding a `successor` rel would make the catalogue the only writer of an
 eighth relation and re-open exactly the defect that constant's javadoc records — a
-vocabulary "documented in one schema string and enforced nowhere" (`EntryForm.java:88–91`).
+vocabulary "documented in one schema string and enforced nowhere" (`EntryForm.java:87–91`).
 
 Direction is fixed: **the newer entry declares `supersedes` → older id.** The older row
 is never written to, which is what makes "a pattern's earned record stays bound to the
@@ -431,7 +431,7 @@ statement is absolute:
 > snippet to make the expected experience reachable."*
 
 and D3's measure requires all 187 rows to have *"empty symbol, package, operation, and
-snippet fields"*, which "Catalogue ownership" above states in the same words. A design
+snippet fields"*, which "Catalogue ownership" above states in substance. A design
 that writes `package_name` fails a signed measure and makes catalogue rows reachable by
 an ordinary package cue — the precise thing this sprint exists to stop. Convenience for
 the reader is not a reason to weaken the one requirement the sprint is named after.
@@ -482,7 +482,9 @@ tool-step ceiling to stop and say so. Today it cannot:
 The design: `Ceilings` gains `max_tool_steps`; the frontmatter parser gains the key beside
 the other three; `ClaudeCodeAdapter.max_turns` is built from it instead of its default;
 the adapter's result parsing distinguishes the turn-limit subtype so `run_seat` emits
-`Verdict::Reaped` with a `CeilingKind` (`:68–82`). Entirely studio-side.
+`Verdict::Reaped` with a `CeilingKind` (`:68–82`) — **which is a closed three-variant enum
+today (`WallTtl`, `MaxIterations`, `CostBudget`, `runner.rs:71–75`), so M10 adds a fourth,
+`ToolSteps`**; without it the run stops without being able to name which ceiling. Entirely studio-side.
 
 **Production callers:** `run_seat` (`runner.rs:1059–1064`) reads the ceiling and
 `build_command` (`:722–735`) passes it to the CLI. **This is Rust and therefore OUTSIDE
@@ -516,10 +518,17 @@ clauses of Harald's 2026-08-21 ruling and this addendum addressed one. The other
 "every `seats/*.md` on disk is embedded" invariant `:593–612`). The D7 step is done when
 a redeploy has regenerated the skill and the regenerated file carries the text.
 
-D7 names TWO firing points — `/refactor` and the sprint design step. The deployed
-`~/.claude/skills/refactor/SKILL.md` covers the first; the second is the `/sprint` skill's
-design-mode step, whose generated file is rendered by the same `conductor.rs` embed table,
-and the boundary tier checks both files rather than only the one.
+D7 names TWO firing points — `/refactor` and the sprint design step — and they reach the
+stance the SAME way, which is why one deployed file carries it. `/sprint` is not rendered
+from the seat embed table at all: `EMBEDDED_SEATS` (`conductor.rs:15–24`) carries the
+eight `seats/*.md` only, and its neighbouring `COMMAND_MAP` doc records that the
+spec-editor/spec-auditor pair "live in /sprint and render NO command"
+(`conductor.rs:27–28`); `/sprint` comes from `UTILITY_MAP` (`:360–363`) with its body
+`include_str!("../../skills/sprint.md")` (`:384`). The sprint design step INVOKES the
+architect seat rather than restating its stance, so the seat's own deployed skill is the
+single artefact that must carry it — and the boundary tier checks that one file. An
+earlier draft claimed both were rendered from the embed table and that both were checked;
+both halves were false.
 
 **Smell prevented.** *Feature envy* / *message chains* — an entry that did not carry
 intent, consequences and address would force the seat to hold a store row and then go to
@@ -570,7 +579,12 @@ phrases would require every word of both to match — strictly narrower than eit
 
 - *Hook sends*, in ONE `experience(kind=recall)` call: the existing scalar `symbol` and
   `symptom` keys set to the highest-priority cue of each kind, **plus** new
-  `symbols: [...]` and `symptoms: [...]` arrays carrying the complete sets.
+  `symbols: [...]` and `symptoms: [...]` arrays carrying the complete sets. **Both names
+  already exist on `kind=record` with a different meaning** (`ExperienceTool.java:859`,
+  `:868`, `:887` — there they are an entry's own scope and its recorded symptoms). Reusing
+  them on `kind=recall` is deliberate — a cue list is what a reader expects under those
+  names — and the schema documents the per-kind meaning so the overload is stated rather
+  than discovered.
 - *Store does*: reads the arrays where present, unions them into the same clause builder
   (one clause per member, same `OR` at `:917–918`), the same `fits` disjunction, the same
   single sort. A store that does not know the arrays reads the scalars and behaves
@@ -584,9 +598,16 @@ exactly what a bump would produce. Sending
 scalars *and* arrays makes the new hook's worst case against an old store identical to
 today rather than silence — which is why the scalars stay.
 
-**Store-side change, plainly:** `RecallQuery` (`RecallQuery.java:15–16`, a five-component
-record) gains two list components; `query` and `fits` iterate them. That is the entire
-Java change.
+**Store-side change, plainly — and it is THREE places, not two.** `RecallQuery`
+(`RecallQuery.java:15–16`, a five-component record) gains two list components; `query`
+and `fits` iterate them; **and `ExperienceTool#recall` (`:714`) must READ the new
+arguments into them.** That third piece is not optional bookkeeping: `recall` is the only
+place JSON args become a `RecallQuery` (`:715–720`), so leaving it unchanged means the
+hook's arrays arrive over the wire and are silently dropped, and the new components are
+populated only by a test constructing `RecallQuery` directly. That is precisely the
+"capability whose callers are all test code" shape D4b's measure forbids — and the shape
+D8 itself exists to end. The helper is already in the file: `strings(args, …)` at
+`:1001`, used by `decide` at `:782`.
 
 **Smell prevented.** *Middle man* — the hook currently decides, on the store's behalf,
 which part of the question is worth asking, while holding strictly less information than
@@ -646,10 +667,20 @@ a refactoring; no tool kind applies. Verify: `compile_workspace` 0/0;
 clean. Reverse: remove the line.
 
 **M4 — compose the start-up sequence.** *Tool.*
-`refactor_to_pattern(kind="compose_method",
-symbol="org.jawata.mcp.JawataApplication#openRealStore")`, its `sections` being the
-start-up-task statements. One kind, one target — the first draft offered an alternative
-and D-TWO asks for the step, not a choice. Verify: `compile_workspace` 0/0 and M3's call-hierarchy check still names
+`refactor_to_pattern(kind="compose_method", filePath=<JawataApplication.java>,
+sections=[…])` — the range-targeted kinds take `filePath` plus zero-based `sections`
+coordinates; `symbol=` addresses `form_template_method` and will not target this one.
+The sections are the start-up-task statements.
+
+**This step MOVES the loader's direct caller, and the assertion must move with it.** After
+composing, `PatternCatalogueLoader#load` is called from the extracted method (say
+`runStartupTasks`), not from `openRealStore` directly — so "it is reached only from
+`JawataApplication#openRealStore`" becomes false as a DIRECT claim and true as a
+transitive one. Every statement of it below is written transitively for this reason:
+**reached only from `JawataApplication#openRealStore`**, through exactly one extracted
+method. Verify: `compile_workspace` 0/0, and the incoming call hierarchy of
+`PatternCatalogueLoader#load` names `runStartupTasks`, whose own incoming hierarchy names
+`openRealStore` — both in `org.jawata.mcp/src`, neither a test. Verify: `compile_workspace` 0/0 and M3's call-hierarchy check still names
 a production caller. Reverse: `refactoring(action="undo")`.
 
 **M5 — the report surface.** *Authored, one block* in `ExperienceTool#stats`
@@ -667,11 +698,14 @@ change, no write to the older row. Verify: the snapshot-N-then-N+1 boundary test
 rows appear, one successor per changed pattern, zero updates to existing rows, zero
 deletions; loading N+1 twice adds nothing. Reverse: revert; M1–M5 keep working.
 
-**M7 — widen the recall value.** *Tool, then authored.* `change_method_signature` on
-`RecallQuery`'s canonical constructor to add `List<String> symbols` and
-`List<String> symptoms`, **keeping a five-argument convenience constructor** so existing
-construction sites (including `ExperienceTool.java:715–720` and every test) compile
-unchanged. Then `compile_workspace(clean=true)` — a record's canonical constructor shape
+**M7 — widen the recall value, AND the entry point that fills it.** *Tool, then authored.*
+`change_method_signature` on `RecallQuery`'s canonical constructor to add
+`List<String> symbols` and `List<String> symptoms`, **keeping a five-argument convenience
+constructor** so existing construction sites and every test compile unchanged — **except
+`ExperienceTool#recall` (`:714`), which is deliberately changed** to read
+`strings(args, "symbols")` and `strings(args, "symptoms")` into the widened constructor.
+A convenience constructor that quietly keeps the ONE production entry point on the old
+five is how this capability would ship inert. Then `compile_workspace(clean=true)` — a record's canonical constructor shape
 change is precisely the case where the incremental builder skips recompiling consumers and
 a plain incremental build can report a false 0/0. Then author the two iterations: the
 clause loop in `H2ExperienceStore#query` (`:869–916`, joined `:917–918`) and the
@@ -701,7 +735,7 @@ the store had nothing; add the two WATCH MODE clauses (consult without re-derivi
 **`seats/architect.md` is the ONLY seat file this sprint edits** — the auditor and
 communicator placement is 28f's. Verify: redeploy, then read
 `~/.claude/skills/refactor/SKILL.md` and confirm the text is in the **deployed** file
-(`conductor.rs:261–306`); then a design-mode run over the frozen catalogue questions.
+(`conductor.rs:261–278`); then a design-mode run over the frozen catalogue questions.
 Reverse: revert and redeploy.
 
 **M10 — the tool-step ceiling.** *Authored, Rust.* `Ceilings` gains `max_tool_steps`
@@ -733,9 +767,7 @@ it reports the ceiling by name. Reverse: revert.
   `summary` passes the shape checks rather than being heading-shaped — D5 attaches a
   reason to sample-before-bulk ("the loader has produced heading-shaped entries
   before"), so it is a gate;
-- **one catalogue writer:** the only production caller of the catalogue write path is
-  `PatternCatalogueLoader#load`, and its only production caller is
-  `JawataApplication#openRealStore` (R5's one-mechanism property, by call hierarchy);
+
 - the loader against an in-memory store: 187 in, 187 rows out, all
   `provenance_kind = 'catalog'`, all `verdict = 'unproven'`, all `status = 'candidate'`,
   and **every anchor column empty — symbol, package, operation, snippet**;
@@ -748,11 +780,16 @@ it reports the ceiling by name. Reverse: revert.
   carrying `supersedes` → the older id; the older row's `status`, `verdict` and body are
   byte-identical before and after; an upstream-deleted pattern's row survives;
 - N+1 loaded twice adds zero;
-- a hand-edited catalogue row survives a same-snapshot load untouched;
+- a hand-edited catalogue row survives a same-snapshot load untouched, **and at a newer
+  snapshot is superseded rather than overwritten — its own body unchanged**;
 - `RecallQuery` with two symptom cues is a union, not an AND (the counter-assertion to
   `H2ExperienceStore.java:903–915`);
 - multi-cue candidates are ranked by one comparator chain — same input, same order, no
   second sort;
+- **a `recall` call carrying `symbols`/`symptoms` arrays over JSON-RPC reaches `query`
+  with both populated** (boundary) — the check that fails if `ExperienceTool#recall` is
+  left on the five-argument constructor, which is the only way this capability can ship
+  built-but-unreachable;
 - the loader issues no write against any row whose `provenance_kind != 'catalog'`.
 
 **Boundary tests** (a real H2 file, a real resource, a real seat file):
@@ -765,14 +802,21 @@ it reports the ceiling by name. Reverse: revert.
 - `experience(kind=list, status="candidate")` returns exactly the rows the report named;
 - the loader does not run when `openRealStore` throws — a `RecoveringExperienceStore`
   fallback is never seeded;
+- **one catalogue writer** (R5's one-mechanism property): the only production caller of
+  the catalogue write path is `PatternCatalogueLoader#load`, reached only from
+  `JawataApplication#openRealStore` — a call-hierarchy assertion, which needs a loaded
+  workspace and therefore belongs here rather than in the environment-independent tier;
 - `build/unwired-gate.sh` exits 0 against the built dist with
   `build/unwired-baseline.txt` unmodified — a boundary check, covering **only the Java
   half**;
 - a seat definition carrying `max_tool_steps` parses; an unknown key still errors;
 - the architect seat's declared `tools:` set is consistent with what design mode must
   call — the signed sentence must not rest on a field nothing reads;
-- the deployed skill carries all four clauses of the 2026-08-21 ruling, and the two
-  WATCH MODE clauses appear in the watch block;
+- the deployed skill carries the TWO clauses this sprint puts in it — design mode uses
+  tools, and the two WATCH MODE clauses in the watch block — and does **not** carry the
+  tool-less-roles clause, which is 28f's. (The ruling's fourth clause, the tool-step
+  ceiling, is a `runner.rs` change, not skill text, and is checked separately below.)
+  A test demanding all four would either fail by construction or drag deferred scope in;
 - `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains the consultation text —
   the source file being right is explicitly not this check.
 
