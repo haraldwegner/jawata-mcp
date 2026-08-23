@@ -247,7 +247,7 @@ pipeline. The patterns named below are named in service of that one target:
         jawata-hook pipeline.rs::recall (:423)  <- D8 hook half: one ask, all cues
         seats/architect.md D-FOUR (:56)         <- D7 stance
         conductor.rs (:261..278) renders ~/.claude/skills/refactor/SKILL.md
-        runner.rs Ceilings (:51) + ClaudeCodeAdapter.max_turns (:703) <- D7/R9
+        runner.rs Ceilings (:49) + ClaudeCodeAdapter.max_turns (:703) <- D7/R9
 ```
 
 Arrows point the way the dependency points. Nothing in `org.jawata.mcp.knowledge`
@@ -296,10 +296,26 @@ in the report.
 
 **The read that supplies the older row's id, named — because `sourceUnchanged` cannot.**
 It returns a boolean, and no lookup by `source_ref` exists on the port. The loader makes
-**one `store.all()` pass at start**, building `sourceRef -> (id, sourceHash)` over the
-rows whose `provenance_kind` is `catalog`, and works from that map: hash equal -> no-op;
-hash differs -> insert a successor linked to the id the map holds; ref absent -> insert;
-a stored ref missing from the snapshot -> retired upstream. This adds no port method and
+**one `store.all()` pass at start** over the rows whose `provenance_kind` is `catalog`.
+
+**`source_ref` is NOT unique, and the design must not pretend it is.** Row 3 below inserts
+a successor carrying the SAME `source_ref` and keeps the old row (`insert` at
+`H2ExperienceStore.java:567` is a bare INSERT with no delete), so after one supersede two
+rows share the ref — and after two, three. A single-valued `sourceRef -> id` map would
+hold an arbitrary one of them, and "hash equal -> no-op" could miss, writing a fresh
+successor at EVERY server start. That is the first draft's unreachability defect in
+mirror image, so the two reads are separated deliberately:
+
+- **the no-op decision uses `sourceUnchanged(ref, hash)`** — set membership over
+  (ref, hash), immune to how many rows share the ref: if ANY catalogue row already holds
+  this exact content, there is nothing to do;
+- **the id for the successor link comes from the pass**, which keeps per `sourceRef` the
+  CHAIN HEAD — the row no other catalogue row `supersedes`. A successor always links to
+  the current head, never to a superseded ancestor.
+
+So: `sourceUnchanged` true -> no-op; false and the ref is known -> insert a successor
+linked to that ref's head; ref unknown -> insert; a stored ref missing from the snapshot
+-> retired upstream. This adds no port method and
 no column, so the target sentence stays true, and the cost is measured rather than
 assumed: `store.all()` over 2,500 rows is **25 ms** (Stage 1's clause-6d measurement) —
 one traversal per start, beside the orphan sweep already running there.
@@ -441,7 +457,8 @@ intent, consequences and a resolving address without reaching back into the fork
 | when it applies | `situation` | `SchemaMigrations.java:536`, v10 column |
 | consequences | `details`, a labelled section | `SymbolFact.Builder#details` (`SymbolFact.java:142`), emitted at `:80–81` |
 | canonical address | `details`, as text | the same labelled block |
-| repository path + commit | `source_ref` | the loader's identity key |
+| repository path | `source_ref` | the loader's identity key (slug only, no commit) |
+| the pinned commit | `details` | the provenance block, never the identity key |
 | how it turned out | `verdict = "unproven"` | `EntryForm.VERDICTS` (`EntryForm.java:41`) |
 
 **No new column is justified, and the address is the check that settles it — with one
@@ -720,8 +737,8 @@ transitive one. Every statement of it below is written transitively for this rea
 **reached only from `JawataApplication#openRealStore`**, through exactly one extracted
 method. Verify: `compile_workspace` 0/0, and the incoming call hierarchy of
 `PatternCatalogueLoader#load` names `runStartupTasks`, whose own incoming hierarchy names
-`openRealStore` — both in `org.jawata.mcp/src`, neither a test. Verify: `compile_workspace` 0/0 and M3's call-hierarchy check still names
-a production caller. Reverse: `refactoring(action="undo")`.
+`openRealStore` — both in `org.jawata.mcp/src`, neither a test.
+Reverse: `refactoring(action="undo")`.
 
 **M5 — the report surface.** *Authored, one block* in `ExperienceTool#stats`
 (`:391–431`), beside `quality` (`:396`) and `embedding` (`:423`), degrading as `:419–422`
@@ -747,8 +764,9 @@ constructor** so existing construction sites and every test compile unchanged �
 A convenience constructor that quietly keeps the ONE production entry point on the old
 five is how this capability would ship inert. Then `compile_workspace(clean=true)` — a record's canonical constructor shape
 change is precisely the case where the incremental builder skips recompiling consumers and
-a plain incremental build can report a false 0/0. Then author the two iterations: the
-clause loop in `H2ExperienceStore#query` (`:869–916`, joined `:917–918`) and the
+a plain incremental build can report a false 0/0. Then author `RecallQuery#isEmpty()` to count the arrays — without it an
+arrays-only query short-circuits to absence at `H2ExperienceStore.java:864` — and the
+two iterations: the clause loop in `H2ExperienceStore#query` (`:869–916`, joined `:917–918`) and the
 disjunction in `ExperienceRetrieval#fits` (`:1105–1124`). **Do not touch** the comparator
 chain at `:311–318` or the fit gate's semantics. Verify: `compile_workspace(clean=true)`
 0/0; a test proving two symptom cues are a union, not an AND. Reverse:
@@ -761,10 +779,13 @@ then D8's real measure — an installed client session whose prompt carries a sy
 a symptom cue that each have a recorded experience injects both. Reverse: revert; the
 store's array support is inert without a sender.
 
-**M9a — the entry payload (jawata-mcp).** *Authored.* Loader writes intent into `summary`,
+**M9a — the entry payload (jawata-mcp).** *Authored.* Loader writes `type = "lesson"`
+(an `EntryForm.EXPERIENCE_TYPES` member, so `verdict` is meaningful on the row and D3's
+"an `unproven` experience" is literally true), intent into `summary`,
 "When to Use" into `situation`, and into `details` — unparaphrased — the consequences,
 the MIT attribution, and the reference-implementation TYPE as a labelled text line;
-repo path and commit into `source_ref`. **Every anchor column stays empty,
+the repository path into `source_ref` (slug only) and the pinned commit into the
+`details` provenance block — never into the identity key. **Every anchor column stays empty,
 `package_name` included** (GATE 2 correction above). Verify: the provenance assertions in the env-independent tier above.
 Reverse: revert this commit; the seat is untouched.
 
@@ -798,8 +819,8 @@ it reports the ceiling by name. Reverse: revert.
   and consequences populated and the reference implementation as a labelled TEXT line in
   `details`, with **no symbol, package, operation or snippet COLUMN set**;
 - that record's provenance is complete and asserted field by field: the **MIT
-  attribution** block present, `source_ref` carrying the repository path and the pinned
-  commit, the **licence verdict** present, and the `details` reference line's **package
+  attribution** block present, `source_ref` carrying the repository path and NO commit, the pinned
+  commit present in the `details` provenance block, the **licence verdict** present, and the `details` reference line's **package
   prefix equal to the pattern's own Java package** (D5's "Java package … as provenance",
   discharged in text);
 - the `details` prose is **byte-identical** to the README section it came from —
@@ -829,13 +850,18 @@ it reports the ceiling by name. Reverse: revert.
   `H2ExperienceStore.java:903–915`);
 - multi-cue candidates are ranked by one comparator chain — same input, same order, no
   second sort;
-- **a `recall` call carrying `symbols`/`symptoms` arrays over JSON-RPC reaches `query`
-  with both populated** (boundary) — the check that fails if `ExperienceTool#recall` is
-  left on the five-argument constructor, which is the only way this capability can ship
-  built-but-unreachable;
-- the loader issues no write against any row whose `provenance_kind != 'catalog'`.
+- an arrays-only `RecallQuery` is NOT empty — the emptiness rule counts the new
+  components, so the widening does not hold merely by the caller also sending scalars;
 
-**Boundary tests** (a real H2 file, a real resource, a real seat file):
+**Boundary tests** (a real H2 file, a real resource, a real seat file, a real front door):
+
+- **a `recall` call carrying `symbols`/`symptoms` arrays over JSON-RPC reaches `query`
+  with both populated** — the check that fails if `ExperienceTool#recall` is left on the
+  five-argument constructor, which is the only way this capability can ship
+  built-but-unreachable; it needs the front door, so it belongs here and not above;
+- the loader issues no write against any row whose `provenance_kind != 'catalog'` —
+  a write-set assertion over a real store, R8's namespace-isolation half (R5's
+  one-mechanism half is the two-part bullet below);
 
 - the snapshot resource is reachable from the packaged jar by `getResourceAsStream`;
 - a v9 store file upgrades and then loads the catalogue without losing a row;
@@ -845,24 +871,29 @@ it reports the ceiling by name. Reverse: revert.
 - `experience(kind=list, status="candidate")` returns exactly the rows the report named;
 - the loader does not run when `openRealStore` throws — a `RecoveringExperienceStore`
   fallback is never seeded;
-- **one catalogue writer** (R5's one-mechanism property): the only production caller of
-  the catalogue write path is `PatternCatalogueLoader#load`, reached only from
-  `JawataApplication#openRealStore` — a call-hierarchy assertion, which needs a loaded
-  workspace and therefore belongs here rather than in the environment-independent tier;
+- **one catalogue writer** (R5's one-mechanism property), in BOTH halves, because the
+  call hierarchy alone cannot carry it: (a) the only production caller of the catalogue
+  write path is `PatternCatalogueLoader#load`, reached only from
+  `JawataApplication#openRealStore`; and (b) **no production site other than that loader
+  writes `provenance_kind = 'catalog'`** — derived from the incoming references of the
+  constant holding the value, which is what R5 actually binds. Both need a loaded
+  workspace, so both live here rather than in the environment-independent tier;
 - `build/unwired-gate.sh` exits 0 against the built dist with
   `build/unwired-baseline.txt` unmodified — a boundary check, covering **only the Java
   half**;
 - a seat definition carrying `max_tool_steps` parses; an unknown key still errors;
-- the architect seat's declared `tools:` set is consistent with what design mode must
-  call — the signed sentence must not rest on a field nothing reads;
-- the deployed skill's BODY carries the three stance sentences this sprint puts there —
-  design mode uses tools; watch mode consults and does not re-derive; a watch-mode "no"
-  stops for the human's word — and does **not** carry the tool-less-roles clause, which
-  is 28f's. (The ruling's fourth clause, the tool-step ceiling, is a `runner.rs` change,
+- the deployed skill's BODY carries the FOUR stance changes M9b makes — (1) design mode
+  names the pattern's intent, its consequences and its resolving address, or says the
+  store had nothing; (2) design mode uses tools; (3) watch mode consults and does not
+  re-derive; (4) a watch-mode "no" stops for the human's word — and does **not** carry
+  the tool-less-roles clause, which is 28f's. (The ruling's fourth clause, the tool-step ceiling, is a `runner.rs` change,
   not skill text, and is checked below; `tools:` frontmatter is not rendered at all, so
   no test may look for it.) A test demanding all four would fail by construction or drag
   deferred scope in;
-- `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains the consultation text —
+- `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains the NEW requirement
+  this sprint adds — name the pattern's intent, its consequences and its resolving
+  address, or say the store had nothing — and not merely the D-FOUR text studio
+  `3dc39a6` already deployed —
   the source file being right is explicitly not this check.
 
 **Reality-only — nothing else can establish these:**
