@@ -116,19 +116,31 @@ class ApplicabilityDecisionTest {
         ApplicabilityDecision d = new ApplicabilityDecision();
         String first = d.nominate(Q, List.of("a"));
 
-        for (int i = 0; i < ApplicabilityDecision.MAX_OPEN; i++) {
+        // ONE SHORT of the bound: `first` plus this many is exactly MAX_OPEN, so
+        // nothing has been evicted yet.
+        for (int i = 0; i < ApplicabilityDecision.MAX_OPEN - 1; i++) {
             d.nominate(Q + " #" + i, List.of("a"));
         }
+        String stillOpen = d.nominate("a question asked just under the bound", List.of("a"));
 
-        // Asserted through the CONTRACT, not through a size accessor. If the register
-        // were unbounded the oldest nomination would still be open and this would come
-        // back a Decision; the refusal IS the eviction, observed the only way a caller
-        // can observe it. (The accessor that used to be read here had no production
-        // caller, which the wiring gate reported at C1.)
+        // THE VALUE OF THE BOUND, pinned through the contract. Asserting only that an
+        // over-the-bound nomination is evicted does NOT pin it: `size() > 1` passes
+        // that check while destroying every concurrent caller's nomination, so a
+        // resident serving two clients would refuse almost every decide. This half
+        // says the bound is not smaller than it claims.
+        Object survivor = d.decide(stillOpen, List.of());
+        assertInstanceOf(ApplicabilityDecision.Decision.class, survivor,
+            "a nomination made while the register is at its bound is still open — a "
+                + "bound of 1 would evict it and refuse every second caller");
+
+        // Now push past the bound and watch the OLDEST go.
+        for (int i = 0; i < ApplicabilityDecision.MAX_OPEN; i++) {
+            d.nominate(Q + " overflow #" + i, List.of("a"));
+        }
         assertInstanceOf(ApplicabilityDecision.Refusal.class, d.decide(first, List.of()),
-            "the register is bounded — a caller that nominates and never decides leaks "
-                + "nothing — and the evicted one is refused with its reason rather than "
-                + "answered as an absence, because it was never decided by anybody");
+            "and the register is bounded — a caller that nominates and never decides "
+                + "leaks nothing — with the evicted one refused rather than answered as "
+                + "an absence, because it was never decided by anybody");
     }
 
     @Test
@@ -142,12 +154,27 @@ class ApplicabilityDecisionTest {
         // nomination for a question the corpus has no neighbours for — the alternative
         // is returning the least-bad rows, which is exactly what produced eleven
         // suggestions for each of seven nonsense questions.
+        // THE REGISTER HELD AN EMPTY LIST, not merely some list. Proven by trying to
+        // select something: decide validates the selection against what was nominated,
+        // so a fabricated candidate would be accepted and this would come back a
+        // Decision. Asserting `decision.selected()` is empty instead proves nothing —
+        // selected is the caller's argument intersected with the candidates, and the
+        // caller passed nothing, so it is empty whatever nominate registered.
+        ApplicabilityDecision second = new ApplicabilityDecision();
+        String probe = second.nominate("what colour is the number seven?", List.of());
+        assertInstanceOf(ApplicabilityDecision.Refusal.class,
+            second.decide(probe, List.of("anything-at-all")),
+            "nothing was offered, so nothing can be selected — if the register had "
+                + "quietly filled in the least-bad rows this would be a match, which is "
+                + "exactly what produced eleven suggestions for each of seven nonsense "
+                + "questions");
+
         ApplicabilityDecision.Decision decision = assertInstanceOf(
             ApplicabilityDecision.Decision.class, d.decide(queryId, List.of()),
             "a nomination with no candidates is still open and still decidable");
-        assertTrue(decision.isAbsence());
-        assertEquals(List.of(), decision.selected(),
-            "and it selects nothing, because nothing was offered");
+        assertTrue(decision.isAbsence(),
+            "and deciding on it is an absence — a real answer for a question the corpus "
+                + "has no neighbours for");
     }
 
     @Test

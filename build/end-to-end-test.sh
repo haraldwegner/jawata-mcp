@@ -821,27 +821,41 @@ else
     fail "fixture-import THE RUN MUTATED THE COMMITTED FIXTURE"
 fi
 
-# --- the architect seat's own protocol, end to end --------------------------
-# Sprint 28c Stage 1 clause 7. The block above proves the two verbs answer; this
-# proves the SEAT's documented D-FOUR loop — nominate, read the situations,
-# decide — runs over the wire and produces BOTH outcomes across the whole frozen
-# fixture: a match on each of the five positives, an absence on each of the seven
-# unrelated controls.
+# --- the anchorless lane, end to end ----------------------------------------
+# Sprint 28c. The block above proves the two verbs answer on a nonsense question;
+# this proves the whole CONTRACT over the wire on the frozen fixture — an entry
+# with no code anchor of any kind recorded, ranked into the top 3 against seven
+# distractors, and decided to a match carrying it; and an empty selection decided
+# to an absence on each of seven unrelated questions.
+#
+# It is deliberately NOT called the architect-seat run. The architecture says a
+# scripted client cannot replace the seat's judgement in the live acceptance
+# proof, and this script chooses its own selection — so it stands for the
+# artifact's FIRST reality-only check (the JSON-RPC contract) and never the
+# second (a real seat run), which is proven by a captured seat transcript.
 #
 # It runs here, after stop_resident, on its own port and its own throwaway store,
 # because it boots a resident of its own. Calling it from the gate is the point:
 # a probe nothing invokes is the unwired-capability failure this sprint keeps
 # finding, wearing a gate's clothes.
-SEAT_PROBE="$(cd "$(dirname "$0")" && pwd)/architect-seat-probe.sh"
-if [ -x "$SEAT_PROBE" ]; then
-    if JAWATA_PROBE_PORT="${JAWATA_SEAT_PROBE_PORT:-8901}" "$SEAT_PROBE" "$DIST" > "$WS/seat-probe.log" 2>&1; then
-        pass "architect-seat the seat's nominate-read-decide loop answers all 12 frozen questions ($(grep -c '  ok' "$WS/seat-probe.log") claims)"
+#
+# THE TRANSCRIPT IS KEPT. Clause 7's evidence is "captured front-door requests",
+# and the probe defaults its transcript inside its own $WS, which its cleanup
+# trap deletes — so a gate run that did not name a path destroyed the only proof
+# the run had happened. It is written beside the dist instead, where it outlives
+# the run and anyone can read the exact requests back.
+LANE_PROBE="$(cd "$(dirname "$0")" && pwd)/anchorless-frontdoor-probe.sh"
+LANE_TRANSCRIPT="$DIST/anchorless-frontdoor-transcript.txt"
+if [ -x "$LANE_PROBE" ]; then
+    if JAWATA_PROBE_PORT="${JAWATA_LANE_PROBE_PORT:-8901}" \
+       PROBE_TRANSCRIPT="$LANE_TRANSCRIPT" "$LANE_PROBE" "$DIST" > "$WS/lane-probe.log" 2>&1; then
+        pass "anchorless-lane the nominate-decide contract answers all 12 frozen questions ($(grep -c '  ok' "$WS/lane-probe.log") claims; $(grep -c '=== REQUEST' "$LANE_TRANSCRIPT" 2>/dev/null || echo 0) front-door requests captured at $LANE_TRANSCRIPT)"
     else
-        fail "architect-seat the seat's own protocol failed over the front door:"
-        sed 's/^/        /' "$WS/seat-probe.log" >&2
+        fail "anchorless-lane the anchorless contract failed over the front door:"
+        sed 's/^/        /' "$WS/lane-probe.log" >&2
     fi
 else
-    fail "architect-seat the seat probe is missing or not executable at $SEAT_PROBE"
+    fail "anchorless-lane the probe is missing or not executable at $LANE_PROBE"
 fi
 
 echo "end-to-end test: $PASSED passed, $FAILED failed"
