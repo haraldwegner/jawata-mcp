@@ -72,7 +72,7 @@ class AcceptanceFixtureTest {
      * nothing; this project already lost two sprints of a headline gate to
      * exactly that, so an absent fixture is a failure here, never a skip.</p>
      */
-    private static Path fixture(String name) {
+    static Path fixture(String name) {
         List<String> tried = new ArrayList<>();
         Path dir = Paths.get("").toAbsolutePath();
         for (int up = 0; up < 6 && dir != null; up++, dir = dir.getParent()) {
