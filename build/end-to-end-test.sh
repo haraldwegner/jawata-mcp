@@ -543,10 +543,14 @@ esac
 # THE HEADLINE: an empty selection on a nonsense question is an ABSENCE, with no
 # entries and no consolation pile. This is the measured defect, inverted.
 DEC="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID\",\"selected_ids\":[]}")"
+# The absence must be THE DECISION'S absence. Asserting only result=absence is not
+# discriminating: recall answers a cue-less call with an absence too, so a decide
+# verb bypassed to plain recall passed this arm. The decision echoes the QUESTION
+# back, which nothing else on the answer surface does.
 case "$DEC" in
-    *'"result":"absence"'*)
-        pass "anchorless choosing none of the candidates yields an ABSENCE, not a hedge" ;;
-    *) fail "anchorless an empty selection did not produce an absence: $(printf '%s' "$DEC" | head -c 250)" ;;
+    *'"result":"absence"'*marzipan*|*marzipan*'"result":"absence"'*)
+        pass "anchorless choosing none of the candidates yields an ABSENCE for THAT question" ;;
+    *) fail "anchorless an empty selection did not produce the decision's own absence: $(printf '%s' "$DEC" | head -c 250)" ;;
 esac
 case "$DEC" in
     *'"count":0'*) pass "anchorless the absence carries zero entries" ;;
@@ -556,12 +560,12 @@ esac
 # And the door the query_id exists to close: an id the nomination never offered is
 # refused, so a caller cannot vouch for an arbitrary entry through the decide verb.
 BAD="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID\",\"selected_ids\":[\"not-a-candidate\"]}")"
+# Positive evidence only. A bare catch-all here would pass on a transport error,
+# on an empty body, and — measured — on the decide verb bypassed to plain recall.
 case "$BAD" in
-    *'"result":"match"'*)
-        fail "anchorless an un-nominated id was VOUCHED: $(printf '%s' "$BAD" | head -c 200)" ;;
     *not-a-candidate*)
         pass "anchorless an id the nomination never offered is refused, and named" ;;
-    *) pass "anchorless an id the nomination never offered is refused" ;;
+    *) fail "anchorless the refusal did not name the un-nominated id, so nothing proves it was checked: $(printf '%s' "$BAD" | head -c 250)" ;;
 esac
 
 # --- rejected-stays-gone: a rejected note stays gone BY MEANING -------------------------
