@@ -38,12 +38,18 @@ public final class FormMigration {
         public static final String LEGACY_KEPT = "legacy_kept";
     }
 
-    /** The whole run: every source id exactly once, plus the store-shape facts. */
+    /**
+     * The whole run: every source id exactly once, and the counts that
+     * reconcile against that list.
+     *
+     * <p>{@code sourceEntries == migrated + legacyKept} is checkable from the
+     * report alone, which is the point — a report whose totals can only be
+     * taken on trust is not evidence.</p>
+     */
     public record Report(int sourceEntries, int migrated, int legacyKept,
                          List<Disposition> dispositions,
                          Map<String, Integer> keptReasons,
                          Map<String, Integer> provenanceKinds,
-                         List<String> unknownColumnValues,
                          boolean applied) {
     }
 
@@ -160,7 +166,6 @@ public final class FormMigration {
                 store.setForm(e.id(), situation, verdict);
             }
         }
-        return new Report(out.size(), migrated, kept, out, keptReasons, provenance,
-            List.of(), write);
+        return new Report(out.size(), migrated, kept, out, keptReasons, provenance, write);
     }
 }
