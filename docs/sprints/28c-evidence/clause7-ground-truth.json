@@ -1,0 +1,74 @@
+[
+  {
+    "n": 1,
+    "q": "should greenhouse irrigation run before or after sunrise",
+    "truth": "unrelated",
+    "expect": null
+  },
+  {
+    "n": 2,
+    "q": "our overnight reconciliation drifts by an hour when the clocks roll backward",
+    "truth": "positive",
+    "expect": "acc00001-0000-4000-8000-000000000001"
+  },
+  {
+    "n": 3,
+    "q": "what is the right sequence for descaling an espresso machine",
+    "truth": "unrelated",
+    "expect": null
+  },
+  {
+    "n": 4,
+    "q": "two groups each own half a workflow and nobody is accountable for the seam",
+    "truth": "positive",
+    "expect": "acc00004-0000-4000-8000-000000000004"
+  },
+  {
+    "n": 5,
+    "q": "which knot holds best on a wet mooring line",
+    "truth": "unrelated",
+    "expect": null
+  },
+  {
+    "n": 6,
+    "q": "someone in support has to explain an automated decision from months ago",
+    "truth": "positive",
+    "expect": "acc00002-0000-4000-8000-000000000002"
+  },
+  {
+    "n": 7,
+    "q": "how do I set the compression level for a cold archive tier",
+    "truth": "unrelated",
+    "expect": null
+  },
+  {
+    "n": 8,
+    "q": "what current does a three-phase motor draw at startup",
+    "truth": "unrelated",
+    "expect": null
+  },
+  {
+    "n": 9,
+    "q": "we keep shipping Friday afternoon and then the on-call rotation changes over the weekend",
+    "truth": "positive",
+    "expect": "acc00003-0000-4000-8000-000000000003"
+  },
+  {
+    "n": 10,
+    "q": "how do I keep pigeons from roosting on a balcony railing",
+    "truth": "unrelated",
+    "expect": null
+  },
+  {
+    "n": 11,
+    "q": "a number we invented to find problems has become a weekly leadership review figure",
+    "truth": "positive",
+    "expect": "acc00005-0000-4000-8000-000000000005"
+  },
+  {
+    "n": 12,
+    "q": "which font pairing works on a printed conference badge",
+    "truth": "unrelated",
+    "expect": null
+  }
+]
