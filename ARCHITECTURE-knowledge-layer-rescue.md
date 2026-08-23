@@ -216,7 +216,7 @@ pipeline. The patterns named below are named in service of that one target:
         |  (D5 wire)                                                       v
         +--> PatternCatalogueLoader#load(ExperienceStore)   [NEW]
                  |  reads  /catalogue/patterns-<commit>.json  [NEW resource]
-                 |  writes ONLY provenance_kind='catalogue' rows
+                 |  writes ONLY provenance_kind='catalog' rows
                  v
         +--------------------------------------------------+
         | ExperienceStore  (the EXISTING write port)        |
@@ -268,6 +268,12 @@ incident its own comment records at `:637–639` — "the 2026-07-19 fleet flip 
 seed entries as if they were the DB". Hanging the loader inside `openRealStore` means a
 degraded store is never seeded.
 
+**This loader IS D3's "seeder"** — "Catalogue ownership" above assigns *"the catalogue
+ extractor and seeder"*, and naming them separately would leave room for two writers of
+catalogue rows with different identity keys, which would silently break both the
+loads-nothing-again rule and the successor rule. One extractor (M0, offline), one writer
+(this loader).
+
 **Identity key.** Source reference plus content hash, using the two methods that exist
 for exactly this and are already forwarded by the decorator:
 `ExperienceStore#sourceUnchanged(sourceRef, sourceHash)` (`ExperienceStore.java:62`,
@@ -286,11 +292,16 @@ snapshot — one mechanism serving both D5's "loads nothing again" and D6's "add
 patterns".
 
 **Namespace isolation.** `provenance_kind` already exists (`SchemaMigrations.java:538`,
-v10) and already carries `"recorded"` (`ExperienceTool.java:899`) and `"ingested"`
-(`ExperienceMaintenance.java:340`, `:401`). Catalogue rows take a third value,
-`"catalogue"`, in that same column. No new column, no v11 rung. Isolation becomes a
+v10) and its vocabulary is already documented as FIVE values —
+`recorded / ingested / catalog / seat_run / migrated` (`ExperienceEntry.java:44`) — of
+which `"recorded"` (`ExperienceTool.java:899`) and `"ingested"`
+(`ExperienceMaintenance.java:340`, `:401`) have writers today. **Catalogue rows take the
+already-documented `"catalog"`** — not a new sixth spelling. This addendum's first draft
+said "a third value, `catalogue`", which was wrong twice: the vocabulary is not three
+long, and a second spelling of a documented term is the drift `EntryForm`'s own javadoc
+condemns. No new column, no v11 rung. Isolation becomes a
 property a test can assert: the loader's write set is exactly the rows whose
-`provenance_kind = 'catalogue'`, and it issues no `UPDATE`, `setStatus` or
+`provenance_kind = 'catalog'`, and it issues no `UPDATE`, `setStatus` or
 `deleteBySource` against any other row. R8's live-store concern is met the way
 `recoverOrphans` meets it — `synchronized` per-entry inserts through the same connection
 discipline (`H2ExperienceStore.java:567`), never a table-level operation.
@@ -371,6 +382,13 @@ edit changes the body but not the `source_hash`, so at the same snapshot the loa
 writes nothing; at a newer snapshot the edited row is superseded rather than overwritten,
 and the human sees both in the candidate list.
 
+**The one-mechanism property is CHECKED, not merely designed.** R5 binds the design to a
+single update path, and nothing in the first draft would fail if a second catalogue
+writer or a fetch path were added later. The env-independent tier now asserts it by
+call hierarchy, in the style the wiring gate already uses: **the only production caller
+of the catalogue write path is `PatternCatalogueLoader#load`, and its only production
+caller is `JawataApplication#openRealStore`.**
+
 **Smell prevented.** *Speculative generality* — R5's ruling in code form: one mechanism
 whose update behaviour is a branch on a hash it already computes, rather than a second
 pipeline with its own scheduling, failure modes and tests, for a corpus that gains about
@@ -428,7 +446,14 @@ false and is itself corrected here.
 
 The line therefore reads `Reference implementation:
 com.iluwatar.circuitbreaker.DefaultCircuitBreaker` — a fully-qualified TYPE, which every
-reading tool accepts as a stable key and which opens the file. The seat loses nothing:
+reading tool accepts as a stable key and which opens the file.
+
+**This is also how D5's "the pattern's Java package … as provenance" is discharged**, and
+saying so is not decoration: a reader of the retraction alone cannot tell whether that
+clause was met or dropped. The fully-qualified type CONTAINS the package as its prefix,
+so the provenance D5 asks for is carried, in text, with no anchor column written. The
+env-independent tier asserts it: the `details` line's package prefix equals the pattern's
+own Java package. The seat loses nothing:
 resolution is a tool call either way, and the tool takes a name. Every anchor column stays
 empty, and D3's measure and the migration's "every anchor field empty" agree rather than
 contradict.
@@ -448,7 +473,8 @@ tool-step ceiling to stop and say so. Today it cannot:
 - The tool-step bound is the adapter's `--max-turns`, defaulted to 12 in code
   (`runner.rs:703–711`, passed at `:729–730`) and **not settable from a seat definition**:
   the frontmatter parser accepts `name, model, effort, schedule, tools, gates, ttl_secs,
-  max_iterations, cost_budget_usd` and hard-errors on any other key (`:180–206`).
+  max_iterations, cost_budget_usd` (the accept-list starts at `:179`) and hard-errors on
+  any other key (the `other =>` arm, `:207`).
 - When the CLI does stop on turns, `parse_text` reads the `result` event's `result` string
   and ignores its subtype (`:745–749`), so a turn-exhausted run is indistinguishable from
   a finished one — it stops, but does not say so.
@@ -458,11 +484,42 @@ the other three; `ClaudeCodeAdapter.max_turns` is built from it instead of its d
 the adapter's result parsing distinguishes the turn-limit subtype so `run_seat` emits
 `Verdict::Reaped` with a `CeilingKind` (`:68–82`). Entirely studio-side.
 
+**Production callers:** `run_seat` (`runner.rs:1059–1064`) reads the ceiling and
+`build_command` (`:722–735`) passes it to the CLI. **This is Rust and therefore OUTSIDE
+`build/unwired-gate.sh`**, which sweeps the Java repository only — the same declaration
+Seam 4 makes, for the same reason: a green Java gate is not evidence about this
+capability and must never be reported as if it were.
+
+**The seat's two modes, which the first draft left out entirely.** D7 carries four
+clauses of Harald's 2026-08-21 ruling and this addendum addressed one. The other three:
+
+- **Design mode uses tools.** `seats/architect.md:7` declares `tools: []`, while the same
+  file's rule 5(a) (`:99`) demands *"DERIVE the consumer set. Never state it from
+  memory"* and D-FOUR requires two `experience(…)` calls — a declaration that contradicts
+  the seat's own instructions. Measured: the field is **inert today** — `SeatDefinition
+  .tools` is parsed at `runner.rs:183`/`:224` and read only inside `#[cfg(test)]`
+  (`runner.rs:2459`); no `--allowedTools` flag is ever built, so the key neither grants
+  nor denies. M9b therefore sets `tools:` to the design-mode set AND the boundary tier
+  asserts the declared set is consistent with what design mode must call — a signed
+  sentence must not rest on a field that decides nothing.
+- **Watch mode consults and does not re-derive**, and a watch-mode "no" is a DECISION that
+  stops for the human's word. The deployed WATCH MODE block (`seats/architect.md:73–76`)
+  says only "read detector evidence and reviewed diffs, and argue for DESIGN-level
+  fixes". M9b adds both clauses there.
+- **The tool-less rule moves to the text-reading roles** (sprint/plan auditor,
+  communicator) — **NOT in this sprint**: the spec's own Deferred section homes it to
+  28f. Recorded so a reader can tell deferred from overlooked, the same way R6 is.
+
 **Deployment, which is the measure that bites.** D7's measure names the *deployed*
 `~/.claude/skills/refactor/SKILL.md`, not the source. That file is generated from
-`seats/architect.md` by `conductor.rs` (`:261–306`; embed table `:16–23`; the
+`seats/architect.md` by `conductor.rs` (`render_claude_skill`, `:261–278`; embed table `:16–23`; the
 "every `seats/*.md` on disk is embedded" invariant `:593–612`). The D7 step is done when
 a redeploy has regenerated the skill and the regenerated file carries the text.
+
+D7 names TWO firing points — `/refactor` and the sprint design step. The deployed
+`~/.claude/skills/refactor/SKILL.md` covers the first; the second is the `/sprint` skill's
+design-mode step, whose generated file is rendered by the same `conductor.rs` embed table,
+and the boundary tier checks both files rather than only the one.
 
 **Smell prevented.** *Feature envy* / *message chains* — an entry that did not carry
 intent, consequences and address would force the seat to hold a store row and then go to
@@ -499,7 +556,7 @@ touch them.
 **What the hook throws away.** `pipeline.rs::recall` (`:423`) builds `cues.symbols` and
 `cues.symptoms`, both `Vec<String>` (`cue.rs:35–47`), then chains them into ONE iterator
 and issues a **separate single-key ask per cue**, returning on the first that answers
-(`:437–460`; the comment at `:438–441` states the rule outright). A prompt naming a class
+(`:437–460`; the comment at `:432–435` states the rule outright). A prompt naming a class
 and describing a problem asks `{kind:recall, symbol:"Foo"}`, gets an answer, and never
 asks the symptom.
 
@@ -521,7 +578,9 @@ phrases would require every word of both to match — strictly narrower than eit
 
 **No `HOOK_CONTRACT` bump.** The version is `1` (`field.rs:24`), echoed under
 `X-Jawata-Contract` (`FieldContract.java:16`) and compared for exact equality
-(`query.rs:252–255`). A bump would make every older store refuse to inject. Sending
+(`query.rs:252–255`). A bump would break injection against older stores — precisely: an ABSENT echo proceeds
+unverified (`query.rs:248–250`), so only a present-but-different value refuses, which is
+exactly what a bump would produce. Sending
 scalars *and* arrays makes the new hook's worst case against an old store identical to
 today rather than silence — which is why the scalars stay.
 
@@ -549,9 +608,25 @@ of the single step commit every authored one. **A revert is not complete until t
 artifact is rebuilt and the revert is verified IN THE BYTECODE** — this branch lost hours
 to a control that was reverted in source and left in the jar.
 
+**M0 — the extractor, and which side of the gate it sits on.** *Authored, new class.*
+`org.jawata.mcp.catalog.CatalogExtractor`, in the **test/build source root, not the
+product** — it runs offline against the pinned fork to PRODUCE the snapshot, and no
+shipped code calls it. Stating the side is the point: an extractor authored into the
+product with no production caller is exactly the hollow shape `build/unwired-gate.sh`
+exists to catch, and `build/unwired-baseline.txt` already carries one such member.
+**The extractor composes the record; the loader WRITES what the extractor produced and
+composes nothing** — the first draft assigned that job twice and left neither owning it.
+It is also D3's "seeder" under a clearer name: one catalogue writer, not two, which is
+what makes D5's "loads nothing again" and D6's successor rule provable at all.
+Verify: run it at the pinned sha and diff the snapshot against the committed one — byte
+identical. Reverse: delete the class; the snapshot is already committed.
+
 **M1 — freeze the snapshot artifact.** *Authored, new files.*
 `org.jawata.mcp/resources/catalogue/patterns-<commit>.json` + sidecar (pinned commit, MIT
-licence verdict, extraction date). Verify: 187 records; a probe that
+licence verdict, extraction date). **D5 says "each ENTRY carries … the fork's licence
+verdict", and the sidecar is the snapshot, not the entry** — so the verdict is written
+onto every record too, in the same `details` provenance block as the attribution. One
+fork, one verdict, and per-entry is what the sentence says. Verify: 187 records; a probe that
 `getResourceAsStream("/catalogue/…")` finds it from the built jar as
 `MiniLmEmbedder.java:151` finds the model. Reverse: delete both.
 
@@ -571,9 +646,10 @@ a refactoring; no tool kind applies. Verify: `compile_workspace` 0/0;
 clean. Reverse: remove the line.
 
 **M4 — compose the start-up sequence.** *Tool.*
-`refactor_to_pattern(kind="compose_method", symbol="org.jawata.mcp.JawataApplication#openRealStore")`
-over the start-up-task statements, or `extract(kind="method", methodName="runStartupTasks")`
-over that range. Verify: `compile_workspace` 0/0 and M3's call-hierarchy check still names
+`refactor_to_pattern(kind="compose_method",
+symbol="org.jawata.mcp.JawataApplication#openRealStore")`, its `sections` being the
+start-up-task statements. One kind, one target — the first draft offered an alternative
+and D-TWO asks for the step, not a choice. Verify: `compile_workspace` 0/0 and M3's call-hierarchy check still names
 a production caller. Reverse: `refactoring(action="undo")`.
 
 **M5 — the report surface.** *Authored, one block* in `ExperienceTool#stats`
@@ -611,20 +687,26 @@ then D8's real measure — an installed client session whose prompt carries a sy
 a symptom cue that each have a recorded experience injects both. Reverse: revert; the
 store's array support is inert without a sender.
 
-**M9 — the entry payload and the seat.** *Authored.* Loader writes intent into `summary`,
+**M9a — the entry payload (jawata-mcp).** *Authored.* Loader writes intent into `summary`,
 "When to Use" into `situation`, and into `details` — unparaphrased — the consequences,
 the MIT attribution, and the reference-implementation TYPE as a labelled text line;
 repo path and commit into `source_ref`. **Every anchor column stays empty,
-`package_name` included** (GATE 2 correction above). Seat: extend
-`seats/architect.md` D-FOUR (`:56–71`) to require naming intent, consequences and the
-resolving address, or saying the store had nothing. Verify: redeploy, then read
+`package_name` included** (GATE 2 correction above). Verify: the provenance assertions in the env-independent tier above.
+Reverse: revert this commit; the seat is untouched.
+
+**M9b — the seat (jawata-studio).** *Authored.* Extend `seats/architect.md` D-FOUR
+(`:56–71`) to require naming intent, consequences and the resolving address, or saying
+the store had nothing; add the two WATCH MODE clauses (consult without re-deriving; a
+"no" stops for the human's word); set `tools:` to the design-mode set.
+**`seats/architect.md` is the ONLY seat file this sprint edits** — the auditor and
+communicator placement is 28f's. Verify: redeploy, then read
 `~/.claude/skills/refactor/SKILL.md` and confirm the text is in the **deployed** file
 (`conductor.rs:261–306`); then a design-mode run over the frozen catalogue questions.
 Reverse: revert and redeploy.
 
 **M10 — the tool-step ceiling.** *Authored, Rust.* `Ceilings` gains `max_tool_steps`
 (`runner.rs:51–63`); the frontmatter parser gains the key beside the other three
-(`:192–205`, whose `other =>` arm at `:206` currently rejects it);
+(the accept-list from `:179`, whose `other =>` arm at `:207` currently rejects it);
 `ClaudeCodeAdapter.max_turns` (`:703–711`) is built from it; `parse_text` (`:745–749`)
 distinguishes the turn-limit subtype so `run_seat` emits `Verdict::Reaped` with a
 `CeilingKind` (`:68–82`). Verify: a seat file declaring the key loads; a run that exceeds
@@ -640,8 +722,22 @@ it reports the ceiling by name. Reverse: revert.
 - the extractor turns one committed README fixture into one record with intent, situation
   and consequences populated and the reference implementation as a labelled TEXT line in
   `details`, with **no symbol, package, operation or snippet COLUMN set**;
+- that record's provenance is complete and asserted field by field: the **MIT
+  attribution** block present, `source_ref` carrying the repository path and the pinned
+  commit, the **licence verdict** present, and the `details` reference line's **package
+  prefix equal to the pattern's own Java package** (D5's "Java package … as provenance",
+  discharged in text);
+- the `details` prose is **byte-identical** to the README section it came from —
+  "unparaphrased" asserted, not intended;
+- **the bounded-count mode loads exactly ONE pattern**, and the round-tripped entry's
+  `summary` passes the shape checks rather than being heading-shaped — D5 attaches a
+  reason to sample-before-bulk ("the loader has produced heading-shaped entries
+  before"), so it is a gate;
+- **one catalogue writer:** the only production caller of the catalogue write path is
+  `PatternCatalogueLoader#load`, and its only production caller is
+  `JawataApplication#openRealStore` (R5's one-mechanism property, by call hierarchy);
 - the loader against an in-memory store: 187 in, 187 rows out, all
-  `provenance_kind = 'catalogue'`, all `verdict = 'unproven'`, all `status = 'candidate'`,
+  `provenance_kind = 'catalog'`, all `verdict = 'unproven'`, all `status = 'candidate'`,
   and **every anchor column empty — symbol, package, operation, snippet**;
 - a catalogue row is NOT returned for a bare package cue naming its reference package,
   nor for a symbol cue naming its reference type — the direct assertion that the
@@ -657,7 +753,7 @@ it reports the ceiling by name. Reverse: revert.
   `H2ExperienceStore.java:903–915`);
 - multi-cue candidates are ranked by one comparator chain — same input, same order, no
   second sort;
-- the loader issues no write against any row whose `provenance_kind != 'catalogue'`.
+- the loader issues no write against any row whose `provenance_kind != 'catalog'`.
 
 **Boundary tests** (a real H2 file, a real resource, a real seat file):
 
@@ -673,6 +769,10 @@ it reports the ceiling by name. Reverse: revert.
   `build/unwired-baseline.txt` unmodified — a boundary check, covering **only the Java
   half**;
 - a seat definition carrying `max_tool_steps` parses; an unknown key still errors;
+- the architect seat's declared `tools:` set is consistent with what design mode must
+  call — the signed sentence must not rest on a field nothing reads;
+- the deployed skill carries all four clauses of the 2026-08-21 ruling, and the two
+  WATCH MODE clauses appear in the watch block;
 - `~/.claude/skills/refactor/SKILL.md`, after a redeploy, contains the consultation text —
   the source file being right is explicitly not this check.
 
