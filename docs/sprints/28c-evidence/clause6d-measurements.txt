@@ -1,0 +1,32 @@
+# Stage 1, clause 6d — the per-recall corpus read, measured
+#
+# The clause asked whether the per-row ResultSetMetaData scan in
+# H2ExperienceStore.facetsOf survives, and required the answer to be measured on a
+# realistic corpus rather than inherited. A throwaway harness seeded 2,500 rows
+# through the PRODUCTION write path and then timed store.all() — the exact call
+# lexicalScores makes on every recall, and the path facetsOf sits inside.
+#
+# Command:
+#   java --add-modules jdk.incubator.vector \
+#        -Djawata.bundle.pools.machine=off \
+#        -Djawata.test.classlist=<one-class-list> \
+#        -jar build/dist/target/dist/jawata.jar -runTests
+#
+# Output:
+
+MEASURE seed 2500 rows: 134044 ms
+MEASURE store.all() over 2500 rows: 25 ms per call (mean of 5, after one warm-up)
+
+# Read two ways, both used by the D5-D8 design addendum:
+#
+# 25 ms per full-corpus read. The metadata scan SURVIVES — hoisting the column-label
+# set out of the row loop optimises a path already an order of magnitude under any
+# budget a recall has, and every hoist of this shape in this store has so far been
+# where one more copy of the row shape became the next defect.
+#
+# 134 s to seed 2,500 rows, ~54 ms per entry, dominated by embedding. Two consequences:
+# a migration that re-embeds every row should be expected to run two to three minutes
+# on the real corpus (~2,574 entries), not seconds; and the catalogue's 187 rows are
+# embedded on insert by construction, which is what makes them rankable by nomination.
+#
+# The harness was deleted after the numbers were taken; this file is its record.

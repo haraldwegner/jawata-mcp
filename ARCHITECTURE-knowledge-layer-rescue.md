@@ -322,7 +322,8 @@ So: `sourceUnchanged` true -> no-op; false and the ref is known -> insert a succ
 linked to that ref's head; ref unknown -> insert; a stored ref missing from the snapshot
 -> retired upstream. This adds no port method and
 no column, so the target sentence stays true, and the cost is measured rather than
-assumed: `store.all()` over 2,500 rows is **25 ms** (Stage 1's clause-6d measurement) —
+assumed: `store.all()` over 2,500 rows is **25 ms** (Stage 1's clause-6d measurement, recorded at
+`docs/sprints/28c-evidence/clause6d-measurements.txt`) —
 one traversal per start, beside the orphan sweep already running there.
 
 **Deliberately NOT the `.jawata-recovered` marker idiom** (`H2ExperienceStore.java:1481`,
@@ -529,7 +530,7 @@ tool-step ceiling to stop and say so. Today it cannot:
 The design: `Ceilings` gains `max_tool_steps`; the frontmatter parser gains the key beside
 the other three; `ClaudeCodeAdapter.max_turns` is built from it instead of its default;
 the adapter's result parsing distinguishes the turn-limit subtype so `run_seat` emits
-`Verdict::Reaped` with a `CeilingKind` (`:68–82`) — **which is a closed three-variant enum
+`Verdict::Reaped` with a `CeilingKind` (`:68–82`, its three variants at `:71–73`) — **which is a closed three-variant enum
 today (`WallTtl`, `MaxIterations`, `CostBudget`, `runner.rs:71–75`), so M10 adds a fourth,
 `ToolSteps`**; without it the run stops without being able to name which ceiling. Entirely studio-side.
 
@@ -614,7 +615,7 @@ What the store already does with several cues set at once:
 
 So "the store ranks the merged result once" is, for one symbol plus one symptom, already
 true. Nothing in the ranking, the fit gate or the SQL needs redesigning, and D8 must not
-touch them.
+REDESIGN them — M7 widens the value they read and preserves their semantics.
 
 **What the hook throws away.** `pipeline.rs::recall` (`:423`) builds `cues.symbols` and
 `cues.symptoms`, both `Vec<String>` (`cue.rs:35–47`), then chains them into ONE iterator
@@ -714,14 +715,32 @@ fork, one verdict, and per-entry is what the sentence says. Verify: 187 records;
 
 **M2 — author the loader, unwired.** *Authored, new class.*
 `org.jawata.mcp.knowledge.PatternCatalogueLoader#load(ExperienceStore)` returning a report
-record, using `sourceUnchanged`, `putWithSource`, **and one `store.all()` pass at start
+record.
+
+**The payload, assigned here and nowhere else.** The EXTRACTOR (M0) composes every content
+field into the snapshot record — `type = "lesson"` (an `EntryForm.EXPERIENCE_TYPES` member,
+so `verdict` is meaningful on the row), `verdict = "unproven"`, intent into `summary`,
+"When to Use" into `situation`, and into `details`, unparaphrased: the consequences, the
+MIT attribution, the fork's licence verdict, the pinned commit, and the
+reference-implementation TYPE as a labelled line, whose package prefix is how D5's "the
+pattern's Java package … as provenance" is carried. The LOADER sets the two fields the
+snapshot cannot know — `provenance_kind = "catalog"` and `status = CANDIDATE` — and
+writes, with the repository path (slug only) as `source_ref`. **Nothing composes twice**,
+and every anchor column stays empty, `package_name` included. The `supersedes` targets the
+chain-head index needs are read from `body().get("links")`: `StoredEntry` carries no links
+component, but `insert` (`:570`) writes `entry.toMap()`, whose `"links"` list the row
+projection parses back.
+
+M2 uses `sourceUnchanged`, `putWithSource`, **and one `store.all()` pass at start
 indexing the rows whose `facets().provenanceKind()` is `catalog` by `sourceRef` to that
 ref's chain head** (Seam 1's two-read split). **It also flags the two spellings that meet
 here:** the ref prefix and the resource directory are `catalogue`, the `provenance_kind`
 VALUE is `catalog` — neither is to be "corrected" into the other. **Sample before bulk** (D5's own
 requirement): a bounded-count mode, so M3's first verification loads one pattern and reads
 it back before the full snapshot is enabled. Verify: `compile_workspace` 0/0; a
-memory-store test seeds twice with no second-run additions. Reverse: delete the class.
+memory-store test seeds twice with no second-run additions; **and the environment-independent
+provenance assertions — every payload field present, the `details` prose byte-identical to
+its README section, every anchor column empty.** Reverse: delete the class.
 
 **M3 — wire the single production call.** *Authored, one statement* in
 `JawataApplication#openRealStore` after `:668`. One line inside an existing method is not
@@ -749,7 +768,16 @@ method. Verify: `compile_workspace` 0/0, and the incoming call hierarchy of
 `openRealStore` — both in `org.jawata.mcp/src`, neither a test.
 Reverse: `refactoring(action="undo")`.
 
-**M5 — the report surface.** *Authored, one block* in `ExperienceTool#stats`
+**M4b — the start-up log line.** *Authored, one statement in the loader.* Seam 1 assigns
+the report TWO surfaces and M5 builds only the queryable one. The loader emits a line at
+start carrying the counts, mirroring `recoverOrphans`'s own rule
+(`H2ExperienceStore.java:1514–1516`): **a start that loaded nothing logs nothing.** This is
+the surface D6's measure actually names — the start-up report listing added and successor
+entries on a SERVER START — which a `stats` query run afterwards cannot stand in for.
+Verify: the two boundary assertions below. Reverse: revert the statement; `stats` keeps
+the other surface.
+
+**M5 — the queryable report surface.** *Authored, one block* in `ExperienceTool#stats`
 (`:391–431`), beside `quality` (`:396`) and `embedding` (`:423`), degrading as `:419–422`
 does. Verify: through the built dist over JSON-RPC, `experience(kind=stats)` returns the
 block naming the `experience(kind=list, status="candidate")` review query. Reverse: revert.
@@ -784,27 +812,18 @@ chain at `:311–318` or the fit gate's semantics. Verify: `compile_workspace(cl
 `refactoring(action="undo")` for the signature, revert for the loops.
 
 **M8 — stop the hook truncating.** *Authored, Rust.* `pipeline.rs::recall` (`:423–473`):
-replace the first-answer-wins loop (`:437–460`) with one ask carrying the scalar best cues
+replace the first-answer-wins loop (`:437–462`) with one ask carrying the scalar best cues
 plus the arrays. `HOOK_CONTRACT` stays `1` (`field.rs:24`). Verify: the hook's own suite;
 then D8's real measure — an installed client session whose prompt carries a symbol cue and
 a symptom cue that each have a recorded experience injects both. Reverse: revert; the
 store's array support is inert without a sender.
 
-**M9a — D7's addition to the entry payload (jawata-mcp).** *Authored.* **Only the
-reference-implementation TYPE line** belongs here: it is D7's requirement and D7 ships in
-Release 3. **Everything else D5 and D3 require of the payload is authored in M2, BEFORE
-the Release-2 fence** — that fence declares D5 complete and D3's catalogue carried, so a
-payload step after it would let M9a's "Reverse: revert this commit" un-deliver an
-already-released deliverable. M2 therefore writes `type = "lesson"`
-(an `EntryForm.EXPERIENCE_TYPES` member, so `verdict` is meaningful on the row),
-**`provenance_kind = "catalog"` and `verdict = "unproven"`** — both required in six places
-below and assigned by no step until now — intent into `summary`,
-"When to Use" into `situation`, and into `details` — unparaphrased — the consequences,
-the MIT attribution, and the reference-implementation TYPE as a labelled text line;
-the repository path into `source_ref` (slug only) and the pinned commit into the
-`details` provenance block — never into the identity key. **Every anchor column stays empty,
-`package_name` included** (GATE 2 correction above). Verify: the provenance assertions in the env-independent tier above.
-Reverse: revert this commit; the seat is untouched.
+**M9a — deleted.** Its content moved into M2. An earlier draft kept a post-fence payload
+step holding "only the reference-implementation TYPE line", which was self-contradictory
+(the same line appeared on its list of what M2 writes) and put a D5 clause after the fence
+that declares D5 complete. The whole payload is composed once, by the extractor, and lands
+in Release 2 with the catalogue. D7's *consultation* still ships in Release 3; the DATA the
+seat reads must exist when the catalogue does, and saying that plainly is the resolution.
 
 **M9b — the seat (jawata-studio).** *Authored.* Extend `seats/architect.md` D-FOUR
 (`:56–71`) to require naming intent, consequences and the resolving address, or saying
@@ -822,7 +841,7 @@ Reverse: revert and redeploy.
 (the accept-list from `:179`, whose `other =>` arm at `:207` currently rejects it);
 `ClaudeCodeAdapter.max_turns` (`:703–711`) is built from it; `parse_text` (`:745–749`)
 distinguishes the turn-limit subtype so `run_seat` emits `Verdict::Reaped` with a
-`CeilingKind` (`:68–82`). Verify: a seat file declaring the key loads; a run that exceeds
+`CeilingKind` (`:68–82`, its three variants at `:71–73`). Verify: a seat file declaring the key loads; a run that exceeds
 it reports the ceiling by name. Reverse: revert.
 
 > **Release 3 fence.** D6, D7, D8 complete. Front-door check again on the built product,
@@ -888,6 +907,9 @@ door, a loaded workspace):
 - the snapshot resource is reachable from the packaged jar by `getResourceAsStream`;
 - a v9 store file upgrades and then loads the catalogue without losing a row;
 - export/import round-trips a catalogue row with its `supersedes` link intact;
+- **a start that loaded nothing emits no log line; a start that wrote something emits one
+  carrying the counts** — the surface D6's server-start measure names, which a `stats`
+  query run afterwards cannot stand in for;
 - `experience(kind=stats)` returns the `catalogue` block, degrading with a reason rather
   than a zero when the snapshot is absent;
 - `experience(kind=list, status="candidate")` returns exactly the rows the report named;
@@ -895,7 +917,7 @@ door, a loaded workspace):
   fallback is never seeded;
 - **the 187 catalogue rows are embedded**, so D2's nomination — the path D7's seat uses,
   ranking from indexed `situation + principle` — can rank them at all. The write path
-  embeds on insert (Stage 1 measured 2,500 rows seeded in 134 s, dominated by embedding),
+  embeds on insert (Stage 1 measured 2,500 rows seeded in 134 s, dominated by embedding — same record),
   so it holds by construction; asserting it makes an unembedded catalogue fail here
   rather than at Release 3's live seat run;
 - **one catalogue writer** (R5's one-mechanism property), in BOTH halves, because the
@@ -941,6 +963,9 @@ door, a loaded workspace):
   consequences and an address that opens in the `patterns` workspace, and selects nothing
   on an uncovered one, with the ask and the decision visible in its transcript (D7);
 - a design-mode run that exceeds its tool-step ceiling stops and says which ceiling (D7/R9);
-- a **real client session** whose prompt carries both a symbol cue and a symptom cue, each
-  with a recorded experience, injects both (D8) — observed through the installed hook,
+- a **real client session** whose prompt carries a symbol cue and **TWO symptom cues**,
+  each with a recorded experience, injects all three (D8). **Two symptom cues, not one:**
+  the contract keeps sending the scalars, so a one-symbol-one-symptom prompt is satisfied
+  entirely by the scalar path and would pass with M7 shipped inert. The second symptom can
+  only arrive in the array — observed through the installed hook,
   never a unit test.
