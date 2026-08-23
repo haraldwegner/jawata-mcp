@@ -397,26 +397,41 @@ intent, consequences and a resolving address without reaching back into the fork
 | intent | `summary` (the principle) | the form's principle field |
 | when it applies | `situation` | `SchemaMigrations.java:536`, v10 column |
 | consequences | `details`, a labelled section | `SymbolFact.Builder#details` (`SymbolFact.java:142`), emitted at `:80–81` |
-| canonical address | `package_name` | existing indexed column |
+| canonical address | `details`, as text | the same labelled block |
 | repository path + commit | `source_ref` | the loader's identity key |
 | how it turned out | `verdict = "unproven"` | `EntryForm.VERDICTS` (`EntryForm.java:41`) |
 
-**No new column is justified, and the address is the check that settles it.** The
-resolving address for a pattern is its **Java package in the `patterns` workspace** —
-`com.iluwatar.circuitbreaker`, `com.iluwatar.strategy` (verified in the pinned fork:
-`circuit-breaker/src/main/java/com/iluwatar/circuitbreaker/App.java:25`). A package name
-is what `package_name` is for, it is already indexed, already projected onto
-`StoredEntry` (`StoredEntry.java:14`), and it is resolvable by jawata itself against the
-patterns workspace. A README path would be openable only by a file reader; the package is
-openable by the tools the seat already holds.
+**No new column is justified, and the address is the check that settles it — with one
+correction to this addendum's first draft, made at GATE 2.** The resolving address for a
+pattern is its Java package in the `patterns` workspace — `com.iluwatar.circuitbreaker`,
+`com.iluwatar.strategy` (verified in the pinned fork, `circuit-breaker` App at line 25).
+The first draft put it in the indexed `package_name` column, because jawata can resolve
+that directly. **That was wrong and is retracted.** The signed spec's acceptance
+statement is absolute:
 
-Stated because it changes nothing and could be mistaken for a change: `package_name` on a
-catalogue row makes that row reachable by an ordinary package cue as well as by
-nomination. It does **not** make the catalogue anchor-dependent — `symbol_fqn`,
-`operation` and snippet stay empty as "Catalogue ownership" requires, and `specificity()`
-(`StoredEntry.java:70–81`) ranks a package-scoped row below a symbol-scoped one, so a
-catalogue row can never outrank a user's own symbol-anchored experience on a code
-question.
+> *"The sprint fails if any acceptance proof supplies a symbol, package, operation, or
+> snippet to make the expected experience reachable."*
+
+and D3's measure requires all 187 rows to have *"empty symbol, package, operation, and
+snippet fields"*, which "Catalogue ownership" above states in the same words. A design
+that writes `package_name` fails a signed measure and makes catalogue rows reachable by
+an ordinary package cue — the precise thing this sprint exists to stop. Convenience for
+the reader is not a reason to weaken the one requirement the sprint is named after.
+
+**So the address is TEXT in `details`, beside intent and consequences** — and it names a
+TYPE, not a package, because that is what resolves. Measured against the live `patterns`
+workspace at GATE 2: `search_symbols(query="com.iluwatar.circuitbreaker*")` returns **0
+results**, while `search_symbols(query="DefaultCircuitBreaker")` returns the file.
+`search_symbols` matches symbol names, not package strings. The first correction to this
+paragraph said a package string "resolves exactly as an indexed value would"; that was
+false and is itself corrected here.
+
+The line therefore reads `Reference implementation:
+com.iluwatar.circuitbreaker.DefaultCircuitBreaker` — a fully-qualified TYPE, which every
+reading tool accepts as a stable key and which opens the file. The seat loses nothing:
+resolution is a tool call either way, and the tool takes a name. Every anchor column stays
+empty, and D3's measure and the migration's "every anchor field empty" agree rather than
+contradict.
 
 **Consequences are prose, not a field**: `details` under a fixed heading the extractor
 writes, taken unparaphrased from the README's "Benefits and Trade-offs" section (present
@@ -597,8 +612,10 @@ a symptom cue that each have a recorded experience injects both. Reverse: revert
 store's array support is inert without a sender.
 
 **M9 — the entry payload and the seat.** *Authored.* Loader writes intent into `summary`,
-"When to Use" into `situation`, consequences + MIT attribution into `details`, the Java
-package into `package_name`, repo path and commit into `source_ref`. Seat: extend
+"When to Use" into `situation`, and into `details` — unparaphrased — the consequences,
+the MIT attribution, and the reference-implementation TYPE as a labelled text line;
+repo path and commit into `source_ref`. **Every anchor column stays empty,
+`package_name` included** (GATE 2 correction above). Seat: extend
 `seats/architect.md` D-FOUR (`:56–71`) to require naming intent, consequences and the
 resolving address, or saying the store had nothing. Verify: redeploy, then read
 `~/.claude/skills/refactor/SKILL.md` and confirm the text is in the **deployed** file
@@ -620,10 +637,15 @@ it reports the ceiling by name. Reverse: revert.
 
 **Environment-independent tests** (no store file, no server, no client):
 
-- the extractor turns one committed README fixture into one record with intent, situation,
-  consequences and package populated, and no symbol, operation or snippet;
+- the extractor turns one committed README fixture into one record with intent, situation
+  and consequences populated and the reference implementation as a labelled TEXT line in
+  `details`, with **no symbol, package, operation or snippet COLUMN set**;
 - the loader against an in-memory store: 187 in, 187 rows out, all
-  `provenance_kind = 'catalogue'`, all `verdict = 'unproven'`, all `status = 'candidate'`;
+  `provenance_kind = 'catalogue'`, all `verdict = 'unproven'`, all `status = 'candidate'`,
+  and **every anchor column empty — symbol, package, operation, snippet**;
+- a catalogue row is NOT returned for a bare package cue naming its reference package,
+  nor for a symbol cue naming its reference type — the direct assertion that the
+  catalogue stayed anchor-free;
 - a second load at the same snapshot writes nothing — asserted on the WRITE COUNT, not
   only the row count, so a delete-then-reinsert cannot pass;
 - snapshot N → N+1: added rows are candidates; each changed pattern yields one new row
