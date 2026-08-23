@@ -749,6 +749,49 @@ case "$UPM$UP" in
     *) pass "upgrade-counters-present the upgraded store carries the counter tables it was born without" ;;
 esac
 
+# --- migrate-dry-run-writes-nothing: the confirm gate is real ----------------
+# Run the dry run TWICE. If the first one had written, the second would find
+# every row already formed and report migrated=0. Same number twice is the
+# front door proving non-mutation without reaching into the database.
+mf_count() { printf '%s' "$1" | grep -oE "\"$2\":[0-9]+" | head -1 | cut -d: -f2; }
+DRY1="$(call experience '{"kind":"migrate_form"}')"
+DRY2="$(call experience '{"kind":"migrate_form"}')"
+D1M="$(mf_count "$DRY1" migrated)"; D2M="$(mf_count "$DRY2" migrated)"
+case "$DRY1" in
+    *'"applied":false'*) : ;;
+    *) fail "migrate-dry-run-writes-nothing the dry run reported itself as applied" ;;
+esac
+if [ -n "$D1M" ] && [ "$D1M" = "$D2M" ]; then
+    pass "migrate-dry-run-writes-nothing two dry runs agree (migrated=$D1M), so neither wrote"
+else
+    fail "migrate-dry-run-writes-nothing THE DRY RUN MUTATED THE STORE: first=$D1M second=$D2M"
+fi
+
+# --- migrate-accounts-for-every-row: no row is silently dropped --------------
+D1S="$(mf_count "$DRY1" sourceEntries)"; D1K="$(mf_count "$DRY1" legacyKept)"
+if [ -n "$D1S" ] && [ "$D1S" -eq $(( ${D1M:-0} + ${D1K:-0} )) ]; then
+    pass "migrate-accounts-for-every-row $D1S in = $D1M migrated + $D1K kept, nothing disposed"
+else
+    fail "migrate-accounts-for-every-row COUNTS DO NOT RECONCILE: $D1S vs $D1M + $D1K"
+fi
+
+# --- migrate-confirm-applies-once: the write path, then idempotence ----------
+# Safe here BECAUSE this is the scratch copy of the fixture; the committed
+# slice is checked byte-identical below. The real store is never touched by
+# this gate.
+APPLIED="$(call experience '{"kind":"migrate_form","confirm":true}')"
+AGAIN="$(call experience '{"kind":"migrate_form"}')"
+AM="$(mf_count "$APPLIED" migrated)"; RM="$(mf_count "$AGAIN" migrated)"
+case "$APPLIED" in
+    *'"applied":true'*) : ;;
+    *) fail "migrate-confirm-applies-once confirm:true did not report itself as applied" ;;
+esac
+if [ "${AM:-0}" -gt 0 ] && [ "${RM:-1}" -eq 0 ]; then
+    pass "migrate-confirm-applies-once wrote $AM rows, and a re-run finds nothing left to do"
+else
+    fail "migrate-confirm-applies-once expected a write then a no-op, got applied=$AM rerun=$RM"
+fi
+
 # --- upgrade-fixture-pristine: the committed slice was never touched ---------
 OLD_SHA_AFTER="$(sha256sum "$OLD_SRC" | cut -d' ' -f1)"
 if [ "$OLD_SHA_BEFORE" = "$OLD_SHA_AFTER" ]; then
