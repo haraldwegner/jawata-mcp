@@ -81,6 +81,35 @@ public final class EntryForm {
     }
 
     /**
+     * The three shapes a usable situation takes, in the words an author needs.
+     *
+     * <p>ONE constant, rendered into the tool schema every client loads AND into
+     * the refusal an author sees at the moment they got it wrong. Two copies of
+     * this text would drift, and the drift would be invisible: the schema teaches
+     * before the mistake, the refusal teaches after it, and nothing compares them.
+     * The verdict vocabulary was re-typed as a literal in exactly that way until
+     * it was made to derive from {@link #VERDICTS}.</p>
+     *
+     * <p>Derived from writing one real entry, where four attempts were rejected.
+     * Every one of them was a valid CONDITION — which is all the old guidance
+     * asked for — and every one described HOW THE SYSTEM WORKS ("when a suite
+     * runner decides green or red from the counts a framework reports"). That is
+     * a fourth shape: accurate, unfalsifiable, and matching nothing. The test is
+     * whether a reader can answer "yes, that is me, right now" without
+     * interpreting.</p>
+     */
+    public static final String SITUATION_SHAPES =
+        "A situation is a GREP, a TASK, or a NUMBER."
+        + " A grep — something you can look up in the code in front of you:"
+        + " \"when a test class declares @BeforeAll or @AfterAll\"."
+        + " A task — what you are doing right now:"
+        + " \"when amending an order that is already partially filled\"."
+        + " A number — a value you can read off an output:"
+        + " \"when a test run reports a class-level exception count above zero\"."
+        + " If it is none of the three it describes how the system works, which is"
+        + " true during every call and tells no one whether this entry is for them.";
+
+    /**
      * Check a new entry's form. Empty result = admitted.
      *
      * <p>The shape checks apply to EVERY type. The situation+outcome requirements
@@ -110,9 +139,8 @@ public final class EntryForm {
                 + " RULE: a situation says WHEN an entry applies, never WHERE the"
                 + " code lives — a symbol or path matches everything in it and"
                 + " distinguishes nothing."
-                + " REPHRASE: say what has to be true for the entry to apply,"
-                + " e.g. \"when amending an order that is already partially filled\";"
-                + " the symbol belongs in 'symbol', the path in 'details'."));
+                + " REPHRASE: " + SITUATION_SHAPES
+                + " The symbol belongs in 'symbol', the path in 'details'."));
         }
 
         if (!isExperience(type)) {
@@ -129,8 +157,7 @@ public final class EntryForm {
                 + " so the engine can decide whether it is relevant to the call in"
                 + " front of it — without one, the entry can only ever be found by"
                 + " resemblance."
-                + " REPHRASE: add a situation in the form \"when <the condition>\","
-                + " e.g. \"when amending an order that is already partially filled\"."));
+                + " REPHRASE: " + SITUATION_SHAPES));
         }
         // (A situation that is a location was already refused above, for every
         // type — a wrong condition matches confidently, which is worse than none.)

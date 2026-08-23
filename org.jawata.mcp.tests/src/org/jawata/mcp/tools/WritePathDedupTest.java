@@ -55,18 +55,26 @@ class WritePathDedupTest {
     private ObjectNode record(String summary, String details) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "record");
-        a.put("type", "lesson");
+        // domain_fact, and the type is load-bearing rather than incidental.
+        //
+        // These fixtures pin the DEDUP threshold, whose 0.92 line was derived from
+        // 84 hand-labelled pairs of real entries — all written before situations
+        // existed, so every one of those documents is summary + details. A fixture
+        // must therefore be summary + details too, or it is not on the scale the
+        // number came from. A domain_fact owes no situation, so it is not.
+        //
+        // The earlier version of this helper put the SAME situation string on every
+        // fixture and argued it was safe because the dedup probe embedded only
+        // summary and details. That was true when written and stopped being true
+        // when the situation entered the document: the shared constant became ~50
+        // identical characters in both vectors, and the hand-labelled WALL pair —
+        // the highest-scoring NON-duplicate at 0.8970 — crossed 0.92 and was
+        // reported as a duplicate. The comment had named that confound by name.
+        a.put("type", "domain_fact");
         a.put("summary", summary);
         if (details != null) {
             a.put("details", details);
         }
-        // Sprint 28c: a lesson owes a situation and an outcome. Safe for THIS
-        // class specifically: the dedup decision embeds
-        // EmbeddingService.textOf(summary, details) and nothing else, so the two
-        // added fields cannot move a similarity score. The same constant on
-        // every fixture would otherwise be a shared-text confound.
-        a.put("situation", "when the same knowledge is written down a second time");
-        a.put("verdict", "worked");
         return a;
     }
 

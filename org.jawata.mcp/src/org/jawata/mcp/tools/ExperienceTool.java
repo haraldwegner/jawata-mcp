@@ -250,11 +250,14 @@ public final class ExperienceTool implements Tool {
         // knowledge; optional for a domain fact, an api_contract or a naming
         // convention, which are retrieved by their anchor and did not turn out
         // any way at all.
+        // The shape rules are DERIVED from EntryForm, never re-typed here. This
+        // description teaches BEFORE the mistake and EntryForm's refusal teaches
+        // AFTER it; two copies would drift and no test would compare them — the
+        // same drift the verdict enum below was fixed for.
         props.put("situation", Map.of("type", "string", "description",
-            "record: WHEN this applies, as a condition in words — \"when amending an order that"
-            + " is already partially filled\". Never a package or a symbol: a location matches"
-            + " everything inside it and distinguishes nothing. REQUIRED for lesson and"
-            + " failure_mode."));
+            "record: WHEN this applies. " + org.jawata.mcp.knowledge.EntryForm.SITUATION_SHAPES
+            + " Never a package or a symbol: a location matches everything inside it and"
+            + " distinguishes nothing. REQUIRED for lesson and failure_mode."));
         // The enum is DERIVED from the gate's own set, never re-typed here: a
         // second copy of a closed vocabulary drifts from the first with no test
         // noticing, which is the exact drift EntryForm's javadoc condemns about

@@ -44,6 +44,55 @@ class EntryFormTest {
             "situation + judgeable principle + outcome is exactly the form");
     }
 
+    /**
+     * <p>The three shapes are TAUGHT, in both places an author meets them, from ONE
+     * constant. They are deliberately NOT enforced: the failure they exist to stop
+     * is a situation that describes how the system works — "when a suite runner
+     * decides green or red from the counts a framework reports" — which is fluent,
+     * grammatical, a perfectly good condition, and matches nothing. No regex
+     * separates that from a real one, and a gate that pretended to would refuse
+     * good entries while passing the bad ones with confidence.</p>
+     *
+     * <p>What IS mechanised is that the two texts cannot drift: the tool schema
+     * teaches before the mistake, the refusal teaches after it, and both render
+     * the same constant. Re-type either one and change the constant, and this goes
+     * red. That is the whole claim — no more.</p>
+     */
+    @Test
+    void the_situation_shapes_are_taught_in_both_places_from_one_constant() {
+        assertTrue(EntryForm.SITUATION_SHAPES.contains("GREP")
+                && EntryForm.SITUATION_SHAPES.contains("TASK")
+                && EntryForm.SITUATION_SHAPES.contains("NUMBER"),
+            "all three shapes are named, because an author who is told only 'a condition' "
+                + "writes a description of the machinery and is not wrong by that rule");
+
+        EntryForm.Refusal refusal = check(GOOD_PRINCIPLE, null, "worked").orElseThrow(
+            () -> new AssertionError("an experience with no situation must be refused"));
+        assertTrue(refusal.message().contains(EntryForm.SITUATION_SHAPES),
+            "the refusal fires exactly when someone got it wrong, so it carries the whole "
+                + "rule rather than one example. Message: " + refusal.message());
+
+        String schema = situationDescription();
+        assertTrue(schema.contains(EntryForm.SITUATION_SHAPES),
+            "and every client loads the schema before writing anything, so it teaches the "
+                + "same rule in the same words. Description: " + schema);
+    }
+
+    /**
+     * The served description of the `situation` property, read out of the tool's OWN
+     * schema — the map every client is handed — rather than from a copy of the string.
+     */
+    @SuppressWarnings("unchecked")
+    private static String situationDescription() {
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            var tool = new org.jawata.mcp.tools.ExperienceTool(() -> null, store);
+            var props = (java.util.Map<String, Object>)
+                tool.getInputSchema().get("properties");
+            var situation = (java.util.Map<String, Object>) props.get("situation");
+            return String.valueOf(situation.get("description"));
+        }
+    }
+
     @Test
     void an_entry_with_no_outcome_is_refused() {
         Optional<EntryForm.Refusal> refusal = check(GOOD_PRINCIPLE, GOOD_SITUATION, null);
