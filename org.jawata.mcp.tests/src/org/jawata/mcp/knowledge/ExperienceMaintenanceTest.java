@@ -298,6 +298,46 @@ class ExperienceMaintenanceTest {
                 + "exist. Report: " + report);
     }
 
+    /**
+     * <p>A suspect workspace whose marks are ALL already made holds nothing, and says so:
+     * `workspace_suspect` with `held: 0`. That pair became reachable only when the count
+     * learned to mirror the marking loop, and it is honest — a healthy re-run really
+     * would do no work here.</p>
+     *
+     * <p>It is asserted because the breaker deliberately still trips. The suspect
+     * diagnostic is gated on the lists being non-empty, not on there being pending work,
+     * so an operator is still told the workspace looks unloaded — the useful half — while
+     * the number promises nothing. Leaving the pair unasserted would repeat the omission
+     * that already let this count be wrong in both directions.</p>
+     */
+    @Test
+    void a_suspect_workspace_with_nothing_left_to_mark_holds_nothing_and_says_so() {
+        for (int i = 1; i <= 3; i++) {
+            store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "flush before rotating the segment " + i,
+                        Confidence.HIGH).symbol("com.gone.Erased" + i).build())
+                .situation("when a consumer reconnects mid-batch")
+                .verdict("worked")
+                .form(1)
+                .build());
+        }
+        for (StoredEntry e : store.all()) {
+            assertTrue(store.markEvidenceDead(e.id()),
+                "precondition: every entry already carries the mark before the refresh runs");
+        }
+
+        Map<String, Object> report = maint(fqn -> Boolean.FALSE).refresh();
+
+        assertEquals(Boolean.TRUE, report.get("workspace_suspect"),
+            "the workspace still looks unloaded and the operator is still told so — the "
+                + "diagnostic does not depend on there being pending work. Report: " + report);
+        assertEquals(0, report.get("held"),
+            "and the count promises nothing, because a healthy re-run would do nothing: "
+                + "every mark is already made. Report: " + report);
+        assertNull(report.get("evidence_dead"),
+            "nothing was marked in this run either. Report: " + report);
+    }
+
     /** Marking is idempotent: a second refresh re-reports nothing and rewrites nothing. */
     @Test
     void a_second_refresh_does_not_re_mark_the_same_dead_evidence() {

@@ -45,12 +45,12 @@ if [ "$ACCOUNTED" -ne "$TOT" ]; then
     echo "  This is almost always a @BeforeAll/@BeforeEach or class-initializer" \
          "throw, or a missing test resource. Search the shard logs for the" \
          "class that reported fewer results than it planned:"
+    [ -n "$LOGS" ] && echo "    grep -n 'FAILED:\|Exception\|Error' $LOGS | head"
     echo "  If the named class instead ABORTS at the container level — a @BeforeAll" \
          "calling assumeTrue(false) — this gate is reporting a FALSE failure: JUnit" \
          "counts that in containersAborted, which the summary line does not carry, so" \
          "its tests stay in total and reach no bucket. Push the assumption down into" \
          "the @Test methods, where it is counted."
-    [ -n "$LOGS" ] && echo "    grep -n 'FAILED:\|Exception\|Error' $LOGS | head"
     exit 4
 fi
 exit 0
