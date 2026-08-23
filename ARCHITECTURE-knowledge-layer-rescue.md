@@ -356,8 +356,9 @@ with a sidecar recording the pinned commit, the fork's MIT licence verdict and t
 extraction date. "A newer jawata carries a newer snapshot" is then a property of the
 build, not of a network fetch.
 
-**Start-up report — the surface, assigned (D4b's open question).** Two surfaces, one
-report object, because the readers differ:
+**Start-up report — the surfaces, assigned (D4b's open question).** TWO surfaces carrying
+different things, because the readers differ — no shared report object, no wire between
+them:
 
 1. **A log line at start**, mirroring `recoverOrphans`'s own
    (`H2ExperienceStore.java:1514–1516`, which logs only when something happened). Same
@@ -366,6 +367,12 @@ report object, because the readers differ:
    composed diagnostic surface (`ExperienceTool.java:391–431`, adding `quality` and
    `embedding` the same way), and the block degrades in the style already established
    there (`:419–422`: `available:false` plus a reason, never a misleading zero).
+
+**Which is which.** The log line carries THIS start's changes and nothing holds it
+afterwards. The `stats` block is re-derived at query time from the store and the shipped
+sidecar, so it carries the STANDING catalogue-candidate set — which is why the boundary
+check pairs it with `list(status="candidate")` rather than with one start's counts:
+candidates an earlier start left un-promoted belong in it.
 
 The report is reviewable rather than merely countable because it names the review query
 instead of duplicating it: candidates are already enumerable through
@@ -530,8 +537,8 @@ tool-step ceiling to stop and say so. Today it cannot:
 The design: `Ceilings` gains `max_tool_steps`; the frontmatter parser gains the key beside
 the other three; `ClaudeCodeAdapter.max_turns` is built from it instead of its default;
 the adapter's result parsing distinguishes the turn-limit subtype so `run_seat` emits
-`Verdict::Reaped` with a `CeilingKind` (`:68–82`, its three variants at `:71–73`) — **which is a closed three-variant enum
-today (`WallTtl`, `MaxIterations`, `CostBudget`, `runner.rs:71–75`), so M10 adds a fourth,
+`Verdict::Reaped` with a `CeilingKind` (`:68–82`, its three variants at `:72–74`) — **which is a closed three-variant enum
+today (`WallTtl`, `MaxIterations`, `CostBudget`), so M10 adds a fourth,
 `ToolSteps`**; without it the run stops without being able to name which ceiling. Entirely studio-side.
 
 **Production callers:** `run_seat` (`runner.rs:1059–1064`) reads the ceiling and
@@ -608,7 +615,7 @@ What the store already does with several cues set at once:
   Candidates are already a union.
 - `ExperienceRetrieval#fits` (`:1091–1134`) evaluates all four subject criteria eagerly
   and admits on the disjunction `symbolOk || packageOk || symptomOk || externalOk`
-  (`:1105–1124`).
+  (`:1105–1125`).
 - The merged set is ranked **once**, by one comparator chain — specificity › member
   affinity › confidence › meaning band › recency (`:311–318`) — after one semantic scan
   serving both tie-breaking and analogy nomination (`:230`).
@@ -620,7 +627,7 @@ REDESIGN them — M7 widens the value they read and preserves their semantics.
 **What the hook throws away.** `pipeline.rs::recall` (`:423`) builds `cues.symbols` and
 `cues.symptoms`, both `Vec<String>` (`cue.rs:35–47`), then chains them into ONE iterator
 and issues a **separate single-key ask per cue**, returning on the first that answers
-(`:437–460`; the comment at `:432–435` states the rule outright). A prompt naming a class
+(`:437–462`; the comment at `:432–435` states the rule outright). A prompt naming a class
 and describing a problem asks `{kind:recall, symbol:"Foo"}`, gets an answer, and never
 asks the symptom.
 
@@ -659,7 +666,7 @@ query carrying ONLY the new arrays would return an absence. The hook always send
 scalars too, so no live call hits it — but the record's emptiness rule must count the
 arrays, or the widening holds only by the caller's good manners.
 
-**Store-side change, plainly — and it is THREE places, not two.** `RecallQuery`
+**Store-side change, plainly — THREE owners, five edit sites.** `RecallQuery`
 (`RecallQuery.java:15–16`, a five-component record) gains two list components; `query`
 and `fits` iterate them; **and `ExperienceTool#recall` (`:714`) must READ the new
 arguments into them.** That third piece is not optional bookkeeping: `recall` is the only
@@ -707,8 +714,8 @@ identical. Reverse: delete the class; the snapshot is already committed.
 **M1 — freeze the snapshot artifact.** *Authored, new files.*
 `org.jawata.mcp/resources/catalogue/patterns-<commit>.json` + sidecar (pinned commit, MIT
 licence verdict, extraction date). **D5 says "each ENTRY carries … the fork's licence
-verdict", and the sidecar is the snapshot, not the entry** — so the verdict is written
-onto every record too, in the same `details` provenance block as the attribution. One
+verdict", and the sidecar is the snapshot, not the entry** — so the LICENCE verdict is written
+onto every record too — never the `verdict` column, which carries `unproven` — in the same `details` provenance block as the attribution. One
 fork, one verdict, and per-entry is what the sentence says. Verify: 187 records; a probe that
 `getResourceAsStream("/catalogue/…")` finds it from the built jar as
 `MiniLmEmbedder.java:151` finds the model. Reverse: delete both.
@@ -728,8 +735,13 @@ snapshot cannot know — `provenance_kind = "catalog"` and `status = CANDIDATE` 
 writes, with the repository path (slug only) as `source_ref`. **Nothing composes twice**,
 and every anchor column stays empty, `package_name` included. The `supersedes` targets the
 chain-head index needs are read from `body().get("links")`: `StoredEntry` carries no links
-component, but `insert` (`:570`) writes `entry.toMap()`, whose `"links"` list the row
+component, but `insert` writes `entry.toMap()` at `:571`, whose `"links"` list the row
 projection parses back.
+
+**`sourceHash` is computed by the LOADER** from the snapshot record it just read; the
+snapshot carries no hash. One producer, so a snapshot-carried hash and a loader-computed
+one can never disagree — if they could, every start would write 187 successors, the very
+failure the two-read split exists to prevent.
 
 M2 uses `sourceUnchanged`, `putWithSource`, **and one `store.all()` pass at start
 indexing the rows whose `facets().provenanceKind()` is `catalog` by `sourceRef` to that
@@ -790,7 +802,8 @@ block naming the `experience(kind=list, status="candidate")` review query. Rever
 new row, `status = CANDIDATE`, `addLink("supersedes", olderId)` — **`olderId` being the
 chain head from M2's `store.all()` index, never an arbitrary row sharing the ref**. No
 new rel, no schema
-change, no write to the older row. Verify: the snapshot-N-then-N+1 boundary test — added
+change, no write to the older row. Verify: **the N+1 fixture is produced by re-running M0's extractor at a second fork sha**
+— that is what M0 is for, and no other step makes one. Then the snapshot-N-then-N+1 test: added
 rows appear, one successor per changed pattern, zero updates to existing rows, zero
 deletions; loading N+1 twice adds nothing. Reverse: revert; M1–M5 keep working.
 
@@ -806,7 +819,7 @@ change is precisely the case where the incremental builder skips recompiling con
 a plain incremental build can report a false 0/0. Then author `RecallQuery#isEmpty()` to count the arrays — without it an
 arrays-only query short-circuits to absence at `H2ExperienceStore.java:864` — and the
 two iterations: the clause loop in `H2ExperienceStore#query` (`:869–916`, joined `:917–918`) and the
-disjunction in `ExperienceRetrieval#fits` (`:1105–1124`). **Do not touch** the comparator
+disjunction in `ExperienceRetrieval#fits` (`:1105–1125`). **Do not touch** the comparator
 chain at `:311–318` or the fit gate's semantics. Verify: `compile_workspace(clean=true)`
 0/0; a test proving two symptom cues are a union, not an AND. Reverse:
 `refactoring(action="undo")` for the signature, revert for the loops.
@@ -841,7 +854,7 @@ Reverse: revert and redeploy.
 (the accept-list from `:179`, whose `other =>` arm at `:207` currently rejects it);
 `ClaudeCodeAdapter.max_turns` (`:703–711`) is built from it; `parse_text` (`:745–749`)
 distinguishes the turn-limit subtype so `run_seat` emits `Verdict::Reaped` with a
-`CeilingKind` (`:68–82`, its three variants at `:71–73`). Verify: a seat file declaring the key loads; a run that exceeds
+`CeilingKind` (`:68–82`, its three variants at `:72–74`). Verify: a seat file declaring the key loads; a run that exceeds
 it reports the ceiling by name. Reverse: revert.
 
 > **Release 3 fence.** D6, D7, D8 complete. Front-door check again on the built product,
