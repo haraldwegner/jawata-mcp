@@ -390,6 +390,39 @@ public final class ExperienceTool implements Tool {
      * how-to-read sentence: these are counts of what happened, never evidence of
      * what caused it.</p>
      */
+    /**
+     * Sprint 28c D5 — what the pattern catalogue contributed to this store, and
+     * the query that reviews it.
+     *
+     * <p>The catalogue arrives as {@code candidate} rows, which means somebody
+     * still has to look at them; a count with no way to act on it is trivia.
+     * So the block carries the exact review query rather than describing one —
+     * a reader can paste it.</p>
+     *
+     * <p>Counted by walking the rows rather than by asking the loader, because
+     * the honest question is "what is IN the store", not "what did a loader
+     * believe it wrote". Those differ precisely when something is wrong.</p>
+     */
+    private java.util.Map<String, Object> catalogueBlock() {
+        java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
+        int rows = 0;
+        int candidates = 0;
+        for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
+            String ref = e.sourceRef();
+            if (ref != null && ref.startsWith(
+                    org.jawata.mcp.knowledge.PatternCatalogueLoader.SOURCE_PREFIX)) {
+                rows++;
+                if (org.jawata.mcp.knowledge.ExperienceEntry.CANDIDATE.equals(e.status())) {
+                    candidates++;
+                }
+            }
+        }
+        block.put("entries", rows);
+        block.put("awaitingReview", candidates);
+        block.put("reviewWith", "experience(kind=list, status=\"candidate\")");
+        return block;
+    }
+
     private java.util.Map<String, Object> stats() {
         java.util.Map<String, Object> out =
             new java.util.LinkedHashMap<>(store.stats());
@@ -397,6 +430,7 @@ public final class ExperienceTool implements Tool {
         if (q != null) {
             out.put("quality", q.statsBlock());
         }
+        out.put("catalogue", catalogueBlock());
         // Sprint 27a Stage 6 (D5's first half): embedding coverage per lane,
         // live — n of total while the backfill runs, total of total after.
         // Degrades honestly: no embedder → the block says so with the reason;

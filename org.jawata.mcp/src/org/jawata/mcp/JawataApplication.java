@@ -16,6 +16,7 @@ import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
+import org.jawata.mcp.knowledge.PatternCatalogueLoader;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AnalyzeTool;
@@ -666,7 +667,32 @@ public class JawataApplication implements IApplication {
         }
         // One-time sweep: pre-21a stores stranded in session-isolation dirs (item A).
         store.recoverOrphans(workspaceRoot);
+        seedCatalogue(store);
         return store;
+    }
+
+    /**
+     * Sprint 28c D5 — put the pattern catalogue into the store this start opened.
+     *
+     * <p>Deliberately inside {@code openRealStore}, after the store is known
+     * good. A failed open falls back to a recovering store, and seeding that
+     * would write 187 rows into a temporary in-memory store that is discarded
+     * when the real one reconnects — work thrown away, and a row count that
+     * jumps and then drops for no reason a reader could explain.</p>
+     *
+     * <p>A seeding failure must not take the resident down with it: the store
+     * is open and every other tool works, so refusing to start would trade a
+     * missing convenience for a dead knowledge layer. It is logged as a
+     * WARNING rather than swallowed, because a catalogue that silently never
+     * arrives is exactly the failure this sprint exists to stop.</p>
+     */
+    private void seedCatalogue(H2ExperienceStore store) {
+        try {
+            new PatternCatalogueLoader().load(store);
+        } catch (RuntimeException e) {
+            log.warn("Pattern catalogue NOT seeded: {} — design recall will answer from "
+                + "your own entries only", e.toString());
+        }
     }
 
     /**
