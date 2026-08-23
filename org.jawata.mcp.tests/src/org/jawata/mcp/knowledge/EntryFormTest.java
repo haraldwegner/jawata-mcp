@@ -79,6 +79,34 @@ class EntryFormTest {
     }
 
     /**
+     * <p>The link vocabulary is CLOSED at the record verb, and the reason is what
+     * makes it worth a gate: links are FOLLOWED. Stored verbatim, a typo'd rel is
+     * present, plausible, reachable by nothing — and the author is told it worked.
+     * A {@code cured_by} that nothing can reach is a fix nobody will ever be
+     * offered.</p>
+     *
+     * <p>Both directions are asserted, because a gate that refuses everything is
+     * as wrong as one that refuses nothing.</p>
+     */
+    @Test
+    void an_unknown_link_relation_is_refused_and_cured_by_is_accepted() {
+        assertTrue(EntryForm.LINK_RELS.contains("cured_by"),
+            "the cure relation exists and is distinct from fixed_by: fixed_by is what "
+                + "fixed THIS instance, which is history; a cure claims what fixes ANY "
+                + "instance, which is a standing instruction");
+        assertTrue(EntryForm.LINK_RELS.contains("related") && EntryForm.LINK_RELS.contains("undo"),
+            "and the set names what the ENGINE writes too — the list this replaced named "
+                + "four relations, none of which any writer in the codebase used");
+
+        String vocabulary = EntryForm.linkVocabulary();
+        for (String rel : EntryForm.LINK_RELS) {
+            assertTrue(vocabulary.contains(rel),
+                "the prose is derived from the set, so a new relation cannot be added "
+                    + "without the message that teaches it: " + rel);
+        }
+    }
+
+    /**
      * The served description of the `situation` property, read out of the tool's OWN
      * schema — the map every client is handed — rather than from a copy of the string.
      */

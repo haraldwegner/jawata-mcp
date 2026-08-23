@@ -81,6 +81,41 @@ public final class EntryForm {
     }
 
     /**
+     * The relations an entry's links may carry — DERIVED, so a typo cannot make a
+     * link silently unreachable.
+     *
+     * <p>It was documented in one schema string and enforced nowhere, and the
+     * documented list matched none of the writers: maintenance writes
+     * {@code related} for a markdown link, the advisor writes {@code undo} for a
+     * rollback handle, and an agent's {@code rel} was stored verbatim whatever it
+     * said. A vocabulary that no writer uses and no reader checks is a comment.</p>
+     *
+     * <p><b>{@code cured_by} is the new one, and it points at a jawata CAPABILITY
+     * rather than a code address</b> — {@code find_quality_issue(kind=…)},
+     * {@code seat:refactor}. It is deliberately not {@code fixed_by}: that means
+     * "what fixed THIS instance", which is history, while a cure claims "this is
+     * what fixes ANY instance", which is a standing instruction.</p>
+     *
+     * <p><b>The boundary, which is the part that would otherwise be got wrong: fill
+     * a cure ONLY when the remedy needs no judgement.</b> A cure sitting on an
+     * entry will be run. One that is right half the time is worse than none,
+     * because the half it is wrong about arrives with the store's authority behind
+     * it. An experience whose remedy is two-phase — read the exception, work out
+     * why it threw, then decide — earns {@code detected_by} and no cure, because a
+     * detector deterministically finds the sites while the fix genuinely varies.</p>
+     */
+    public static final Set<String> LINK_RELS = Set.of(
+        "handled_by", "fixed_by", "detected_by", "supersedes", "cured_by",
+        // Written by the engine itself, not by an author: a markdown link between
+        // ingested notes, and the rollback handle the advisor records for a plan.
+        "related", "undo");
+
+    /** The link vocabulary as prose, derived so the schema cannot drift from the set. */
+    public static String linkVocabulary() {
+        return String.join(" | ", new java.util.TreeSet<>(LINK_RELS));
+    }
+
+    /**
      * The three shapes a usable situation takes, in the words an author needs.
      *
      * <p>ONE constant, rendered into the tool schema every client loads AND into

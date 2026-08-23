@@ -317,7 +317,16 @@ public final class ExperienceTool implements Tool {
                 + " record themselves."));
         props.put("links", Map.of("type", "array",
             "items", Map.of("type", "object"),
-            "description", "record: typed edges [{rel: handled_by|fixed_by|detected_by|supersedes, target}]."));
+            // DERIVED from the gate's own set, like the verdict enum below it. The
+            // literal that used to sit here named four relations, none of which any
+            // writer in the codebase actually used.
+            "description", "record: typed edges [{rel, target}]. Allowed: "
+                + org.jawata.mcp.knowledge.EntryForm.linkVocabulary()
+                + ". cured_by points at a jawata CAPABILITY rather than a code address"
+                + " (find_quality_issue(kind=…), seat:refactor) and is filled ONLY when the"
+                + " remedy needs no judgement — a cure WILL be run, and one that is right half"
+                + " the time is worse than none. A two-phase remedy (read the error, work out"
+                + " why, then decide) earns detected_by and no cure."));
         props.put("fault_owner", Map.of("type", "string", "enum", List.of("internal", "external", "shared"),
             "description", "record: who owns the fault."));
         props.put("external_system", Map.of("type", "string",
@@ -893,9 +902,26 @@ public final class ExperienceTool implements Tool {
             for (JsonNode l : args.get("links")) {
                 String rel = l.path("rel").asText(null);
                 String target = l.path("target").asText(null);
-                if (rel != null && target != null) {
-                    eb.addLink(rel, target);
+                if (rel == null || target == null) {
+                    continue;
                 }
+                // The vocabulary is CLOSED and checked here, at the one door an
+                // author writes through. Stored verbatim, a typo produces a link
+                // that is present, plausible and reachable by nothing — and the
+                // author is told it worked. That is the failure mode a cure can
+                // least afford: `cured_by` is a standing instruction, so an
+                // unreachable one is a fix nobody will ever be offered.
+                if (!org.jawata.mcp.knowledge.EntryForm.LINK_RELS.contains(rel)) {
+                    return ToolResponse.invalidParameter("links",
+                        "link rel '" + rel + "' is not one this store records."
+                        + " RULE: the vocabulary is closed because links are FOLLOWED —"
+                        + " an unrecognised rel is stored, looks right, and is reachable by"
+                        + " nothing. Allowed: " + org.jawata.mcp.knowledge.EntryForm.linkVocabulary()
+                        + ". Use cured_by ONLY when the remedy needs no judgement: a cure on"
+                        + " an entry will be run, and one that is right half the time is worse"
+                        + " than none. A two-phase remedy earns detected_by and no cure.");
+                }
+                eb.addLink(rel, target);
             }
         }
 
