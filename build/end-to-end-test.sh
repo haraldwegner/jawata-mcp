@@ -519,6 +519,51 @@ case "$N" in
 esac
 no_score "recall(nonsense)" "$N"
 
+# --- anchorless: the two-step lane, through the real front door -------------------------
+# Sprint 28c D2. The question carries NO symbol, package or operation — the case the
+# store could not serve, where the old path returned the maximum eleven candidates for
+# each of seven nonsense questions. The claims asserted here are the design itself:
+# nominating is not answering, and choosing nothing is a real answer.
+NOM="$(call experience '{"kind":"nominate",
+  "question":"the marzipan barometer forgot its velvet inventory"}')"
+case "$NOM" in
+    *'"result":"match"'*)
+        fail "anchorless nominate returned a MATCH — ranking must never vouch: $(printf '%s' "$NOM" | head -c 200)" ;;
+    *'"result":"nominated"'*)
+        pass "anchorless nominate ranks candidates and does not call it a match" ;;
+    *) fail "anchorless nominate produced no nomination: $(printf '%s' "$NOM" | head -c 200)" ;;
+esac
+
+QID="$(printf '%s' "$NOM" | sed -n 's/.*"query_id":"\([^"]*\)".*/\1/p')"
+case "$QID" in
+    "") fail "anchorless nominate returned no query_id, so nothing could be decided against it" ;;
+    *)  pass "anchorless the nomination carries a query_id to decide against" ;;
+esac
+
+# THE HEADLINE: an empty selection on a nonsense question is an ABSENCE, with no
+# entries and no consolation pile. This is the measured defect, inverted.
+DEC="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID\",\"selected_ids\":[]}")"
+case "$DEC" in
+    *'"result":"absence"'*)
+        pass "anchorless choosing none of the candidates yields an ABSENCE, not a hedge" ;;
+    *) fail "anchorless an empty selection did not produce an absence: $(printf '%s' "$DEC" | head -c 250)" ;;
+esac
+case "$DEC" in
+    *'"count":0'*) pass "anchorless the absence carries zero entries" ;;
+    *) fail "anchorless the absence carried entries: $(printf '%s' "$DEC" | head -c 250)" ;;
+esac
+
+# And the door the query_id exists to close: an id the nomination never offered is
+# refused, so a caller cannot vouch for an arbitrary entry through the decide verb.
+BAD="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID\",\"selected_ids\":[\"not-a-candidate\"]}")"
+case "$BAD" in
+    *'"result":"match"'*)
+        fail "anchorless an un-nominated id was VOUCHED: $(printf '%s' "$BAD" | head -c 200)" ;;
+    *not-a-candidate*)
+        pass "anchorless an id the nomination never offered is refused, and named" ;;
+    *) pass "anchorless an id the nomination never offered is refused" ;;
+esac
+
 # --- rejected-stays-gone: a rejected note stays gone BY MEANING -------------------------
 G="$(call experience '{"kind":"recall",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",

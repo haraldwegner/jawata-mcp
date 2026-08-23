@@ -42,9 +42,9 @@ public final class ExperienceTool implements Tool {
      * the honest response for a kind that no longer exists.</p>
      */
     private static final List<String> KINDS =
-        List.of("record", "recall", "primer", "list", "load", "reseed", "refresh",
-            "wipe", "promote", "export", "import", "prune", "dedup", "compact", "stats",
-            "fallback_report");
+        List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
+            "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
+            "compact", "stats", "fallback_report");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -53,6 +53,17 @@ public final class ExperienceTool implements Tool {
     private final ExperienceStore store;
     private final ExperienceRetrieval retrieval;
     private final ExperienceMaintenance maintenance;
+    /**
+     * Sprint 28c D2: the open nominations, per tool instance.
+     *
+     * <p>Per instance and not static, because a nomination is a conversation
+     * between one caller and one resident. A static register would let two
+     * workspaces' queries share a namespace, and one caller's decide could
+     * consume another's nomination — the same shared-mutable-state shape that
+     * made one hook's deadline become every later caller's (#37).</p>
+     */
+    private final org.jawata.mcp.knowledge.ApplicabilityDecision applicability =
+        new org.jawata.mcp.knowledge.ApplicabilityDecision();
     /** Sprint 27 D6: measurement (nullable — every other path is unchanged). */
     private org.jawata.mcp.knowledge.QualityLedger quality;
 
@@ -258,6 +269,21 @@ public final class ExperienceTool implements Tool {
             "record: WHEN this applies. " + org.jawata.mcp.knowledge.EntryForm.SITUATION_SHAPES
             + " Never a package or a symbol: a location matches everything inside it and"
             + " distinguishes nothing. REQUIRED for lesson and failure_mode."));
+        props.put("question", Map.of("type", "string", "description",
+            "nominate: the question in your OWN WORDS, for the anchorless path — no symbol,"
+            + " no package, no operation. Say what you are trying to do. The answer comes"
+            + " back as RANKED CANDIDATES plus a query_id, never as a match: ranking is an"
+            + " ordering, not a claim that anything fits."));
+        props.put("query_id", Map.of("type", "string", "description",
+            "decide: the id the matching nominate call returned. It is required because a"
+            + " selection is only meaningful about the candidates it was offered — without"
+            + " it, any entry in the store could be returned as a vouched answer."));
+        props.put("selected_ids", Map.of("type", "array", "items",
+            Map.of("type", "string"), "description",
+            "decide: the candidate ids you judged APPLICABLE, after reading each one's"
+            + " situation. An EMPTY list is a real answer and often the right one — it"
+            + " records that nothing applied, which is what the store previously could not"
+            + " say. Ids the nomination did not offer are refused, not ignored."));
         // The enum is DERIVED from the gate's own set, never re-typed here: a
         // second copy of a closed vocabulary drifts from the first with no test
         // noticing, which is the exact drift EntryForm's javadoc condemns about
@@ -324,6 +350,8 @@ public final class ExperienceTool implements Tool {
         return switch (kind) {
             case "record" -> record(args);
             case "recall" -> recall(args);
+            case "nominate" -> nominate(args);
+            case "decide" -> decide(args);
             case "primer" -> primer(args);
             case "load" -> load(args);
             case "reseed" -> reseed(args);
@@ -694,6 +722,62 @@ public final class ExperienceTool implements Tool {
             response.applySteering(CLASSIFY_STEERING);
         }
         return response;
+    }
+
+    /**
+     * Sprint 28c D2, half one: rank candidates for a question that carries NO code
+     * anchor, and say plainly that ranking is not an answer.
+     *
+     * <p>The response never claims a match. It returns a {@code query_id} and the
+     * ordered candidates, each with the two things a caller needs in order to judge
+     * it — the situation it applies under and how it turned out. Deciding is a
+     * separate call, because the measured failure was that a pile of near-neighbours
+     * rendered into a session IS an answer to the agent reading it, whatever label
+     * sits above it.</p>
+     */
+    private ToolResponse nominate(JsonNode args) {
+        String question = text(args, "question");
+        if (question == null || question.isBlank()) {
+            return ToolResponse.invalidParameter("question",
+                "nominate needs the question in your own words. It is the anchorless "
+                + "path: no symbol, no package, no operation — say what you are trying "
+                + "to do and the store ranks what might apply.");
+        }
+        Map<String, Object> result = retrieval.nominate(question, budgetIn(args));
+        if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(result.get("result"))) {
+            return respond(args, result);
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> candidates =
+            (List<Map<String, Object>>) result.getOrDefault("candidates", List.of());
+        List<String> ids = new java.util.ArrayList<>();
+        for (Map<String, Object> c : candidates) {
+            ids.add(String.valueOf(c.get("id")));
+        }
+        result.put("query_id", applicability.nominate(question, ids));
+        return respond(args, result);
+    }
+
+    /**
+     * Sprint 28c D2, half two: the caller's judgement turns a selection into an
+     * answer, or into an honest absence.
+     *
+     * <p>A refusal is an ERROR rather than a success carrying no entries. The two
+     * are different claims — "you cannot decide on that" versus "nothing applied" —
+     * and a success body cannot carry the first, because every consumer treats a
+     * success as an answer.</p>
+     */
+    private ToolResponse decide(JsonNode args) {
+        String queryId = text(args, "query_id");
+        List<String> selected = strings(args, "selected_ids");
+        Object outcome = applicability.decide(queryId, selected);
+
+        if (outcome instanceof org.jawata.mcp.knowledge.ApplicabilityDecision.Refusal refusal) {
+            return ToolResponse.invalidParameter("query_id", refusal.reason());
+        }
+        var decision = (org.jawata.mcp.knowledge.ApplicabilityDecision.Decision) outcome;
+        return respond(args, retrieval.answerFor(decision));
     }
 
     private ToolResponse primer(JsonNode args) {

@@ -703,6 +703,129 @@ public final class ExperienceRetrieval {
         return sb.toString();
     }
 
+    /** How many candidates a nomination offers. A shortlist to judge, not a pile to read. */
+    public static final int MAX_CANDIDATES = 8;
+
+    /** The result of a nomination. Never {@link #RESULT_MATCH} — ranking claims nothing. */
+    public static final String RESULT_NOMINATED = "nominated";
+
+    /**
+     * Sprint 28c D2 — rank candidates for a question that carries NO code anchor.
+     *
+     * <p>This is the lane the store could not serve. A design question names no
+     * symbol, no package and no operation; the old path answered it by returning
+     * near-neighbours, and measured seven nonsense questions each getting the
+     * maximum eleven. The ranking here is the same kind of computation, and it is
+     * deliberately NOT dressed as an answer: the result is
+     * {@link #RESULT_NOMINATED}, the entries are called candidates, and every one
+     * carries the two things needed to judge it — the situation it applies under
+     * and how it turned out. Nothing here decides; {@link ApplicabilityDecision}
+     * does, in a separate call.</p>
+     *
+     * <p>The budget travels as a call value rather than living on this shared
+     * object, for the reason #37 established the hard way: one caller's deadline
+     * stored on a long-lived collaborator became every later caller's deadline,
+     * across processes.</p>
+     *
+     * @param question      the caller's own words
+     * @param budgetMillis  the caller's deadline
+     */
+    public Map<String, Object> nominate(String question, long budgetMillis) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("question", question);
+        return within(() -> nominateFromStore(question, out), out, budgetMillis);
+    }
+
+    private Map<String, Object> nominateFromStore(String question, Map<String, Object> out) {
+        // The question is carried as the SYMPTOM cue: it is prose describing a
+        // situation, which is exactly what that slot means. Reusing the existing
+        // scorer rather than adding a second one is the point — two ranking paths
+        // would drift, and the sprint already has one rendering path that lapsed
+        // while its twin kept the rules.
+        RecallQuery q = new RecallQuery(null, null, null, question, null);
+        Map<String, Double> meaning = meaningScores(q);
+        Map<String, Double> words = lexicalScores(q);
+
+        Map<String, StoredEntry> byId = new LinkedHashMap<>();
+        for (StoredEntry e : store.all()) {
+            if (isLive(e)) {
+                byId.put(e.id(), e);
+            }
+        }
+
+        // Meaning leads, words break ties. Neither is allowed to become a verdict:
+        // AnalogyPolicy's own javadoc records that no threshold separates nonsense
+        // from an answer on this corpus, so nothing here filters on score — the
+        // caller judges, and an empty selection is the honest outcome.
+        List<StoredEntry> ranked = new ArrayList<>(byId.values());
+        ranked.sort(Comparator
+            .comparingDouble((StoredEntry e) ->
+                meaning.getOrDefault(e.id(), 0.0) + words.getOrDefault(e.id(), 0.0))
+            .reversed()
+            .thenComparing(StoredEntry::id));
+
+        List<Map<String, Object>> candidates = new ArrayList<>();
+        for (StoredEntry e : ranked) {
+            if (candidates.size() >= MAX_CANDIDATES) {
+                break;
+            }
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("id", e.id());
+            c.put("situation", e.facets().situation());
+            c.put("principle", e.summary());
+            c.put("outcome", e.facets().verdict());
+            candidates.add(c);
+        }
+
+        out.put("result", RESULT_NOMINATED);
+        out.put("count", candidates.size());
+        out.put("candidates", candidates);
+        out.put("message", candidates.isEmpty()
+            ? "No candidates for this question. Nothing to decide; this is an absence."
+            : candidates.size() + " candidate(s) RANKED, not vouched. Read each situation"
+                + " and decide which apply, then call kind=decide with the query_id and"
+                + " the ids you chose. Choosing none is a real answer.");
+        return out;
+    }
+
+    /**
+     * Sprint 28c D2 — turn a caller's decision into the answer surface.
+     *
+     * <p>A match renders exactly like any other vouched answer, because that is
+     * what it now is: a human or an agent looked at the situation and said it
+     * applies. An absence renders as an absence — no entries, no "closest
+     * matches", nothing to mistake for a hedge.</p>
+     */
+    public Map<String, Object> answerFor(ApplicabilityDecision.Decision decision) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("question", decision.question());
+        if (decision.isAbsence()) {
+            out.put("result", RESULT_ABSENCE);
+            out.put("count", 0);
+            out.put("entries", List.of());
+            out.put("message", "No experience applies to this question. You judged the"
+                + " candidates and none fitted — that is an answer, and it is the one the"
+                + " store used to be unable to give.");
+            return out;
+        }
+
+        Map<String, StoredEntry> byId = new LinkedHashMap<>();
+        for (StoredEntry e : store.all()) {
+            byId.put(e.id(), e);
+        }
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (String id : decision.selected()) {
+            StoredEntry e = byId.get(id);
+            if (e != null) {
+                entries.add(present(e));
+            }
+        }
+        out.put("result", RESULT_MATCH);
+        out.put("count", entries.size());
+        out.put("entries", entries);
+        return out;
+    }
+
     /**
      * Sprint 21 Stage 5 — the domain-layer primer: the accepted DOMAIN nodes in the store,
      * for the always-on SessionStart injection (vs cue-gated recall). Domain is the layer
