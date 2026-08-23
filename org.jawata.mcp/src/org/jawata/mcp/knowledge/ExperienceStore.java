@@ -38,6 +38,23 @@ public interface ExperienceStore extends AutoCloseable {
      */
     boolean markEvidenceDead(String id);
 
+    /**
+     * Sprint 28c D4 — give an existing row the 28c form: a situation, an
+     * outcome, and {@code form = 1}.
+     *
+     * <p>The ONLY writer is {@link FormMigration}, and it is confirm-gated by a
+     * human who has read the dry-run report. Nothing else may call this: an
+     * entry's form is declared by its author at record time, and a second path
+     * that can rewrite it after the fact turns a stated experience into a
+     * guessed one.</p>
+     *
+     * <p>Returns true when the row was newly formed. A row that already carries
+     * a form is left alone and returns false, so re-running the migration is a
+     * no-op rather than a re-derivation — the same idempotence
+     * {@link #markEvidenceDead} has, and for the same reason.</p>
+     */
+    boolean setForm(String id, String situation, String verdict);
+
     /** Persist a fact as a {@code candidate} entry; returns the generated entry id. */
     String put(SymbolFact fact);
 

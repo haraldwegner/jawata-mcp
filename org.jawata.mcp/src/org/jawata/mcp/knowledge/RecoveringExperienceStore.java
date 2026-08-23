@@ -208,6 +208,13 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public boolean setForm(String id, String situation, String verdict) {
+        synchronized (lock) {
+            return delegate.setForm(id, situation, verdict);
+        }
+    }
+
+    @Override
     public long count() {
         return delegate.count();
     }

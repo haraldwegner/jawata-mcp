@@ -709,6 +709,40 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * Sprint 28c D4 — the migration's write. See {@link ExperienceStore#setForm}.
+     *
+     * <p>{@code form IS NULL} in the WHERE clause is what makes the migration
+     * safe to re-run and, more importantly, unable to overwrite: a row an author
+     * formed at record time is never re-derived by a mechanical rule, and a
+     * second migration run cannot revise the first one's output. The return
+     * value therefore means "newly formed", so the disposition report counts
+     * real transitions instead of re-counting rows it already did.</p>
+     *
+     * <p>{@code provenance_kind} becomes {@code migrated} — the fifth value of
+     * the closed vocabulary, and the reason the vocabulary has one: a reader
+     * asking "who decided this entry's situation?" must be able to tell an
+     * author's declaration from a rule's derivation.</p>
+     */
+    @Override
+    public synchronized boolean setForm(String id, String situation, String verdict) {
+        if (id == null || situation == null || situation.isBlank()) {
+            return false;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET situation = ?, verdict = ?, form = 1,"
+                + " provenance_kind = 'migrated', updated_at = ?"
+                + " WHERE id = ? AND form IS NULL")) {
+            ps.setString(1, situation);
+            ps.setString(2, verdict);
+            ps.setTimestamp(3, Timestamp.from(Instant.now()));
+            ps.setString(4, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to set form: " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public synchronized int deleteBySource(String sourceRef) {
         if (sourceRef == null) {

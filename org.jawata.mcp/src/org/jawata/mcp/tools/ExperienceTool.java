@@ -7,6 +7,7 @@ import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.ExperienceEntry;
 import org.jawata.mcp.knowledge.ExperienceMaintenance;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
+import org.jawata.mcp.knowledge.FormMigration;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.RecallQuery;
 import org.jawata.mcp.knowledge.SymbolFact;
@@ -44,7 +45,7 @@ public final class ExperienceTool implements Tool {
     private static final List<String> KINDS =
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
             "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
-            "compact", "stats", "fallback_report");
+            "compact", "stats", "fallback_report", "migrate_form");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -371,6 +372,7 @@ public final class ExperienceTool implements Tool {
             case "export" -> exportEntries(args);
             case "import" -> importEntries(args);
             case "prune" -> prune(args);
+            case "migrate_form" -> migrateForm(args);
             case "dedup" -> ToolResponse.success(maintenance.dedup(bool(args, "confirm")));
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(stats());
@@ -495,6 +497,64 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("removed", removed);
         data.put("days", days);
+        return ToolResponse.success(data);
+    }
+
+    /**
+     * Sprint 28c D4 — {@code migrate_form}: give the store's legacy rows the 28c
+     * form, or say why each one cannot have it.
+     *
+     * <p>DRY RUN BY DEFAULT, and that is the whole safety design. Without
+     * {@code confirm:true} nothing is written and the full disposition is
+     * returned for a human to read; the write happens only on a second call
+     * from someone who has read it. There is no disposal outcome at either
+     * setting — every row is {@code migrated} or {@code legacy_kept}.</p>
+     *
+     * <p>{@code dispositions} is capped in the response because a real store
+     * holds thousands of rows and a tool response is read by an agent. The cap
+     * is stated in the payload rather than applied silently: a truncated list
+     * that does not say it is truncated reads as a complete one, which is this
+     * project's own recorded failure. The COUNTS are always the true totals.</p>
+     */
+    private ToolResponse migrateForm(JsonNode args) {
+        boolean confirm = bool(args, "confirm");
+        FormMigration migration = new FormMigration(store);
+        FormMigration.Report report = confirm ? migration.apply() : migration.plan();
+
+        int limit = args != null && args.has("limit") && args.get("limit").isInt()
+            ? args.get("limit").asInt() : 50;
+        List<Map<String, Object>> shown = new ArrayList<>();
+        for (FormMigration.Disposition d : report.dispositions()) {
+            if (shown.size() >= limit) {
+                break;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", d.id());
+            row.put("outcome", d.outcome());
+            if (d.situation() != null) {
+                row.put("situation", d.situation());
+                row.put("verdict", d.verdict());
+            }
+            if (d.reason() != null) {
+                row.put("reason", d.reason());
+            }
+            shown.add(row);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("applied", report.applied());
+        data.put("sourceEntries", report.sourceEntries());
+        data.put("migrated", report.migrated());
+        data.put("legacyKept", report.legacyKept());
+        data.put("keptReasons", report.keptReasons());
+        data.put("provenanceKinds", report.provenanceKinds());
+        data.put("dispositions", shown);
+        data.put("dispositionsShown", shown.size());
+        data.put("dispositionsTruncated", shown.size() < report.sourceEntries());
+        if (!report.applied()) {
+            data.put("note", "DRY RUN — nothing was written. Read the dispositions,"
+                + " then re-run with confirm:true to apply them.");
+        }
         return ToolResponse.success(data);
     }
 
