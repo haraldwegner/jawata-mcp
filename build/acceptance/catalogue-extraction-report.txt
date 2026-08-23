@@ -1,0 +1,8 @@
+# Catalogue extraction report
+#
+# fork commit      22a34127d0b08449c24cf7e230c04a097deca2f3
+# READMEs seen     187
+# entries built    187
+# skipped          0
+# situations on a reviewed line   187
+# situations still on a DRAFT     0
