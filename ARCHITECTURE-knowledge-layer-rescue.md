@@ -246,7 +246,7 @@ pipeline. The patterns named below are named in service of that one target:
                              |
         jawata-hook pipeline.rs::recall (:423)  <- D8 hook half: one ask, all cues
         seats/architect.md D-FOUR (:56)         <- D7 stance
-        conductor.rs (:261..306) renders ~/.claude/skills/refactor/SKILL.md
+        conductor.rs (:261..278) renders ~/.claude/skills/refactor/SKILL.md
         runner.rs Ceilings (:51) + ClaudeCodeAdapter.max_turns (:703) <- D7/R9
 ```
 
@@ -264,7 +264,7 @@ task and goes beside it, on the same `H2ExperienceStore` instance `:653–658` o
 **Why exactly there and not one frame up.** `openExperienceStore` (`:629`) wraps a
 failed open in `RecoveringExperienceStore` (`:644`), which serves an in-memory store
 while it retries. Loading 187 catalogue rows into that fallback would recreate the
-incident its own comment records at `:637–639` — "the 2026-07-19 fleet flip served 367
+incident its own comment records at `:638–639` — "the 2026-07-19 fleet flip served 367
 seed entries as if they were the DB". Hanging the loader inside `openRealStore` means a
 degraded store is never seeded.
 
@@ -492,7 +492,7 @@ round-trips through `body_json` and is already rendered to the caller.
 **Tool-step ceiling (R9), located.** D7 requires a design-mode run that exceeds its
 tool-step ceiling to stop and say so. Today it cannot:
 
-- `Ceilings` carries `wall_ttl_secs`, `max_iterations`, `cost_budget_usd` only
+- `Ceilings` (`runner.rs:49`) carries `wall_ttl_secs`, `max_iterations`, `cost_budget_usd` only
   (`jawata-studio/src-tauri/src/runner.rs:51–63`); `max_iterations` counts passes of the
   `run_seat` DETECT loop (`:1059–1064`), not tool steps.
 - The tool-step bound is the adapter's `--max-turns`, defaulted to 12 in code
@@ -537,8 +537,9 @@ clauses of Harald's 2026-08-21 ruling and this addendum addressed one. The other
   naming that reader is 28f's seat work.
 - **Watch mode consults and does not re-derive**, and a watch-mode "no" is a DECISION that
   stops for the human's word. The deployed WATCH MODE block (`seats/architect.md:73–76`)
-  says only "read detector evidence and reviewed diffs, and argue for DESIGN-level
-  fixes". M9b adds both clauses there.
+  carries "read detector evidence and reviewed diffs, and argue for DESIGN-level fixes"
+  plus the target-architecture comparison, but neither the consult-without-re-deriving
+  rule nor the stops-for-his-word rule. M9b adds both clauses there.
 - **The tool-less rule moves to the text-reading roles** (sprint/plan auditor,
   communicator) — **NOT in this sprint**: the spec's own Deferred section homes it to
   28f. Recorded so a reader can tell deferred from overlooked, the same way R6 is.
@@ -629,6 +630,12 @@ exactly what a bump would produce. Sending
 scalars *and* arrays makes the new hook's worst case against an old store identical to
 today rather than silence — which is why the scalars stay.
 
+**One more thing the widened record must answer:** `RecallQuery#isEmpty()` short-circuits
+`query` (`H2ExperienceStore.java:864`) and today asks only about the five scalars, so a
+query carrying ONLY the new arrays would return an absence. The hook always sends the
+scalars too, so no live call hits it — but the record's emptiness rule must count the
+arrays, or the widening holds only by the caller's good manners.
+
 **Store-side change, plainly — and it is THREE places, not two.** `RecallQuery`
 (`RecallQuery.java:15–16`, a five-component record) gains two list components; `query`
 and `fits` iterate them; **and `ExperienceTool#recall` (`:714`) must READ the new
@@ -668,7 +675,8 @@ product with no production caller is exactly the hollow shape `build/unwired-gat
 exists to catch, and `build/unwired-baseline.txt` already carries one such member.
 **The extractor composes the record; the loader WRITES what the extractor produced and
 composes nothing** — the first draft assigned that job twice and left neither owning it.
-It is also D3's "seeder" under a clearer name: one catalogue writer, not two, which is
+The LOADER (M2) is D3's "seeder"; this extractor only produces the snapshot — one
+catalogue writer, not two, which is
 what makes D5's "loads nothing again" and D6's successor rule provable at all.
 Verify: run it at the pinned sha and diff the snapshot against the committed one — byte
 identical. Reverse: delete the class; the snapshot is already committed.
@@ -692,8 +700,9 @@ memory-store test seeds twice with no second-run additions. Reverse: delete the 
 **M3 — wire the single production call.** *Authored, one statement* in
 `JawataApplication#openRealStore` after `:668`. One line inside an existing method is not
 a refactoring; no tool kind applies. Verify: `compile_workspace` 0/0;
-`get_call_hierarchy(direction="incoming", symbol="…PatternCatalogueLoader#load")` names
-`JawataApplication#openRealStore` in `org.jawata.mcp/src`, not a test;
+`get_call_hierarchy(direction="incoming", symbol="…PatternCatalogueLoader#load")` names a
+production caller in `org.jawata.mcp/src`, not a test — `openRealStore` before M4, the
+extracted method after it, and `openRealStore` transitively in both cases;
 `build/unwired-gate.sh` exits 0 with `git diff --exit-code build/unwired-baseline.txt`
 clean. Reverse: remove the line.
 
@@ -745,7 +754,7 @@ chain at `:311–318` or the fit gate's semantics. Verify: `compile_workspace(cl
 0/0; a test proving two symptom cues are a union, not an AND. Reverse:
 `refactoring(action="undo")` for the signature, revert for the loops.
 
-**M8 — stop the hook truncating.** *Authored, Rust.* `pipeline.rs::recall` (`:423–474`):
+**M8 — stop the hook truncating.** *Authored, Rust.* `pipeline.rs::recall` (`:423–473`):
 replace the first-answer-wins loop (`:437–460`) with one ask carrying the scalar best cues
 plus the arrays. `HOOK_CONTRACT` stays `1` (`field.rs:24`). Verify: the hook's own suite;
 then D8's real measure — an installed client session whose prompt carries a symbol cue and
@@ -800,7 +809,9 @@ it reports the ceiling by name. Reverse: revert.
   reason to sample-before-bulk ("the loader has produced heading-shaped entries
   before"), so it is a gate;
 
-- the loader against an in-memory store: 187 in, 187 rows out, all
+- the loader against an in-memory store: 187 in, 187 rows out, every `type` an experience
+  type (`EntryForm.EXPERIENCE_TYPES` — D3 calls each row "an `unproven` experience", and
+  `verdict` is meaningful only on those), all
   `provenance_kind = 'catalog'`, all `verdict = 'unproven'`, all `status = 'candidate'`,
   and **every anchor column empty — symbol, package, operation, snippet**;
 - a catalogue row is NOT returned for a bare package cue naming its reference package,
