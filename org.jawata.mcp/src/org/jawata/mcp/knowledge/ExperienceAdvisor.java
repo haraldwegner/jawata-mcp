@@ -146,6 +146,24 @@ public final class ExperienceAdvisor implements Advisor {
         ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
             .operation(outcome.operation())
             .scopeKind(looksLikeFqn(target) ? "symbol" : null);
+
+        // This writer goes STRAIGHT TO THE STORE, not through the record verb, so
+        // EntryForm's gate never sees it — and `failure_mode` is an experience type,
+        // which owes a situation and an outcome. Without these two lines it mints
+        // exactly the rows the front door refuses, and nothing anywhere reports it:
+        // the gate guards a VERB, and a verb cannot guard a caller that does not use it.
+        //
+        // Both facts are already in hand, so the form holds by construction rather than
+        // by a runtime check that could only drop the record. The situation is
+        // task-shaped — what you are doing when this applies — and deliberately omits
+        // the target, which is already carried as the symbol anchor; a situation naming
+        // one class would match only that class. The outcome is not a judgement call: a
+        // plan that rolled back is the definition of failed_avoid.
+        if (EntryForm.EXPERIENCE_TYPES.contains(type)) {
+            String situation = "when applying a " + op + " refactoring plan";
+            eb.situation(situation).verdict("failed_avoid").form(EntryForm.formOf(situation));
+        }
+
         if (outcome.undoChangeId() != null && !outcome.undoChangeId().isBlank()) {
             eb.addLink("undo", outcome.undoChangeId());
         }

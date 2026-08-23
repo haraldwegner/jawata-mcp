@@ -190,6 +190,44 @@ class ExperienceAdvisorTest {
         assertEquals(ExperienceEntry.CANDIDATE, found.get(0).status());
     }
 
+    /**
+     * <p>The advisor writes STRAIGHT TO THE STORE, not through the record verb, so the
+     * form gate never sees it — and `failure_mode` is an experience type, which owes a
+     * situation and an outcome. Before this assertion existed the advisor minted exactly
+     * the rows the front door refuses, and nothing reported it, because a gate on a verb
+     * cannot reach a caller that does not use the verb.</p>
+     *
+     * <p>The check is run against `EntryForm` itself rather than against a copy of its
+     * rules, so the two cannot drift: if the form ever demands a third field, this test
+     * fails without being edited.</p>
+     */
+    @Test
+    void a_rolled_back_plan_is_stored_in_the_form_the_record_verb_would_demand() {
+        advisor.record(new Outcome("compose_method", "compose_method", "com.example.OrderService",
+            Outcome.ROLLED_BACK, List.of("Order.java"), "undo-123",
+            List.of("parity gate failed: compile 2 errors")));
+
+        StoredEntry stored = store.query(
+            new RecallQuery("com.example.OrderService", null, null, null, null)).get(0);
+
+        assertEquals("when applying a compose_method refactoring plan", stored.facets().situation(),
+            "the situation says what you are DOING when this applies — a task, not a "
+                + "description of the machinery — and deliberately omits the target, which "
+                + "is already the symbol anchor: a situation naming one class matches only "
+                + "that class");
+        assertEquals("failed_avoid", stored.facets().verdict(),
+            "a plan that rolled back is the definition of failed_avoid — no judgement call");
+        assertEquals(Integer.valueOf(1), stored.facets().form(),
+            "and it is stamped form-1, so retrieval sorts it with the classified corpus");
+
+        assertEquals(java.util.Optional.empty(),
+            EntryForm.check(stored.type(), stored.summary(), stored.symptoms(),
+                stored.facets().situation(), stored.facets().verdict()),
+            "the row this writer produces must be one the front door would have ACCEPTED. "
+                + "Asserted through EntryForm itself, not a copy of its rules, so a future "
+                + "third required field fails here without this test being edited");
+    }
+
     @Test
     void record_applied_is_dropped_as_jdt_derivable() {
         advisor.record(new Outcome("rename_symbol", "rename_symbol", "com.example.Foo",
