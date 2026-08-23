@@ -613,9 +613,15 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // level. A null vector is a legitimate state: the embedder may
                 // be absent or disabled, and the row must still land and stay
                 // keyword-reachable. The backfill picks it up later.
+                //
+                // Sprint 28c: the SITUATION leads the document. It is bound to
+                // column 22 three lines down, and until now that was the only
+                // place it went — mandatory at the front door and absent from
+                // the vector, so the anchorless question the store exists to
+                // answer could not reach the field written to answer it.
                 float[] vector = EmbeddingService.shared().embed(
-                    EmbeddingService.textOf(str(factMap.get("summary")),
-                                            str(entry.toMap().get("details"))));
+                    EmbeddingService.documentOf(entry.situation(),
+                                            str(factMap.get("summary")), str(entry.toMap().get("details"))));
                 ps.setBytes(20, EmbeddingService.toBytes(vector));
                 ps.setString(21, vector == null ? null : EmbeddingService.shared().identityKey());
                 // Sprint 28c: nulls are the legacy shape and are meaningful — an

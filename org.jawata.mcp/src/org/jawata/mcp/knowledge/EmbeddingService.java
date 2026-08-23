@@ -120,8 +120,8 @@ public final class EmbeddingService {
     }
 
     /**
-     * THE rule for what text a row's vector is computed from: summary, then
-     * details.
+     * THE rule for what text a row's vector is computed from: situation, then
+     * summary, then details.
      *
      * <p>It lives in one place because every path that produces a vector must
      * use it — write, re-embed and backfill alike. If they disagreed, the same
@@ -131,26 +131,63 @@ public final class EmbeddingService {
      * <p>C0 measured why details are included: embedding bare summaries scored a
      * true paraphrase pair at 0.258 — indistinguishable from noise — while the
      * same relationships on summary + details land 0.39–0.57.</p>
+     *
+     * <p><b>Sprint 28c: the situation leads, and the recipe is part of the
+     * embedder identity.</b> An experience declares the condition it applies
+     * under, and a question asked WITHOUT a code anchor is a situation — so a
+     * document that omits it cannot be reached by the very query the store now
+     * demands its entries be written for. Before this, {@code situation} was
+     * mandatory to write and absent from every vector: enforced at the front
+     * door and invisible to retrieval.</p>
+     *
+     * <p><b>Changing this method REQUIRES bumping
+     * {@link EmbedderIdentity#CURRENT_VERSION}</b>, and that is not a
+     * convention to remember — {@code EmbeddingServiceTest} pins the pair, so a
+     * recipe change without the bump goes red. The reason it must: the backfill
+     * re-embeds a row only when its stored identity differs from the current
+     * one. Change the text and not the identity, and ~2,480 vectors computed
+     * from the old document sit unchanged while new rows are computed from the
+     * new one — two incomparable populations scored against each other, ranking
+     * and passing floors exactly like real scores, with nothing to report it.
+     * That is the failure {@link EmbedderIdentity} exists to make impossible,
+     * arriving through the one door it did not cover.</p>
+     *
+     * @param situation the condition the entry applies under, or {@code null}
+     *     for a row that declares none (every pre-28c entry)
+     * @param summary   the one-line claim
+     * @param details   the longer body, or {@code null}
      */
-    public static String textOf(String summary, String details) {
-        String s = summary == null ? "" : summary.trim();
-        String d = details == null ? "" : details.trim();
-        if (s.isEmpty()) {
-            return d;
-        }
-        if (d.isEmpty()) {
-            return s;
-        }
-        return s + " " + d;
+    public static String documentOf(String situation, String summary, String details) {
+        StringBuilder sb = new StringBuilder();
+        append(sb, situation);
+        append(sb, summary);
+        append(sb, details);
+        return sb.toString();
     }
 
     /**
-     * D3 measurement arm (Sprint 27a Stage 4b): summary + symptom prose +
-     * details. Reaches production ONLY if Harald adopts on the cleaned-data
-     * numbers; until then the 2-arg form above is the shipped composition.
+     * D3 measurement arm (Sprint 27a Stage 4b): situation + summary + symptom
+     * prose + details. Reaches production ONLY if Harald adopts on the
+     * cleaned-data numbers; until then {@link #documentOf} is the shipped
+     * composition. It is gated by {@code -Djawata.embed.symptoms} and carries
+     * its own identity suffix, so the two compositions never share a vector
+     * space and are never scored against each other.
+     *
+     * <p>It takes the situation for one reason: if the arm is ever adopted it
+     * becomes the shipped recipe, and an arm that silently dropped a field the
+     * shipped recipe carries would lose it at the moment of adoption — when
+     * nobody is looking for a regression, because the change was supposed to
+     * ADD symptoms.</p>
+     *
+     * @param situation the condition the entry applies under, or {@code null}
+     * @param summary   the one-line claim
+     * @param details   the longer body, or {@code null}
+     * @param symptoms  the entry's symptom prose
      */
-    public static String textOf(String summary, String details, java.util.List<String> symptoms) {
+    public static String documentWithSymptoms(String situation, String summary, String details,
+            java.util.List<String> symptoms) {
         StringBuilder sb = new StringBuilder();
+        append(sb, situation);
         append(sb, summary);
         if (symptoms != null) {
             for (String s : symptoms) {

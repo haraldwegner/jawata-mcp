@@ -24,8 +24,17 @@ package org.jawata.mcp.embed;
  */
 public record EmbedderIdentity(String model, int dim, int version) {
 
-    /** Bumped when OUR pipeline starts producing different vectors for the same text. */
-    public static final int CURRENT_VERSION = 1;
+    /**
+     * Bumped when OUR pipeline starts producing different vectors for the same ROW —
+     * which includes changing the DOCUMENT the row is reduced to, not only the model
+     * or the tokenizer. That half was implicit and cost nothing until it mattered:
+     * v2 adds {@code situation} to the document, so every v1 vector was computed from
+     * text that no longer describes its row.
+     *
+     * <p>v2 (Sprint 28c): {@code EmbeddingService.documentOf} = situation, summary,
+     * details. v1: summary, details.</p>
+     */
+    public static final int CURRENT_VERSION = 2;
 
     /** The bundled checkpoint's name, as the model registry spells it. */
     public static final String MINILM_L6_V2 = "sentence-transformers/all-MiniLM-L6-v2";

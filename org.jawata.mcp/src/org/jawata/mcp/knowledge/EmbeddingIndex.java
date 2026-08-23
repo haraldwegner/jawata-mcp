@@ -239,8 +239,17 @@ public final class EmbeddingIndex {
             ? ", (SELECT LISTAGG(s.symptom, '; ') FROM experience_symptom s"
                 + " WHERE s.entry_id = " + table + "." + idColumn + ")"
             : "";
+        // Sprint 28c: the situation is part of the document, so the backfill must
+        // read it. Leave it out and a re-embed computes a DIFFERENT vector from
+        // the one the write path computed for the same row — the disagreement
+        // documentOf's own contract forbids, and the one this method's header
+        // already warns about. Only experience_entry has the column;
+        // tool_experience's text column IS its situation, so it is already in.
+        boolean withSituation = "experience_entry".equals(table);
+        String situationSelect = withSituation ? ", situation" : "";
         String select = "SELECT " + idColumn + ", " + textColumn
             + (detailsColumn == null ? "" : ", " + detailsColumn) + symptomsSelect
+            + situationSelect
             + " FROM " + table
             + " WHERE embedding IS NULL OR embedder_identity IS NULL"
             + " OR embedder_identity <> ? LIMIT " + max;
@@ -252,11 +261,16 @@ public final class EmbeddingIndex {
                         ? null : detailsOf(rs.getString(3));
                     String symptoms = withSymptoms
                         ? rs.getString(detailsColumn == null ? 3 : 4) : null;
+                    // BY NAME, deliberately. The reads above are positional and
+                    // already carry a two-branch index calculation; appending a
+                    // fifth column to that arithmetic is how the wrong column gets
+                    // embedded, silently, with every test still green.
+                    String situation = withSituation ? rs.getString("situation") : null;
                     pending.add(new Pending(rs.getString(1),
                         symptoms == null || symptoms.isBlank()
-                            ? EmbeddingService.textOf(rs.getString(2), details)
-                            : EmbeddingService.textOf(rs.getString(2), details,
-                                List.of(symptoms))));
+                            ? EmbeddingService.documentOf(situation, rs.getString(2), details)
+                            : EmbeddingService.documentWithSymptoms(situation, rs.getString(2),
+                                details, List.of(symptoms))));
                 }
             }
         } catch (SQLException e) {

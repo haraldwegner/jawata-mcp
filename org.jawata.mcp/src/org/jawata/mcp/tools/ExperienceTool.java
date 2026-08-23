@@ -837,10 +837,16 @@ public final class ExperienceTool implements Tool {
                     org.jawata.mcp.knowledge.EmbeddingService.shared();
                 if (svc.available()) {
                     var index = new org.jawata.mcp.knowledge.EmbeddingIndex(h2, svc);
+                    // The probe embeds the CANDIDATE and compares it against stored
+                    // rows, so it must use the same recipe with the same fields —
+                    // including the situation. Omit it here and the candidate's
+                    // vector is computed from less text than every row it is scored
+                    // against, which does not fail: it quietly lowers every
+                    // similarity and reports fewer duplicates than exist.
                     for (var hit : index.nearestEntries(
-                            org.jawata.mcp.knowledge.EmbeddingService.textOf(
-                                args.path("summary").asText(""),
-                                args.path("details").asText(null)), 2,
+                            org.jawata.mcp.knowledge.EmbeddingService.documentOf(
+                                args.path("situation").asText(null),
+                                args.path("summary").asText(""), args.path("details").asText(null)), 2,
                             org.jawata.mcp.knowledge.EmbeddingIndex.DEDUP_THRESHOLD)) {
                         if (!hit.id().equals(id)) {
                             data.put("duplicate_of", hit.id());

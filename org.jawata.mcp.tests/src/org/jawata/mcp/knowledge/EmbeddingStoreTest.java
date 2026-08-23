@@ -323,10 +323,10 @@ class EmbeddingStoreTest {
 
     @Test
     void the_embeddable_text_rule_is_summary_then_details() {
-        assertEquals("a b", EmbeddingService.textOf("a", "b"));
-        assertEquals("a", EmbeddingService.textOf("a", null));
-        assertEquals("b", EmbeddingService.textOf(null, "b"));
-        assertEquals("a", EmbeddingService.textOf("  a  ", "   "));
+        assertEquals("a b", EmbeddingService.documentOf(null, "a", "b"));
+        assertEquals("a", EmbeddingService.documentOf(null, "a", null));
+        assertEquals("b", EmbeddingService.documentOf(null, null, "b"));
+        assertEquals("a", EmbeddingService.documentOf(null, "  a  ", "   "));
     }
 
     private static void assertArrayEqualsBytes(byte[] a, byte[] b) {
