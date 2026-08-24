@@ -358,8 +358,18 @@ public final class EmbeddingIndex {
      * note the user threw away may not come back through a new door. This lane
      * IS a new door, which is why the filter is repeated rather than assumed.</p>
      *
+     * <p><b>{@code null} means the scan FAILED; empty maps mean it found
+     * nothing.</b> Those are different answers and they are not given the same
+     * shape. An unreadable lane returning "no rows scored" would be
+     * indistinguishable from a corpus that genuinely matched nothing, and the
+     * ranking that followed would be word-only while reading exactly like a
+     * meaning-weighted one — the failure this codebase has paid for more than
+     * once. The caller states the degradation in its own response, because
+     * nobody reading an answer sees the resident's log.</p>
+     *
      * @return one map per lane, keyed as {@link EmbeddingService.Lane}; empty maps
-     *     when the embedder is unavailable or the cue is blank — the degrade path
+     *     when the embedder is unavailable or the cue is blank (a supported degrade
+     *     path), or {@code null} when the scan itself failed
      */
     public java.util.Map<EmbeddingService.Lane, java.util.Map<String, Double>> entryLaneScores(
             String cue) {
@@ -394,14 +404,8 @@ public final class EmbeddingIndex {
                 }
             }
         } catch (SQLException e) {
-            // Empty lanes, and SAID SO. The caller degrades to the word lane,
-            // which is a supported state; what must never happen is this
-            // returning quietly and the ranking that follows being read as a
-            // meaning-weighted one.
             log.error("per-lane nomination FAILED; this question is ranked on words alone", e);
-            for (EmbeddingService.Lane lane : lanes) {
-                out.get(lane).clear();
-            }
+            return null;                      // NOT empty — see the contract above
         }
         return out;
     }

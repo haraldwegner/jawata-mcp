@@ -766,6 +766,15 @@ public final class ExperienceRetrieval {
         // candidate; 187 catalogue entries made it the whole answer.
         Map<EmbeddingService.Lane, Map<String, Double>> lanes = index == null
             || !index.available() ? Map.of() : index.entryLaneScores(question);
+        // null means the lane scan FAILED, which is not the same as finding
+        // nothing — and the difference has to reach the CALLER, not just the log.
+        // A word-only ranking reads exactly like a meaning-weighted one; the only
+        // person who could notice is the one holding the answer, and they cannot
+        // see the resident's log.
+        boolean meaningLanesFailed = lanes == null;
+        if (meaningLanesFailed) {
+            lanes = Map.of();
+        }
         Map<String, RelevanceMerge.Score> scores = RelevanceMerge.scoreAll(
             lanes.get(EmbeddingService.Lane.SITUATION),
             lanes.get(EmbeddingService.Lane.SUMMARY),
@@ -824,11 +833,17 @@ public final class ExperienceRetrieval {
         out.put("result", RESULT_NOMINATED);
         out.put("count", candidates.size());
         out.put("candidates", candidates);
-        out.put("message", candidates.isEmpty()
+        String degraded = meaningLanesFailed
+            ? " DEGRADED: the meaning lanes could not be read, so this ranking is on"
+                + " WORDS ALONE — an entry that means the same thing in different words"
+                + " will not be here. The resident log carries the cause."
+            : "";
+        out.put("meaning_lanes", meaningLanesFailed ? "failed" : "ok");
+        out.put("message", (candidates.isEmpty()
             ? "No candidates for this question. Nothing to decide; this is an absence."
             : candidates.size() + " candidate(s) RANKED, not vouched. Read each situation"
                 + " and decide which apply, then call kind=decide with the query_id and"
-                + " the ids you chose. Choosing none is a real answer.");
+                + " the ids you chose. Choosing none is a real answer.") + degraded);
         return out;
     }
 

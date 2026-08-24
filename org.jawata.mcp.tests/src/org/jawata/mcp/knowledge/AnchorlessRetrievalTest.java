@@ -228,7 +228,18 @@ class AnchorlessRetrievalTest {
                 .situation(situation).verdict("failed_avoid").provenanceKind("catalog")
                 .form(1).build());
 
-            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+            // WITH the index when one is available, so the claim covers all four
+            // lanes and not only the word lane. Two entries whose text is identical
+            // have identical vectors, so every lane must tie — if any of them read
+            // the outcome or the origin, one twin would pull ahead.
+            EmbeddingIndex index = EmbeddingIndex.forStore(store);
+            ExperienceRetrieval retrieval = index == null || !index.available()
+                ? new ExperienceRetrieval(store, () -> null)
+                : new ExperienceRetrieval(store, () -> null, index);
+            if (index != null && index.available()) {
+                index.backfill(500);   // the twins were written in bulk-free puts,
+                                       // but the fixture rows around them may not be
+            }
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> candidates =
                 (List<Map<String, Object>>) retrieval.nominate(
@@ -286,6 +297,52 @@ class AnchorlessRetrievalTest {
                         "the " + lane + " dimension is missing from " + scores);
                 }
             }
+        }
+    }
+
+    /**
+     * A ranking that lost its meaning lanes SAYS SO, in the answer.
+     *
+     * <p>This is the codebase's deepest recorded defect class, applied to the
+     * new lane: a failed scan that returns "nothing scored" is indistinguishable
+     * from a corpus that genuinely matched nothing, and the word-only ranking
+     * that follows reads exactly like a meaning-weighted one. Logging it is not
+     * enough — the only person who could notice is holding the answer, and they
+     * cannot see the resident's log.</p>
+     *
+     * <p>The failure is induced the way it would really happen: the lane column
+     * is gone. Control: make {@code entryLaneScores} return empty maps instead of
+     * {@code null} on failure and this goes red, because the response says
+     * {@code ok} while every candidate was ranked on words alone.</p>
+     */
+    @Test
+    void a_ranking_that_lost_the_meaning_lanes_says_so_in_the_answer() throws Exception {
+        JsonNode fx = fixture();
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            seed(store, fx, false);
+            EmbeddingIndex index = EmbeddingIndex.forStore(store);
+            if (index == null || !index.available()) {
+                return;   // no embedder here; the degrade path has no lane to lose
+            }
+            ExperienceRetrieval healthy = new ExperienceRetrieval(store, () -> null, index);
+            String question = fx.get("positive_questions").get(0).get("question").asText();
+            assertEquals("ok",
+                healthy.nominate(question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS)
+                    .get("meaning_lanes"),
+                "precondition: with the lanes intact the answer must claim they worked, "
+                    + "or the assertion below proves nothing");
+
+            try (java.sql.Statement s = store.sharedConnection().createStatement()) {
+                s.execute("ALTER TABLE experience_entry DROP COLUMN embedding_situation");
+            }
+
+            Map<String, Object> answer =
+                healthy.nominate(question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+            assertEquals("failed", answer.get("meaning_lanes"),
+                "an unreadable lane must be REPORTED, not silently degraded to words");
+            assertTrue(String.valueOf(answer.get("message")).contains("WORDS ALONE"),
+                "and the message must say it in words the reader will actually see: "
+                    + answer.get("message"));
         }
     }
 

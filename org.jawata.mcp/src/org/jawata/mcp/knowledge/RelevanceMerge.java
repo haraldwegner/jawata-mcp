@@ -15,13 +15,19 @@ import java.util.Map;
  * one.</p>
  *
  * <p><b>The defect this replaces.</b> The anchorless lane ranked by
- * {@code cosine + bm25}, added raw. Cosine lives in 0..1; BM25 is unbounded and
- * routinely reaches double digits on a corpus this size. So the sum was BM25
- * with a rounding error attached, and the meaning half — the half that can see
- * that "bet against a stock" is a short position — could not move the order at
- * all. It went unnoticed while the store held twelve rows and every row was a
- * candidate; it became visible the moment 187 catalogue entries arrived and took
- * every slot from the entries that actually answered.</p>
+ * {@code cosine + bm25}, added raw. A cosine over these embeddings lands in
+ * roughly −0.1 … 1 (measured responses do carry small negatives); BM25 is
+ * unbounded and routinely reaches double digits on a corpus this size. So the
+ * sum was BM25 with a rounding error attached, and the meaning half — the half
+ * that can see that "bet against a stock" is a short position — could not move
+ * the order at all. It went unnoticed while the store held twelve rows and every
+ * row was a candidate; it became visible the moment 187 catalogue entries
+ * arrived and took every slot from the entries that actually answered.</p>
+ *
+ * <p>A negative lane score is kept rather than clamped, and that is a decision:
+ * a field whose meaning runs opposite to the question is evidence against the
+ * row, and clamping it to zero would make "unrelated" and "contradictory" score
+ * the same.</p>
  *
  * <h2>The four signals</h2>
  *
@@ -157,12 +163,14 @@ public final class RelevanceMerge {
      * agreement would silently drop exactly the rows one lane exists to catch
      * that the other cannot.</p>
      *
-     * @param lanes per-id cosines for the three vector lanes, in the order
-     *              situation, summary, details — each map may be empty when its
-     *              lane is unavailable, which is the degrade path and not an error
-     * @param words RAW BM25 per id; normalised here, so callers hand over what
-     *              {@link LexicalIndex#score} produced and nothing in between
-     *              has to remember to rescale it
+     * @param situationLane per-id cosine against the entry's situation; empty when
+     *                      that lane is unavailable, which is the degrade path and
+     *                      not an error
+     * @param summaryLane   per-id cosine against the entry's one-line claim
+     * @param detailsLane   per-id cosine against the entry's body
+     * @param words         RAW BM25 per id; normalised HERE, so callers hand over
+     *                      exactly what {@link LexicalIndex#score} produced and
+     *                      nothing in between has to remember to rescale it
      */
     public static Map<String, Score> scoreAll(Map<String, Double> situationLane,
                                               Map<String, Double> summaryLane,

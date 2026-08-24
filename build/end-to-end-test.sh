@@ -540,6 +540,30 @@ case "$QID" in
     *)  pass "anchorless the nomination carries a query_id to decide against" ;;
 esac
 
+# Sprint 28c D13 — WHY THIS ONE. A ranking nobody can interrogate is a ranking
+# nobody can correct: this sprint lost a day to a regression whose cause was one
+# lane reading a different field set from its twin, and no response carried enough
+# to see it. Every candidate now states the four proximities that placed it, over
+# the wire and not only in a unit test. All FIVE keys are demanded — a response
+# carrying `total` alone would satisfy a laxer check while saying nothing about
+# which lane decided, which is the whole point.
+#
+# Matched as the exact key SEQUENCE the merge emits, not as five loose key names:
+# "situation", "summary" and "details" are already candidate fields, so a loose
+# check would pass on a response with no scores block at all.
+case "$NOM" in
+    *'"count":0'*)
+        fail "anchorless the nonsense question produced NO candidates, so the scores"\
+" clause could not be measured — nothing here filters on score, so an empty list is"\
+" itself a finding" ;;
+    *'"scores":{"situation":'*'"summary":'*'"details":'*'"words":'*'"total":'*)
+        pass "anchorless every candidate carries the four lane scores and the total that placed it" ;;
+    *'"scores"'*)
+        fail "anchorless a scores block is present but not the four lanes plus the total: $(printf '%s' "$NOM" | head -c 300)" ;;
+    *)
+        fail "anchorless no candidate carried a scores block, so the ranking cannot be interrogated: $(printf '%s' "$NOM" | head -c 250)" ;;
+esac
+
 # THE HEADLINE: an empty selection on a nonsense question is an ABSENCE, with no
 # entries and no consolation pile. This is the measured defect, inverted.
 DEC="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID\",\"selected_ids\":[]}")"

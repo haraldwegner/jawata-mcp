@@ -1013,10 +1013,32 @@ design-precedes-code obligation in the spec is discharged by this section.
 ### Seams and owners
 
 - **`EmbeddingService`** — three per-field document compositions (situation / summary
-  / details), each with its OWN identity suffix (the existing recipe-identity
-  mechanism; spaces never mix). `EmbeddingIndex` stores per-field lanes — the lane
-  column already exists (`experience_entry` / `tool_experience`); per-field lanes
-  extend the same key, no new table.
+  / details), as `EmbeddingService.Lane`, so every path that writes vectors iterates
+  the same set rather than three hand-written triples.
+
+  **AMENDED IN PLACE at implementation (2026-08-24, Stage 8 / M2).** This clause read
+  *"each with its OWN identity suffix … per-field lanes extend the same key, no new
+  table."* That does not work, and the reason is worth keeping rather than quietly
+  replacing: a suffix distinguishes recipes **inside one column**, and there is one
+  `embedding` column per row — so three lanes had nowhere to live. Suffixing would
+  have re-created, in a single column, exactly the space-mixing `EmbedderIdentity`
+  exists to forbid.
+
+  What ships instead: **schema v11 adds three columns** (`embedding_situation`,
+  `embedding_summary`, `embedding_details`) beside the composite. Separate columns
+  make the spaces impossible to mix *by construction* — no code path can write a
+  summary vector where a situation vector is read — which is strictly stronger than
+  a naming convention. One identity per row still covers all four vectors, because
+  they are computed in one statement from one read; and
+  `EmbedderIdentity.CURRENT_VERSION` goes to **3** in the same change, since the
+  backfill selects on identity and without the bump every existing row would keep
+  its composite, never be revisited, and leave all three lanes empty forever.
+
+  **Second amendment, from measurement:** a **sourced (bulk) write no longer embeds
+  inline**. Four vectors per row across the 187-pattern catalogue took the resident
+  **175 seconds** to announce readiness. Bulk writes have no reader waiting on them;
+  the background backfill converges them and reports it. Boot is 3 s. A direct
+  `put` still embeds inline — an agent recording an experience expects to find it.
 - **`ExperienceRetrieval.nominateFromStore`** — the weighted merge lives here and
   nowhere else: `w_sit·cos + w_sum·cos + w_det·cos + w_words·bm25'` (prior 0.6 /
   0.3 / 0.1; BM25 normalised before summing — the current raw sum mixes scales and
