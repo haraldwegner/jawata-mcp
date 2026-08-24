@@ -45,6 +45,21 @@ field?"* is recognisable. *"When amending an order that is already partially
 filled"* describes circumstances and leaves the reader to work out whether their
 problem is the one being answered.
 
+**The situation stays in the reader's plain words — the scope lives in the
+claim.** Both of these were measured, not reasoned:
+
+- Abstracting the situation's WORDING to widen the scope makes the entry harder
+  to find, not easier. *"a bulk substitution across text"* lost to *"renaming
+  across documentation"*; *"window chrome"* lost to *"the title bar and the
+  buttons"*. Widen the claim; leave the situation in the words someone would
+  actually type.
+- **Naming a technology in the situation gets the entry REFUSED.** A situation
+  mentioning `WebKitGTK` is read as a code location, and the admission gate turns
+  it away — correctly, since a location matches everything inside it and
+  distinguishes nothing. So the vendor boundary the scope test asks for goes in
+  the claim and the details: *"if the app embeds a WebKitGTK webview, set …"*.
+  The two rules compose in exactly one direction.
+
 **No local vocabulary.** A word that means something only inside one project
 makes the situation unreadable to everyone else, and the author is the last
 person who can see it — it reads perfectly to them. If a term would need the
