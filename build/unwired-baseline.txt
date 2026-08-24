@@ -28,6 +28,7 @@ org.jawata.mcp.knowledge.H2ExperienceStore#useClock(Clock)
 org.jawata.mcp.knowledge.LearnerEventStore#failedWrites()
 org.jawata.mcp.knowledge.LearnerEventStore#totalEvents()
 org.jawata.mcp.knowledge.QualityLedger#SURFACE_SEAT
+org.jawata.mcp.knowledge.StoryTemplate#coldReaderPrompt()
 org.jawata.mcp.knowledge.SymbolFact.Builder#addEvidence(Object)
 org.jawata.mcp.knowledge.ToolExperienceStore#count()
 org.jawata.mcp.knowledge.ToolExperienceStore#failedWrites()

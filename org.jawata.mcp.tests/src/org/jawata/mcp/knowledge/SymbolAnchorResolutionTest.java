@@ -75,12 +75,12 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: dead symbol lesson
+                description: a lesson anchored to a dead symbol
                 type: reference
                 ---
                 """, "The old `DoesNotExistAnywhere.frob` path was removed long ago.\n");
             maint(store, service).load(dir);
-            assertNull(bySummary(store, "dead symbol lesson").symbolFqn());
+            assertNull(bySummary(store, "a lesson anchored to a dead symbol").symbolFqn());
         }
     }
 
@@ -91,12 +91,12 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: library type lesson
+                description: a lesson anchored to a library type
                 type: reference
                 ---
                 """, "Prefer `java.util.List` over arrays; `String` interning surprises.\n");
             maint(store, service).load(dir);
-            assertNull(bySummary(store, "library type lesson").symbolFqn());
+            assertNull(bySummary(store, "a lesson anchored to a library type").symbolFqn());
         }
     }
 
@@ -113,12 +113,12 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: ambiguous type lesson
+                description: a lesson anchored to an ambiguous type
                 type: reference
                 ---
                 """, "The `HelloWorld` type is mentioned, twice even: `HelloWorld`.\n");
             maint(store, service).load(dir);
-            assertNull(bySummary(store, "ambiguous type lesson").symbolFqn());
+            assertNull(bySummary(store, "a lesson anchored to an ambiguous type").symbolFqn());
         }
     }
 
@@ -129,12 +129,12 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: tie lesson
+                description: a lesson whose anchor ties two types
                 type: reference
                 ---
                 """, "`HelloWorld` and `NamingTargets` appear exactly once each.\n");
             maint(store, service).load(dir);
-            assertNull(bySummary(store, "tie lesson").symbolFqn());
+            assertNull(bySummary(store, "a lesson whose anchor ties two types").symbolFqn());
         }
     }
 
@@ -145,13 +145,13 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: filename mention lesson
+                description: a lesson that merely mentions a filename
                 type: reference
                 ---
                 """, "See `HelloWorld.java` for the whole story.\n");
             maint(store, service).load(dir);
             assertEquals("com.example.HelloWorld",
-                bySummary(store, "filename mention lesson").symbolFqn());
+                bySummary(store, "a lesson that merely mentions a filename").symbolFqn());
         }
     }
 
@@ -162,13 +162,13 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: asserted anchor lesson
+                description: a lesson whose anchor the author asserted
                 type: reference
                 symbol: com.example.NamingTargets
                 ---
                 """, "Text dominated by `HelloWorld.printGreeting` and `HelloWorld` mentions.\n");
             maint(store, service).load(dir);
-            StoredEntry e = bySummary(store, "asserted anchor lesson");
+            StoredEntry e = bySummary(store, "a lesson whose anchor the author asserted");
             assertEquals("com.example.NamingTargets", e.symbolFqn());
             assertTrue(e.body().containsKey("symbol"),
                 "asserted anchor stays in the fact map: " + e.body());
@@ -182,7 +182,7 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: split doc lesson
+                description: a lesson split across two sections
                 type: reference
                 ---
                 """, """
@@ -192,15 +192,15 @@ class SymbolAnchorResolutionTest {
 
                 Nothing code-shaped here either.
 
-                ## Worked example
+                ## The worked example anchors from its own text
 
                 The remainder lived in `HelloWorld.printGreeting`, missed by `HelloWorld` cleanup.
                 """);
             maint(store, service).load(dir);
             assertEquals("com.example.HelloWorld#printGreeting",
-                bySummary(store, "Worked example").symbolFqn());
+                bySummary(store, "The worked example anchors from its own text").symbolFqn());
             assertNull(bySummary(store, "Process notes").symbolFqn());
-            assertNull(bySummary(store, "split doc lesson").symbolFqn());
+            assertNull(bySummary(store, "a lesson split across two sections").symbolFqn());
         }
     }
 
@@ -210,12 +210,12 @@ class SymbolAnchorResolutionTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
                 ---
-                description: pre-project lesson
+                description: a lesson written before the project loaded
                 type: reference
                 ---
                 """, "Mentions `HelloWorld.printGreeting` before any project is loaded.\n");
             new ExperienceMaintenance(store, fqn -> null, List::of, () -> null).load(dir);
-            assertNull(bySummary(store, "pre-project lesson").symbolFqn());
+            assertNull(bySummary(store, "a lesson written before the project loaded").symbolFqn());
         }
     }
 }

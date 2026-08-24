@@ -235,6 +235,14 @@ public final class StoryTemplate {
      *
      * <p>Built from {@link #FIELDS} rather than written out, so the questions a
      * reviewer is asked and the conditions a gate enforces cannot drift apart.</p>
+     *
+     * <p><b>NO PRODUCTION CALLER YET, and that is declared rather than hidden.</b>
+     * Its consumer is the cold-reader QA step (D10), which is deliberately held
+     * until the template itself is settled — the step encodes these very rules,
+     * so building it before the template's own review would mean building it
+     * twice. It is carried in {@code build/unwired-baseline.txt} for exactly that
+     * reason; if the QA step lands and this still has no caller, that is a
+     * finding at that checkpoint and not a pass inherited from here.</p>
      */
     public static String coldReaderPrompt() {
         StringBuilder sb = new StringBuilder();

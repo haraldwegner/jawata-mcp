@@ -76,9 +76,9 @@ class ExperienceToolHygieneTest {
 
     @Test
     void prune_removes_only_aged_rejected_or_superseded() {
-        record("stays active", null);
-        setStatus(record("was rejected", null), "rejected");
-        setStatus(record("was superseded", null), "superseded");
+        record("this note stays active throughout", null);
+        setStatus(record("this note was rejected by a human", null), "rejected");
+        setStatus(record("this note was superseded by another", null), "superseded");
 
         // The clock is pinned one second AHEAD of the writes above, and that is
         // the whole point. With days=0 the cutoff is "now", the delete is
@@ -108,7 +108,7 @@ class ExperienceToolHygieneTest {
         String older = record("jawata peel stops at quote", "com.example.Hook");
         String newer = record("JAWATA peel stops at   quote", "com.example.Hook");   // alias-equal
         setStatus(older, "accepted");                       // status beats recency
-        record("something unrelated", "com.example.Other");
+        record("something unrelated to the anchor", "com.example.Other");
 
         Map<String, Object> surfaced = data(exec("dedup", a -> { }));
         assertEquals(1, surfaced.get("group_count"));
@@ -133,7 +133,7 @@ class ExperienceToolHygieneTest {
                 ObjectNode a = mapper.createObjectNode();
                 a.put("kind", "record");
                 a.put("type", "lesson");
-                a.put("summary", "churn " + i + " ".repeat(500));
+                a.put("summary", "a churn note number " + i + " ".repeat(500));
                 // Sprint 28c: bulk churn, but it must LAND — the point of this
                 // test is the file GROWING before compact reclaims it.
                 a.put("situation", "when a store has been written and wiped repeatedly");
@@ -155,7 +155,7 @@ class ExperienceToolHygieneTest {
             ObjectNode after = mapper.createObjectNode();
             after.put("kind", "record");
             after.put("type", "lesson");
-            after.put("summary", "post-compact write");
+            after.put("summary", "a write that lands after the compaction");
             after.put("situation", "when the connection has been swapped by a compact");
             after.put("verdict", "worked");
             assertTrue(fileTool.execute(after).isSuccess(), "store usable after compact reopen");
@@ -174,12 +174,12 @@ class ExperienceToolHygieneTest {
     @Test
     @SuppressWarnings("unchecked")
     void stats_counts_by_status_and_language() {
-        setStatus(record("a lesson", "com.example.A"), "accepted");
-        record("b lesson", "com.example.B");                     // stays candidate
+        setStatus(record("the first lesson of the pair", "com.example.A"), "accepted");
+        record("the second lesson of the pair", "com.example.B");                     // stays candidate
         ObjectNode rust = mapper.createObjectNode();
         rust.put("kind", "record");
         rust.put("type", "lesson");
-        rust.put("summary", "rust note");
+        rust.put("summary", "a rust note with a non-java anchor");
         rust.put("language", "rust");
         // Sprint 28c: this row is COUNTED by the assertions below (by_language
         // rust=1, total=3), so a refusal here would silently change the arithmetic.

@@ -48,7 +48,7 @@ class ExperienceToolMaintenanceTest {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "record");
         a.put("type", "lesson");
-        a.put("summary", "guard lifecycle");
+        a.put("summary", "guard the workbench lifecycle here");
         a.put("symbol", "com.example.WorkflowCoordinator");
         // Sprint 28c: a lesson owes a situation and an outcome. Supplied rather
         // than the gate relaxed — this class is about load/refresh/anchor
@@ -61,7 +61,7 @@ class ExperienceToolMaintenanceTest {
     @Test
     void load_via_tool_seeds_from_directory(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("m.md"),
-            "---\nname: n\ndescription: a domain note\ntype: domain_fact\n---\nbody [[x]]");
+            "---\nname: n\ndescription: a domain note about this package\ntype: domain_fact\n---\nbody [[x]]");
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
         a.put("path", dir.toString());
@@ -75,7 +75,7 @@ class ExperienceToolMaintenanceTest {
         // Sprint 21b (item C): the crawler finds everything — recursive is the DEFAULT.
         Files.createDirectory(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested").resolve("deep.md"),
-            "---\nname: deep\ndescription: nested note\ntype: reference\n---\nbody");
+            "---\nname: deep\ndescription: a nested note under a subdirectory\ntype: reference\n---\nbody");
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
         a.put("path", dir.toString());
@@ -86,7 +86,7 @@ class ExperienceToolMaintenanceTest {
     void load_recursive_false_stays_flat(@TempDir Path dir) throws IOException {
         Files.createDirectory(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested").resolve("deep.md"),
-            "---\nname: deep\ndescription: nested note\ntype: reference\n---\nbody");
+            "---\nname: deep\ndescription: a nested note under a subdirectory\ntype: reference\n---\nbody");
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
         a.put("path", dir.toString());
@@ -107,7 +107,7 @@ class ExperienceToolMaintenanceTest {
     void load_auto_refreshes_preexisting_stale_entries(@TempDir Path dir) throws IOException {
         recordOne(); // symbol com.example.WorkflowCoordinator, currently unresolvable=stale
         Files.writeString(dir.resolve("m.md"),
-            "---\nname: n\ndescription: unrelated note\ntype: domain_fact\n---\nbody");
+            "---\nname: n\ndescription: an unrelated note about something else\ntype: domain_fact\n---\nbody");
         ExperienceTool staleWorld = new ExperienceTool(() -> null, store,
             java.util.List::of, fqn -> Boolean.FALSE);
         ObjectNode a = mapper.createObjectNode();
@@ -184,7 +184,7 @@ class ExperienceToolMaintenanceTest {
     @Test
     void load_without_path_seeds_from_default_roots(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("m.md"),
-            "---\nname: n\ndescription: seeded note\ntype: domain_fact\n---\nbody");
+            "---\nname: n\ndescription: a seeded note placed before the run\ntype: domain_fact\n---\nbody");
         ExperienceTool rooted = new ExperienceTool(() -> null, store, () -> java.util.List.of(dir));
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "load");
@@ -194,7 +194,7 @@ class ExperienceToolMaintenanceTest {
     @Test
     void reseed_requires_confirm_then_wipes_and_reloads(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("m.md"),
-            "---\nname: n\ndescription: seeded note\ntype: domain_fact\n---\nbody");
+            "---\nname: n\ndescription: a seeded note placed before the run\ntype: domain_fact\n---\nbody");
         ExperienceTool rooted = new ExperienceTool(() -> null, store, () -> java.util.List.of(dir));
         recordOneVia(rooted);
         assertEquals(1L, store.count());
@@ -217,7 +217,7 @@ class ExperienceToolMaintenanceTest {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "record");
         a.put("type", "lesson");
-        a.put("summary", "to be wiped");
+        a.put("summary", "this note exists to be wiped");
         // Sprint 28c: a lesson owes a situation and an outcome, and this record
         // must LAND or the wipe below removes nothing and proves nothing.
         a.put("situation", "when a store is seeded by hand before a reseed");

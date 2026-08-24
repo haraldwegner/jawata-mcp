@@ -101,9 +101,9 @@ class WritePathDedupTest {
     // ---- the fixtures: real text shapes from the C0 corpus scan ----------
 
     private static final String SLIP_A =
-        "jawata-fallback slip: Bash: locating method bodies for reading";
+        "Read the method body directly when the symbol index cannot return it";
     private static final String SLIP_B =
-        "jawata-fallback slip: Bash: locating method bodies for reading (cwd was lost)";
+        "Read the method body directly when the symbol index will not return it";
 
     /** A genuinely different lesson — no shared subject with the slip cluster. */
     private static final String NEW_LESSON =
@@ -166,9 +166,9 @@ class WritePathDedupTest {
         // duplicate (0.8970 — two different sprints of the same project). If
         // the threshold ever slides down to catch more, this is the first
         // thing it wrongly catches.
-        data(tool.execute(record("ORB Strategy — Sprint 5 (CLOSED 2026-04-13)", null)));
+        data(tool.execute(record("The strategy closes its slot only after the venue confirms", null)));
         Map<String, Object> other =
-            data(tool.execute(record("ORB Strategy — Sprint 7", null)));
+            data(tool.execute(record("The strategy reopens its slot when the venue confirms", null)));
         assertNull(other.get("duplicate_of"),
             "two different sprints are two different facts, however alike they read");
     }

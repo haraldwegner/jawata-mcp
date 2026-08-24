@@ -78,8 +78,8 @@ class ExperienceToolCurationTest {
     @Test
     @SuppressWarnings("unchecked")
     void export_wipe_import_roundtrips_losslessly() {
-        String javaId = record("lesson", "java lesson", "com.example.Foo", null, "flaky test");
-        String rustId = record("failure_mode", "rust lesson", "gateway::forward", "rust", null);
+        String javaId = record("lesson", "a java lesson worth keeping", "com.example.Foo", null, "flaky test");
+        String rustId = record("failure_mode", "a rust lesson worth keeping", "gateway::forward", "rust", null);
         // Promote one so the CURRENT status (not the frozen body one) must survive.
         exec("promote", a -> a.put("id", javaId));
 
@@ -116,7 +116,7 @@ class ExperienceToolCurationTest {
 
     @Test
     void export_and_import_via_file(@TempDir Path dir) {
-        record("lesson", "to file", null, null, null);
+        record("lesson", "this one is filed for later", null, null, null);
         Path file = dir.resolve("export.json");
         Map<String, Object> export = data(exec("export", a -> a.put("path", file.toString())));
         assertEquals(true, export.get("written"));
@@ -130,8 +130,8 @@ class ExperienceToolCurationTest {
 
     @Test
     void export_filters_by_status() {
-        String keep = record("lesson", "stays candidate", null, null, null);
-        String promoted = record("lesson", "gets accepted", null, null, null);
+        String keep = record("lesson", "this one stays a candidate", null, null, null);
+        String promoted = record("lesson", "this one gets accepted later", null, null, null);
         exec("promote", a -> a.put("id", promoted));
         Map<String, Object> export = data(exec("export", a -> a.put("status", "candidate")));
         assertEquals(1, export.get("count"));
@@ -143,8 +143,8 @@ class ExperienceToolCurationTest {
     @Test
     @SuppressWarnings("unchecked")
     void list_filters_and_includes_superseded() {
-        record("lesson", "a candidate", "com.example.A", null, null);
-        String gone = record("lesson", "superseded one", "com.example.B", null, null);
+        record("lesson", "this one is only a candidate", "com.example.A", null, null);
+        String gone = record("lesson", "this one is superseded by another", "com.example.B", null, null);
         exec("promote", a -> { a.put("id", gone); a.put("status", "superseded"); });
 
         Map<String, Object> candidates = data(exec("list", a -> a.put("status", "candidate")));
@@ -161,11 +161,11 @@ class ExperienceToolCurationTest {
 
     @Test
     void list_format_text_renders_flat_lines() {
-        record("lesson", "line one", "com.example.A", null, null);
+        record("lesson", "the first line of the pair", "com.example.A", null, null);
         ToolResponse r = exec("list", a -> a.put("format", "text"));
         assertTrue(r.isSuccess());
         String text = (String) r.getData();
-        assertTrue(text.contains("[lesson/candidate] line one @ com.example.A"), text);
+        assertTrue(text.contains("[lesson/candidate] the first line of the pair @ com.example.A"), text);
     }
 
     @Test
