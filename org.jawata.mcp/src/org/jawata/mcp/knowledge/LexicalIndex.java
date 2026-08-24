@@ -104,19 +104,34 @@ public final class LexicalIndex {
     }
 
     /**
-     * The words a row is matched on: its summary, its symptoms, and its body
-     * detail — everything a human wrote about it.
+     * The words a row is matched on: its situation, its summary, its symptoms,
+     * and its body detail — everything a human wrote about it.
      *
      * <p>The body is included because the older rule searched only the summary,
      * so a note whose explanation lived in its detail was unmatchable by any
      * word that explanation used.</p>
+     *
+     * <p>The SITUATION is included because it is the field the 28c form ranks
+     * applicability by — and this lane could not see it. Found live: a question
+     * that paraphrased an entry's situation nearly verbatim missed the top 8
+     * while eight unrelated entries filled it, because every shared word lived
+     * in the one column this method skipped. The meaning lane already embeds
+     * the situation ({@code EmbeddingService.documentOf}); a word lane that
+     * reads a different field set silently disagrees with it on exactly the
+     * rows where the situation carries the match.</p>
      */
     public static String textOf(StoredEntry e) {
         if (e == null) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
+        if (e.facets() != null && e.facets().situation() != null) {
+            sb.append(e.facets().situation());
+        }
         if (e.summary() != null) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
             sb.append(e.summary());
         }
         if (e.symptoms() != null) {

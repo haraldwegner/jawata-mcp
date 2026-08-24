@@ -31,10 +31,19 @@ public record EmbedderIdentity(String model, int dim, int version) {
      * v2 adds {@code situation} to the document, so every v1 vector was computed from
      * text that no longer describes its row.
      *
+     * <p>v3 (Sprint 28c D13): the row is embedded PER FIELD as well as whole —
+     * {@code embedding_situation}, {@code embedding_summary} and
+     * {@code embedding_details} beside the composite. The bump is what fills them:
+     * the backfill selects rows whose stored identity differs from the current one,
+     * so without it every row upgraded from schema v10 would keep its
+     * current-identity composite vector, be passed over forever, and leave all three
+     * lanes null — while rows written after the change got them. Two populations,
+     * one ranked on three lanes and one on none, with nothing to report it.</p>
+     *
      * <p>v2 (Sprint 28c): {@code EmbeddingService.documentOf} = situation, summary,
      * details. v1: summary, details.</p>
      */
-    public static final int CURRENT_VERSION = 2;
+    public static final int CURRENT_VERSION = 3;
 
     /** The bundled checkpoint's name, as the model registry spells it. */
     public static final String MINILM_L6_V2 = "sentence-transformers/all-MiniLM-L6-v2";

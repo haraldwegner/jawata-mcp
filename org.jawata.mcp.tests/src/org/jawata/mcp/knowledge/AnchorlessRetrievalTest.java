@@ -1,7 +1,9 @@
 package org.jawata.mcp.knowledge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -180,6 +182,110 @@ class AnchorlessRetrievalTest {
                     + " from EmbeddingService.documentOf and this falls to 3 of 5, so the"
                     + " field is doing real work rather than riding along. Missed:\n  "
                     + String.join("\n  ", missed));
+        }
+    }
+
+    /**
+     * D13 — RELEVANCE IS THE ONLY RANKING KEY, measured through the store.
+     *
+     * <p>Harald's ruling, and the reason the merge was rebuilt: <i>"Why should a
+     * pattern answer have an outcome which fits better when it doesn't fit the
+     * topic at all? Then this is a design flaw."</i> An entry's outcome and its
+     * origin are DISPLAY facts. They may be read on the way out — a candidate
+     * carries its outcome so a human can judge it — and they may never move it up
+     * or down the list.</p>
+     *
+     * <p>{@link RelevanceMerge} makes that structural: outcome and origin are not
+     * parameters of it, so ranking on them would need a wider signature. This
+     * asserts the same thing where it is actually observable — two entries with
+     * identical text and opposite outcomes and origins land in the same order,
+     * with the same scores, whichever way round they are written.</p>
+     *
+     * <p><b>What is deliberately NOT claimed here: size.</b> A longer body really
+     * does change a row's ranking, because it changes what the text means to a
+     * vector and how BM25 normalises its length. That is relevance doing its job,
+     * not a size preference. What the old ranking had — and what is gone — was
+     * document size entering as an unbounded BM25 magnitude that no cosine could
+     * outweigh.</p>
+     */
+    @Test
+    void the_outcome_and_the_origin_of_an_entry_do_not_move_it_in_the_ranking()
+            throws Exception {
+        JsonNode fx = fixture();
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            seedDistractors(store, fx);
+            String situation = "when a partially filled order is amended mid-session";
+            String summary = "replace the remaining quantity, never the original";
+
+            // Same words, opposite verdicts and origins. If either were a ranking
+            // input, these two could not tie.
+            String worked = store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", summary, Confidence.HIGH).build())
+                .situation(situation).verdict("worked").provenanceKind("recorded")
+                .form(1).build());
+            String failed = store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", summary, Confidence.HIGH).build())
+                .situation(situation).verdict("failed_avoid").provenanceKind("catalog")
+                .form(1).build());
+
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> candidates =
+                (List<Map<String, Object>>) retrieval.nominate(
+                    "a partially filled order is amended mid-session",
+                    ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
+
+            Map<String, Object> a = candidates.stream()
+                .filter(c -> worked.equals(c.get("id"))).findFirst().orElseThrow(
+                    () -> new AssertionError("the 'worked' twin was not nominated: " + candidates));
+            Map<String, Object> b = candidates.stream()
+                .filter(c -> failed.equals(c.get("id"))).findFirst().orElseThrow(
+                    () -> new AssertionError("the 'failed' twin was not nominated: " + candidates));
+
+            assertEquals(a.get("scores"), b.get("scores"),
+                "two entries with identical text scored differently, so something other "
+                    + "than proximity is in the ranking — the outcome and the origin are "
+                    + "the only things that differ between them");
+
+            // And the display facts ARE still carried, because a candidate nobody
+            // can judge is not a shortlist. Dropping them to satisfy the rule above
+            // would trade a ranking defect for a blind one.
+            assertEquals("worked", a.get("outcome"));
+            assertEquals("failed_avoid", b.get("outcome"));
+        }
+    }
+
+    /**
+     * Every candidate says WHY it is where it is.
+     *
+     * <p>This sprint spent a day on a ranking regression whose cause was one lane
+     * reading a different field set from its twin, and no response carried enough
+     * to see it. The four per-dimension numbers plus the total are what make the
+     * next such question answerable by reading rather than by bisecting.</p>
+     */
+    @Test
+    void every_candidate_carries_the_four_scores_that_placed_it() throws Exception {
+        JsonNode fx = fixture();
+        try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
+            seed(store, fx, false);
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> candidates =
+                (List<Map<String, Object>>) retrieval.nominate(
+                    fx.get("positive_questions").get(0).get("question").asText(),
+                    ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
+
+            assertFalse(candidates.isEmpty(), "precondition: the question nominates something");
+            for (Map<String, Object> c : candidates) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> scores = (Map<String, Object>) c.get("scores");
+                assertNotNull(scores, "a candidate with no scores cannot be interrogated: " + c);
+                for (String lane : new String[] {"situation", "summary", "details",
+                                                 "words", "total"}) {
+                    assertNotNull(scores.get(lane),
+                        "the " + lane + " dimension is missing from " + scores);
+                }
+            }
         }
     }
 

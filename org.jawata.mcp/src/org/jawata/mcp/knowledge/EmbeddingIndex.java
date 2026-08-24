@@ -222,7 +222,14 @@ public final class EmbeddingIndex {
         if (max <= 0) {
             return 0;
         }
-        record Pending(String id, String text) {
+        // Sprint 28c D13: the composite AND the three per-field lane texts, carried
+        // together from the one row read. Splitting them into a second pass would
+        // re-open the disagreement documentOf's contract forbids — the composite and
+        // the lanes must be computed from the same read of the same row, or an entry
+        // whose summary changed between the two passes ends up with a composite
+        // describing one version and a summary lane describing another.
+        record Pending(String id, String text, String situation, String summary,
+                       String details) {
         }
         List<Pending> pending = new ArrayList<>();
         // D3 MEASUREMENT ARM (Sprint 27a Stage 4b): -Djawata.embed.symptoms=true
@@ -266,11 +273,19 @@ public final class EmbeddingIndex {
                     // fifth column to that arithmetic is how the wrong column gets
                     // embedded, silently, with every test still green.
                     String situation = withSituation ? rs.getString("situation") : null;
+                    String summary = rs.getString(2);
                     pending.add(new Pending(rs.getString(1),
                         symptoms == null || symptoms.isBlank()
-                            ? EmbeddingService.documentOf(situation, rs.getString(2), details)
-                            : EmbeddingService.documentWithSymptoms(situation, rs.getString(2),
-                                details, List.of(symptoms))));
+                            ? EmbeddingService.documentOf(situation, summary, details)
+                            : EmbeddingService.documentWithSymptoms(situation, summary,
+                                details, List.of(symptoms)),
+                        // The lanes are experience_entry's alone: tool_experience has
+                        // no summary/details of its own — its single text column IS
+                        // its situation — so giving it lanes would mean embedding one
+                        // field three times and calling the result three signals.
+                        withSituation ? situation : null,
+                        withSituation ? summary : null,
+                        withSituation ? details : null));
                 }
             }
         } catch (SQLException e) {
@@ -280,7 +295,20 @@ public final class EmbeddingIndex {
         }
 
         int done = 0;
-        String update = "UPDATE " + table + " SET embedding = ?, embedder_identity = ?"
+        // Sprint 28c D13: the lanes are written in the SAME statement as the
+        // composite and the identity. That is deliberate rather than tidy — the
+        // identity is what tells the next backfill "this row is done", so a
+        // separate lane update could fail after the identity was already
+        // written, and the row would be skipped forever with its lanes empty.
+        // One statement means the row either has all four vectors and the
+        // identity, or has neither.
+        StringBuilder sets = new StringBuilder("embedding = ?, embedder_identity = ?");
+        if (withSituation) {
+            for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
+                sets.append(", ").append(lane.column()).append(" = ?");
+            }
+        }
+        String update = "UPDATE " + table + " SET " + sets
             + " WHERE " + idColumn + " = ?";
         for (Pending p : pending) {
             float[] v = embeddings.embed(p.text());
@@ -290,7 +318,19 @@ public final class EmbeddingIndex {
             try (PreparedStatement ps = store.sharedConnection().prepareStatement(update)) {
                 ps.setBytes(1, EmbeddingService.toBytes(v));
                 ps.setString(2, identity);
-                ps.setString(3, p.id());
+                int at = 3;
+                if (withSituation) {
+                    for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
+                        // A lane whose field is absent gets a NULL vector, not a
+                        // zero one: RelevanceMerge reads "no vector" as "this row
+                        // declares nothing here" and scores it zero, while a
+                        // zero-filled vector would be a real point in the space
+                        // that some questions land near by accident.
+                        ps.setBytes(at++, EmbeddingService.toBytes(embeddings.embed(
+                            lane.documentFor(p.situation(), p.summary(), p.details()))));
+                    }
+                }
+                ps.setString(at, p.id());
                 ps.executeUpdate();
                 done++;
             } catch (SQLException e) {
@@ -298,6 +338,72 @@ public final class EmbeddingIndex {
             }
         }
         return done;
+    }
+
+    /**
+     * Sprint 28c D13 — per-lane cosine for one cue, in ONE table scan.
+     *
+     * <p>Three scans would read the same rows three times to compute three
+     * numbers from the same question vector; the cue is embedded once and each
+     * row's three vectors are compared against it as the row goes past.</p>
+     *
+     * <p>Unfloored and uncapped, like {@link #toolExperienceProfile} and for the
+     * same reason: the caller ({@link RelevanceMerge}, through
+     * {@code ExperienceRetrieval}) weighs the lanes against each other, and
+     * pre-truncating one lane would hide from that decision exactly the
+     * distribution it is made against. A row missing a lane's vector is simply
+     * absent from that lane's map, which the merge scores as zero.</p>
+     *
+     * <p>Rejected and superseded rows are excluded here as everywhere else: a
+     * note the user threw away may not come back through a new door. This lane
+     * IS a new door, which is why the filter is repeated rather than assumed.</p>
+     *
+     * @return one map per lane, keyed as {@link EmbeddingService.Lane}; empty maps
+     *     when the embedder is unavailable or the cue is blank — the degrade path
+     */
+    public java.util.Map<EmbeddingService.Lane, java.util.Map<String, Double>> entryLaneScores(
+            String cue) {
+        java.util.Map<EmbeddingService.Lane, java.util.Map<String, Double>> out =
+            new java.util.EnumMap<>(EmbeddingService.Lane.class);
+        for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
+            out.put(lane, new java.util.LinkedHashMap<>());
+        }
+        float[] q = embeddings.embed(cue);
+        if (q == null) {
+            return out;
+        }
+        EmbeddingService.Lane[] lanes = EmbeddingService.Lane.values();
+        StringBuilder cols = new StringBuilder("id");
+        for (EmbeddingService.Lane lane : lanes) {
+            cols.append(", ").append(lane.column());
+        }
+        String sql = "SELECT " + cols + " FROM experience_entry"
+            + " WHERE embedder_identity = ?"
+            + " AND status NOT IN ('rejected', 'superseded')";
+        try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
+            ps.setString(1, currentIdentity("experience_entry"));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String id = rs.getString(1);
+                    for (int i = 0; i < lanes.length; i++) {
+                        float[] v = EmbeddingService.fromBytes(rs.getBytes(i + 2));
+                        if (v != null) {
+                            out.get(lanes[i]).put(id, EmbeddingService.cosine(q, v));
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            // Empty lanes, and SAID SO. The caller degrades to the word lane,
+            // which is a supported state; what must never happen is this
+            // returning quietly and the ranking that follows being read as a
+            // meaning-weighted one.
+            log.error("per-lane nomination FAILED; this question is ranked on words alone", e);
+            for (EmbeddingService.Lane lane : lanes) {
+                out.get(lane).clear();
+            }
+        }
+        return out;
     }
 
     /**

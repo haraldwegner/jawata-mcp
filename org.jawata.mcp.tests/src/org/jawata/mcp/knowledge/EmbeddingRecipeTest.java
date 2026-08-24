@@ -3,6 +3,7 @@ package org.jawata.mcp.knowledge;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.security.MessageDigest;
@@ -50,7 +51,30 @@ class EmbeddingRecipeTest {
      */
     private static final Map<Integer, String> RECIPE_DIGEST_BY_VERSION = Map.of(
         1, sha256(SUMMARY + " " + DETAILS),
-        2, sha256(SITUATION + " " + SUMMARY + " " + DETAILS));
+        2, sha256(SITUATION + " " + SUMMARY + " " + DETAILS),
+        // v3 (Sprint 28c D13) repeats v2's digest, and that is the honest entry
+        // rather than a copy-paste: documentOf is UNCHANGED. What changed is that
+        // the pipeline now also produces three PER-FIELD vectors per row, pinned
+        // by their own digests below. The version had to move anyway — the
+        // backfill selects on identity, so without a bump every existing row
+        // would keep its current-identity composite, never be revisited, and
+        // leave all three lanes empty forever.
+        3, sha256(SITUATION + " " + SUMMARY + " " + DETAILS));
+
+    /**
+     * The LANE recipes, per identity version — the half {@code documentOf}'s
+     * digest cannot see.
+     *
+     * <p>Absent before v3, because the lanes did not exist. A version that
+     * produces lanes must pin what each lane embeds, for exactly the reason the
+     * composite is pinned: change which field a lane reads without moving the
+     * version, and rows embedded under the old assignment keep their identity,
+     * are never re-embedded, and are scored against rows embedded under the new
+     * one — with the situation lane holding summaries on half the corpus and
+     * nothing anywhere reporting it.</p>
+     */
+    private static final Map<Integer, String> LANE_DIGEST_BY_VERSION = Map.of(
+        3, sha256(SITUATION + "|" + SUMMARY + "|" + DETAILS));
 
     private static String sha256(String s) {
         try {
@@ -88,6 +112,51 @@ class EmbeddingRecipeTest {
                 + "add its digest here — otherwise vectors computed from the old text "
                 + "keep their current identity, are never re-embedded, and get scored "
                 + "against vectors computed from the new one.");
+    }
+
+    /**
+     * THE SAME COUPLING, for the per-field lanes.
+     *
+     * <p>Swap two branches of {@code Lane.documentFor} — situation reading the
+     * summary and back — and this goes red naming both. Without it that swap is
+     * invisible: the composite digest above is unaffected, every row still gets
+     * three vectors, every count still reconciles, and retrieval simply weighs
+     * the wrong field at 0.6 forever.</p>
+     */
+    @Test
+    void the_lane_recipes_and_the_embedder_identity_move_together() {
+        String expected = LANE_DIGEST_BY_VERSION.get(EmbedderIdentity.CURRENT_VERSION);
+        assertNotNull(expected,
+            "EmbedderIdentity.CURRENT_VERSION is " + EmbedderIdentity.CURRENT_VERSION
+                + " and LANE_DIGEST_BY_VERSION has no row for it. A version that "
+                + "produces per-field vectors must pin what each lane embeds.");
+
+        assertEquals(expected,
+            sha256(EmbeddingService.Lane.SITUATION.documentFor(SITUATION, SUMMARY, DETAILS)
+                + "|" + EmbeddingService.Lane.SUMMARY.documentFor(SITUATION, SUMMARY, DETAILS)
+                + "|" + EmbeddingService.Lane.DETAILS.documentFor(SITUATION, SUMMARY, DETAILS)),
+            "a lane embeds a DIFFERENT field than identity version "
+                + EmbedderIdentity.CURRENT_VERSION + " describes — so rows written "
+                + "before the change keep their identity, are never re-embedded, and "
+                + "are ranked against rows whose lanes hold different fields");
+    }
+
+    /**
+     * An absent field yields NO lane text, so it yields no vector and
+     * {@code RelevanceMerge} scores it zero.
+     *
+     * <p>The alternative — an empty string — would have to mean "absent" in
+     * three places instead of one, and the one place that forgot would embed
+     * whitespace into a real point in the space that some questions land near.</p>
+     */
+    @Test
+    void a_field_the_entry_does_not_have_produces_no_lane_text() {
+        assertNull(EmbeddingService.Lane.SITUATION.documentFor(null, SUMMARY, DETAILS),
+            "a legacy row declares no situation; that lane must be absent, not blank");
+        assertNull(EmbeddingService.Lane.DETAILS.documentFor(SITUATION, SUMMARY, "   "),
+            "and whitespace is absence too — it embeds to a point, not to nothing");
+        assertEquals(SUMMARY, EmbeddingService.Lane.SUMMARY.documentFor(null, SUMMARY, null),
+            "while a field that IS there is embedded as itself, not as a composite");
     }
 
     /** The situation is in the document, and leads it: an anchorless question is a situation. */

@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 10;
+    static final int LATEST = 11;
 
     private SchemaMigrations() {
     }
@@ -103,6 +103,9 @@ final class SchemaMigrations {
         }
         if (from < 10) {
             migrateToV10(conn);
+        }
+        if (from < 11) {
+            migrateToV11(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -538,6 +541,54 @@ final class SchemaMigrations {
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS provenance_kind VARCHAR(32)");
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS form INT");
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS evidence_dead BOOLEAN");
+        }
+    }
+
+    /**
+     * v11 — Sprint 28c D13, one vector per FIELD instead of one per entry.
+     *
+     * <p>Retrieval learns to weigh <i>where</i> a question matched. Until now an
+     * entry was reduced to a single vector over situation + summary + details
+     * concatenated, so a question that paraphrased an entry's SITUATION almost
+     * verbatim scored no differently from one that brushed its body — the three
+     * fields were averaged into each other before anything could tell them
+     * apart. These three columns hold the same entry embedded per field, and
+     * {@link RelevanceMerge} weighs them.</p>
+     *
+     * <p><b>Three columns, not a per-field row in a side table, and not an
+     * identity suffix on one shared column.</b> Separate columns make the three
+     * embedding spaces impossible to mix by construction rather than by
+     * convention: no code path can write a summary vector where a situation
+     * vector is read, because they are different columns. The design addendum
+     * sketched a suffixed shared lane; that would have re-created, inside a
+     * single column, exactly the mixing {@code EmbedderIdentity} exists to
+     * forbid. The artifact is amended to match rather than left to disagree with
+     * the code.</p>
+     *
+     * <p><b>The rung alone fills nothing, which is why the identity is bumped
+     * with it.</b> An upgraded v10 row already carries a current-identity vector
+     * in {@code embedding}, and the backfill selects on identity — so it would
+     * pass over that row forever and the three lanes would stay null on every
+     * existing row while only new rows got them.
+     * {@code EmbedderIdentity.CURRENT_VERSION} goes to 3 in the same change,
+     * which is the mechanism that already exists for "our pipeline now produces
+     * different vectors for the same row", and {@code EmbeddingServiceTest} pins
+     * the pair so the bump cannot be forgotten.</p>
+     *
+     * <p>Additive and nullable, like v10: a lane is legitimately absent when the
+     * entry has no such field (a legacy row declares no situation) or when the
+     * embedder was unavailable at write time. {@link RelevanceMerge} scores an
+     * absent lane as zero and does not renormalise, so the absence costs the row
+     * rank rather than being papered over.</p>
+     */
+    private static void migrateToV11(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry "
+                + "ADD COLUMN IF NOT EXISTS embedding_situation VARBINARY(8192)");
+            s.execute("ALTER TABLE experience_entry "
+                + "ADD COLUMN IF NOT EXISTS embedding_summary VARBINARY(8192)");
+            s.execute("ALTER TABLE experience_entry "
+                + "ADD COLUMN IF NOT EXISTS embedding_details VARBINARY(8192)");
         }
     }
 

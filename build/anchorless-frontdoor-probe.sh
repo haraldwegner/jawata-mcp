@@ -160,6 +160,42 @@ if all("id" in json.dumps(s) for s in seeded) and len(seeded) == len(fx["records
 else:
     bad("seeding did not return an id for every record")
 
+# --- 1b. wait for the meaning lane to converge before asking anything.
+#        Vectors arrive by an async backfill, and this store is no longer
+#        twelve rows: the catalogue seeds itself at boot, so a question asked
+#        one second after seeding races the backfill — some rows are scored by
+#        meaning, the rest are invisible to it, and the "ranking" measured is
+#        whichever rows happened to have vectors yet. The probe measures the
+#        converged contract; the mid-backfill state is the degrade path and has
+#        its own checks in the end-to-end gate.
+#        THE BUDGET IS MEASURED, NOT GUESSED. On this machine a fresh store
+#        seeds 187 catalogue patterns and the backfill converges them in ~172 s
+#        (four vectors per row: the composite plus three per-field lanes). The
+#        ceiling is set well above that so a loaded machine is slow rather than
+#        red, and progress is printed so a STALL is distinguishable from
+#        slowness — "it never finished" and "it finished in 300 s" are different
+#        findings and a bare timeout reports them identically.
+import time
+converged = False
+last = -1
+for attempt in range(240):
+    st = call("experience", {"kind": "stats"}).get("data", {})
+    lanes = st.get("embedding", {})
+    lane = lanes.get("experience_entry") if isinstance(lanes, dict) else None
+    if isinstance(lane, dict) and lane.get("total", 0) > 0 \
+            and lane.get("embedded") == lane.get("total"):
+        converged = True
+        ok("the meaning lane converged before the questions (%d of %d rows embedded, "
+           "after ~%d s)" % (lane["embedded"], lane["total"], attempt * 2))
+        break
+    if isinstance(lane, dict) and lane.get("embedded", 0) != last:
+        last = lane.get("embedded", 0)
+        print("    ... embedding %d/%d" % (last, lane.get("total", 0)), flush=True)
+    time.sleep(2)
+if not converged:
+    bad("the meaning lane never converged (stalled at %d embedded) — every ranking "
+        "below would measure a race, not the scorer" % last)
+
 def candidates(answer):
     d = answer.get("data", answer)
     for key in ("candidates", "entries", "nominees"):

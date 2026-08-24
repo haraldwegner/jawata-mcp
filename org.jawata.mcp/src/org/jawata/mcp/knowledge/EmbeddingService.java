@@ -166,6 +166,57 @@ public final class EmbeddingService {
     }
 
     /**
+     * Sprint 28c D13 — the three fields an entry is embedded by, separately.
+     *
+     * <p>An enum rather than three loose methods so that every path which writes
+     * vectors iterates the SAME set. The failure it forecloses is specific and
+     * has happened here before in its composite form: the write path and the
+     * backfill computing different text for the same row, so an entry's vector
+     * depended on which path touched it last. A loop over {@code Lane.values()}
+     * cannot fall out of step with another loop over {@code Lane.values()}; two
+     * hand-written triples can.</p>
+     *
+     * <p>These lanes exist BESIDE {@link #documentOf}'s composite, not instead of
+     * it: the composite still serves ordinary recall, and the lanes serve the
+     * anchorless nomination that needs to know WHICH field a question met.</p>
+     */
+    public enum Lane {
+
+        /** The condition the entry applies under — the field applicability is declared in. */
+        SITUATION,
+
+        /** The one-line claim. */
+        SUMMARY,
+
+        /** The body. */
+        DETAILS;
+
+        /**
+         * The text THIS lane embeds, or {@code null} when the entry has no such
+         * field.
+         *
+         * <p>Null rather than an empty string, deliberately: {@link #embed}
+         * returns null for blank text, so a missing field yields a missing
+         * vector and {@link RelevanceMerge} scores it zero. An empty string
+         * would embed to nothing anyway, but "" and null would then have to mean
+         * the same thing in three places instead of one.</p>
+         */
+        public String documentFor(String situation, String summary, String details) {
+            String raw = switch (this) {
+                case SITUATION -> situation;
+                case SUMMARY -> summary;
+                case DETAILS -> details;
+            };
+            return raw == null || raw.isBlank() ? null : raw.trim();
+        }
+
+        /** The column this lane's vector lives in on {@code experience_entry}. */
+        public String column() {
+            return "embedding_" + name().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
+
+    /**
      * D3 measurement arm (Sprint 27a Stage 4b): situation + summary + symptom
      * prose + details. Reaches production ONLY if Harald adopts on the
      * cleaned-data numbers; until then {@link #documentOf} is the shipped

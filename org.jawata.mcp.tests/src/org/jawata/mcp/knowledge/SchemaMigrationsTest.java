@@ -84,13 +84,23 @@ class SchemaMigrationsTest {
      *
      * <p>This is not hypothetical and it is not a fresh install: the user's own store
      * was migrated by an abandoned build that created three extra tables and three
-     * extra columns. It reports version 10, so the rescue's rung never runs on it, and
-     * it therefore has a shape no fresh install can produce — permanently.</p>
+     * extra columns. It reports version 10, so it has a shape no fresh install can
+     * produce — permanently.</p>
      *
      * <p>Every other case in this class starts from a schema the current ladder built.
      * This one starts from a schema it did NOT build, which is exactly why it was the
      * missing case: the store the real migration must reconcile counts against is the
      * one no test described.</p>
+     *
+     * <p><b>What changed at v11, and why it is a strengthening rather than a
+     * relaxation.</b> While v10 was LATEST there was nowhere for such a store to go,
+     * and "the rung must not re-run on a wider store" was the whole claim. v11 gives
+     * the ladder a real next step, and this store must take it — otherwise the one
+     * store in the world with the abandoned shape is also the one whose rows can
+     * never be lane-ranked. So the claim splits: the LADDER advances it by exactly
+     * one rung, and the abandoned build's own columns and tables are still not
+     * touched. A migration that helped itself to the leftovers would be this product
+     * destroying data it did not create.</p>
      */
     @Test
     void a_store_already_at_a_wider_v10_is_readable_and_untouched(@TempDir Path dir)
@@ -98,8 +108,14 @@ class SchemaMigrationsTest {
         createV1Fixture(dir, "wide-1");
         addLegacyRow(dir, "wide-2");
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            assertEquals(2L, store.count(), "precondition: the ladder built a current v10");
+            assertEquals(2L, store.count(), "precondition: the ladder built a store");
         }
+        // Put it back at v10, because that is where the abandoned build LEFT it —
+        // opening it here climbs the current ladder, and a fixture that has already
+        // reached LATEST cannot reproduce a store stranded at an older rung.
+        rewindToV10(dir);
+        assertEquals("10", scalar(dir, "SELECT version FROM schema_version"),
+            "precondition: the fixture is genuinely at v10, where the abandoned build left it");
         // Widen it the way the abandoned build did: three extra columns and the three
         // tables this rung deliberately does not create.
         try (Connection c = connect(dir); Statement s = c.createStatement()) {
@@ -115,10 +131,10 @@ class SchemaMigrationsTest {
             java.util.Map<String, Object> report =
                 SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
             assertEquals(10, report.get("from"), "it already reports v10");
-            assertEquals(10, report.get("to"), "so there is nowhere to migrate to");
-            assertEquals(false, report.get("migrated"),
-                "and the rung must NOT run — re-running it on a wider store is how a "
-                    + "migration turns into a mutation nobody asked for");
+            assertEquals(11, report.get("to"),
+                "the ladder advances it by exactly ONE rung — v10 must not re-run on a "
+                    + "wider store, which is how a migration turns into a mutation "
+                    + "nobody asked for");
         }
 
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
@@ -132,6 +148,26 @@ class SchemaMigrationsTest {
             assertTrue(tableExists(dir, table),
                 table + " is left in place — the leftovers are inert, and DROPPING them "
                     + "would be this product destroying data it did not create");
+        }
+        // The abandoned build's own COLUMNS survive too, for the same reason as its
+        // tables. Asserted separately because a rung that dropped them would leave
+        // the table list intact and still have destroyed three columns of somebody's
+        // store.
+        for (String column : new String[] {"verdict_version", "capability", "situation_scope"}) {
+            assertEquals("1", scalar(dir,
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS"
+                + " WHERE TABLE_NAME = 'EXPERIENCE_ENTRY' AND COLUMN_NAME = '"
+                + column.toUpperCase(java.util.Locale.ROOT) + "'"),
+                "the abandoned build's " + column + " is untouched by the v11 rung");
+        }
+        // And it DID gain what v11 adds: the one store in the world with this shape
+        // must not also be the one whose rows can never be lane-ranked.
+        for (String column : V11_COLUMNS) {
+            assertEquals("1", scalar(dir,
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS"
+                + " WHERE TABLE_NAME = 'EXPERIENCE_ENTRY' AND COLUMN_NAME = '"
+                + column.toUpperCase(java.util.Locale.ROOT) + "'"),
+                "the widened store gains " + column + " like any other v10 store");
         }
     }
 
@@ -202,6 +238,17 @@ class SchemaMigrationsTest {
                 table + " is NOT created by the rescue's v10 — the work it belongs to"
                     + " is out of this sprint, and schema for excluded work is dead schema");
         }
+        // Sprint 28c (v11): the three per-field vector lanes, on a fresh install too.
+        // Read as a COUNT rather than a value: whether a lane is populated depends
+        // on whether an embedder is present in this environment, which is not what
+        // this clause is about — it is about the columns existing at all.
+        for (String column : V11_COLUMNS) {
+            assertEquals("1", scalar(dir,
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS"
+                + " WHERE TABLE_NAME = 'EXPERIENCE_ENTRY' AND COLUMN_NAME = '"
+                + column.toUpperCase(java.util.Locale.ROOT) + "'"),
+                "v11 column " + column + " exists on a fresh store");
+        }
     }
 
     @Test
@@ -259,6 +306,11 @@ class SchemaMigrationsTest {
         "experience_snippet", "experience_embodiment", "advice_event"
     };
 
+    /** The columns v11 adds — the three per-field vector lanes (D13). */
+    private static final String[] V11_COLUMNS = {
+        "embedding_situation", "embedding_summary", "embedding_details"
+    };
+
     /**
      * Rewind a migrated store to v9 by removing exactly what v10 added.
      *
@@ -304,7 +356,12 @@ class SchemaMigrationsTest {
             java.util.Map<String, Object> report =
                 SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
             assertEquals(9, report.get("from"), "the rung ran FROM v9");
-            assertEquals(10, report.get("to"), "and TO v10");
+            // TO LATEST rather than to 10: a v9 store climbs every remaining rung in
+            // one call, so pinning the literal 10 here would have to be edited at
+            // every future rung and says nothing about v10 anyway. What proves the
+            // v10 rung itself ran is the V10_COLUMNS loop below — delete migrateToV10
+            // and that goes red while this line stays green.
+            assertEquals(SchemaMigrations.LATEST, report.get("to"), "and TO the latest rung");
             assertEquals(true, report.get("migrated"), "and it actually did something");
         }
 
@@ -341,6 +398,100 @@ class SchemaMigrationsTest {
                     .startsWith("experience-pre-migration-v9")),
                 "the ladder backs the file up BEFORE running a real migration — that zip is the "
                     + "only thing between a bad rung and every experience in the store");
+        }
+    }
+
+    /**
+     * Rewind a migrated store to v10 by removing exactly what v11 added, AND
+     * ageing the row's embedder identity to the version before the lanes.
+     *
+     * <p>The second half is the point. Dropping the columns alone would let the
+     * rung look successful while every existing row stayed lane-less forever:
+     * the backfill selects rows whose stored identity differs from the current
+     * one, so a row still carrying the CURRENT identity is never revisited. This
+     * reproduces what a real upgraded store looks like — columns absent, rows
+     * stamped by the previous build.</p>
+     */
+    private static void rewindToV10(Path dir) throws Exception {
+        try (Connection c = connect(dir); Statement s = c.createStatement()) {
+            for (String column : V11_COLUMNS) {
+                s.execute("ALTER TABLE experience_entry DROP COLUMN IF EXISTS " + column);
+            }
+            s.execute("UPDATE experience_entry SET embedder_identity = '"
+                + org.jawata.mcp.embed.EmbedderIdentity.MINILM_L6_V2 + "/384/v2'");
+            s.execute("UPDATE schema_version SET version = 10");
+        }
+    }
+
+    /**
+     * A v10 store gains the three lanes, and the rows it already held actually
+     * GET them.
+     *
+     * <p>The column half and the fill half are asserted together because either
+     * alone reads as success while the feature is dead: three empty columns rank
+     * exactly like no columns, and the whole point of D13 is that an entry's
+     * situation can be weighed apart from its body.</p>
+     *
+     * <p>Control: revert {@code EmbedderIdentity.CURRENT_VERSION} to 2 and this
+     * goes red — the fixture row's identity would equal the current one, the
+     * backfill would not select it, and its situation lane would stay null.</p>
+     */
+    @Test
+    void a_v10_store_gains_the_lane_columns_and_its_rows_are_re_embedded_into_them(
+            @TempDir Path dir) throws Exception {
+        String id;
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            id = store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson", "re-read the queue head before re-arming",
+                            Confidence.MEDIUM)
+                        .details("the head moves while the consumer is away")
+                        .build())
+                .status(ExperienceEntry.ACCEPTED)
+                .situation("when a consumer reconnects mid-batch")
+                .verdict("worked")
+                .provenanceKind("recorded")
+                .form(1)
+                .build());
+        }
+        rewindToV10(dir);
+        assertEquals("10", scalar(dir, "SELECT version FROM schema_version"),
+            "precondition: the store is genuinely at v10 before the rung runs");
+
+        try (Connection c = connect(dir)) {
+            java.util.Map<String, Object> report =
+                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
+            assertEquals(10, report.get("from"), "the rung ran FROM v10");
+            assertEquals(11, report.get("to"), "and TO v11");
+            assertEquals(true, report.get("migrated"), "and it actually did something");
+        }
+        for (String column : V11_COLUMNS) {
+            assertEquals("1", scalar(dir,
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS"
+                + " WHERE TABLE_NAME = 'EXPERIENCE_ENTRY' AND COLUMN_NAME = '"
+                + column.toUpperCase(java.util.Locale.ROOT) + "'"),
+                "v11 column " + column + " exists after the rung");
+        }
+
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1L, store.count(), "the rung is additive — the row survives");
+            assertEquals("re-read the queue head before re-arming",
+                store.get(id).get().get("summary"), "and nothing it held was rewritten");
+
+            EmbeddingIndex index = EmbeddingIndex.forStore(store);
+            if (index == null || !index.available()) {
+                // Not an abort dressed as a pass: with no embedder there is no
+                // vector to place in a lane, and the columns were asserted above.
+                return;
+            }
+            assertTrue(index.backfill(50) > 0,
+                "the aged identity is what makes the row STALE — without the version "
+                    + "bump the backfill selects nothing and the lanes stay empty");
+            for (String column : V11_COLUMNS) {
+                assertFalse(scalar(dir,
+                    "SELECT " + column + " FROM experience_entry WHERE id = '" + id + "'") == null,
+                    column + " is filled for a row that has that field — three empty "
+                        + "columns rank exactly like no columns at all");
+            }
         }
     }
 

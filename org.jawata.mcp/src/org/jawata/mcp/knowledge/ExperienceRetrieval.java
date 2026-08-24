@@ -736,6 +736,19 @@ public final class ExperienceRetrieval {
         return within(() -> nominateFromStore(question, out), out, budgetMillis);
     }
 
+    /**
+     * Three decimals for a score that rides into a response.
+     *
+     * <p>Not precision-shaving: these numbers exist to be READ by an agent
+     * weighing four lanes against each other, and 0.6123724356957945 spends
+     * context to say what 0.612 says. The stored vectors and the comparison are
+     * untouched — only the rendering rounds, so nothing ranks differently
+     * because of this.</p>
+     */
+    private static double round(double v) {
+        return Math.round(v * 1000.0) / 1000.0;
+    }
+
     private Map<String, Object> nominateFromStore(String question, Map<String, Object> out) {
         // The question is carried as the SYMPTOM cue: it is prose describing a
         // situation, which is exactly what that slot means. Reusing the existing
@@ -743,8 +756,21 @@ public final class ExperienceRetrieval {
         // would drift, and the sprint already has one rendering path that lapsed
         // while its twin kept the rules.
         RecallQuery q = new RecallQuery(null, null, null, question, null);
-        Map<String, Double> meaning = meaningScores(q);
         Map<String, Double> words = lexicalScores(q);
+
+        // D13: three cosines against three FIELDS, plus the word lane. The old
+        // ranking here added one cosine to one raw BM25 weight — 0..1 plus an
+        // unbounded number — so the sum was the word score with a rounding error
+        // attached and the meaning half could not move the order at all. That was
+        // invisible while the store held twelve rows and every row was a
+        // candidate; 187 catalogue entries made it the whole answer.
+        Map<EmbeddingService.Lane, Map<String, Double>> lanes = index == null
+            || !index.available() ? Map.of() : index.entryLaneScores(question);
+        Map<String, RelevanceMerge.Score> scores = RelevanceMerge.scoreAll(
+            lanes.get(EmbeddingService.Lane.SITUATION),
+            lanes.get(EmbeddingService.Lane.SUMMARY),
+            lanes.get(EmbeddingService.Lane.DETAILS),
+            words);
 
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
         for (StoredEntry e : store.all()) {
@@ -753,14 +779,19 @@ public final class ExperienceRetrieval {
             }
         }
 
-        // Meaning leads, words break ties. Neither is allowed to become a verdict:
+        // RELEVANCE ONLY. Nothing below reads an entry's outcome, its origin, its
+        // age or its size, and RelevanceMerge could not see them if it wanted to —
+        // they are not parameters of it. Nothing filters on score either:
         // AnalogyPolicy's own javadoc records that no threshold separates nonsense
-        // from an answer on this corpus, so nothing here filters on score — the
-        // caller judges, and an empty selection is the honest outcome.
+        // from an answer on this corpus, so the caller judges and an empty
+        // selection is the honest outcome.
+        final Map<String, RelevanceMerge.Score> ranking = scores;
         List<StoredEntry> ranked = new ArrayList<>(byId.values());
         ranked.sort(Comparator
-            .comparingDouble((StoredEntry e) ->
-                meaning.getOrDefault(e.id(), 0.0) + words.getOrDefault(e.id(), 0.0))
+            .comparingDouble((StoredEntry e) -> {
+                RelevanceMerge.Score s = ranking.get(e.id());
+                return s == null ? 0.0 : s.total();
+            })
             .reversed()
             .thenComparing(StoredEntry::id));
 
@@ -774,6 +805,19 @@ public final class ExperienceRetrieval {
             c.put("situation", e.facets().situation());
             c.put("principle", e.summary());
             c.put("outcome", e.facets().verdict());
+            // Why this one, and why here. A ranking nobody can interrogate is a
+            // ranking nobody can correct: this sprint spent a day on a regression
+            // whose cause was one lane reading a different field set from its
+            // twin, and no response carried enough to see it. The four parts say
+            // WHICH lane put the entry where it is.
+            RelevanceMerge.Score s = scores.get(e.id());
+            Map<String, Object> why = new LinkedHashMap<>();
+            why.put("situation", s == null ? 0.0 : round(s.situation()));
+            why.put("summary", s == null ? 0.0 : round(s.summary()));
+            why.put("details", s == null ? 0.0 : round(s.details()));
+            why.put("words", s == null ? 0.0 : round(s.words()));
+            why.put("total", s == null ? 0.0 : round(s.total()));
+            c.put("scores", why);
             candidates.add(c);
         }
 

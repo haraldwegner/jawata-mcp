@@ -34,6 +34,47 @@ class LexicalIndexTest {
             StoredEntry.Facets.NONE);
     }
 
+    /** The same row, but carrying a 28c situation — the field the word lane was blind to. */
+    private static StoredEntry withSituation(String id, String situation, String summary) {
+        return new StoredEntry(id, "lesson", null, null, null, "accepted", "medium",
+            "java", null, summary, List.of(), null, null, null, Instant.EPOCH, Map.of(),
+            new StoredEntry.Facets(situation, "worked", "recorded", 1, null));
+    }
+
+    /**
+     * Sprint 28c M1 — the situation is matched on.
+     *
+     * <p>Found live, not invented: a question that paraphrased an entry's
+     * situation nearly verbatim missed the top eight while unrelated entries
+     * filled it, because every word it shared lived in the one column
+     * {@code textOf} skipped. The meaning lane already embedded the situation, so
+     * the two lanes were reading different field sets and disagreed on exactly
+     * the rows where the situation carried the match.</p>
+     *
+     * <p>Here every shared word is in the situation and NOWHERE else — the
+     * summaries are deliberately about something different — so the row can be
+     * found only if that column is read. Control: remove the situation from
+     * {@code textOf} and this goes red with an empty result.</p>
+     */
+    @Test
+    void a_word_only_in_the_situation_still_matches() {
+        List<StoredEntry> corpus = List.of(
+            withSituation("declared",
+                "when a consumer reconnects midbatch and the queue head has moved",
+                "prefer the idempotent path"),
+            row("other-1", "prefer the idempotent path", null),
+            row("other-2", "prefer the idempotent path", null),
+            row("other-3", "prefer the idempotent path", null),
+            row("other-4", "prefer the idempotent path", null));
+
+        Map<String, Double> scores = LexicalIndex.score("a consumer reconnects midbatch", corpus);
+
+        assertEquals(List.of("declared"), ranked(scores),
+            "the only row whose SITUATION carries the question's words must be the only "
+                + "row scored — the word lane reads the field applicability is declared in, "
+                + "or it silently disagrees with the meaning lane that already does");
+    }
+
     /** Ids best-first, so a test can assert an ORDER rather than a raw score. */
     private static List<String> ranked(Map<String, Double> scores) {
         List<Map.Entry<String, Double>> es = new ArrayList<>(scores.entrySet());

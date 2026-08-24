@@ -583,8 +583,17 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // is written but not exported is a column that survives a
                     // round trip only by accident.
                     + "situation,verdict,provenance_kind,"
-                    + "form,evidence_dead) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "form,evidence_dead,"
+                    // Sprint 28c (v11): the three per-field vector lanes. Written
+                    // HERE and not left to the backfill, because the backfill
+                    // selects rows whose identity differs from the current one —
+                    // and this statement writes the CURRENT identity three lines
+                    // down. A row inserted with null lanes would therefore never
+                    // be revisited, and every newly recorded entry would sit
+                    // invisible to the lane-weighted ranking while older ones
+                    // ranked on all three.
+                    + "embedding_situation,embedding_summary,embedding_details) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -619,7 +628,23 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // place it went — mandatory at the front door and absent from
                 // the vector, so the anchorless question the store exists to
                 // answer could not reach the field written to answer it.
-                float[] vector = EmbeddingService.shared().embed(
+                //
+                // Sprint 28c (v11): a SOURCED write does not embed here. An entry
+                // now costs FOUR vectors — the composite and three lanes — and the
+                // catalogue seeds 187 entries during start-up, which measured 175
+                // SECONDS before the resident announced readiness. Bulk writes have
+                // no reader waiting on them: nobody queries the catalogue in the
+                // first seconds of a boot, and the background backfill converges
+                // them and says so. A direct put is the opposite case — an agent
+                // recording an experience expects to find it — so that path still
+                // embeds inline.
+                //
+                // Leaving embedder_identity NULL is what hands the row to the
+                // backfill: its selection is "no vector, no identity, or an
+                // identity that is not the current one". Writing an identity here
+                // without the vectors would strand the row forever.
+                boolean bulk = sourceRef != null;
+                float[] vector = bulk ? null : EmbeddingService.shared().embed(
                     EmbeddingService.documentOf(entry.situation(),
                                             str(factMap.get("summary")), str(entry.toMap().get("details"))));
                 ps.setBytes(20, EmbeddingService.toBytes(vector));
@@ -641,6 +666,20 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // of which bind it from the stored row, never from a builder. A
                 // setter here would be a door nothing in production walks through.
                 ps.setNull(26, java.sql.Types.BOOLEAN);
+                // Sprint 28c (v11): the three lanes, from the SAME field values
+                // the composite above was built from and in the enum's own order,
+                // so the write path and the backfill cannot drift apart on which
+                // text goes in which column. A lane whose field is absent binds
+                // NULL — "this entry declares nothing here" — never a zero
+                // vector, which would be a real point in the space that some
+                // questions land near by accident.
+                int laneAt = 27;
+                for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
+                    ps.setBytes(laneAt++, bulk ? null : EmbeddingService.toBytes(
+                        EmbeddingService.shared().embed(lane.documentFor(
+                            entry.situation(), str(factMap.get("summary")),
+                            str(entry.toMap().get("details"))))));
+                }
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
