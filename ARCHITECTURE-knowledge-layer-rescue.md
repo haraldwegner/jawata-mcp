@@ -982,3 +982,80 @@ door, a loaded workspace):
   entirely by the scalar path and would pass with M7 shipped inert. The second symptom can
   only arrive in the array — observed through the installed hook,
   never a unit test.
+
+## Addendum 2 — D9–D14, the store-quality amendment (2026-08-24)
+
+Design for the amendment signed at GATE 1 the same day. The nominate→decide read
+contract, the admission policy and the v10 write path are UNCHANGED — this addendum
+changes what fills the store, how entries are scored, and adds the usage flow. The
+design-precedes-code obligation in the spec is discharged by this section.
+
+### The picture
+
+```text
+                    FOLDING (agent work, files, git-reviewable)
+  194 md files ──> story files (1 story = 1 file) ──> cold-reader QA ──> stamp
+                                                                          │
+  CUTOVER: archive-export + file backup ─ wipe ─┐                         │
+                                                ▼                         ▼
+                                          H2 store  <── reseed gate (stamp only)
+                                                │        + catalogue loader (built)
+              ┌─────────────────────────────────┤
+              ▼                                 ▼
+        RETRIEVAL (D13)                   USAGE FLOW (D14)
+  3 vectors/entry: situation,         shown/chosen counters + per-query
+  summary, details — weighted sum;    demand record; hook gains a decide
+  BM25 full text = 4th signal +       step + session dedup; review seat
+  degrade path; relevance ONLY        (like /report) reads sweep verbs,
+                                      deletes on user's yes, exports first
+```
+
+### Seams and owners
+
+- **`EmbeddingService`** — three per-field document compositions (situation / summary
+  / details), each with its OWN identity suffix (the existing recipe-identity
+  mechanism; spaces never mix). `EmbeddingIndex` stores per-field lanes — the lane
+  column already exists (`experience_entry` / `tool_experience`); per-field lanes
+  extend the same key, no new table.
+- **`ExperienceRetrieval.nominateFromStore`** — the weighted merge lives here and
+  nowhere else: `w_sit·cos + w_sum·cos + w_det·cos + w_words·bm25'` (prior 0.6 /
+  0.3 / 0.1; BM25 normalised before summing — the current raw sum mixes scales and
+  is corrected here). Per-dimension scores ride each candidate map. `LexicalIndex
+  .textOf` gains the situation column (drafted, uncommitted).
+- **`EntryForm` / a new `StoryTemplate`** — the template's per-field conditions as
+  data the QA prompt and the gate share; the reseed gate checks the STAMP
+  deterministically (`reviewed:` frontmatter), never judges content.
+- **`ExperienceMaintenance.loadSources`** — unchanged crawl mechanics; the reseed
+  path adds the stamp check and drops nothing silently (the loud-skip rule holds).
+- **NEW `UsageLedger`** (knowledge pkg) — shown/chosen per entry id, question +
+  chosen? per query. Writers: the render path (shown), `decide` (chosen), the hook
+  judge. Readers: the review-sweep verb (two lists) — ranking NEVER reads it.
+- **`ExperienceTool`** — verbs added: `review_sweep` (the two lists), `delete`
+  (targeted, by ids, archive-exports first — prune untouched), the existing
+  `record` gains `origin_client` from the session's MCP clientInfo.
+- **jawata-studio** — `/memorize` skill source rewritten (story extraction +
+  cold-reader step + refuse-noise + full echo + progress→file-only); NEW review
+  seat generated like `/report`; hook binary: multi-cue single ask (D8) + judge +
+  session dedup.
+
+### Must NOT be touched
+
+`AdmissionPolicy`'s derived regexes; the nominate→decide response contracts and
+honesty rules; `recoverOrphans`; the catalogue loader's identity scheme
+(`source_ref` slug-only + content hash); v1–v10 schema rungs.
+
+### Migration order (each step compile- and gate-verified)
+
+M1 word-lane situation fix (drafted) → M2 per-field vector lanes + recipe identities
+→ M3 weighted merge + per-dimension scores in responses → M4 `UsageLedger` + verbs →
+M5 hook: multi-cue + judge + dedup → M6 template + QA tooling + /memorize rework →
+M7 folding rounds (0, 1, 2 — content work, not code) → M8 catalogue loader relabel
+(reference, no verdict) → M9 review seat → M10 cutover (procedure, not code).
+
+### End-state test surface
+
+Environment-independent: template/gate/ledger/merge unit + in-framework suites; the
+front-door e2e grows one promise per capability (dry-run twice, judge, dedup, sweep,
+delete-with-export, origin_client). Per-environment: deployed-skill checks after
+redeploy (/memorize, review seat). Reality-only: Round-0/2 probes on the reseeded
+store on the installed build with Harald-reviewed questions; the cutover itself.
