@@ -172,6 +172,26 @@ reviews an agent's messages before the human sees them"* is concrete AND readabl
 by a stranger. Name the thing in plain terms; do not name it by its house name,
 and do not replace it with its role.
 
+### Name the vendor, or describe the shape — whichever the claim follows from
+
+Two corrections on consecutive entries looked contradictory and are not.
+
+*"Extended-hours orders must be DAY or GTC limit"* is **Alpaca's rule** — their API
+refuses the order. The situation says Alpaca, because a reader on another venue is
+not in it.
+
+*"A translation layer must never initiate"* follows from the **delivery
+architecture**, not from the vendor. So the situation describes the shape:
+*"the broker uses websocket for order acknowledgements and executions and has a
+REST API — the acknowledgement for a cancel is missing…"* Anyone on that shape is
+in it, whoever their broker is.
+
+**The test:** if the claim would still be true on a different vendor with the same
+architecture, describe the architecture. If it would not, name the vendor. Getting
+this backwards fails in both directions — a vendor rule written generally sends the
+wrong reader down a path their venue does not have, and an architectural rule
+pinned to one vendor never fires for anyone else.
+
 ### The situation must be as wide as the claim — the commonest authoring fault
 
 Measured on a folded sample: **four independent cold readers, on four different
