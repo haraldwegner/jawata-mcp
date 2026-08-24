@@ -39,11 +39,41 @@ What number? Whose leadership? Which problem? Three questions a stranger cannot
 answer — so they cannot tell whether the story is theirs. It reads well, which is
 exactly why a shape check passes it and only a reader catches it.
 
+**Prefer the question the reader is actually facing.** *"You already have a
+partial fill and want to change the limit price — what do you put in the quantity
+field?"* is recognisable. *"When amending an order that is already partially
+filled"* describes circumstances and leaves the reader to work out whether their
+problem is the one being answered.
+
+**No local vocabulary.** A word that means something only inside one project
+makes the situation unreadable to everyone else, and the author is the last
+person who can see it — it reads perfectly to them. If a term would need the
+project explained first, it does not belong in the situation. *"whether the slot
+is free"* fails: a reader who does not know the portfolio is divided into ten
+slots cannot tell whether the story is theirs.
+
 ### summary — what happened, or what to do?
 
 A claim, not a topic. *"Test plan"* names a subject; *"a v9 store climbs every
 remaining rung in one call"* claims something a reader can act on or dispute. A
 heading is not a claim, whatever it is labelled.
+
+**And it must be at the RIGHT WIDTH — the test the rest of this file did not
+ask.** A story can be wrong about scope in two directions at once, and usually
+is:
+
+- **Too narrow.** The claim is written about the case you happened to hit, when
+  it holds for a whole family. *"Wait for the cancel to be confirmed"* was one
+  instance of *"know what state an order is in before you send anything else
+  about it"* — which covers new orders and amends equally.
+- **Too broad.** A vendor's behaviour is stated as though it were how the world
+  works. *"Every broker skips a message until the previous one is performed"* is
+  one broker's sequencing; other venues permit patterns it does not.
+
+So: **name the widest form that is actually true, and label the vendor-specific
+mechanism as vendor-specific inside it.** The rule of thumb transfers; the
+mechanism does not, and a reader who cannot tell them apart will carry the wrong
+half to the next system.
 
 ### details — why, and what would a reader do differently?
 
@@ -85,13 +115,20 @@ policy that has always guarded the summary field.
 ## The cold reader
 
 Every folded story is judged by an agent with **zero session context**, which
-answers two questions:
+answers three questions:
 
 1. **When does this apply?** — restate it. If they cannot, the situation is not
-   self-contained.
+   self-contained. Any word they would need the project explained to understand
+   is a failure of the story, not of the reader — and the author is the last
+   person who can see it, because it reads perfectly to them.
 2. **What would you do differently for having read it?** — if there is no answer,
    it is a comprehensible platitude. Platitudes are what pass every other check,
    which is why this question exists.
+3. **Is it the right width?** — name a neighbouring case the claim should also
+   cover, and a system where it should NOT hold. If the neighbour is excluded the
+   story is too narrow; if the other system is swept in it is too broad. Both
+   faults routinely appear in the same entry, and a reader with no context is the
+   only one who will notice either.
 
 A duplicate check against the existing stories completes the review. Passing
 earns a `reviewed:` stamp in the file's frontmatter.
