@@ -152,6 +152,26 @@ a broker, not jobs and maps.
 This composes with the width rule below in one direction only: widen the CLAIM to
 the class, keep the SITUATION in the domain's concrete language.
 
+### Name what was actually being built — the body, not only the situation
+
+The placeholder-noun rule above was written about the situation. **It applies to
+the body too, and the failure there is worse, because an entry can narrate a whole
+incident without ever saying what the thing WAS.**
+
+A draft ran: *"the requirement was that the human sees the outgoing text once,
+already reviewed. It was built on a hook that fires after the text has already
+streamed."* Every noun is a role — a check, a hook, the human, the text. The read
+it got: *"Is this about the communicator or what? This is not concrete at all."*
+
+What it needed was one sentence saying what was under construction: **a gate that
+reviews an agent's outgoing messages to the human before the human reads them.**
+
+**Concrete is not the same as local, and that is the balance to hold.** *"The
+communicator gate"* is our word and means nothing to anyone else. *"A gate that
+reviews an agent's messages before the human sees them"* is concrete AND readable
+by a stranger. Name the thing in plain terms; do not name it by its house name,
+and do not replace it with its role.
+
 ### The situation must be as wide as the claim — the commonest authoring fault
 
 Measured on a folded sample: **four independent cold readers, on four different
