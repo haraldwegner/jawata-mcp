@@ -164,6 +164,17 @@ public final class EntryForm {
             return Optional.of(new Refusal(shape.get().field(), shape.get().message()));
         }
 
+        // Sprint 28c D9 — the shapes that are not knowledge whatever they are
+        // labelled: a log line, a fallback slip, a point-in-time status, a
+        // compaction artifact, a numbered heading, a summary too short to be a
+        // claim. EVERY type, because a log line labelled domain_fact is still a
+        // log line, and this is the choke both `record` and the md ingest already
+        // pass through — one filter, not two stances that drift.
+        StoryTemplate.Refusal story = StoryTemplate.refuse(summary);
+        if (story != null) {
+            return Optional.of(new Refusal("summary", story.why()));
+        }
+
         // A situation that IS given must still be a condition rather than a
         // location, whatever the type — a wrong situation is worse than none,
         // because it matches confidently.

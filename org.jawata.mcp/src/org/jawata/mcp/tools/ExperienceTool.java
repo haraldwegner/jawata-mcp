@@ -45,7 +45,7 @@ public final class ExperienceTool implements Tool {
     private static final List<String> KINDS =
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
             "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
-            "compact", "stats", "fallback_report", "migrate_form");
+            "compact", "stats", "fallback", "fallback_report", "migrate_form");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -83,6 +83,23 @@ public final class ExperienceTool implements Tool {
             retrieval.setQualityLedger(ledger);
         }
     }
+
+    /**
+     * Sprint 28c D9 — the tool lane a declared shell-fallback is recorded in.
+     *
+     * <p>Installed by the application beside the quality ledger, in the same
+     * block, for the same reason: a surface that is built and never handed its
+     * collaborator is a surface that answers "nothing has happened yet" forever.
+     * When it is absent the {@code fallback} verb SAYS SO rather than silently
+     * accepting the write — a hook whose declarations vanish would leave the
+     * audit trail simply stopping, which is indistinguishable from nobody
+     * declaring a fallback.</p>
+     */
+    public void setToolExperienceStore(org.jawata.mcp.knowledge.ToolExperienceStore lane) {
+        this.toolLane = lane;
+    }
+
+    private org.jawata.mcp.knowledge.ToolExperienceStore toolLane;
 
     /** Sprint 21a (item C): {@code defaultRoots} feed no-path {@code load} / {@code reseed}. */
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
@@ -254,7 +271,13 @@ public final class ExperienceTool implements Tool {
         props.put("summary", Map.of("type", "string", "description",
             "record: ONE judgeable sentence of experience — what was learned, stated so a"
             + " later reader can judge whether it transfers. Not a heading, not a title"
-            + " (a heading-shaped summary is refused)."));
+            + " (a heading-shaped summary is refused). "
+            // Sprint 28c D9: the story template reaches the AUTHOR here, derived from
+            // StoryTemplate rather than re-typed — the same rule SITUATION_SHAPES
+            // follows two properties down, and for the same reason: the schema
+            // teaches before the mistake, the refusal teaches after it, and two
+            // hand-written copies drift with nothing comparing them.
+            + org.jawata.mcp.knowledge.StoryTemplate.authorGuidance()));
         props.put("confidence", Map.of("type", "string", "enum", List.of("low", "medium", "high"),
             "description", "record: default medium."));
         // Sprint 28c (D3) — the experience form. REQUIRED for lesson and
@@ -376,6 +399,7 @@ public final class ExperienceTool implements Tool {
             case "dedup" -> ToolResponse.success(maintenance.dedup(bool(args, "confirm")));
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(stats());
+            case "fallback" -> recordFallback(args);
             case "fallback_report" -> fallbackReport();
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
@@ -634,6 +658,60 @@ public final class ExperienceTool implements Tool {
      * "jawata couldn't do X" signal) by reason, ranked by frequency → a
      * capability-gap backlog grounded in actual usage.
      */
+    /**
+     * Sprint 28c D9 — a declared shell-fallback, recorded in the TOOL lane.
+     *
+     * <p>Until now the hook wrote one {@code failure_mode} ENTRY per slip, into
+     * the knowledge lane. There are thousands of them, each saying which tool was
+     * reached for and why, and every one of them competes for the eight slots an
+     * answer has while telling a reader nothing they could act on. Harald read his
+     * own store back and found them crowding real answers.</p>
+     *
+     * <p>They keep every bit of their value: the capability-gap tally is what
+     * {@link #fallbackReport()} is for, and it reads them here. What changes is
+     * the lane — {@code ToolExperience.OUTCOME_FALLBACK} has existed since Sprint
+     * 26a for exactly this, with its own javadoc noting that no code path wrote
+     * it. This is that path.</p>
+     *
+     * @return the recorded row, or a REFUSAL naming the missing lane — never a
+     *     quiet success, because a hook whose declarations vanish leaves an audit
+     *     trail that simply stops, and a stopped trail looks exactly like nobody
+     *     declaring a fallback
+     */
+    private ToolResponse recordFallback(JsonNode args) {
+        String tool = text(args, "tool");
+        String reason = text(args, "reason");
+        if (tool == null || tool.isBlank()) {
+            return ToolResponse.invalidParameter("tool",
+                "which tool was reached for instead of jawata");
+        }
+        if (reason == null || reason.isBlank()) {
+            return ToolResponse.invalidParameter("reason",
+                "the declared reason — a slip with no reason records that something"
+                + " happened and nothing about what, which is a hole in the audit trail"
+                + " rather than a capability gap");
+        }
+        if (toolLane == null) {
+            return ToolResponse.error("TOOL_LANE_UNAVAILABLE",
+                "the tool lane is not installed on this resident, so this fallback"
+                + " CANNOT be recorded. It is not being dropped quietly: nothing was"
+                + " written, and the caller is being told.",
+                "start a resident that wires the tool-experience store; a fallback"
+                + " declaration is an audit record and losing it silently would make"
+                + " the trail simply stop");
+        }
+        toolLane.append(new org.jawata.mcp.learn.ToolExperience(
+            text(args, "session"), reason.strip(), tool.strip(),
+            org.jawata.mcp.learn.ToolExperience.OUTCOME_FALLBACK, null));
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("recorded", "tool_experience");
+        data.put("tool", tool.strip());
+        data.put("outcome", org.jawata.mcp.learn.ToolExperience.OUTCOME_FALLBACK);
+        data.put("note", "recorded in the TOOL lane, not the knowledge lane —"
+            + " read it back with kind=fallback_report");
+        return ToolResponse.success(data);
+    }
+
     private ToolResponse fallbackReport() {
         List<org.jawata.mcp.knowledge.StoredEntry> rows =
             store.listEntries("failure_mode", null, null, null, 10000);
@@ -670,6 +748,32 @@ public final class ExperienceTool implements Tool {
             total++;
         }
 
+        // Sprint 28c D9: the TOOL lane, which is where slips are written from now
+        // on. Both sources are read, and that is a transition rather than a
+        // permanent double life — the knowledge-lane rows above are the historical
+        // backlog, and they disappear at the reseed. Reading only the new lane
+        // today would make the report say the capability gaps had vanished on the
+        // day the writer moved; reading only the old one would make it stop
+        // growing. Neither is true, so it reads both and says which is which.
+        int fromToolLane = 0;
+        if (toolLane != null) {
+            for (org.jawata.mcp.learn.ToolExperience t
+                    : toolLane.recentMatching(null, 10000)) {
+                if (!org.jawata.mcp.learn.ToolExperience.OUTCOME_FALLBACK.equals(t.outcome())) {
+                    continue;
+                }
+                String reason = (t.tool() == null ? "" : t.tool() + ": ")
+                    + (t.situation() == null ? "" : t.situation().strip());
+                if (t.situation() == null || t.situation().isBlank()) {
+                    unexplained++;
+                    continue;
+                }
+                tally.merge(reason, 1, Integer::sum);
+                total++;
+                fromToolLane++;
+            }
+        }
+
         List<Map<String, Object>> gaps = new ArrayList<>();
         tally.entrySet().stream()
             .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
@@ -684,6 +788,17 @@ public final class ExperienceTool implements Tool {
         data.put("totalFallbacks", total);
         data.put("distinctGaps", gaps.size());
         data.put("gaps", gaps);
+        // Which lane each half came from, so a reader can tell a migration from a
+        // collapse. After the reseed the knowledge-lane count goes to zero and the
+        // tool-lane count carries everything — that is the transition completing,
+        // not the signal dying, and only these two numbers distinguish them.
+        data.put("fromToolLane", fromToolLane);
+        data.put("fromLegacyEntries", total - fromToolLane);
+        if (toolLane == null) {
+            data.put("toolLaneNote", "the tool lane is NOT installed on this resident,"
+                + " so this report covers the historical knowledge-lane rows only —"
+                + " any fallback declared since the writer moved is not counted here");
+        }
 
         // Say what was left OUT and why — a filtered list that does not admit to filtering is
         // the same lie in a smaller frame.

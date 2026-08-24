@@ -66,7 +66,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_is_idempotent_per_source(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: n\ndescription: d\ntype: reference", "body");
+        writeMemory(dir, "a.md", "name: n\ndescription: this note carries a body worth keeping\ntype: reference", "body");
         maint(fqn -> null).load(dir);
         maint(fqn -> null).load(dir);   // re-load same source
         assertEquals(1L, store.count(), "re-load replaces, not duplicates");
@@ -124,7 +124,7 @@ class ExperienceMaintenanceTest {
     @Test
     void load_flags_stale_symbol_on_ingest(@TempDir Path dir) throws IOException {
         writeMemory(dir, "s.md",
-            "name: n\ndescription: d\ntype: reference\nsymbol: com.gone.Removed", "body");
+            "name: n\ndescription: this note carries a body worth keeping\ntype: reference\nsymbol: com.gone.Removed", "body");
         Map<String, Object> report = maint(fqn -> Boolean.FALSE).load(dir);
         assertEquals(1, ((List<?>) report.get("stale")).size(), "unresolvable pointer flagged at ingest");
     }
@@ -136,7 +136,7 @@ class ExperienceMaintenanceTest {
         // unquoted FQN. Before the fix the quotes were kept, so recall-by-symbol
         // (which reads the raw symbol_fqn column) never matched.
         writeMemory(dir, "q.md",
-            "name: n\ndescription: d\ntype: reference\nsymbol: \"com.example.HelloWorld#greet\"", "body");
+            "name: n\ndescription: this note carries a body worth keeping\ntype: reference\nsymbol: \"com.example.HelloWorld#greet\"", "body");
         AtomicReference<String> seen = new AtomicReference<>();
         maint(fqn -> { seen.set(fqn); return Boolean.TRUE; }).load(dir);
 
@@ -389,11 +389,11 @@ class ExperienceMaintenanceTest {
         Files.createDirectory(dir.resolve("sub"));
         Files.writeString(dir.resolve("MEMORY.md"),
             "- [Fact A](fact-a.md) — hook\n- see also [[fact-b]]\n");
-        writeMemory(dir, "fact-a.md", "name: fact-a\ndescription: fact a\ntype: reference",
+        writeMemory(dir, "fact-a.md", "name: fact-a\ndescription: fact a states the first thing\ntype: reference",
             "a links onward to [b2](sub/fact-c.md)");
-        writeMemory(dir, "fact-b.md", "name: fact-b\ndescription: fact b\ntype: reference", "leaf");
+        writeMemory(dir, "fact-b.md", "name: fact-b\ndescription: fact b states the second thing\ntype: reference", "leaf");
         Files.writeString(dir.resolve("sub").resolve("fact-c.md"),
-            "---\nname: fact-c\ndescription: fact c\ntype: reference\n---\nleaf");
+            "---\nname: fact-c\ndescription: fact c states the third thing\ntype: reference\n---\nleaf");
 
         Map<String, Object> report = maint(fqn -> null)
             .loadSources(List.of(dir.resolve("MEMORY.md")), false, 5, 200, 2_000_000L);
@@ -405,8 +405,8 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_link_cycle_terminates(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: a\ndescription: a\ntype: reference", "see [[b]]");
-        writeMemory(dir, "b.md", "name: b\ndescription: b\ntype: reference", "see [[a]]");
+        writeMemory(dir, "a.md", "name: a\ndescription: note a points at note b\ntype: reference", "see [[b]]");
+        writeMemory(dir, "b.md", "name: b\ndescription: note b points back at note a\ntype: reference", "see [[a]]");
         Map<String, Object> report = maint(fqn -> null)
             .loadSources(List.of(dir.resolve("a.md")), false, 5, 200, 2_000_000L);
         assertEquals(2, report.get("loaded"), "a↔b crawled once each");
@@ -414,9 +414,9 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_caps_are_honest_not_silent(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: a\ndescription: a\ntype: reference", "x");
-        writeMemory(dir, "b.md", "name: b\ndescription: b\ntype: reference", "x");
-        writeMemory(dir, "c.md", "name: c\ndescription: c\ntype: reference", "x");
+        writeMemory(dir, "a.md", "name: a\ndescription: note a points at note b\ntype: reference", "x");
+        writeMemory(dir, "b.md", "name: b\ndescription: note b points back at note a\ntype: reference", "x");
+        writeMemory(dir, "c.md", "name: c\ndescription: note c stands on its own\ntype: reference", "x");
         Map<String, Object> report = maint(fqn -> null)
             .loadSources(List.of(dir), false, 5, 2, 2_000_000L);
         assertEquals(2, report.get("loaded"), "max-files cap");
@@ -427,7 +427,7 @@ class ExperienceMaintenanceTest {
     void load_recursive_walks_subdirectories(@TempDir Path dir) throws IOException {
         Files.createDirectory(dir.resolve("nested"));
         Files.writeString(dir.resolve("nested").resolve("deep.md"),
-            "---\nname: deep\ndescription: deep note\ntype: reference\n---\nbody");
+            "---\nname: deep\ndescription: the deep note sits below the depth cap\ntype: reference\n---\nbody");
         assertEquals(0, maint(fqn -> null).load(dir, false).get("loaded"),
             "top-level listing does not see nested files");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"),
@@ -438,8 +438,8 @@ class ExperienceMaintenanceTest {
     void load_skips_unchanged_files_entirely(@TempDir Path dir) throws IOException {
         // Sprint 21b (Harald): every load rewrote every entry — logical count stable but
         // the H2 file grew each click. An unchanged source must cause NO write at all.
-        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: reference", "body a");
-        writeMemory(dir, "b.md", "name: b\ndescription: fact b\ntype: reference", "body b");
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a states the first thing\ntype: reference", "body a");
+        writeMemory(dir, "b.md", "name: b\ndescription: fact b states the second thing\ntype: reference", "body b");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
 
@@ -449,7 +449,7 @@ class ExperienceMaintenanceTest {
         assertEquals(2, second.get("files"), "files = loaded + unchanged");
         assertEquals(2L, store.count());
 
-        writeMemory(dir, "a.md", "name: a\ndescription: fact a CHANGED\ntype: reference", "body a2");
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a states something different now\ntype: reference", "body a2");
         Map<String, Object> third = m.load(dir, true);
         assertEquals(1, third.get("loaded"), "changed source is re-ingested");
         assertEquals(1, third.get("unchanged"));
@@ -461,7 +461,7 @@ class ExperienceMaintenanceTest {
         // v2.2.6 (find #14): skip-unchanged blocked retroactive enrichment — an entry
         // stored under an OLDER loader fingerprint must re-ingest even though the file
         // bytes are identical; within one version idempotency stays byte-strict.
-        writeMemory(dir, "a.md", "name: a\ndescription: fact a\ntype: reference", "body");
+        writeMemory(dir, "a.md", "name: a\ndescription: fact a states the first thing\ntype: reference", "body");
         String content = java.nio.file.Files.readString(dir.resolve("a.md"));
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(1, m.load(dir, true).get("loaded"));
@@ -503,7 +503,7 @@ class ExperienceMaintenanceTest {
     void load_skips_contentless_index_files_but_follows_their_links(@TempDir Path dir) throws IOException {
         // v2.2.3 dogfood find: MEMORY.md-style indexes ingested as junk rows ("MEMORY", "''").
         Files.writeString(dir.resolve("MEMORY.md"), "- [Fact](fact.md) — hook\n");
-        writeMemory(dir, "fact.md", "name: f\ndescription: a real fact\ntype: reference", "body");
+        writeMemory(dir, "fact.md", "name: f\ndescription: a real fact with a real body\ntype: reference", "body");
         Map<String, Object> report = maint(fqn -> null).loadSources(
             java.util.List.of(dir.resolve("MEMORY.md")), false, 5, 200, 2_000_000L);
         assertEquals(1, report.get("loaded"), "index skipped, linked fact ingested");
@@ -748,7 +748,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21c (item A): headings, **bold** phrases, `backticked` terms and
         // [[wikilink]] names are the cue-dense keyword surface the matcher never saw.
         writeMemory(dir, "k.md",
-            "name: k\ndescription: keyword harvest fixture\ntype: reference",
+            "name: k\ndescription: the keyword harvest reads this body\ntype: reference",
             "## Loader fingerprint self-heal\n\n"
                 + "The **skip-unchanged hash** mixes in `LOADER_VERSION` so a bump\n"
                 + "re-ingests the corpus once. See [[recall-gap-lesson]].\n");
@@ -782,7 +782,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21c (item A, audit finding): code is not a cue source — bold/backtick
         // inside ``` fences must not become symptom rows.
         writeMemory(dir, "c.md",
-            "name: c\ndescription: fenced fixture\ntype: reference",
+            "name: c\ndescription: a fenced block sits inside this body\ntype: reference",
             "Real cue: **dmabuf renderer disable**.\n"
                 + "```bash\n"
                 + "echo **shellglobnoise** `fencedterm`\n"
@@ -812,7 +812,7 @@ class ExperienceMaintenanceTest {
         for (int i = 0; i < 40; i++) {
             body.append("**unique term number ").append(i).append("** and ");
         }
-        writeMemory(dir, "big.md", "name: big\ndescription: cap fixture\ntype: reference", body.toString());
+        writeMemory(dir, "big.md", "name: big\ndescription: the keyword cap applies to this body\ntype: reference", body.toString());
 
         Map<String, Object> report = maint(fqn -> null).load(dir, true);
         assertEquals(1, report.get("loaded"));
@@ -849,15 +849,15 @@ class ExperienceMaintenanceTest {
 
     @Test
     void section_family_reingests_as_one_unit(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: reference",
+        writeMemory(dir, "a.md", "name: a\ndescription: note da carries the first body\ntype: reference",
             "## A one\n\nx\n\n## A two\n\ny\n");
-        writeMemory(dir, "b.md", "name: b\ndescription: db\ntype: reference",
+        writeMemory(dir, "b.md", "name: b\ndescription: note db carries the second body\ntype: reference",
             "## B one\n\nz\n");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
         assertEquals(5L, store.count(), "(parent+2) + (parent+1)");
 
-        writeMemory(dir, "a.md", "name: a\ndescription: da\ntype: reference",
+        writeMemory(dir, "a.md", "name: a\ndescription: note da carries the first body\ntype: reference",
             "## A one\n\nx CHANGED\n\n## A two\n\ny\n");
         Map<String, Object> second = m.load(dir, true);
         assertEquals(1, second.get("loaded"), "only the changed file re-ingests");
@@ -867,7 +867,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void headingless_files_stay_single_entries(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "flat.md", "name: flat\ndescription: no headings\ntype: reference",
+        writeMemory(dir, "flat.md", "name: flat\ndescription: this file carries no headings at all\ntype: reference",
             "just prose with **a phrase** and nothing else.\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
         assertEquals(1L, store.count(), "no headings, no split — exactly today's shape");
@@ -876,7 +876,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void fenced_heading_lines_do_not_split(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "f.md", "name: f\ndescription: fence fixture\ntype: reference",
+        writeMemory(dir, "f.md", "name: f\ndescription: a code fence sits inside this body\ntype: reference",
             "prose\n```md\n# not a heading\n```\nmore prose\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
         assertEquals(1L, store.count(), "a heading inside a fence is code, not a boundary");
@@ -887,9 +887,9 @@ class ExperienceMaintenanceTest {
         // Sprint 21c plan finding: generic headings ("Context", "DoD") repeat ACROSS
         // files — the clean-up chain must not eat sections. Files are the source of
         // truth and families are idempotent; duplicates are fixed in the files.
-        writeMemory(dir, "one.md", "name: one\ndescription: d1\ntype: reference",
+        writeMemory(dir, "one.md", "name: one\ndescription: the first note holds its own body\ntype: reference",
             "## Context\n\nfact one.\n");
-        writeMemory(dir, "two.md", "name: two\ndescription: d2\ntype: reference",
+        writeMemory(dir, "two.md", "name: two\ndescription: the second note holds its own body\ntype: reference",
             "## Context\n\nfact two.\n");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
@@ -904,7 +904,7 @@ class ExperienceMaintenanceTest {
     void harvest_indexes_quoted_error_strings_as_cues(@TempDir Path dir) throws IOException {
         // Sprint 21c C4 live-gate finding: "Lock file recently modified" lived only in
         // prose details — quoted strings are the classic error-message symptom cue.
-        writeMemory(dir, "q.md", "name: q\ndescription: quote fixture\ntype: reference",
+        writeMemory(dir, "q.md", "name: q\ndescription: a quoted error string sits in this body\ntype: reference",
             "The swap race surfaced as \"Lock file recently modified\" during boot.\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
 
@@ -918,7 +918,7 @@ class ExperienceMaintenanceTest {
     void harvest_truncates_oversize_phrases_to_the_column_limit(@TempDir Path dir) throws IOException {
         // experience_symptom.symptom is VARCHAR(512) — an oversize bold phrase must not
         // break the insert.
-        writeMemory(dir, "l.md", "name: l\ndescription: long fixture\ntype: reference",
+        writeMemory(dir, "l.md", "name: l\ndescription: an oversize phrase sits in this body\ntype: reference",
             "**" + "x".repeat(600) + "**\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"),
             "oversize phrase truncated, ingest survives");
@@ -928,11 +928,11 @@ class ExperienceMaintenanceTest {
     void load_derives_summary_from_first_content_line_when_no_frontmatter(@TempDir Path dir) throws IOException {
         // CLAUDE.md-style files: no frontmatter, but the body IS the knowledge.
         Files.writeString(dir.resolve("CLAUDE.md"),
-            "# Collaboration rules\n\nAlways use jawata before shell text tools.\n");
+            "# Always use jawata before shell text tools\n\nIt is compiler-accurate.\n");
         assertEquals(1, maint(fqn -> null).load(dir, false).get("loaded"));
         // Sprint 21c: the heading also splits into a section — parent AND section carry
         // the derived summary; the filename is a junk summary in neither.
-        assertTrue(store.all().stream().anyMatch(e -> "Collaboration rules".equals(e.summary())),
+        assertTrue(store.all().stream().anyMatch(e -> "Always use jawata before shell text tools".equals(e.summary())),
             "summary derived from the first heading, not the filename");
         assertTrue(store.all().stream().noneMatch(e -> "CLAUDE".equals(e.summary())));
     }
@@ -942,9 +942,9 @@ class ExperienceMaintenanceTest {
         // Loader v3: CLAUDE.md files often START with managed-section markers — a summary
         // of "<!-- collaboration-spec:start -->" is a junk row.
         Files.writeString(dir.resolve("CLAUDE.md"),
-            "<!-- collaboration-spec:start -->\n\n# Collaboration spec\n\nRules body.\n");
+            "<!-- collaboration-spec:start -->\n\n# Parallel work goes in one message\n\nRules body.\n");
         assertEquals(1, maint(fqn -> null).load(dir, false).get("loaded"));
-        assertTrue(store.all().stream().anyMatch(e -> "Collaboration spec".equals(e.summary())),
+        assertTrue(store.all().stream().anyMatch(e -> "Parallel work goes in one message".equals(e.summary())),
             "HTML comments are not content");
         assertTrue(store.all().stream()
                 .noneMatch(e -> String.valueOf(e.summary()).startsWith("<!--")),
@@ -955,8 +955,8 @@ class ExperienceMaintenanceTest {
     void load_ingests_mdc_files_from_directories(@TempDir Path dir) throws IOException {
         // Sprint 21b (item C2): Cursor project rules are .mdc — directory crawls accept them.
         Files.writeString(dir.resolve("rule.mdc"),
-            "---\ndescription: prefer composition\n---\nCursor rule body");
-        writeMemory(dir, "plain.md", "name: p\ndescription: plain\ntype: reference", "x");
+            "---\ndescription: prefer composition over inheritance here\n---\nCursor rule body");
+        writeMemory(dir, "plain.md", "name: p\ndescription: this note carries a plain body\ntype: reference", "x");
         assertEquals(2, maint(fqn -> null).load(dir, true).get("loaded"),
             ".mdc crawled alongside .md");
     }
@@ -966,7 +966,7 @@ class ExperienceMaintenanceTest {
         // Sprint 21b (item C): "I want everything you can find" — a memory tree LARGER than
         // the old tuning caps (depth 5 / 200 files) must ingest COMPLETELY with the defaults.
         for (int i = 0; i < 210; i++) {
-            writeMemory(dir, "n" + i + ".md", "name: n" + i + "\ndescription: note " + i + "\ntype: reference", "x");
+            writeMemory(dir, "n" + i + ".md", "name: n" + i + "\ndescription: note " + i + " carries its own body\ntype: reference", "x");
         }
         Path deep = dir;
         for (int i = 0; i < 7; i++) {
@@ -974,7 +974,7 @@ class ExperienceMaintenanceTest {
         }
         Files.createDirectories(deep);
         Files.writeString(deep.resolve("deepest.md"),
-            "---\nname: deepest\ndescription: seven levels down\ntype: reference\n---\nbody");
+            "---\nname: deepest\ndescription: this note sits seven levels down\ntype: reference\n---\nbody");
 
         Map<String, Object> report = maint(fqn -> null).load(dir, true);
         assertEquals(211, report.get("loaded"), "210 flat + 1 at depth 7 — nothing dropped");
@@ -983,7 +983,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_without_path_uses_default_roots(@TempDir Path dir) throws IOException {
-        writeMemory(dir, "seed.md", "name: s\ndescription: seeded\ntype: domain_fact", "x");
+        writeMemory(dir, "seed.md", "name: s\ndescription: this note was seeded before the run\ntype: domain_fact", "x");
         ExperienceMaintenance withRoots =
             new ExperienceMaintenance(store, fqn -> null, () -> List.of(dir));
         assertTrue(withRoots.hasDefaultRoots());
@@ -1024,7 +1024,7 @@ class ExperienceMaintenanceTest {
     @Test
     void load_does_not_flag_non_java_symbols_stale(@TempDir Path dir) throws IOException {
         writeMemory(dir, "rust.md",
-            "name: n\ndescription: d\ntype: reference\nsymbol: gateway::forward\nlanguage: rust", "body");
+            "name: n\ndescription: this note carries a body worth keeping\ntype: reference\nsymbol: gateway::forward\nlanguage: rust", "body");
         Map<String, Object> report = maint(fqn -> Boolean.FALSE).load(dir);
         assertEquals(1, report.get("loaded"));
         assertEquals(0, ((List<?>) report.get("stale")).size(),
@@ -1050,9 +1050,9 @@ class ExperienceMaintenanceTest {
     void load_ingest_is_clean_reaches_primer_and_dedupes_identical_files(@TempDir Path dir)
             throws IOException {
         String md = "<!-- jawata-studio:claude:start -->\n"
-            + "# Working rules\n\n"
+            + "# Prefer jawata over shell text tools\n\n"
             + "Use `grep` only as a fallback. Prefer `claude` tools and `sed` sparingly.\n\n"
-            + "## Parallel execution\n\n"
+            + "## Run independent operations in parallel\n\n"
             + "Run independent operations in parallel when they do not depend on each other.\n"
             + "<!-- jawata-studio:claude:end -->\n";
         Files.writeString(dir.resolve("CLAUDE.md"), md);
@@ -1091,7 +1091,8 @@ class ExperienceMaintenanceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) primer.get("entries");
         List<String> summaries = entries.stream().map(m -> String.valueOf(m.get("summary"))).toList();
-        assertTrue(summaries.contains("Working rules") && summaries.contains("Parallel execution"),
+        assertTrue(summaries.contains("Prefer jawata over shell text tools")
+                && summaries.contains("Run independent operations in parallel"),
             "both section headings are domain nodes in the primer: " + summaries);
     }
 }

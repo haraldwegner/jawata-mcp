@@ -745,16 +745,29 @@ else
 fi
 
 # --- upgrade-earns-vectors: rows written before embeddings existed get them --
+# THE BUDGET TRACKS THE WORK, and the work changed. Sprint 28c (v11) embeds a row
+# FOUR times — the composite plus three per-field lanes — so ~190 upgraded rows
+# now cost ~760 embeddings where they cost ~190. The old 180 s budget was set
+# against the one-vector cost and this check began failing at the arithmetic, not
+# at a defect. Widened to match, and made to report PROGRESS: a stall and a slow
+# run are different findings, and a bare timeout reports them identically.
 UPCONV=""
-for _ in $(seq 1 60); do
+UPLAST=-1
+for _ in $(seq 1 150); do
     UP="$(call experience '{"kind":"stats"}')"
     if lane_closed "$UP" "experience_entry"; then UPCONV="yes"; break; fi
+    UPNOW="$(printf '%s' "$UP" | grep -o '"experience_entry":{[^}]*}' \
+             | grep -oE '"embedded":[0-9]+' | cut -d: -f2)"
+    if [ "${UPNOW:-0}" != "$UPLAST" ]; then
+        UPLAST="${UPNOW:-0}"
+        printf '    ... backfill embedded %s\n' "$UPLAST"
+    fi
     sleep 3
 done
 if [ -n "$UPCONV" ]; then
     pass "upgrade-earns-vectors backfill embedded every pre-embedding row"
 else
-    fail "upgrade-earns-vectors rows written before embeddings never earned vectors"
+    fail "upgrade-earns-vectors rows written before embeddings never earned vectors (stalled at ${UPLAST} embedded)"
 fi
 
 # --- upgrade-found-by-meaning: an OLD row answers a paraphrase sharing no words

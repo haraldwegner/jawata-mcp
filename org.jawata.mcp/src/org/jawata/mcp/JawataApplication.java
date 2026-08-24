@@ -242,6 +242,11 @@ public class JawataApplication implements IApplication {
             }
             if (experienceTool != null) {
                 experienceTool.setQualityLedger(qualityLedger);
+                // Sprint 28c D9: the lane a declared shell-fallback goes to. Wired
+                // in the SAME block as the ledger and for the same reason — an
+                // unwired collaborator here would make the fallback verb refuse
+                // every declaration, which the hook would see as an outage.
+                experienceTool.setToolExperienceStore(toolExperienceStore);
             } else {
                 // registerTools() runs above, so this cannot happen today — and if
                 // a reordering ever makes it happen, the symptom would be a quality
