@@ -477,14 +477,25 @@ lane_closed() {   # lane_closed <stats-payload> <lane-name> -> 0 when embedded==
     t="$(printf '%s' "$block" | grep -oE '"total":[0-9]+' | cut -d: -f2)"
     [ -n "$e" ] && [ -n "$t" ] && [ "$e" -eq "$t" ]
 }
-ENTRY_LANE=""; CONVERGED=""
-for _ in $(seq 1 60); do
+# THE BUDGET TRACKS THE WORK, and the work changed. Sprint 28c (v11) embeds a
+# row FOUR times — the composite plus three per-field lanes — so this store's
+# ~244 rows now cost ~976 embeddings where they cost ~244. The old 180 s budget
+# was set against the one-vector cost and this check began failing at the
+# arithmetic, not at a defect. Widened to match, and made to report PROGRESS so
+# that a stall and a slow run are different findings rather than one timeout.
+ENTRY_LANE=""; CONVERGED=""; SEEN=-1
+for _ in $(seq 1 150); do
     S2="$(call experience '{"kind":"stats"}')"
     ENTRY_LANE="$(printf '%s' "$S2" | grep -o '"experience_entry":{[^}]*}')"
     ENTRY_TOT="$(printf '%s' "$ENTRY_LANE" | grep -oE '"total":[0-9]+' | cut -d: -f2)"
     if [ -n "$ENTRY_TOT" ] && [ "$ENTRY_TOT" -gt 0 ] \
             && lane_closed "$S2" "experience_entry" && lane_closed "$S2" "tool_experience"; then
         CONVERGED="yes"; break
+    fi
+    NOW="$(printf '%s' "$ENTRY_LANE" | grep -oE '"embedded":[0-9]+' | cut -d: -f2)"
+    if [ "${NOW:-0}" != "$SEEN" ]; then
+        SEEN="${NOW:-0}"
+        printf '    ... backfill embedded %s of %s\n' "$SEEN" "${ENTRY_TOT:-?}"
     fi
     sleep 3
 done
