@@ -15,6 +15,39 @@ from the rule the gate applies.
 Everything below is that one sentence made checkable. If a candidate entry fails
 it, no amount of correct formatting rescues it.
 
+## What kind of entry is this — decide FIRST
+
+Three kinds enter the store, they are not interchangeable, and getting this wrong
+is the failure the first fold made on half its entries. The test is one question:
+
+> **Does violating it produce a CLASS of different problems, or the same one
+> problem every time?**
+
+**A PRINCIPLE** — a class. *Do not act on an order instruction until the venue
+confirms it* is one rule, and breaking it in different places gives you different
+damage: a reused slot with a phantom position, a resend after a timeout that
+fills twice, a local book that silently disagrees with the venue's. That variety
+IS the evidence it is a principle; write it into the entry, because it is what
+justifies storage. A principle firing on a neighbouring situation is a SUCCESS.
+Type: `lesson` or `failure_mode`.
+
+**A DURABLE FACT** — one condition, one remedy, and it stays true as long as the
+thing does. *On a Tycho project the Maven goal must be `verify`.* There is no
+class behind it and manufacturing one produces noise; the condition IS the
+boundary. A fact firing outside its condition is a FALSE POSITIVE that costs the
+reader the time it was stored to save. Type: `domain_fact`.
+
+**A PERISHABLE FACT** — a durable fact about someone else's defect. *This
+WebKitGTK release blanks the webview; set the variable.* It is true now and
+becomes FALSE when upstream ships the fix, and nothing in the store retires it.
+Record the version it was observed against and what would end it, so a later
+reader can check rather than trust. Type: `domain_fact`.
+
+**Do not fold a fact into a principle's shape.** Writing a "transferable shape"
+paragraph onto a troubleshooting fact to make it fit the lesson template is
+inventing a property so the mismatch disappears — the same move as inventing an
+outcome for a fact that never turned out any way at all.
+
 ## The fields
 
 ### situation — when does this apply?
@@ -67,6 +100,84 @@ project explained first, it does not belong in the situation. *"whether the slot
 is free"* fails: a reader who does not know the portfolio is divided into ten
 slots cannot tell whether the story is theirs.
 
+### Say it out loud — and leave the incident's numbers out of it
+
+Two rules, and they pull in opposite directions, which is why both are needed.
+
+**Read the situation aloud. If nobody would say it, rewrite it.** A constructed
+sentence reads as competent and matches nothing. Of twenty situations written for
+one sample, the only one that worked was the one dictated in speech:
+
+> *"you already have a partial fill and want to change the limit price — what do
+> you put in the quantity field?"*
+
+Everything else was assembly — *"when an indicator fires on some fraction of
+checks"*, *"when you are reformulating someone's requirement into the version that
+will be worked from"*. Nobody has ever said either sentence.
+
+**But the incident's own values must NOT be in it.** They are the tightest possible
+filter and they filter on the wrong thing:
+
+| written | fails on |
+|---|---|
+| *"0.28 splits my data best — can I hard-code it?"* | someone whose number is 0.96, or 1.3 — and someone tuning to optimise a score rather than to split |
+| *"it's been running forty minutes — is it stuck?"* | four hours |
+
+Numbers, versions and durations are EVIDENCE. They belong in the body, where they
+show the claim is real. In the situation they are a coincidence the reader has to
+share.
+
+**And use the domain's actual word.** *"Threshold"* is what people say and search
+for; *"a cutoff that splits my data"* is a paraphrase of it that also narrows it.
+The rule is the same as keeping the nouns concrete — reach for the term in use,
+not a description of the term.
+
+### Keep the domain's own nouns — a placeholder noun matches nothing
+
+The situation is written in the words the reader would type. Substituting a
+generic noun for the real one is the same over-abstraction as widening the
+wording, and it produces a sentence nobody will ever match:
+
+> *when your cleanup pass drops an in-flight job from the map that tracks it
+> because the job's own flag says it has finished*
+
+Every noun there is a placeholder — "cleanup pass", "in-flight job", "the map",
+"the flag" — standing in for orders, a broker, and the record we keep of them.
+The result reads as competent English and matches either everything or nothing.
+
+**The check:** point at each noun and name the real thing it replaced. If you can,
+put the real thing back. A reader searching for this problem is holding orders and
+a broker, not jobs and maps.
+
+This composes with the width rule below in one direction only: widen the CLAIM to
+the class, keep the SITUATION in the domain's concrete language.
+
+### The situation must be as wide as the claim — the commonest authoring fault
+
+Measured on a folded sample: **four independent cold readers, on four different
+entries, said the same thing** — the situation was narrower than the claim above
+it. It is a habit, not a slip, and it has one cause: the situation gets written
+from the INCIDENT and the claim gets written from the CLASS.
+
+The four, verbatim from the readers:
+
+| Claim covers | Situation said | Consequence |
+|---|---|---|
+| any command whose input is a directory | "commit, package or publish" | never fires on a CI artifact upload |
+| any derivation of a work-bearing document | "reformulating someone's requirement" | never fires on your own draft, or on a summary |
+| any instruction with an observed failure to name | "for the second time" | the count is not the trigger; the observation is |
+| adding a tray icon with Linux as a target | "the icon goes out through libayatana-appindicator" | assumes the reader already knows the answer they came for |
+
+The last one is the sharpest and the easiest to commit: **a situation must not
+presuppose the thing the entry exists to tell you.** If recognising it requires
+knowing what the entry teaches, it fires only for people who no longer need it.
+
+**The check, after writing both:** read the claim, then read the situation, and
+ask whether every case the claim covers would recognise itself in the situation.
+Where it would not, the situation is a description of the incident and needs
+widening to the class — WITHOUT abstracting its vocabulary, which is the opposite
+error and is covered above.
+
 ### summary — what happened, or what to do?
 
 A claim, not a topic. *"Test plan"* names a subject; *"a v9 store climbs every
@@ -96,6 +207,26 @@ The mechanism, the evidence, the cost. **Artifacts live here** — paths, ids,
 flags, commands, versions — never in the situation, which has to stay readable by
 someone who was not there.
 
+### the boundary — every principle owes one
+
+A principle that fires on a neighbouring situation and then just asserts is worse
+than silence: the reader gets authority without reach, and spends their afternoon
+finding out the remedy was for someone else. So every principle names **one
+neighbouring case it DOES cover, and one it does NOT** — and where a vendor
+mechanism is involved, says which half is the vendor's.
+
+The worked example, because it carries both directions at once:
+
+> Knowing an order's state before you touch it again holds against every venue,
+> and against anything that acknowledges asynchronously. But Alpaca *serialises*
+> — it skips your next message until the previous one is performed — so "wait for
+> the acknowledgement" is Alpaca's mechanism, not the rule. Other venues
+> pipeline. Carry the rule; check the protocol.
+
+A fact owes no boundary: its condition already is one. If you find yourself
+writing a boundary for a fact, re-read the classification above — you are folding
+it into the wrong shape.
+
 ### outcome — experiences only
 
 `worked` · `failed_avoid` · `unproven` (genuinely still open).
@@ -108,6 +239,38 @@ makes retrieval rank on fiction.
 
 A symbol or a package, when the story has one. Its absence is normal: experience
 is experience without any code.
+
+## Before folding a note, find out whether it was overturned
+
+A note records what was believed when it was written. Some of those beliefs were
+later proved wrong, and **the note that was wrong does not know it** — the pointer
+runs forward only.
+
+A worked case, and the cost is the point. An investigation into a red staleness
+lamp concluded, with pages of arithmetic and a ruled-out list, that the lateness
+was ours and the vendor was fine. Days of work rested on one step: *a vendor
+failure would be seen by thousands of other customers, and they are not seeing it.*
+A later note recorded the resolution — a probe run 9 ms from the vendor's own
+datacentre showed trades arriving up to 107 seconds stale, our side provably
+clean. It says *"Supersedes the earlier contention/lock lead."* **The superseded
+note says nothing.**
+
+Fold the first one and you mint a confident, well-argued, wrong entry. No shape
+check sees it. No cold reader can see it — they judge the text in front of them
+and cannot check a fact. Retrieval then makes it worse, because a superseded note
+is MAXIMALLY relevant to its own subject and outranks the note that killed it.
+
+**So the fold resolves supersession before it judges anything.** The corpus names
+its own: search it for *supersedes*, *superseded*, *resolved*, *falsified*,
+*refuted*, *correction*. Where one note overturns another, the overturned one is
+not folded — and if it is folded for the reasoning it contains, the entry states
+what was concluded, that it was wrong, and what was true instead. **That entry is
+usually better than either note**, because a documented wrong turn tells a reader
+which reasoning to distrust.
+
+Measured on one corpus of 73 notes: 7 name something they supersede, 20 carry a
+RESOLVED / FALSIFIED / REFUTED / CORRECTION marker, and of three notes known to be
+superseded, **three said nothing about it**.
 
 ## What never enters
 
@@ -130,16 +293,20 @@ policy that has always guarded the summary field.
 ## The cold reader
 
 Every folded story is judged by an agent with **zero session context**, which
-answers three questions:
+answers four questions:
 
-1. **When does this apply?** — restate it. If they cannot, the situation is not
+1. **Which kind is it, and is that right?** — principle, durable fact, or
+   perishable fact. Apply the test: does violating it produce a class of
+   different problems, or one? A fact wearing a principle's shape is the most
+   common defect and the reader is the only one who catches it.
+2. **When does this apply?** — restate it. If they cannot, the situation is not
    self-contained. Any word they would need the project explained to understand
    is a failure of the story, not of the reader — and the author is the last
    person who can see it, because it reads perfectly to them.
-2. **What would you do differently for having read it?** — if there is no answer,
+3. **What would you do differently for having read it?** — if there is no answer,
    it is a comprehensible platitude. Platitudes are what pass every other check,
    which is why this question exists.
-3. **Is it the right width?** — name a neighbouring case the claim should also
+4. **Is it the right width?** — name a neighbouring case the claim should also
    cover, and a system where it should NOT hold. If the neighbour is excluded the
    story is too narrow; if the other system is swept in it is too broad. Both
    faults routinely appear in the same entry, and a reader with no context is the
