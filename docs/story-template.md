@@ -83,6 +83,12 @@ a bloody nose you can derive *"watch for ice"*. You cannot enforce it: staying i
 would work and you have an appointment in town. The rule is real, it is worth having,
 and it is applied by judgement in a situation — which is exactly what a store is for.
 
+**The clearest case is a design pattern.** You cannot enforce *"use this pattern"* —
+there is no hook for it and there should not be. A reader searches for the applicable
+ones, and which to take, or whether to take none, is an architecture decision made in
+a situation. That is knowledge applied by judgement, and it is why a catalogue of
+patterns belongs in a store rather than in a gate.
+
 So do not read this ladder as *find the binding channel or the knowledge is
 worthless*. Read it as: **if it CAN fire mechanically, that is cheaper and more
 reliable, so put it there.** If it cannot, the store is its home and not its
