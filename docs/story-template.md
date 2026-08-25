@@ -238,6 +238,31 @@ other.
 does not". That labelling is honest, and it is a sign that two entries are wearing
 one coat.
 
+### The WHY is a claim too — do not manufacture one
+
+An entry's mechanism or rationale is the part a reader REASONS from, so an invented
+one does more damage than no explanation at all. Three of these in two days, each
+fluent and each wrong:
+
+- *"websocket messages may be redelivered"* — they are not resent at all, which is
+  the whole reason the REST read is the truth
+- *"extended hours take limit orders only because there is no consolidated auction
+  and no reference price"* — a rationale attached to make a broker policy sound
+  like market structure
+- *"entryValue exists for futures, where the value at entry is non-zero"* —
+  economically backwards: a future entered at the market has ZERO value at entry
+  and is valued by the price difference; a stock has the value you paid. The field
+  holds a notional, and the NAME was doing the explaining
+
+**The tell in all three: the why arrived without a source.** The note recorded what
+happened; the explanation was supplied by the writing.
+
+**So — if the source does not give the why and you cannot check it, write the fact
+and say the why is unknown.** Where a design looks arbitrary, "this name is
+misleading and here is what the field actually holds" is a better entry than a
+manufactured principle, because it warns the reader off the same wrong inference
+you just made.
+
 ### The situation must be as wide as the claim — the commonest authoring fault
 
 Measured on a folded sample: **four independent cold readers, on four different
