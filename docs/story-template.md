@@ -188,9 +188,17 @@ written. Getting it wrong sends the entry to the wrong readers in both direction
 counts.** Scope inflation is the over-widening fault wearing new clothes, and it is
 seductive for the same reason: the wider claim reads as the more insightful one.
 
-- **business / regulatory** — NAME THE RULE. Reg SHO 201 is a regulation every US
-  broker obeys; that is what a regulatory-scope claim looks like. If you cannot
-  name the rule, you do not have this scope.
+- **business / regulatory** — NAME THE RULE, AND CHECK IT SAYS WHAT YOU THINK.
+  Reg SHO 201 is a real one: it requires trading centres to block a short sale at
+  or below the national best bid once a security falls 10% from the prior close,
+  for the rest of that day and the next. That is what a regulatory-scope claim
+  looks like — nameable, and it governs the thing you are claiming.
+  **The near-miss is the instructive part.** "Extended hours take limit orders
+  only" felt regulatory, and there IS a named FINRA rule in the area — 2265. It
+  requires brokers to DISCLOSE the risks of extended-hours trading. It says
+  nothing about order types. Finding a rule nearby is not the same as finding
+  the rule, and the authority of the wrong one is exactly what a reader will
+  borrow.
 - **architecture** — you must be able to say what about the shape produces the
   behaviour. "Websocket delivery is not guaranteed" is a property of the transport,
   so any broker on it inherits it.
