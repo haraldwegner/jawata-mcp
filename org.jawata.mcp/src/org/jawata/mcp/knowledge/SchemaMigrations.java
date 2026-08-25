@@ -626,6 +626,13 @@ final class SchemaMigrations {
      * next. So it carries no foreign key: it is about the asking, not about any
      * entry.</p>
      *
+     * <p>The demand row is keyed by the nomination's own query id rather than by
+     * a generated number, because the row is OPENED when candidates are shown
+     * and CLOSED when the caller decides — two calls, minutes apart, that have
+     * nothing in common but that id. A nomination nobody ever decides simply
+     * stays open with {@code chosen} false, which is the truthful reading:
+     * demand that was never converted.</p>
+     *
      * <p>{@code origin_client} is a property of the entry itself — which client
      * recorded it — so it belongs on {@code experience_entry}, additive and
      * nullable like every column added since v10. Null means "recorded before
@@ -645,7 +652,7 @@ final class SchemaMigrations {
                 + "CONSTRAINT fk_usage_entry FOREIGN KEY (entry_id) "
                 + "REFERENCES experience_entry(id) ON DELETE CASCADE)");
             s.execute("CREATE TABLE IF NOT EXISTS usage_query ("
-                + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                + "query_id VARCHAR(64) PRIMARY KEY, "
                 + "asked_at TIMESTAMP NOT NULL, "
                 + "cue_kind VARCHAR(32), "
                 + "question VARCHAR(4096) NOT NULL, "

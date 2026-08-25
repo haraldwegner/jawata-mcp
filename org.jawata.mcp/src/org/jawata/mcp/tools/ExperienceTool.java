@@ -71,6 +71,30 @@ public final class ExperienceTool implements Tool {
     /** Sprint 27 D6: measurement (nullable — every other path is unchanged). */
     private org.jawata.mcp.knowledge.QualityLedger quality;
 
+    /**
+     * Sprint 28c D14 — shown, chosen, and asked-for-and-not-found.
+     *
+     * <p>Resolved per call through a supplier rather than held, for the same
+     * reason the retrieval paths do it: {@code RecoveringExperienceStore} can
+     * replace its delegate after a recovery, and this must follow it.</p>
+     */
+    private final org.jawata.mcp.knowledge.UsageLedger usage =
+        new org.jawata.mcp.knowledge.UsageLedger(this::currentH2Store);
+
+    /**
+     * The concrete H2 store behind whatever wrapper is installed, or null when
+     * there is none. A method reference rather than a lambda over the field: a
+     * lambda in a field initializer READS {@code store} before the constructor
+     * assigns it, which is a definite-assignment error, and the method reference
+     * defers that read to the first call — which is what was wanted anyway,
+     * since the delegate can be replaced after a recovery.
+     */
+    private org.jawata.mcp.knowledge.H2ExperienceStore currentH2Store() {
+        var concrete = store instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r
+            ? r.currentDelegate() : store;
+        return concrete instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2 ? h2 : null;
+    }
+
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store) {
         this(serviceSupplier, store, List::of);
     }
@@ -403,6 +427,7 @@ public final class ExperienceTool implements Tool {
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(stats());
             case "review" -> review(args);
+            case "review_sweep" -> reviewSweep(args);
             case "fallback" -> recordFallback(args);
             case "fallback_report" -> fallbackReport();
             default -> ToolResponse.invalidParameter("kind",
@@ -464,9 +489,8 @@ public final class ExperienceTool implements Tool {
         // Degrades honestly: no embedder → the block says so with the reason;
         // a failed count reads "unknown", never a misleading 0.
         try {
-            var concrete = store instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r
-                ? r.currentDelegate() : store;
-            if (concrete instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
+            org.jawata.mcp.knowledge.H2ExperienceStore h2 = currentH2Store();
+            if (h2 != null) {
                 java.util.Map<String, Object> embedding = new java.util.LinkedHashMap<>();
                 org.jawata.mcp.knowledge.EmbeddingService svc =
                     org.jawata.mcp.knowledge.EmbeddingService.shared();
@@ -1030,7 +1054,13 @@ public final class ExperienceTool implements Tool {
         for (Map<String, Object> c : candidates) {
             ids.add(String.valueOf(c.get("id")));
         }
-        result.put("query_id", applicability.nominate(question, ids));
+        String queryId = applicability.nominate(question, ids);
+        result.put("query_id", queryId);
+        // D14: the demand record opens HERE, including when ids is empty — a
+        // question with no candidates is demand without supply, and that row is
+        // the writing backlog. Skipping it because there is nothing to count
+        // would delete the one signal that says what to write next.
+        usage.nominated(queryId, "question", question, ids);
         return respond(args, result);
     }
 
@@ -1045,6 +1075,22 @@ public final class ExperienceTool implements Tool {
      */
     private ToolResponse decide(JsonNode args) {
         String queryId = text(args, "query_id");
+        // An ABSENT selection means "I chose none", which is a real and useful
+        // answer here. A selection that is PRESENT and not an array must not
+        // collapse into that same answer: strings() returns empty for anything
+        // it cannot read, so a caller who sent one id as a bare string would have
+        // their choice recorded as an absence — the store then holds "nothing
+        // applied" about a question somebody answered, and it looks exactly like
+        // an honest absence. Refuse instead.
+        if (args != null && args.has("selected_ids") && !args.get("selected_ids").isNull()
+                && !args.get("selected_ids").isArray()) {
+            return ToolResponse.invalidParameter("selected_ids",
+                "selected_ids must be an ARRAY of entry ids, even for one id."
+                    + " It was present but not an array, and reading it as an empty"
+                    + " selection would record 'nothing applied' about a question you"
+                    + " just answered — indistinguishable, afterwards, from an honest"
+                    + " absence. Send [\"<id>\"], or omit it entirely to choose none.");
+        }
         List<String> selected = strings(args, "selected_ids");
         Object outcome = applicability.decide(queryId, selected);
 
@@ -1052,7 +1098,91 @@ public final class ExperienceTool implements Tool {
             return ToolResponse.invalidParameter("query_id", refusal.reason());
         }
         var decision = (org.jawata.mcp.knowledge.ApplicabilityDecision.Decision) outcome;
+        // Choosing NONE closes the demand row unanswered, deliberately: from the
+        // backlog's point of view an honest absence and an unanswered question are
+        // the same fact — the store was asked and had nothing that applied.
+        usage.decided(queryId, decision.selected());
         return respond(args, retrieval.answerFor(decision));
+    }
+
+    /**
+     * Sprint 28c D14 — the review sweep's two lists, for a human to rule on.
+     *
+     * <p>Neither list deletes anything, and that is the design rather than
+     * caution: deletion is by evidence PLUS the user's own eyes. The seat that
+     * consumes this presents both lists with their counts and removes only what
+     * the user names.</p>
+     *
+     * <p>The lists answer different questions and must not be merged. The
+     * DELETION LIST is about entries the store keeps offering and nobody keeps:
+     * shown often, chosen never. The WRITING BACKLOG is about entries that do
+     * not exist — questions asked repeatedly that nothing answered. One says
+     * what to remove, the other says what to write, and only the second can be
+     * acted on by writing.</p>
+     *
+     * <p>A read here THROWS rather than returning empty lists, because "nothing
+     * has been shown yet" and "the ledger could not be read" are opposite
+     * answers, and rendering the second as the first tells a human their store
+     * is healthy when the instrument is broken.</p>
+     */
+    private ToolResponse reviewSweep(JsonNode args) {
+        int minShown;
+        int minTimes;
+        int limit;
+        try {
+            minShown = countArg(args, "min_shown", 3);
+            minTimes = countArg(args, "min_times", 2);
+            limit = countArg(args, "limit", 25);
+        } catch (IllegalArgumentException bad) {
+            return ToolResponse.invalidParameter(bad.getMessage(),
+                "This is a count. It was present but not a number, so the sweep would have"
+                    + " silently used its default and reported lists you did not ask for —"
+                    + " which reads as evidence about your store rather than as a rejected"
+                    + " argument.");
+        }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("deletionList", usage.deletionList(minShown, limit));
+        out.put("writingBacklog", usage.writingBacklog(minTimes, limit));
+        out.put("droppedWrites", usage.failedWrites());
+        out.put("howToRead", "Neither list deletes anything. deletionList: shown at least "
+            + minShown + " times and chosen never — offer these to the user and remove only"
+            + " what they name. writingBacklog: asked at least " + minTimes + " times with"
+            + " nothing chosen — this is demand with no supply, and the only item here that"
+            + " is acted on by WRITING. droppedWrites is how many ledger writes were lost:"
+            + " a low engagement rate over lost rows means 'we failed to record it', not"
+            + " 'nobody engaged'.");
+        return ToolResponse.success(out);
+    }
+
+    /**
+     * A count argument, defaulted when ABSENT and refused when present and
+     * unreadable.
+     *
+     * <p>The usual {@code has(x) && isInt()} idiom collapses those two cases: a
+     * caller who sends {@code "1"} as a JSON string gets the default and no
+     * indication that their argument was ignored. That is the shape where a
+     * guard which substitutes a default for a MISSING field also swallows a
+     * field that is present and impossible — and here it would hand back lists
+     * computed at thresholds nobody chose, which read as facts about the store.
+     * A numeric string is accepted, because clients differ on that; anything
+     * else is refused by name.</p>
+     */
+    private static int countArg(JsonNode args, String name, int fallback) {
+        if (args == null || !args.has(name) || args.get(name).isNull()) {
+            return fallback;
+        }
+        JsonNode n = args.get(name);
+        if (n.isInt() || n.isLong()) {
+            return n.asInt();
+        }
+        if (n.isTextual()) {
+            try {
+                return Integer.parseInt(n.asText().trim());
+            } catch (NumberFormatException nfe) {
+                throw new IllegalArgumentException(name);
+            }
+        }
+        throw new IllegalArgumentException(name);
     }
 
     private ToolResponse primer(JsonNode args) {
