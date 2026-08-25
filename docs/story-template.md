@@ -172,25 +172,42 @@ reviews an agent's messages before the human sees them"* is concrete AND readabl
 by a stranger. Name the thing in plain terms; do not name it by its house name,
 and do not replace it with its role.
 
-### Name the vendor, or describe the shape — whichever the claim follows from
+### Four scopes, and a note usually carries more than one
 
-Two corrections on consecutive entries looked contradictory and are not.
+A lesson holds at one of four levels, and the level decides how the situation is
+written. Getting it wrong sends the entry to the wrong readers in both directions.
 
-*"Extended-hours orders must be DAY or GTC limit"* is **Alpaca's rule** — their API
-refuses the order. The situation says Alpaca, because a reader on another venue is
-not in it.
+| scope | holds for | the situation says |
+|---|---|---|
+| **universal** | everyone, everywhere | the bare condition, no venue, no technology |
+| **business / regulatory** | everyone in a domain — it comes from outside the technology (market structure, a regulator, a business model) | the domain condition, and where it was observed |
+| **architecture / tech stack** | anyone whose system has this shape | the SHAPE — *"the broker pushes acknowledgements over websocket and has a REST API"* |
+| **vendor** | this vendor's implementation and nobody else's | NAME the vendor |
 
-*"A translation layer must never initiate"* follows from the **delivery
-architecture**, not from the vendor. So the situation describes the shape:
-*"the broker uses websocket for order acknowledgements and executions and has a
-REST API — the acknowledgement for a cancel is missing…"* Anyone on that shape is
-in it, whoever their broker is.
+**And the important half: one source note usually carries several of these, and
+folding it into one entry forces a single scope that is wrong for the rest.**
 
-**The test:** if the claim would still be true on a different vendor with the same
-architecture, describe the architecture. If it would not, name the vendor. Getting
-this backwards fails in both directions — a vendor rule written generally sends the
-wrong reader down a path their venue does not have, and an architectural rule
-pinned to one vendor never fires for anyone else.
+A single postmortem about a missed order acknowledgement contained four:
+
+- *until an order is acknowledged you do not know its status* — universal, true on
+  a guaranteed-delivery session too
+- *acknowledgements pushed over websocket are not guaranteed; the REST read is the
+  truth* — architecture, true of any broker built that way
+- *Alpaca SKIPS an order update while the previous message is not fully processed* —
+  vendor, and true of nobody else
+- *extended-hours sessions take limit orders only* — business/regulatory, market
+  structure rather than one venue's preference
+
+**Split them.** Each gets its own situation, because each has different readers. A
+person asking *"why was my amendment ignored?"* needs the vendor entry; a person
+asking *"should I wait for the acknowledgement?"* needs the universal one. One
+merged entry can only carry one situation, so it serves one of them and hides the
+other.
+
+**The tell that you have merged scopes:** a paragraph inside the entry that begins
+"this part is vendor-specific" or "the rule of thumb transfers but the mechanism
+does not". That labelling is honest, and it is a sign that two entries are wearing
+one coat.
 
 ### The situation must be as wide as the claim — the commonest authoring fault
 
