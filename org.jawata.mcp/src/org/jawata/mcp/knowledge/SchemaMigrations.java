@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 11;
+    static final int LATEST = 12;
 
     private SchemaMigrations() {
     }
@@ -106,6 +106,9 @@ final class SchemaMigrations {
         }
         if (from < 11) {
             migrateToV11(conn);
+        }
+        if (from < 12) {
+            migrateToV12(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -589,6 +592,67 @@ final class SchemaMigrations {
                 + "ADD COLUMN IF NOT EXISTS embedding_summary VARBINARY(8192)");
             s.execute("ALTER TABLE experience_entry "
                 + "ADD COLUMN IF NOT EXISTS embedding_details VARBINARY(8192)");
+        }
+    }
+
+    /**
+     * v12 — Sprint 28c D14, what was shown, what was chosen, and what was asked
+     * for and not found.
+     *
+     * <p>Two tables and one column, and the split between them is the design
+     * rather than tidiness.</p>
+     *
+     * <p><b>{@code usage_entry} is a separate table so that ranking cannot read
+     * it.</b> D14's rule is that usage decides DELETION and never order — an
+     * entry shown a hundred times and chosen never is a deletion candidate, not
+     * a demoted one. Held as columns on {@code experience_entry} the counters
+     * would sit inside {@code ALL_COLUMNS}, one careless {@code ORDER BY} away
+     * from becoming a popularity ranking, and nothing would fail when that
+     * happened. In their own table the mistake has to be typed as a join,
+     * deliberately. Same reasoning as v11's separate vector columns: make the
+     * wrong thing impossible to reach rather than merely discouraged.</p>
+     *
+     * <p><b>It cascades, because a count against a deleted entry is not a
+     * number about anything.</b> A reseed replaces every row and mints new ids;
+     * without the cascade each rebuild would leave a full set of orphaned
+     * counters behind, invisible and permanent.</p>
+     *
+     * <p><b>{@code usage_query} deliberately does NOT cascade, and deliberately
+     * is not touched by a wipe.</b> It is the demand record — the question asked
+     * and whether anything was chosen — and a question that got no answer is the
+     * one piece of evidence here that must OUTLIVE the corpus it failed against.
+     * Repeatedly-unanswered situations are the writing backlog, and a rebuild
+     * that erased them would erase precisely the instruction for what to write
+     * next. So it carries no foreign key: it is about the asking, not about any
+     * entry.</p>
+     *
+     * <p>{@code origin_client} is a property of the entry itself — which client
+     * recorded it — so it belongs on {@code experience_entry}, additive and
+     * nullable like every column added since v10. Null means "recorded before
+     * this rung", not "unknown client"; those are different claims and only the
+     * first one is true of old rows.</p>
+     */
+    private static void migrateToV12(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry "
+                + "ADD COLUMN IF NOT EXISTS origin_client VARCHAR(128)");
+            s.execute("CREATE TABLE IF NOT EXISTS usage_entry ("
+                + "entry_id VARCHAR(64) PRIMARY KEY, "
+                + "shown BIGINT NOT NULL DEFAULT 0, "
+                + "chosen BIGINT NOT NULL DEFAULT 0, "
+                + "last_shown TIMESTAMP, "
+                + "last_chosen TIMESTAMP, "
+                + "CONSTRAINT fk_usage_entry FOREIGN KEY (entry_id) "
+                + "REFERENCES experience_entry(id) ON DELETE CASCADE)");
+            s.execute("CREATE TABLE IF NOT EXISTS usage_query ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                + "asked_at TIMESTAMP NOT NULL, "
+                + "cue_kind VARCHAR(32), "
+                + "question VARCHAR(4096) NOT NULL, "
+                + "shown_count INT NOT NULL, "
+                + "chosen BOOLEAN NOT NULL)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_usage_query_unanswered "
+                + "ON usage_query(chosen, asked_at)");
         }
     }
 
