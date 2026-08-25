@@ -10,6 +10,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -53,6 +54,18 @@ class PatternCatalogueLoaderTest {
             assertEquals(ExperienceEntry.CANDIDATE, only.status(),
                 "somebody else's pattern is a candidate, never the user's earned knowledge");
             assertNotNull(only.facets().situation(), "a pattern without a situation is a heading");
+            // Sprint 28c M8 — a published pattern is a REFERENCE, not an experience.
+            // Nobody here lived it, so it has no outcome, and the form rules only
+            // demand one from an experience. Labelling the catalogue `lesson` made
+            // 187 library descriptions owe a verdict they cannot earn, and the value
+            // invented so they could pay it was the rule announcing it was wrong
+            // about them. Both halves are asserted: the type AND the absence of a
+            // verdict — a type change alone would leave the invented value behind.
+            assertEquals(PatternCatalogueLoader.CATALOGUE_TYPE, only.type(),
+                "the catalogue must be typed as a reference, not as an experience");
+            assertNull(only.facets().verdict(),
+                "a pattern carries no outcome — an entry that reports one is reporting"
+                    + " something nobody on this machine observed");
             assertFalse(only.facets().situation().startsWith("#"),
                 "a heading is not knowledge, whatever it is labelled");
             assertTrue(only.sourceRef().startsWith(PatternCatalogueLoader.SOURCE_PREFIX),

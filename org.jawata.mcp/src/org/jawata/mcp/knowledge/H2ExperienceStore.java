@@ -811,6 +811,66 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * The directory this store's file lives in, or null for an in-memory store.
+     *
+     * <p>Used to put a pre-delete archive BESIDE the store it came from rather
+     * than somewhere a user has to be told about. A null answer is a real one:
+     * an in-memory store has no such place, and the caller must say where the
+     * archive went instead of pretending it is next to a file that does not
+     * exist.</p>
+     */
+    public Path storeDir() {
+        return storeFile == null ? null : storeFile.getParent();
+    }
+
+    /**
+     * Remove exactly these entries and nothing else.
+     *
+     * <p>The blunt instrument beside it is {@code prune}, which has no
+     * delete-by-id at all: it sweeps every rejected and superseded row older
+     * than a threshold, and once removed 101 entries for an asked seven. That is
+     * why this exists and why it takes ids — a review that removes what a human
+     * NAMED must be able to remove only that.</p>
+     *
+     * <p>Children go first, by hand, because {@code experience_symptom} and
+     * {@code experience_link} are not cascaded from the entry: only the v12
+     * usage counters are. Deleting the entry alone would leave symptom rows
+     * pointing at nothing, and those rows are what cue retrieval reads.</p>
+     *
+     * @return how many entries were actually removed, which is not necessarily
+     *     how many ids were asked for — an id that is not there was already gone
+     */
+    public synchronized int deleteByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        try {
+            Connection c = live();
+            for (String child : new String[] {"experience_symptom", "experience_link"}) {
+                try (PreparedStatement ps = c.prepareStatement(
+                        "DELETE FROM " + child + " WHERE entry_id IN (" + placeholders + ")")) {
+                    bindAll(ps, ids);
+                    ps.executeUpdate();
+                }
+            }
+            try (PreparedStatement ps = c.prepareStatement(
+                    "DELETE FROM experience_entry WHERE id IN (" + placeholders + ")")) {
+                bindAll(ps, ids);
+                return ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to delete entries: " + e.getMessage(), e);
+        }
+    }
+
+    private static void bindAll(PreparedStatement ps, List<String> ids) throws SQLException {
+        for (int i = 0; i < ids.size(); i++) {
+            ps.setString(i + 1, ids.get(i));
+        }
+    }
+
     @Override
     public synchronized long wipe() {
         try (Statement s = live().createStatement()) {
@@ -1160,7 +1220,6 @@ public final class H2ExperienceStore implements ExperienceStore {
         + "form,evidence_dead";
 
     @Override
-    @SuppressWarnings("unchecked")
     public List<Map<String, Object>> exportEntries(String status, String type) {
         List<String> clauses = new ArrayList<>();
         List<Object> params = new ArrayList<>();
@@ -1172,8 +1231,34 @@ public final class H2ExperienceStore implements ExperienceStore {
             clauses.add("type = ?");
             params.add(type);
         }
+        return exportWhere(clauses.isEmpty() ? null : String.join(" AND ", clauses), params);
+    }
+
+    /**
+     * The same export, for a NAMED set of ids — the undo a targeted delete owes
+     * before it removes anything.
+     *
+     * <p>It shares {@link #exportWhere} rather than repeating the projection,
+     * and that is not tidiness. The row shape in this class is one contract in
+     * several places, and each time a new place was added by hand this sprint,
+     * it dropped a column: the orphan importer stopped at {@code language}, and
+     * three of the four {@code SELECT} projections carried their own list while
+     * the fourth used the constant. A second export written out longhand would
+     * be the next one, and its loss would be permanent — the rows are gone by
+     * the time anybody reads the archive.</p>
+     */
+    public List<Map<String, Object>> exportByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        return exportWhere("id IN (" + placeholders + ")", new ArrayList<>(ids));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> exportWhere(String whereSql, List<Object> params) {
         String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry"
-            + (clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses))
+            + (whereSql == null ? "" : " WHERE " + whereSql)
             + " ORDER BY created_at";
         List<Map<String, Object>> out = new ArrayList<>();
         return withRead("export entries", c -> {

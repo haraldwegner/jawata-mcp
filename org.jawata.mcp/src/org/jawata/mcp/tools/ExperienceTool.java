@@ -428,6 +428,7 @@ public final class ExperienceTool implements Tool {
             case "stats" -> ToolResponse.success(stats());
             case "review" -> review(args);
             case "review_sweep" -> reviewSweep(args);
+            case "delete" -> deleteByIds(args);
             case "fallback" -> recordFallback(args);
             case "fallback_report" -> fallbackReport();
             default -> ToolResponse.invalidParameter("kind",
@@ -905,11 +906,7 @@ public final class ExperienceTool implements Tool {
         String path = text(args, "path");
         if (path != null && !path.isBlank()) {
             try {
-                Map<String, Object> doc = new LinkedHashMap<>();
-                doc.put("count", entries.size());
-                doc.put("entries", entries);
-                java.nio.file.Files.writeString(Path.of(path),
-                    JSON.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
+                writeArchive(entries, Path.of(path));
                 data.put("path", path);
                 data.put("written", true);
             } catch (Exception e) {
@@ -1183,6 +1180,115 @@ public final class ExperienceTool implements Tool {
             }
         }
         throw new IllegalArgumentException(name);
+    }
+
+    /**
+     * Sprint 28c D14 — remove exactly the entries a human named, after writing
+     * them somewhere they can come back from.
+     *
+     * <p><b>The archive is written FIRST, and a failure to write it cancels the
+     * delete.</b> The review seat runs on every client, and D12's cutover
+     * archive exists only on the one machine that ran the reseed — so a delete
+     * that leaned on it would be irreversible everywhere else. Exporting after
+     * the delete is not an option: the rows are gone by then.</p>
+     *
+     * <p>Ids that are not in the store are reported rather than treated as
+     * success. "I removed what you named" and "some of what you named was
+     * already absent" are different answers, and only the second tells the user
+     * their list was stale.</p>
+     *
+     * <p>{@code prune} is untouched by this. It remains the blunt instrument —
+     * a threshold sweep with no delete-by-id, which once removed 101 entries for
+     * an asked seven.</p>
+     */
+    private ToolResponse deleteByIds(JsonNode args) {
+        if (args == null || !args.has("ids") || !args.get("ids").isArray()
+                || args.get("ids").isEmpty()) {
+            return ToolResponse.invalidParameter("ids",
+                "delete removes exactly the entries you name: pass ids as a non-empty"
+                    + " ARRAY. There is deliberately no filter form — a filter is how a"
+                    + " deletion of seven becomes a deletion of a hundred and one.");
+        }
+        List<String> ids = strings(args, "ids");
+        org.jawata.mcp.knowledge.H2ExperienceStore h2 = currentH2Store();
+        if (h2 == null) {
+            return ToolResponse.error(KNOWLEDGE_UNAVAILABLE,
+                "delete needs the H2 store and this resident has none",
+                "Nothing was deleted. Check experience(kind=stats).");
+        }
+        List<java.util.Map<String, Object>> archived = h2.exportByIds(ids);
+        List<String> missing = new java.util.ArrayList<>(ids);
+        for (java.util.Map<String, Object> row : archived) {
+            missing.remove(String.valueOf(row.get("id")));
+        }
+        java.nio.file.Path archive;
+        try {
+            archive = deletionArchivePath(h2, archived.size());
+            writeArchive(archived, archive);
+        } catch (Exception e) {
+            return ToolResponse.error("DELETE_ARCHIVE_FAILED",
+                "the pre-delete archive could not be written: " + e,
+                "NOTHING was deleted. The archive is the undo this delete owes, and a"
+                    + " delete without one is irreversible on every client but the one"
+                    + " that ran the cutover.");
+        }
+        int removed = h2.deleteByIds(ids);
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("asked", ids.size());
+        out.put("removed", removed);
+        out.put("archive", archive.toString());
+        if (!missing.isEmpty()) {
+            out.put("alreadyAbsent", missing);
+            out.put("note", "these ids were not in the store, so they are not in the archive"
+                + " either — your list was stale, which is worth knowing before you act on"
+                + " the rest of it.");
+        }
+        return ToolResponse.success(out);
+    }
+
+    /**
+     * The one place an export file is written. Both the export verb and the
+     * pre-delete archive come through here: the delete's archive IS an export,
+     * and a second writer would drift from the first exactly where it matters
+     * least visibly — in the file nobody opens until they need it.
+     */
+    private static void writeArchive(List<Map<String, Object>> entries, Path target)
+            throws java.io.IOException {
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("count", entries.size());
+        doc.put("entries", entries);
+        java.nio.file.Path parent = target.getParent();
+        if (parent != null) {
+            java.nio.file.Files.createDirectories(parent);
+        }
+        try {
+            java.nio.file.Files.writeString(target,
+                JSON.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new java.io.IOException("could not serialise the export", e);
+        }
+    }
+
+    /**
+     * Where a pre-delete archive goes: beside the store, under {@code deleted/},
+     * named by the instant and the count.
+     *
+     * <p>Beside the store because the user must be able to find it without being
+     * told, and because a delete happens on any client while D12's cutover
+     * archive exists only on the machine that ran the reseed. An in-memory store
+     * has no such directory; the archive then goes to the system temp directory
+     * and the response says where, rather than the call failing over a location.</p>
+     */
+    private static Path deletionArchivePath(
+            org.jawata.mcp.knowledge.H2ExperienceStore h2, int count) {
+        Path dir = h2.storeDir();
+        if (dir == null) {
+            dir = Path.of(System.getProperty("java.io.tmpdir"), "jawata-deleted");
+        } else {
+            dir = dir.resolve("deleted");
+        }
+        String stamp = java.time.Instant.now().toString().replace(':', '-');
+        return dir.resolve("deleted-" + stamp + "-" + count + ".json");
     }
 
     private ToolResponse primer(JsonNode args) {

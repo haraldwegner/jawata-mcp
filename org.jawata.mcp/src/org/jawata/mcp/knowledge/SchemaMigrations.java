@@ -633,16 +633,17 @@ final class SchemaMigrations {
      * stays open with {@code chosen} false, which is the truthful reading:
      * demand that was never converted.</p>
      *
-     * <p>{@code origin_client} is a property of the entry itself — which client
-     * recorded it — so it belongs on {@code experience_entry}, additive and
-     * nullable like every column added since v10. Null means "recorded before
-     * this rung", not "unknown client"; those are different claims and only the
-     * first one is true of old rows.</p>
+     * <p><b>{@code origin_client} is deliberately NOT here.</b> D14 wants it, and
+     * it is a property of the entry, so this rung is where it looks like it
+     * belongs — but nothing writes it yet, and a column only round-trips if the
+     * insert, the export projection, {@code importEntries} and {@code importFrom}
+     * all carry it. This sprint has already shipped that gap three times. The
+     * column arrives in the change that FILLS it, with its four carriage sites
+     * and one test, rather than sitting here as half a contract waiting to be
+     * silently dropped by the first backup somebody takes.</p>
      */
     private static void migrateToV12(Connection conn) throws SQLException {
         try (Statement s = conn.createStatement()) {
-            s.execute("ALTER TABLE experience_entry "
-                + "ADD COLUMN IF NOT EXISTS origin_client VARCHAR(128)");
             s.execute("CREATE TABLE IF NOT EXISTS usage_entry ("
                 + "entry_id VARCHAR(64) PRIMARY KEY, "
                 + "shown BIGINT NOT NULL DEFAULT 0, "

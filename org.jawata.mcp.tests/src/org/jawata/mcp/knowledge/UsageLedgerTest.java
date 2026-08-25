@@ -166,6 +166,61 @@ class UsageLedgerTest {
     }
 
     /**
+     * A targeted delete writes its undo BEFORE it removes anything, and the
+     * archive is what proves the order.
+     *
+     * <p>Reversing it — delete, then export — leaves a file that parses, is
+     * named correctly, sits exactly where the response says, and contains
+     * nothing, because the rows were gone by the time it was written. So the
+     * assertion is not "an archive exists" but "the archive contains the entry",
+     * which is the only form that can tell the two orders apart.</p>
+     *
+     * <p>The review seat runs on every client. D12's cutover archive exists only
+     * on the one machine that ran the reseed, so a delete that leaned on it
+     * would be irreversible everywhere else — which is why this undo travels
+     * with the delete itself.</p>
+     */
+    @Test
+    void a_delete_archives_what_it_removes_before_removing_it() throws Exception {
+        String doomed = call("record",
+            "type", "lesson",
+            "summary", "A pangolin audits nothing on a Tuesday.",
+            "situation", "when the pangolin audit window opens",
+            "verdict", "worked").get("id").toString();
+        String keeper = call("record",
+            "type", "lesson",
+            "summary", "A wombat reconciles everything on a Thursday.",
+            "situation", "when the wombat reconciliation window opens",
+            "verdict", "worked").get("id").toString();
+
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "delete");
+        a.putArray("ids").add(doomed).add("an-id-that-was-never-here");
+        Map<String, Object> out = data(tool.execute(a));
+
+        assertEquals(1, ((Number) out.get("removed")).intValue(),
+            () -> "delete removed the wrong number of entries: " + out);
+        assertEquals(List.of("an-id-that-was-never-here"), out.get("alreadyAbsent"),
+            () -> "a stale id must be reported, not counted as a success: " + out);
+
+        java.nio.file.Path archive = java.nio.file.Path.of(String.valueOf(out.get("archive")));
+        assertTrue(java.nio.file.Files.exists(archive),
+            () -> "no archive at " + archive + " — the delete has no undo");
+        String body = java.nio.file.Files.readString(archive);
+        assertTrue(body.contains("A pangolin audits nothing on a Tuesday."),
+            () -> "the archive does not contain the entry it was supposed to save."
+                + " An archive written AFTER the delete looks exactly like this:"
+                + " correctly named, correctly placed, and empty. " + archive);
+        assertFalse(body.contains("A wombat reconciles"),
+            "the archive carries an entry the delete was not asked to remove");
+
+        // and the one not named is still there
+        Map<String, Object> listed = call("list", "limit", "50");
+        assertTrue(String.valueOf(listed).contains(keeper),
+            () -> "delete removed an entry nobody named: " + listed);
+    }
+
+    /**
      * The rule, asserted structurally: usage decides DELETION and never ORDER.
      *
      * <p>What this covers and what it does not, stated so it is not mistaken for

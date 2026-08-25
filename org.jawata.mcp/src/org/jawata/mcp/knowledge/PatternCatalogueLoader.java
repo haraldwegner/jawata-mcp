@@ -170,8 +170,25 @@ public final class PatternCatalogueLoader {
         }
     }
 
+    /**
+     * The catalogue TYPE is fixed here rather than read from the snapshot, and
+     * the snapshot's own {@code verdict} is deliberately ignored.
+     *
+     * <p>A published design pattern is a REFERENCE: it says what to reach for
+     * and what it costs, and nobody on this machine lived it. It therefore has
+     * no outcome to report, and the store's form rules only demand one from an
+     * experience. Labelling the catalogue {@code lesson} made 187 library
+     * descriptions owe a verdict they cannot earn, and the value invented so
+     * they could pay it — {@code unproven} — was the rule announcing it was
+     * wrong about them.</p>
+     *
+     * <p>{@code unproven} survives for its honest case: a real experience whose
+     * outcome is still open. That is not this.</p>
+     */
+    static final String CATALOGUE_TYPE = "reference";
+
     private static ExperienceEntry entryFor(JsonNode p, String slug) {
-        String type = p.path("type").asText("lesson");
+        String type = CATALOGUE_TYPE;
         String summary = p.path("principle").asText("");
         SymbolFact.Builder fact = SymbolFact.of(type, summary, Confidence.MEDIUM);
         // The README prose, its MIT attribution and the licence verdict all ride
@@ -193,10 +210,6 @@ public final class PatternCatalogueLoader {
             .situation(p.path("situation").asText(null))
             .provenanceKind(PROVENANCE)
             .operation("design:" + slug);
-        String verdict = p.path("verdict").asText(null);
-        if (verdict != null && !verdict.isBlank()) {
-            b.verdict(verdict);
-        }
         if (!symptoms.isEmpty()) {
             b.symptoms(symptoms);
         }

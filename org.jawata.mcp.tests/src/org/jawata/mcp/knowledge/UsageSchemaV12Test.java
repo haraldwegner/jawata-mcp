@@ -71,15 +71,19 @@ class UsageSchemaV12Test {
      * rung, because the version is written unconditionally.
      */
     @Test
-    void a_fresh_store_carries_both_usage_tables_and_the_origin_column(@TempDir Path dir)
+    void a_fresh_store_carries_both_usage_tables(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
             Connection c = store.borrowRead();
             try {
                 assertTrue(hasTable(c, "usage_entry"), "usage_entry missing on a fresh store");
                 assertTrue(hasTable(c, "usage_query"), "usage_query missing on a fresh store");
-                assertTrue(hasColumn(c, "experience_entry", "origin_client"),
-                    "origin_client missing on a fresh store");
+                // origin_client is deliberately NOT in this rung: it arrives with
+                // the change that fills it, together with its four carriage sites.
+                assertFalse(hasColumn(c, "experience_entry", "origin_client"),
+                    "origin_client appeared without a writer — a column only round-trips"
+                        + " if insert, the export projection, importEntries and importFrom"
+                        + " all carry it, and this sprint shipped that gap three times");
             } finally {
                 store.releaseRead(c, true);
             }
@@ -107,8 +111,8 @@ class UsageSchemaV12Test {
                 s.execute("INSERT INTO usage_entry (entry_id, shown, chosen) VALUES ('"
                     + id + "', 7, 0)");
                 s.execute("INSERT INTO usage_query "
-                    + "(asked_at, cue_kind, question, shown_count, chosen) VALUES "
-                    + "(CURRENT_TIMESTAMP, 'symptom', "
+                    + "(query_id, asked_at, cue_kind, question, shown_count, chosen) VALUES "
+                    + "('a-nomination-nobody-decided', CURRENT_TIMESTAMP, 'symptom', "
                     + "'how do I stop a rebuild erasing what nobody answered', 0, FALSE)");
             } finally {
                 store.releaseRead(c, true);

@@ -131,10 +131,13 @@ class SchemaMigrationsTest {
             java.util.Map<String, Object> report =
                 SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
             assertEquals(10, report.get("from"), "it already reports v10");
-            assertEquals(11, report.get("to"),
-                "the ladder advances it by exactly ONE rung — v10 must not re-run on a "
-                    + "wider store, which is how a migration turns into a mutation "
-                    + "nobody asked for");
+            // `to` is SchemaMigrations.LATEST by construction — migrate() writes it
+            // unconditionally — so a literal here pins today's version and can never
+            // fail for the reason the old message gave ("the ladder advances by exactly
+            // ONE rung"). It cannot see rungs at all. Asserting LATEST says what this
+            // actually checks: the ladder ran to the top rather than stopping partway.
+            assertEquals(SchemaMigrations.LATEST, report.get("to"),
+                "the ladder must run to the top, not stop partway");
         }
 
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
@@ -461,7 +464,11 @@ class SchemaMigrationsTest {
             java.util.Map<String, Object> report =
                 SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
             assertEquals(10, report.get("from"), "the rung ran FROM v10");
-            assertEquals(11, report.get("to"), "and TO v11");
+            // LATEST rather than a literal: see the note on the wider-v10 test —
+            // migrate() sets `to` to LATEST unconditionally, so a literal pins the
+            // version of the day and cannot fail for a schema reason.
+            assertEquals(SchemaMigrations.LATEST, report.get("to"),
+                "the rung ran to the top");
             assertEquals(true, report.get("migrated"), "and it actually did something");
         }
         for (String column : V11_COLUMNS) {
