@@ -432,6 +432,55 @@ case "$RB" in
     *) fail "review-briefs-a-draft a refused draft lost its brief: $(printf '%s' "$RB" | head -c 200)" ;;
 esac
 
+# --- demand-and-delete: D14's ledger and the undo a delete owes -------------
+# Sprint 28c D14. Two promises the review seat depends on, through the real front
+# door. The FIRST is the one that carries the wiring: a question nobody could
+# answer must still be recorded, because demand with no supply is the writing
+# backlog — and "no candidates, nothing to count, skip it" is the optimisation
+# that deletes exactly that signal.
+DQ="a question about nothing this store has ever heard of, zylophantic breeb"
+NOM="$(call experience "{\"kind\":\"nominate\",\"question\":\"$DQ\"}")"
+case "$NOM" in
+    *'"query_id"'*) pass "demand-and-delete a nomination returns a query id" ;;
+    *) fail "demand-and-delete no query_id: $(printf '%s' "$NOM" | head -c 200)" ;;
+esac
+SWEEP="$(call experience '{"kind":"review_sweep","min_times":1,"min_shown":1}')"
+case "$SWEEP" in
+    *"zylophantic breeb"*)
+        pass "demand-and-delete an unanswered question reaches the writing backlog" ;;
+    *) fail "demand-and-delete the backlog lost the unanswered question: $(printf '%s' "$SWEEP" | head -c 300)" ;;
+esac
+case "$SWEEP" in
+    *'"deletionList"'*'"writingBacklog"'*'"droppedWrites"'*)
+        pass "demand-and-delete the sweep carries both lists and its own dropped-write count" ;;
+    *) fail "demand-and-delete the sweep is missing a list or the drop count: $(printf '%s' "$SWEEP" | head -c 300)" ;;
+esac
+# A count that is PRESENT and unreadable is refused, never defaulted: defaulting
+# would return lists computed at thresholds nobody chose, which read as facts.
+BADC="$(call experience '{"kind":"review_sweep","min_times":"not-a-number"}')"
+case "$BADC" in
+    *min_times*) pass "demand-and-delete an unreadable threshold is refused by name" ;;
+    *) fail "demand-and-delete an unreadable threshold was silently defaulted: $(printf '%s' "$BADC" | head -c 200)" ;;
+esac
+# The SECOND promise: a delete writes its undo before it removes anything. The
+# assertion is that the archive CONTAINS the entry — an archive written after the
+# delete parses, is named correctly, sits where the response says, and is empty.
+DID="$(call experience '{"kind":"record","type":"lesson",
+  "summary":"A zylophantic breeb is filed under nothing at all.",
+  "situation":"when a delete must prove it archived before it removed",
+  "verdict":"worked"}' | sed -n 's/.*"id"[^"]*"\([^"]*\)".*/\1/p' | head -1)"
+if [ -n "$DID" ]; then
+    DEL="$(call experience "{\"kind\":\"delete\",\"ids\":[\"$DID\"]}")"
+    ARCH="$(printf '%s' "$DEL" | sed -n 's/.*"archive"[^"]*"\([^"]*\)".*/\1/p' | head -1)"
+    if [ -n "$ARCH" ] && [ -f "$ARCH" ] && grep -q "zylophantic breeb is filed" "$ARCH"; then
+        pass "demand-and-delete the pre-delete archive contains what was removed"
+    else
+        fail "demand-and-delete no usable archive at '$ARCH' — the delete has no undo"
+    fi
+else
+    fail "demand-and-delete could not record the entry the delete promise needs"
+fi
+
 # --- field-tool-answers: the /report seat's one front door replies -----------
 FP="$(call field '{"action":"pile"}')"
 case "$FP" in
