@@ -145,6 +145,18 @@ this file.
 claims something a reader can act on or dispute. **The test is whether the sentence
 can be contradicted.** A heading is not a claim, whatever it is labelled.
 
+**And the claim must not restate the TRIGGER.** The commonest way a claim goes soft is
+by absorbing the situation: *"When a shipped fix does not move the number it was
+supposed to move, check whether the failing call takes a different implementation"* is
+two fields written into one. The first half says WHEN — it belongs in the situation,
+where it is already stated — and it crowds out the half that is actually the lesson.
+
+The check is mechanical: **read the claim and ask whether any clause could be moved to
+the situation without loss. If it could, move it.** What remains should be the lesson
+standing on its own — *the logic may exist twice, and your tests may all drive the
+copy that already works.* A reader who has just recognised themselves in the situation
+does not need to be told the situation again; they need to be told what is true.
+
 ## Quote it; do not restate it
 
 **Every factual error in the first folding rounds came from paraphrase.** The source
@@ -167,9 +179,24 @@ A claim can be wrong about width in two directions at once, and usually is.
 - **Too broad.** A vendor's behaviour stated as how the world works. *"Every broker
   skips a message until the previous one is performed"* is one broker's sequencing.
 
-**Name the widest form that is actually true — and the stopping condition is
-EVALUABILITY.** Widen until a reader can no longer answer *"is that me?"* by looking
-at what is in front of them, then take one step back. The ladder, on one real case:
+**Name the widest form that is actually true — and you find out which form is true by
+TESTING IT AGAINST FURTHER CASES, not by inspecting the sentence.** Widening from the
+one case you hit is where this goes wrong: the wider sentence still describes that
+case, so it reads as true, and nothing in it reveals that you checked only the case
+it came from.
+
+So before you write the wide form, do one of two things, in order of strength:
+
+1. **Apply it to a concrete new case.** Take a different incident you actually know —
+   ideally one from another system — and ask what the wide claim tells you to do
+   there. If it tells you something right, the width is earned. If it tells you
+   nothing, or something wrong, you have widened past the truth.
+2. **Failing that, reason out further cases deliberately** — name two or three other
+   situations the wide form claims to cover, and check each. Imagining them is weaker
+   than having lived them, but it is far stronger than not asking.
+
+A width that has never been checked against a second case is a guess, however well it
+reads. The ladder, on one real case:
 
 | form | can a reader tell whether they are in it? |
 |---|---|
@@ -449,11 +476,36 @@ So: each item is an OBSERVATION in words. Paths, flags, ids, commands and symbol
 in `details`; a symbol goes in `symbol`. The refusal names the offending item and its
 shape, and it will tell you where the content belongs.
 
-## details — why, and what a reader would do differently
+## details — the concrete case, and the cure
 
 The mechanism, the evidence, the cost. **Artifacts live here** — paths, ids, flags,
 commands, versions — never in the situation, which must stay readable by someone who
 was not there. The boundary text and a perishable fact's version check live here too.
+
+**THE LESSON IS GENERIC; THE SAMPLE IS CONCRETE.** Those are not in tension — they are
+the two halves, and an entry that has only the first is the commonest thing this
+template still lets through. A body that explains the mechanism in general terms reads
+as competent and teaches nobody, because the reader has nothing to recognise. **One
+real case, named: what happened, to what, and what it cost.** That case is the
+punchline. If you cannot name one, you do not have an entry — you have a theory, and
+it belongs somewhere else.
+
+The test is blunt: **strike every sentence that could have been written without the
+incident.** If what remains is nothing, the entry was mechanism all the way down.
+
+**AND THE ENTRY MUST CARRY THE CURE.** Not the diagnosis — the diagnosis is the claim.
+The cure is what the reader DOES, and it is the reason they are reading. Three shapes,
+all acceptable:
+
+- a **check** they can run before acting (*read the counts, predict the number, then
+  fire*),
+- a **procedure** in order (*guard on the value being usable, not on it being there*),
+- or, where the honest answer is investigation rather than a recipe, **say that and
+  say where to look** — *do not reason about which environment differs; diff the two
+  invocations literally* is a cure. *Be careful* is not.
+
+An entry with a claim, a case, and no cure has told the reader they have a problem and
+left them there.
 
 ## outcome — experiences only
 
