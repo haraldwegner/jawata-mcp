@@ -3,451 +3,508 @@
 What may enter the experience store, and in what shape.
 
 This file is the human-readable half. The machine-readable half is
-`org.jawata.mcp.knowledge.StoryTemplate`, and a test asserts that every field and
-every refusal named in the code appears here — so the rule you read cannot drift
-from the rule the gate applies.
+`org.jawata.mcp.knowledge.StoryTemplate`, plus `AdmissionPolicy` and `EntryForm`
+which do most of the actual gating.
+
+**What keeps the two honest, stated exactly.** `StoryTemplateTest` asserts that every
+field name and every refusal word the code emits appears somewhere in this file. That
+is a one-directional substring check: it catches the code growing a rule this file
+never mentions. **It cannot catch the reverse** — a rule stated here that nothing
+enforces, or worse, a rule stated here that the code has since REVERSED. That gap has
+been exploited once already: this file spent two days telling authors to strip
+technology names out of situations after the gate that refused them had been removed
+for making entries undiscoverable. Read the code when the stakes are high.
 
 ## The criterion
 
-> An entry earns storage only if a future stranger, standing in a situation they
-> can recognise, would act differently for having read it.
+> An entry earns storage only if a future stranger, standing in a situation they can
+> recognise, would act differently for having read it.
 
-Everything below is that one sentence made checkable. If a candidate entry fails
-it, no amount of correct formatting rescues it.
+Everything below is that sentence made checkable. If a candidate fails it, no amount
+of correct formatting rescues it. **"Differently" is load-bearing** — an entry a
+competent person would have complied with anyway has told them nothing.
 
-## What kind of entry is this — decide FIRST
+---
 
-Three kinds enter the store, they are not interchangeable, and getting this wrong
-is the failure the first fold made on half its entries. The test is one question:
+# 1. Before you fold anything
 
-> **Does violating it produce a CLASS of different problems, or the same one
-> problem every time?**
-
-**A PRINCIPLE** — a class. *Do not act on an order instruction until the venue
-confirms it* is one rule, and breaking it in different places gives you different
-damage: a reused slot with a phantom position, a resend after a timeout that
-fills twice, a local book that silently disagrees with the venue's. That variety
-IS the evidence it is a principle; write it into the entry, because it is what
-justifies storage. A principle firing on a neighbouring situation is a SUCCESS.
-Type: `lesson` or `failure_mode`.
-
-**A DURABLE FACT** — one condition, one remedy, and it stays true as long as the
-thing does. *On a Tycho project the Maven goal must be `verify`.* There is no
-class behind it and manufacturing one produces noise; the condition IS the
-boundary. A fact firing outside its condition is a FALSE POSITIVE that costs the
-reader the time it was stored to save. Type: `domain_fact`.
-
-**A PERISHABLE FACT** — a durable fact about someone else's defect. *This
-WebKitGTK release blanks the webview; set the variable.* It is true now and
-becomes FALSE when upstream ships the fix, and nothing in the store retires it.
-Record the version it was observed against and what would end it, so a later
-reader can check rather than trust. Type: `domain_fact`.
-
-**Do not fold a fact into a principle's shape.** Writing a "transferable shape"
-paragraph onto a troubleshooting fact to make it fit the lesson template is
-inventing a property so the mismatch disappears — the same move as inventing an
-outcome for a fact that never turned out any way at all.
-
-## The fields
-
-### situation — when does this apply?
-
-The condition under which the story is true. This is the field applicability is
-declared in, and the field an anchorless question is matched against hardest, so
-it carries most of the weight in retrieval.
-
-- **Self-contained.** A reader with no session context must be able to tell
-  whether they are IN it. Every referent named: not "the number", not
-  "leadership", not "the fix".
-- **Concrete.** The observable condition, not the category it belongs to.
-- **Phrased as a condition**, beginning *when …*.
-- **Not an address.** A path, a symbol or a flag is an anchor, not a situation.
-
-The sentence that fails this, and the reason it is the worked example:
-
-> *when a number invented to diagnose a problem becomes the figure leadership
-> reviews every week*
-
-What number? Whose leadership? Which problem? Three questions a stranger cannot
-answer — so they cannot tell whether the story is theirs. It reads well, which is
-exactly why a shape check passes it and only a reader catches it.
-
-**Prefer the question the reader is actually facing.** *"You already have a
-partial fill and want to change the limit price — what do you put in the quantity
-field?"* is recognisable. *"When amending an order that is already partially
-filled"* describes circumstances and leaves the reader to work out whether their
-problem is the one being answered.
-
-**The situation stays in the reader's plain words — the scope lives in the
-claim.** Both of these were measured, not reasoned:
-
-- Abstracting the situation's WORDING to widen the scope makes the entry harder
-  to find, not easier. *"a bulk substitution across text"* lost to *"renaming
-  across documentation"*; *"window chrome"* lost to *"the title bar and the
-  buttons"*. Widen the claim; leave the situation in the words someone would
-  actually type.
-- **Naming a technology in the situation gets the entry REFUSED.** A situation
-  mentioning `WebKitGTK` is read as a code location, and the admission gate turns
-  it away — correctly, since a location matches everything inside it and
-  distinguishes nothing. So the vendor boundary the scope test asks for goes in
-  the claim and the details: *"if the app embeds a WebKitGTK webview, set …"*.
-  The two rules compose in exactly one direction.
-
-**No local vocabulary.** A word that means something only inside one project
-makes the situation unreadable to everyone else, and the author is the last
-person who can see it — it reads perfectly to them. If a term would need the
-project explained first, it does not belong in the situation. *"whether the slot
-is free"* fails: a reader who does not know the portfolio is divided into ten
-slots cannot tell whether the story is theirs.
-
-### Say it out loud — and leave the incident's numbers out of it
-
-Two rules, and they pull in opposite directions, which is why both are needed.
-
-**Read the situation aloud. If nobody would say it, rewrite it.** A constructed
-sentence reads as competent and matches nothing. Of twenty situations written for
-one sample, the only one that worked was the one dictated in speech:
-
-> *"you already have a partial fill and want to change the limit price — what do
-> you put in the quantity field?"*
-
-Everything else was assembly — *"when an indicator fires on some fraction of
-checks"*, *"when you are reformulating someone's requirement into the version that
-will be worked from"*. Nobody has ever said either sentence.
-
-**But the incident's own values must NOT be in it.** They are the tightest possible
-filter and they filter on the wrong thing:
-
-| written | fails on |
-|---|---|
-| *"0.28 splits my data best — can I hard-code it?"* | someone whose number is 0.96, or 1.3 — and someone tuning to optimise a score rather than to split |
-| *"it's been running forty minutes — is it stuck?"* | four hours |
-
-Numbers, versions and durations are EVIDENCE. They belong in the body, where they
-show the claim is real. In the situation they are a coincidence the reader has to
-share.
-
-**And use the domain's actual word.** *"Threshold"* is what people say and search
-for; *"a cutoff that splits my data"* is a paraphrase of it that also narrows it.
-The rule is the same as keeping the nouns concrete — reach for the term in use,
-not a description of the term.
-
-### Keep the domain's own nouns — a placeholder noun matches nothing
-
-The situation is written in the words the reader would type. Substituting a
-generic noun for the real one is the same over-abstraction as widening the
-wording, and it produces a sentence nobody will ever match:
-
-> *when your cleanup pass drops an in-flight job from the map that tracks it
-> because the job's own flag says it has finished*
-
-Every noun there is a placeholder — "cleanup pass", "in-flight job", "the map",
-"the flag" — standing in for orders, a broker, and the record we keep of them.
-The result reads as competent English and matches either everything or nothing.
-
-**The check:** point at each noun and name the real thing it replaced. If you can,
-put the real thing back. A reader searching for this problem is holding orders and
-a broker, not jobs and maps.
-
-This composes with the width rule below in one direction only: widen the CLAIM to
-the class, keep the SITUATION in the domain's concrete language.
-
-### Name what was actually being built — the body, not only the situation
-
-The placeholder-noun rule above was written about the situation. **It applies to
-the body too, and the failure there is worse, because an entry can narrate a whole
-incident without ever saying what the thing WAS.**
-
-A draft ran: *"the requirement was that the human sees the outgoing text once,
-already reviewed. It was built on a hook that fires after the text has already
-streamed."* Every noun is a role — a check, a hook, the human, the text. The read
-it got: *"Is this about the communicator or what? This is not concrete at all."*
-
-What it needed was one sentence saying what was under construction: **a gate that
-reviews an agent's outgoing messages to the human before the human reads them.**
-
-**Concrete is not the same as local, and that is the balance to hold.** *"The
-communicator gate"* is our word and means nothing to anyone else. *"A gate that
-reviews an agent's messages before the human sees them"* is concrete AND readable
-by a stranger. Name the thing in plain terms; do not name it by its house name,
-and do not replace it with its role.
-
-### Four scopes, and a note usually carries more than one
-
-A lesson holds at one of four levels, and the level decides how the situation is
-written. Getting it wrong sends the entry to the wrong readers in both directions.
-
-| scope | holds for | the situation says |
-|---|---|---|
-| **universal** | everyone, everywhere | the bare condition, no venue, no technology |
-| **business / regulatory** | everyone in a domain — it comes from outside the technology (market structure, a regulator, a business model) | the domain condition, and where it was observed |
-| **architecture / tech stack** | anyone whose system has this shape | the SHAPE — *"the broker pushes acknowledgements over websocket and has a REST API"* |
-| **vendor** | this vendor's implementation and nobody else's | NAME the vendor |
-
-**You must be able to EVIDENCE the scope you claim, and the levels differ in what
-counts.** Scope inflation is the over-widening fault wearing new clothes, and it is
-seductive for the same reason: the wider claim reads as the more insightful one.
-
-- **business / regulatory** — NAME THE RULE, AND CHECK IT SAYS WHAT YOU THINK.
-  Reg SHO 201 is a real one: it requires trading centres to block a short sale at
-  or below the national best bid once a security falls 10% from the prior close,
-  for the rest of that day and the next. That is what a regulatory-scope claim
-  looks like — nameable, and it governs the thing you are claiming.
-  **The near-miss is the instructive part.** "Extended hours take limit orders
-  only" felt regulatory, and there IS a named FINRA rule in the area — 2265. It
-  requires brokers to DISCLOSE the risks of extended-hours trading. It says
-  nothing about order types. Finding a rule nearby is not the same as finding
-  the rule, and the authority of the wrong one is exactly what a reader will
-  borrow.
-- **architecture** — you must be able to say what about the shape produces the
-  behaviour. "Websocket delivery is not guaranteed" is a property of the transport,
-  so any broker on it inherits it.
-- **vendor** — free. It is what you observed.
-- **universal** — the hardest to earn, and it needs the mechanism, not a survey.
-
-**When you cannot evidence a wider scope, write the narrow one and SAY the wider is
-unverified.** A worked failure: *"extended-hours sessions take limit orders only —
-that is market structure, not one venue's preference"* was written from a single
-observation at a single broker, with an invented rationale about auctions and
-reference prices attached to make it sound settled. The honest version names the
-venue and states plainly that the wider scope is unverified — which is also more
-useful, because it tells the reader to go and check rather than to trust.
-
-**And the important half: one source note usually carries several of these, and
-folding it into one entry forces a single scope that is wrong for the rest.**
-
-A single postmortem about a missed order acknowledgement contained four:
-
-- *until an order is acknowledged you do not know its status* — universal, true on
-  a guaranteed-delivery session too
-- *acknowledgements pushed over websocket are not guaranteed; the REST read is the
-  truth* — architecture, true of any broker built that way
-- *Alpaca SKIPS an order update while the previous message is not fully processed* —
-  vendor, and true of nobody else
-- *extended-hours sessions take limit orders only* — business/regulatory, market
-  structure rather than one venue's preference
-
-**Split them.** Each gets its own situation, because each has different readers. A
-person asking *"why was my amendment ignored?"* needs the vendor entry; a person
-asking *"should I wait for the acknowledgement?"* needs the universal one. One
-merged entry can only carry one situation, so it serves one of them and hides the
-other.
-
-**The tell that you have merged scopes:** a paragraph inside the entry that begins
-"this part is vendor-specific" or "the rule of thumb transfers but the mechanism
-does not". That labelling is honest, and it is a sign that two entries are wearing
-one coat.
-
-### The WHY is a claim too — do not manufacture one
-
-An entry's mechanism or rationale is the part a reader REASONS from, so an invented
-one does more damage than no explanation at all. Three of these in two days, each
-fluent and each wrong:
-
-- *"websocket messages may be redelivered"* — they are not resent at all, which is
-  the whole reason the REST read is the truth
-- *"extended hours take limit orders only because there is no consolidated auction
-  and no reference price"* — a rationale attached to make a broker policy sound
-  like market structure
-- *"entryValue exists for futures, where the value at entry is non-zero"* —
-  economically backwards: a future entered at the market has ZERO value at entry
-  and is valued by the price difference; a stock has the value you paid. The field
-  holds a notional, and the NAME was doing the explaining
-
-**The tell in all three: the why arrived without a source.** The note recorded what
-happened; the explanation was supplied by the writing.
-
-**And a humbler invented why is still an invented why.** Corrected on the futures
-explanation above, the next attempt was *"the name is misleading; the field holds a
-notional."* That sounds like abstention and is not — it is a second manufactured
-explanation wearing modesty. The real answer, when it finally arrived, was a clean
-design: `value = price now − entryValue`, so a future carries its entry price and
-yields P&L, a stock carries zero and yields position value, and ONE formula serves
-both. The zero is the identity element, not a gap.
-
-**Abstention means writing no why at all.** "The note does not say why this is
-zero; changing it broke portfolio aggregation" is a complete entry. Reaching for a
-smaller-sounding explanation is the same failure at lower volume.
-
-**So — if the source does not give the why and you cannot check it, write the fact
-and say the why is unknown.** Where a design looks arbitrary, "this name is
-misleading and here is what the field actually holds" is a better entry than a
-manufactured principle, because it warns the reader off the same wrong inference
-you just made.
-
-### The situation must be as wide as the claim — the commonest authoring fault
-
-Measured on a folded sample: **four independent cold readers, on four different
-entries, said the same thing** — the situation was narrower than the claim above
-it. It is a habit, not a slip, and it has one cause: the situation gets written
-from the INCIDENT and the claim gets written from the CLASS.
-
-The four, verbatim from the readers:
-
-| Claim covers | Situation said | Consequence |
-|---|---|---|
-| any command whose input is a directory | "commit, package or publish" | never fires on a CI artifact upload |
-| any derivation of a work-bearing document | "reformulating someone's requirement" | never fires on your own draft, or on a summary |
-| any instruction with an observed failure to name | "for the second time" | the count is not the trigger; the observation is |
-| adding a tray icon with Linux as a target | "the icon goes out through libayatana-appindicator" | assumes the reader already knows the answer they came for |
-
-The last one is the sharpest and the easiest to commit: **a situation must not
-presuppose the thing the entry exists to tell you.** If recognising it requires
-knowing what the entry teaches, it fires only for people who no longer need it.
-
-**The check, after writing both:** read the claim, then read the situation, and
-ask whether every case the claim covers would recognise itself in the situation.
-Where it would not, the situation is a description of the incident and needs
-widening to the class — WITHOUT abstracting its vocabulary, which is the opposite
-error and is covered above.
-
-### summary — what happened, or what to do?
-
-A claim, not a topic. *"Test plan"* names a subject; *"a v9 store climbs every
-remaining rung in one call"* claims something a reader can act on or dispute. A
-heading is not a claim, whatever it is labelled.
-
-**And it must be at the RIGHT WIDTH — the test the rest of this file did not
-ask.** A story can be wrong about scope in two directions at once, and usually
-is:
-
-- **Too narrow.** The claim is written about the case you happened to hit, when
-  it holds for a whole family. *"Wait for the cancel to be confirmed"* was one
-  instance of *"know what state an order is in before you send anything else
-  about it"* — which covers new orders and amends equally.
-- **Too broad.** A vendor's behaviour is stated as though it were how the world
-  works. *"Every broker skips a message until the previous one is performed"* is
-  one broker's sequencing; other venues permit patterns it does not.
-
-So: **name the widest form that is actually true, and label the vendor-specific
-mechanism as vendor-specific inside it.** The rule of thumb transfers; the
-mechanism does not, and a reader who cannot tell them apart will carry the wrong
-half to the next system.
-
-### details — why, and what would a reader do differently?
-
-The mechanism, the evidence, the cost. **Artifacts live here** — paths, ids,
-flags, commands, versions — never in the situation, which has to stay readable by
-someone who was not there.
-
-### the boundary — every principle owes one
-
-A principle that fires on a neighbouring situation and then just asserts is worse
-than silence: the reader gets authority without reach, and spends their afternoon
-finding out the remedy was for someone else. So every principle names **one
-neighbouring case it DOES cover, and one it does NOT** — and where a vendor
-mechanism is involved, says which half is the vendor's.
-
-The worked example, because it carries both directions at once:
-
-> Knowing an order's state before you touch it again holds against every venue,
-> and against anything that acknowledges asynchronously. But Alpaca *serialises*
-> — it skips your next message until the previous one is performed — so "wait for
-> the acknowledgement" is Alpaca's mechanism, not the rule. Other venues
-> pipeline. Carry the rule; check the protocol.
-
-A fact owes no boundary: its condition already is one. If you find yourself
-writing a boundary for a fact, re-read the classification above — you are folding
-it into the wrong shape.
-
-### outcome — experiences only
-
-`worked` · `failed_avoid` · `unproven` (genuinely still open).
-
-A `domain_fact`, an `api_contract`, a `naming_convention` or a `reference` owes
-**none**. It never turned out any way at all, and inventing an outcome for one
-makes retrieval rank on fiction.
-
-### anchor — optional
-
-A symbol or a package, when the story has one. Its absence is normal: experience
-is experience without any code.
-
-## Before folding a note, find out whether it was overturned
+## Was this note overturned?
 
 A note records what was believed when it was written. Some of those beliefs were
 later proved wrong, and **the note that was wrong does not know it** — the pointer
 runs forward only.
 
-A worked case, and the cost is the point. An investigation into a red staleness
-lamp concluded, with pages of arithmetic and a ruled-out list, that the lateness
-was ours and the vendor was fine. Days of work rested on one step: *a vendor
-failure would be seen by thousands of other customers, and they are not seeing it.*
-A later note recorded the resolution — a probe run 9 ms from the vendor's own
-datacentre showed trades arriving up to 107 seconds stale, our side provably
-clean. It says *"Supersedes the earlier contention/lock lead."* **The superseded
-note says nothing.**
+The worked case: an investigation into a red staleness lamp concluded, with pages of
+arithmetic, that the lateness was ours and the vendor was fine. A later note recorded
+the resolution — a probe 9 ms from the vendor's datacentre showed trades arriving up
+to 107 seconds stale — and says *"Supersedes the earlier contention/lock lead."* The
+superseded note says nothing.
 
-Fold the first one and you mint a confident, well-argued, wrong entry. No shape
-check sees it. No cold reader can see it — they judge the text in front of them
-and cannot check a fact. Retrieval then makes it worse, because a superseded note
-is MAXIMALLY relevant to its own subject and outranks the note that killed it.
+Fold the first one and you mint a confident, well-argued, wrong entry. No shape check
+sees it. No cold reader can see it — they judge the text in front of them and cannot
+check a fact. Retrieval then makes it worse, because a superseded note is MAXIMALLY
+relevant to its own subject and outranks the note that killed it.
 
-**So the fold resolves supersession before it judges anything.** The corpus names
-its own: search it for *supersedes*, *superseded*, *resolved*, *falsified*,
-*refuted*, *correction*. Where one note overturns another, the overturned one is
-not folded — and if it is folded for the reasoning it contains, the entry states
-what was concluded, that it was wrong, and what was true instead. **That entry is
-usually better than either note**, because a documented wrong turn tells a reader
-which reasoning to distrust.
+**So this is a corpus-wide sweep BEFORE any folding, not a per-note check.** Grep the
+whole corpus for *supersedes · superseded · resolved · falsified · refuted ·
+correction*, and build a kill list from what those notes say they replace. The search
+finds the SUPERSEDING note, never its victim — that is why it cannot be done one note
+at a time.
 
-Measured on one corpus of 73 notes: 7 name something they supersede, 20 carry a
-RESOLVED / FALSIFIED / REFUTED / CORRECTION marker, and of three notes known to be
-superseded, **three said nothing about it**.
+**And the pointer is often a description, not a name.** *"Supersedes the earlier
+contention/lock lead"* names no file. Where the victim is identified only by
+description, read the candidates and decide; where you cannot tell, fold neither and
+say so. Measured on one 73-note corpus: 7 notes named something they supersede, 20
+carried a resolved/falsified marker, and of three notes known to be superseded, three
+said nothing about it.
 
-## What never enters
+## Does it belong in the store at all?
 
-Each row is a refusal the gate actually emits, named by the word it reports.
+Four destinations, and the question is **when must this fire?**
 
-| Refused | Reported as | Why |
+| | fires | cost |
 |---|---|---|
-| a log line | `log line` | it records that something happened, not what to do about it |
-| a fallback slip | `fallback slip` | its audit and precedent value belongs in the tool lane, the store's separate per-tool table |
-| project progress — a sprint phase, a release announcement | `status note` | it was true when written and is false now, and nothing retires it |
-| a numbered heading ("4. Testing") | `section heading` | a claim does not begin with its own position in a document |
-| a summary too short to be a claim | `not a claim` | fewer than four words names a topic; a claim needs a subject and something said about it |
-| a context-compaction artifact | `compaction artifact` | it is a transcript's shadow, meaningless to any later reader |
-| nothing at all | `empty` | an entry with no summary claims nothing, so nobody can judge whether it applies to them |
-| a fragment of a document | — | **one story = one file = one entry** — no entry is ever minted from a section |
+| **hook** | mechanically, at the act | nothing to read |
+| **seat check** | at a known point in a process | attention at that point only |
+| **standing rule** | always | attention on every task, forever — scarce |
+| **store entry** | only when someone asks | nothing until asked |
 
-A `#`-prefixed or colon-terminated heading is refused earlier still, by the admission
-policy that has always guarded the summary field.
+Take the cheapest rung that still fires when it is needed. **A rule kept in the store
+fires only if somebody thinks to ask** — an agent about to sweep a directory into a
+commit is not asking anything, so that rule belongs in a hook, and did.
 
-## The cold reader
+Routed over one 193-note corpus: 45 were standing rules, 28 were status or strategy
+and entered nothing, 15 were seat checks, 8 were hooks, and about 50 were entries.
+**The corpus was a rulebook filed as a library.** Expect the same.
 
-Every folded story is judged by an agent with **zero session context**, which
-answers four questions:
+## Which kind of entry is it?
 
-1. **Which kind is it, and is that right?** — principle, durable fact, or
-   perishable fact. Apply the test: does violating it produce a class of
-   different problems, or one? A fact wearing a principle's shape is the most
-   common defect and the reader is the only one who catches it.
-2. **When does this apply?** — restate it. If they cannot, the situation is not
-   self-contained. Any word they would need the project explained to understand
-   is a failure of the story, not of the reader — and the author is the last
-   person who can see it, because it reads perfectly to them.
-3. **What would you do differently for having read it?** — if there is no answer,
-   it is a comprehensible platitude. Platitudes are what pass every other check,
-   which is why this question exists.
-4. **Is it the right width?** — name a neighbouring case the claim should also
-   cover, and a system where it should NOT hold. If the neighbour is excluded the
-   story is too narrow; if the other system is swept in it is too broad. Both
-   faults routinely appear in the same entry, and a reader with no context is the
-   only one who will notice either.
+| kind | test | firing wide is |
+|---|---|---|
+| **principle** | violating it produces a CLASS of different problems | success |
+| **durable fact** | one condition, one remedy; no wider rule underneath | noise |
+| **perishable fact** | a durable fact about someone else's defect or release | noise, and it also goes stale |
 
-A duplicate check against the existing stories completes the review. Passing
-earns a `reviewed:` stamp in the file's frontmatter.
+The test is one question: **does violating it produce a class of different problems,
+or the same one problem every time?**
 
-**The reseed gate admits stamped stories only, and it checks the STAMP, never the
-text.** Intelligence sits in front of ingest, never inside it — a gate that tried
-to judge meaning would either turn away real knowledge or teach authors to dress
-noise up.
+*Do not act on an order instruction until the venue confirms it* breaks differently
+in different places — a reused slot with a phantom position, a resend after a timeout
+that fills twice, a local book that silently disagrees. That variety IS the evidence
+it is a principle. Write it into the entry; it is what justifies storage.
 
-## The asymmetry, stated rather than hidden
+*On a Tycho project the Maven goal must be `verify`* has no class behind it, and
+manufacturing one produces noise. The condition IS the boundary.
 
-A direct `record` from any client passes the deterministic shape gate only. Its
-quality review is the usage flow: the entry accumulates a score, and a human
-reviews and deletes it through the review seat. That path includes the seats'
-mandatory outcome records — a standing write channel, not a rare tail — so this
-is an accepted asymmetry, taken because the review-and-delete flow covers what a
-gate cannot judge.
+**Do not fold a fact into a principle's shape.** Writing a "transferable shape"
+paragraph onto a troubleshooting fact is inventing a property so the mismatch
+disappears — the same move as inventing an outcome for a fact that never turned out
+any way at all.
+
+**The type field is coarser than these three kinds.** `lesson` and `failure_mode` are
+experiences and owe a situation and an outcome. `domain_fact`, `api_contract`,
+`naming_convention` and `reference` owe neither — they never turned out any way at
+all, and inventing a verdict for one makes retrieval rank on fiction. A perishable
+fact is a `domain_fact` that says so in its first line; nothing in the schema
+distinguishes it, which is why the text must.
+
+---
+
+# 2. The claim
+
+**Write the claim before the situation.** Every rule about the situation below is
+stated relative to a claim — how wide it is, whose words it uses, what it excludes.
+Write them the other way round and the situation comes from the INCIDENT while the
+claim comes from the CLASS, which is the mechanical cause of the commonest fault in
+this file.
+
+## A claim, not a topic
+
+*"Test plan"* names a subject. *"A v9 store climbs every remaining rung in one call"*
+claims something a reader can act on or dispute. **The test is whether the sentence
+can be contradicted.** A heading is not a claim, whatever it is labelled.
+
+## Quote it; do not restate it
+
+**Every factual error in the first folding rounds came from paraphrase.** The source
+note said *"the qty parameter is the NEW TOTAL order size; never pass remaining"* and
+the entry named a different fault entirely. Another source said *"when the operator
+states it worked yesterday, that outranks any config-screen theory"* and the entry
+turned it into a sentence that meant nothing.
+
+**So the claim is the source's own sentence.** Paraphrasing is confined to the
+situation, which is the one field where a reader's words are needed and where a
+factual error is structurally impossible.
+
+## The right width
+
+A claim can be wrong about width in two directions at once, and usually is.
+
+- **Too narrow.** Written about the case you hit when it holds for a family. *"Wait
+  for the cancel to be confirmed"* was one instance of *"know what state an order is
+  in before you send anything else about it."*
+- **Too broad.** A vendor's behaviour stated as how the world works. *"Every broker
+  skips a message until the previous one is performed"* is one broker's sequencing.
+
+**Name the widest form that is actually true.** Where a vendor mechanism is involved,
+see the boundary rule below for what to do with it — do NOT spell the mechanism out
+inside the principle.
+
+## Four scopes, and a note usually carries several
+
+| scope | holds for | the situation says |
+|---|---|---|
+| **universal** | everyone, everywhere | the bare condition |
+| **business / regulatory** | everyone in a domain, for reasons outside the technology | the domain condition, plus where it was observed |
+| **architecture** | anyone whose system has this shape | the SHAPE |
+| **vendor** | this vendor and nobody else | NAME the vendor |
+
+**One source note usually carries several, and folding it as one entry forces a
+single scope that is wrong for the rest.** A single postmortem about a missed order
+acknowledgement contained all four: the universal rule that you do not know a status
+until it is acknowledged; the architectural fact that acknowledgements pushed over a
+websocket are not guaranteed and are not resent; the vendor fact that one broker
+SKIPS an update while the previous message is unprocessed; and a broker policy about
+extended-hours order types.
+
+**Split them.** Each gets its own situation, because each has different readers. A
+person asking *"why was my amendment ignored?"* needs the vendor entry; a person
+asking *"should I wait for the acknowledgement?"* needs the universal one. An entry
+has exactly one situation, so a merged entry answers one of them and hides the rest.
+
+*(Splitting one note into several entries is not the same as minting entries from a
+document's sections — see the refusal table. The unit is one CLAIM, and a note may
+carry several.)*
+
+## You must be able to EVIDENCE the scope you claim
+
+Scope inflation is over-widening wearing new clothes, and it is seductive for the
+same reason: the wider claim reads as the more insightful one.
+
+- **regulatory** — NAME THE RULE, AND CHECK IT SAYS WHAT YOU THINK. Reg SHO 201 is
+  real: trading centres must block a short sale at or below the national best bid
+  once a security falls 10% from the prior close. **The near-miss is the instructive
+  part.** *"Extended hours take limit orders only"* felt regulatory, and there IS a
+  named rule nearby — FINRA 2265 — which governs risk DISCLOSURE and says nothing
+  about order types. Finding a rule nearby is not finding the rule, and the authority
+  of the wrong one is what a reader borrows.
+- **architecture** — say what about the shape produces the behaviour. *"Websocket
+  delivery is not guaranteed"* is a property of the transport, so anyone on it
+  inherits it.
+- **vendor** — free. It is what you observed.
+- **universal** — the hardest, and the test is a refutation attempt: **name a system
+  where the condition holds and the claim fails.** If you can, it is not universal.
+  If you cannot after genuinely trying, say what would produce one. Do not reason
+  your way there.
+
+**When you cannot evidence a wider scope, write the narrow one and SAY the wider is
+unverified** — and note that "I cannot verify this" is itself a claim. One search
+settled the extended-hours question after two careful paragraphs had been written
+around it.
+
+## The WHY is a claim too — do not manufacture one
+
+The mechanism or rationale is the part a reader REASONS from, so an invented one does
+more damage than none at all. Four of these in two days, each fluent and each wrong:
+
+- *"websocket messages may be redelivered"* — they are not resent at all
+- *"extended hours take limit orders only because there is no consolidated auction"* —
+  a rationale attached to make a broker policy sound like market structure
+- *"entryValue exists for futures, where the value at entry is non-zero"* —
+  economically backwards
+- *"the name is misleading; the field holds a notional"* — the correction to the
+  previous one, and **also invented**
+
+The tell in all four: **the why arrived without a source.** The note recorded what
+happened; the explanation was supplied by the writing.
+
+**So every why carries its provenance.** One of: the source note, a document you can
+name, a measurement you ran, or the literal word **unsourced**. There is no fifth
+option and no implicit one.
+
+**And a humbler invented why is still an invented why.** *"The name is misleading"*
+sounds like abstention and is not. **Abstention means writing NO why.** *"The note
+does not say why this is zero; changing it broke portfolio aggregation"* is a
+complete and correct entry.
+
+*(The real answer, when it arrived, was a clean design: `value = price now −
+entryValue`, so a future carries its entry price and yields P&L while a stock carries
+zero and yields position value. One formula, two instruments. The zero is the
+identity element, not a gap.)*
+
+## Every principle owes a boundary — and a boundary NAMES, it does not TEACH
+
+A principle that fires on a neighbouring situation and then just asserts is worse
+than silence: the reader gets authority without reach.
+
+So name **one neighbouring case it covers, and one it does not.**
+
+**The test that keeps this from becoming a merged entry:** a boundary NAMES the
+neighbour; it does not TEACH it. If the paragraph can be deleted without losing
+actionable content, it is a boundary. If a reader would ACT on what it says, it is a
+second entry at a different scope and belongs in its own file.
+
+- Boundary: *"How you must wait is the venue's own design — check the protocol you
+  are on rather than assuming this one."* Names the neighbour. Teaches nothing.
+- Second entry: *"Alpaca skips your next message until the previous one is performed,
+  silently, with no rejection to catch, so wait for the acknowledgement."* A reader
+  acts on that. It is its own entry.
+
+**A fact owes no boundary — its condition already is one.** If you are writing a
+boundary for a fact, re-read the kind test; you are folding it into the wrong shape.
+
+---
+
+# 3. The situation
+
+The condition under which the story is true. It carries most of the weight in
+retrieval and is what an anchorless question is matched against hardest.
+
+## What a situation IS
+
+The shipped guidance, rendered into every client's tool schema and into every
+refusal, is `EntryForm.SITUATION_SHAPES`:
+
+> **A situation is a GREP, a TASK, or a NUMBER.** A grep — something you can look up
+> in the code in front of you. A task — what you are doing right now. A number — a
+> value you can read off an output. If it is none of the three it describes how the
+> system works, which is true during every call and tells no one whether this entry
+> is for them.
+
+**That replaced an earlier rule which said only "phrased as a condition, beginning
+*when…*".** Four attempts were rejected under it, and every one was a perfectly valid
+condition that described how the system works. Do not reintroduce it. The situation
+need not begin with *when*, and the best one in this file does not.
+
+## Say it out loud
+
+**Dictate the situation before you type it.** This is a production method, not a
+grade — you are the worst possible judge of whether you would say your own sentence.
+Of twenty situations written for one sample, the only one that worked was the one
+dictated in speech:
+
+> *"You already have a partial fill and want to change the limit price — what do you
+> put in the quantity field?"*
+
+Everything else was assembly: *"when an indicator fires on some fraction of checks"*,
+*"when you are reformulating someone's requirement into the version that will be
+worked from"*. Nobody has ever said either sentence. **If it was typed first, rewrite
+it by dictation.**
+
+## Keep the domain's own nouns — a placeholder noun matches nothing
+
+Substituting a generic noun for the real one produces a sentence nobody will match:
+
+> *"when your cleanup pass drops an in-flight job from the map that tracks it because
+> the job's own flag says it has finished"*
+
+Every noun is a placeholder — "cleanup pass", "in-flight job", "the map", "the flag"
+— standing in for orders, a broker, and the record we keep of them. It reads as
+competent English and matches either everything or nothing.
+
+**The check: point at each noun and name the real thing it replaced.** If you can,
+put the real thing back. This is the only test in this file that catches the failure,
+which is why it is the one to run.
+
+**And use the domain's actual word.** *"Threshold"* is what people say and search for;
+*"a cutoff that splits my data"* is a paraphrase that also narrows it.
+
+**This applies to the BODY too, and there the failure is worse** because it is
+invisible: an entry can narrate a whole incident without ever saying what the thing
+WAS. A draft read *"the requirement was that the human sees the outgoing text once,
+already reviewed; it was built on a hook that fires after the text has streamed."*
+Every noun is a role. The reader's verdict: *"Is this about the communicator or what?
+This is not concrete at all."*
+
+**Concrete is not the same as local.** *"The communicator gate"* is our word and means
+nothing outside. *"A gate that reviews an agent's outgoing messages before the human
+reads them"* is concrete AND readable by a stranger.
+
+## Technology names BELONG in the situation
+
+A product name is what says which population the entry is for. `WebKitGTK`,
+`PostgreSQL`, `Tycho`, `Alpaca` — strip them and *"a desktop app shows a flat grey
+content area"* matches every blank-screen problem there is.
+
+**What is refused is a structural ADDRESS**, and the predicate is mechanical rather
+than lexical — checkable by eye, unlike "is this a technology?":
+
+- a backticked span
+- a call form, `name(...)`
+- a dotted identifier, `a.b`
+- a `Type#member`
+- a path, or a leading `/`, `~`, `-`, or a filename extension
+
+A bare proper noun is none of those and is admitted. This file previously said the
+opposite, as a hard REFUSED, for two days after the gate had been changed — see the
+drift note at the top.
+
+## Leave the incident's numbers out
+
+| written | fails on |
+|---|---|
+| *"0.28 splits my data best — can I hard-code it?"* | anyone whose number is 0.96, or who is optimising rather than splitting |
+| *"it's been running forty minutes — is it stuck?"* | four hours |
+
+Numbers, durations and versions are EVIDENCE for the body. In the situation they are
+a coincidence the reader has to share.
+
+**A perishable fact is not an exception to this.** Its condition is the SYMPTOM, and
+the version is the freshness check that lives in the body: *"observed against these
+versions; check yours."* The symptom plus the technology name is what makes it
+discriminating — which is why the two rules above have to hold together.
+
+## As wide as the claim
+
+**Four independent cold readers, on four different entries, made this same finding.**
+It is a habit, not a slip, and its cause is writing the situation from the INCIDENT
+and the claim from the CLASS — which is why the claim is written first.
+
+| claim covers | situation said | consequence |
+|---|---|---|
+| any command whose input is a directory | "commit, package or publish" | never fires on a CI artifact upload |
+| any derivation of a work-bearing document | "reformulating someone's requirement" | never fires on your own draft |
+| any instruction with an observed failure | "for the second time" | the count is not the trigger |
+| adding a tray icon with Linux as a target | "the icon goes out through libayatana-appindicator" | assumes the reader knows the answer they came for |
+
+The last is the easiest to commit: **a situation must not presuppose the thing the
+entry exists to tell you.**
+
+**The check:** read the claim, then the situation, and ask whether every case the
+claim covers would recognise itself. Widen the SITUATION to the class; do not
+abstract its vocabulary, which is the opposite error.
+
+## No local vocabulary — and you cannot check this one yourself
+
+A word that means something only inside one project makes the situation unreadable to
+everyone else. *"Whether the slot is free"* fails: a reader who does not know the
+portfolio is divided into ten slots cannot tell whether the story is theirs.
+
+**This rule is not author-checkable.** It reads perfectly to you, and it is settled by
+the cold reader, not by you re-reading. The proxy you CAN run: any noun a stranger
+could not define from a dictionary and general engineering knowledge.
+
+## Test that it can be found
+
+The criterion is about a stranger FINDING the entry, and every rule above grades text.
+
+**Write the question a stranger would type, run it against the store, and check this
+entry comes back and what outranks it.** This is measurable and has been measured:
+*"a bulk substitution across text"* lost to *"renaming across documentation"*, and
+*"window chrome"* lost to *"the title bar and the buttons"*. Both losses were
+invisible to every text rule in this file.
+
+---
+
+# 4. The other fields
+
+## symptoms — how the problem LOOKED, in words
+
+**This field has the store's strictest live gate and it is easy to get refused by.**
+`AdmissionPolicy` classifies every item against eight shapes and refuses six of them:
+a path, a flag (a leading `-`), a heading, code, an id (a hex or all-numeric string),
+and a tag (a single hyphenated or underscored word). Only prose and plain words pass.
+
+So: each item is an OBSERVATION in words. Paths, flags, ids, commands and symbols go
+in `details`; a symbol goes in `symbol`. The refusal names the offending item and its
+shape, and it will tell you where the content belongs.
+
+## details — why, and what a reader would do differently
+
+The mechanism, the evidence, the cost. **Artifacts live here** — paths, ids, flags,
+commands, versions — never in the situation, which must stay readable by someone who
+was not there. The boundary text and a perishable fact's version check live here too.
+
+## outcome — experiences only
+
+`worked` · `failed_avoid` · `unproven` (genuinely still open).
+
+A `domain_fact`, an `api_contract`, a `naming_convention` or a `reference` owes
+**none**.
+
+## anchor — optional, and it narrows
+
+A symbol or a package, when the story has one. Its absence is normal: experience is
+experience without any code.
+
+**An anchor restricts as well as helps.** Hanging a narrow symbol on a universal
+principle silently limits where it surfaces. Anchor a fact about a specific member;
+leave a principle unanchored.
+
+---
+
+# 5. What never enters
+
+Each row is a refusal the gate emits, named by the word it reports. **The published
+form here is the enforced form** — where the code's test is narrower than the plain
+English, that narrowness is stated.
+
+| Refused | Reported as | The actual test |
+|---|---|---|
+| a log line | `log line` | it records that something happened, not what to do |
+| a fallback slip | `fallback slip` | its value is audit, and the tool lane holds it |
+| project progress | `status note` | an identifier followed immediately by a SHOUTED status word. **The capitals are the discriminator and they are load-bearing** — *"v2.7.1 RELEASED …"* is refused, *"v3.4.0 shipped semantic recall INERT …"* is admitted, so a lesson that narrates a release survives |
+| a numbered heading | `section heading` | a claim does not begin with its own position in a document |
+| too short to be a claim | `not a claim` | fewer than four words. **A judgement, not a measurement** — no distribution was fitted, and it has a known false-positive rate: *"Locks deadlock here"* is refused and IS a claim. The real test — can this be contradicted? — is the cold reader's |
+| a compaction artifact | `compaction artifact` | a transcript's shadow |
+| nothing at all | `empty` | an entry with no summary claims nothing |
+
+A `#`-prefixed summary is refused earlier by the admission policy, as is a summary
+**of at most 60 characters** ending in a colon with nothing after it.
+
+**One CLAIM = one entry.** No entry is minted from a document's section. A note
+carrying several claims at several scopes becomes several entries — that is splitting
+by claim, not by section, and it is required (see Four scopes). This rule is not
+enforced by any gate; it is on you.
+
+---
+
+# 6. The cold reader
+
+Every folded story is judged by an agent with **zero session context**, answering:
+
+1. **Which kind is it, and is that right?** Apply the test: a class of different
+   problems, or one? A fact wearing a principle's shape is the commonest defect a
+   reader catches.
+2. **When does this apply?** Restate it. Any word needing the project explained is a
+   failure of the story, not the reader.
+3. **What would you do differently?** Not *what would you do* — **differently.** If a
+   competent person does the same thing without this entry, it has told them nothing,
+   however true it is.
+4. **Is it the right width?** Name a neighbouring case it should cover and a system
+   where it should NOT hold.
+
+**What the reader cannot do, stated so it is not relied on:** it cannot check a fact.
+An entry can be fluent, correctly scoped, concretely nouned, and false, and every
+reader will pass it. That is what the provenance rule on the why exists to bound.
+
+**Duplicate check.** Not "is there a similar entry" — near-neighbours are produced
+deliberately by scope-splitting. The test: **would a reader who retrieved both act
+differently than with either alone?** If not, they are one entry. If yes — a
+universal rule and a vendor's specific mechanism — they are two, correctly.
+
+Passing earns a `reviewed:` stamp. **The reseed gate admits stamped stories only, and
+it checks the STAMP, never the text.** Intelligence sits in front of ingest, never
+inside it.
+
+---
+
+# 7. The asymmetry, stated rather than hidden
+
+A direct `record` from any client passes the deterministic shape gate ONLY. That gate
+is, exactly:
+
+- the heading-shaped summary check
+- the symptom shape checks (six refused shapes)
+- the seven `StoryTemplate` refusals in the table above
+- the situation-is-an-address check
+- for `lesson` and `failure_mode`: a situation must be present, and a verdict from
+  the closed vocabulary
+
+**Everything else in this file is unchecked on that path** — kind, scope, width,
+boundary, nouns, why-provenance, supersession, retrieval. On a direct record those
+are the author's responsibility and nothing will catch a failure.
+
+Quality review for that path is the usage flow: the entry accumulates a score and a
+human reviews and deletes through the review seat. That is an accepted asymmetry,
+taken because the review-and-delete flow covers what a gate cannot judge.

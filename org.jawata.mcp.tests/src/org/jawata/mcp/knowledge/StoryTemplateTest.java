@@ -238,4 +238,36 @@ class StoryTemplateTest {
             assertTrue(!f.conditions().isEmpty(), f.name() + " has no conditions");
         }
     }
+    /**
+     * THE DRIFT CONTROL, and it exists because the drift happened.
+     *
+     * <p>The published template told authors, bolded and as a hard REFUSED, that
+     * naming a technology in a situation gets the entry turned away. That was true
+     * of an older gate. {@link AdmissionPolicy#misplacedInSituation} now admits a
+     * bare product name and refuses only a structural ADDRESS — and it was changed
+     * precisely because stripping the technology out destroys the field's
+     * discriminating power. The document kept the reversed rule for two days,
+     * instructing exactly the over-generalisation the rest of it exists to prevent.</p>
+     *
+     * <p>The parity test above runs code → doc and cannot see this: it checks that
+     * everything the code emits is MENTIONED, never that what the doc claims is
+     * still true. This asserts the one direction that bit, on the one rule where a
+     * silent reversal is most expensive.</p>
+     */
+    @Test
+    void the_published_template_does_not_reinstate_the_technology_ban() throws Exception {
+        String doc = Files.readString(docFile(), StandardCharsets.UTF_8);
+        // The gate's own behaviour is the fact the doc must not contradict.
+        for (String tech : new String[] {"WebKitGTK", "PostgreSQL", "GitHub"}) {
+            String situation = "a desktop app built on " + tech + " comes up blank";
+            assertNull(EntryForm.check("domain_fact", "Set the compositor variable.",
+                    List.of(), situation, null).orElse(null),
+                tech + " must be admissible in a situation — it is what makes the entry findable");
+        }
+        String lower = doc.toLowerCase(Locale.ROOT);
+        assertTrue(!lower.contains("naming a technology in the situation gets the entry refused"),
+            "docs/story-template.md has reinstated the technology ban the gate no longer applies");
+        assertTrue(lower.contains("technology names belong in the situation"),
+            "the document must state the rule the gate actually enforces");
+    }
 }

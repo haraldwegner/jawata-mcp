@@ -246,11 +246,23 @@ public final class StoryTemplate {
      */
     public static String coldReaderPrompt() {
         StringBuilder sb = new StringBuilder();
-        sb.append("You have NO context beyond the story below. Answer two questions.\n\n")
-          .append("1. WHEN does this apply? Restate the situation in your own words.\n")
+        sb.append("You have NO context beyond the story below. Answer four questions.\n\n")
+          .append("1. WHICH KIND is it, and is that right? A PRINCIPLE (violating it\n")
+          .append("   produces a CLASS of different problems), a DURABLE FACT (one\n")
+          .append("   condition, one remedy, no wider rule underneath), or a\n")
+          .append("   PERISHABLE FACT (a fact about someone else's defect or release,\n")
+          .append("   true now and false when they fix it)? A fact wearing a\n")
+          .append("   principle's shape is the commonest defect a reader catches.\n")
+          .append("2. WHEN does this apply? Restate the situation in your own words.\n")
           .append("   If you cannot, the situation is not self-contained — say so.\n")
-          .append("2. What would you DO DIFFERENTLY for having read it?\n")
-          .append("   If there is no answer, it is a comprehensible platitude. Say so.\n\n")
+          .append("   Name any word you would need the project explained to follow.\n")
+          .append("3. What would you DO DIFFERENTLY for having read it? Not what you\n")
+          .append("   would do — DIFFERENTLY. If a competent person does the same\n")
+          .append("   thing without this entry, it has told them nothing.\n")
+          .append("4. IS IT THE RIGHT WIDTH? Name one neighbouring case the claim\n")
+          .append("   should also cover, and one system where it should NOT hold.\n\n")
+          .append("You CANNOT check a fact, and you are not asked to. An entry can be\n")
+          .append("fluent, correctly scoped and false; that is bounded elsewhere.\n\n")
           .append("The story owes these fields:\n");
         for (Field f : FIELDS) {
             sb.append("\n- ").append(f.name()).append(" — ").append(f.question()).append('\n');
