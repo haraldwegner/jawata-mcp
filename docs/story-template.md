@@ -21,8 +21,13 @@ for making entries undiscoverable. Read the code when the stakes are high.
 > recognise, would act differently for having read it.
 
 Everything below is that sentence made checkable. If a candidate fails it, no amount
-of correct formatting rescues it. **"Differently" is load-bearing** — an entry a
-competent person would have complied with anyway has told them nothing.
+of correct formatting rescues it.
+
+**Do not over-read it into a behaviour-change proof.** A piece of knowledge is a piece
+of knowledge: true, findable, and applicable to a situation someone can recognise.
+Asking an author to demonstrate that a competent reader would have done otherwise
+turns a usable test into an unfalsifiable one, and there is no reason to make an
+entry earn its place twice.
 
 ---
 
@@ -72,6 +77,16 @@ Four destinations, and the question is **when must this fire?**
 Take the cheapest rung that still fires when it is needed. **A rule kept in the store
 fires only if somebody thinks to ask** — an agent about to sweep a directory into a
 commit is not asking anything, so that rule belongs in a hook, and did.
+
+**But most knowledge cannot be enforced at all, and that is not a defect in it.** From
+a bloody nose you can derive *"watch for ice"*. You cannot enforce it: staying indoors
+would work and you have an appointment in town. The rule is real, it is worth having,
+and it is applied by judgement in a situation — which is exactly what a store is for.
+
+So do not read this ladder as *find the binding channel or the knowledge is
+worthless*. Read it as: **if it CAN fire mechanically, that is cheaper and more
+reliable, so put it there.** If it cannot, the store is its home and not its
+consolation prize.
 
 Routed over one 193-note corpus: 45 were standing rules, 28 were status or strategy
 and entered nothing, 15 were seat checks, 8 were hooks, and about 50 were entries.
@@ -146,9 +161,28 @@ A claim can be wrong about width in two directions at once, and usually is.
 - **Too broad.** A vendor's behaviour stated as how the world works. *"Every broker
   skips a message until the previous one is performed"* is one broker's sequencing.
 
-**Name the widest form that is actually true.** Where a vendor mechanism is involved,
-see the boundary rule below for what to do with it — do NOT spell the mechanism out
-inside the principle.
+**Name the widest form that is actually true — and the stopping condition is
+EVALUABILITY.** Widen until a reader can no longer answer *"is that me?"* by looking
+at what is in front of them, then take one step back. The ladder, on one real case:
+
+| form | can a reader tell whether they are in it? |
+|---|---|
+| *"On Alpaca, check the order status with a REST GET"* | yes — do I use Alpaca |
+| *"Where acknowledgements go over a websocket with no delivery guarantee and a REST API exists, read the status with a GET"* | **yes — look at the stack.** This is the right rung |
+| *"Confirm state before acting"* | no. True during every call, tells nobody whether it is theirs |
+
+The third is where widening goes wrong, and it is not a small error of degree — it is
+a different kind of sentence. It has stopped being a claim about a situation and
+become a tautology, which is why it matches everything and helps nobody.
+
+**This is also what resolves the tension with "quote the claim".** Quoting protects
+the FACTS, because paraphrase is where they get lost. Widening buys reach. They only
+conflict if you treat the source sentence as sacred: the rule is to widen the SCOPE
+of the claim while keeping every fact the source stated, and where a widened form
+would drop or alter a fact, the fact wins and the scope stays narrow.
+
+Where a vendor mechanism is involved, see the boundary rule below — do NOT spell the
+mechanism out inside the principle.
 
 ## Four scopes, and a note usually carries several
 
@@ -478,14 +512,28 @@ Every folded story is judged by an agent with **zero session context**, answerin
 An entry can be fluent, correctly scoped, concretely nouned, and false, and every
 reader will pass it. That is what the provenance rule on the why exists to bound.
 
-**Duplicate check.** Not "is there a similar entry" — near-neighbours are produced
-deliberately by scope-splitting. The test: **would a reader who retrieved both act
-differently than with either alone?** If not, they are one entry. If yes — a
-universal rule and a vendor's specific mechanism — they are two, correctly.
+**Duplicate check, and the bar is high.** Not "is there a similar entry" — near
+neighbours are produced deliberately by scope-splitting, and there is a second and
+commoner source of them:
 
-Passing earns a `reviewed:` stamp. **The reseed gate admits stamped stories only, and
-it checks the STAMP, never the text.** Intelligence sits in front of ingest, never
-inside it.
+**One root cause presents as different symptoms in different situations, and each is
+its own entry.** A reader arrives holding a symptom, not a cause. An entry filed under
+a symptom they do not have is unreachable however correct its diagnosis. Sharing a
+cause is not redundancy — it is the normal shape of a corpus.
+
+A duplicate is two entries with **the same situation AND the same action**. If either
+differs, keep both.
+
+**Where this stands today, stated because the previous version of this file claimed
+otherwise.** The prompt exists — `StoryTemplate.coldReaderPrompt()` — and carries all
+four questions. **It has no production caller yet**, and there is no `reviewed:` stamp
+anywhere in the codebase. What the ingest path actually runs is the deterministic text
+gate, `EntryForm.check`, on every file. So the review described above is a procedure
+you run by hand, not a gate that stops anything.
+
+The design it is being built toward: passing earns a stamp, and the reseed gate admits
+stamped stories only, checking the STAMP and never the text — intelligence sits in
+front of ingest, never inside it. Until that ships, this section describes a habit.
 
 ---
 
