@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.knowledge.Confidence;
+import org.jawata.mcp.knowledge.EntryForm;
 import org.jawata.mcp.knowledge.ExperienceEntry;
 import org.jawata.mcp.knowledge.ExperienceMaintenance;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
 import org.jawata.mcp.knowledge.FormMigration;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.RecallQuery;
+import org.jawata.mcp.knowledge.StoryTemplate;
 import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ToolResponse;
 
@@ -19,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -45,7 +48,7 @@ public final class ExperienceTool implements Tool {
     private static final List<String> KINDS =
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
             "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
-            "compact", "stats", "fallback", "fallback_report", "migrate_form");
+            "compact", "stats", "fallback", "fallback_report", "migrate_form", "review");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -399,6 +402,7 @@ public final class ExperienceTool implements Tool {
             case "dedup" -> ToolResponse.success(maintenance.dedup(bool(args, "confirm")));
             case "compact" -> ToolResponse.success(store.compact());
             case "stats" -> ToolResponse.success(stats());
+            case "review" -> review(args);
             case "fallback" -> recordFallback(args);
             case "fallback_report" -> fallbackReport();
             default -> ToolResponse.invalidParameter("kind",
@@ -678,6 +682,59 @@ public final class ExperienceTool implements Tool {
      *     trail that simply stops, and a stopped trail looks exactly like nobody
      *     declaring a fallback
      */
+    /**
+     * Sprint 28c — the cold-reader step, given a production caller at last.
+     *
+     * <p>Hand it a DRAFT entry and it returns two things: what the deterministic
+     * gate says, and the brief to give a zero-context agent. The caller spawns that
+     * agent, reads its verdict, and compares it with its own. Two agreements store
+     * or drop the entry silently; a DISAGREEMENT is the only case that reaches the
+     * human, which is what makes a human gate affordable at all.</p>
+     *
+     * <p><b>It reviews a draft, not a stored row, and that is the point.</b> The
+     * expensive correction is the one that arrives after an entry is written and
+     * filed — twenty of those in one day, almost all of them saying the entry told
+     * the wrong story. Reviewing before the write is where the cost is small.</p>
+     *
+     * <p>The gate's verdict travels BESIDE the prompt rather than inside it. A
+     * reader told the gate refused something grades the refusal; a reader given only
+     * the entry grades the entry.</p>
+     */
+    private ToolResponse review(JsonNode args) {
+        String summary = text(args, "summary");
+        if (summary == null || summary.isBlank()) {
+            return ToolResponse.invalidParameter("summary",
+                "review needs the candidate's summary — there is nothing to judge without it");
+        }
+        String type = text(args, "type");
+        String situation = text(args, "situation");
+        String verdict = text(args, "verdict");
+        String details = text(args, "details");
+        List<String> symptoms = strings(args, "symptoms");
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        Optional<EntryForm.Refusal> refusal =
+            EntryForm.check(type, summary, symptoms, situation, verdict);
+        data.put("formGate", refusal.isPresent() ? "REFUSED" : "admitted");
+        refusal.ifPresent(r -> {
+            data.put("refusedField", r.field());
+            data.put("refusal", r.message());
+        });
+        data.put("prompt", StoryTemplate.reviewPrompt(
+            type, summary, situation, verdict, details, symptoms));
+        data.put("howToUse",
+            "Give `prompt` to an agent with NO session context and nothing else."
+            + " Read its VERDICT line and compare it with your own."
+            + " Agree keep -> record it. Agree drop -> drop it and say so in one line."
+            + " DISAGREE -> ask the human, showing the one-line story, both verdicts,"
+            + " and nothing more. That disagreement is the only question they owe.");
+        data.put("limit",
+            "The reader CANNOT check a fact. An entry can be fluent, correctly scoped"
+            + " and false, and it will pass. Provenance on the why is what bounds that,"
+            + " not this step.");
+        return ToolResponse.success(data);
+    }
+
     private ToolResponse recordFallback(JsonNode args) {
         String tool = text(args, "tool");
         String reason = text(args, "reason");

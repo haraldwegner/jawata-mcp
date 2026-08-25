@@ -236,14 +236,59 @@ public final class StoryTemplate {
      * <p>Built from {@link #FIELDS} rather than written out, so the questions a
      * reviewer is asked and the conditions a gate enforces cannot drift apart.</p>
      *
-     * <p><b>NO PRODUCTION CALLER YET, and that is declared rather than hidden.</b>
-     * Its consumer is the cold-reader QA step (D10), which is deliberately held
-     * until the template itself is settled — the step encodes these very rules,
-     * so building it before the template's own review would mean building it
-     * twice. It is carried in {@code build/unwired-baseline.txt} for exactly that
-     * reason; if the QA step lands and this still has no caller, that is a
-     * finding at that checkpoint and not a pass inherited from here.</p>
+     * <p><b>Its production caller is {@link #reviewPrompt}</b>, reached from the
+     * experience tool's {@code review} verb. It was unwired for two sprints and
+     * carried in {@code build/unwired-baseline.txt} with that stated — the review
+     * step was deliberately held until the template itself settled, and the
+     * template settling is what unblocked it.</p>
      */
+    /**
+     * The cold reader's brief for ONE candidate entry — the questions plus the
+     * candidate itself, ready to hand to an agent with no session context.
+     *
+     * <p>This is what gives {@link #coldReaderPrompt()} a production caller. The
+     * questions live there and are rendered here unchanged, so the brief an agent
+     * receives cannot drift from the contract the template publishes.</p>
+     *
+     * <p><b>The reader is the SECOND opinion, not the first.</b> The deterministic
+     * form gate has already run by the time this is built, and its verdict travels
+     * beside this prompt rather than inside it: a reader told "the gate refused
+     * this" grades the refusal instead of the entry, and the two questions worth
+     * asking — is this the right KIND, and would a stranger act on it — are exactly
+     * the ones a gate cannot answer.</p>
+     *
+     * <p><b>What it cannot do, stated so no caller relies on it:</b> it cannot check
+     * a fact. An entry can be fluent, correctly scoped, concretely nouned and false,
+     * and every reader will pass it. That is bounded by the provenance rule on the
+     * why, not here.</p>
+     */
+    public static String reviewPrompt(String type, String summary, String situation,
+                                      String verdict, String details, List<String> symptoms) {
+        StringBuilder sb = new StringBuilder(coldReaderPrompt());
+        sb.append("\n---\nTHE CANDIDATE ENTRY\n---\n");
+        sb.append("\ntype:      ").append(blankToDash(type));
+        sb.append("\nsituation: ").append(blankToDash(situation));
+        sb.append("\nclaim:     ").append(blankToDash(summary));
+        sb.append("\noutcome:   ").append(blankToDash(verdict));
+        if (symptoms != null && !symptoms.isEmpty()) {
+            sb.append("\nsymptoms:");
+            for (String s : symptoms) {
+                sb.append("\n  - ").append(s);
+            }
+        }
+        if (details != null && !details.isBlank()) {
+            sb.append("\n\ndetails:\n").append(details);
+        }
+        sb.append("\n\n---\nAnswer the four questions, then end with exactly one line:\n")
+          .append("VERDICT: keep\n  or\nVERDICT: drop\n")
+          .append("A verdict of drop needs one sentence saying what it would take to keep it.\n");
+        return sb.toString();
+    }
+
+    private static String blankToDash(String s) {
+        return s == null || s.isBlank() ? "(none)" : s.strip();
+    }
+
     public static String coldReaderPrompt() {
         StringBuilder sb = new StringBuilder();
         sb.append("You have NO context beyond the story below. Answer four questions.\n\n")

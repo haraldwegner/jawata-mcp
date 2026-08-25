@@ -270,4 +270,54 @@ class StoryTemplateTest {
         assertTrue(lower.contains("technology names belong in the situation"),
             "the document must state the rule the gate actually enforces");
     }
+    /**
+     * The review brief carries the QUESTIONS and the CANDIDATE, and demands a verdict.
+     *
+     * <p>This is the step the whole review design turns on, and until now the prompt
+     * had no production caller at all — it was carried in the unwired baseline and
+     * its javadoc said so. A brief that renders the questions but not the entry, or
+     * the entry but no way to answer, is the same unwired-ness with more text.</p>
+     */
+    @Test
+    void the_review_brief_carries_the_questions_the_candidate_and_a_verdict_line() {
+        String brief = StoryTemplate.reviewPrompt("lesson",
+            "An amend always carries the TOTAL order size.",
+            "I've got a partial fill and I want to move the limit — what do I put in the quantity?",
+            "failed_avoid",
+            "The venue tracks filled and remaining; the field is the new total.",
+            List.of("fewer shares filled than intended", "no error anywhere"));
+
+        // The four questions, from coldReaderPrompt, unchanged.
+        assertTrue(brief.contains("WHICH KIND"), "question 1 is missing");
+        assertTrue(brief.contains("WHEN does this apply"), "question 2 is missing");
+        assertTrue(brief.contains("DO DIFFERENTLY"), "question 3 is missing");
+        assertTrue(brief.contains("RIGHT WIDTH"), "question 4 is missing");
+
+        // The candidate itself — a reader with no context has only this.
+        assertTrue(brief.contains("partial fill"), "the situation is missing");
+        assertTrue(brief.contains("TOTAL order size"), "the claim is missing");
+        assertTrue(brief.contains("failed_avoid"), "the outcome is missing");
+        assertTrue(brief.contains("no error anywhere"), "the symptoms are missing");
+
+        // And an answer this caller can actually parse.
+        assertTrue(brief.contains("VERDICT: keep") && brief.contains("VERDICT: drop"),
+            "the brief must ask for a machine-readable verdict, or the caller cannot"
+                + " compare it with its own and the disagreement gate never fires");
+    }
+
+    /**
+     * An absent field reads as absent, never as blank.
+     *
+     * <p>A fact owes no outcome. Rendering that as an empty line invites the reader
+     * to grade a missing verdict as a defect, which is the opposite of the rule.</p>
+     */
+    @Test
+    void a_field_a_fact_does_not_owe_is_rendered_as_absent() {
+        String brief = StoryTemplate.reviewPrompt("domain_fact",
+            "On a Tycho project the Maven goal must be verify, not test.",
+            "the build says success — did it actually run the tests?",
+            null, null, List.of());
+        assertTrue(brief.contains("outcome:   (none)"),
+            "an outcome a fact does not owe must read as absent, not as an empty value");
+    }
 }
