@@ -179,14 +179,14 @@ public final class EntryForm {
         // location, whatever the type — a wrong situation is worse than none,
         // because it matches confidently.
         String given = situation == null ? "" : situation.strip();
-        if (!given.isEmpty() && AdmissionPolicy.misplaced(AdmissionPolicy.classify(given))) {
+        if (!given.isEmpty()
+                && AdmissionPolicy.misplacedInSituation(given)) {
             return Optional.of(new Refusal("situation",
                 "situation '" + situation + "' is a location, not a condition."
-                + " RULE: a situation says WHEN an entry applies, never WHERE the"
-                + " code lives — a symbol or path matches everything in it and"
-                + " distinguishes nothing."
+                + " RULE: a situation says WHEN an entry applies, never WHERE a"
+                + " file lives — a path answers a question this store is not for."
                 + " REPHRASE: " + SITUATION_SHAPES
-                + " The symbol belongs in 'symbol', the path in 'details'."));
+                + " The path belongs in 'details'."));
         }
 
         if (!isExperience(type)) {

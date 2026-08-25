@@ -259,4 +259,48 @@ class EntryFormTest {
             null).orElseThrow().field(),
             "and neither may a fact, which owes no situation but may not supply a bad one");
     }
+    /**
+     * The situation may NAME A TECHNOLOGY, and this is the control for narrowing
+     * the check to real addresses.
+     *
+     * <p>The CODE pattern's PascalCase-compound alternative cannot tell a class
+     * name from a product name, because they are spelled identically — so it was
+     * refusing {@code WebKitGTK}, {@code GitHub}, {@code PostgreSQL},
+     * {@code TypeScript} and {@code macOS} while admitting {@code Docker},
+     * {@code Kubernetes} and {@code Alpaca}. That split is how each vendor
+     * chose to capitalise its own name, and it was deciding whether an entry
+     * could be found.</p>
+     *
+     * <p>It is admissible because nothing in this lane RESOLVES a symbol: the
+     * situation is read only by the renderer and the word index. Symbol lookup
+     * belongs to the anchor, where JDT does it.</p>
+     *
+     * <p>CONTROL: change {@code misplacedInSituation} back to {@code misplaced}
+     * and this test goes red on the first technology in the list.</p>
+     */
+    @Test
+    void a_situation_naming_a_technology_is_admitted() {
+        for (String tech : List.of("WebKitGTK", "GitHub", "PostgreSQL", "TypeScript", "macOS")) {
+            String situation = "when a desktop app built on " + tech
+                + " comes up with an empty content area and nothing on stderr";
+            assertTrue(check(GOOD_PRINCIPLE, situation, "worked").isEmpty(),
+                tech + " is the word that says whose problem this is — refusing it"
+                + " strips the situation of its discriminating power");
+        }
+    }
+
+    /**
+     * A situation that is a FILE PATH is still refused — that was always the real
+     * defect the check existed for: a path says WHERE, and the store is not the
+     * place you look up where a file lives.
+     */
+    @Test
+    void a_situation_that_is_a_path_is_still_refused() {
+        Optional<EntryForm.Refusal> r =
+            check(GOOD_PRINCIPLE, "src/main/java/com/example/OrderProcessor.java", "worked");
+        assertTrue(r.isPresent(), "a path is a location, not a condition");
+        assertEquals("situation", r.get().field());
+        assertTrue(r.get().message().contains("WHEN an entry applies"),
+            "the refusal must still teach what a situation is");
+    }
 }

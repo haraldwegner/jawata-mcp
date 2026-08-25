@@ -47,6 +47,23 @@ public final class AdmissionPolicy {
         + "|\\b[a-z][a-zA-Z0-9]*[A-Z]\\w*"
         + "|\\b[A-Za-z_][\\w$]*\\.[A-Za-z_][\\w$(]"
         + "|\\b[A-Z][a-z]+[A-Z]\\w*)");
+    /**
+     * The CODE alternatives that are genuinely ADDRESSES — a backticked span, a
+     * call form, a dotted identifier, a {@code Type#member}. Deliberately NOT the
+     * bare compound word: {@code WebKitGTK} and {@code SnippetCutter} are spelled
+     * identically, so casing cannot separate a product from a class.
+     *
+     * <p>Two pre-existing tests earned this distinction. Removing the whole CODE
+     * check from the situation admitted {@code org.jawata.mcp.knowledge} as a
+     * condition, and they went red — which is exactly what they were written for.
+     * A structural marker is decidable; capitalisation is not.</p>
+     */
+    private static final Pattern ADDRESS = Pattern.compile(
+        "(`[^`]+`"
+        + "|\\w+\\([^)]*\\)"
+        + "|\\b[A-Za-z_][\\w$]*\\.[A-Za-z_][\\w$(]"
+        + "|\\b\\w+#\\w+)");
+
     private static final Pattern HEX_ID = Pattern.compile("^[0-9a-f]{7,40}$");
     private static final Pattern NUMERIC_ID = Pattern.compile("^[\\d.,%\"'\\s–-]+$");
     // A heading-shaped SUMMARY: '#'-prefixed, or a short fragment ending ':'
@@ -86,6 +103,41 @@ public final class AdmissionPolicy {
     /** True for the shapes that do not belong in experience prose fields. */
     public static boolean misplaced(Shape shape) {
         return shape != Shape.WORD && shape != Shape.PROSE;
+    }
+
+    /**
+     * True for the shapes that do not belong in a SITUATION — which is
+     * {@link #misplaced} minus {@link Shape#CODE}.
+     *
+     * <p><b>Why CODE is admissible here and nowhere else.</b> The CODE pattern
+     * exists to spot a symbol, and the reason a symbol is poison in a symptom is
+     * that it names a LOCATION: it matches everything inside it and distinguishes
+     * nothing. That reasoning presupposes the symbol gets RESOLVED. In the
+     * situation field nothing resolves it — the situation has exactly two
+     * production readers, {@code ExperienceRetrieval} (rendering and the
+     * embedding document) and {@code LexicalIndex} (word matching), and neither
+     * calls JDT. Symbol lookup is the ANCHOR's lane, and JDT does it there.</p>
+     *
+     * <p>So in a situation a symbol is a word like any other word, and the check
+     * was refusing a class of words that carry most of the field's discriminating
+     * power: every camel-cased product name — {@code WebKitGTK}, {@code GitHub},
+     * {@code PostgreSQL}, {@code TypeScript}, {@code macOS} — matches the
+     * PascalCase-compound alternative and was turned away, while {@code Docker},
+     * {@code Kubernetes} and {@code Alpaca} passed. That split is a typographic
+     * accident of how each vendor writes its own name, not a property worth
+     * enforcing. Strip the technology out of "a desktop app shows a flat grey
+     * content area" and the entry matches every blank-screen problem there is.</p>
+     *
+     * <p>PATH and FLAG still bite: a situation that IS a file path says WHERE,
+     * not WHEN, and that was always the real defect.</p>
+     */
+    public static boolean misplacedInSituation(String situation) {
+        String s = situation == null ? "" : situation.strip();
+        Shape shape = classify(s);
+        if (shape == Shape.CODE) {
+            return ADDRESS.matcher(s).find();
+        }
+        return misplaced(shape);
     }
 
     /** A refusal names the field, the offending value and its shape; the
