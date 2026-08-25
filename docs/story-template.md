@@ -157,6 +157,18 @@ standing on its own — *the logic may exist twice, and your tests may all drive
 copy that already works.* A reader who has just recognised themselves in the situation
 does not need to be told the situation again; they need to be told what is true.
 
+**But the claim must still NAME ITS OWN SUBJECT.** Stripping the trigger out is not
+licence to open with a pronoun pointing back at the situation. *"It passes a
+present-but-invalid value"* has no subject at all once the claim is read alone — and
+claims ARE read alone: in a recall listing, in a search result, in a hook's injected
+line, none of which carry the situation beside them. Two entries written that way were
+exactly the two a reader could not follow.
+
+The test: **read the claim with the situation covered up.** If it does not say what it
+is about, it is not finished. *"A guard that substitutes a default when a field is
+MISSING lets through a field that is present and impossible"* survives that test; *"it
+passes a present-but-invalid value"* does not.
+
 ## Quote it; do not restate it
 
 **Every factual error in the first folding rounds came from paraphrase.** The source
