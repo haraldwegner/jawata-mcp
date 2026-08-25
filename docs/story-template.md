@@ -257,6 +257,18 @@ fluent and each wrong:
 **The tell in all three: the why arrived without a source.** The note recorded what
 happened; the explanation was supplied by the writing.
 
+**And a humbler invented why is still an invented why.** Corrected on the futures
+explanation above, the next attempt was *"the name is misleading; the field holds a
+notional."* That sounds like abstention and is not — it is a second manufactured
+explanation wearing modesty. The real answer, when it finally arrived, was a clean
+design: `value = price now − entryValue`, so a future carries its entry price and
+yields P&L, a stock carries zero and yields position value, and ONE formula serves
+both. The zero is the identity element, not a gap.
+
+**Abstention means writing no why at all.** "The note does not say why this is
+zero; changing it broke portfolio aggregation" is a complete entry. Reaching for a
+smaller-sounding explanation is the same failure at lower volume.
+
 **So — if the source does not give the why and you cannot check it, write the fact
 and say the why is unknown.** Where a design looks arbitrary, "this name is
 misleading and here is what the field actually holds" is a better entry than a
