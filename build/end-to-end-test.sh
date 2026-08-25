@@ -397,6 +397,41 @@ esac
 # about what LEAVES the product, and only the front door can see that.
 FIELD_PILE="$WS/ws/field/pile.jsonl"    # the resident records under -data
 
+# --- review-briefs-a-draft: the cold reader reaches the front door ----------
+# Sprint 28c. The prompt existed for two sprints with NO production caller and sat
+# in the unwired baseline saying so, while the template described the review as a
+# working gate. This asserts the brief a real caller receives — because a unit test
+# on an unwired component is exactly what let that stand.
+RV="$(call experience '{"kind":"review","type":"lesson",
+  "summary":"An amend always carries the TOTAL order size.",
+  "situation":"I have a partial fill and want to move the limit - what goes in the quantity?",
+  "verdict":"failed_avoid","symptoms":["fewer shares filled than intended"]}')"
+case "$RV" in
+    *'"formGate"'*'admitted'*) pass "review-briefs-a-draft the form gate reports on the draft" ;;
+    *) fail "review-briefs-a-draft no form-gate verdict: $(printf '%s' "$RV" | head -c 200)" ;;
+esac
+# All four questions, the candidate, and an answer the caller can parse. Drop any
+# one and the disagreement gate that keeps the human out of the loop cannot fire.
+MISSING=""
+for NEED in "WHICH KIND" "WHEN does this apply" "DO DIFFERENTLY" "RIGHT WIDTH" \
+            "partial fill" "TOTAL order size" "failed_avoid" "VERDICT: keep"; do
+    case "$RV" in *"$NEED"*) ;; *) MISSING="$MISSING [$NEED]" ;; esac
+done
+if [ -z "$MISSING" ]; then
+    pass "review-briefs-a-draft the brief carries four questions, the candidate and a verdict line"
+else
+    fail "review-briefs-a-draft the brief is missing:$MISSING"
+fi
+# A SHAPE refusal is not a verdict on the story, so the brief is still produced and
+# the caller decides. Withholding it would make the gate judge for the reader.
+RB="$(call experience '{"kind":"review","type":"lesson","summary":"Test plan",
+  "situation":"the build says success - did it run the tests?","verdict":"worked"}')"
+case "$RB" in
+    *'"formGate"'*'REFUSED'*'"prompt"'*)
+        pass "review-briefs-a-draft a gate-refused draft is still briefed for the reader" ;;
+    *) fail "review-briefs-a-draft a refused draft lost its brief: $(printf '%s' "$RB" | head -c 200)" ;;
+esac
+
 # --- field-tool-answers: the /report seat's one front door replies -----------
 FP="$(call field '{"action":"pile"}')"
 case "$FP" in
