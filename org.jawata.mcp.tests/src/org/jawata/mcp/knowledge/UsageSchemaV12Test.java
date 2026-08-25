@@ -33,6 +33,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * cascade is missing, and it fails just as loudly if someone later gives
  * {@code usage_query} a foreign key because it looked inconsistent without
  * one.</p>
+ *
+ * <p><b>What removing the cascade actually does is worse than leaking, which the
+ * control showed rather than argued.</b> Drop {@code ON DELETE CASCADE} and
+ * {@code wipe()} does not leave orphans behind — it THROWS, on a referential
+ * integrity violation, because the constraint refuses the delete outright. A
+ * wipe is the first step of every reseed, so the failure mode is not a slow leak
+ * of stale counters: it is the standing repair — fix the files, wipe, reseed —
+ * becoming impossible on any store that has ever recorded a single view.</p>
  */
 class UsageSchemaV12Test {
 
