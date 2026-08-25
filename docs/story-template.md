@@ -184,6 +184,27 @@ written. Getting it wrong sends the entry to the wrong readers in both direction
 | **architecture / tech stack** | anyone whose system has this shape | the SHAPE — *"the broker pushes acknowledgements over websocket and has a REST API"* |
 | **vendor** | this vendor's implementation and nobody else's | NAME the vendor |
 
+**You must be able to EVIDENCE the scope you claim, and the levels differ in what
+counts.** Scope inflation is the over-widening fault wearing new clothes, and it is
+seductive for the same reason: the wider claim reads as the more insightful one.
+
+- **business / regulatory** — NAME THE RULE. Reg SHO 201 is a regulation every US
+  broker obeys; that is what a regulatory-scope claim looks like. If you cannot
+  name the rule, you do not have this scope.
+- **architecture** — you must be able to say what about the shape produces the
+  behaviour. "Websocket delivery is not guaranteed" is a property of the transport,
+  so any broker on it inherits it.
+- **vendor** — free. It is what you observed.
+- **universal** — the hardest to earn, and it needs the mechanism, not a survey.
+
+**When you cannot evidence a wider scope, write the narrow one and SAY the wider is
+unverified.** A worked failure: *"extended-hours sessions take limit orders only —
+that is market structure, not one venue's preference"* was written from a single
+observation at a single broker, with an invented rationale about auctions and
+reference prices attached to make it sound settled. The honest version names the
+venue and states plainly that the wider scope is unverified — which is also more
+useful, because it tells the reader to go and check rather than to trust.
+
 **And the important half: one source note usually carries several of these, and
 folding it into one entry forces a single scope that is wrong for the rest.**
 
