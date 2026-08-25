@@ -31,7 +31,10 @@ cleanup() {
     [ -n "$RESIDENT_PID" ] && wait "$RESIDENT_PID" 2>/dev/null
     rm -rf "$WORK"
 }
-trap cleanup EXIT
+# EXIT alone is not enough: a shell killed by a signal can exit without running
+# it, and the resident it started outlives the run. One leaked for two days and
+# was found only because it still held the port a later probe wanted.
+trap cleanup EXIT INT TERM HUP
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JAR="$ROOT/build/dist/target/dist/jawata.jar"

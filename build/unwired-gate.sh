@@ -27,7 +27,10 @@ PORT="${UNWIRED_PORT:-18749}"
 TOKEN="unwired-gate-$$"
 RESIDENT_PID=""
 cleanup() { [ -n "$RESIDENT_PID" ] && kill "$RESIDENT_PID" 2>/dev/null; rm -rf "$WORK"; }
-trap cleanup EXIT
+# EXIT alone is not enough: a shell killed by a signal can exit without running
+# it, and the resident it started outlives the run. One leaked for two days and
+# was found only because it still held the port a later probe wanted.
+trap cleanup EXIT INT TERM HUP
 
 if [ ! -f "$JAR" ]; then
     echo "gate: RESULT=not-built — no artifact at $JAR."

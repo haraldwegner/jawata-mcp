@@ -45,7 +45,19 @@ cleanup() {
     [ -n "$RESIDENT_PID" ] && kill "$RESIDENT_PID" 2>/dev/null
     rm -rf "$WS" "$STORE"
 }
-trap cleanup EXIT
+# EXIT alone is not enough: a shell killed by a signal can exit without running
+# it, and the resident it started outlives the run. One leaked for two days and
+# was found only because it still held the port a later probe wanted.
+trap cleanup EXIT INT TERM HUP
+
+# Reap a resident this harness leaked on an earlier run. Matched on the token
+# PREFIX it mints, not on the script name: a pgrep for the script name matches the
+# reaping process's own command line, which is a trap that has cost hours before.
+for stale in $(pgrep -f -- "-token seat-run-" 2>/dev/null); do
+    [ "$stale" = "$$" ] && continue
+    echo "reaping a leaked resident from an earlier run: pid $stale" >&2
+    kill "$stale" 2>/dev/null || true
+done
 
 mkdir -p "$OUT"
 [ -f "$JAR" ]     || { echo "no artifact at $JAR — build first" >&2; exit 2; }

@@ -47,7 +47,10 @@ cleanup() {
     [ -n "$RESIDENT_PID" ] && wait "$RESIDENT_PID" 2>/dev/null
     rm -rf "$WS" "$STORE"
 }
-trap cleanup EXIT
+# EXIT alone is not enough: a shell killed by a signal can exit without running
+# it, and the resident it started outlives the run. One leaked for two days and
+# was found only because it still held the port a later probe wanted.
+trap cleanup EXIT INT TERM HUP
 
 fail() { printf '  FAIL  %s\n' "$1"; FAILED=$((FAILED + 1)); }
 pass() { printf '  ok    %s\n' "$1"; PASSED=$((PASSED + 1)); }
