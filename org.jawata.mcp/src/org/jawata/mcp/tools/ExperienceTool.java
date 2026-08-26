@@ -44,11 +44,24 @@ public final class ExperienceTool implements Tool {
      * and keeping tombstone branches alive for a hypothetical caller who does not
      * exist is dead weight. An unknown kind now answers with the allowed list —
      * the honest response for a kind that no longer exists.</p>
+     *
+     * <p><b>THE INVARIANT: every kind {@link #execute} dispatches must appear
+     * here.</b> This list is the only thing an agent can see — it is what
+     * {@code tools/list} publishes AND what the unknown-kind error names — so a
+     * verb the switch handles but this list omits is dispatchable and
+     * undiscoverable, which for an MCP door is the same as absent. v3.14.0
+     * shipped exactly that: {@code review_sweep} and {@code delete} both
+     * executed correctly and neither was advertised, and {@code review_sweep} is
+     * the ONLY reader of the usage ledger — so the ledger had one consumer and
+     * no door handle. No gate caught it, because every test calls the verbs by
+     * name and a name works whether or not it is published; it took a dogfood
+     * run to find. {@code ExperienceToolKindsTest} pins both directions.</p>
      */
     private static final List<String> KINDS =
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
             "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
-            "compact", "stats", "fallback", "fallback_report", "migrate_form", "review");
+            "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
+            "review_sweep", "delete");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
