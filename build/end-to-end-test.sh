@@ -432,6 +432,72 @@ case "$RB" in
     *) fail "review-briefs-a-draft a refused draft lost its brief: $(printf '%s' "$RB" | head -c 200)" ;;
 esac
 
+# --- catalogue-answers-design: D7's half that can fail silently -------------
+# Sprint 28c D7. The seat text can say "consult the catalogue" and the store can
+# still have nothing to give — that is the built-but-unreached shape, and only a
+# real ask through the front door tells the two apart.
+#
+# The five questions are READ FROM the frozen fixture, never copied into this
+# file: a hand-copied list of a live surface drifts, and the drift is invisible
+# because both copies still look right. Frozen 2026-08-22, BEFORE the extractor
+# existed, and none of them names its own pattern — a question naming its pattern
+# would be answerable by string matching and would prove nothing.
+#
+# The assertion is D7's own wording: the fitting pattern is RETURNED. Where it
+# ranked is printed rather than gated, because a rank threshold here would be a
+# number I invented tonight rather than one anybody agreed.
+CATQ="$(cd "$(dirname "$0")" && pwd)/acceptance/catalogue-questions.json"
+if [ ! -f "$CATQ" ]; then
+    fail "catalogue-answers-design the frozen question fixture is missing at $CATQ"
+else
+    CAT_OUT="$(python3 - "$CATQ" "http://127.0.0.1:$PORT/mcp" "$TOKEN" <<'EOF_CAT'
+import json, subprocess, sys
+fixture, url, token = sys.argv[1], sys.argv[2], sys.argv[3]
+def call(args):
+    body = json.dumps({"jsonrpc":"2.0","id":1,"method":"tools/call",
+                       "params":{"name":"experience","arguments":args}})
+    out = subprocess.run(["curl","-s","--max-time","120","-X","POST",url,
+        "-H",f"Authorization: Bearer {token}","-H","Mcp-Session-Id: e2e-catalogue",
+        "-H","Content-Type: application/json","-d",body], capture_output=True, text=True).stdout
+    try:
+        return json.loads(json.loads(out)["result"]["content"][0]["text"]).get("data", {})
+    except Exception as e:
+        return {"_broke": str(e)}
+qs = json.load(open(fixture))["questions"]
+missed, ranks = [], []
+for q in qs:
+    d = call({"kind":"nominate","question":q["question"]})
+    cands = d.get("candidates") or []
+    at = None
+    for i, c in enumerate(cands):
+        if q["expect_slug"] in str(c.get("address") or ""):
+            at = i + 1
+            break
+    if at is None:
+        missed.append(q["expect_slug"])
+    else:
+        ranks.append(f'{q["expect_slug"]}@{at}')
+print(f'{len(qs) - len(missed)}/{len(qs)}|{" ".join(ranks)}|{" ".join(missed)}')
+EOF_CAT
+)"
+    CAT_SCORE="${CAT_OUT%%|*}"; CAT_REST="${CAT_OUT#*|}"
+    CAT_RANKS="${CAT_REST%%|*}"; CAT_MISSED="${CAT_REST#*|}"
+    case "$CAT_SCORE" in
+        5/5) pass "catalogue-answers-design all 5 frozen design questions return their pattern (ranks: $CAT_RANKS)" ;;
+        *)   fail "catalogue-answers-design only $CAT_SCORE frozen questions returned their pattern; missing: $CAT_MISSED" ;;
+    esac
+    # D7's report owes an address the reader can OPEN, and the seat is told to read
+    # it off the entry rather than compose one. That is only possible if the entry
+    # carries it — the candidate map used to carry id, situation, principle, outcome
+    # and scores, and nothing that locates anything.
+    CADDR="$(call experience '{"kind":"nominate","question":"one of the services we depend on keeps going unresponsive and our retries are dragging the rest of the system down with it"}')"
+    case "$CADDR" in
+        *'"address":"catalogue:java-design-patterns/'*)
+            pass "catalogue-answers-design a nominated pattern carries an openable canonical address" ;;
+        *) fail "catalogue-answers-design no address on the nomination — the seat would have to invent one: $(printf '%s' "$CADDR" | head -c 300)" ;;
+    esac
+fi
+
 # --- demand-and-delete: D14's ledger and the undo a delete owes -------------
 # Sprint 28c D14. Two promises the review seat depends on, through the real front
 # door. The FIRST is the one that carries the wiring: a question nobody could

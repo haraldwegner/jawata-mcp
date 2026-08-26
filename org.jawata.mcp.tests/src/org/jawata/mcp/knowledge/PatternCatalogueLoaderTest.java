@@ -81,6 +81,65 @@ class PatternCatalogueLoaderTest {
      * Seeding twice equals seeding once. The row count is the assertion a
      * duplicate cannot survive.
      */
+    /**
+     * Sprint 28c D7 — a nominated REFERENCE carries the address it can be opened
+     * at; a nominated EXPERIENCE does not.
+     *
+     * <p>The architect seat is told to read a pattern's canonical address off the
+     * entry rather than compose one, and before this it could not: the candidate
+     * map carried id, situation, principle, outcome and scores, and nothing that
+     * locates anything. The seat's only options were to invent a path or to drop
+     * the requirement, and both look like a finished report.</p>
+     *
+     * <p>The pair is asserted together, because either half alone passes for the
+     * wrong reason. Emitting the address on everything would leak the file path
+     * of whoever recorded an experience into every response — nobody else's
+     * business, and noise besides. The rule is about what the row IS, not a
+     * privacy patch bolted onto one rule for both.</p>
+     */
+    @Test
+    void a_pattern_is_nominated_with_its_address_and_an_experience_is_not(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            new PatternCatalogueLoader().load(store, 1);
+            StoredEntry pattern = store.all().get(0);
+            store.put(ExperienceEntry.of(
+                    SymbolFact.of("lesson",
+                        "An experience keeps its author's file path to itself.",
+                        Confidence.HIGH).symbol("com.example.Private").build())
+                .status(ExperienceEntry.ACCEPTED)
+                .situation("when an experience is nominated beside a catalogue pattern")
+                .verdict("worked")
+                .form(1)
+                .build());
+
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+            Map<String, Object> out = retrieval.nominate(
+                "when objects of one family share attributes and each type adds its own",
+                ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> candidates =
+                (List<Map<String, Object>>) out.getOrDefault("candidates", List.of());
+            assertFalse(candidates.isEmpty(), "the nomination returned nothing to judge");
+
+            boolean sawPattern = false;
+            for (Map<String, Object> c : candidates) {
+                if (pattern.id().equals(c.get("id"))) {
+                    sawPattern = true;
+                    assertEquals(pattern.sourceRef(), c.get("address"),
+                        "a nominated pattern must carry the address it can be OPENED at —"
+                            + " without it the seat has to invent the path or drop the"
+                            + " requirement, and both look like a finished report");
+                } else {
+                    assertNull(c.get("address"),
+                        "an experience carried an address: that is the file path of"
+                            + " whoever recorded it, and it is nobody else's business");
+                }
+            }
+            assertTrue(sawPattern, "the catalogue pattern was not among the candidates");
+        }
+    }
+
     @Test
     void a_second_start_writes_nothing(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {

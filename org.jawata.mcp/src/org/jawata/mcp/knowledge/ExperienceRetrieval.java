@@ -814,6 +814,24 @@ public final class ExperienceRetrieval {
             c.put("situation", e.facets().situation());
             c.put("principle", e.summary());
             c.put("outcome", e.facets().verdict());
+            // Sprint 28c D7 — a REFERENCE owes an address; an EXPERIENCE does not.
+            //
+            // A catalogue pattern is only usable if the reader can open the
+            // implementation instead of taking the seat's word for it, and the
+            // architect seat is told to read that address off the entry rather than
+            // compose one. It could not: the candidate map carried id, situation,
+            // principle, outcome and scores, and nothing that locates anything. The
+            // seat would have had to invent the path or drop the requirement.
+            //
+            // It is deliberately NOT emitted for every entry. An experience's
+            // source_ref is a file path on whoever recorded it — noise in a response
+            // and nobody else's business — while a catalogue source_ref is a public
+            // address in a pinned MIT fork. The distinction is what the row IS, not a
+            // privacy patch on top of one rule for both.
+            String ref = e.sourceRef();
+            if (ref != null && ref.startsWith(PatternCatalogueLoader.SOURCE_PREFIX)) {
+                c.put("address", ref);
+            }
             // Why this one, and why here. A ranking nobody can interrogate is a
             // ranking nobody can correct: this sprint spent a day on a regression
             // whose cause was one lane reading a different field set from its
