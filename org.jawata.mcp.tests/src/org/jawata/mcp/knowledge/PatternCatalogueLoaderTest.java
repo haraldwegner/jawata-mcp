@@ -248,4 +248,69 @@ class PatternCatalogueLoaderTest {
         assertFalse(PatternCatalogueLoader.hashOf(a).equals(PatternCatalogueLoader.hashOf(b)),
             "a rewritten body under an unchanged summary would ship forever");
     }
+
+    /**
+     * D6's OTHER half: what an upstream edit leaves BEHIND.
+     *
+     * <p>{@code a_changed_pattern_is_noticed_on_the_next_start} says in its own
+     * javadoc that it "pins that it is noticed at all" and leaves the disposition
+     * to a later stage. So the deliverable's actual sentence — <em>a newer jawata
+     * proposes, and never overwrites</em> — had no test at all: the sprint could
+     * close with detection proven and disposition unexamined.</p>
+     *
+     * <p>The mechanism says overwriting cannot happen: {@code putWithSource}
+     * inserts under a fresh {@code UUID.randomUUID()}, so the incumbent row is
+     * never updated in place. What that leaves open is whether the two rows are
+     * RELATED. If the newcomer neither supersedes the incumbent nor retires it,
+     * an upstream edit does not update the catalogue — it duplicates it, and both
+     * versions answer questions forever, the stale one indistinguishable from the
+     * current one.</p>
+     *
+     * <p>This test states the contract as the deliverable words it. A failure
+     * here is not a broken build: it is the disposition being reported for the
+     * first time, and the message names what the store actually did.</p>
+     */
+    @Test
+    void an_upstream_edit_supersedes_the_incumbent_rather_than_duplicating_it(@TempDir Path dir)
+            throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper json =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode pattern = json.createObjectNode();
+        pattern.put("slug", "bridge");
+        pattern.put("type", "lesson");
+        pattern.put("situation", "when two objects must vary independently");
+        pattern.put("principle", "Separate the abstraction from its implementation.");
+        com.fasterxml.jackson.databind.node.ObjectNode snap = json.createObjectNode();
+        snap.put("pinned_commit", "deadbeef");
+        snap.putArray("patterns").add(pattern);
+
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            assertEquals(1, new PatternCatalogueLoader(snap).load(store).seeded());
+
+            pattern.put("principle", "Separate the abstraction from its implementation, "
+                + "so the two can vary without touching each other.");
+            assertEquals(1, new PatternCatalogueLoader(snap).load(store).seeded(),
+                "precondition: the edit is noticed");
+
+            String ref = PatternCatalogueLoader.SOURCE_PREFIX + "bridge/README.md";
+            List<StoredEntry> rows = new java.util.ArrayList<>();
+            for (StoredEntry e : store.all()) {
+                if (ref.equals(e.sourceRef())) {
+                    rows.add(e);
+                }
+            }
+
+            assertEquals(2, rows.size(),
+                () -> "the incumbent must SURVIVE the edit — one row would mean the newcomer"
+                    + " overwrote it: " + rows.size());
+
+            long live = rows.stream().filter(e -> !"superseded".equals(e.status())).count();
+            assertEquals(1, live,
+                () -> "exactly ONE version of a pattern may answer questions. Both rows are"
+                    + " live, so an upstream edit DUPLICATES the catalogue instead of"
+                    + " updating it, and the stale text keeps answering beside the current"
+                    + " one with nothing to tell them apart. Statuses: "
+                    + rows.stream().map(StoredEntry::status).toList());
+        }
+    }
 }

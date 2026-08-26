@@ -10,8 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,8 +68,16 @@ public final class PatternCatalogueLoader {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** What a seeding run did, in the terms the start-up line reports. */
-    public record Result(int inSnapshot, int seeded, int unchanged, String pinnedCommit) {
+    /**
+     * What a seeding run did, in the terms the start-up line reports.
+     *
+     * <p>{@code retired} counts incumbents superseded by a newer version of the
+     * same pattern, and it is REPORTED rather than left as a silent side effect:
+     * retiring a row stops it answering, so a start that retired forty patterns
+     * and one that retired none must not read alike.</p>
+     */
+    public record Result(int inSnapshot, int seeded, int unchanged, int retired,
+                         String pinnedCommit) {
 
         /** True when this run wrote nothing — the ordinary case after the first start. */
         public boolean quiet() {
@@ -116,6 +126,29 @@ public final class PatternCatalogueLoader {
         int seeded = 0;
         int unchanged = 0;
         int considered = 0;
+        int retired = 0;
+
+        // D6 — "a newer jawata PROPOSES, and never overwrites." Overwriting was
+        // never possible: putWithSource inserts under a fresh UUID, so the
+        // incumbent row survives untouched. What was missing is the other half,
+        // and only the first half had ever been tested. Measured on a fixture
+        // that seeds a pattern, edits it and re-seeds: TWO rows for one
+        // source_ref, both live, unrelated -- so an upstream fix DUPLICATED the
+        // catalogue instead of updating it, and the stale text kept answering
+        // beside the current one with nothing to tell them apart. At 187
+        // patterns that compounds on every snapshot bump.
+        //
+        // Read ONCE, before the loop. Asking the store per pattern would be 187
+        // full scans on a cold start, which is the kind of quiet quadratic that
+        // only shows up on somebody else's machine.
+        Map<String, List<String>> liveByRef = new HashMap<>();
+        for (StoredEntry e : store.all()) {
+            String ref = e.sourceRef();
+            if (ref != null && ref.startsWith(SOURCE_PREFIX)
+                    && !ExperienceEntry.SUPERSEDED.equals(e.status())) {
+                liveByRef.computeIfAbsent(ref, k -> new ArrayList<>()).add(e.id());
+            }
+        }
 
         for (JsonNode p : patterns) {
             if (limit > 0 && considered >= limit) {
@@ -132,17 +165,30 @@ public final class PatternCatalogueLoader {
                 unchanged++;
                 continue;
             }
+            // Retire BEFORE writing the newcomer. The order matters on a store
+            // that could be read concurrently: retire-then-write leaves a moment
+            // with no live copy, write-then-retire leaves a moment with two, and
+            // two live copies is the defect itself. A superseded row is not
+            // deleted — it keeps its content and stops being returned, because
+            // isLive() excludes it — so this is reversible by setting the status
+            // back, which is why it is supersession and not a delete.
+            for (String incumbent : liveByRef.getOrDefault(sourceRef, List.of())) {
+                if (store.setStatus(incumbent, ExperienceEntry.SUPERSEDED)) {
+                    retired++;
+                }
+            }
             store.putWithSource(entryFor(p, slug), sourceRef, hash);
             seeded++;
         }
-        Result result = new Result(considered, seeded, unchanged, commit);
+        Result result = new Result(considered, seeded, unchanged, retired, commit);
 
         // A start that loaded nothing logs nothing — recoverOrphans' own rule.
         // A line on every boot trains the reader to skip it, and then the one
         // start that DID seed something scrolls past unread.
         if (!result.quiet()) {
-            log.info("Pattern catalogue: seeded {} of {} patterns at {} ({} already current)",
-                seeded, considered, commit, unchanged);
+            log.info("Pattern catalogue: seeded {} of {} patterns at {} ({} already current,"
+                    + " {} older version(s) retired)",
+                seeded, considered, commit, unchanged, retired);
         }
         return result;
     }
