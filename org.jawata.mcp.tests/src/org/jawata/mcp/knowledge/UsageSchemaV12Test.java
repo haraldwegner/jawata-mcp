@@ -78,12 +78,16 @@ class UsageSchemaV12Test {
             try {
                 assertTrue(hasTable(c, "usage_entry"), "usage_entry missing on a fresh store");
                 assertTrue(hasTable(c, "usage_query"), "usage_query missing on a fresh store");
-                // origin_client is deliberately NOT in this rung: it arrives with
-                // the change that fills it, together with its four carriage sites.
-                assertFalse(hasColumn(c, "experience_entry", "origin_client"),
-                    "origin_client appeared without a writer — a column only round-trips"
-                        + " if insert, the export projection, importEntries and importFrom"
-                        + " all carry it, and this sprint shipped that gap three times");
+                // This assertion used to be assertFalse: origin_client was
+                // deliberately NOT in v12, and the guard existed to block the
+                // column arriving without its writer. v13 delivered it WITH the
+                // writer (the EventTap stamper), the reader (stats) and every
+                // carriage site — the condition the guard protected is met, so
+                // the guard flips. It went red on the delivering commit's first
+                // suite run, which is the guard working, twice: once refusing
+                // the column early, once demanding this edit be conscious.
+                assertTrue(hasColumn(c, "experience_entry", "origin_client"),
+                    "origin_client missing on a fresh store — the v13 rung did not run");
             } finally {
                 store.releaseRead(c, true);
             }
