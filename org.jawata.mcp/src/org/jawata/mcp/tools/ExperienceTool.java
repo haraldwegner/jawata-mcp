@@ -61,7 +61,7 @@ public final class ExperienceTool implements Tool {
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
             "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
             "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
-            "review_sweep", "delete");
+            "review_sweep", "delete", "set_form");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -442,6 +442,7 @@ public final class ExperienceTool implements Tool {
             case "review" -> review(args);
             case "review_sweep" -> reviewSweep(args);
             case "delete" -> deleteByIds(args);
+            case "set_form" -> setForm(args);
             case "fallback" -> recordFallback(args);
             case "fallback_report" -> fallbackReport();
             default -> ToolResponse.invalidParameter("kind",
@@ -831,6 +832,99 @@ public final class ExperienceTool implements Tool {
             "The reader CANNOT check a fact. An entry can be fluent, correctly scoped"
             + " and false, and it will pass. Provenance on the why is what bounds that,"
             + " not this step.");
+        return ToolResponse.success(data);
+    }
+
+    /**
+     * Sprint 28c Stage 15 — the repair verb: rewrite an entry's situation (and,
+     * for an experience, its outcome), through the SAME gate {@code record}
+     * runs.
+     *
+     * <p>Until this verb, the store could diagnose a badly-formed entry and not
+     * fix one: {@code ExperienceStore#setForm} had three references and none was
+     * a tool verb, so an agent could record a new entry and delete an old one
+     * but never improve one in place. The mechanical migration is not a
+     * substitute — on the real corpus it derived situations reading "when by
+     * construction" and "when $8 on one day", because deciding what an entry
+     * actually applies to is reading work.</p>
+     *
+     * <p>Two refusals are this verb's own, not corrections:</p>
+     * <ul>
+     *   <li><b>The form gate runs here too.</b> One rule, every write surface —
+     *       without it this door could store a heading-shaped situation that
+     *       {@code record} would refuse, which is how the store filled with
+     *       headings the first time.</li>
+     *   <li><b>A verdict on a non-experience type is REFUSED, not ignored.</b>
+     *       {@code unproven} was invented once so 187 catalogue entries could
+     *       pay a debt they did not owe; this refusal is that lesson standing
+     *       at a second door.</li>
+     * </ul>
+     */
+    private ToolResponse setForm(JsonNode args) {
+        String id = text(args, "id");
+        if (id == null || id.isBlank()) {
+            return ToolResponse.invalidParameter("id", "which entry to rewrite");
+        }
+        String situation = text(args, "situation");
+        if (situation == null || situation.isBlank()) {
+            return ToolResponse.invalidParameter("situation",
+                "the corrected condition — this verb exists to give an entry a real"
+                + " situation, so calling it without one asks for nothing");
+        }
+        List<org.jawata.mcp.knowledge.StoredEntry> rows = store.byIds(List.of(id));
+        if (rows.isEmpty()) {
+            // A refusal, never a silent no-op: "I rewrote it" and "nothing has
+            // that id" are different answers, and only the second tells the
+            // caller their finding list is stale.
+            return ToolResponse.invalidParameter("id",
+                "no entry has id '" + id + "'. Nothing was written. If this id came"
+                + " from a review_sweep or quality finding, the store has changed"
+                + " since — re-run the sweep rather than retrying the id.");
+        }
+        org.jawata.mcp.knowledge.StoredEntry entry = rows.get(0);
+        String type = entry.type();
+        boolean experience = type != null
+            && org.jawata.mcp.knowledge.EntryForm.EXPERIENCE_TYPES
+                .contains(type.toLowerCase(java.util.Locale.ROOT));
+
+        String verdictArg = text(args, "verdict");
+        if (!experience && verdictArg != null && !verdictArg.isBlank()) {
+            return ToolResponse.invalidParameter("verdict",
+                "this entry is a '" + type + "', and a " + type + " never turned out"
+                + " any way at all. RULE: an outcome belongs to an experience"
+                + " (lesson, failure_mode); attaching one to a fact is the invented"
+                + " value this store already refused once. REPHRASE: drop the"
+                + " verdict, or — if this row genuinely records an experience —"
+                + " say so and it can be retyped, which is a different change.");
+        }
+        // For an experience, an unsupplied verdict keeps the one the row has:
+        // fixing the situation must not force the caller to re-state an outcome
+        // that was already right.
+        String verdict = !experience ? null
+            : verdictArg != null && !verdictArg.isBlank() ? verdictArg
+            : entry.facets() == null ? null : entry.facets().verdict();
+
+        var admission = org.jawata.mcp.knowledge.EntryForm.check(
+            type, entry.summary(), null, situation, verdict);
+        if (admission.isPresent()) {
+            return ToolResponse.invalidParameter(
+                admission.get().field(), admission.get().message());
+        }
+
+        if (!store.rewriteForm(id, situation, verdict)) {
+            return ToolResponse.invalidParameter("id",
+                "no entry has id '" + id + "' any more — it was removed between the"
+                + " lookup and the write. Nothing was written.");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", id);
+        data.put("type", type);
+        data.put("situation", situation);
+        data.put("verdict", verdict);
+        data.put("provenance_kind", "seat_rewritten");
+        data.put("note", "the row's meaning-lane vectors were cleared so the backfill"
+            + " re-embeds the NEW situation; until it does, this entry ranks on words"
+            + " alone and the nomination's meaning_coverage will say so.");
         return ToolResponse.success(data);
     }
 
@@ -1240,13 +1334,34 @@ public final class ExperienceTool implements Tool {
         out.put("deletionList", usage.deletionList(minShown, limit));
         out.put("writingBacklog", usage.writingBacklog(minTimes, limit));
         out.put("droppedWrites", usage.failedWrites());
+        // Stage 15 — the QUALITY lane, beside the usage lane. One command, two
+        // questions: what does nobody use, and what is badly written. The counts
+        // are migrate_form's own dry-run counts by construction (StoreQuality
+        // runs that plan and re-projects it), so this response and the dry run
+        // can never disagree about the same corpus.
+        org.jawata.mcp.knowledge.StoreQuality.Report quality =
+            org.jawata.mcp.knowledge.StoreQuality.scan(store, limit);
+        java.util.Map<String, Object> q = new java.util.LinkedHashMap<>();
+        q.put("entries", quality.entries());
+        q.put("mechanicallyMigratable", quality.mechanicallyMigratable());
+        q.put("defects", quality.defects());
+        q.put("findings", quality.findings());
+        q.put("findingsTotal", quality.findingsTotal());
+        q.put("findingsTruncated", quality.findingsTruncated());
+        out.put("quality", q);
         out.put("howToRead", "Neither list deletes anything. deletionList: shown at least "
             + minShown + " times and chosen never — offer these to the user and remove only"
             + " what they name. writingBacklog: asked at least " + minTimes + " times with"
             + " nothing chosen — this is demand with no supply, and the only item here that"
             + " is acted on by WRITING. droppedWrites is how many ledger writes were lost:"
             + " a low engagement rate over lost rows means 'we failed to record it', not"
-            + " 'nobody engaged'.");
+            + " 'nobody engaged'. quality: entries whose form cannot be derived"
+            + " mechanically — READ each, judge what it actually applies to, and repair"
+            + " with kind=set_form (proposing to the human first). A finding with a"
+            + " source_ref is durably fixed in THAT FILE and reseeded — a store write"
+            + " there is erased by the next reseed; a null source_ref means no file"
+            + " exists and set_form IS the durable fix. findingsTruncated=true means"
+            + " the list is capped at " + limit + " while the counts cover everything.");
         return ToolResponse.success(out);
     }
 

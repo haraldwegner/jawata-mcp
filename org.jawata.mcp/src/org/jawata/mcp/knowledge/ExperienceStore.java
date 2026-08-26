@@ -39,6 +39,41 @@ public interface ExperienceStore extends AutoCloseable {
     boolean markEvidenceDead(String id);
 
     /**
+     * Sprint 28c Stage 15 — REWRITE an entry's form: replace its situation and
+     * outcome, whatever they were, and stamp who decided.
+     *
+     * <p>{@link #setForm}'s javadoc rules that nothing but the migration may
+     * form a row, because "a second path that can rewrite it after the fact
+     * turns a stated experience into a guessed one". This IS that second path,
+     * and it exists on Harald's explicit instruction (2026-08-26), because the
+     * ruling protected against the wrong risk once the store could diagnose:
+     * {@code migrate_form}'s mechanical derivation produced situations reading
+     * "when by construction" and "when $8 on one day", and WITHOUT a rewrite
+     * path those stand forever — a guessed experience protected from the only
+     * correction it could get. The differences from the risk the ruling named:
+     * the caller is a seat whose every rewrite is PROPOSED to a human first;
+     * the text passes the same {@link EntryForm} gate as {@code record}; and
+     * the row is stamped {@code provenance_kind = 'seat_rewritten'}, so a
+     * reader can always tell a reviewed correction from an author's own words.</p>
+     *
+     * <p>Unlike {@code setForm} this updates a row whether or not it already
+     * carries a form — fixing a badly-formed situation is its whole purpose —
+     * and it hands the row back to the embedding backfill by clearing
+     * {@code embedder_identity} and the lane vectors: the backfill's selection
+     * is "no vector, no identity, or a stale identity", so stale-identity
+     * clearing is what makes the NEW situation reach the meaning lanes instead
+     * of the old text answering there forever (F2's permanent case).</p>
+     *
+     * <p>ABSTRACT, not defaulted — same rule as {@link #markEvidenceDead}: the
+     * compiler names every implementation that must forward it.</p>
+     *
+     * @param situation the corrected condition; never null or blank
+     * @param verdict   the outcome, or null for a type that owes none
+     * @return true when the row was updated; false when no row has this id
+     */
+    boolean rewriteForm(String id, String situation, String verdict);
+
+    /**
      * Sprint 28c D4 — give an existing row the 28c form: a situation, an
      * outcome, and {@code form = 1}.
      *

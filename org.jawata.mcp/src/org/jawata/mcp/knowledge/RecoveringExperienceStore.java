@@ -215,6 +215,13 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public boolean rewriteForm(String id, String situation, String verdict) {
+        synchronized (lock) {
+            return delegate.rewriteForm(id, situation, verdict);
+        }
+    }
+
+    @Override
     public long count() {
         return delegate.count();
     }

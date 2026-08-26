@@ -763,6 +763,39 @@ public final class H2ExperienceStore implements ExperienceStore {
      * asking "who decided this entry's situation?" must be able to tell an
      * author's declaration from a rule's derivation.</p>
      */
+    /**
+     * Stage 15 — the reviewed correction path. See the port's javadoc for why
+     * this may exist beside {@link #setForm}'s nothing-else-may-call-this rule.
+     *
+     * <p>Clearing {@code embedder_identity} and the four vector columns is the
+     * load-bearing half: the backfill selects "no vector, no identity, or a
+     * stale identity", so a cleared identity is what re-embeds the NEW
+     * situation. Leaving the old vectors in place would keep the old text
+     * answering on the meaning lanes forever — the permanent form of the F2
+     * defect, created by the very call that fixed the words.</p>
+     */
+    @Override
+    public synchronized boolean rewriteForm(String id, String situation, String verdict) {
+        if (id == null || situation == null || situation.isBlank()) {
+            return false;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET situation = ?, verdict = ?, form = 1,"
+                + " provenance_kind = 'seat_rewritten', updated_at = ?,"
+                + " embedding = NULL, embedder_identity = NULL,"
+                + " embedding_situation = NULL, embedding_summary = NULL,"
+                + " embedding_details = NULL"
+                + " WHERE id = ?")) {
+            ps.setString(1, situation);
+            ps.setString(2, verdict);
+            ps.setTimestamp(3, Timestamp.from(Instant.now()));
+            ps.setString(4, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to rewrite form: " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public synchronized boolean setForm(String id, String situation, String verdict) {
         if (id == null || situation == null || situation.isBlank()) {

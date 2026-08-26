@@ -136,6 +136,11 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public boolean rewriteForm(String id, String situation, String verdict) {
+        throw boom();
+    }
+
+    @Override
     public long count() {
         throw boom();
     }
