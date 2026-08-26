@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.jawata</groupId>
         <artifactId>org.jawata.build</artifactId>
-        <version>3.13.0</version>
+        <version>3.14.0</version>
     </parent>
 
     <artifactId>org.jawata.mcp.tests</artifactId>
