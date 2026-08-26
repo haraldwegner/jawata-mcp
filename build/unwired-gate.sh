@@ -199,7 +199,23 @@ rc=$?
 [ $rc -ne 0 ] && exit $rc
 
 if [ "$UPDATE" = "1" ]; then
-    cp "$WORK/current.txt" "$BASELINE"
+    # Carry the WHY across. The gate tells the caller to re-baseline "with the
+    # reason", and the file had nowhere to put one — so a deliberate deferral
+    # was indistinguishable from silence. A comment block attaches to the entry
+    # that follows it; a reason whose finding is now FIXED is dropped with it.
+    if [ -f "$BASELINE" ]; then
+        LC_ALL=C sort "$WORK/current.txt" > "$WORK/current.forbase"
+        awk 'NR==FNR {
+                 if ($0 ~ /^[[:space:]]*#/) { pend = pend $0 "\n"; next }
+                 if ($0 ~ /^[[:space:]]*$/) { next }
+                 r[$0] = pend; pend = ""; next
+             }
+             { if ($0 !~ /^[[:space:]]*$/) { printf "%s", r[$0]; print } }' \
+            "$BASELINE" "$WORK/current.forbase" > "$WORK/baseline.new"
+        mv "$WORK/baseline.new" "$BASELINE"
+    else
+        cp "$WORK/current.txt" "$BASELINE"
+    fi
     echo "gate: baseline UPDATED — $(wc -l < "$BASELINE") finding(s). Commit it with the change that justifies it."
     exit 0
 fi
@@ -209,7 +225,10 @@ fi
 # when written; a comm running under a locale whose collation disagrees warns
 # "file is not in sorted order" and its output is then unreliable — a diff gate
 # that can silently mis-pair lines is worse than no gate.
-LC_ALL=C sort "$BASELINE" > "$WORK/baseline.sorted"
+# Comments and blank lines are documentation, not symbols — strip them before
+# comm, or a "# deferred to C8" line becomes a finding the gate calls fixed.
+grep -v '^[[:space:]]*#' "$BASELINE" | grep -v '^[[:space:]]*$' \
+    | LC_ALL=C sort > "$WORK/baseline.sorted"
 LC_ALL=C sort "$WORK/current.txt" > "$WORK/current.sorted"
 NEW=$(LC_ALL=C comm -13 "$WORK/baseline.sorted" "$WORK/current.sorted")
 FIXED=$(LC_ALL=C comm -23 "$WORK/baseline.sorted" "$WORK/current.sorted")
