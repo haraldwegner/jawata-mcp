@@ -1070,10 +1070,35 @@ public final class ExperienceTool implements Tool {
         // ("seat" for a seat run's recall). Absent = the ordinary question hook.
         // Retrieval is identical either way; only the counter differs.
         String surface = text(args, "surface");
-        Map<String, Object> result = retrieval.recall(q,
-            surface == null || surface.isBlank()
-                ? org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK : surface,
-            budgetIn(args));
+        String counted = surface == null || surface.isBlank()
+            ? org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK : surface;
+        // Sprint 28c D8: a prompt yields SEVERAL cues, and every one of them must
+        // reach the store. The singular fields stay exactly as they were — one cue
+        // is still one query — and `symbols`/`symptoms` add the rest, asked in the
+        // caller's own precedence order and unioned. The hook used to make one
+        // round trip per cue and STOP at the first that answered, so four cues'
+        // knowledge was never fetched.
+        List<String> moreSymbols = strings(args, "symbols");
+        List<String> moreSymptoms = strings(args, "symptoms");
+        Map<String, Object> result;
+        if (moreSymbols.isEmpty() && moreSymptoms.isEmpty()) {
+            result = retrieval.recall(q, counted, budgetIn(args));
+        } else {
+            List<RecallQuery> cues = new java.util.ArrayList<>();
+            if (!q.isEmpty()) {
+                cues.add(q);
+            }
+            String pkg = text(args, "package");
+            String op = text(args, "operation");
+            String ext = text(args, "external_system");
+            for (String s : moreSymbols) {
+                cues.add(new RecallQuery(s, pkg, op, null, ext));
+            }
+            for (String s : moreSymptoms) {
+                cues.add(new RecallQuery(null, pkg, op, s, ext));
+            }
+            result = retrieval.recallAll(cues, counted, budgetIn(args), text(args, "session"));
+        }
         ToolResponse response = respond(args, result);
         if (ExperienceRetrieval.RESULT_MATCH.equals(result.get("result"))) {
             response.applySteering(CLASSIFY_STEERING);

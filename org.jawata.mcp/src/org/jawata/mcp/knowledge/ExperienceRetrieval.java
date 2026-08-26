@@ -703,6 +703,92 @@ public final class ExperienceRetrieval {
         return sb.toString();
     }
 
+    /**
+     * Sprint 28c D8 — every cue in one ask, and the answers UNIONED.
+     *
+     * <p>The deployed hook derives up to five cues from a prompt (two symbol
+     * candidates, then three symptom n-grams) and asks about them one at a time,
+     * <b>exiting on the first that answers</b>. So at most one cue's knowledge
+     * ever reaches the agent, and the store's answers to the other four are
+     * never fetched. That is not a ranking decision — it is the first cue winning
+     * because it went first.</p>
+     *
+     * <p>This composes rather than re-ranks, deliberately. Each cue's answer keeps
+     * the order its ranker gave it, and the cues are honoured in the order the
+     * caller listed them: the hook puts precise symbol cues before prose ones, and
+     * that precedence is a judgement the caller is entitled to make. Merging the
+     * score spaces of five separate queries into one list would invent a
+     * comparison nothing computed.</p>
+     *
+     * <p>Duplicates drop by entry id, so an entry answering three cues is offered
+     * once. An UNAVAILABLE answer returns immediately and is never averaged away
+     * by a later cue that happened to work — "the store could not be read" and
+     * "the store had nothing" are opposite answers.</p>
+     *
+     * @param cues the cues to ask about, in the caller's own precedence order
+     * @param surface which surface is asking (a counter, never the retrieval)
+     * @param budgetMillis the budget for each cue's own read
+     * @param session optional session id; entries already shown in this session are
+     *     dropped, so a long conversation stops re-injecting the same lines
+     * @return one answer in the shape a single recall returns
+     */
+    public Map<String, Object> recallAll(List<RecallQuery> cues, String surface,
+            long budgetMillis, String session) {
+        Map<String, Object> merged = null;
+        List<Map<String, Object>> entries = new ArrayList<>();
+        java.util.Set<String> seenIds = new java.util.LinkedHashSet<>();
+        int asked = 0;
+        for (RecallQuery q : cues == null ? List.<RecallQuery>of() : cues) {
+            if (q == null || q.isEmpty()) {
+                continue;
+            }
+            asked++;
+            Map<String, Object> one = recall(q, surface, budgetMillis);
+            if (RESULT_UNAVAILABLE.equals(one.get("result"))) {
+                return one;
+            }
+            if (merged == null) {
+                merged = new LinkedHashMap<>(one);
+            }
+            if (one.get("entries") instanceof List<?> list) {
+                for (Object o : list) {
+                    if (!(o instanceof Map<?, ?> m) || entries.size() >= MAX_TERMINAL) {
+                        continue;
+                    }
+                    if (seenIds.add(String.valueOf(m.get("id")))) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> row = (Map<String, Object>) m;
+                        entries.add(row);
+                    }
+                }
+            }
+        }
+        if (merged == null) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("result", RESULT_ABSENCE);
+            empty.put("count", 0);
+            empty.put("entries", List.of());
+            empty.put("cues_asked", asked);
+            return empty;
+        }
+        int before = entries.size();
+        if (session != null && !session.isBlank()) {
+            entries = SessionShown.unseen(session, entries);
+        }
+        merged.put("entries", entries);
+        merged.put("count", entries.size());
+        merged.put("cues_asked", asked);
+        if (before != entries.size()) {
+            // Said out loud: an entry withheld because this session already saw it is
+            // NOT an entry the store lacks, and a silent drop reads as the second one.
+            merged.put("already_shown_this_session", before - entries.size());
+        }
+        if (entries.isEmpty()) {
+            merged.put("result", RESULT_ABSENCE);
+        }
+        return merged;
+    }
+
     /** How many candidates a nomination offers. A shortlist to judge, not a pile to read. */
     public static final int MAX_CANDIDATES = 8;
 
