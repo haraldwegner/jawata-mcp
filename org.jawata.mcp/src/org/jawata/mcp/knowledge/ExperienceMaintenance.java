@@ -122,6 +122,24 @@ public final class ExperienceMaintenance {
      * {@code recursive} additionally walks subdirectories of directory roots.</p>
      */
     public Map<String, Object> load(Path path, boolean recursive) {
+        return load(path, recursive, false);
+    }
+
+    /**
+     * Sprint 28c D10 — {@code requireStamp} is the RESEED gate.
+     *
+     * <p>A reseed rebuilds the store from a curated substrate, so it admits only
+     * files that carry a {@code reviewed:} stamp in their frontmatter. The check
+     * is deterministic on purpose: it asks whether a review HAPPENED, never
+     * whether the story is any good. Judgement lives in the cold reader in front
+     * of ingest — an ingest that judged content would be an unreviewable
+     * intelligence sitting in the one place nobody watches.</p>
+     *
+     * <p>An ordinary {@code load} does not require it. Loading is how a corpus of
+     * notes reaches the store; reseeding is how the store is REBUILT, and only
+     * the second one is a claim that what went in was checked.</p>
+     */
+    public Map<String, Object> load(Path path, boolean recursive, boolean requireStamp) {
         if (path == null) {
             List<Path> roots = defaultRoots.get().stream().filter(Files::exists).toList();
             if (roots.isEmpty()) {
@@ -131,7 +149,8 @@ public final class ExperienceMaintenance {
                     + " (set -Djawata.memory.roots or pass a path)");
                 return report;
             }
-            return loadSources(roots, recursive, maxDepth(), maxFiles(), maxBytes());
+            return loadSources(roots, recursive, maxDepth(), maxFiles(), maxBytes(),
+                requireStamp);
         }
         if (!Files.exists(path)) {
             Map<String, Object> report = new LinkedHashMap<>();
@@ -139,12 +158,18 @@ public final class ExperienceMaintenance {
             report.put("error", "path does not exist");
             return report;
         }
-        return loadSources(List.of(path), recursive, maxDepth(), maxFiles(), maxBytes());
+        return loadSources(List.of(path), recursive, maxDepth(), maxFiles(), maxBytes(),
+            requireStamp);
     }
 
     /** Crawl + ingest; package-private so tests can exercise the caps directly. */
     Map<String, Object> loadSources(List<Path> roots, boolean recursive,
             int maxDepth, int maxFiles, long maxBytes) {
+        return loadSources(roots, recursive, maxDepth, maxFiles, maxBytes, false);
+    }
+
+    Map<String, Object> loadSources(List<Path> roots, boolean recursive,
+            int maxDepth, int maxFiles, long maxBytes, boolean requireStamp) {
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> stale = new ArrayList<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
@@ -257,11 +282,31 @@ public final class ExperienceMaintenance {
             // the crawl short.
             Optional<EntryForm.Refusal> refused = EntryForm.check(
                 doc.type, doc.summary(), List.of(), doc.situation, doc.verdict);
-            if (refused.isPresent()) {
+            // Sprint 28c D10 — on a RESEED, an unstamped story does not enter.
+            //
+            // Deterministic by design: it asks whether a review HAPPENED, never
+            // whether the story is any good. The judging lives in the cold reader
+            // in FRONT of ingest, because an ingest that judged content would be an
+            // unreviewable intelligence sitting in the one place nobody watches —
+            // and its verdicts would reach the store with nobody having read them.
+            //
+            // It shares this branch instead of getting its own. A second refusal
+            // path is how the link-following gets forgotten on one of them, which
+            // is exactly the defect this branch already carries a comment about.
+            String stampMissing = requireStamp && doc.reviewed() == null
+                ? "reviewed — this is a RESEED, which rebuilds the store from a reviewed"
+                    + " substrate, and this file carries no `reviewed:` stamp in its"
+                    + " frontmatter. Run it through the cold reader"
+                    + " (experience kind=review) and stamp it, or load it with"
+                    + " kind=load, which makes no claim that anybody checked it."
+                : null;
+            if (stampMissing != null || refused.isPresent()) {
                 formRefused++;
                 skipped.add(Map.of("source", f.toString(),
-                    "reason", "form — " + refused.get().field() + ": "
-                        + refused.get().message()));
+                    "reason", stampMissing != null
+                        ? stampMissing
+                        : "form — " + refused.get().field() + ": "
+                            + refused.get().message()));
                 List<Path> onward = resolveLinks(doc, f.getParent(), rootDirs);
                 if (!onward.isEmpty() && item.depth() >= maxDepth) {
                     // The admitted path reports this; so must the refused one, or
@@ -857,7 +902,8 @@ public final class ExperienceMaintenance {
     // --- frontmatter parsing ------------------------------------------------------------
 
     private record MemoryDoc(String name, String description, String type, String symbol,
-                             String language, String situation, String verdict, String body,
+                             String language, String situation, String verdict, String reviewed,
+                             String body,
                              List<String> links, List<String> fileLinks, List<String> keywords,
                              String preamble, List<Section> sections) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
@@ -906,6 +952,7 @@ public final class ExperienceMaintenance {
         // in frontmatter, exactly as the record verb carries it in arguments.
         String situation = null;
         String verdict = null;
+        String reviewed = null;
         StringBuilder body = new StringBuilder();
 
         String[] lines = content.split("\n", -1);
@@ -932,6 +979,7 @@ public final class ExperienceMaintenance {
                     case "language" -> language = emptyToNull(v);
                     case "situation" -> situation = emptyToNull(v);
                     case "verdict" -> verdict = emptyToNull(v);
+                    case "reviewed" -> reviewed = emptyToNull(v);
                     default -> { }
                 }
             }
@@ -964,7 +1012,8 @@ public final class ExperienceMaintenance {
         List<String> keywords =
             harvestKeywords(split.sections().isEmpty() ? bodyStr : split.preamble());
         return new MemoryDoc(name, description, type, symbol, language, situation, verdict,
-            bodyStr, links, fileLinks, keywords, split.preamble(), split.sections());
+            reviewed, bodyStr, links, fileLinks, keywords, split.preamble(),
+            split.sections());
     }
 
     /** Sprint 21c (item B): a heading-bounded body slice — the atomic fact. */

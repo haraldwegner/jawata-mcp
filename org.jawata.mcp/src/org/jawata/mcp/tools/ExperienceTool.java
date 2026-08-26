@@ -549,8 +549,11 @@ public final class ExperienceTool implements Tool {
                 + " default memory roots (-Djawata.memory.roots) — none found (store NOT wiped)");
         }
         Map<String, Object> wiped = maintenance.wipe();
+        // D10: a reseed admits stamped stories only. load() does not require it —
+        // loading is how notes reach the store, reseeding is how the store is
+        // REBUILT, and only the second is a claim that what went in was checked.
         Map<String, Object> loaded = maintenance.load(
-            path == null || path.isBlank() ? null : Path.of(path), recursive);
+            path == null || path.isBlank() ? null : Path.of(path), recursive, true);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("removed", wiped.get("removed"));
         data.putAll(loaded);
