@@ -74,6 +74,26 @@ public interface ExperienceStore extends AutoCloseable {
     boolean rewriteForm(String id, String situation, String verdict);
 
     /**
+     * Sprint 28c D14 (delivered 2026-08-27 on Harald's ruling) — stamp WHICH
+     * CLIENT recorded an entry.
+     *
+     * <p>The record path cannot write this itself: a tool sees only its
+     * arguments, and the session — the thing that knows the client — lives at
+     * the protocol layer. So the stamp is applied POST-INSERT by the EventTap
+     * collaborator, which receives every completed call WITH its session id and
+     * resolves the client through {@code ClientDirectory}'s closed vocabulary.
+     * The value stored is that vocabulary ({@code claude_code}, {@code cursor},
+     * …, {@code unknown}), never a raw client string.</p>
+     *
+     * <p>ABSTRACT, not defaulted — the compiler names every implementation that
+     * must forward it, same rule as {@link #markEvidenceDead}.</p>
+     *
+     * @return true when the row was stamped; false when no row has this id or
+     *         the client is null/blank (nothing is written, never a default)
+     */
+    boolean setOriginClient(String id, String client);
+
+    /**
      * Sprint 28c D4 — give an existing row the 28c form: a situation, an
      * outcome, and {@code form = 1}.
      *

@@ -141,6 +141,11 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public boolean setOriginClient(String id, String client) {
+        throw boom();
+    }
+
+    @Override
     public long count() {
         throw boom();
     }

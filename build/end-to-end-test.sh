@@ -581,6 +581,20 @@ case "$QSWEEP" in
     *) fail "repair-front-door the quality lane is missing from the sweep: $(printf '%s' "$QSWEEP" | head -c 300)" ;;
 esac
 
+# --- origin-attribution: v13's stamp rides the tap, proven by its READER -----
+# Sprint 28c D14 (v13). The record above (repair-front-door) reached the store
+# through the REAL application wiring — protocol handler, EventTap, stamper.
+# This session never sent an initialize, so ClientDirectory knows nothing about
+# it and the honest stamp is 'unknown'. That value is the discriminator: a
+# stamper that never ran leaves NULL, and a NULL row appears in no group — so
+# an 'unknown' bucket with a count IS the proof the wiring fired end to end.
+OSTATS="$(call experience '{"kind":"stats"}')"
+case "$OSTATS" in
+    *'"by_origin_client"'*'"unknown"'*)
+        pass "origin-attribution a front-door record is stamped and countable by its recording client" ;;
+    *) fail "origin-attribution no unknown bucket after a front-door record — the stamper never ran: $(printf '%s' "$OSTATS" | head -c 300)" ;;
+esac
+
 # --- field-tool-answers: the /report seat's one front door replies -----------
 FP="$(call field '{"action":"pile"}')"
 case "$FP" in

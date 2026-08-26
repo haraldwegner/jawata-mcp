@@ -38,6 +38,10 @@ public class EventTap {
      *  application wires it. Shapes, never content. */
     private org.jawata.mcp.field.FieldRecorder fieldRecorder;
 
+    /** Sprint 28c D14 (v13): stamps which client recorded an entry — null until
+     *  the application wires it. {@code (sessionId, entryId)}. */
+    private java.util.function.BiConsumer<String, String> originStamper;
+
     public EventTap(SessionLedger ledger, LearnerEventStore events) {
         this.ledger = ledger;
         this.events = events;
@@ -51,6 +55,21 @@ public class EventTap {
     /** Sprint 28b D1: install the sanitized field recorder (application wiring). */
     public void setFieldRecorder(org.jawata.mcp.field.FieldRecorder recorder) {
         this.fieldRecorder = recorder;
+    }
+
+    /**
+     * Sprint 28c D14 (v13): install the origin stamper — {@code (sessionId,
+     * entryId)} → stamp which client recorded the entry.
+     *
+     * <p>It lives HERE because this is the one place that holds both halves: a
+     * tool sees only its arguments, and the session — the thing that knows the
+     * client — arrives with every completed call at this tap. The stamper
+     * itself is a closure built at application wiring over
+     * {@code ClientDirectory} and the store, so this class stays ignorant of
+     * both, the same rule as the two collaborators above.</p>
+     */
+    public void setOriginStamper(java.util.function.BiConsumer<String, String> stamper) {
+        this.originStamper = stamper;
     }
 
     public SessionLedger ledger() {
@@ -71,6 +90,22 @@ public class EventTap {
                 fieldRecorder.onCall(sessionId, name, arguments, response, durationMs);
             } catch (Exception e) {
                 // FieldPile counts its own drops; this guards recorder bugs.
+            }
+        }
+        // Sprint 28c D14 (v13): stamp WHICH CLIENT recorded a new entry. Only
+        // the `record` verb — an import re-attributing rows to the importing
+        // session, or a set_form claiming authorship of a correction's ORIGIN,
+        // would both overwrite a true fact with a plausible one. Its own try:
+        // attribution must never fail the call it attributes.
+        if (originStamper != null && "experience".equals(name) && arguments != null
+                && "record".equals(arguments.path("kind").asText(null))
+                && response.isSuccess()
+                && response.getData() instanceof java.util.Map<?, ?> data
+                && data.get("id") instanceof String entryId) {
+            try {
+                originStamper.accept(sessionId, entryId);
+            } catch (Exception e) {
+                // The stamp is bookkeeping; the record already succeeded.
             }
         }
         // Sprint 26a D2: the experience loop's selective capture — independent of

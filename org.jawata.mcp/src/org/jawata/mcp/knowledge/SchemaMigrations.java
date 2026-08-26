@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 12;
+    static final int LATEST = 13;
 
     private SchemaMigrations() {
     }
@@ -109,6 +109,9 @@ final class SchemaMigrations {
         }
         if (from < 12) {
             migrateToV12(conn);
+        }
+        if (from < 13) {
+            migrateToV13(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -640,7 +643,9 @@ final class SchemaMigrations {
      * all carry it. This sprint has already shipped that gap three times. The
      * column arrives in the change that FILLS it, with its four carriage sites
      * and one test, rather than sitting here as half a contract waiting to be
-     * silently dropped by the first backup somebody takes.</p>
+     * silently dropped by the first backup somebody takes.
+     * <b>That change is {@link #migrateToV13}</b> — Harald ruled BUILD on
+     * 2026-08-26, and the condition this paragraph set is the one it meets.</p>
      */
     private static void migrateToV12(Connection conn) throws SQLException {
         try (Statement s = conn.createStatement()) {
@@ -661,6 +666,36 @@ final class SchemaMigrations {
                 + "chosen BOOLEAN NOT NULL)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_usage_query_unanswered "
                 + "ON usage_query(chosen, asked_at)");
+        }
+    }
+
+    /**
+     * v13 — {@code origin_client}: which client recorded this entry.
+     *
+     * <p>D14 wants it and {@link #migrateToV12}'s note refused to carry it
+     * there, on the rule that a column only round-trips if every site spelling
+     * the row shape carries it — a gap this sprint shipped three times. So the
+     * column arrives HERE together with all of them: {@code ALL_COLUMNS},
+     * {@code mapRow}/{@code facetsOf}, {@code exportEntries},
+     * {@code importEntries} and {@code importFrom} (gated on the orphan's own
+     * version), plus its writer (the EventTap stamper) and its reader
+     * ({@code stats.by_origin_client}). {@code insert} deliberately does NOT
+     * carry it: the stamp is applied post-insert by the tap, because the tool
+     * that inserts never sees the session — an INSERT-side value could only
+     * ever be a guess.</p>
+     *
+     * <p>The value is {@code ClientDirectory}'s CLOSED vocabulary
+     * ({@code claude_code}, {@code cursor}, …, {@code unknown}) — never the raw
+     * client string, so nothing a client puts in its own name can leak into the
+     * store. NULL and {@code 'unknown'} are different facts and neither side
+     * may collapse them: NULL means <b>nothing ever stamped this row</b>
+     * (pre-v13, or a surface with no session); {@code 'unknown'} means the
+     * stamper ran and the session's client was not identified.</p>
+     */
+    private static void migrateToV13(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry"
+                + " ADD COLUMN IF NOT EXISTS origin_client VARCHAR(64)");
         }
     }
 

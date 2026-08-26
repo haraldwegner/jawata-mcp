@@ -763,6 +763,22 @@ public final class H2ExperienceStore implements ExperienceStore {
      * asking "who decided this entry's situation?" must be able to tell an
      * author's declaration from a rule's derivation.</p>
      */
+    /** D14 — the EventTap stamper's write. See the port's javadoc. */
+    @Override
+    public synchronized boolean setOriginClient(String id, String client) {
+        if (id == null || client == null || client.isBlank()) {
+            return false;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET origin_client = ? WHERE id = ?")) {
+            ps.setString(1, client);
+            ps.setString(2, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to stamp origin: " + e.getMessage(), e);
+        }
+    }
+
     /**
      * Stage 15 — the reviewed correction path. See the port's javadoc for why
      * this may exist beside {@link #setForm}'s nothing-else-may-call-this rule.
@@ -1158,7 +1174,10 @@ public final class H2ExperienceStore implements ExperienceStore {
             rs.getString("verdict"),
             rs.getString("provenance_kind"),
             intOrNull(rs.getObject("form")),
-            dead);
+            dead,
+            // v13; the presence check keeps narrower projections working — an
+            // absent column reads as null, same as an unstamped row.
+            cols.contains("origin_client") ? rs.getString("origin_client") : null);
     }
 
     private List<String> loadSymptoms(String id, Connection c) throws SQLException {
@@ -1250,7 +1269,9 @@ public final class H2ExperienceStore implements ExperienceStore {
         + "workspace_id,project_id,language,"
         // Sprint 28c (v10) — the knowledge-spine facets.
         + "situation,verdict,provenance_kind,"
-        + "form,evidence_dead";
+        + "form,evidence_dead,"
+        // Sprint 28c (v13) — which client recorded the entry.
+        + "origin_client";
 
     @Override
     public List<Map<String, Object>> exportEntries(String status, String type) {
@@ -1312,7 +1333,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                             // text facet; importEntries parses the numeric one and
                             // the boolean on the way in.
                             "situation", "verdict",
-                            "provenance_kind"}) {
+                            "provenance_kind",
+                            // v13: who recorded it — text, null-skipped like the rest.
+                            "origin_client"}) {
                         Object v = rs.getString(col);
                         if (v != null) {
                             row.put(col, v);
@@ -1380,11 +1403,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
                 try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
-                        // 23 placeholders — one per ALL_COLUMNS entry. Kept in
+                        // 24 placeholders — one per ALL_COLUMNS entry. Kept in
                         // step BY TEST, not by eye: the count is invisible to the
                         // compiler and a surplus throws only at import time.
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                        + "?,?,?,?,?)")) {
+                        + "?,?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -1420,6 +1443,10 @@ public final class H2ExperienceStore implements ExperienceStore {
                     } else {
                         ps.setBoolean(23, Boolean.parseBoolean(String.valueOf(row.get("evidence_dead"))));
                     }
+                    // v13: who recorded it. Carried verbatim — an import never
+                    // re-attributes, because the importing session's client says
+                    // nothing about who originally wrote the entry.
+                    ps.setString(24, str(row.get("origin_client")));
                     ps.executeUpdate();
                 }
                 if (row.get("symptoms") instanceof List<?> symptoms) {
@@ -1583,6 +1610,13 @@ public final class H2ExperienceStore implements ExperienceStore {
         Map<String, Object> byLanguage = withRead("group by language", c -> groupCount("language", c));
         out.put("by_status", byStatus);
         out.put("by_language", byLanguage);
+        // Sprint 28c D14 (v13) — origin_client's production READER. A column
+        // nothing reads is not delivered, however correctly it is written; this
+        // is the consumer the stamp exists for: which client's entries fill the
+        // store. A NULL group here is honest and expected — rows that predate
+        // v13 or arrived through a surface with no session.
+        out.put("by_origin_client",
+            withRead("group by origin_client", c -> groupCount("origin_client", c)));
         Map<String, Object> store = new LinkedHashMap<>();
         if (storeFile != null) {
             store.put("file", storeFile.toAbsolutePath().toString());
@@ -1736,11 +1770,13 @@ public final class H2ExperienceStore implements ExperienceStore {
     private int[] importFrom(Connection orphan, int version) throws SQLException {
         boolean hasFacets = version >= 2;
         boolean hasForm = version >= 10;
+        boolean hasOrigin = version >= 13;
         String cols = "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
             + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at"
             + (hasFacets ? ",workspace_id,project_id,language" : "")
             + (hasForm ? ",situation,verdict,provenance_kind,"
-                + "form,evidence_dead" : "");
+                + "form,evidence_dead" : "")
+            + (hasOrigin ? ",origin_client" : "");
         int imported = 0;
         int duplicates = 0;
         try (Statement s = orphan.createStatement();
@@ -1757,8 +1793,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
                         + "workspace_id,project_id,language,"
                         + "situation,verdict,provenance_kind,"
-                        + "form,evidence_dead)"
-                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                        + "form,evidence_dead,origin_client)"
+                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     for (int i = 1; i <= 13; i++) {
                         ps.setString(i, rs.getString(i));
                     }
@@ -1786,6 +1822,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                     } else {
                         ps.setNull(23, java.sql.Types.BOOLEAN);
                     }
+                    // v13: carried verbatim from an orphan that has it, NULL from
+                    // one that predates it — recovery never re-attributes.
+                    ps.setString(24, hasOrigin ? rs.getString("origin_client") : null);
                     ps.executeUpdate();
                 }
                 copyChildren(orphan, id);

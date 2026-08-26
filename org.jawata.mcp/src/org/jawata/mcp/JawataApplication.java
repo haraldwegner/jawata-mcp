@@ -224,6 +224,14 @@ public class JawataApplication implements IApplication {
             eventTap.setToolExperienceRecorder(toolExperienceRecorder);
             // Sprint 28b D1: the field recording rides the same tap.
             eventTap.setFieldRecorder(fieldRecorder);
+            // Sprint 28c D14 (v13): the origin stamp rides it too — the tap is
+            // the one place that has the session id, and the directory is the
+            // one place that knows what client that session declared. The store
+            // receives the closed-vocabulary token's value, never a raw name.
+            final org.jawata.mcp.knowledge.ExperienceStore stampTarget = experienceStore;
+            eventTap.setOriginStamper((sessionId, entryId) ->
+                stampTarget.setOriginClient(entryId,
+                    clientDirectory.clientOf(sessionId).value()));
             // Sprint 27 D6: the quality ledger — every counter advances as a side
             // effect of normal use, which is the only way Sprint 33 gets evidence
             // nobody had to remember to collect. Installed on all four producers

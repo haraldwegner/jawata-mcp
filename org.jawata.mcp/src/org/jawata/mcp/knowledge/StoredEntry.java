@@ -31,10 +31,11 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
      * {@code int}, so the difference survives the projection.</p>
      */
     public record Facets(String situation, String verdict,
-                         String provenanceKind, Integer form, Boolean evidenceDead) {
+                         String provenanceKind, Integer form, Boolean evidenceDead,
+                         String originClient) {
 
         /** A legacy row: no facets at all, which is what every pre-28c entry is. */
-        public static final Facets NONE = new Facets(null, null, null, null, null);
+        public static final Facets NONE = new Facets(null, null, null, null, null, null);
 
         /** True when the entry arrived in the 28c form — it carries a situation. */
         public boolean isForm1() {

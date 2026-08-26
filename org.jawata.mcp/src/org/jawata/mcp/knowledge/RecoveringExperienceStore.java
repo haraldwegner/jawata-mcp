@@ -222,6 +222,13 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public boolean setOriginClient(String id, String client) {
+        synchronized (lock) {
+            return delegate.setOriginClient(id, client);
+        }
+    }
+
+    @Override
     public long count() {
         return delegate.count();
     }
