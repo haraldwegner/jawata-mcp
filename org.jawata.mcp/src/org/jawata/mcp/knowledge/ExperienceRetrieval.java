@@ -943,12 +943,84 @@ public final class ExperienceRetrieval {
                 + " will not be here. The resident log carries the cause."
             : "";
         out.put("meaning_lanes", meaningLanesFailed ? "failed" : "ok");
+
+        // COVERAGE, not just liveness. "ok" says the lane scan did not fail; it has
+        // never said how MUCH of the store the lanes could see, and during the
+        // start-up backfill that is most of it. An entry with no vector yet scores
+        // 0 on all three meaning lanes — the same number as an entry that means the
+        // opposite — so while the backfill runs the ranking quietly demotes exactly
+        // the entries it has not reached. Measured on a live store: an entry whose
+        // situation matched the question almost verbatim, holding a PERFECT word
+        // score, sat at rank 6 and sank further as its neighbours were embedded.
+        // The caller could not see any of that, and this block is the same rule the
+        // failed/ok distinction above already obeys: the difference has to reach the
+        // CALLER, not just the log.
+        int embeddedHere = 0;
+        for (String id : byId.keySet()) {
+            if (hasAnyMeaningScore(lanes, id)) {
+                embeddedHere++;
+            }
+        }
+        int liveHere = byId.size();
+        out.put("meaning_coverage", Map.of("embedded", embeddedHere, "entries", liveHere));
+        // The COUNT, never a diagnosis of it. Coverage can be short because a
+        // backfill is still running, or because the embedder is unavailable on
+        // this resident, and this method cannot tell those apart — naming either
+        // one would be the inference-as-observation the store keeps a rule about.
+        String partial = !meaningLanesFailed && embeddedHere < liveHere
+            ? " PARTIAL: the meaning lanes scored " + embeddedHere + " of " + liveHere
+                + " entries. The rest carry no vector and therefore score 0 on all"
+                + " three meaning lanes — the same number as an entry that means the"
+                + " opposite — so they are RANKED DOWN for a reason that is not about"
+                + " their fit. Treat this order as provisional until coverage is full."
+            : "";
+
+        // A candidate with no situation cannot be judged the way the next sentence
+        // tells the reader to judge it. The store's substrate-derived rows largely
+        // predate the form, so this is common rather than exceptional — and an
+        // instruction that is unfollowable for most of what was returned trains the
+        // reader to skip it. Say the count and say what to do instead.
+        int unsituated = 0;
+        for (Map<String, Object> c : candidates) {
+            if (c.get("situation") == null) {
+                unsituated++;
+            }
+        }
+        String noSituation = unsituated > 0
+            ? " NOTE: " + unsituated + " of these declare no situation. Such a row"
+                + " states no applicability, so judge it by its claim alone or"
+                + " discount it — it cannot tell you when it applies."
+            : "";
+
         out.put("message", (candidates.isEmpty()
             ? "No candidates for this question. Nothing to decide; this is an absence."
             : candidates.size() + " candidate(s) RANKED, not vouched. Read each situation"
                 + " and decide which apply, then call kind=decide with the query_id and"
-                + " the ids you chose. Choosing none is a real answer.") + degraded);
+                + " the ids you chose. Choosing none is a real answer.")
+            + degraded + partial + noSituation);
         return out;
+    }
+
+    /**
+     * Did any meaning lane score this id at all?
+     *
+     * <p>Absence here means <b>no vector was stored for the entry</b> — the
+     * backfill has not reached it. That is a different fact from a cosine of
+     * zero, which means the embedder looked and found no resemblance, and the
+     * two must not be reported as one. {@link RelevanceMerge} deliberately does
+     * not renormalise a missing lane, because under-declaring is meant to cost
+     * something; this method exists so the CALLER can tell when a zero is that
+     * penalty and when it is merely a queue.</p>
+     */
+    private static boolean hasAnyMeaningScore(
+            Map<EmbeddingService.Lane, Map<String, Double>> lanes, String id) {
+        for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
+            Map<String, Double> scores = lanes.get(lane);
+            if (scores != null && scores.containsKey(id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
