@@ -477,6 +477,63 @@ public final class ExperienceTool implements Tool {
         return block;
     }
 
+    /**
+     * Sprint 28c D11 — where a new story FILE belongs, answered by the store
+     * rather than guessed by the caller.
+     *
+     * <p>The store is derived from a file substrate, so `/memorize` writes a
+     * story file and lets a reseed carry it in; a direct record has no file
+     * behind it and the next rebuild removes it. That leaves one question the
+     * skill cannot answer on its own — WHERE the substrate is — and a path an
+     * agent invents is the same failure as a value invented to satisfy a rule.
+     *
+     * <p>Nothing new is stored to answer it. The entries already carry their
+     * own {@code memory:} source paths; the substrate is the deepest directory
+     * that contains all of them. A store with no ingested entries has no
+     * substrate, and says so rather than offering a plausible directory.</p>
+     */
+    private java.util.Map<String, Object> substrateBlock() {
+        java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
+        java.nio.file.Path common = null;
+        int from = 0;
+        for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
+            String ref = e.sourceRef();
+            if (ref == null || !ref.startsWith("memory:")) {
+                continue;
+            }
+            java.nio.file.Path dir = Path.of(ref.substring("memory:".length())).getParent();
+            if (dir == null) {
+                continue;
+            }
+            from++;
+            common = common == null ? dir : commonPrefix(common, dir);
+        }
+        if (common == null) {
+            block.put("root", null);
+            block.put("note", "no ingested entries, so nothing here came from a file and"
+                + " there is no substrate to add one to. Do NOT choose a directory:"
+                + " ask, or load a substrate first.");
+            return block;
+        }
+        block.put("root", common.toString());
+        block.put("derivedFrom", from + " entries carrying a memory: source path");
+        block.put("howToAdd", "write the story as a .md file under this root with a"
+            + " `reviewed:` stamp it has EARNED, then experience(kind=reseed, path=<root>,"
+            + " recursive=true, confirm=true). A record written straight to the store has"
+            + " no file behind it and the next reseed removes it, silently, because the"
+            + " count check afterwards asserts the file count and still passes.");
+        return block;
+    }
+
+    private static java.nio.file.Path commonPrefix(java.nio.file.Path a,
+            java.nio.file.Path b) {
+        java.nio.file.Path out = a;
+        while (out != null && !b.startsWith(out)) {
+            out = out.getParent();
+        }
+        return out;
+    }
+
     private java.util.Map<String, Object> stats() {
         java.util.Map<String, Object> out =
             new java.util.LinkedHashMap<>(store.stats());
@@ -485,6 +542,7 @@ public final class ExperienceTool implements Tool {
             out.put("quality", q.statsBlock());
         }
         out.put("catalogue", catalogueBlock());
+        out.put("substrate", substrateBlock());
         // Sprint 27a Stage 6 (D5's first half): embedding coverage per lane,
         // live — n of total while the backfill runs, total of total after.
         // Degrades honestly: no embedder → the block says so with the reason;

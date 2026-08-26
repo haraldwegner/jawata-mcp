@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -80,6 +81,46 @@ class ReseedStampGateTest {
                     + " missing — a gate that refuses without a route is a wall: " + reason);
             assertTrue(String.valueOf(refusals.get(0).get("source")).contains("unreviewed-story"),
                 () -> "the refusal names the wrong file: " + refusals);
+        }
+    }
+
+    /**
+     * Sprint 28c D11 — the store answers WHERE a new story file belongs, and
+     * refuses to guess when it cannot.
+     *
+     * <p>`/memorize` writes a file rather than a record, which leaves it one
+     * question it cannot answer alone. A path an agent invents is the same
+     * failure as a value invented to satisfy a rule, so the empty case must come
+     * back null with a refusal — not with the most plausible directory, which is
+     * indistinguishable from a correct answer at the call site.</p>
+     */
+    @Test
+    void the_store_names_its_substrate_and_refuses_to_guess_one(
+            @TempDir Path dir, @TempDir Path storeDir) throws Exception {
+        story(dir, "reviewed-story", true);
+        try (H2ExperienceStore store = H2ExperienceStore.open(storeDir)) {
+            org.jawata.mcp.tools.ExperienceTool tool =
+                new org.jawata.mcp.tools.ExperienceTool(() -> null, store);
+            com.fasterxml.jackson.databind.ObjectMapper m =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+
+            com.fasterxml.jackson.databind.node.ObjectNode a = m.createObjectNode();
+            a.put("kind", "stats");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> before = (Map<String, Object>) tool.execute(a).getData();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> emptySub = (Map<String, Object>) before.get("substrate");
+            assertNull(emptySub.get("root"),
+                "an empty store offered a substrate directory — a plausible path here is"
+                    + " indistinguishable from a correct one at the call site");
+
+            new ExperienceMaintenance(store, fqn -> null).load(dir, true, true);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> after = (Map<String, Object>) tool.execute(a).getData();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> sub = (Map<String, Object>) after.get("substrate");
+            assertEquals(dir.toString(), sub.get("root"),
+                () -> "the substrate must be the directory the entries came from: " + sub);
         }
     }
 
