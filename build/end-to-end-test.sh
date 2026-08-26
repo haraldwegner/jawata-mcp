@@ -547,6 +547,40 @@ else
     fail "demand-and-delete could not record the entry the delete promise needs"
 fi
 
+# --- repair-through-the-front-door: Stage 15's set_form, gated ---------------
+# Sprint 28c Stage 15. The store could diagnose a badly-formed entry and not fix
+# one: setForm had three references and no tool verb. These promises prove the
+# repair verb IS the front door's — and that the gate stands at this door too,
+# because a repair path that admits what record refuses is how the store filled
+# with headings the first time.
+RID_JSON="$(call experience '{"kind":"record","type":"lesson","summary":"the quokka ledger loses a fill when the amend races the cancel","situation":"when by construction","verdict":"failed_avoid"}')"
+RID="$(printf '%s' "$RID_JSON" | sed -n 's/.*"id" *: *"\([0-9a-f-]*\)".*/\1/p' | head -1)"
+if [ -n "$RID" ]; then
+    pass "repair-front-door a poorly-formed lesson is in the store to repair"
+else
+    fail "repair-front-door could not seed the repair target: $(printf '%s' "$RID_JSON" | head -c 200)"
+fi
+FIX="$(call experience "{\"kind\":\"set_form\",\"id\":\"$RID\",\"situation\":\"when an amend and a cancel race on the same quokka ledger slot\"}")"
+case "$FIX" in
+    *'"seat_rewritten"'*) pass "repair-front-door set_form rewrites and stamps seat_rewritten" ;;
+    *) fail "repair-front-door set_form did not rewrite: $(printf '%s' "$FIX" | head -c 300)" ;;
+esac
+FOUND="$(call experience '{"kind":"nominate","question":"what happens when an amend races a cancel on a quokka ledger slot"}')"
+case "$FOUND" in
+    *"$RID"*) pass "repair-front-door the rewritten entry answers by its NEW situation" ;;
+    *) fail "repair-front-door the new situation does not surface the entry: $(printf '%s' "$FOUND" | head -c 300)" ;;
+esac
+BADFIX="$(call experience "{\"kind\":\"set_form\",\"id\":\"$RID\",\"situation\":\"docs/sprints/sprint-28c.md\"}")"
+case "$BADFIX" in
+    *"WHEN an entry applies"*) pass "repair-front-door a location-shaped repair is refused with the teaching text" ;;
+    *) fail "repair-front-door a location-shaped situation was admitted: $(printf '%s' "$BADFIX" | head -c 300)" ;;
+esac
+QSWEEP="$(call experience '{"kind":"review_sweep"}')"
+case "$QSWEEP" in
+    *'"quality"'*'"findingsTotal"'*) pass "repair-front-door the sweep carries the quality lane beside usage" ;;
+    *) fail "repair-front-door the quality lane is missing from the sweep: $(printf '%s' "$QSWEEP" | head -c 300)" ;;
+esac
+
 # --- field-tool-answers: the /report seat's one front door replies -----------
 FP="$(call field '{"action":"pile"}')"
 case "$FP" in
