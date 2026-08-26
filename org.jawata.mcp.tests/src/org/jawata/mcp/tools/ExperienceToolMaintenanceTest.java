@@ -183,6 +183,9 @@ class ExperienceToolMaintenanceTest {
 
     @Test
     void load_without_path_seeds_from_default_roots(@TempDir Path dir) throws IOException {
+        // Deliberately UNSTAMPED. D10's gate binds to reseed, not to load, and an
+        // unstamped file here is what proves it: stamp this and the test passes
+        // whether load requires the stamp or not.
         Files.writeString(dir.resolve("m.md"),
             "---\nname: n\ndescription: a seeded note placed before the run\ntype: domain_fact\n---\nbody");
         ExperienceTool rooted = new ExperienceTool(() -> null, store, () -> java.util.List.of(dir));
@@ -193,8 +196,14 @@ class ExperienceToolMaintenanceTest {
 
     @Test
     void reseed_requires_confirm_then_wipes_and_reloads(@TempDir Path dir) throws IOException {
+        // Sprint 28c D10: a RESEED admits stamped stories only, so this fixture
+        // carries the stamp. Without it the gate refuses the file and `loaded` is
+        // 0 — which is the gate working, not a regression. The refusal itself is
+        // covered by ReseedStampGateTest; what THIS test is about is the confirm
+        // gate and the wipe-then-reload, and it needs a file that enters.
         Files.writeString(dir.resolve("m.md"),
-            "---\nname: n\ndescription: a seeded note placed before the run\ntype: domain_fact\n---\nbody");
+            "---\nname: n\ndescription: a seeded note placed before the run\n"
+                + "type: domain_fact\nreviewed: 2026-08-26\n---\nbody");
         ExperienceTool rooted = new ExperienceTool(() -> null, store, () -> java.util.List.of(dir));
         recordOneVia(rooted);
         assertEquals(1L, store.count());
@@ -209,7 +218,7 @@ class ExperienceToolMaintenanceTest {
         confirmed.put("confirm", true);
         Map<String, Object> d = data(rooted.execute(confirmed));
         assertEquals(1L, d.get("removed"), "the hand-recorded entry was wiped");
-        assertEquals(1, d.get("loaded"), "the seed file was reloaded");
+        assertEquals(1, d.get("loaded"), () -> "the seed file was reloaded: " + d);
         assertEquals(1L, store.count());
     }
 
