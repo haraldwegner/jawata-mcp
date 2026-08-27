@@ -921,7 +921,7 @@ public final class ExperienceRetrieval {
             // address in a pinned MIT fork. The distinction is what the row IS, not a
             // privacy patch on top of one rule for both.
             String ref = e.sourceRef();
-            if (ref != null && ref.startsWith(PatternCatalogueLoader.SOURCE_PREFIX)) {
+            if (CatalogueSources.isCatalogue(ref)) {
                 c.put("address", ref);
             }
             // Why this one, and why here. A ranking nobody can interrogate is a

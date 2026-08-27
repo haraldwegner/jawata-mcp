@@ -1,0 +1,156 @@
+package org.jawata.mcp.knowledge;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.ExperienceTool;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * THE REGISTRY IS THE ONE LIST — Sprint 28d Stage 2 (ARCHITECTURE-28d step 1).
+ *
+ * <p><b>What this replaces.</b> Four production sites hardcoded the single
+ * catalogue's class or its {@code source_ref} prefix: the boot seeder, the
+ * address renderer, the {@code stats} block and the reseed's kept-counts. A
+ * second source would have had to be added to all four, found by memory. These
+ * tests pin the properties that make one list enough.</p>
+ */
+class CatalogueSourceRegistryTest {
+
+    private ObjectMapper mapper;
+    private H2ExperienceStore store;
+    private ExperienceTool tool;
+
+    @BeforeEach
+    void setUp() {
+        mapper = new ObjectMapper();
+        store = H2ExperienceStore.open(null);
+        tool = new ExperienceTool(() -> null, store);
+    }
+
+    @AfterEach
+    void tearDown() {
+        store.close();
+    }
+
+    /**
+     * A source is CHEAP TO CONSTRUCT — the interface says so, and the registry
+     * relies on it: {@code stats} builds every source just to ask which
+     * namespace owns a row. The bundled snapshot is ~200 patterns of JSON, so an
+     * eager constructor would put that parse on a read path called constantly.
+     *
+     * <p>Asserted by CONSTRUCTING MANY and requiring it to stay fast. A timing
+     * assertion is a weak instrument in general — this one is deliberately three
+     * orders of magnitude off the eager cost, so it can only fail if the
+     * laziness is actually gone.</p>
+     */
+    @Test
+    void constructing_a_source_does_not_parse_its_snapshot() {
+        long start = System.nanoTime();
+        for (int i = 0; i < 500; i++) {
+            assertFalse(CatalogueSources.all().isEmpty());
+        }
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(millis < 500,
+            () -> "500 registry builds took " + millis + " ms — a source is parsing its"
+                + " snapshot in its constructor, which puts that cost on every stats call");
+    }
+
+    /** Ownership has ONE home, so two callers cannot disagree about a row. */
+    @Test
+    void the_registry_answers_who_owns_a_row() {
+        CatalogueSource fork = CatalogueSources.all().get(0);
+        String mine = fork.prefix() + "some-pattern/README.md";
+
+        assertNotNull(CatalogueSources.owning(mine));
+        assertEquals(fork.namespace(), CatalogueSources.owning(mine).namespace());
+        assertTrue(CatalogueSources.isCatalogue(mine));
+
+        assertNull(CatalogueSources.owning("memory:/home/h/stories/x.md"),
+            "a story is not a catalogue row");
+        assertNull(CatalogueSources.owning(null),
+            "a direct record has no source at all — and null must be an answer,"
+                + " not an exception, because every caller passes one");
+        assertFalse(CatalogueSources.isCatalogue("memory:/home/h/stories/x.md"));
+    }
+
+    /** Every source declares the three things the registry needs of it. */
+    @Test
+    void every_registered_source_declares_its_identity_and_authority() {
+        List<CatalogueSource> all = CatalogueSources.all();
+        assertFalse(all.isEmpty(), "an empty registry means nothing seeds");
+        for (CatalogueSource s : all) {
+            assertFalse(s.namespace().isBlank(), "a namespace is how a degradation names it");
+            assertFalse(s.prefix().isBlank(), "a prefix is the ownership key");
+            assertFalse(s.authority().isBlank(),
+                "authority distinguishes a pinned foreign source from our own — the"
+                    + " difference that decides whether addresses can drift");
+        }
+    }
+
+    /**
+     * PER-NAMESPACE COUNTS, and every registered namespace present even at ZERO.
+     *
+     * <p>An absent key and a zero must not read alike: "which catalogue is empty?"
+     * is the question a single global total cannot answer, and it is the question
+     * a degradation line has to answer once there is more than one source.</p>
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void stats_reports_each_namespace_separately_including_the_empty_ones() {
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "stats");
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), () -> "stats failed: " + r.getError());
+
+        Map<String, Object> catalogue =
+            (Map<String, Object>) ((Map<String, Object>) r.getData()).get("catalogue");
+        Map<String, Object> byNamespace = (Map<String, Object>) catalogue.get("byNamespace");
+        assertNotNull(byNamespace, "the per-namespace block must exist");
+
+        for (CatalogueSource s : CatalogueSources.all()) {
+            assertTrue(byNamespace.containsKey(s.namespace()),
+                () -> "namespace " + s.namespace() + " is registered and must be REPORTED"
+                    + " even holding nothing: " + byNamespace);
+            assertEquals(0, byNamespace.get(s.namespace()),
+                "this store was never seeded, so every namespace is legitimately zero"
+                    + " — and says zero rather than saying nothing");
+        }
+        assertEquals(0, catalogue.get("entries"));
+    }
+
+    /** Seeding runs THROUGH the registry, and the counts follow it. */
+    @SuppressWarnings("unchecked")
+    @Test
+    void seeding_through_the_registry_fills_that_sources_namespace() {
+        int seeded = 0;
+        for (CatalogueSource s : CatalogueSources.all()) {
+            seeded += s.seed(store);
+        }
+        assertTrue(seeded > 0, "the bundled snapshot must actually seed");
+
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "stats");
+        Map<String, Object> catalogue = (Map<String, Object>)
+            ((Map<String, Object>) tool.execute(a).getData()).get("catalogue");
+        Map<String, Object> byNamespace = (Map<String, Object>) catalogue.get("byNamespace");
+
+        CatalogueSource fork = CatalogueSources.all().get(0);
+        assertEquals(seeded, byNamespace.get(fork.namespace()),
+            () -> "what the registry seeded and what stats reports for that namespace"
+                + " are the same number, or one of them is lying: " + catalogue);
+        assertEquals(seeded, catalogue.get("entries"),
+            "with one registered source the total and its namespace agree");
+    }
+}

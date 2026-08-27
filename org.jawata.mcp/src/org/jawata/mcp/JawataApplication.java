@@ -16,7 +16,8 @@ import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
-import org.jawata.mcp.knowledge.PatternCatalogueLoader;
+import org.jawata.mcp.knowledge.CatalogueSource;
+import org.jawata.mcp.knowledge.CatalogueSources;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AnalyzeTool;
@@ -700,11 +701,16 @@ public class JawataApplication implements IApplication {
      * arrives is exactly the failure this sprint exists to stop.</p>
      */
     private void seedCatalogue(H2ExperienceStore store) {
-        try {
-            new PatternCatalogueLoader().load(store);
-        } catch (RuntimeException e) {
-            log.warn("Pattern catalogue NOT seeded: {} — design recall will answer from "
-                + "your own entries only", e.toString());
+        // ONE LIST, iterated — not one hardcoded loader (Sprint 28d). A source
+        // that fails is named and SKIPPED rather than taking the others down
+        // with it: one unreadable snapshot must not cost a healthy namespace.
+        for (CatalogueSource source : CatalogueSources.all()) {
+            try {
+                source.seed(store);
+            } catch (RuntimeException e) {
+                log.warn("Catalogue namespace '{}' NOT seeded: {} — design recall will "
+                    + "answer without it", source.namespace(), e.toString());
+            }
         }
     }
 

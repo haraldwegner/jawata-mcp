@@ -498,6 +498,23 @@ EOF_CAT
     esac
 fi
 
+# --- catalogue-namespaces: 28d Stage 2, through the front door ---------------
+# Sprint 28d. A single global catalogue count cannot answer "WHICH catalogue is
+# empty?" — and that is the question a degradation line has to answer the moment
+# there is more than one source. The registry reports per namespace, and every
+# REGISTERED namespace appears even when it holds nothing, because an absent key
+# and a zero read identically to anyone parsing the answer.
+NSTATS="$(call experience '{"kind":"stats"}')"
+case "$NSTATS" in
+    *'"byNamespace"'*)
+        case "$NSTATS" in
+            *'"java-design-patterns"'*)
+                pass "catalogue-namespaces stats names each catalogue namespace, not one global total" ;;
+            *) fail "catalogue-namespaces byNamespace is present but names no registered namespace: $(printf '%s' "$NSTATS" | head -c 300)" ;;
+        esac ;;
+    *) fail "catalogue-namespaces stats carries no per-namespace catalogue block — a reader cannot tell WHICH source is absent: $(printf '%s' "$NSTATS" | head -c 300)" ;;
+esac
+
 # --- demand-and-delete: D14's ledger and the undo a delete owes -------------
 # Sprint 28c D14. Two promises the review seat depends on, through the real front
 # door. The FIRST is the one that carries the wiring: a question nobody could

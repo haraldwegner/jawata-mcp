@@ -481,17 +481,29 @@ public final class ExperienceTool implements Tool {
         java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
         int rows = 0;
         int candidates = 0;
+        // PER-NAMESPACE, because one global count cannot answer "WHICH catalogue
+        // is empty?" — and that is the question a degradation line has to answer
+        // once there is more than one source. Every registered namespace appears
+        // even at zero: an absent key and a zero must not read alike.
+        Map<String, Integer> perNamespace = new LinkedHashMap<>();
+        for (org.jawata.mcp.knowledge.CatalogueSource src
+                : org.jawata.mcp.knowledge.CatalogueSources.all()) {
+            perNamespace.put(src.namespace(), 0);
+        }
         for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
             String ref = e.sourceRef();
-            if (ref != null && ref.startsWith(
-                    org.jawata.mcp.knowledge.PatternCatalogueLoader.SOURCE_PREFIX)) {
+            org.jawata.mcp.knowledge.CatalogueSource owner =
+                org.jawata.mcp.knowledge.CatalogueSources.owning(ref);
+            if (owner != null) {
                 rows++;
+                perNamespace.merge(owner.namespace(), 1, Integer::sum);
                 if (org.jawata.mcp.knowledge.ExperienceEntry.CANDIDATE.equals(e.status())) {
                     candidates++;
                 }
             }
         }
         block.put("entries", rows);
+        block.put("byNamespace", perNamespace);
         block.put("awaitingReview", candidates);
         block.put("reviewWith", "experience(kind=list, status=\"candidate\")");
         return block;
@@ -725,8 +737,9 @@ public final class ExperienceTool implements Tool {
             String ref = e.sourceRef();
             if (ref == null) {
                 keptRecorded++;
-            } else if (ref.startsWith(
-                    org.jawata.mcp.knowledge.PatternCatalogueLoader.SOURCE_PREFIX)) {
+            } else if (org.jawata.mcp.knowledge.CatalogueSources.isCatalogue(ref)) {
+                // From the REGISTRY, so a source added later is spared without
+                // anyone remembering this line exists.
                 keptCatalogue++;
             }
         }

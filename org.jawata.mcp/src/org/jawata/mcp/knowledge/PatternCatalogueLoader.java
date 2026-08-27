@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  * <p>Writes are confined to the catalogue's own namespace. Nothing here reads,
  * updates or deletes a row the user recorded.</p>
  */
-public final class PatternCatalogueLoader {
+public final class PatternCatalogueLoader implements CatalogueSource {
 
     private static final Logger log = LoggerFactory.getLogger(PatternCatalogueLoader.class);
 
@@ -85,16 +85,61 @@ public final class PatternCatalogueLoader {
         }
     }
 
-    private final JsonNode snapshot;
+    /**
+     * LAZY, and the laziness is a contract rather than an optimisation:
+     * {@link CatalogueSource} requires sources to be cheap to construct, because
+     * the registry builds them to answer read-only questions — "which namespace
+     * owns this row?" — on paths as hot as {@code stats}. Parsing the whole
+     * snapshot in the constructor would put a megabyte of JSON behind every one
+     * of those. Held as a supplier so the caller-supplied form stays eager and
+     * the bundled form pays only when something actually seeds.
+     */
+    private final java.util.function.Supplier<JsonNode> snapshotSource;
+    private JsonNode snapshot;
 
     /** Load from the bundled resource. */
     public PatternCatalogueLoader() {
-        this(bundled());
+        this.snapshotSource = PatternCatalogueLoader::bundled;
     }
 
     /** Load from a caller-supplied snapshot — the seam the tests use. */
     public PatternCatalogueLoader(JsonNode snapshot) {
         this.snapshot = snapshot;
+        this.snapshotSource = () -> snapshot;
+    }
+
+    private JsonNode snapshot() {
+        if (snapshot == null) {
+            snapshot = snapshotSource.get();
+        }
+        return snapshot;
+    }
+
+    @Override
+    public String namespace() {
+        return "java-design-patterns";
+    }
+
+    @Override
+    public String prefix() {
+        return SOURCE_PREFIX;
+    }
+
+    /**
+     * The pinned commit the snapshot was derived at — a FOREIGN authority, which
+     * is why it can move under us and why its addresses must be re-resolved when
+     * it does. Read from the snapshot rather than stated, so it cannot drift from
+     * the rows it describes.
+     */
+    @Override
+    public String authority() {
+        return "pinned upstream commit " + snapshot().path("pinned_commit").asText("UNPINNED");
+    }
+
+    /** Registry entry point: seed everything, report what was WRITTEN. */
+    @Override
+    public int seed(ExperienceStore store) {
+        return load(store).seeded();
     }
 
     private static JsonNode bundled() {
@@ -121,8 +166,8 @@ public final class PatternCatalogueLoader {
      *     cover the loader's writing
      */
     public Result load(ExperienceStore store, int limit) {
-        JsonNode patterns = snapshot.path("patterns");
-        String commit = snapshot.path("pinned_commit").asText("UNPINNED");
+        JsonNode patterns = snapshot().path("patterns");
+        String commit = snapshot().path("pinned_commit").asText("UNPINNED");
         int seeded = 0;
         int unchanged = 0;
         int considered = 0;
