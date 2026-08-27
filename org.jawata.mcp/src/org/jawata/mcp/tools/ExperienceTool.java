@@ -542,7 +542,68 @@ public final class ExperienceTool implements Tool {
             + " recursive=true, confirm=true). A record written straight to the store has"
             + " no file behind it and the next reseed removes it, silently, because the"
             + " count check afterwards asserts the file count and still passes.");
+        addDrift(block, common);
         return block;
+    }
+
+    /**
+     * THE DRIFT CHECK — substrate files the store does not hold (2026-08-27).
+     *
+     * <p><b>Why this is a mechanism and not another sentence.</b> Writing the
+     * story file and reseeding it in are ONE JOB, and the second half lived only
+     * in instruction text — the `/memorize` protocol's own final step. It was
+     * skipped: four stories were authored, reviewed, stamped, committed and
+     * reported as remembered while the store held none of them, and nothing
+     * anywhere said otherwise. That is this project's recorded shape twice over
+     * — an agent routes around friction without narrating it, so a rule that
+     * depends on the agent's goodwill is not a rule — and the answer it has
+     * already recorded is that the only channels that hold are the RESPONSE, a
+     * hook, or a non-agent watcher. This is the response.</p>
+     *
+     * <p>So the store reports its own drift: files under the substrate root that
+     * no row cites. The number rides every {@code stats} and every
+     * {@code review_sweep}, in every client, whether or not the agent that wrote
+     * the file thinks to look. An unloaded story stops being invisible.</p>
+     *
+     * <p>Read-only and bounded: it lists the ROOT's own markdown files, and it
+     * reports what it could not read rather than treating an unreadable
+     * directory as an empty one — an absence inferred from a failed lookup is
+     * the lie this store exists to refuse.</p>
+     */
+    private void addDrift(java.util.Map<String, Object> block, java.nio.file.Path root) {
+        java.util.Set<String> held = new java.util.HashSet<>();
+        for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
+            String ref = e.sourceRef();
+            if (ref != null && ref.startsWith("memory:")) {
+                held.add(ref.substring("memory:".length()));
+            }
+        }
+        java.util.List<String> unloaded = new java.util.ArrayList<>();
+        try (java.util.stream.Stream<java.nio.file.Path> walk =
+                java.nio.file.Files.walk(root)) {
+            walk.filter(java.nio.file.Files::isRegularFile)
+                .filter(p -> p.getFileName().toString().endsWith(".md"))
+                .map(p -> p.toAbsolutePath().normalize().toString())
+                .filter(p -> !held.contains(p))
+                .forEach(unloaded::add);
+        } catch (java.io.IOException e) {
+            // NOT silence, and not zero: a directory we could not read is
+            // unknown, and reporting it as "no drift" would be a clean verdict
+            // about files nobody looked at.
+            block.put("drift", "UNKNOWN — could not read the substrate root: " + e.getMessage());
+            return;
+        }
+        java.util.Collections.sort(unloaded);
+        block.put("unloadedFiles", unloaded.size());
+        if (!unloaded.isEmpty()) {
+            block.put("unloaded", unloaded.size() > 20
+                ? unloaded.subList(0, 20) : unloaded);
+            block.put("unloadedTruncated", unloaded.size() > 20);
+            block.put("driftWarning", unloaded.size() + " file(s) under the substrate root"
+                + " are NOT in the store — they were written and never reseeded in, so"
+                + " nothing recalls them. Run experience(kind=reseed, path=<root>,"
+                + " recursive=true, confirm=true) to load them.");
+        }
     }
 
     private static java.nio.file.Path commonPrefix(java.nio.file.Path a,
