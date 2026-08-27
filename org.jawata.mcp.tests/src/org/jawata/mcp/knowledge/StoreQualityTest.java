@@ -76,12 +76,14 @@ class StoreQualityTest {
             "same corpus, same total — a third number would be a second classifier");
         assertEquals(dryRun.migrated(), scan.mechanicallyMigratable());
 
-        int keptExcludingFormed = dryRun.keptReasons().entrySet().stream()
-            .filter(e -> !"already form 1".equals(e.getKey()))
+        int keptExcludingHealthy = dryRun.keptReasons().entrySet().stream()
+            .filter(e -> !FormMigration.REASON_ALREADY_FORM_1.equals(e.getKey())
+                && !FormMigration.REASON_FACT_WITH_SITUATION.equals(e.getKey()))
             .mapToInt(Map.Entry::getValue).sum();
-        assertEquals(keptExcludingFormed, scan.findingsTotal(),
-            "the findings ARE the dry run's legacy_kept rows (minus already-formed),"
-                + " re-projected — never a separate count");
+        assertEquals(keptExcludingHealthy, scan.findingsTotal(),
+            "the findings ARE the dry run's legacy_kept rows (minus the healthy"
+                + " classes, by the SHARED constants), re-projected — never a"
+                + " separate count");
         for (String reason : scan.defects().keySet()) {
             assertTrue(dryRun.keptReasons().containsKey(reason),
                 () -> "a defect class the dry run does not know is a third taxonomy: "
@@ -120,6 +122,40 @@ class StoreQualityTest {
                 .anyMatch(f -> f.sourceRef() != null && f.sourceRef().contains("note.md")),
             () -> "an ingested finding must name its file — that file is where the"
                 + " durable fix goes: " + scan.findings());
+    }
+
+    /**
+     * THE PATTERN MISCLASSIFICATION, pinned. A fact that already declares its
+     * situation is HEALTHY — not a finding. Before this rule, all 187 catalogue
+     * patterns (perfect situations, every one) were listed among the reference
+     * "defects" because the classification stopped at the type before looking
+     * at the situation, burying the ~36 real reference problems under 187
+     * healthy rows.
+     */
+    @Test
+    void a_fact_that_declares_its_situation_is_not_a_finding() {
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("reference",
+                    "The Willow pattern separates the abstraction from its implementation.",
+                    Confidence.MEDIUM).build())
+            .status(ExperienceEntry.CANDIDATE)
+            .situation("when two objects must vary independently of each other")
+            .build());
+        legacyRow("reference", "a second reference with no situation at all");
+
+        StoreQuality.Report scan = StoreQuality.scan(store, 10);
+        assertEquals(1, scan.findingsTotal(),
+            "only the situationless reference is repair work");
+        assertEquals("a second reference with no situation at all",
+            scan.findings().get(0).summary(),
+            "and it is THAT one — the situated fact is healthy, not a finding");
+
+        FormMigration.Report dryRun = new FormMigration(store).plan();
+        assertEquals(1,
+            dryRun.keptReasons().getOrDefault(
+                FormMigration.REASON_FACT_WITH_SITUATION, 0).intValue(),
+            "the migration classifies it by the shared healthy reason, so the two"
+                + " surfaces stay one vocabulary");
     }
 
     /** The cap is declared; the counts always cover everything. */

@@ -73,8 +73,11 @@ public final class StoreQuality {
                 continue;       // migratable mechanically — the migration's work, not a finding
             }
             String reason = d.reason() == null ? "(unstated)" : d.reason();
-            if ("already form 1".equals(reason)) {
-                continue;       // formed by its author or a reviewed rewrite — nothing to repair
+            if (FormMigration.REASON_ALREADY_FORM_1.equals(reason)
+                    || FormMigration.REASON_FACT_WITH_SITUATION.equals(reason)) {
+                continue;       // healthy — formed, or a fact already declaring its
+                                // situation; the shared constants keep this exclusion
+                                // and the migration's classification one vocabulary
             }
             defects.merge(reason, 1, Integer::sum);
             total++;

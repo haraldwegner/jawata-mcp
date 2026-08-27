@@ -39,6 +39,23 @@ public final class FormMigration {
     }
 
     /**
+     * The kept-reasons that mean NOTHING NEEDS REPAIR — shared with
+     * {@link StoreQuality}, which excludes exactly these from its findings, so
+     * the two surfaces cannot drift on what counts as healthy.
+     *
+     * <p>{@link #REASON_FACT_WITH_SITUATION} exists because of a measured
+     * misclassification (2026-08-27): all 187 catalogue patterns — perfectly
+     * formed, every one carrying an authored situation — were reported among
+     * the "type 'reference' implies no outcome" defects, because the
+     * classification stopped at the type before looking at the situation. A
+     * fact that carries a situation owes nothing more; listing it as a defect
+     * buries the ~36 real reference problems under 187 healthy rows.</p>
+     */
+    public static final String REASON_ALREADY_FORM_1 = "already form 1";
+    public static final String REASON_FACT_WITH_SITUATION =
+        "already carries a situation; a fact owes nothing more";
+
+    /**
      * The whole run: every source id exactly once, and the counts that
      * reconcile against that list.
      *
@@ -137,9 +154,23 @@ public final class FormMigration {
 
             if (e.facets() != null && e.facets().isForm1()) {
                 kept++;
-                keptReasons.merge("already form 1", 1, Integer::sum);
+                keptReasons.merge(REASON_ALREADY_FORM_1, 1, Integer::sum);
                 out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null,
-                    "already form 1"));
+                    REASON_ALREADY_FORM_1));
+                continue;
+            }
+            // A NON-EXPERIENCE row that already declares its situation is
+            // healthy, whatever its form stamp says — the 187 catalogue
+            // patterns sat exactly here, listed as defects for owing an
+            // outcome no fact ever owes. Checked BEFORE the derivation,
+            // because a declared situation beats a derived one.
+            if (verdictFor(e.type()) == null && e.facets() != null
+                    && e.facets().situation() != null
+                    && !e.facets().situation().isBlank()) {
+                kept++;
+                keptReasons.merge(REASON_FACT_WITH_SITUATION, 1, Integer::sum);
+                out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null,
+                    REASON_FACT_WITH_SITUATION));
                 continue;
             }
             String situation = situationFor(e);

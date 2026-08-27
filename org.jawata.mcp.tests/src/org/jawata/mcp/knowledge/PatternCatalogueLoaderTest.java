@@ -54,6 +54,10 @@ class PatternCatalogueLoaderTest {
             assertEquals(ExperienceEntry.CANDIDATE, only.status(),
                 "somebody else's pattern is a candidate, never the user's earned knowledge");
             assertNotNull(only.facets().situation(), "a pattern without a situation is a heading");
+            assertEquals(Integer.valueOf(1), only.facets().form(),
+                "form means 'carries a situation', and this row does — rows seeded"
+                    + " without the stamp were listed as quality DEFECTS despite"
+                    + " perfect situations, 187 of them, measured 2026-08-27");
             // Sprint 28c M8 — a published pattern is a REFERENCE, not an experience.
             // Nobody here lived it, so it has no outcome, and the form rules only
             // demand one from an experience. Labelling the catalogue `lesson` made

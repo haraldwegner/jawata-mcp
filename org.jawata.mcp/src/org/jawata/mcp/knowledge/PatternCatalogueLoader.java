@@ -249,11 +249,17 @@ public final class PatternCatalogueLoader {
             symptoms.add(s.asText());
         }
 
+        String situation = p.path("situation").asText(null);
         ExperienceEntry.Builder b = ExperienceEntry.of(fact.build())
             // candidate, never accepted: these are somebody else's patterns,
             // not this user's earned experience, and promotion is theirs.
             .status(ExperienceEntry.CANDIDATE)
-            .situation(p.path("situation").asText(null))
+            .situation(situation)
+            // form = "carries a situation", by its definition at the record
+            // verb. Rows seeded without this stamp were classified as
+            // defective by the quality lane despite perfect situations —
+            // 187 of them, measured 2026-08-27.
+            .form(EntryForm.formOf(situation))
             .provenanceKind(PROVENANCE)
             .operation("design:" + slug);
         if (!symptoms.isEmpty()) {
