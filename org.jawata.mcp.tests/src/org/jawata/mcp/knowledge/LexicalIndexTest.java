@@ -38,7 +38,7 @@ class LexicalIndexTest {
     private static StoredEntry withSituation(String id, String situation, String summary) {
         return new StoredEntry(id, "lesson", null, null, null, "accepted", "medium",
             "java", null, summary, List.of(), null, null, null, Instant.EPOCH, Map.of(),
-            new StoredEntry.Facets(situation, "worked", "recorded", 1, null, null));
+            new StoredEntry.Facets(situation, null, "worked", "recorded", 1, null, null));
     }
 
     /**

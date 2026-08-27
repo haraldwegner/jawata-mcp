@@ -133,13 +133,16 @@ class StoreQualityTest {
      * healthy rows.
      */
     @Test
-    void a_fact_that_declares_its_situation_is_not_a_finding() {
+    void a_fact_that_declares_its_situation_and_cause_is_not_a_finding() {
+        // v15: HEALTHY now means the full triad — situation AND cause. A
+        // situated row without its cause is the new repair class below.
         store.put(ExperienceEntry.of(
                 SymbolFact.of("reference",
                     "The Willow pattern separates the abstraction from its implementation.",
                     Confidence.MEDIUM).build())
             .status(ExperienceEntry.CANDIDATE)
             .situation("when two objects must vary independently of each other")
+            .cause("inheritance welds the two together, so every pairing multiplies subclasses")
             .build());
         legacyRow("reference", "a second reference with no situation at all");
 
@@ -148,7 +151,7 @@ class StoreQualityTest {
             "only the situationless reference is repair work");
         assertEquals("a second reference with no situation at all",
             scan.findings().get(0).summary(),
-            "and it is THAT one — the situated fact is healthy, not a finding");
+            "and it is THAT one — the full-triad fact is healthy, not a finding");
 
         FormMigration.Report dryRun = new FormMigration(store).plan();
         assertEquals(1,
@@ -156,6 +159,29 @@ class StoreQualityTest {
                 FormMigration.REASON_FACT_WITH_SITUATION, 0).intValue(),
             "the migration classifies it by the shared healthy reason, so the two"
                 + " surfaces stay one vocabulary");
+    }
+
+    /**
+     * v15 (ruled 2026-08-27): a situated entry whose CAUSE is empty is repair
+     * work, not healthy — the triad is situation → complication → solution,
+     * and a solution whose problem is unstated cannot tell a reader whether
+     * it transfers. This is the finding class the review seat fills.
+     */
+    @Test
+    void a_situated_entry_without_its_cause_is_the_new_repair_class() {
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("reference",
+                    "The Willow pattern separates the abstraction from its implementation.",
+                    Confidence.MEDIUM).build())
+            .status(ExperienceEntry.CANDIDATE)
+            .situation("when two objects must vary independently of each other")
+            .build());
+
+        StoreQuality.Report scan = StoreQuality.scan(store, 10);
+        assertEquals(1, scan.findingsTotal(), "the cause gap IS a finding");
+        assertTrue(scan.defects().containsKey(FormMigration.REASON_SITUATED_NO_CAUSE),
+            () -> "named by the shared constant, so the seat and the migration"
+                + " stay one vocabulary: " + scan.defects());
     }
 
     /**

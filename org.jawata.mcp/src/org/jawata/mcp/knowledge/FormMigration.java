@@ -56,6 +56,18 @@ public final class FormMigration {
         "already carries a situation; a fact owes nothing more";
 
     /**
+     * v15 (ruled 2026-08-27): a situated entry whose CAUSE is empty. The Minto
+     * triad is situation → complication → solution, and this row has the first
+     * and third with no middle — the solution's problem is unstated, so a
+     * reader cannot tell whether it transfers. NOT healthy, NOT mechanically
+     * derivable (a derived cause would be an invented sentence): it is the
+     * repair-work class the review seat fills, and after the corpus is filled
+     * this count is expected to sit at zero.
+     */
+    public static final String REASON_SITUATED_NO_CAUSE =
+        "has a situation, no cause; the triad's middle is missing";
+
+    /**
      * The whole run: every source id exactly once, and the counts that
      * reconcile against that list.
      *
@@ -152,11 +164,17 @@ public final class FormMigration {
                 ? "(unset)" : e.facets().provenanceKind();
             provenance.merge(pk, 1, Integer::sum);
 
+            // v15: a situated row without its cause is the SAME disposition
+            // (kept, nothing mechanical to do) under a REASON StoreQuality does
+            // NOT exclude — so the gap surfaces as repair work on every review
+            // sweep instead of hiding inside a healthy class.
+            boolean noCause = e.facets() == null || e.facets().cause() == null
+                || e.facets().cause().isBlank();
             if (e.facets() != null && e.facets().isForm1()) {
                 kept++;
-                keptReasons.merge(REASON_ALREADY_FORM_1, 1, Integer::sum);
-                out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null,
-                    REASON_ALREADY_FORM_1));
+                String reason = noCause ? REASON_SITUATED_NO_CAUSE : REASON_ALREADY_FORM_1;
+                keptReasons.merge(reason, 1, Integer::sum);
+                out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null, reason));
                 continue;
             }
             // A NON-EXPERIENCE row that already declares its situation is
@@ -168,9 +186,9 @@ public final class FormMigration {
                     && e.facets().situation() != null
                     && !e.facets().situation().isBlank()) {
                 kept++;
-                keptReasons.merge(REASON_FACT_WITH_SITUATION, 1, Integer::sum);
-                out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null,
-                    REASON_FACT_WITH_SITUATION));
+                String reason = noCause ? REASON_SITUATED_NO_CAUSE : REASON_FACT_WITH_SITUATION;
+                keptReasons.merge(reason, 1, Integer::sum);
+                out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null, reason));
                 continue;
             }
             String situation = situationFor(e);

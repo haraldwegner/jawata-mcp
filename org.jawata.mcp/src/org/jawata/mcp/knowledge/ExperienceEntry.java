@@ -39,6 +39,17 @@ public final class ExperienceEntry {
     // and verdict (EntryForm); a domain fact legitimately has neither.
     /** When this entry applies, as a condition — never package geography. */
     private final String situation;
+    /**
+     * Sprint 28c (v15) — the DIAGNOSIS: the underlying problem this entry's
+     * solution addresses, distinct from the symptoms that reveal it. One
+     * symptom maps to many causes (a fast heartbeat: running, a heart attack,
+     * a virus) and the solution binds to the cause, never to the symptom — so
+     * a symptom-recall that returns several entries is a differential, and
+     * this field is what discriminates between them. Ruled first-class on
+     * 2026-08-27: "this should not be buried somewhere" — it had lived
+     * unqueryably inside summary/details prose.
+     */
+    private final String cause;
     /** worked / failed_avoid / unproven. */
     private final String verdict;
     /** recorded / ingested / catalog / seat_run / migrated. Provenance is a FIELD, not content. */
@@ -60,6 +71,7 @@ public final class ExperienceEntry {
         this.externalSystem = b.externalSystem;
         this.language = b.language;
         this.situation = b.situation;
+        this.cause = b.cause;
         this.verdict = b.verdict;
         this.provenanceKind = b.provenanceKind;
         this.form = b.form;
@@ -98,6 +110,10 @@ public final class ExperienceEntry {
 
     public String situation() {
         return situation;
+    }
+
+    public String cause() {
+        return cause;
     }
 
     public String verdict() {
@@ -172,6 +188,7 @@ public final class ExperienceEntry {
         private String language;
         // Sprint 28c (D3) facets — see the outer class's fields.
         private String situation;
+        private String cause;
         private String verdict;
         private String provenanceKind;
         private Integer form;
@@ -239,6 +256,11 @@ public final class ExperienceEntry {
         // here; EntryForm decides which are REQUIRED, and it decides by type,
         // because a domain fact has no outcome and demanding one would teach
         // authors to invent verdicts.
+
+        public Builder cause(String cause) {
+            this.cause = cause;
+            return this;
+        }
 
         public Builder situation(String situation) {
             this.situation = situation;

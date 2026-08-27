@@ -898,6 +898,12 @@ public final class ExperienceRetrieval {
             Map<String, Object> c = new LinkedHashMap<>();
             c.put("id", e.id());
             c.put("situation", e.facets().situation());
+            // v15: the diagnosis — what discriminates between same-situation
+            // candidates (Factory vs Builder both fire on "constructing an
+            // object"; the cause is which construction problem each solves).
+            if (e.facets().cause() != null) {
+                c.put("cause", e.facets().cause());
+            }
             c.put("principle", e.summary());
             c.put("outcome", e.facets().verdict());
             // Sprint 28c D7 — a REFERENCE owes an address; an EXPERIENCE does not.
@@ -1458,6 +1464,12 @@ public final class ExperienceRetrieval {
         StoredEntry.Facets f = e.facets();
         if (f.situation() != null && !f.situation().isBlank()) {
             m.put("situation", f.situation());
+        }
+        // v15: the diagnosis. A symptom-recall returning several entries is a
+        // DIFFERENTIAL — one symptom, many causes, and the solution binds to
+        // the cause — so the reader must see which problem each entry solves.
+        if (f.cause() != null && !f.cause().isBlank()) {
+            m.put("cause", f.cause());
         }
         if (f.verdict() != null && !f.verdict().isBlank()) {
             m.put("verdict", f.verdict());

@@ -255,6 +255,11 @@ public final class PatternCatalogueLoader {
             // not this user's earned experience, and promotion is theirs.
             .status(ExperienceEntry.CANDIDATE)
             .situation(situation)
+            // v15: the design FORCE the pattern answers — the Minto complication.
+            // Factory and Builder share one situation ("constructing an object");
+            // the cause is which construction problem each solves, and it is what
+            // a recall's differential discriminates on.
+            .cause(p.path("cause").asText(null))
             // form = "carries a situation", by its definition at the record
             // verb. Rows seeded without this stamp were classified as
             // defective by the quality lane despite perfect situations —

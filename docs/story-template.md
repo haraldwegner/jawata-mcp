@@ -29,6 +29,33 @@ Asking an author to demonstrate that a competent reader would have done otherwis
 turns a usable test into an unfalsifiable one, and there is no reason to make an
 entry earn its place twice.
 
+## The shape of a story: the Minto triad
+
+**Every story is told the way a case is argued: Situation → Complication → Solution,
+and whether it worked.** (Ruled 2026-08-27; the consulting name is the Minto pyramid.)
+The four parts map onto fields, so each is queryable rather than buried in prose:
+
+| Minto part | Field | What goes there |
+|---|---|---|
+| **Situation** | `situation` | the setting and task — what you were doing |
+| **Complication** | `cause` (v15; frontmatter accepts `complication:` too) | the DIAGNOSIS — the underlying problem the solution addresses |
+| **Solution** | the claim (`description`) + the cure in the body | what to do |
+| **…or not** | `verdict` | worked / failed_avoid / unproven |
+
+**The cause is not the symptom.** A symptom is the observable — a fast heartbeat; the
+cause is the diagnosis behind it — running, a heart attack, a virus. One symptom, many
+causes, and **the solution binds to the cause, never to the symptom**. Symptoms stay
+in `symptoms` (the retrieval cues, how the problem looked); the cause goes in `cause`,
+because when a symptom-recall returns several entries the reader is holding a
+differential, and the cause is what discriminates it. The pattern case makes it
+concrete: "constructing a new object" with *many variations* wants a Factory; the same
+situation with *many fields to initialize* wants a Builder — the cause is the entire
+difference.
+
+A story missing its cause is not refused by any gate — legacy rows legitimately lack
+one — but it is REPAIR WORK the review seat lists, because a solution whose problem is
+unstated cannot tell a reader whether it transfers to *their* problem.
+
 ---
 
 # 1. Before you fold anything
