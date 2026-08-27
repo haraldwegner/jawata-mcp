@@ -116,6 +116,26 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public void tombstone(String sourceRef, String reason) {
+        throw boom();
+    }
+
+    @Override
+    public java.util.Set<String> tombstonedRefs() {
+        throw boom();
+    }
+
+    @Override
+    public boolean clearTombstone(String sourceRef) {
+        throw boom();
+    }
+
+    @Override
+    public java.util.Set<String> fileSourceRefs() {
+        throw boom();
+    }
+
+    @Override
     public java.util.Optional<java.util.Map<String, Object>> get(String id) {
         throw boom();
     }

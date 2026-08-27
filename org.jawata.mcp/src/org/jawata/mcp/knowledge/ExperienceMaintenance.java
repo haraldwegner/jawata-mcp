@@ -183,6 +183,11 @@ public final class ExperienceMaintenance {
         // same knowledge under two source refs. Dedup by CONTENT across the run.
         java.util.Set<String> seenContent = new java.util.HashSet<>();
         int formRefused = 0;                 // Sprint 28c: reported, never silent
+        // Sprint 28c (v14): sources deliberately removed from this store. Fetched
+        // ONCE per run — the crawl consults it per file, and a per-file query
+        // would be the quiet quadratic the catalogue loader already refused.
+        java.util.Set<String> dead = store.tombstonedRefs();
+        int tombstonedSkips = 0;             // reported, never silent
 
         for (Path root : roots) {
             if (Files.isDirectory(root)) {
@@ -327,6 +332,29 @@ public final class ExperienceMaintenance {
             }
             String sourceRef = "memory:" + f;
 
+            // Sprint 28c (v14): a TOMBSTONED source was deliberately removed from
+            // this store — by a reseed that excluded it — and no crawl re-imports
+            // it, however often the studio's deploy-time auto-seed runs. Checked
+            // BEFORE sourceUnchanged, because after a wipe the store-side check
+            // answers "new" for everything; that is exactly how 413 removed rows
+            // re-entered on 2026-08-26. The skip is LOUD and the links are still
+            // followed — a dead file can still point at live ones.
+            if (dead.contains(sourceRef)) {
+                tombstonedSkips++;
+                skipped.add(Map.of("source", f.toString(),
+                    "reason", "tombstoned — deliberately removed from this store by an"
+                        + " earlier reseed; a reseed of a root containing this file"
+                        + " revives it"));
+                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
+                    Path norm = t.toAbsolutePath().normalize();
+                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                        queue.add(new Item(norm, item.depth() + 1));
+                        linked++;
+                    }
+                }
+                continue;
+            }
+
             // Sprint 21b: an unchanged source causes NO write at all (the delete+insert
             // churn grew the MVStore file on every load). Links are still followed —
             // an unchanged index can point at new files.
@@ -381,6 +409,7 @@ public final class ExperienceMaintenance {
                 // above already refused an experience type that declared none, so
                 // reaching here with a null situation means the type owed nothing.
                 .situation(doc.situation)
+                .cause(doc.cause)
                 .verdict(doc.verdict)
                 .provenanceKind("ingested")
                 .form(EntryForm.formOf(doc.situation));
@@ -442,6 +471,7 @@ public final class ExperienceMaintenance {
                     .language(doc.language)
                     .scopeKind("section")
                     .situation(doc.situation)
+                    .cause(doc.cause)
                     .verdict(doc.verdict)
                     .provenanceKind("ingested")
                     .form(EntryForm.formOf(doc.situation));
@@ -501,6 +531,12 @@ public final class ExperienceMaintenance {
         // carries the rephrase that would let the file in.
         if (formRefused > 0) {
             report.put("form_refused", formRefused);
+        }
+        // Sprint 28c (v14): sources a crawl left out because an earlier reseed
+        // deliberately removed them. Present whenever it happened — a curation
+        // that silently held would be indistinguishable from one that broke.
+        if (tombstonedSkips > 0) {
+            report.put("tombstoned", tombstonedSkips);
         }
         // Sprint 27a D10: the route/skip report — a silent drop is this
         // project's recorded deepest bug class, so the suppression count is
@@ -902,8 +938,8 @@ public final class ExperienceMaintenance {
     // --- frontmatter parsing ------------------------------------------------------------
 
     private record MemoryDoc(String name, String description, String type, String symbol,
-                             String language, String situation, String verdict, String reviewed,
-                             String body,
+                             String language, String situation, String cause, String verdict,
+                             String reviewed, String body,
                              List<String> links, List<String> fileLinks, List<String> keywords,
                              String preamble, List<Section> sections) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
@@ -951,6 +987,8 @@ public final class ExperienceMaintenance {
         // Sprint 28c: a memory file that records an EXPERIENCE can carry its form
         // in frontmatter, exactly as the record verb carries it in arguments.
         String situation = null;
+        // v15: the diagnosis — the triad's middle, first-class like situation.
+        String cause = null;
         String verdict = null;
         String reviewed = null;
         StringBuilder body = new StringBuilder();
@@ -978,6 +1016,7 @@ public final class ExperienceMaintenance {
                     case "symbol" -> symbol = emptyToNull(v);
                     case "language" -> language = emptyToNull(v);
                     case "situation" -> situation = emptyToNull(v);
+                    case "cause", "complication" -> cause = emptyToNull(v);
                     case "verdict" -> verdict = emptyToNull(v);
                     case "reviewed" -> reviewed = emptyToNull(v);
                     default -> { }
@@ -1011,8 +1050,8 @@ public final class ExperienceMaintenance {
         // section harvests its own body (Sprint 21c item B).
         List<String> keywords =
             harvestKeywords(split.sections().isEmpty() ? bodyStr : split.preamble());
-        return new MemoryDoc(name, description, type, symbol, language, situation, verdict,
-            reviewed, bodyStr, links, fileLinks, keywords, split.preamble(),
+        return new MemoryDoc(name, description, type, symbol, language, situation, cause,
+            verdict, reviewed, bodyStr, links, fileLinks, keywords, split.preamble(),
             split.sections());
     }
 

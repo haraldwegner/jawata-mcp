@@ -592,8 +592,12 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // be revisited, and every newly recorded entry would sit
                     // invisible to the lane-weighted ranking while older ones
                     // ranked on all three.
-                    + "embedding_situation,embedding_summary,embedding_details) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "embedding_situation,embedding_summary,embedding_details,"
+                    // Sprint 28c (v15): the diagnosis. Appended LAST so no
+                    // existing bind index moves — renumbering a 29-place list is
+                    // how this sprint's column defects happened.
+                    + "cause) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -680,6 +684,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                             entry.situation(), str(factMap.get("summary")),
                             str(entry.toMap().get("details"))))));
                 }
+                // v15: the diagnosis, author-supplied like situation — never
+                // derived here.
+                ps.setString(30, entry.cause());
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
@@ -927,10 +934,79 @@ public final class H2ExperienceStore implements ExperienceStore {
             s.execute("DELETE FROM experience_symptom");
             s.execute("DELETE FROM experience_link");
             s.execute("DELETE FROM experience_entry");
+            // Tombstones go too: a bare wipe means "empty store, fresh world".
+            // The RESEED path snapshots refs + tombstones BEFORE calling this and
+            // re-writes the surviving tombstones after its load — so a reseed
+            // preserves curation while a wipe honestly clears everything.
+            s.execute("DELETE FROM experience_tombstone");
             return n;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to wipe store: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public synchronized void tombstone(String sourceRef, String reason) {
+        if (sourceRef == null || sourceRef.isBlank()) {
+            return;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                "MERGE INTO experience_tombstone (source_ref, reason, created_at)"
+                + " KEY (source_ref) VALUES (?, ?, CURRENT_TIMESTAMP)")) {
+            ps.setString(1, sourceRef);
+            ps.setString(2, reason);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to tombstone " + sourceRef + ": "
+                + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public java.util.Set<String> tombstonedRefs() {
+        // READ, so it rides the read path, NOT the store monitor — #37's
+        // contract is that a writer holding the monitor never blocks a read,
+        // and stats() calls this: a synchronized version put the whole stats
+        // surface behind every write. Caught by StoreChokepointTest.
+        return withRead("list tombstones", c -> {
+            try (Statement s = c.createStatement();
+                    ResultSet rs = s.executeQuery("SELECT source_ref FROM experience_tombstone")) {
+                java.util.Set<String> out = new java.util.HashSet<>();
+                while (rs.next()) {
+                    out.add(rs.getString(1));
+                }
+                return out;
+            }
+        });
+    }
+
+    @Override
+    public synchronized boolean clearTombstone(String sourceRef) {
+        try (PreparedStatement ps = live().prepareStatement(
+                "DELETE FROM experience_tombstone WHERE source_ref = ?")) {
+            ps.setString(1, sourceRef);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to clear tombstone " + sourceRef + ": "
+                + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public java.util.Set<String> fileSourceRefs() {
+        // READ — same #37 rule as tombstonedRefs above.
+        return withRead("list file sources", c -> {
+            try (Statement s = c.createStatement();
+                    ResultSet rs = s.executeQuery(
+                        "SELECT DISTINCT source_ref FROM experience_entry"
+                        + " WHERE source_ref LIKE 'memory:%'")) {
+                java.util.Set<String> out = new java.util.HashSet<>();
+                while (rs.next()) {
+                    out.add(rs.getString(1));
+                }
+                return out;
+            }
+        });
     }
 
     @Override
@@ -1171,6 +1247,8 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
         return new StoredEntry.Facets(
             rs.getString("situation"),
+            // v15; presence-checked like origin_client below.
+            cols.contains("cause") ? rs.getString("cause") : null,
             rs.getString("verdict"),
             rs.getString("provenance_kind"),
             intOrNull(rs.getObject("form")),
@@ -1271,7 +1349,9 @@ public final class H2ExperienceStore implements ExperienceStore {
         + "situation,verdict,provenance_kind,"
         + "form,evidence_dead,"
         // Sprint 28c (v13) — which client recorded the entry.
-        + "origin_client";
+        + "origin_client,"
+        // Sprint 28c (v15) — the diagnosis; the solution binds to it.
+        + "cause";
 
     @Override
     public List<Map<String, Object>> exportEntries(String status, String type) {
@@ -1335,7 +1415,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                             "situation", "verdict",
                             "provenance_kind",
                             // v13: who recorded it — text, null-skipped like the rest.
-                            "origin_client"}) {
+                            "origin_client",
+                            // v15: the diagnosis — text, null-skipped like the rest.
+                            "cause"}) {
                         Object v = rs.getString(col);
                         if (v != null) {
                             row.put(col, v);
@@ -1403,11 +1485,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
                 try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
-                        // 24 placeholders — one per ALL_COLUMNS entry. Kept in
+                        // 25 placeholders — one per ALL_COLUMNS entry. Kept in
                         // step BY TEST, not by eye: the count is invisible to the
                         // compiler and a surplus throws only at import time.
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                        + "?,?,?,?,?,?)")) {
+                        + "?,?,?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -1447,6 +1529,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // re-attributes, because the importing session's client says
                     // nothing about who originally wrote the entry.
                     ps.setString(24, str(row.get("origin_client")));
+                    // v15: the diagnosis, carried verbatim like every text facet.
+                    ps.setString(25, str(row.get("cause")));
                     ps.executeUpdate();
                 }
                 if (row.get("symptoms") instanceof List<?> symptoms) {
@@ -1625,6 +1709,10 @@ public final class H2ExperienceStore implements ExperienceStore {
             store.put("file", "in-memory");
         }
         out.put("store", store);
+        // Sprint 28c (v14): curation state, visible. A tombstone count of zero
+        // and an absent mechanism must not read alike on a machine deciding
+        // whether its clean-up stuck.
+        out.put("tombstones", tombstonedRefs().size());
         return out;
     }
 
@@ -1771,12 +1859,14 @@ public final class H2ExperienceStore implements ExperienceStore {
         boolean hasFacets = version >= 2;
         boolean hasForm = version >= 10;
         boolean hasOrigin = version >= 13;
+        boolean hasCause = version >= 15;
         String cols = "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
             + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at"
             + (hasFacets ? ",workspace_id,project_id,language" : "")
             + (hasForm ? ",situation,verdict,provenance_kind,"
                 + "form,evidence_dead" : "")
-            + (hasOrigin ? ",origin_client" : "");
+            + (hasOrigin ? ",origin_client" : "")
+            + (hasCause ? ",cause" : "");
         int imported = 0;
         int duplicates = 0;
         try (Statement s = orphan.createStatement();
@@ -1793,8 +1883,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
                         + "workspace_id,project_id,language,"
                         + "situation,verdict,provenance_kind,"
-                        + "form,evidence_dead,origin_client)"
-                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                        + "form,evidence_dead,origin_client,cause)"
+                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     for (int i = 1; i <= 13; i++) {
                         ps.setString(i, rs.getString(i));
                     }
@@ -1825,6 +1915,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // v13: carried verbatim from an orphan that has it, NULL from
                     // one that predates it — recovery never re-attributes.
                     ps.setString(24, hasOrigin ? rs.getString("origin_client") : null);
+                    // v15: same rule — verbatim when the orphan has it, else NULL.
+                    ps.setString(25, hasCause ? rs.getString("cause") : null);
                     ps.executeUpdate();
                 }
                 copyChildren(orphan, id);

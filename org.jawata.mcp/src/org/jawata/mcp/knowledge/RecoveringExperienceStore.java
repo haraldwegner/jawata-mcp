@@ -167,6 +167,30 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public void tombstone(String sourceRef, String reason) {
+        synchronized (lock) {
+            delegate.tombstone(sourceRef, reason);
+        }
+    }
+
+    @Override
+    public java.util.Set<String> tombstonedRefs() {
+        return delegate.tombstonedRefs();
+    }
+
+    @Override
+    public boolean clearTombstone(String sourceRef) {
+        synchronized (lock) {
+            return delegate.clearTombstone(sourceRef);
+        }
+    }
+
+    @Override
+    public java.util.Set<String> fileSourceRefs() {
+        return delegate.fileSourceRefs();
+    }
+
+    @Override
     public List<StoredEntry> all() {
         return delegate.all();
     }

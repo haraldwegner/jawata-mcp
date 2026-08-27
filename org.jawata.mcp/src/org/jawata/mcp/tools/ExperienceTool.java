@@ -333,6 +333,12 @@ public final class ExperienceTool implements Tool {
             "record: WHEN this applies. " + org.jawata.mcp.knowledge.EntryForm.SITUATION_SHAPES
             + " Never a package or a symbol: a location matches everything inside it and"
             + " distinguishes nothing. REQUIRED for lesson and failure_mode."));
+        props.put("cause", Map.of("type", "string", "description",
+            "record: the DIAGNOSIS — the underlying problem the solution addresses,"
+            + " distinct from the symptoms that reveal it. One symptom has many causes"
+            + " (a fast heartbeat: running, a heart attack, a virus) and the solution"
+            + " binds to the cause; when a symptom recall returns several entries, this"
+            + " field is what discriminates between them. Optional; never derived."));
         props.put("question", Map.of("type", "string", "description",
             "nominate: the question in your OWN WORDS, for the anchorless path — no symbol,"
             + " no package, no operation. Say what you are trying to do. The answer comes"
@@ -620,15 +626,37 @@ public final class ExperienceTool implements Tool {
             return ToolResponse.invalidParameter("path", "reseed without 'path' needs configured"
                 + " default memory roots (-Djawata.memory.roots) — none found (store NOT wiped)");
         }
+        // Sprint 28c (v14): what a reseed deliberately does NOT reload is
+        // TOMBSTONED, so no later crawl — the studio's deploy-time auto-seed
+        // above all — re-imports it. The before-set carries the EXISTING
+        // tombstones forward too: a second reseed must not amnesty what the
+        // first one removed (without this line, reseed #2's wipe would erase
+        // reseed #1's curation and the next deploy would re-pollute).
+        java.util.Set<String> before = new java.util.HashSet<>(store.fileSourceRefs());
+        before.addAll(store.tombstonedRefs());
         Map<String, Object> wiped = maintenance.wipe();
         // D10: a reseed admits stamped stories only. load() does not require it —
         // loading is how notes reach the store, reseeding is how the store is
         // REBUILT, and only the second is a claim that what went in was checked.
         Map<String, Object> loaded = maintenance.load(
             path == null || path.isBlank() ? null : Path.of(path), recursive, true);
+        // Revival is the same deliberate act as removal: whatever this reseed
+        // re-ingested is alive by definition, so only refs it did NOT bring
+        // back get (or keep) a tombstone.
+        java.util.Set<String> after = store.fileSourceRefs();
+        int tombstoned = 0;
+        String why = "reseed excluded this source (path="
+            + (path == null || path.isBlank() ? "<default roots>" : path) + ")";
+        for (String ref : before) {
+            if (!after.contains(ref)) {
+                store.tombstone(ref, why);
+                tombstoned++;
+            }
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("removed", wiped.get("removed"));
         data.putAll(loaded);
+        data.put("tombstoned", tombstoned);
         return ToolResponse.success(withRefresh(data));
     }
 
@@ -1611,6 +1639,8 @@ public final class ExperienceTool implements Tool {
             // a situation is form 1; anything else stays unclassified, which is
             // exactly what distinguishes it from a migrated legacy row.
             .situation(situation)
+            // v15: the diagnosis — author-supplied, optional, never derived.
+            .cause(text(args, "cause"))
             .verdict(verdict)
             .provenanceKind("recorded")
             .form(org.jawata.mcp.knowledge.EntryForm.formOf(situation));

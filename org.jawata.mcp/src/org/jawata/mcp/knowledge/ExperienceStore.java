@@ -141,6 +141,28 @@ public interface ExperienceStore extends AutoCloseable {
     /** Remove everything (maintenance: wipe); returns the entry count removed. */
     long wipe();
 
+    /**
+     * Sprint 28c (v14) — mark a source as DELIBERATELY REMOVED from this store, so a
+     * crawl (the studio's deploy-time auto-seed above all) never re-imports it.
+     * Keyed on the ref alone, not a content hash: the decision is about the source,
+     * and an edited file must stay out too. Upsert — re-tombstoning refreshes the
+     * reason. Abstract, not defaulted: every wrapper must forward it, or a store
+     * behind a recovery shim would silently drop the one write that makes a
+     * curation stick.
+     */
+    void tombstone(String sourceRef, String reason);
+
+    /** Every tombstoned source ref. The crawl fetches this ONCE per run. */
+    java.util.Set<String> tombstonedRefs();
+
+    /** Clear one tombstone — the revival half of {@link #tombstone}; reseed calls it
+     *  for every source it re-ingests. Returns whether a tombstone existed. */
+    boolean clearTombstone(String sourceRef);
+
+    /** Distinct {@code memory:} source refs of file-derived entries — the set a
+     *  reseed diffs to decide what it deliberately did not reload. */
+    java.util.Set<String> fileSourceRefs();
+
     /** Every entry (maintenance: refresh re-resolves their pointers through JDT). */
     List<StoredEntry> all();
 
