@@ -946,6 +946,16 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public synchronized void clearTombstones() {
+        // WRITE, so it takes the monitor like tombstone() beside it.
+        try (Statement s = live().createStatement()) {
+            s.execute("DELETE FROM experience_tombstone");
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to clear tombstones: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public synchronized void tombstone(String sourceRef, String reason) {
         if (sourceRef == null || sourceRef.isBlank()) {
             return;

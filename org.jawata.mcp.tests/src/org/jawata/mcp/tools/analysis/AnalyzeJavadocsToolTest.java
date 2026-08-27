@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Sprint 15a — analyze_javadocs ingest. Drives the simple-maven JavadocTargets
  * fixture: structured tags → HIGH-confidence api_contract; free-text → LOW;
- * @deprecated → its own deprecated_behavior fact; undocumented → no fact.
+ * {@code @deprecated} → its own deprecated_behavior fact; undocumented → no fact.
  */
 class AnalyzeJavadocsToolTest {
 

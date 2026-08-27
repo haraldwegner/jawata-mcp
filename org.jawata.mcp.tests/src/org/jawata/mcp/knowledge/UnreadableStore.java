@@ -121,6 +121,11 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public void clearTombstones() {
+        throw boom();
+    }
+
+    @Override
     public java.util.Set<String> tombstonedRefs() {
         throw boom();
     }

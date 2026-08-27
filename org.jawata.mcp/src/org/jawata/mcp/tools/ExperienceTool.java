@@ -540,8 +540,9 @@ public final class ExperienceTool implements Tool {
         block.put("howToAdd", "write the story as a .md file under this root with a"
             + " `reviewed:` stamp it has EARNED, then experience(kind=reseed, path=<root>,"
             + " recursive=true, confirm=true). A record written straight to the store has"
-            + " no file behind it and the next reseed removes it, silently, because the"
-            + " count check afterwards asserts the file count and still passes.");
+            + " no file behind it: the reseed keeps it, but NOTHING can ever rebuild it —"
+            + " a bare wipe or a lost store file takes it permanently, so anything worth"
+            + " keeping gets a file.");
         addDrift(block, common);
         return block;
     }
@@ -695,7 +696,57 @@ public final class ExperienceTool implements Tool {
         // reseed #1's curation and the next deploy would re-pollute).
         java.util.Set<String> before = new java.util.HashSet<>(store.fileSourceRefs());
         before.addAll(store.tombstonedRefs());
-        Map<String, Object> wiped = maintenance.wipe();
+
+        // THE WIPE IS SCOPED TO THE LANE A FILE CRAWL CAN PUT BACK.
+        //
+        // A reseed used to delete EVERY row and then reload from files, which
+        // silently destroyed two kinds of knowledge no file can restore:
+        //
+        //   - the pattern catalogue — rows built from a snapshot compiled into
+        //     the product, which came back only at the next resident start;
+        //   - anything written by experience(kind=record), which has no file at
+        //     all and was gone PERMANENTLY. The tool's own help text warned
+        //     about that instead of preventing it.
+        //
+        // The store has carried a provenance_kind column since v10 and nothing
+        // ever read it to decide anything. This is that missing concept, put
+        // where it is actually decidable: a reseed owns the FILE-DERIVED lane —
+        // every memory: row, whatever root it came from — and touches nothing
+        // else. Within its lane it stays TOTAL on purpose: excluding a source by
+        // reseeding a narrower root is the store's curation instrument (that is
+        // how the legacy corpus was cleaned out), the exclusion is reported and
+        // tombstoned rather than silent, and the file itself still exists — a
+        // reseed of its root revives it. A first cut of this fix scoped the
+        // delete to the reseed PATH instead, which quietly kept the pollution a
+        // narrower reseed exists to remove; four tombstone tests said so.
+        int keptCatalogue = 0;
+        int keptRecorded = 0;
+        for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
+            String ref = e.sourceRef();
+            if (ref == null) {
+                keptRecorded++;
+            } else if (ref.startsWith(
+                    org.jawata.mcp.knowledge.PatternCatalogueLoader.SOURCE_PREFIX)) {
+                keptCatalogue++;
+            }
+        }
+        int removedRows = 0;
+        for (String ref : store.fileSourceRefs()) {
+            removedRows += store.deleteBySource(ref);
+        }
+        // THE REVIVAL HALF of the v14 contract, which used to ride the full
+        // wipe: clear the tombstone table BEFORE the load, so a source the user
+        // deliberately reloads is not skipped by its own old tombstone. The
+        // curation is not lost — `before` carries the old tombstones, and every
+        // ref this reload does NOT bring back is re-tombstoned below. Without
+        // this line a tombstone outlives the user's own decision to reload the
+        // file, which TombstoneTest's revival case caught the moment the wipe
+        // stopped running.
+        store.clearTombstones();
+        // A LONG, matching what the old wipe reported. The count's TYPE is part
+        // of the response shape, and silently narrowing it to an int would break
+        // any consumer comparing against a long for no reason anyone chose.
+        Map<String, Object> wiped = Map.of("removed", (long) removedRows);
         // D10: a reseed admits stamped stories only. load() does not require it —
         // loading is how notes reach the store, reseeding is how the store is
         // REBUILT, and only the second is a claim that what went in was checked.
@@ -714,10 +765,23 @@ public final class ExperienceTool implements Tool {
                 tombstoned++;
             }
         }
+        // WHAT SURVIVED, NAMED. An earlier fix for the catalogue re-seeded it
+        // after the wipe; that was the wrong shape — it made a reseed INSTALL
+        // the catalogue into stores that deliberately had none, and it paid a
+        // full re-insert every time. Not deleting it is cheaper and truer.
+        //
+        // Reported because silence would leave "the reseed spared them" and
+        // "there were none" reading identically, which is the same defect one
+        // level up. Excluded FILE sources are not in this map — they are the
+        // `tombstoned` count above, which is a removal, not a keep.
+        Map<String, Object> kept = new LinkedHashMap<>();
+        kept.put("catalogue", keptCatalogue);
+        kept.put("recorded", keptRecorded);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("removed", wiped.get("removed"));
         data.putAll(loaded);
         data.put("tombstoned", tombstoned);
+        data.put("kept", kept);
         return ToolResponse.success(withRefresh(data));
     }
 

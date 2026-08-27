@@ -155,13 +155,23 @@ public interface ExperienceStore extends AutoCloseable {
     /** Every tombstoned source ref. The crawl fetches this ONCE per run. */
     java.util.Set<String> tombstonedRefs();
 
-    // Revival needs no verb of its own, and the as-built pass proved it: a reseed
-    // WIPES the tombstone table and then re-writes only the refs it did not load,
-    // so a source the reseed brings back is revived by not being re-tombstoned. An
-    // explicit clearTombstone shipped here with zero callers — unreachable surface,
-    // which this codebase deletes rather than baselines (EntryForm.isExperience and
-    // ExperienceSnippet.shapeGroupId went the same way). If 28f wants an explicit
-    // revive verb, it arrives WITH its caller.
+    /**
+     * Clear the whole tombstone table — the first half of a reseed's revival
+     * contract. The reseed carries the old tombstones forward in its own
+     * before-set and re-writes only the refs its reload did NOT bring back, so
+     * a source the user deliberately reloads is revived by not being
+     * re-tombstoned.
+     *
+     * <p>This verb arrived WITH its caller, per this file's own rule: revival
+     * used to ride {@link #wipe()}, and when the reseed stopped wiping the
+     * store (a wipe may only delete what something can put back — the
+     * catalogue and direct records have no file behind them) the tombstone
+     * half of that contract needed its own verb or tombstones would outlive
+     * the user's own decision to reload a source. A per-ref
+     * {@code clearTombstone} shipped here once with zero callers and was
+     * deleted; this one is different in exactly the way that matters.</p>
+     */
+    void clearTombstones();
 
     /** Distinct {@code memory:} source refs of file-derived entries — the set a
      *  reseed diffs to decide what it deliberately did not reload. */

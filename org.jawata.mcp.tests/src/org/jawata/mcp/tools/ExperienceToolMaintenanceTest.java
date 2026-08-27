@@ -216,10 +216,27 @@ class ExperienceToolMaintenanceTest {
         ObjectNode confirmed = mapper.createObjectNode();
         confirmed.put("kind", "reseed");
         confirmed.put("confirm", true);
+        // CONTRACT CHANGED DELIBERATELY (2026-08-27), and this is where it is
+        // written down. This test used to assert "the hand-recorded entry was
+        // wiped" — and that WAS the behaviour: a reseed deleted every row and
+        // reloaded from files, so a row with no file behind it was destroyed
+        // permanently, on the store's own routine repair, without a word.
+        //
+        // A wipe may only delete what something can put back. The reseed now
+        // removes exactly the rows its reload restores, so the hand-recorded
+        // entry SURVIVES and is reported under `kept`.
         Map<String, Object> d = data(rooted.execute(confirmed));
-        assertEquals(1L, d.get("removed"), "the hand-recorded entry was wiped");
+        assertEquals(0L, d.get("removed"),
+            () -> "nothing was file-backed before this run, so there was nothing"
+                + " a reload could restore and nothing to remove: " + d);
         assertEquals(1, d.get("loaded"), () -> "the seed file was reloaded: " + d);
-        assertEquals(1L, store.count());
+        assertEquals(2L, store.count(),
+            "the reloaded file AND the hand-recorded entry it must not destroy");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> kept = (Map<String, Object>) d.get("kept");
+        assertEquals(1, kept.get("recorded"),
+            () -> "and what survived is NAMED — silence would leave 'spared it'"
+                + " and 'there were none' reading identically: " + d);
     }
 
     private void recordOneVia(ExperienceTool t) {
