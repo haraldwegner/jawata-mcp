@@ -30,7 +30,7 @@ public final class CatalogueSources {
      * renderer, the stats block) pay nothing for the seeding machinery.</p>
      */
     public static List<CatalogueSource> all() {
-        return List.of(new PatternCatalogueLoader());
+        return List.of(new PatternCatalogueLoader(), new SampleSource());
     }
 
     /**

@@ -20,6 +20,9 @@
         <module>testrunner</module>
         <module>tests-core</module>
         <module>tests-mcp</module>
+        <!-- 28d: the cure specimens. Built so their addresses cannot rot;
+             deliberately absent from dist, which the enforcer proves. -->
+        <module>samples</module>
         <module>dist</module>
     </modules>
 

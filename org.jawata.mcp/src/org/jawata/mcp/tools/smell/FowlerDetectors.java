@@ -45,6 +45,10 @@ public final class FowlerDetectors {
             .register(new ParallelInheritanceDetector(), "fowler")
             .register(new IncompleteDelegationDetector(), "fowler", "solid")
             .register(new DivergentChangeDetector(), "fowler", "solid")
-            .register(new ShotgunSurgeryDetector(), "fowler", "solid");
+            .register(new ShotgunSurgeryDetector(), "fowler", "solid")
+            // Sprint 28d — Command Query Separation. Registered `fowler` because
+            // its cure IS a Fowler refactoring (Separate Query from Modifier),
+            // even though the principle it enforces is Meyer's.
+            .register(new CqsDetector(), "fowler");
     }
 }

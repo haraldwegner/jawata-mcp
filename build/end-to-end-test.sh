@@ -515,6 +515,23 @@ case "$NSTATS" in
     *) fail "catalogue-namespaces stats carries no per-namespace catalogue block — a reader cannot tell WHICH source is absent: $(printf '%s' "$NSTATS" | head -c 300)" ;;
 esac
 
+# --- own-samples-seeded: 28d Stage 3, the second source through the front door
+# The fork covers the patterns it covers; cures it has no module for get their
+# specimens in org.jawata.samples — built so the address cannot rot, absent from
+# this dist, public so a reader can open it. This asserts the SECOND source
+# reached the store on the same boot as the first, because a registry with one
+# working source and one silently dead one looks identical from a total count.
+# REGISTERED and SEEDED are different claims, and the count is what separates
+# them: a source can be in the registry and have written nothing, which is
+# exactly the silently-dead-second-source case this promise exists to catch.
+case "$NSTATS" in
+    *'"jawata-samples":0'*)
+        fail "own-samples-seeded the specimen namespace is registered but EMPTY — the source is wired and wrote nothing, which a total count cannot distinguish from working: $(printf '%s' "$NSTATS" | head -c 300)" ;;
+    *'"jawata-samples"'*)
+        pass "own-samples-seeded the own-authored specimen source seeded its own namespace on a real boot" ;;
+    *) fail "own-samples-seeded no jawata-samples namespace in stats — the second source did not reach the registry at all: $(printf '%s' "$NSTATS" | head -c 300)" ;;
+esac
+
 # --- demand-and-delete: D14's ledger and the undo a delete owes -------------
 # Sprint 28c D14. Two promises the review seat depends on, through the real front
 # door. The FIRST is the one that carries the wiring: a question nobody could

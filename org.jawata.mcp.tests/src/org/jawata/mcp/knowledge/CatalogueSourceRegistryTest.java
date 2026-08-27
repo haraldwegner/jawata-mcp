@@ -130,15 +130,30 @@ class CatalogueSourceRegistryTest {
         assertEquals(0, catalogue.get("entries"));
     }
 
-    /** Seeding runs THROUGH the registry, and the counts follow it. */
+    /**
+     * Seeding runs THROUGH the registry, and EACH source's rows land in its own
+     * namespace — the property that only exists once there is more than one.
+     *
+     * <p>This assertion was first written summing every source's seed count and
+     * comparing it against one namespace, which passed only while a single
+     * source was registered. Registering the second made it fail with
+     * {@code expected 189 but was 187} — the test asserting a one-source world
+     * out loud. Per-source is what the registry actually promises.</p>
+     */
     @SuppressWarnings("unchecked")
     @Test
-    void seeding_through_the_registry_fills_that_sources_namespace() {
-        int seeded = 0;
+    void each_sources_rows_land_in_its_own_namespace() {
+        Map<String, Integer> seededBySource = new java.util.LinkedHashMap<>();
+        int total = 0;
         for (CatalogueSource s : CatalogueSources.all()) {
-            seeded += s.seed(store);
+            int n = s.seed(store);
+            seededBySource.put(s.namespace(), n);
+            total += n;
         }
-        assertTrue(seeded > 0, "the bundled snapshot must actually seed");
+        assertTrue(total > 0, "the bundled sources must actually seed");
+        assertTrue(seededBySource.size() >= 2,
+            "this test is about the multi-source property; with one source it proves"
+                + " nothing the single-namespace case did not already prove");
 
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "stats");
@@ -146,11 +161,14 @@ class CatalogueSourceRegistryTest {
             ((Map<String, Object>) tool.execute(a).getData()).get("catalogue");
         Map<String, Object> byNamespace = (Map<String, Object>) catalogue.get("byNamespace");
 
-        CatalogueSource fork = CatalogueSources.all().get(0);
-        assertEquals(seeded, byNamespace.get(fork.namespace()),
-            () -> "what the registry seeded and what stats reports for that namespace"
-                + " are the same number, or one of them is lying: " + catalogue);
-        assertEquals(seeded, catalogue.get("entries"),
-            "with one registered source the total and its namespace agree");
+        for (Map.Entry<String, Integer> seeded : seededBySource.entrySet()) {
+            assertEquals(seeded.getValue(), byNamespace.get(seeded.getKey()),
+                () -> "namespace " + seeded.getKey() + ": what its source seeded and what"
+                    + " stats reports for it are the same number, or one of them is"
+                    + " lying — and a row counted under the wrong namespace is exactly"
+                    + " the drift the registry exists to make impossible: " + catalogue);
+        }
+        assertEquals(total, catalogue.get("entries"),
+            "and the total is the sum of the namespaces, not a separately maintained count");
     }
 }
