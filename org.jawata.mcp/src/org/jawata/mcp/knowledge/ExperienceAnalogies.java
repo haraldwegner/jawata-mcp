@@ -249,6 +249,18 @@ public final class ExperienceAnalogies {
             m.put("id", a.entry().id());
             m.put("type", a.entry().type());
             m.put("summary", a.entry().summary());
+            // v15 (added 2026-08-27 by dogfooding the released build): the CAUSE
+            // belongs on an analogy more than anywhere else. The framing below
+            // says "judge whether it transfers", and the cause is precisely what
+            // that judgement is made on — one symptom has many causes, so a list
+            // of five analogies IS a differential and without the diagnoses it
+            // asks the reader to discriminate on nothing. Found live: a recall
+            // returned five comparable experiences and not one said what problem
+            // it solves.
+            if (a.entry().facets() != null && a.entry().facets().cause() != null
+                    && !a.entry().facets().cause().isBlank()) {
+                m.put("cause", a.entry().facets().cause());
+            }
             m.put("basis", a.basis());                 // words, never a score
             if (a.provenance() != null) {
                 m.put("provenance", a.provenance());

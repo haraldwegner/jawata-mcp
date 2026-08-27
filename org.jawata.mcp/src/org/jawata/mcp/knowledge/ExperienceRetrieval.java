@@ -1190,6 +1190,14 @@ public final class ExperienceRetrieval {
     static String renderAnalogyLine(Map<String, Object> a) {
         StringBuilder sb = new StringBuilder("In a similar situation: ");
         sb.append(san(a.get("summary")));
+        // v15: the diagnosis, on the same line, because the framing asks the
+        // reader to judge whether this transfers and the cause is what that
+        // judgement is made on. Rendered from the SAME map the structured
+        // answer carries, so the two cannot say different things.
+        Object cause = a.get("cause");
+        if (cause != null) {
+            sb.append("  (because ").append(san(cause)).append(')');
+        }
         Object basis = a.get("basis");
         sb.append("  [");
         sb.append(basis instanceof List<?> l ? String.join("; ",
