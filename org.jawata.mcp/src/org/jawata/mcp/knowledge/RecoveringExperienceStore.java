@@ -179,13 +179,6 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
-    public boolean clearTombstone(String sourceRef) {
-        synchronized (lock) {
-            return delegate.clearTombstone(sourceRef);
-        }
-    }
-
-    @Override
     public java.util.Set<String> fileSourceRefs() {
         return delegate.fileSourceRefs();
     }

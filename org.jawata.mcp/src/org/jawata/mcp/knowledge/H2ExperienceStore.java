@@ -981,18 +981,6 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     @Override
-    public synchronized boolean clearTombstone(String sourceRef) {
-        try (PreparedStatement ps = live().prepareStatement(
-                "DELETE FROM experience_tombstone WHERE source_ref = ?")) {
-            ps.setString(1, sourceRef);
-            return ps.executeUpdate() > 0;
-        } catch (SQLException e) {
-            throw new IllegalStateException("failed to clear tombstone " + sourceRef + ": "
-                + e.getMessage(), e);
-        }
-    }
-
-    @Override
     public java.util.Set<String> fileSourceRefs() {
         // READ — same #37 rule as tombstonedRefs above.
         return withRead("list file sources", c -> {

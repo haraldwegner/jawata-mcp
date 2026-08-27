@@ -155,9 +155,13 @@ public interface ExperienceStore extends AutoCloseable {
     /** Every tombstoned source ref. The crawl fetches this ONCE per run. */
     java.util.Set<String> tombstonedRefs();
 
-    /** Clear one tombstone — the revival half of {@link #tombstone}; reseed calls it
-     *  for every source it re-ingests. Returns whether a tombstone existed. */
-    boolean clearTombstone(String sourceRef);
+    // Revival needs no verb of its own, and the as-built pass proved it: a reseed
+    // WIPES the tombstone table and then re-writes only the refs it did not load,
+    // so a source the reseed brings back is revived by not being re-tombstoned. An
+    // explicit clearTombstone shipped here with zero callers — unreachable surface,
+    // which this codebase deletes rather than baselines (EntryForm.isExperience and
+    // ExperienceSnippet.shapeGroupId went the same way). If 28f wants an explicit
+    // revive verb, it arrives WITH its caller.
 
     /** Distinct {@code memory:} source refs of file-derived entries — the set a
      *  reseed diffs to decide what it deliberately did not reload. */
