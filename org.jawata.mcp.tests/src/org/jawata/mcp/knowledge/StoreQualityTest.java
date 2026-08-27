@@ -158,6 +158,50 @@ class StoreQualityTest {
                 + " surfaces stay one vocabulary");
     }
 
+    /**
+     * THE WHOLE EXERCISE, AS A GATE. Two days of story authoring existed so
+     * that situations would LIVE IN THE STORE — and none of the 89 did: the
+     * files were loaded on 2026-08-25 by the then-installed v3.12.1 engine,
+     * whose loader predates the situation field, and every newer engine skipped
+     * them as source-hash-unchanged. The cutover's own verification counted
+     * ROWS against FILES and passed — a count proves nothing about a field.
+     *
+     * <p>This is that missing check: a story file declaring a situation, loaded
+     * through the production ingest, must produce a row that CARRIES it. Runs
+     * against the exact frontmatter shape of the real story files.</p>
+     */
+    @Test
+    void a_loaded_storys_situation_lands_in_the_row(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("s02-shaped.md"),
+            "---\n"
+            + "name: a-brokers-snapshot-lags\n"
+            + "description: \"On the paper account a just-cancelled order keeps"
+            + " appearing in the open-orders list after the websocket reported it"
+            + " terminal.\"\n"
+            + "type: domain_fact\n"
+            + "situation: a reconcile comparing the broker's open-orders list"
+            + " against our own state is reporting orders as orphaned at the broker\n"
+            + "reviewed: 2026-08-25\n"
+            + "---\n"
+            + "the body of the story\n");
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "load");
+        a.put("path", dir.toString());
+        assertTrue(tool.execute(a).isSuccess());
+
+        StoredEntry row = store.all().stream()
+            .filter(e -> String.valueOf(e.sourceRef()).contains("s02-shaped.md"))
+            .findFirst().orElseThrow();
+        assertEquals("a reconcile comparing the broker's open-orders list against"
+                + " our own state is reporting orders as orphaned at the broker",
+            row.facets().situation(),
+            "the situation the author wrote must BE IN THE ROW — the store copy is"
+                + " what retrieval ranks on, and 89 rows shipped without it while"
+                + " every count-based check stayed green");
+        assertEquals(Integer.valueOf(1), row.facets().form(),
+            "and the form stamp says so");
+    }
+
     /** The cap is declared; the counts always cover everything. */
     @Test
     void a_capped_list_says_so_and_the_counts_stay_true() {
