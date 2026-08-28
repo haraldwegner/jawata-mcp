@@ -63,8 +63,50 @@ public record CatalogueOrigin(
         String workspaceRoot,
         List<String> retiredPrefixes) {
 
+    /**
+     * The origin enforces its own validity — added 2026-08-28, after two audit
+     * rounds refused a TEST that tried to police this from outside.
+     *
+     * <p>The collision these guard against was previously only <i>detectable</i>, by
+     * an assertion in a contract test. That assertion could not be given a failing
+     * input without constructing exactly the origin it forbids, so the control
+     * written for it reduced twice to a comparison of compile-time constants — true
+     * for every possible input, exercising no code. <b>An invariant a test has to
+     * mirror is an invariant in the wrong place.</b> Here the collision is
+     * unconstructible, which is strictly stronger than detectable, and the control
+     * has something real to assert: that construction is refused.</p>
+     */
     public CatalogueOrigin {
+        if (namespace == null || namespace.isBlank()) {
+            throw new IllegalArgumentException(
+                "a catalogue origin needs a namespace — it is the whole of its address"
+                    + " prefix, and it is how a degradation line names WHICH catalogue is"
+                    + " empty. Blank makes that line read 'catalogue  holds zero rows'.");
+        }
+        if (namespace.indexOf('/') >= 0) {
+            throw new IllegalArgumentException(
+                "a namespace must not contain '/'. The prefix is 'catalogue:<namespace>/',"
+                    + " so a namespace carrying the separator yields a prefix that SWALLOWS"
+                    + " another's: 'java' swallows 'java/design'. Ownership resolves by FIRST"
+                    + " match, so the swallowed origin would be permanently unreachable while"
+                    + " appearing registered, and its rows would be swept as orphans by the"
+                    + " origin that claims none of them. Sibling namespaces cannot collide —"
+                    + " the trailing slash prevents it — so this separator is the only"
+                    + " collision that survives. Got: '" + namespace + "'");
+        }
         retiredPrefixes = List.copyOf(retiredPrefixes);
+        String live = "catalogue:" + namespace + "/";
+        for (String retired : retiredPrefixes) {
+            if (live.startsWith(retired) || retired.startsWith(live)) {
+                throw new IllegalArgumentException(
+                    "origin '" + namespace + "' retires '" + retired + "', which overlaps its"
+                        + " OWN live prefix '" + live + "'. The retired-prefix migration"
+                        + " supersedes every row under a retired prefix WITHOUT the"
+                        + " completeness guard — deliberately, because a retired spelling has"
+                        + " no current input to be complete against — so this origin would"
+                        + " retire its entire catalogue on the next boot.");
+            }
+        }
     }
 
     /**

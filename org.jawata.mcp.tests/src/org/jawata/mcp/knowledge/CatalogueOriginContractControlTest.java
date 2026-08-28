@@ -165,15 +165,20 @@ class CatalogueOriginContractControlTest {
                 + " every namespace that is a text-prefix of another has silently become"
                 + " a first-match collision");
 
-        // Half two: the shape that CAN, so the contract's check is proven live.
-        String nested = origin("java/design").prefix();
-        assertEquals("catalogue:java/design/", nested);
-        assertTrue(nested.startsWith(siblingA),
-            "'" + siblingA + "' swallows '" + nested + "' — a namespace carrying a"
-                + " separator is the one collision the trailing slash does not prevent."
-                + " First-match ownership would leave the nested origin permanently"
-                + " unreachable while appearing registered, its rows swept as orphans by"
-                + " the origin that claims none of them");
+        // Half two: the shape that CAN collide is now UNCONSTRUCTIBLE, so what is
+        // asserted is the refusal — which exercises production code and goes red the
+        // moment the invariant is weakened or removed.
+        IllegalArgumentException boom = assertThrows(IllegalArgumentException.class,
+            () -> origin("java/design"),
+            "a namespace carrying the prefix separator is the one collision the trailing"
+                + " slash does not prevent, so CatalogueOrigin must refuse to construct it."
+                + " If this stops throwing, 'catalogue:java/' silently swallows"
+                + " 'catalogue:java/design/', first-match ownership leaves the nested origin"
+                + " permanently unreachable while appearing registered, and its rows are"
+                + " swept as orphans by the origin that claims none of them");
+        assertTrue(boom.getMessage().contains("java/design"),
+            "the refusal must name the offending namespace, or the reader gets a failure"
+                + " with nothing to act on: " + boom.getMessage());
     }
 
     /**
@@ -208,30 +213,30 @@ class CatalogueOriginContractControlTest {
      * is named rather than hidden.</p>
      */
     @Test
-    void a_retired_prefix_that_overlaps_a_live_one_is_detectable() {
-        String live = CatalogueSources.all().get(0).prefix();
+    void an_origin_retiring_its_own_live_prefix_is_refused() {
+        // The hazard: an origin declaring its OWN current spelling retired. The
+        // migration supersedes every row under a retired prefix WITHOUT the
+        // completeness guard -- deliberately, since a retired spelling has no current
+        // input -- so such an origin would retire its entire catalogue on the next boot.
+        IllegalArgumentException boom = assertThrows(IllegalArgumentException.class,
+            () -> new CatalogueOrigin(
+                "bogus", "/nowhere/none.json", "", List.of("catalogue:bogus/")),
+            "an origin retiring its own live prefix must be REFUSED at construction. If"
+                + " this stops throwing, the origin is constructible and supersedes its"
+                + " whole catalogue on the next seed, with no completeness guard in the"
+                + " way to stop it");
+        assertTrue(boom.getMessage().contains("catalogue:bogus/"),
+            "the refusal must name the offending prefix: " + boom.getMessage());
 
-        // The hazard: retiring a spelling that is still LIVE. The migration supersedes
-        // every row under a retired prefix WITHOUT the completeness guard, so this would
-        // retire that origin's whole catalogue on the next boot.
-        CatalogueOrigin reckless =
-            new CatalogueOrigin("bogus", "/nowhere/none.json", "", List.of(live));
-        String retired = reckless.retiredPrefixes().get(0);
-        assertTrue(live.startsWith(retired) || retired.startsWith(live),
-            "retiring '" + retired + "' while '" + live + "' is LIVE must register as an"
-                + " overlap");
-
-        // THE HALF THAT MAKES THE ABOVE MEAN SOMETHING: a real retired spelling — the
-        // one S4 actually retired — must NOT register. If this failed, the predicate
-        // would be true of every pair and the assertion above would prove nothing.
-        CatalogueOrigin careful = new CatalogueOrigin(
-            "bogus", "/nowhere/none.json", "", List.of("sample:jawata-samples/"));
-        String safe = careful.retiredPrefixes().get(0);
-        assertFalse(live.startsWith(safe) || safe.startsWith(live),
-            "'" + safe + "' is a genuinely retired spelling and must NOT overlap the live"
-                + " prefix '" + live + "'. If it did, every rename would look like a"
-                + " collision and the overlap check would be an always-true assertion"
-                + " wearing a guard's clothes");
+        // And the near miss, so the refusal is not simply "reject every retired prefix":
+        // a genuinely retired spelling under the SAME scheme must still construct. This
+        // is the discrimination -- both differ from the live prefix only in the
+        // namespace, which is the part the rule is about.
+        CatalogueOrigin ok = new CatalogueOrigin(
+            "bogus", "/nowhere/none.json", "", List.of("catalogue:bogus-as-it-used-to-be/"));
+        assertEquals(List.of("catalogue:bogus-as-it-used-to-be/"), ok.retiredPrefixes(),
+            "a retired spelling that does NOT overlap the live one must be accepted, or"
+                + " the invariant has banned the ordinary rename it exists to support");
     }
 
     /**

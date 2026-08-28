@@ -54,10 +54,19 @@ done
 # new tests never ran, and the green was a true result about the wrong code —
 # indistinguishable, from the summary line, from a green about the right one.
 #
+# RESOURCES COUNT TOO, and the first version of this guard missed them: it
+# matched *.java only, so it stayed silent when a file that SHIPS INSIDE a bundle
+# was newer than the dist. catalogue/patterns.json, samples/samples.json and
+# catalogue.properties all live inside org.jawata.mcp-*.jar, and patterns.json is
+# the file this very sprint rewrote 187 rows of — so the gap sat directly on the
+# change surface it was added to protect.
+#
 # Fixtures are excluded on purpose: sample-project sources under test-resources
-# are read from disk at run time and never compiled into a bundle, so touching
-# one does not stale the dist.
-STALE_SRC=$(find "$ROOT" -name '*.java' \
+# are read from disk at run time and never compiled into a bundle (measured: none
+# of them appear as classes in either test bundle), so touching one stales
+# nothing.
+STALE_SRC=$(find "$ROOT" \( -name '*.java' -o -path '*/resources/*' \) \
+                -type f \
                 -not -path '*/target/*' \
                 -not -path '*/test-resources/*' \
                 -not -path '*/.git/*' \
