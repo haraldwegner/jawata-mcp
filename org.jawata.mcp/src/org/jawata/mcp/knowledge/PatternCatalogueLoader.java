@@ -195,6 +195,11 @@ public final class PatternCatalogueLoader implements CatalogueSource {
             }
         }
 
+        // Every ref THIS snapshot claims, whether it was rewritten or already
+        // current. The difference against liveByRef below is the set of rows
+        // upstream no longer has a pattern for.
+        java.util.Set<String> claimed = new java.util.HashSet<>();
+
         for (JsonNode p : patterns) {
             if (limit > 0 && considered >= limit) {
                 break;
@@ -205,6 +210,7 @@ public final class PatternCatalogueLoader implements CatalogueSource {
                 continue;
             }
             String sourceRef = SOURCE_PREFIX + slug + "/README.md";
+            claimed.add(sourceRef);
             String hash = hashOf(p);
             if (store.sourceUnchanged(sourceRef, hash)) {
                 unchanged++;
@@ -225,6 +231,50 @@ public final class PatternCatalogueLoader implements CatalogueSource {
             store.putWithSource(entryFor(p, slug), sourceRef, hash);
             seeded++;
         }
+        // THE ROWS UPSTREAM NO LONGER HAS A PATTERN FOR.
+        //
+        // Supersession above is per-pattern and keyed on the ref that pattern
+        // claims, so it can only ever retire a row the NEW snapshot still
+        // names. A slug upstream deletes or renames is never iterated, so its
+        // row stayed live indefinitely — carrying `design:<gone-slug>` and an
+        // address pointing at a README that no longer exists. Nothing failed:
+        // CureLookup.audit asks whether a live row carries the key, and one
+        // does, so it reported `clean` while the address was dead. That is the
+        // drift this sweep closes, and it is invisible without it.
+        //
+        // TWO GUARDS, because the sweep is far more destructive than the bug
+        // if either is missing:
+        //   - limit > 0 is the bounded SAMPLE mode. Under a truncated snapshot
+        //     every pattern outside the sample looks unclaimed, so the sweep
+        //     would supersede almost the whole catalogue.
+        //   - an empty claim set means the snapshot yielded nothing — a
+        //     missing or broken resource, not an upstream that deleted all 187
+        //     patterns. Retiring the catalogue on a read failure is the
+        //     could-not-look/found-nothing confusion in its most expensive form.
+        int orphaned = 0;
+        List<String> orphanRefs = new ArrayList<>();
+        if (limit == 0 && !claimed.isEmpty()) {
+            for (Map.Entry<String, List<String>> live : liveByRef.entrySet()) {
+                if (claimed.contains(live.getKey())) {
+                    continue;
+                }
+                for (String id : live.getValue()) {
+                    if (store.setStatus(id, ExperienceEntry.SUPERSEDED)) {
+                        orphaned++;
+                    }
+                }
+                orphanRefs.add(live.getKey());
+            }
+        }
+        retired += orphaned;
+        if (orphaned > 0) {
+            // NAMED, not just counted: "3 retired" is the same line whether
+            // upstream dropped three patterns or a snapshot bump mangled three
+            // slugs, and those need opposite responses.
+            log.info("Pattern catalogue: retired {} row(s) for {} pattern(s) no longer in the"
+                    + " snapshot at {}: {}", orphaned, orphanRefs.size(), commit, orphanRefs);
+        }
+
         Result result = new Result(considered, seeded, unchanged, retired, commit);
 
         // A start that loaded nothing logs nothing — recoverOrphans' own rule.

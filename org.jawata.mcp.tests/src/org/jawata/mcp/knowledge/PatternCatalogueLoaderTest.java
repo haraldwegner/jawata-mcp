@@ -317,4 +317,100 @@ class PatternCatalogueLoaderTest {
                     + rows.stream().map(StoredEntry::status).toList());
         }
     }
+
+    // ---------------------------------------------------------------- 28d C5a
+    // A pattern that DISAPPEARS from the snapshot.
+    //
+    // Supersession above is per-pattern and keyed on the ref that pattern
+    // claims, so it can only retire a row the new snapshot still names. A slug
+    // upstream deletes or renames is never iterated, so its row stayed live
+    // indefinitely — carrying `design:<gone-slug>` and an address pointing at a
+    // README that no longer exists. Nothing failed: the cure sweep asks whether
+    // a live row carries the key, and one did, so it reported clean while the
+    // address was dead.
+
+    /** A snapshot carrying exactly these slugs, each a well-formed pattern. */
+    private static com.fasterxml.jackson.databind.JsonNode snapshotOf(String... slugs) {
+        com.fasterxml.jackson.databind.ObjectMapper m =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode root = m.createObjectNode();
+        root.put("pinned_commit", "test-pin");
+        com.fasterxml.jackson.databind.node.ArrayNode arr = root.putArray("patterns");
+        for (String slug : slugs) {
+            com.fasterxml.jackson.databind.node.ObjectNode p = arr.addObject();
+            p.put("slug", slug);
+            p.put("principle", "Prefer " + slug + " when the caller must not name a concrete type");
+            p.put("situation", "when a caller would otherwise construct the collaborator itself");
+            p.put("cause", "the constructing class has to name a type it cannot know");
+        }
+        return root;
+    }
+
+    private static List<StoredEntry> rowsFor(H2ExperienceStore store, String slug) {
+        String ref = PatternCatalogueLoader.SOURCE_PREFIX + slug + "/README.md";
+        return store.all().stream().filter(e -> ref.equals(e.sourceRef())).toList();
+    }
+
+    private static long liveCount(List<StoredEntry> rows) {
+        return rows.stream().filter(e -> !"superseded".equals(e.status())).count();
+    }
+
+    @Test
+    void a_pattern_gone_from_the_snapshot_is_retired_and_stops_answering(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+            assertEquals(1, liveCount(rowsFor(store, "visitor")),
+                "PROOF OF LIFE: visitor must be live before its removal can mean anything");
+
+            // Upstream drops `visitor`. Its row is not iterated by the seed loop.
+            new PatternCatalogueLoader(snapshotOf("state")).load(store);
+
+            assertEquals(0, liveCount(rowsFor(store, "visitor")),
+                () -> "a pattern the snapshot no longer carries must stop answering — while it"
+                    + " stays live it hands out an address that no longer exists upstream, and"
+                    + " the cure sweep reports CLEAN because the key still resolves to it."
+                    + " Statuses: " + rowsFor(store, "visitor").stream()
+                        .map(StoredEntry::status).toList());
+            assertEquals(1, liveCount(rowsFor(store, "state")),
+                "the pattern the snapshot still carries must be untouched — a sweep that"
+                    + " retires the survivors too is worse than the bug");
+        }
+    }
+
+    @Test
+    void the_bounded_sample_retires_nothing_it_did_not_look_at(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+
+            // The sample mode considers ONE pattern. Every other pattern is
+            // unclaimed for the trivial reason that the sample never reached it,
+            // and a sweep that could not tell those apart would supersede almost
+            // the entire catalogue on a routine sampled run.
+            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store, 1);
+
+            assertEquals(1, liveCount(rowsFor(store, "visitor")),
+                "a sampled seed must retire NOTHING: unclaimed here means 'not looked at',"
+                    + " not 'no longer upstream'");
+        }
+    }
+
+    @Test
+    void an_empty_snapshot_retires_nothing(@TempDir Path dir) throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+
+            // A snapshot that yields no patterns is a missing or broken resource,
+            // not an upstream that deleted everything. Treating the two alike is
+            // the could-not-look/found-nothing confusion at its most expensive.
+            new PatternCatalogueLoader(snapshotOf()).load(store);
+
+            assertEquals(1, liveCount(rowsFor(store, "state")),
+                "an empty snapshot must not retire the catalogue — that is a read failure"
+                    + " being read as an upstream deletion");
+            assertEquals(1, liveCount(rowsFor(store, "visitor")),
+                "neither row may be retired on an empty snapshot");
+        }
+    }
 }
