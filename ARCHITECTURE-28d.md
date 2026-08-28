@@ -75,7 +75,8 @@ and it is the same resolve-never-compose rule (W1) the spec already binds.
 ```
   STREAM 1: OPERATIONS              STREAM 2: DETECTORS         STREAM 3: CATALOGUE
   org.jawata.mcp.refactoring.ops    org.jawata.mcp.tools.smell  org.jawata.mcp.knowledge
-  ExtractClassOp, MoveFieldOp, ...  CqsDetector, Coupling...    CatalogueSource registry
+  ExtractClassOp, MoveFieldOp, ...  CqsDetector, Coupling...    CatalogueSources registry
+                                                                (CatalogueOrigin records)
         |                                 |                       + org.jawata.samples
         | registers a plan KIND           | registers a KIND      + catalog/ extractor
         v                                 v                           |
@@ -212,12 +213,23 @@ the 28c B2 design record, inherited whole), plus:
 > `seed`, and an interface with a behaviour hook is an invitation that has already been
 > accepted wrongly once: `SampleSource.seed` is nine lines that skip supersession, and
 > nothing in the type system noticed. It becomes
-> **`CatalogueOrigin(namespace, prefix, manifestResource, workspaceRoot, authority)`** —
-> a record. `workspaceRoot` is what makes D10's "address opens in the workspace"
-> computable at all; `authority` is D10's "declared authority", whose only carrier the
-> deletion would otherwise remove (it is read by `CatalogueAddresses.authorities()`,
-> `CureLookup.Audit`, and the `cures` stats block). One `CatalogueSeeder` owns the
-> lifecycle; a source has no method to decline it.
+> a record. One `CatalogueSeeder` owns the lifecycle; a source has no method to
+> decline it.
+>
+> **CORRECTED v3 (2026-08-28) — the record shape written here was never built, and
+> two of its five components were rejected BY NAME during implementation.** As
+> built it is
+> **`CatalogueOrigin(namespace, manifestResource, workspaceRoot, retiredPrefixes)`**.
+> `prefix` is DERIVED (`"catalogue:" + namespace + "/"`), not stored — storing both
+> would let them disagree, and every ownership question in the lane keys on that one
+> string. `authority` is NOT a component either: both origins derive it from their own
+> manifest (the fork from its `pinned_commit`, ours from its `authority` field), so a
+> stored value would be wrong for the fork the moment the pin moves and would report a
+> stale pin without saying so; `CatalogueAddresses.authorities()` reads it via
+> `CatalogueManifest.authorityOf(o)`. And `retiredPrefixes` — absent from the shape
+> above and carrying the whole S3a/S4 migration — is what supersedes rows under a
+> spelling the origin used to own. `workspaceRoot` is as described: it is what makes
+> D10's "address opens in the workspace" computable at all.
 
 - `org.jawata.mcp.catalog` — the derivation extractor (dev-time; reads the fork
   checkout, writes the snapshot JSON + the tier per entry). **SUPERSEDED v2 in scope:**
@@ -310,18 +322,35 @@ the 28c B2 design record, inherited whole), plus:
 
 ## Migration path (ordered, parity-gated; each step independently reversible)
 
-1. **Extract the `CatalogueSource` seam** from `PatternCatalogueLoader`
+> **STEPS 1, 2 AND 4 ARE SUPERSEDED — read the notes attached to them.** They are the
+> v2 plan and are kept because the reasoning is still worth following, but three of
+> them name mechanisms that no longer exist. Stage 6 (2026-08-28) collapsed the
+> catalogue to one form and one lifecycle, which retired the `CatalogueSource` seam
+> step 1 creates and the `sample:` prefix step 2 seeds.
+
+1. ~~**Extract the `CatalogueSource` seam** from `PatternCatalogueLoader`~~
    (`refactoring(action=plan)` where the shape allows; the registry interface is new
    code). Gate: catalogue loader tests + reseed contract tests green UNCHANGED.
-2. **Add `org.jawata.samples` + its source** (registered, seeds `sample:` rows).
-   Gate: every `sample:` address opens in the workspace; dist byte-identical;
+   **SUPERSEDED:** the seam was extracted and then DELETED at Stage 6 — an interface
+   carrying `seed` is an invitation each source can decline, and one did. A source is
+   now a `CatalogueOrigin` record with no method to implement wrongly.
+2. ~~**Add `org.jawata.samples` + its source** (registered, seeds `sample:` rows).
+   Gate: every `sample:` address opens in the workspace~~; dist byte-identical;
    own-sweep baselines unchanged.
+   **SUPERSEDED:** no `sample:` row is seeded and no `sample:` address is expected to
+   open. S4 moved the lane to `catalogue:jawata-samples/`; `sample:jawata-samples/` is
+   now a RETIRED prefix that `CatalogueSeeder` supersedes on the next seed
+   (`CatalogueSources.java`). The dist and sweep halves of the gate stand unchanged.
 3. **The five detectors**, one at a time on `AbstractAstDetector`. Gate per kind:
    proof-of-life fixture non-zero BEFORE any zero counts; frozen-fixture ranks
    stable across two runs.
-4. **The cure lookup** — `RecipeCatalog` consults the catalogue lane first,
+4. **The cure lookup** — ~~`RecipeCatalog`~~ consults the catalogue lane first,
    hard-coded recipes as stated fallback. Gate: the W1/W2/W3 assertions from the
    spec's D6, including the non-zero-then-zero drift pair.
+   **SUPERSEDED in its NAME only:** `CureLookup` does the consulting, and
+   `RecipeCatalog` no longer exists — S7 folded it and `OcpCure` into `CureCatalog`,
+   which already held every mapping both carried. The step and its gate are otherwise
+   as executed.
 5. **The operations**, in D1-survey order, each on the operation skeleton with the
    done-definition (old shape gone, checked by query). Gate per op: parity
    (compile 0/0 + purity) + undo restores byte-identical + the reference query

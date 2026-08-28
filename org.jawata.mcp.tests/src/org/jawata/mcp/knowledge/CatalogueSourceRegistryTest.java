@@ -45,8 +45,11 @@ class CatalogueSourceRegistryTest {
     }
 
     /**
-     * A source is CHEAP TO CONSTRUCT — the interface says so, and the registry
-     * relies on it: {@code stats} builds every source just to ask which
+     * A source is CHEAP TO CONSTRUCT — S6 deleted the interface that used to say
+     * so, and the contract now lives in {@link CatalogueOrigin}'s Javadoc and in
+     * {@code CatalogueSources#all()} ("constructed fresh per call and CHEAP BY
+     * CONTRACT"). The registry relies on it: {@code stats} builds every source
+     * just to ask which
      * namespace owns a row. The bundled snapshot is ~200 patterns of JSON, so an
      * eager constructor would put that parse on a read path called constantly.
      *
@@ -85,7 +88,11 @@ class CatalogueSourceRegistryTest {
         assertFalse(CatalogueSources.isCatalogue("memory:/home/h/stories/x.md"));
     }
 
-    /** Every source declares the three things the registry needs of it. */
+    /**
+     * Every source declares the FOUR things the registry needs of it: a namespace, a
+     * prefix derived from it, a manifest resource, and an authority — the last read
+     * from the manifest rather than stored, so it cannot go stale against the pin.
+     */
     @Test
     void every_registered_source_declares_its_identity_and_authority() {
         List<CatalogueOrigin> all = CatalogueSources.all();

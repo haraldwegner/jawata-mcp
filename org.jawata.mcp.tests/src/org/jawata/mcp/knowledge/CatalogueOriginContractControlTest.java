@@ -245,14 +245,6 @@ class CatalogueOriginContractControlTest {
     }
 
     /**
-     * CONTRACT: {@code every_origin_states_an_authority} rejects {@code UNPINNED}.
-     *
-     * <p>Read through {@link CatalogueManifest#of} rather than
-     * {@code authorityOf}, on purpose: {@code authorityOf} memoises by manifest
-     * resource, and poisoning that cache from a test would leak a fake authority
-     * into every later reader in the same JVM.</p>
-     */
-    /**
      * CONTRACT: {@code every_origin_gets_the_same_lifecycle} asserts that a second seed
      * from the same manifest writes NOTHING. <b>This is the control that assertion was
      * missing</b> — added 2026-08-28 after a fresh-context audit observed that the
@@ -297,6 +289,14 @@ class CatalogueOriginContractControlTest {
         }
     }
 
+    /**
+     * CONTRACT: {@code every_origin_states_an_authority} rejects {@code UNPINNED}.
+     *
+     * <p>Read through {@link CatalogueManifest#of} rather than
+     * {@code authorityOf}, on purpose: {@code authorityOf} memoises by manifest
+     * resource, and poisoning that cache from a test would leak a fake authority
+     * into every later reader in the same JVM.</p>
+     */
     @Test
     void an_origin_declaring_no_version_identity_reads_as_unpinned() {
         CatalogueManifest anonymous =

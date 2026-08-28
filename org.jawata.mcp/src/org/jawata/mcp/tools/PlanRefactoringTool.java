@@ -65,7 +65,9 @@ class PlanRefactoringTool extends AbstractTool {
 
     static final List<String> PLAN_KINDS = List.of(
         "compose_method", "replace_type_code_with_class", "inline_singleton",
-        // OCP-cure recipes (OcpCure.recipesFor) — single-step, parity-gated refactor_to_pattern plans.
+        // OCP-cure recipes (CureCatalog.recipesFor) — single-step, parity-gated
+        // refactor_to_pattern plans. Was OcpCure.recipesFor until S7 folded the three
+        // cure tables into one; this file's import moved and the comment did not.
         "refactor_to_state", "refactor_to_command_dispatcher", "form_template_method");
 
     private static final Set<String> CONTROL_FIELDS =

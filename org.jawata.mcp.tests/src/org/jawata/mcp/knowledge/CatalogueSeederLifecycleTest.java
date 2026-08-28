@@ -134,10 +134,6 @@ class CatalogueSeederLifecycleTest {
     }
 
     /**
-     * Seeding twice equals seeding once. The row count is the assertion a
-     * duplicate cannot survive.
-     */
-    /**
      * Sprint 28c D7 — a nominated REFERENCE carries the address it can be opened
      * at; a nominated EXPERIENCE does not.
      *
@@ -196,6 +192,10 @@ class CatalogueSeederLifecycleTest {
         }
     }
 
+    /**
+     * Seeding twice equals seeding once. The row count is the assertion a
+     * duplicate cannot survive.
+     */
     @Test
     void a_second_start_writes_nothing(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {

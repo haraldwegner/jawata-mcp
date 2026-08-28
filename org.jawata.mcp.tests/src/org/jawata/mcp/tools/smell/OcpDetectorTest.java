@@ -104,8 +104,9 @@ class OcpDetectorTest {
                     () -> "the cure must name a runnable recipe kind: " + message);
             }
         }
-        // The recipes are RecipeCatalog's, not this detector's — proving the
+        // The recipes are CureCatalog's, not this detector's — proving the
         // aggregation reuses the existing map rather than re-deciding cures.
+        // (Was RecipeCatalog until S7 folded the three cure tables into one.)
         assertTrue(String.valueOf(findingsIn(TYPE_CODE_TRACE).get(0).get("message"))
                 .contains("replace_type_code_with_class"),
             "type_code's cure recipe is replace_type_code_with_class");

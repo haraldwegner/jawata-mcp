@@ -30,10 +30,23 @@ import java.util.stream.Stream;
  * {@code build/unwired-gate.sh} exists to catch, and the baseline already
  * carries one such member.</p>
  *
- * <p><b>What composes what.</b> This extractor composes every CONTENT field of
- * a record. The loader (product side) sets only the two fields a snapshot
- * cannot know — {@code provenance_kind} and {@code status} — and writes.
- * Nothing composes twice.</p>
+ * <p><b>What composes what — corrected 2026-08-28, and the correction is the
+ * interesting part.</b> This said the product side set "only the two fields a
+ * snapshot cannot know ({@code provenance_kind}, {@code status}). Nothing
+ * composes twice." That was already false when Stage 6 folded the readers:
+ * {@code CatalogueManifest.entryFor} sets FIVE — those two plus {@code type}
+ * (from the {@code CATALOGUE_TYPE} constant, ignoring whatever the snapshot
+ * says), {@code form} (derived from the situation) and {@code operation}
+ * ({@code "design:" + slug}). And {@code items()} composes each address as
+ * {@code prefix() + slug + "/README.md"} while this extractor writes its own
+ * {@code source_ref} into the snapshot — so {@code source_ref} and {@code type}
+ * are each produced on BOTH sides, which is exactly what "nothing composes
+ * twice" denied.</p>
+ *
+ * <p>That double composition is not a defect today, because both sides agree on
+ * the same rule. It is recorded rather than tidied away because it is the shape
+ * that caused this stage: the two catalogue readers also agreed, until one of
+ * them was taught a fix and the other was not.</p>
  *
  * <p><b>The situation is DERIVED, and that is Harald's ruling R10.</b> The
  * README's "When to Use" section is a multi-sentence paragraph; the store's

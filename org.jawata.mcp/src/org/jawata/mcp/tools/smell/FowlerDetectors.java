@@ -77,7 +77,7 @@ public final class FowlerDetectors {
             .register(new CompositionOverInheritanceDetector(), "fowler")
             // Sprint 28d — Open/Closed, as the NAME over measurements that
             // already existed: an aggregation of switch_statements + type_code,
-            // whose cures are the Kerievsky recipes RecipeCatalog already maps.
+            // whose cures are the Kerievsky recipes CureCatalog already maps.
             // Registered `fowler` so a fowler sweep carries it alongside the two
             // traces it re-labels, exactly as those traces are carried.
             .register(new OcpDetector(store), "fowler")
