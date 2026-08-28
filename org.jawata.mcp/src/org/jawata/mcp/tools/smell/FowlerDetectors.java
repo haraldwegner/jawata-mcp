@@ -49,6 +49,11 @@ public final class FowlerDetectors {
             // Sprint 28d — Command Query Separation. Registered `fowler` because
             // its cure IS a Fowler refactoring (Separate Query from Modifier),
             // even though the principle it enforces is Meyer's.
-            .register(new CqsDetector(), "fowler");
+            .register(new CqsDetector(), "fowler")
+            // Sprint 28d — coupling reported as connascence. Registered `fowler`
+            // for the same reason as `cqs`: the principle is Page-Jones's, but
+            // its cures are Fowler refactorings (Move Method / Move Class /
+            // Extract Class), which is what a reader of a finding reaches for.
+            .register(new CouplingDetector(), "fowler");
     }
 }

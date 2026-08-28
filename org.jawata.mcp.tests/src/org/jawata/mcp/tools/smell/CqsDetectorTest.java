@@ -116,8 +116,11 @@ class CqsDetectorTest {
         Map<String, Object> kind = (Map<String, Object>) properties.get("kind");
         List<String> kinds = (List<String>) kind.get("enum");
         assertTrue(kinds.contains("cqs"), () -> "kind enum must carry cqs; got: " + kinds);
-        assertEquals(37, kinds.size(),
-            () -> "the kind count must be 36 + cqs = 37; got " + kinds.size() + ": " + kinds);
+        // THE COUNT DOES NOT LIVE HERE. It used to: this test asserted the enum
+        // size, so every new principle detector made an unrelated detector's
+        // test red and had to edit this literal — the shotgun-surgery shape this
+        // sprint exists to remove, in our own tests. The roster has one home now
+        // (PrincipleDetectorKindsTest); this test asserts only its own kind.
     }
 
     @SuppressWarnings("unchecked")

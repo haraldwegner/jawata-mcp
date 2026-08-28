@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>connascence</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Connascence Fixture</name>
+    <description>
+        Jawata-owned fixture for Sprint 28d: the PROOF OF LIFE corpus for the
+        `coupling` detector, which flags a package whose cross-boundary
+        connascence weight sits in the top decile of the corpus AND above its
+        median. A quantile needs a POPULATION, so this fixture is deliberately
+        ten packages wide with a lopsided distribution:
+
+          com.example.hub     — the outlier. Every one of its 9 connascence
+                                sites crosses the package boundary, including
+                                two Connascence-of-Position call sites (3-arg
+                                and 2-arg). Cross-boundary weight 19.
+          com.example.ledger  — moderate: 4 cross-boundary sites, weight 6.
+          com.example.model   — the GOOD pole. High connascence, all of it
+                                WITHIN the package; cross-boundary weight 0,
+                                and 2 dependents. Must NOT be flagged.
+          com.example.leaf.a..g — seven self-contained packages, weight 0, so
+                                the corpus has a real distribution to rank
+                                against (median 0, 90th-percentile cut 6).
+
+        Expected with the default 90th percentile: exactly TWO findings —
+        com.example.hub (weight 19) then com.example.ledger (weight 6).
+        Nothing outside this project may be added to it: the numbers above are
+        an order statistic of exactly these files.
+    </description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>
