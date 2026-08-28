@@ -87,6 +87,30 @@ public final class HeadlessJdtConfig {
                 addTemplate(store, CodeTemplateContextType.CATCHBLOCK_ID, "catchblock",
                     CodeTemplateContextType.CATCHBLOCK_CONTEXTTYPE,
                     "// ${todo} Auto-generated catch block\n${exception_var}.printStackTrace();");
+
+                // NEWTYPE + CLASSBODY — the templates needed to generate a WHOLE NEW
+                // FILE, as opposed to a member body. Added at Stage 7 (S7.0), measured
+                // rather than anticipated.
+                //
+                // Without them CodeGeneration.getCompilationUnitContent returns NULL,
+                // and JDT hands that null straight to Buffer.setContents:
+                //
+                //   NullPointerException: Cannot invoke "String.toCharArray()"
+                //     because "newContents" is null
+                //     at ParameterObjectFactory.createTopLevelParameterObject
+                //     at ExtractClassRefactoring.createChange
+                //
+                // The failure shape is the point. It happens in createChange, AFTER
+                // checkInitialConditions AND checkFinalConditions both return clean —
+                // every precondition green and nothing to apply. Any refactoring that
+                // creates a top-level type headlessly hits this, so it is fixed here
+                // in the shared config rather than at one call site.
+                addTemplate(store, CodeTemplateContextType.NEWTYPE_ID, "newtype",
+                    CodeTemplateContextType.NEWTYPE_CONTEXTTYPE,
+                    "${package_declaration}\n\n${type_declaration}");
+                addTemplate(store, CodeTemplateContextType.CLASSBODY_ID, "classbody",
+                    CodeTemplateContextType.CLASSBODY_CONTEXTTYPE, "");
+
                 JavaManipulation.setCodeTemplateStore(store);
                 JavaManipulation.setCodeTemplateContextRegistry(registry);
             }
