@@ -22,13 +22,15 @@ import java.util.function.Supplier;
  */
 public class ExtractTool extends AbstractTool {
 
-    private static final List<String> KINDS = List.of("method", "variable", "constant", "interface", "superclass");
+    private static final List<String> KINDS =
+        List.of("method", "variable", "constant", "interface", "superclass", "class");
 
     private final ExtractMethodTool method;
     private final ExtractVariableTool variable;
     private final ExtractConstantTool constant;
     private final ExtractInterfaceTool interfaceTool;
     private final ExtractSuperclassTool superclass;
+    private final ExtractClassTool classTool;
 
     public ExtractTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -37,6 +39,7 @@ public class ExtractTool extends AbstractTool {
         this.constant = new ExtractConstantTool(serviceSupplier, cache);
         this.interfaceTool = new ExtractInterfaceTool(serviceSupplier, cache);
         this.superclass = new ExtractSuperclassTool(serviceSupplier, cache);
+        this.classTool = new ExtractClassTool(serviceSupplier, cache);
     }
 
     @Override
@@ -65,6 +68,14 @@ public class ExtractTool extends AbstractTool {
                          members[], mode). Default mode=jdt (the JDT engine: fields,
                          non-identical members, constructors); mode=identical is the
                          conservative byte-identical + self-contained contract.
+            - class    — extract a group of FIELDS into a new class; the original keeps a
+                         reference and every access is rewritten through it. Needs: line,
+                         column, newTypeName, fields[] (optional fieldName, createTopLevel,
+                         createGetterSetter). fields[] has no default on purpose — WHICH
+                         state travels together is the design decision this carries out.
+                         Move Field ships INSIDE this rather than beside it: it is the
+                         constituent atom, and moving a field needs a target that already
+                         owns state, so the move and the class creation must be atomic.
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying.
@@ -135,6 +146,7 @@ public class ExtractTool extends AbstractTool {
             case "constant"  -> constant.executeWithService(service, arguments);
             case "interface" -> interfaceTool.executeWithService(service, arguments);
             case "superclass" -> superclass.executeWithService(service, arguments);
+            case "class"     -> classTool.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
