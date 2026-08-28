@@ -5,11 +5,16 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.compiler.IProblem;
+import org.eclipse.jdt.core.dom.AST;
+import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.ExtractTool;
+import org.jawata.mcp.tools.UndoRefactoringTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +57,7 @@ class ExtractClassToolTest {
 
     private JdtServiceImpl service;
     private ExtractTool tool;
+    private UndoRefactoringTool undoTool;
     private ObjectMapper mapper;
     private Path targetFile;
     private Path pkgDir;
@@ -59,7 +65,9 @@ class ExtractClassToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        tool = new ExtractTool(() -> service, new RefactoringChangeCache());
+        RefactoringChangeCache cache = new RefactoringChangeCache();
+        tool = new ExtractTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache);
         mapper = new ObjectMapper();
         pkgDir = helper.getTempDirectory().resolve("simple-maven/src/main/java/com/example");
         targetFile = pkgDir.resolve("SrpCohesionTargets.java");
@@ -68,6 +76,71 @@ class ExtractClassToolTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> getData(ToolResponse r) {
         return (Map<String, Object>) r.getData();
+    }
+
+    private long compileErrors(Path file) throws Exception {
+        ICompilationUnit cu = service.getCompilationUnit(file);
+        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+        parser.setSource(cu);
+        parser.setResolveBindings(true);
+        CompilationUnit ast = (CompilationUnit) parser.createAST(null);
+        return java.util.Arrays.stream(ast.getProblems()).filter(IProblem::isError).count();
+    }
+
+    /**
+     * S7.3 — PARITY and UNDO, the two halves of "reversible".
+     *
+     * <p>Parity is not "the tool reported success". A refactoring that moves fields
+     * out and fails to rewrite the accesses left behind still returns a change, still
+     * writes files, and leaves both of them uncompilable. So both touched files are
+     * parsed with bindings and their ERROR count asserted at zero — the same gate the
+     * applied change is wrapped in, checked here from the outside.</p>
+     *
+     * <p>Undo is the other half. A mutating operation that cannot be taken back has
+     * moved the risky part of the work onto whoever ran it. The original must come
+     * back BYTE-IDENTICAL — not merely equivalent, because a refactoring engine that
+     * reformats on the way back has silently rewritten code nobody asked it to touch
+     * — and the created file must be gone, not left orphaned.</p>
+     */
+    @Test
+    @DisplayName("S7.3: it compiles after, and undo restores the original byte-identically")
+    void itCompilesAndUndoRestores() throws Exception {
+        String originalSource = Files.readString(targetFile);
+        Path created = pkgDir.resolve("PointMeta.java");
+        assertFalse(Files.exists(created), "precondition: the extracted class must not exist yet");
+
+        ToolResponse r = tool.execute(args("PointMeta", "label", "unit"));
+        assertTrue(r.isSuccess(), () -> "extract(kind=class) failed: " + r.getError());
+        Map<String, Object> data = getData(r);
+        String undoId = (String) data.get("undoChangeId");
+        assertNotNull(undoId, "an applied refactoring owes an undo handle");
+
+        // PARITY: both files compile. The extraction rewrote every access to the moved
+        // fields, or one of these is non-zero.
+        assertEquals(0, compileErrors(targetFile),
+            () -> "the ORIGINAL must still compile — if the fields moved but their uses did"
+                + " not follow, this is where it shows:\n" + readQuietly(targetFile));
+        assertEquals(0, compileErrors(created),
+            () -> "the EXTRACTED class must compile:\n" + readQuietly(created));
+
+        ToolResponse undone = undoTool.execute(
+            mapper.createObjectNode().put("undoChangeId", undoId));
+        assertTrue(undone.isSuccess(), () -> String.valueOf(undone.getError()));
+
+        assertEquals(originalSource, Files.readString(targetFile),
+            "undo must restore the original BYTE-IDENTICALLY. Equivalent-but-reformatted is"
+                + " a failure: it means the engine rewrote code nobody asked it to touch");
+        assertFalse(Files.exists(created),
+            "undo must delete the created class. Leaving it behind is worse than not undoing"
+                + " at all — the state is now neither before nor after");
+    }
+
+    private static String readQuietly(Path p) {
+        try {
+            return Files.readString(p);
+        } catch (Exception e) {
+            return "<unreadable: " + e + ">";
+        }
     }
 
     /** PointBuilder's declaration sits at 0-based line 42 in the fixture. */
