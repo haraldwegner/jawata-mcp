@@ -42,6 +42,34 @@ for d in "$DIST/bundles" "$DIST/test-bundles"; do
     fi
 done
 
+# issue #1's other half: refuse a STALE dist. The check above catches TWO
+# versions of a bundle shadowing each other; it does not catch ONE bundle that
+# is simply OLDER than the code. Discovery below reads these jars, so an
+# out-of-date dist means the run tests the previous build and says nothing
+# whatever about the working tree.
+#
+# Measured 2026-08-28, which is why this exists: two consecutive runs reported
+# an identical total AND an identical shard split while the tree carried two
+# more tests than the jar. Both executed a jar built 70 minutes earlier, the two
+# new tests never ran, and the green was a true result about the wrong code —
+# indistinguishable, from the summary line, from a green about the right one.
+#
+# Fixtures are excluded on purpose: sample-project sources under test-resources
+# are read from disk at run time and never compiled into a bundle, so touching
+# one does not stale the dist.
+STALE_SRC=$(find "$ROOT" -name '*.java' \
+                -not -path '*/target/*' \
+                -not -path '*/test-resources/*' \
+                -not -path '*/.git/*' \
+                -newer "$DIST/jawata.jar" -print -quit 2>/dev/null)
+if [ -n "$STALE_SRC" ]; then
+    echo "FATAL: the dist is OLDER than the source, so this run would test the PREVIOUS build."
+    echo "  source newer than the dist: $STALE_SRC"
+    echo "  dist built:                 $(date -r "$DIST/jawata.jar" '+%Y-%m-%d %H:%M:%S')"
+    echo "Rebuild first:  mvn -f build/pom.xml clean package -DskipTests"
+    exit 2
+fi
+
 # The verdict gate proves its own arithmetic before it is trusted to judge a
 # run. It costs milliseconds and runs FIRST so a broken gate costs a re-run
 # rather than a whole suite. A gate that certifies a run is worth no more than
