@@ -67,7 +67,7 @@ public final class ShotgunSurgeryDetector extends AbstractAstDetector {
                         "shotgun_surgery", filePath, line, -1, "warning",
                         "Type '" + name + "' is referenced from " + spread + " distinct types (threshold "
                             + threshold + "); a change to it ripples widely. Consider Move Method/Field "
-                            + "to gather the scattered responsibility." + OcpCure.HINT,
+                            + "to gather the scattered responsibility." + CureCatalog.ocpHint(),
                         name));
                 }
                 return true;

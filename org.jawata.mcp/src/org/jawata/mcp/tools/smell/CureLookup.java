@@ -21,8 +21,11 @@ import java.util.Map;
  *   <li>{@link CureCatalog} — WHICH design cures this kind, by catalogue key;</li>
  *   <li>{@link CatalogueAddresses} — the address that key resolves to, read off
  *       a row, or nothing;</li>
- *   <li>{@link RecipeCatalog} / {@link OcpCure} — the hardcoded map, which
- *       survives as the <b>STATED FALLBACK</b> and never as a silent default.</li>
+ *   <li>{@link CureCatalog#recipesFor} — the same table's runnable half, which
+ *       survives as the <b>STATED FALLBACK</b> and never as a silent default.
+ *       It was two further classes until S7; they held the same mappings a
+ *       second and third time, so the fallback could disagree with the cure it
+ *       was falling back from.</li>
  * </ol>
  *
  * <h2>The three answers this can give, and why they must stay distinct</h2>
@@ -145,7 +148,7 @@ public final class CureLookup {
             degradation = "DEGRADED — catalogue namespace(s) " + String.join(", ", absent)
                 + " hold ZERO rows, so this cure could not be resolved from the store."
                 + " What follows is the hardcoded map, not the catalogue.";
-            fallback = RecipeCatalog.recipesFor(kind);
+            fallback = CureCatalog.recipesFor(kind);
         }
         return new Cures(kind, List.copyOf(resolved), List.copyOf(unresolved),
             degradation, List.copyOf(fallback));

@@ -28,8 +28,32 @@ import java.util.Map;
  * {@code encapsulation} are cured by a design decision, not by an automated
  * rewrite. Their cure is still an ADDRESS a reader can open, so they belong
  * here with a null recipe rather than being left out and reading as "no cure
- * known". {@link RecipeCatalog} keeps its own, narrower answer: what can be
- * RUN. The two are different questions and this table does not overwrite it.</p>
+ * known".
+ *
+ * <h2>Sprint 28d Stage 6 / S7 — this is now the ONLY cure table</h2>
+ *
+ * <p>It previously said that {@code RecipeCatalog} "keeps its own, narrower
+ * answer: what can be RUN. The two are different questions and this table does
+ * not overwrite it." <b>That was false by the time it was written.</b> Every
+ * mapping the recipe table held is present here with the same plan kind, and
+ * {@code OcpCure} was not a peer table at all — the recipe table delegated the
+ * two churn kinds to it and handled the rest, so it was a subset wrapped by a
+ * view. What "can be RUN" is not a second question; it is THIS table filtered to
+ * the entries whose recipe is non-null, which is what {@link #recipesFor} now
+ * returns. Two tables answering one question is how the answers drift, and a
+ * comment asserting they cannot is not a mechanism.</p>
+ *
+ * <h2>Why a cure may name a design, a recipe, or both</h2>
+ *
+ * <p>A cure is the route from a smell to a target state, and targets come in two
+ * kinds. Some name a DESIGN to reach — become a State machine — and that is the
+ * {@code operation}, an address a reader opens. Others are DEFINITIONAL: the end
+ * state is the cure's own completion, as {@code inline_singleton} ends with the
+ * singleton inlined and {@code compose_method} with the method composed. Those
+ * need no separate target and their {@code operation} is a convenience for the
+ * reader rather than a destination they must reach. So neither half is required:
+ * a recipe with no design still runs, a design with no recipe still reads, and
+ * an entry needs at least one to be worth declaring.</p>
  */
 public final class CureCatalog {
 
@@ -91,6 +115,69 @@ public final class CureCatalog {
         }
         return BY_KIND.getOrDefault(kind, List.of());
     }
+
+    /**
+     * The RUNNABLE plan kinds that cure {@code kind}, best-first; empty if none.
+     *
+     * <p>This is {@link #curesFor} filtered to entries that have a recipe — the
+     * question {@code RecipeCatalog} used to answer from its own copy of the same
+     * mappings. A view, not a table: there is nothing here to keep in step,
+     * because there is nothing here to disagree with.</p>
+     */
+    public static List<String> recipesFor(String kind) {
+        List<String> out = new java.util.ArrayList<>();
+        for (Cure c : curesFor(kind)) {
+            if (c.recipe() != null) {
+                out.add(c.recipe());
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** Whether {@code kind} has at least one runnable cure recipe. */
+    public static boolean hasRecipe(String kind) {
+        return !recipesFor(kind).isEmpty();
+    }
+
+    /**
+     * The OCP-cure pointer the churn detectors append to their messages.
+     *
+     * <p><b>DERIVED from the table, not written beside it.</b> It used to be a
+     * constant that spelled out {@code refactor_to_state /
+     * refactor_to_command_dispatcher / form_template_method} — which is exactly
+     * {@code recipesFor("divergent_change")}. A hand-written copy of a list the
+     * table already holds is a second home for one fact, and the copy is the one
+     * that goes stale: adding a fourth design to {@code OPEN_THE_AXIS} would have
+     * changed what the tool DOES while this sentence went on describing three.
+     * Now the sentence cannot be wrong about the table, because it is read from
+     * it. The wording is byte-identical to what it replaced.</p>
+     *
+     * <p>It carries no ADDRESS, and cannot: it names plan kinds, with nothing
+     * behind them checked. That is why it is a pointer and the resolved cure —
+     * read off a catalogue row by {@link CureLookup} — is the answer.</p>
+     */
+    public static String ocpHint() {
+        return OCP_LEAD + " — refactor_to_pattern "
+            + "kind=" + String.join(" / ", recipesFor("divergent_change")) + " "
+            + "(or refactoring(action=plan, kind=<same>) then apply_plan for a parity-gated run).";
+    }
+
+    /**
+     * The lead sentence both OCP messages open with.
+     *
+     * <p>Two branches emit it: this one when a cure was RESOLVED from a catalogue
+     * row (the address follows), and {@link #ocpHint()} when nothing was declared
+     * or resolved (plan kinds follow, with no address). They are different
+     * messages for different situations — not one fact stated twice — but the
+     * opening sentence was written out in both, so a reword would have changed
+     * one and left the other saying something else about the same principle.</p>
+     */
+    public static String ocpLeadResolved() {
+        return OCP_LEAD + ".";
+    }
+
+    private static final String OCP_LEAD =
+        " OCP cure: introduce an abstraction at the modification axis";
 
     /**
      * Every DISTINCT cure key declared anywhere in this table — the set the

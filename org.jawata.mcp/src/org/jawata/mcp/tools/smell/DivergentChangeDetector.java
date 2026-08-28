@@ -71,7 +71,8 @@ public final class DivergentChangeDetector implements Detector {
                 out.add(new Finding(
                     "divergent_change", service.getPathUtils().formatPath(file), 1, -1, "warning",
                     "Changed in " + commits + " commits across " + areas + " distinct areas (threshold "
-                        + threshold + ") — likely changing for many reasons. Consider Extract Class." + OcpCure.HINT,
+                        + threshold + ") — likely changing for many reasons. Consider Extract Class."
+                        + CureCatalog.ocpHint(),
                     stem(rel)));
             }
         }

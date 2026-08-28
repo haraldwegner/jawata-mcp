@@ -1,27 +1,27 @@
 package org.jawata.mcp.tools.refactoring;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+import java.util.Map;
+
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.RefactoringTool;
-import org.jawata.mcp.tools.smell.OcpCure;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 18 — refactoring(action=plan): decompose a kind into an ordered, inspectable
@@ -125,7 +125,7 @@ class RefactorPlanToolTest {
     @Test
     @DisplayName("every OCP-cure recipe kind is a runnable single-step plan (detect -> cure -> execute)")
     void ocpCureKinds_areRunnablePlans() {
-        for (String kind : OcpCure.recipesFor("divergent_change")) {
+        for (String kind : org.jawata.mcp.tools.smell.CureCatalog.recipesFor("divergent_change")) {
             ObjectNode a = plan(kind);
             a.put("line", 5);
             a.put("column", 6);

@@ -14,12 +14,13 @@ import java.util.List;
  *
  * <h2>This is an AGGREGATION, and says so</h2>
  * <p>It contains no new analysis. Sprint 20 deliberately shipped no {@code ocp}
- * detector, reasoning (in {@link OcpCure}) that an OCP violation is only
+ * detector, reasoning (recorded with the OCP cure, now in {@link CureCatalog})
+ * that an OCP violation is only
  * meaningful relative to the extension axis you intend to keep open — design
  * intent, not a code property. That reasoning still holds and this kind does not
  * overturn it. What it fixes is a <em>reachability</em> gap: the two observable
  * traces of a closed-for-extension design were already detected
- * ({@code switch_statements}, {@code type_code}) and {@link OcpCure} already
+ * ({@code switch_statements}, {@code type_code}) and the cure table already
  * answered with recipes, but nothing named {@code ocp} existed, so a reader
  * sweeping a family for the principle found nothing and concluded the principle
  * was unmeasured. This kind is the name, over the existing measurements.</p>
@@ -29,7 +30,7 @@ import java.util.List;
  * {@code threshold} (both default to 3 — the same number means the same thing in
  * both: how many cases/constants make a group), then re-labels each finding
  * {@code ocp} and appends the cure — the {@code refactor_to_pattern} recipes
- * {@link RecipeCatalog} maps that trace to. Nothing is re-implemented, so the two
+ * {@link CureCatalog} maps that trace to. Nothing is re-implemented, so the two
  * kinds can never drift apart from this one.</p>
  *
  * <h2>What is deliberately NOT collapsed</h2>
@@ -50,7 +51,7 @@ import java.util.List;
  *       <b>constant groups smaller than {@code threshold}</b> — below the group
  *       size there is no axis yet, only a conditional.</li>
  *   <li><b>The churn traces</b> {@code divergent_change} /
- *       {@code shotgun_surgery} are NOT folded in, even though {@link OcpCure}
+ *       {@code shotgun_surgery} are NOT folded in, even though {@link CureCatalog}
  *       serves them the same recipes. They are git-history detectors: they answer
  *       from commit churn, not from the AST, and merging a history verdict into a
  *       source verdict under one kind would make it impossible to tell which
@@ -146,8 +147,8 @@ public final class OcpDetector extends AbstractAstDetector {
         String cure = lookup.isBlank()
             // Nothing declared AND nothing resolved: the pre-28d pointer, which
             // carries no address and never claimed to.
-            ? OcpCure.HINT
-            : " OCP cure: introduce an abstraction at the modification axis." + lookup;
+            ? CureCatalog.ocpHint()
+            : CureCatalog.ocpLeadResolved() + lookup;
         return new Finding("ocp", trace.filePath(), trace.line(), trace.column(), trace.severity(),
             "Open/Closed: this code must be MODIFIED to extend it. " + trace.message()
                 + " [trace: " + trace.kind() + "]" + cure,

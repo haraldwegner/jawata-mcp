@@ -23,7 +23,7 @@ import org.jawata.mcp.refactoring.PlanStore;
 import org.jawata.mcp.refactoring.PurityCheck;
 import org.jawata.mcp.refactoring.PurityCheck.PurityFinding;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
-import org.jawata.mcp.tools.smell.RecipeCatalog;
+import org.jawata.mcp.tools.smell.CureCatalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -144,7 +144,7 @@ class PlanRefactoringTool extends AbstractTool {
         // find_quality_issue finding hands straight to a runnable, parity-gated plan.
         String sourceSmell = null;
         if (!PLAN_KINDS.contains(kind)) {
-            List<String> recipes = RecipeCatalog.recipesFor(kind);
+            List<String> recipes = CureCatalog.recipesFor(kind);
             if (recipes.isEmpty()) {
                 return ToolResponse.invalidParameter("kind",
                     "plan kind must be one of " + PLAN_KINDS + ", or a smell kind with a known recipe; "
