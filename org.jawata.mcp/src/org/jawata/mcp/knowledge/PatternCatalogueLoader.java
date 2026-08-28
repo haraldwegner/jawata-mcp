@@ -1,8 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -10,13 +7,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Sprint 28c D5 — seed the frozen pattern catalogue into a store, once, and
@@ -168,38 +166,14 @@ public final class PatternCatalogueLoader implements CatalogueSource {
     public Result load(ExperienceStore store, int limit) {
         JsonNode patterns = snapshot().path("patterns");
         String commit = snapshot().path("pinned_commit").asText("UNPINNED");
-        int seeded = 0;
-        int unchanged = 0;
+        int declared = snapshot().path("count").asInt(-1);
         int considered = 0;
-        int retired = 0;
 
-        // D6 — "a newer jawata PROPOSES, and never overwrites." Overwriting was
-        // never possible: putWithSource inserts under a fresh UUID, so the
-        // incumbent row survives untouched. What was missing is the other half,
-        // and only the first half had ever been tested. Measured on a fixture
-        // that seeds a pattern, edits it and re-seeds: TWO rows for one
-        // source_ref, both live, unrelated -- so an upstream fix DUPLICATED the
-        // catalogue instead of updating it, and the stale text kept answering
-        // beside the current one with nothing to tell them apart. At 187
-        // patterns that compounds on every snapshot bump.
-        //
-        // Read ONCE, before the loop. Asking the store per pattern would be 187
-        // full scans on a cold start, which is the kind of quiet quadratic that
-        // only shows up on somebody else's machine.
-        Map<String, List<String>> liveByRef = new HashMap<>();
-        for (StoredEntry e : store.all()) {
-            String ref = e.sourceRef();
-            if (ref != null && ref.startsWith(SOURCE_PREFIX)
-                    && !ExperienceEntry.SUPERSEDED.equals(e.status())) {
-                liveByRef.computeIfAbsent(ref, k -> new ArrayList<>()).add(e.id());
-            }
-        }
-
-        // Every ref THIS snapshot claims, whether it was rewritten or already
-        // current. The difference against liveByRef below is the set of rows
-        // upstream no longer has a pattern for.
-        java.util.Set<String> claimed = new java.util.HashSet<>();
-
+        // THIS SOURCE'S ONLY JOB: say which rows it currently claims. Everything
+        // that can diverge between sources — retire-then-write, the orphan sweep,
+        // its two guards — belongs to CatalogueSeeder and is written once.
+        // Sprint 28d Stage 6 / S1; ARCHITECTURE-28d v2.
+        java.util.List<CatalogueSeeder.SeedItem> items = new ArrayList<>();
         for (JsonNode p : patterns) {
             if (limit > 0 && considered >= limit) {
                 break;
@@ -209,92 +183,14 @@ public final class PatternCatalogueLoader implements CatalogueSource {
             if (slug.isBlank()) {
                 continue;
             }
-            String sourceRef = SOURCE_PREFIX + slug + "/README.md";
-            claimed.add(sourceRef);
-            String hash = hashOf(p);
-            if (store.sourceUnchanged(sourceRef, hash)) {
-                unchanged++;
-                continue;
-            }
-            // Retire BEFORE writing the newcomer. The order matters on a store
-            // that could be read concurrently: retire-then-write leaves a moment
-            // with no live copy, write-then-retire leaves a moment with two, and
-            // two live copies is the defect itself. A superseded row is not
-            // deleted — it keeps its content and stops being returned, because
-            // isLive() excludes it — so this is reversible by setting the status
-            // back, which is why it is supersession and not a delete.
-            for (String incumbent : liveByRef.getOrDefault(sourceRef, List.of())) {
-                if (store.setStatus(incumbent, ExperienceEntry.SUPERSEDED)) {
-                    retired++;
-                }
-            }
-            store.putWithSource(entryFor(p, slug), sourceRef, hash);
-            seeded++;
-        }
-        // THE ROWS UPSTREAM NO LONGER HAS A PATTERN FOR.
-        //
-        // Supersession above is per-pattern and keyed on the ref that pattern
-        // claims, so it can only ever retire a row the NEW snapshot still
-        // names. A slug upstream deletes or renames is never iterated, so its
-        // row stayed live indefinitely — carrying `design:<gone-slug>` and an
-        // address pointing at a README that no longer exists. Nothing failed:
-        // CureLookup.audit asks whether a live row carries the key, and one
-        // does, so it reported `clean` while the address was dead. That is the
-        // drift this sweep closes, and it is invisible without it.
-        //
-        // TWO GUARDS, because the sweep is far more destructive than the bug
-        // if either is missing:
-        //   - limit > 0 is the bounded SAMPLE mode. Under a truncated snapshot
-        //     every pattern outside the sample looks unclaimed, so the sweep
-        //     would supersede almost the whole catalogue.
-        //   - the snapshot must be COMPLETE, and it says so itself: the file
-        //     carries its own `count`. Emptiness was the guard here first, and
-        //     it only covers zero — a snapshot that parses and yields 40 of 187
-        //     patterns passes an is-it-empty check and retires the other 147 on
-        //     every user's next boot. That is the same could-not-look /
-        //     found-nothing confusion one step above the zero, and the field
-        //     that settles it was already in the file and unread. A snapshot
-        //     that does not declare a count cannot be checked, so the sweep
-        //     does not run and says why: an unverifiable input is not a
-        //     verified one.
-        int orphaned = 0;
-        List<String> orphanRefs = new ArrayList<>();
-        int declared = snapshot().path("count").asInt(-1);
-        // `declared > 0`, not `>= 0`: a snapshot declaring ZERO patterns and
-        // carrying zero is internally CONSISTENT, and an earlier version of
-        // this line called that complete and swept the whole catalogue on it.
-        // The empty-snapshot guard test caught it. Consistency is not
-        // completeness — an empty read agrees with itself.
-        boolean complete = declared > 0 && declared == claimed.size();
-        if (limit == 0 && !claimed.isEmpty() && !complete) {
-            log.warn("Pattern catalogue: NOT sweeping orphans at {} — the snapshot declares {}"
-                    + " pattern(s) and yielded {} claimable ref(s). A partial snapshot would"
-                    + " retire every pattern it happens not to carry.", commit, declared,
-                claimed.size());
-        }
-        if (limit == 0 && complete) {
-            for (Map.Entry<String, List<String>> live : liveByRef.entrySet()) {
-                if (claimed.contains(live.getKey())) {
-                    continue;
-                }
-                for (String id : live.getValue()) {
-                    if (store.setStatus(id, ExperienceEntry.SUPERSEDED)) {
-                        orphaned++;
-                    }
-                }
-                orphanRefs.add(live.getKey());
-            }
-        }
-        retired += orphaned;
-        if (orphaned > 0) {
-            // NAMED, not just counted: "3 retired" is the same line whether
-            // upstream dropped three patterns or a snapshot bump mangled three
-            // slugs, and those need opposite responses.
-            log.info("Pattern catalogue: retired {} row(s) for {} pattern(s) no longer in the"
-                    + " snapshot at {}: {}", orphaned, orphanRefs.size(), commit, orphanRefs);
+            items.add(new CatalogueSeeder.SeedItem(
+                SOURCE_PREFIX + slug + "/README.md", hashOf(p), entryFor(p, slug)));
         }
 
-        Result result = new Result(considered, seeded, unchanged, retired, commit);
+        CatalogueSeeder.Outcome outcome =
+            CatalogueSeeder.seed(store, SOURCE_PREFIX, items, declared, limit > 0, commit);
+        Result result = new Result(considered, outcome.seeded(), outcome.unchanged(),
+            outcome.retired(), commit);
 
         // A start that loaded nothing logs nothing — recoverOrphans' own rule.
         // A line on every boot trains the reader to skip it, and then the one
@@ -302,7 +198,7 @@ public final class PatternCatalogueLoader implements CatalogueSource {
         if (!result.quiet()) {
             log.info("Pattern catalogue: seeded {} of {} patterns at {} ({} already current,"
                     + " {} older version(s) retired)",
-                seeded, considered, commit, unchanged, retired);
+                result.seeded(), considered, commit, result.unchanged(), result.retired());
         }
         return result;
     }
