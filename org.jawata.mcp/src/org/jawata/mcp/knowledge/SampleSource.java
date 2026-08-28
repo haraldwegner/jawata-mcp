@@ -103,23 +103,38 @@ public final class SampleSource implements CatalogueSource {
             .asText("org.jawata.samples, versioned with this product");
     }
 
+    /**
+     * Say which rows this source claims, and let {@link CatalogueSeeder} do the
+     * rest. Sprint 28d Stage 6 / S2.
+     *
+     * <p><b>What this method used to be, because it is the reason the stage
+     * exists.</b> Nine lines: skip if unchanged, else write. No supersession of
+     * any kind. So an EDITED sample left its predecessor live — and these samples
+     * version with the product, which makes editing one the ordinary case, not a
+     * rare upstream event — while a sample dropped from the index stayed live
+     * forever with an address nothing backed. The fork's loader had been taught
+     * both lessons; this lane had a test for neither, because the assertions
+     * lived in a class bound to the other implementation.</p>
+     *
+     * <p>Nothing here decides anything about lifecycle any more. That is the
+     * point: there is no step left for a source to get wrong.</p>
+     */
     @Override
     public int seed(ExperienceStore store) {
-        int seeded = 0;
+        int declared = index().path("count").asInt(-1);
+        List<CatalogueSeeder.SeedItem> items = new ArrayList<>();
         for (JsonNode sample : index().path("samples")) {
             String slug = sample.path("slug").asText("");
             if (slug.isBlank()) {
                 continue;
             }
-            String sourceRef = SOURCE_PREFIX + slug;
-            String hash = hashOf(sample);
-            if (store.sourceUnchanged(sourceRef, hash)) {
-                continue;
-            }
-            store.putWithSource(entryFor(sample, slug), sourceRef, hash);
-            seeded++;
+            items.add(new CatalogueSeeder.SeedItem(
+                SOURCE_PREFIX + slug, hashOf(sample), entryFor(sample, slug)));
         }
-        return seeded;
+        // bounded=false: this source has no sample mode — it always claims its
+        // whole index, so an unclaimed row genuinely means "no longer ours".
+        return CatalogueSeeder.seed(store, SOURCE_PREFIX, items, declared, false, authority())
+            .seeded();
     }
 
     /** Over the sample's own JSON, so any field changing makes the row stale. */

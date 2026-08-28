@@ -1,6 +1,9 @@
 {
+  "namespace": "jawata-samples",
+  "prefix": "sample:jawata-samples/",
   "authority": "org.jawata.samples, versioned with this product",
-  "note": "Cures the upstream pattern fork has no module for. Own-authored, so the detector and the specimen it points at ship from one commit and cannot drift apart — which is why this source carries no pinned commit.",
+  "count": 2,
+  "note": "Cures the upstream pattern fork has no module for. Own-authored, so the detector and the specimen it points at ship from one commit and cannot drift apart — which is why this source carries no pinned commit. `count` is not decoration: the shared seeder refuses to sweep rows this file no longer claims unless the claimed rows equal it, so a truncated read cannot be mistaken for a deletion. Keep it equal to the length of `samples`.",
   "samples": [
     {
       "slug": "compose-method",
