@@ -952,11 +952,79 @@ public class OcpTarget {
     }
 }
 EOF_OCP
+# Sprint 28d Stage 7 (S7.5): the Extract Class target. Written BEFORE load_project
+# so the model sees it — a class added afterwards may or may not be picked up, and
+# a promise that depends on a refresh race is a promise that fails for the wrong
+# reason. The field pair {street, city} travels together; quantity does not, which
+# is what makes the extraction a choice rather than "move everything".
+cat > "$WS/proj/src/main/java/com/example/ExtractTarget.java" << 'EOF_EXTRACT'
+package com.example;
+
+/** A field group that travels together — the shape Extract Class moves out. */
+public class ExtractTarget {
+    private String street;
+    private String city;
+    private int quantity;
+
+    public ExtractTarget(String street, String city, int quantity) {
+        this.street = street;
+        this.city = city;
+        this.quantity = quantity;
+    }
+
+    public String label() {
+        return street + ", " + city + " x" + quantity;
+    }
+}
+EOF_EXTRACT
 LP="$(call load_project "{\"projectPath\":\"$WS/proj\"}")"
 case "$LP" in
     *'"success":true'*|*sourceFiles*|*packages*) pass "choke-gate a real project loads in the throwaway resident" ;;
     *) fail "choke-gate load_project failed: $(printf '%s' "$LP" | head -c 200)" ;;
 esac
+
+# --- extract-class-stages: 28d Stage 7 (S7.5), the new operation at the front door
+# C7 requires the E2E to add "a front-door refactoring(action=plan) staging each new
+# kind". Read literally that does not fit: refactoring(action=plan)'s kind enum holds
+# the multi-step PATTERN transforms (compose_method, refactor_to_state, ...), and
+# Extract Class is an atomic operation reached as extract(kind=class). A one-step
+# plan would be a degenerate wrapper invented to match a sentence.
+#
+# So the SUBSTANCE is asserted instead, and the deviation is named here rather than
+# left for an auditor: the new kind is reachable through the real front door, and it
+# STAGES — auto_apply=false returns a changeId and a diff and writes nothing, which
+# is the staging contract refactoring(action=apply) then performs.
+#
+# Why this belongs at the front door at all: every unit test of an operation
+# constructs the tool itself. Sprint 27a shipped a central feature that was 1591/1591
+# green and inert in production, because the tests supplied the very wiring that was
+# missing. Only the endpoint an editor uses can tell "wired" from "works when called".
+EXTRACT_SRC="$WS/proj/src/main/java/com/example/ExtractTarget.java"
+EX="$(call extract "{\"kind\":\"class\",\"filePath\":\"$EXTRACT_SRC\",\"line\":3,\"column\":13,
+      \"newTypeName\":\"Address\",\"fields\":[\"street\",\"city\"],
+      \"createGetterSetter\":false,\"auto_apply\":false}")"
+case "$EX" in
+    *'"changeId"'*)
+        pass "extract-class-stages extract(kind=class) stages a change at the front door" ;;
+    *'Unknown kind'*)
+        fail "extract-class-stages the front door does not know kind=class — the operation
+          exists but is NOT wired into extract's dispatch: $(printf '%s' "$EX" | head -c 300)" ;;
+    *)
+        fail "extract-class-stages no changeId from a staged extract(kind=class): $(printf '%s' "$EX" | head -c 300)" ;;
+esac
+# STAGED means NOTHING WAS WRITTEN. A tool that applies while reporting a staged
+# change has taken the decision away from the caller, and the response looks the
+# same either way.
+if grep -q "private String street;" "$EXTRACT_SRC"; then
+    pass "extract-class-stages staging wrote nothing — the source still holds its fields"
+else
+    fail "extract-class-stages auto_apply=false MODIFIED the source; staging is not staging"
+fi
+if [ -e "$WS/proj/src/main/java/com/example/Address.java" ]; then
+    fail "extract-class-stages auto_apply=false created the extracted class on disk"
+else
+    pass "extract-class-stages staging created no file"
+fi
 
 # --- cure-resolves: 28d Stage 5, a detector's cure carries a REAL address ----
 # Sprint 28d. The cure lookup resolves a smell kind to the catalogue entries
