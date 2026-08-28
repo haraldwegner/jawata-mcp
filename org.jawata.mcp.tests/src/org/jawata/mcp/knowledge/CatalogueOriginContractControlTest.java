@@ -182,35 +182,40 @@ class CatalogueOriginContractControlTest {
     }
 
     /**
-     * CONTRACT: {@code a_retired_prefix_never_overlaps_a_live_one}. The migration
-     * supersedes every row under a retired prefix WITHOUT the completeness guard —
-     * deliberately, since a retired spelling has no current input — so an overlap
-     * would retire a live origin's whole catalogue on the next boot.
-     */
-    /**
-     * The overlap predicate must DISCRIMINATE, which the first version of this test
-     * did not check.
+     * An origin may not retire its own live spelling — asserted as a REFUSAL, because
+     * {@link CatalogueOrigin} now enforces it.
      *
-     * <p><b>It was a tautology, found by a fresh-context audit 2026-08-28.</b> It set
-     * {@code retired := live} and then asserted
-     * {@code live.startsWith(retired) || retired.startsWith(live)} — which reduces to
-     * {@code live.startsWith(live)}, true for every string that has ever existed. It
-     * exercised no production code and could not fail, inside the very file whose job
-     * is proving that controls can fail.</p>
+     * <p><b>Two earlier versions of this test could not fail, and the second was worse
+     * than the first.</b> The original set {@code retired := live} and asserted
+     * {@code live.startsWith(retired) || retired.startsWith(live)} — which is
+     * {@code live.startsWith(live)}, true of every string there has ever been. The
+     * "repair" then changed that assertion's MESSAGE and appended a second one
+     * comparing a {@code catalogue:…} prefix against the literal
+     * {@code sample:jawata-samples/}, which cannot overlap in either direction for any
+     * registry content. Two comparisons of compile-time constants, in the one file
+     * whose whole job is proving that controls can fail — and the commit describing it
+     * claimed the added half "carried the weight", which was false about the code.</p>
      *
-     * <p>So both directions are asserted now. The overlapping case must register, and
-     * a genuinely-retired spelling must NOT — and it is the second half that carries
-     * the weight, because without it the predicate could be true of everything and the
-     * first half would still pass.</p>
+     * <p><b>What fixed it was not another assertion.</b> An invariant a test has to
+     * MIRROR is an invariant in the wrong place. {@link CatalogueOrigin}'s compact
+     * constructor now refuses a retired prefix overlapping the origin's own live
+     * prefix, so the state is unconstructible rather than merely detectable — strictly
+     * stronger — and what is asserted here is production behaviour: the refusal, and
+     * the reason its message carries.</p>
      *
-     * <p><b>The better fix, not taken here.</b> This mirrors the two-line expression
-     * written inline in {@code CatalogueOriginContractTest}, so the rule has two
-     * homes. The design answer is to give {@link CatalogueOrigin} the invariant in its
-     * own compact constructor — refusing a namespace or a retired prefix that collides
-     * — which would make the collision unconstructible rather than merely detectable,
-     * and would let this control exercise production code by asserting the refusal.
-     * That is an open architect proposal awaiting a ruling, so the mirror stands and
-     * is named rather than hidden.</p>
+     * <p><b>The near miss below is load-bearing, not decoration.</b> Without it the
+     * invariant could be weakened to "reject every retired prefix" and every other
+     * assertion in this file would still pass — the real registry would not catch it,
+     * because its one retired spelling is legitimate. Measured by mutation: dropping
+     * the trailing slash from the constructor's {@code live} string reddens that line
+     * and nothing else.</p>
+     *
+     * <p><b>What is deliberately NOT here.</b> The cross-origin case — origin A
+     * retiring origin B's live prefix — cannot be seen from a constructor, which knows
+     * nothing of the registry. It stays asserted registry-wide in
+     * {@code CatalogueOriginContractTest#a_retired_prefix_never_overlaps_a_live_one}
+     * and is not mirrored here: a control that cannot be made real should not be
+     * written, which is the lesson the two dead versions above paid for.</p>
      */
     @Test
     void an_origin_retiring_its_own_live_prefix_is_refused() {
