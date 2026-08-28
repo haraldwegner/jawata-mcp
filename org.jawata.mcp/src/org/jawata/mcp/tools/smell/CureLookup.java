@@ -183,8 +183,8 @@ public final class CureLookup {
      *
      * <p><b>Why this is owed.</b> {@code java-design-patterns} is a FOREIGN
      * authority pinned to somebody else's commit — {@link
-     * org.jawata.mcp.knowledge.CatalogueSource} says so, and says that a foreign
-     * source's addresses must be re-resolved when the pin moves. Moving the pin
+     * org.jawata.mcp.knowledge.CatalogueOrigin} says so, and says that a foreign
+     * origin's addresses must be re-resolved when the pin moves. Moving the pin
      * can rename or drop a pattern under us; the declaration here would go on
      * naming it, and every cure for the affected kinds would quietly lose its
      * address. Nothing would fail — an unresolved cure just stops carrying an

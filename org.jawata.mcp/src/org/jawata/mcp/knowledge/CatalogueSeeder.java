@@ -88,7 +88,19 @@ public final class CatalogueSeeder {
      *     trivial reason the sample never reached it
      */
     public static Outcome seed(ExperienceStore store, CatalogueOrigin origin, int limit) {
-        CatalogueManifest manifest = CatalogueManifest.read(origin);
+        return seed(store, origin, CatalogueManifest.read(origin), limit);
+    }
+
+    /**
+     * Seed from a manifest already in hand.
+     *
+     * <p>The seam for a caller that HAS the manifest rather than a resource path —
+     * the lifecycle contract tests, which construct snapshots in memory precisely
+     * so that "an upstream edit" and "a truncated read" are things a test can
+     * cause. Reading a real resource cannot express either.</p>
+     */
+    public static Outcome seed(ExperienceStore store, CatalogueOrigin origin,
+                               CatalogueManifest manifest, int limit) {
         return seed(store, origin.prefix(), manifest.items(limit), manifest.declaredCount(),
             limit > 0, manifest.authority(), origin.retiredPrefixes());
     }

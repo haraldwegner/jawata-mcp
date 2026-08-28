@@ -21,7 +21,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * merely wasteful: it duplicates 187 rows per boot, and duplicates are what
  * spend the budget an answer has.</p>
  */
-class PatternCatalogueLoaderTest {
+class CatalogueSeederLifecycleTest {
+
+    /**
+     * The fork origin, selected BY NAME rather than by registry position.
+     *
+     * <p>Registry order is a real contract — it decides merge determinism when two
+     * origins carry one operation key — but a test that says {@code get(0)} breaks
+     * confusingly the day that order changes for a good reason.</p>
+     */
+    private static final CatalogueOrigin FORK = CatalogueSources.all().stream()
+        .filter(o -> "java-design-patterns".equals(o.namespace()))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError(
+            "the fork origin is not registered — every contract below is about its"
+                + " lifecycle and none of them can run without it"));
+
+    /** Seed the origin's real bundled manifest. */
+    private static CatalogueSeeder.Outcome seedBundled(H2ExperienceStore store, int limit) {
+        return CatalogueSeeder.seed(store, FORK, limit);
+    }
+
+    /**
+     * Seed from a snapshot built in memory — the seam that lets a test CAUSE an
+     * upstream edit, a truncated read or a dropped pattern. A real resource can
+     * express none of those.
+     */
+    private static CatalogueSeeder.Outcome seedFrom(
+            H2ExperienceStore store, com.fasterxml.jackson.databind.JsonNode snapshot,
+            int limit) {
+        return CatalogueSeeder.seed(store, FORK, CatalogueManifest.of(FORK, snapshot), limit);
+    }
+
+    /** How many rows the bundled manifest carries — the old {@code inSnapshot()}. */
+    private static int bundledSize() {
+        return CatalogueManifest.read(FORK).size();
+    }
 
     /**
      * The bounded sample, printed for a human to read.
@@ -35,10 +70,9 @@ class PatternCatalogueLoaderTest {
     void the_sample_writes_one_pattern_and_it_has_the_shape_we_want(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            PatternCatalogueLoader.Result r = new PatternCatalogueLoader().load(store, 1);
+            CatalogueSeeder.Outcome r = seedBundled(store, 1);
 
-            assertEquals(1, r.inSnapshot(), "the sample must consider exactly one pattern");
-            assertEquals(1, r.seeded());
+            assertEquals(1, r.seeded(), "the sample must write exactly one pattern");
             assertEquals(1, store.count(), "and write exactly one row");
 
             StoredEntry only = store.all().get(0);
@@ -50,7 +84,7 @@ class PatternCatalogueLoaderTest {
             System.out.println("operation : " + only.operation());
             System.out.println("sourceRef : " + only.sourceRef());
 
-            assertEquals(PatternCatalogueLoader.PROVENANCE, only.facets().provenanceKind());
+            assertEquals(CatalogueManifest.PROVENANCE, only.facets().provenanceKind());
             assertEquals(ExperienceEntry.CANDIDATE, only.status(),
                 "somebody else's pattern is a candidate, never the user's earned knowledge");
             assertNotNull(only.facets().situation(), "a pattern without a situation is a heading");
@@ -65,14 +99,14 @@ class PatternCatalogueLoaderTest {
             // invented so they could pay it was the rule announcing it was wrong
             // about them. Both halves are asserted: the type AND the absence of a
             // verdict — a type change alone would leave the invented value behind.
-            assertEquals(PatternCatalogueLoader.CATALOGUE_TYPE, only.type(),
+            assertEquals(CatalogueManifest.CATALOGUE_TYPE, only.type(),
                 "the catalogue must be typed as a reference, not as an experience");
             assertNull(only.facets().verdict(),
                 "a pattern carries no outcome — an entry that reports one is reporting"
                     + " something nobody on this machine observed");
             assertFalse(only.facets().situation().startsWith("#"),
                 "a heading is not knowledge, whatever it is labelled");
-            assertTrue(only.sourceRef().startsWith(PatternCatalogueLoader.SOURCE_PREFIX),
+            assertTrue(only.sourceRef().startsWith(FORK.prefix()),
                 "sourceRef must mark the row as ours: " + only.sourceRef());
             assertFalse(only.sourceRef().contains("22a34127"),
                 "the pinned commit must NOT be in the identity key — an entry keyed by "
@@ -105,7 +139,7 @@ class PatternCatalogueLoaderTest {
     void a_pattern_is_nominated_with_its_address_and_an_experience_is_not(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new PatternCatalogueLoader().load(store, 1);
+            seedBundled(store, 1);
             StoredEntry pattern = store.all().get(0);
             store.put(ExperienceEntry.of(
                     SymbolFact.of("lesson",
@@ -147,21 +181,28 @@ class PatternCatalogueLoaderTest {
     @Test
     void a_second_start_writes_nothing(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            PatternCatalogueLoader loader = new PatternCatalogueLoader();
+            int inManifest = bundledSize();
 
-            PatternCatalogueLoader.Result first = loader.load(store);
+            CatalogueSeeder.Outcome first = seedBundled(store, 0);
             long afterFirst = store.count();
-            PatternCatalogueLoader.Result second = loader.load(store);
+            CatalogueSeeder.Outcome second = seedBundled(store, 0);
 
             assertTrue(first.seeded() > 100,
                 "the snapshot should carry the whole catalogue, got " + first.seeded());
-            assertEquals(first.inSnapshot(), first.seeded(),
+            assertEquals(inManifest, first.seeded(),
                 "a fresh store must take every pattern");
             assertEquals(0, second.seeded(), "THE SECOND START RE-SEEDED THE CATALOGUE");
-            assertEquals(first.inSnapshot(), second.unchanged(),
+            assertEquals(inManifest, second.unchanged(),
                 "and must recognise every one of them as already current");
             assertEquals(afterFirst, store.count(), "the row count must not move");
-            assertTrue(second.quiet(), "a quiet run is what the start-up line keys on");
+            // Was `second.quiet()`, which asked only whether nothing was WRITTEN.
+            // Stated in full now that the outcome distinguishes three ways a run can
+            // act: the start-up line logs only when something happened, so a second
+            // start must write, retire AND migrate nothing.
+            assertEquals(0, second.seeded() + second.retired() + second.migrated(),
+                "a quiet run is what the start-up line keys on — seeded="
+                    + second.seeded() + " retired=" + second.retired()
+                    + " migrated=" + second.migrated());
         }
     }
 
@@ -184,7 +225,7 @@ class PatternCatalogueLoaderTest {
                 .build());
             List<Map<String, Object>> before = store.exportEntries(null, null);
 
-            new PatternCatalogueLoader().load(store);
+            seedBundled(store, 0);
 
             List<Map<String, Object>> after = store.exportEntries(null, null);
             Map<String, Object> mineBefore = onlyRecorded(before);
@@ -220,13 +261,12 @@ class PatternCatalogueLoaderTest {
         snap.putArray("patterns").add(pattern);
 
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            assertEquals(1, new PatternCatalogueLoader(snap).load(store).seeded());
-            assertEquals(0, new PatternCatalogueLoader(snap).load(store).seeded());
+            assertEquals(1, seedFrom(store, snap, 0).seeded());
+            assertEquals(0, seedFrom(store, snap, 0).seeded());
 
             pattern.put("principle", "Separate the abstraction from its implementation, "
                 + "so the two can vary without touching each other.");
-            PatternCatalogueLoader.Result after =
-                new PatternCatalogueLoader(snap).load(store);
+            CatalogueSeeder.Outcome after = seedFrom(store, snap, 0);
 
             assertEquals(1, after.seeded(),
                 "AN UPSTREAM EDIT WENT UNNOTICED — the catalogue can never be updated");
@@ -249,7 +289,7 @@ class PatternCatalogueLoaderTest {
         com.fasterxml.jackson.databind.node.ObjectNode b = a.deepCopy();
         b.put("details", "A completely rewritten body.");
 
-        assertFalse(PatternCatalogueLoader.hashOf(a).equals(PatternCatalogueLoader.hashOf(b)),
+        assertFalse(CatalogueManifest.hashOf(a).equals(CatalogueManifest.hashOf(b)),
             "a rewritten body under an unchanged summary would ship forever");
     }
 
@@ -289,14 +329,14 @@ class PatternCatalogueLoaderTest {
         snap.putArray("patterns").add(pattern);
 
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            assertEquals(1, new PatternCatalogueLoader(snap).load(store).seeded());
+            assertEquals(1, seedFrom(store, snap, 0).seeded());
 
             pattern.put("principle", "Separate the abstraction from its implementation, "
                 + "so the two can vary without touching each other.");
-            assertEquals(1, new PatternCatalogueLoader(snap).load(store).seeded(),
+            assertEquals(1, seedFrom(store, snap, 0).seeded(),
                 "precondition: the edit is noticed");
 
-            String ref = PatternCatalogueLoader.SOURCE_PREFIX + "bridge/README.md";
+            String ref = FORK.prefix() + "bridge/README.md";
             List<StoredEntry> rows = new java.util.ArrayList<>();
             for (StoredEntry e : store.all()) {
                 if (ref.equals(e.sourceRef())) {
@@ -359,7 +399,7 @@ class PatternCatalogueLoaderTest {
     }
 
     private static List<StoredEntry> rowsFor(H2ExperienceStore store, String slug) {
-        String ref = PatternCatalogueLoader.SOURCE_PREFIX + slug + "/README.md";
+        String ref = FORK.prefix() + slug + "/README.md";
         return store.all().stream().filter(e -> ref.equals(e.sourceRef())).toList();
     }
 
@@ -371,12 +411,12 @@ class PatternCatalogueLoaderTest {
     void a_pattern_gone_from_the_snapshot_is_retired_and_stops_answering(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+            seedFrom(store, snapshotOf("state", "visitor"), 0);
             assertEquals(1, liveCount(rowsFor(store, "visitor")),
                 "PROOF OF LIFE: visitor must be live before its removal can mean anything");
 
             // Upstream drops `visitor`. Its row is not iterated by the seed loop.
-            new PatternCatalogueLoader(snapshotOf("state")).load(store);
+            seedFrom(store, snapshotOf("state"), 0);
 
             assertEquals(0, liveCount(rowsFor(store, "visitor")),
                 () -> "a pattern the snapshot no longer carries must stop answering — while it"
@@ -405,14 +445,14 @@ class PatternCatalogueLoaderTest {
     @Test
     void a_partial_snapshot_retires_nothing(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+            seedFrom(store, snapshotOf("state", "visitor"), 0);
 
             // A snapshot that PARSES but is truncated — 1 pattern where it
             // declares 2 — passes an is-it-empty check and would retire every
             // pattern it happens not to carry. Against the real 187 that is 186
             // rows gone on every user's next boot, silently. The file declares
             // its own count, so the disagreement is checkable.
-            new PatternCatalogueLoader(snapshotDeclaring(2, "state")).load(store);
+            seedFrom(store, snapshotDeclaring(2, "state"), 0);
 
             assertEquals(1, liveCount(rowsFor(store, "visitor")),
                 "a snapshot that carries fewer patterns than it declares is a truncated"
@@ -424,13 +464,13 @@ class PatternCatalogueLoaderTest {
     void the_bounded_sample_retires_nothing_it_did_not_look_at(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+            seedFrom(store, snapshotOf("state", "visitor"), 0);
 
             // The sample mode considers ONE pattern. Every other pattern is
             // unclaimed for the trivial reason that the sample never reached it,
             // and a sweep that could not tell those apart would supersede almost
             // the entire catalogue on a routine sampled run.
-            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store, 1);
+            seedFrom(store, snapshotOf("state", "visitor"), 1);
 
             assertEquals(1, liveCount(rowsFor(store, "visitor")),
                 "a sampled seed must retire NOTHING: unclaimed here means 'not looked at',"
@@ -441,12 +481,12 @@ class PatternCatalogueLoaderTest {
     @Test
     void an_empty_snapshot_retires_nothing(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+            seedFrom(store, snapshotOf("state", "visitor"), 0);
 
             // A snapshot that yields no patterns is a missing or broken resource,
             // not an upstream that deleted everything. Treating the two alike is
             // the could-not-look/found-nothing confusion at its most expensive.
-            new PatternCatalogueLoader(snapshotOf()).load(store);
+            seedFrom(store, snapshotOf(), 0);
 
             assertEquals(1, liveCount(rowsFor(store, "state")),
                 "an empty snapshot must not retire the catalogue — that is a read failure"

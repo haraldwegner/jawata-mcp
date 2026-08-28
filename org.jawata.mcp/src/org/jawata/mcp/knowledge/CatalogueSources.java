@@ -25,9 +25,11 @@ public final class CatalogueSources {
     /**
      * Every registered source, in seeding order.
      *
-     * <p>Constructed fresh per call and cheap by contract — see
-     * {@link CatalogueSource}. Callers that only need prefixes (the address
-     * renderer, the stats block) pay nothing for the seeding machinery.</p>
+     * <p>Constructed fresh per call and CHEAP BY CONTRACT — see
+     * {@link CatalogueOrigin}, which is pure data for exactly this reason.
+     * Callers that only need prefixes (the address renderer, the stats block)
+     * pay nothing: no manifest is opened until something asks for rows or for an
+     * authority.</p>
      */
     public static List<CatalogueOrigin> all() {
         return List.of(

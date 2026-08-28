@@ -116,8 +116,18 @@ class ReseedKeepsWhatItCannotRebuildTest {
     @Test
     void a_reseed_rebuilds_the_file_lane_and_touches_nothing_else(
             @TempDir Path mine, @TempDir Path elsewhere) throws Exception {
-        new PatternCatalogueLoader().load(store);
-        long catalogue = withPrefix(PatternCatalogueLoader.SOURCE_PREFIX);
+        // S6 DISPOSITION: identifier swap ONLY. The loader became a record plus one
+        // seeder, so the same seeding is spelled differently; not one assertion,
+        // message or expected value below is touched. This test's contract — a
+        // reseed rebuilds the file lane and touches nothing else — is unchanged,
+        // which is why it may be edited at all: a refactor that needed its meaning
+        // changed would be changing the contract, not the spelling.
+        CatalogueOrigin fork = CatalogueSources.all().stream()
+            .filter(o -> "java-design-patterns".equals(o.namespace()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("the fork origin is not registered"));
+        CatalogueSeeder.seed(store, fork);
+        long catalogue = withPrefix(fork.prefix());
         assertTrue(catalogue > 0, "precondition: the bundled snapshot must actually seed");
 
         story(mine, "in-scope");
@@ -132,7 +142,7 @@ class ReseedKeepsWhatItCannotRebuildTest {
 
         Map<String, Object> report = reseed(mine);
 
-        assertEquals(catalogue, withPrefix(PatternCatalogueLoader.SOURCE_PREFIX),
+        assertEquals(catalogue, withPrefix(fork.prefix()),
             "THE CATALOGUE: a reseed cannot rebuild it, so it must not delete it");
         assertEquals(1L, recorded(),
             "THE DIRECT RECORD: nothing anywhere can put this back, and it was"

@@ -17,9 +17,12 @@ import java.util.Map;
  *   <li><b>COMPOSE</b> — take the slug and build
  *       {@code "catalogue:java-design-patterns/" + slug + "/README.md"}. This
  *       always succeeds, and that is the whole problem: it succeeds for a slug
- *       nothing holds, and it succeeds in the WRONG SHAPE for the other
- *       source ({@link SampleSource}'s refs carry no {@code /README.md} tail).
- *       An address produced this way is a claim about a row nobody looked at.</li>
+ *       nothing holds. It used to succeed in the WRONG SHAPE for the other
+ *       origin too, whose refs carried no {@code /README.md} tail; S4 unified
+ *       the scheme, so shape no longer distinguishes a composed address from a
+ *       read one — which is exactly why the composition test now plants a ref no
+ *       rule would generate. An address produced by composing is a claim about a
+ *       row nobody looked at.</li>
  *   <li><b>RESOLVE</b> — find the row that carries the cure's {@code operation}
  *       key and read its {@code source_ref}. It fails when there is nothing to
  *       point at, which is exactly when a cure has no address.</li>
@@ -71,7 +74,8 @@ public final class CatalogueAddresses {
      * cure — is a full scan per finding, and a sweep produces hundreds of
      * findings. Cheap by contract for the registry itself: {@link
      * CatalogueSources#all()} is only asked for namespaces and prefixes here,
-     * never for {@link CatalogueSource#authority()}, which parses a snapshot.</p>
+     * never for an authority — {@link CatalogueManifest#authorityOf} parses a
+     * manifest on its first call, and a per-finding path must not pay that.</p>
      *
      * <p>SUPERSEDED and REJECTED rows are excluded. A retired pattern still has
      * a {@code source_ref}, and pointing a cure at it would hand a reader an

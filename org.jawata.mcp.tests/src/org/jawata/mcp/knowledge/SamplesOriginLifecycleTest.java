@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * were two catalogue sources and only one of them had a test for its lifecycle.
  * The fork's loader was made to retire an incumbent on an edit (28c D6) and then
  * to sweep patterns upstream had dropped (28d); both were pinned by
- * {@link PatternCatalogueLoaderTest}. `SampleSource.seed` was nine lines that did
+ * {@link CatalogueSeederLifecycleTest}. `SampleSource.seed` was nine lines that did
  * NEITHER, and nothing noticed, because the assertions lived in a test bound to
  * the other class. A contract asserted about one implementation says nothing
  * about the second.</p>
@@ -36,9 +36,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * nothing" — so it is a guard on behaviour that does not exist yet, and it earns
  * its keep only against the sweep, proven by removing the guard.</p>
  */
-class SampleSourceTest {
+class SamplesOriginLifecycleTest {
 
     private static final ObjectMapper M = new ObjectMapper();
+
+    /** The specimens origin, selected by name rather than by registry position. */
+    private static final CatalogueOrigin SAMPLES = CatalogueSources.all().stream()
+        .filter(o -> "jawata-samples".equals(o.namespace()))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError(
+            "the samples origin is not registered — every contract below is about its"
+                + " lifecycle and none of them can run without it"));
+
+    /**
+     * Seed from an index built in memory. S6: seeding is no longer a method on the
+     * source — an origin is a record, so there is nothing for it to implement
+     * wrongly — and the one lifecycle takes the origin plus its manifest.
+     */
+    private static CatalogueSeeder.Outcome seedFrom(H2ExperienceStore store, JsonNode index) {
+        return CatalogueSeeder.seed(store, SAMPLES, CatalogueManifest.of(SAMPLES, index), 0);
+    }
 
     /** An index carrying these slugs and DECLARING its own count, as the real one must. */
     private static JsonNode indexOf(String... slugs) {
@@ -81,7 +98,7 @@ class SampleSourceTest {
      * vanished" rather than "the test is looking in the wrong place".
      */
     private static List<StoredEntry> rowsFor(H2ExperienceStore store, String slug) {
-        String ref = SampleSource.SOURCE_PREFIX + slug + "/README.md";
+        String ref = SAMPLES.prefix() + slug + "/README.md";
         return store.all().stream().filter(e -> ref.equals(e.sourceRef())).toList();
     }
 
@@ -93,11 +110,11 @@ class SampleSourceTest {
     void an_edited_sample_supersedes_its_incumbent_rather_than_duplicating_it(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new SampleSource(indexOf("compose-method")).seed(store);
+            seedFrom(store, indexOf("compose-method"));
             assertEquals(1, liveCount(rowsFor(store, "compose-method")),
                 "PROOF OF LIFE: one live row after the first seed");
 
-            new SampleSource(edited("compose-method")).seed(store);
+            seedFrom(store, edited("compose-method"));
 
             List<StoredEntry> rows = rowsFor(store, "compose-method");
             assertEquals(2, rows.size(),
@@ -116,11 +133,11 @@ class SampleSourceTest {
     void a_sample_gone_from_the_index_is_retired_and_stops_answering(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new SampleSource(indexOf("compose-method", "replace-pattern-with-idiom")).seed(store);
+            seedFrom(store, indexOf("compose-method", "replace-pattern-with-idiom"));
             assertEquals(1, liveCount(rowsFor(store, "replace-pattern-with-idiom")),
                 "PROOF OF LIFE: the sample must be live before its removal can mean anything");
 
-            new SampleSource(indexOf("compose-method")).seed(store);
+            seedFrom(store, indexOf("compose-method"));
 
             assertEquals(0, liveCount(rowsFor(store, "replace-pattern-with-idiom")),
                 () -> "a sample the index no longer carries must stop answering — while it stays"
@@ -137,11 +154,11 @@ class SampleSourceTest {
     @Test
     void a_partial_index_retires_nothing(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
-            new SampleSource(indexOf("compose-method", "replace-pattern-with-idiom")).seed(store);
+            seedFrom(store, indexOf("compose-method", "replace-pattern-with-idiom"));
 
             // An index that PARSES but is truncated — one sample where it declares
             // two — must not be read as "the other one was deleted upstream".
-            new SampleSource(indexDeclaring(2, "compose-method")).seed(store);
+            seedFrom(store, indexDeclaring(2, "compose-method"));
 
             assertEquals(1, liveCount(rowsFor(store, "replace-pattern-with-idiom")),
                 "an index carrying fewer samples than it declares is a truncated read, not a"
