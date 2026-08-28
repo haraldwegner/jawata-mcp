@@ -54,6 +54,21 @@ public final class FowlerDetectors {
             // for the same reason as `cqs`: the principle is Page-Jones's, but
             // its cures are Fowler refactorings (Move Method / Move Class /
             // Extract Class), which is what a reader of a finding reaches for.
-            .register(new CouplingDetector(), "fowler");
+            .register(new CouplingDetector(), "fowler")
+            // Sprint 28d — prefer composition over inheritance. Same reasoning
+            // again: the principle is the GoF's / Bloch's, the cure is Fowler's
+            // Replace Inheritance with Delegation. Adjacent to refused_bequest
+            // (also `fowler`), which owns the per-method reading.
+            .register(new CompositionOverInheritanceDetector(), "fowler")
+            // Sprint 28d — Open/Closed, as the NAME over measurements that
+            // already existed: an aggregation of switch_statements + type_code,
+            // whose cures are the Kerievsky recipes RecipeCatalog already maps.
+            // Registered `fowler` so a fowler sweep carries it alongside the two
+            // traces it re-labels, exactly as those traces are carried.
+            .register(new OcpDetector(), "fowler")
+            // Sprint 28d — broken encapsulation, promoted from the on-demand
+            // analyze(kind="encapsulation") audit to a sweep kind. `fowler`
+            // because the cures are Encapsulate Field / Remove Setting Method.
+            .register(new EncapsulationDetector(), "fowler");
     }
 }

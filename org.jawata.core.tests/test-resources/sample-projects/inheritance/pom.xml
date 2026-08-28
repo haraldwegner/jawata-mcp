@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>inheritance</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Inheritance Fixture</name>
+    <description>
+        Jawata-owned fixture for Sprint 28d: the PROOF OF LIFE corpus for the
+        `composition_over_inheritance` detector, which flags a class extending a
+        CONCRETE, source-declared class that either overrides nothing of it or
+        touches fewer than `threshold`% (default 25) of its inherited surface.
+
+        It lives in its OWN project rather than in simple-maven because the
+        exclusions it must demonstrate (a source-declared concrete Throwable
+        parent, a refused-bequest subclass, a class extending a JDK type) need
+        deliberately shaped supertypes, and because adding classes to a shared
+        corpus moves numbers other detectors' tests read off that corpus.
+
+        InheritanceTargets.java — the parent `Ledger` bequeaths SIX inheritable
+        members (field balance; total(), credit(int), debit(int), describe(),
+        isEmpty()). Expected: exactly TWO findings.
+          ReportingLedger — overrides NOTHING of Ledger (uses 2 of 6 = 33%, so
+                            the percentage arm does not fire; the no-override
+                            arm does).
+          AuditLedger     — overrides describe() and touches ONLY describe():
+                            1 of 6 = 16%, below the 25% threshold.
+          FullLedger      — overrides 3 and touches all 6 (100%). NOT flagged.
+
+        InheritanceCleanTargets.java — every documented exclusion, each shaped so
+        that it WOULD be flagged if its exclusion were removed. Expected: ZERO.
+          Dot            — parent Shape is ABSTRACT (Template Method).
+          MissingAccount — parent DomainFailure is a concrete SOURCE class, but
+                           it is a Throwable: subclassing IS the mechanism.
+          Names          — parent is outside the scanned source (java.util).
+          ReadOnlyLedger — refuses a bequest, so refused_bequest owns it.
+          Shape          — extends nothing at all.
+    </description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>

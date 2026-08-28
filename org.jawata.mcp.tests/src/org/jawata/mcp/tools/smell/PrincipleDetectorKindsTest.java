@@ -49,7 +49,8 @@ class PrincipleDetectorKindsTest {
      * The principle detectors this sprint adds, in the order they ship.
      * <b>Adding a detector edits THIS LIST and nothing else.</b>
      */
-    static final List<String> ADDED_BY_28D = List.of("cqs", "coupling");
+    static final List<String> ADDED_BY_28D = List.of(
+        "cqs", "coupling", "composition_over_inheritance", "ocp", "encapsulation");
 
     private List<String> registeredKinds() {
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> null);

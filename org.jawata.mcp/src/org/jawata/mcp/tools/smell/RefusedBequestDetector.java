@@ -36,7 +36,7 @@ public final class RefusedBequestDetector extends AbstractAstDetector {
         ast.accept(new ASTVisitor() {
             @Override
             public boolean visit(MethodDeclaration node) {
-                if (isOverride(node) && bodyJustThrowsUnsupported(node)) {
+                if (rejectsInheritance(node)) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
                     out.add(new Finding(
@@ -48,6 +48,19 @@ public final class RefusedBequestDetector extends AbstractAstDetector {
                 return true;
             }
         });
+    }
+
+    /**
+     * The refused-bequest SHAPE: an {@code @Override} whose body does nothing but
+     * throw {@code UnsupportedOperationException}.
+     *
+     * <p>Package-private because {@link CompositionOverInheritanceDetector} asks
+     * the same question for the opposite purpose — a subclass that refuses a
+     * bequest is left to THIS kind, so one class is never reported twice for two
+     * different readings of the same override (Sprint 28d).</p>
+     */
+    static boolean rejectsInheritance(MethodDeclaration node) {
+        return isOverride(node) && bodyJustThrowsUnsupported(node);
     }
 
     private static boolean isOverride(MethodDeclaration node) {

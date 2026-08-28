@@ -1,22 +1,15 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.jdt.core.Flags;
-import org.eclipse.jdt.core.IField;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
-import org.eclipse.jdt.core.search.IJavaSearchConstants;
-import org.eclipse.jdt.core.search.SearchMatch;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.EncapsulationAudit;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -91,51 +84,24 @@ public class AnalyzeEncapsulationTool extends AbstractTool {
             List<Map<String, Object>> fieldReports = new ArrayList<>();
             int leakingFields = 0;
 
-            for (IField field : type.getFields()) {
-                // Direct writers of the field, partitioned into external types
-                // and (internal) methods of this class that write it = mutators.
-                Set<String> directExternalWriters = new LinkedHashSet<>();
-                Set<IMethod> mutators = new LinkedHashSet<>();
-                for (SearchMatch w : service.getSearchService().findWriteAccesses(field, 1000)) {
-                    IType wt = enclosingType(w);
-                    if (wt != null && !sameType(wt, type)) {
-                        directExternalWriters.add(wt.getFullyQualifiedName());
-                    } else {
-                        IMethod wm = enclosingMethod(w);
-                        if (wm != null && wm.getDeclaringType() != null
-                                && sameType(wm.getDeclaringType(), type)) {
-                            mutators.add(wm);
-                        }
-                    }
-                }
-
-                // External callers of the mutators = the poke set through setters.
-                Set<String> externalMutatorCallers = new LinkedHashSet<>();
-                for (IMethod m : mutators) {
-                    for (SearchMatch c : service.getSearchService()
-                            .findReferences(m, IJavaSearchConstants.REFERENCES, 1000)) {
-                        IType ct = enclosingType(c);
-                        if (ct != null && !sameType(ct, type)) {
-                            externalMutatorCallers.add(ct.getFullyQualifiedName());
-                        }
-                    }
-                }
-
-                Set<String> pokeSet = new LinkedHashSet<>(directExternalWriters);
-                pokeSet.addAll(externalMutatorCallers);
-                boolean leak = !pokeSet.isEmpty();
-                if (leak) {
+            // The computation itself lives in EncapsulationAudit, shared with the
+            // `encapsulation` sweep kind (Sprint 28d). `true` keeps THIS tool's
+            // Sprint 22a behaviour exactly: a constructor that assigns a field
+            // counts as a mutator of it, so its external callers are in the poke
+            // set. The sweep passes false — see EncapsulationAudit's javadoc.
+            for (EncapsulationAudit.FieldAudit audit
+                    : EncapsulationAudit.auditType(type, service, true)) {
+                if (audit.leak()) {
                     leakingFields++;
                 }
-
                 Map<String, Object> fr = new LinkedHashMap<>();
-                fr.put("field", field.getElementName());
-                fr.put("private", Flags.isPrivate(field.getFlags()));
-                fr.put("directExternalWriters", new ArrayList<>(directExternalWriters));
-                fr.put("mutatingMethods", mutators.stream().map(IMethod::getElementName).toList());
-                fr.put("externalMutatorCallers", new ArrayList<>(externalMutatorCallers));
-                fr.put("pokeSetCount", pokeSet.size());
-                fr.put("encapsulationLeak", leak);
+                fr.put("field", audit.field());
+                fr.put("private", audit.isPrivate());
+                fr.put("directExternalWriters", new ArrayList<>(audit.directExternalWriters()));
+                fr.put("mutatingMethods", audit.mutatingMethods());
+                fr.put("externalMutatorCallers", new ArrayList<>(audit.externalMutatorCallers()));
+                fr.put("pokeSetCount", audit.pokeSetCount());
+                fr.put("encapsulationLeak", audit.leak());
                 fieldReports.add(fr);
             }
 
@@ -149,24 +115,6 @@ public class AnalyzeEncapsulationTool extends AbstractTool {
         }
     }
 
-    private static IType enclosingType(SearchMatch match) {
-        Object el = match.getElement();
-        if (el instanceof IJavaElement je) {
-            return (IType) je.getAncestor(IJavaElement.TYPE);
-        }
-        return null;
-    }
-
-    private static IMethod enclosingMethod(SearchMatch match) {
-        Object el = match.getElement();
-        if (el instanceof IJavaElement je) {
-            return (IMethod) je.getAncestor(IJavaElement.METHOD);
-        }
-        return null;
-    }
-
-    private static boolean sameType(IType a, IType b) {
-        return a != null && b != null
-            && a.getFullyQualifiedName().equals(b.getFullyQualifiedName());
-    }
+    // enclosingType / enclosingMethod / sameType moved with the computation into
+    // EncapsulationAudit (Sprint 28d) — they were only ever this audit's helpers.
 }

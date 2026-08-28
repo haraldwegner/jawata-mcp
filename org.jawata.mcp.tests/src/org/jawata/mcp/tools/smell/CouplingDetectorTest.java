@@ -202,8 +202,10 @@ class CouplingDetectorTest {
         Map<String, Object> kind = (Map<String, Object>) properties.get("kind");
         List<String> kinds = (List<String>) kind.get("enum");
         assertTrue(kinds.contains("coupling"), () -> "kind enum must carry coupling; got: " + kinds);
-        assertEquals(38, kinds.size(),
-            () -> "the kind count must be 37 + coupling = 38; got " + kinds.size() + ": " + kinds);
+        // THE COUNT DOES NOT LIVE HERE — it lives in PrincipleDetectorKindsTest.
+        // It was removed from the cqs test and left here, so the very next three
+        // detectors turned THIS test red: a fact stated in two places, fixed in
+        // one. That is the duplicate this sprint's own roster exists to end.
     }
 
     @SuppressWarnings("unchecked")
