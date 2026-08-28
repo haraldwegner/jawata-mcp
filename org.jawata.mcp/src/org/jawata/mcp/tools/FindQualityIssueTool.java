@@ -49,11 +49,31 @@ public class FindQualityIssueTool extends AbstractTool {
      * class, no new tool.
      */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier) {
+        this(serviceSupplier, () -> null);
+    }
+
+    /**
+     * Sprint 28d — the same catalog, built with the experience store the
+     * cure-carrying detectors resolve their catalogue addresses from.
+     *
+     * <p>THIS is the constructor the live registration uses. The one-argument
+     * form above builds every detector storeless, which is correct for a test
+     * that has no store and was, until this constructor existed, also what
+     * production did — so a detector's cure could only ever be the degraded
+     * text form, in the shipped product, with every unit test green.</p>
+     *
+     * <p>A supplier, not a store: at the registration line the application is
+     * still assembling and the store field may be unassigned; the read is
+     * deferred to scan time.</p>
+     */
+    public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier,
+                                Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
         this(new JawataService(serviceSupplier,
             DependencyDetectors.registerInto(
                 KerievskyDetectors.registerInto(
                     SolidDetectors.registerInto(
-                        FowlerDetectors.registerInto(QualityDetectors.builtins(serviceSupplier)))))));
+                        FowlerDetectors.registerInto(
+                            QualityDetectors.builtins(serviceSupplier), store))))));
     }
 
     /** The seam: project from the supplied service's detector catalog. */

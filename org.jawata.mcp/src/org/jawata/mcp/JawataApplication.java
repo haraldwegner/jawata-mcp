@@ -1049,7 +1049,11 @@ public class JawataApplication implements IApplication {
         // implementations the parametric tools delegate to; they're no
         // longer registered as user-facing MCP tools.
         toolRegistry.register(new FindPatternUsagesTool(() -> jdtService));
-        FindQualityIssueTool qualityTool = new FindQualityIssueTool(() -> jdtService);
+        // Sprint 28d: the store goes in as a SUPPLIER. The detectors whose cure
+        // is a catalogue entry resolve their addresses from it at scan time, so
+        // this line does not depend on whether experienceStore is assigned yet.
+        FindQualityIssueTool qualityTool =
+            new FindQualityIssueTool(() -> jdtService, () -> experienceStore);
         toolRegistry.register(qualityTool);
         this.findQualityIssueTool = qualityTool;
         // Sprint 22a P2-a: literal-content search (net-new front door #2).

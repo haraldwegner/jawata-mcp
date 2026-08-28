@@ -27,6 +27,27 @@ public final class FowlerDetectors {
      * (the OCP trace).
      */
     public static DetectorCatalog registerInto(DetectorCatalog catalog) {
+        return registerInto(catalog, () -> null);
+    }
+
+    /**
+     * The store-aware form: the same registration, with the experience store the
+     * cure-carrying detectors resolve their addresses from.
+     *
+     * <p>Sprint 28d. A detector's cure is an ENTRY in the pattern catalogue, so
+     * a detector that cannot reach the store can only state its cure as text.
+     * That degraded answer is honest and tested, but it is not the product —
+     * and it is what production shipped until this overload existed, because
+     * the one-argument form above was the only registration path and it had no
+     * store to give.</p>
+     *
+     * <p>A supplier, not a store: the catalog is built during application
+     * assembly, before the store field is guaranteed assigned. See
+     * {@link OcpDetector#OcpDetector(java.util.function.Supplier)}.</p>
+     */
+    public static DetectorCatalog registerInto(
+            DetectorCatalog catalog,
+            java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
         return catalog
             .register(new LongMethodDetector(), "fowler")
             .register(new GodClassDetector(), "fowler")
@@ -65,7 +86,7 @@ public final class FowlerDetectors {
             // whose cures are the Kerievsky recipes RecipeCatalog already maps.
             // Registered `fowler` so a fowler sweep carries it alongside the two
             // traces it re-labels, exactly as those traces are carried.
-            .register(new OcpDetector(), "fowler")
+            .register(new OcpDetector(store), "fowler")
             // Sprint 28d — broken encapsulation, promoted from the on-demand
             // analyze(kind="encapsulation") audit to a sweep kind. `fowler`
             // because the cures are Encapsulate Field / Remove Setting Method.

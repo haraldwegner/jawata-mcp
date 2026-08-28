@@ -870,10 +870,59 @@ no_score "recall(dispatch)" "$DS"
 # pay (a written justification proceeds) → the outcome-after counter fills.
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cp -r "$REPO_ROOT/org.jawata.core.tests/test-resources/sample-projects/compile-clean" "$WS/proj"
+# Sprint 28d, for the cure-resolves promise below: compile-clean is clean by
+# design, so it carries no OCP trace to cure. The gate builds its OWN target
+# rather than hunting the repository for a class that happens to violate
+# something — a gate that depends on somebody else's code failing is a gate
+# that breaks when they fix it. A type-code constant group AND a switch over
+# it: two traces, two findings, both cured by the same catalogue designs.
+cat > "$WS/proj/src/main/java/com/example/OcpTarget.java" << 'EOF_OCP'
+package com.example;
+
+/** Deliberately closed for extension: a new status must EDIT both members. */
+public class OcpTarget {
+    public static final int STATUS_NEW = 0;
+    public static final int STATUS_OPEN = 1;
+    public static final int STATUS_CLOSED = 2;
+    public static final int STATUS_VOID = 3;
+
+    public String describe(int status) {
+        switch (status) {
+            case STATUS_NEW: return "new";
+            case STATUS_OPEN: return "open";
+            case STATUS_CLOSED: return "closed";
+            default: return "void";
+        }
+    }
+}
+EOF_OCP
 LP="$(call load_project "{\"projectPath\":\"$WS/proj\"}")"
 case "$LP" in
     *'"success":true'*|*sourceFiles*|*packages*) pass "choke-gate a real project loads in the throwaway resident" ;;
     *) fail "choke-gate load_project failed: $(printf '%s' "$LP" | head -c 200)" ;;
+esac
+
+# --- cure-resolves: 28d Stage 5, a detector's cure carries a REAL address ----
+# Sprint 28d. The cure lookup resolves a smell kind to the catalogue entries
+# that cure it and reads the address off the row. Every unit test of it passed
+# while production shipped it unreachable: the detectors were built by a
+# registration path that had no store, so `store == null`, so every finding
+# took the stated-DEGRADED branch — a degraded cure is still a cure, and
+# nothing went red. Only the front door can prove otherwise, because the thing
+# under test is a CONSTRUCTION LINE in the application, not a class.
+#
+# The two outcomes are deliberately distinguished. DEGRADED is the exact
+# signature of the unwired build, so it gets its own failure message rather
+# than falling into a catch-all that would read as "no findings".
+OCPQ="$(call find_quality_issue '{"kind":"ocp"}')"
+case "$OCPQ" in
+    *DEGRADED*)
+        fail "cure-resolves the detector answered DEGRADED — it reached no store, so the cure is the hardcoded map and not the catalogue. This is the unwired signature: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+    *'design(s) in the catalogue:'*)
+        pass "cure-resolves an ocp finding carries a cure whose catalogue address resolved from the live store" ;;
+    *'"findings":[]'*)
+        fail "cure-resolves the ocp detector found nothing on a target built to violate it — the promise proves nothing about cures until it fires: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+    *) fail "cure-resolves no resolved cure and no degradation on the ocp findings — the cure sentence is neither the store's nor declared as a fallback: $(printf '%s' "$OCPQ" | head -c 400)" ;;
 esac
 
 # pre-advice seeding: a prose lesson the refactor's pre-advice can reach

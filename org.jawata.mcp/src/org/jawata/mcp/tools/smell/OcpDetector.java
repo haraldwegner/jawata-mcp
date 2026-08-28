@@ -67,7 +67,40 @@ public final class OcpDetector extends AbstractAstDetector {
     private final SwitchStatementsDetector switchStatements = new SwitchStatementsDetector();
     private final TypeCodeDetector typeCodes = new TypeCodeDetector();
 
+    /**
+     * The store the cure is RESOLVED from, or null.
+     *
+     * <p>Null is not a special case that skips the lookup — it produces the same
+     * "every namespace absent" answer an empty store does, so the message says
+     * DEGRADED and names what is missing. A no-store path that quietly printed
+     * the old hardcoded hint would be the silent default Sprint 28d exists to
+     * remove, and it would be invisible precisely where it matters: in
+     * production, where the detector is constructed without a store.</p>
+     */
+    private final java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> store;
+
     public OcpDetector() {
+        this(() -> null);
+    }
+
+    /** Resolve cures from this store — the seam a store-aware caller uses. */
+    public OcpDetector(org.jawata.mcp.knowledge.ExperienceStore store) {
+        this(() -> store);
+    }
+
+    /**
+     * Resolve cures from whatever store the supplier holds AT SCAN TIME — the
+     * PRODUCTION seam.
+     *
+     * <p>A supplier rather than a store, because the detector catalog is built
+     * while the application is still assembling itself, and the registration
+     * line runs before the store field is guaranteed assigned. A direct
+     * reference would capture that null once and for all, and every finding
+     * would take the DEGRADED path forever — silently, because a degraded cure
+     * is still a cure and no test would go red. Deferring the read to scan time
+     * makes the wiring independent of construction order.</p>
+     */
+    public OcpDetector(java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
         super("ocp",
             "Open/Closed — the source traces of a design that must be EDITED to extend: a switch "
                 + "on a type code, and a type-code constant group (>= `threshold`, default 3). An "
@@ -76,6 +109,7 @@ public final class OcpDetector extends AbstractAstDetector {
                 + "are not flagged, and the git-history OCP traces (divergent_change, "
                 + "shotgun_surgery) keep their own kinds.",
             3);
+        this.store = store;
     }
 
     @Override
@@ -84,20 +118,39 @@ public final class OcpDetector extends AbstractAstDetector {
         List<Finding> traces = new ArrayList<>();
         switchStatements.analyze(ast, filePath, service, threshold, traces);
         typeCodes.analyze(ast, filePath, service, threshold, traces);
+        if (traces.isEmpty()) {
+            return;         // do not index a store for a file with nothing to cure
+        }
+        // ONCE per file, not once per finding: indexing walks every row, and a
+        // sweep produces hundreds of findings.
+        org.jawata.mcp.knowledge.CatalogueAddresses addresses =
+            org.jawata.mcp.knowledge.CatalogueAddresses.of(store.get());
         for (Finding trace : traces) {
-            out.add(relabel(trace));
+            out.add(relabel(trace, addresses));
         }
     }
 
-    /** The same finding, named for the principle and carrying the principle's cure. */
-    private static Finding relabel(Finding trace) {
-        List<String> recipes = RecipeCatalog.recipesFor(trace.kind());
-        String cure = recipes.isEmpty()
+    /**
+     * The same finding, named for the principle and carrying the principle's
+     * cure — RESOLVED, or explicitly labelled as the hardcoded fallback.
+     *
+     * <p>The cure is looked up by the TRACE's kind, not by {@code ocp}: the
+     * trace is what was actually measured, and {@link CureCatalog} maps both to
+     * the same designs so the two cannot answer differently.</p>
+     */
+    private static Finding relabel(Finding trace,
+                                   org.jawata.mcp.knowledge.CatalogueAddresses addresses) {
+        CureLookup.Cures cures = CureLookup.forKind(addresses, trace.kind());
+        String lookup = cures.hint();
+        // The PRINCIPLE sentence stays the detector's own: it says what OCP is
+        // about, which no catalogue row knows. Only what follows it — the plan
+        // kinds, their addresses, and whether either came from the store — is
+        // now resolved rather than assembled here.
+        String cure = lookup.isBlank()
+            // Nothing declared AND nothing resolved: the pre-28d pointer, which
+            // carries no address and never claimed to.
             ? OcpCure.HINT
-            : " OCP cure: introduce an abstraction at the modification axis — refactor_to_pattern "
-                + "kind=" + String.join(" / ", recipes)
-                + " (or refactoring(action=plan, kind=<same>) then apply_plan for a parity-gated "
-                + "run).";
+            : " OCP cure: introduce an abstraction at the modification axis." + lookup;
         return new Finding("ocp", trace.filePath(), trace.line(), trace.column(), trace.severity(),
             "Open/Closed: this code must be MODIFIED to extend it. " + trace.message()
                 + " [trace: " + trace.kind() + "]" + cure,

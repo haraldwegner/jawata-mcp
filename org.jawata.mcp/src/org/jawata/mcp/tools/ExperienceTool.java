@@ -506,6 +506,41 @@ public final class ExperienceTool implements Tool {
         block.put("byNamespace", perNamespace);
         block.put("awaitingReview", candidates);
         block.put("reviewWith", "experience(kind=list, status=\"candidate\")");
+        block.put("cures", cureBlock());
+        return block;
+    }
+
+    /**
+     * Sprint 28d — THE DRIFT CHECK, RUN rather than described.
+     *
+     * <p>Every cure a detector can name is re-resolved against the catalogue as
+     * it stands now. It belongs on the health surface because the hazard it
+     * catches is silent by construction: {@code java-design-patterns} is a
+     * FOREIGN authority pinned to somebody else's commit, and moving that pin
+     * can rename or drop a pattern under us. The declaration would go on naming
+     * it and every affected finding would quietly stop carrying an address —
+     * nothing fails, nothing is logged, and an unresolved cure looks exactly
+     * like a cure for which no design was ever declared. The only way to learn
+     * it is to ask, so something has to ask on a schedule a human actually
+     * reads. This is that place.</p>
+     */
+    private java.util.Map<String, Object> cureBlock() {
+        org.jawata.mcp.tools.smell.CureLookup.Audit audit =
+            org.jawata.mcp.tools.smell.CureLookup.audit(store);
+        java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
+        block.put("declared", audit.declared());
+        block.put("resolved", audit.resolved());
+        block.put("unresolved", audit.unresolved());
+        block.put("clean", audit.clean());
+        // NAMED, never only counted: "3 broke" is the same output whether the
+        // fork renamed three patterns or somebody mistyped one row, and those
+        // two need opposite repairs.
+        block.put("unresolvedOperations", audit.unresolvedOperations());
+        block.put("absentNamespaces", audit.absentNamespaces());
+        // WHICH authority each namespace answers to — a foreign pin moving is
+        // the reason this check exists, so a report that omits the authority
+        // cannot say which one moved.
+        block.put("authorities", audit.authorities());
         return block;
     }
 

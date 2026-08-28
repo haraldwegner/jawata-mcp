@@ -11,13 +11,31 @@ import java.util.List;
  * Kerievsky recipes — introduce an abstraction at the modification axis. This maps a
  * churn-trace kind to the applicable {@code refactor_to_pattern} kinds and is the seed
  * of the future {@code get_target_recipe}.
+ *
+ * <h2>Sprint 28d — this is now the DECLARED FALLBACK, not the answer</h2>
+ * <p>The store became the authority: a cure's address is resolved from a
+ * catalogue row by {@link CureLookup}, and the recipes below are what is handed
+ * over when a catalogue namespace holds zero rows. That handover is always
+ * LABELLED — see {@code Cures.degradation} — because a fallback nobody declared
+ * is indistinguishable from an answer, and "there is no catalogue" and "the
+ * catalogue had nothing for you" must not read alike.</p>
+ *
+ * <p>Nothing here changed behaviourally, deliberately: the degraded path has to
+ * keep working exactly as it did, or the degradation would be an outage wearing
+ * a notice.</p>
  */
 public final class OcpCure {
 
     private OcpCure() {
     }
 
-    /** Appended to the churn detectors' messages: the OCP-cure pointer. */
+    /**
+     * Appended to the churn detectors' messages: the OCP-cure pointer.
+     *
+     * <p>Carries no address, and cannot: it is assembled from plan-kind names
+     * with nothing behind them checked. That is the reason it is a fallback now
+     * rather than the answer.</p>
+     */
     public static final String HINT =
         " OCP cure: introduce an abstraction at the modification axis — refactor_to_pattern "
             + "kind=refactor_to_state / refactor_to_command_dispatcher / form_template_method "
