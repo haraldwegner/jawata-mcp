@@ -532,6 +532,62 @@ case "$NSTATS" in
     *) fail "own-samples-seeded no jawata-samples namespace in stats — the second source did not reach the registry at all: $(printf '%s' "$NSTATS" | head -c 300)" ;;
 esac
 
+# --- samples-address-opens: 28d D10's last mile -----------------------------
+# The promise above proves the specimen source WROTE rows. That is not D10's
+# promise. D10 says a design question returns a samples-lane address AND that
+# the address OPENS — two different failures, because a row can be seeded, be
+# returned, carry a perfectly-formed address, and point at nothing.
+#
+# That exact shape was LIVE here on 2026-08-28: the samples module sat outside
+# the analysis model, so "does the address open?" was VACUOUS rather than
+# failing — 0 of 4 specimen types resolved and no check complained. A promise
+# that cannot fail is the thing this whole script exists to refuse.
+#
+# "Opens" is checked against the CHECKOUT, not the dist, and that is deliberate
+# rather than a shortcut: the samples module is excluded from the shipped
+# artifact ON PURPOSE (D10's byte-identical clause), so the file is not in the
+# dist to read. The product's job is to hand out an address that locates a real
+# file in the repository a reader would open; this script runs FROM that
+# repository, so it is the one place both halves are visible at once.
+#
+# The question below paraphrases the specimen's own "when to use" wording and
+# names no pattern — but it was authored the same day as the specimen, by the
+# same hand, so it proves the lane is REACHABLE and says nothing about
+# retrieval quality. The frozen five-question fixture above is the instrument
+# for that, and it predates the extractor for precisely this reason.
+SAMPLE_Q="one method here validates the input, does the arithmetic and builds the output text in a single pass, and the shape of what it does cannot be seen without reading every mechanical detail"
+SNOM="$(call experience "{\"kind\":\"nominate\",\"question\":\"$SAMPLE_Q\"}")"
+SREF="$(printf '%s' "$SNOM" | grep -oE '"address":"catalogue:jawata-samples/[^"]+"' | head -1 | cut -d'"' -f4)"
+if [ -z "$SREF" ]; then
+    fail "samples-address-opens a design question returned no catalogue:jawata-samples/ address at all — the specimen lane is seeded but unreachable by asking: $(printf '%s' "$SNOM" | head -c 300)"
+else
+    pass "samples-address-opens a design question returns a specimen address ($SREF)"
+    # The repository root, from the script's own location — never the caller's
+    # working directory, which is not reliably this checkout.
+    REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+    # The samples origin's workspace root, spelled once here. If CatalogueSources
+    # ever renames it, THIS LINE is part of that change — the failure below says
+    # which path it tried, so the fix is one edit rather than an investigation.
+    SAMPLE_FILE="$REPO_ROOT/org.jawata.samples/${SREF#catalogue:jawata-samples/}"
+    if [ -f "$SAMPLE_FILE" ]; then
+        pass "samples-address-opens and the address OPENS: $SAMPLE_FILE"
+    else
+        fail "samples-address-opens THE ADDRESS DOES NOT OPEN. The product handed out
+          $SREF
+          which resolves to $SAMPLE_FILE — and there is no file there. A cure that
+          resolves as a live row and points at nothing audits CLEAN while the reader
+          who follows it finds nothing."
+    fi
+    # The control. Without it a green above is the same output whether the
+    # resolution checked carefully or looked somewhere everything happens to
+    # exist — and this project has shipped the second kind.
+    if [ -f "$REPO_ROOT/org.jawata.samples/no-such-slug-exists/README.md" ]; then
+        fail "samples-address-opens the resolution reports a MISSING file as present, so the check above could never fail"
+    else
+        pass "samples-address-opens the resolution can tell a missing file from a present one"
+    fi
+fi
+
 # --- demand-and-delete: D14's ledger and the undo a delete owes -------------
 # Sprint 28c D14. Two promises the review seat depends on, through the real front
 # door. The FIRST is the one that carries the wiring: a question nobody could
