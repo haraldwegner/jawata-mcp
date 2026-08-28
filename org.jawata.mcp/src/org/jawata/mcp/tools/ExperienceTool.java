@@ -525,9 +525,25 @@ public final class ExperienceTool implements Tool {
      * reads. This is that place.</p>
      */
     private java.util.Map<String, Object> cureBlock() {
-        org.jawata.mcp.tools.smell.CureLookup.Audit audit =
-            org.jawata.mcp.tools.smell.CureLookup.audit(store);
+        org.jawata.mcp.tools.smell.CureLookup.Audit audit;
+        try {
+            audit = org.jawata.mcp.tools.smell.CureLookup.audit(store);
+        } catch (RuntimeException e) {
+            // Reading the authority of the pinned fork PARSES its bundled
+            // snapshot, and a dist shipped without that resource throws. Before
+            // this block existed, such a dist reported honest zeros through
+            // stats; letting the throw escape would make the whole health
+            // surface die on the one question it exists to answer. So the
+            // failure is REPORTED, and it is not reported as a clean sweep:
+            // "could not look" and "looked and found nothing" are different
+            // answers and must not render alike.
+            java.util.Map<String, Object> failed = new java.util.LinkedHashMap<>();
+            failed.put("checked", false);
+            failed.put("error", String.valueOf(e));
+            return failed;
+        }
         java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
+        block.put("checked", true);
         block.put("declared", audit.declared());
         block.put("resolved", audit.resolved());
         block.put("unresolved", audit.unresolved());

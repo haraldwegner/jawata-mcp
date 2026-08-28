@@ -79,26 +79,23 @@ public final class OcpDetector extends AbstractAstDetector {
      */
     private final java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> store;
 
-    public OcpDetector() {
-        this(() -> null);
-    }
-
-    /** Resolve cures from this store — the seam a store-aware caller uses. */
-    public OcpDetector(org.jawata.mcp.knowledge.ExperienceStore store) {
-        this(() -> store);
-    }
-
     /**
      * Resolve cures from whatever store the supplier holds AT SCAN TIME — the
      * PRODUCTION seam.
      *
-     * <p>A supplier rather than a store, because the detector catalog is built
-     * while the application is still assembling itself, and the registration
-     * line runs before the store field is guaranteed assigned. A direct
-     * reference would capture that null once and for all, and every finding
-     * would take the DEGRADED path forever — silently, because a degraded cure
-     * is still a cure and no test would go red. Deferring the read to scan time
-     * makes the wiring independent of construction order.</p>
+     * <p>What was actually broken, stated plainly because an earlier version of
+     * this note invented a different reason: the only registration path took no
+     * store at all, so in production this detector ran with a null one and every
+     * finding took the DEGRADED branch — silently, because a degraded cure is
+     * still a cure and no test went red.</p>
+     *
+     * <p>The store is in fact assigned BEFORE tools are registered (see
+     * {@code JawataApplication.start}, which opens it on the line above
+     * {@code registerTools()} and has said so since Sprint 21), so a direct
+     * reference would work today. The supplier is kept for two smaller reasons:
+     * it matches the {@code () -> jdtService} idiom already on the registration
+     * line, and the field is nulled at shutdown, which a supplier reads and a
+     * captured reference would not.</p>
      */
     public OcpDetector(java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
         super("ocp",

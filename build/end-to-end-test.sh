@@ -916,7 +916,11 @@ esac
 # than falling into a catch-all that would read as "no findings".
 OCPQ="$(call find_quality_issue '{"kind":"ocp"}')"
 case "$OCPQ" in
-    *DEGRADED*)
+    *'DEGRADED — catalogue namespace'*)
+        # The exact prefix from the cure lookup, not a bare DEGRADED: the AST
+        # scanner emits its own "DEGRADED SCAN:" steering on an unrelated
+        # failure, and matching that here would report a true failure with an
+        # entirely wrong diagnosis.
         fail "cure-resolves the detector answered DEGRADED — it reached no store, so the cure is the hardcoded map and not the catalogue. This is the unwired signature: $(printf '%s' "$OCPQ" | head -c 400)" ;;
     *'design(s) in the catalogue:'*)
         pass "cure-resolves an ocp finding carries a cure whose catalogue address resolved from the live store" ;;

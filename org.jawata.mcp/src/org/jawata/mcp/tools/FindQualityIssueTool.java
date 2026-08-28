@@ -43,10 +43,16 @@ public class FindQualityIssueTool extends AbstractTool {
 
     /**
      * Build the default catalog: the eight built-in quality detectors plus the
-     * Sprint 17 Fowler smell detectors. The live registration
-     * ({@code JawataApplication}) uses this ctor, so registering a Fowler kind in
+     * Sprint 17 Fowler smell detectors. Registering a Fowler kind in
      * {@link FowlerDetectors} surfaces it here automatically — no edit to this
      * class, no new tool.
+     *
+     * <p>STORELESS, and therefore NOT the live registration — that is the
+     * two-argument constructor below. This one is for callers that genuinely
+     * have no experience store (tests, mostly); every cure a detector names
+     * will report itself DEGRADED. Until Sprint 28d this ctor WAS the live
+     * registration, and this Javadoc said so, which is how the storeless path
+     * stayed invisible.</p>
      */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier) {
         this(serviceSupplier, () -> null);
@@ -62,9 +68,11 @@ public class FindQualityIssueTool extends AbstractTool {
      * production did — so a detector's cure could only ever be the degraded
      * text form, in the shipped product, with every unit test green.</p>
      *
-     * <p>A supplier, not a store: at the registration line the application is
-     * still assembling and the store field may be unassigned; the read is
-     * deferred to scan time.</p>
+     * <p>A supplier, not a store — the read is deferred to scan time so it
+     * follows the field, including its null at shutdown. Not because the store
+     * is unassigned here: {@code JawataApplication.start} opens it on the line
+     * immediately above {@code registerTools()}, deliberately, so that
+     * store-backed tools can be wired with it.</p>
      */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier,
                                 Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {

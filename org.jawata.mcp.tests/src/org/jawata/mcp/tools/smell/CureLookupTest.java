@@ -18,8 +18,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -174,10 +172,9 @@ class CureLookupTest {
         assertEquals(3, fine.resolved().size(),
             "ocp declares state / command / template-method, all three in the seeded fork");
         assertNull(fine.degradation(),
-            "every declared cure resolved, so nothing here is a fallback");
-        assertEquals(List.of("jawata-samples"), fine.absentNamespaces(),
-            "the empty namespace is still REPORTED — it is a fact about the store, not"
-                + " about this query");
+            "every declared cure resolved, so nothing here is a fallback — an empty"
+                + " namespace elsewhere does not make THIS kind's answer a fallback,"
+                + " which is the half that says absence is reported and not contagious");
     }
 
     // ------------------------------------------------------------------ W3

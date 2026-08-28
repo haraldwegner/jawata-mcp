@@ -38,11 +38,6 @@ public final class CureCatalog {
      * automates it), and the catalogue key its design lives under.
      */
     public record Cure(String recipe, String operation) {
-
-        /** True when a parity-gated plan kind can actually run this cure. */
-        public boolean runnable() {
-            return recipe != null;
-        }
     }
 
     /** The three designs that close a modification axis — OCP's answer, shared by its traces. */
@@ -95,11 +90,6 @@ public final class CureCatalog {
             return List.of();
         }
         return BY_KIND.getOrDefault(kind, List.of());
-    }
-
-    /** Every smell kind this table declares a cure for. */
-    public static List<String> kinds() {
-        return List.copyOf(BY_KIND.keySet());
     }
 
     /**

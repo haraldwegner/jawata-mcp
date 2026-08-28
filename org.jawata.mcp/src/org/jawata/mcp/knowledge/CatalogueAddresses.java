@@ -56,14 +56,11 @@ public final class CatalogueAddresses {
     }
 
     private final Map<String, Address> byOperation;
-    private final Map<String, Integer> rowsByNamespace;
     private final List<String> absentNamespaces;
 
     private CatalogueAddresses(Map<String, Address> byOperation,
-                               Map<String, Integer> rowsByNamespace,
                                List<String> absentNamespaces) {
         this.byOperation = byOperation;
-        this.rowsByNamespace = rowsByNamespace;
         this.absentNamespaces = absentNamespaces;
     }
 
@@ -127,7 +124,7 @@ public final class CatalogueAddresses {
             }
         }
         return new CatalogueAddresses(Collections.unmodifiableMap(merged),
-            Collections.unmodifiableMap(counts), Collections.unmodifiableList(absent));
+            Collections.unmodifiableList(absent));
     }
 
     /**
@@ -149,16 +146,6 @@ public final class CatalogueAddresses {
     /** Every registered namespace holding ZERO live rows, named. */
     public List<String> absentNamespaces() {
         return absentNamespaces;
-    }
-
-    /** True when no registered namespace holds a single live row — the catalogue is GONE. */
-    public boolean everyNamespaceAbsent() {
-        return absentNamespaces.size() == rowsByNamespace.size();
-    }
-
-    /** How many cure keys are addressable right now. */
-    public int size() {
-        return byOperation.size();
     }
 
     /**

@@ -25,24 +25,18 @@ public final class FowlerDetectors {
      * {@code incomplete_delegation} (SRP — §7 unfinished encapsulation),
      * {@code refused_bequest} (LSP), and {@code divergent_change}/{@code shotgun_surgery}
      * (the OCP trace).
-     */
-    public static DetectorCatalog registerInto(DetectorCatalog catalog) {
-        return registerInto(catalog, () -> null);
-    }
-
-    /**
-     * The store-aware form: the same registration, with the experience store the
-     * cure-carrying detectors resolve their addresses from.
      *
-     * <p>Sprint 28d. A detector's cure is an ENTRY in the pattern catalogue, so
-     * a detector that cannot reach the store can only state its cure as text.
-     * That degraded answer is honest and tested, but it is not the product —
-     * and it is what production shipped until this overload existed, because
-     * the one-argument form above was the only registration path and it had no
-     * store to give.</p>
+     * <p>Sprint 28d added {@code store}: a detector's cure is an ENTRY in the
+     * pattern catalogue, so a detector that cannot reach the store can only
+     * state its cure as text. That degraded answer is honest and tested, but it
+     * is not the product — and it is what production shipped for as long as a
+     * storeless registration path existed. There is deliberately no
+     * one-argument overload: it would be the silent default all over again, and
+     * a caller with no store passes one that yields null, visibly.</p>
      *
-     * <p>A supplier, not a store: the catalog is built during application
-     * assembly, before the store field is guaranteed assigned. See
+     * <p>A supplier, not a store — for the idiom and for the shutdown read, NOT
+     * because the store is unassigned at this point; it is assigned one line
+     * before tools are registered. See
      * {@link OcpDetector#OcpDetector(java.util.function.Supplier)}.</p>
      */
     public static DetectorCatalog registerInto(

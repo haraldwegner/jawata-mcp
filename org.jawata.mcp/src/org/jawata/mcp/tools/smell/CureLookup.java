@@ -53,18 +53,17 @@ public final class CureLookup {
      * @param kind             the smell asked about
      * @param resolved         cures whose design was found, best-first
      * @param unresolved       declared cure keys no live row carries
-     * @param absentNamespaces every registered namespace holding ZERO live rows
-     *                         — reported ALWAYS, whether or not it explains this
-     *                         particular miss, because a namespace that vanished
-     *                         is a fact about the store and not about the query
-     * @param degradation      why this answer is not the store's, or null when it is
+     * @param degradation      why this answer is not the store's, or null when it is.
+     *                         When a namespace holding ZERO live rows is what caused
+     *                         the miss, this sentence NAMES it — that is where the
+     *                         absent namespace reaches a reader, and it is the only
+     *                         place, because a field nothing reads is not a report
      * @param fallbackRecipes  the hardcoded plan kinds, present ONLY alongside a
      *                         non-null degradation — a fallback nobody declared
      *                         is indistinguishable from an answer
      */
     public record Cures(String kind, List<ResolvedCure> resolved, List<String> unresolved,
-                        List<String> absentNamespaces, String degradation,
-                        List<String> fallbackRecipes) {
+                        String degradation, List<String> fallbackRecipes) {
 
         /**
          * The cure as a sentence a finding can carry — and it always says WHERE
@@ -149,7 +148,7 @@ public final class CureLookup {
             fallback = RecipeCatalog.recipesFor(kind);
         }
         return new Cures(kind, List.copyOf(resolved), List.copyOf(unresolved),
-            absent, degradation, List.copyOf(fallback));
+            degradation, List.copyOf(fallback));
     }
 
     /**
