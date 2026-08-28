@@ -29,8 +29,24 @@ public final class CatalogueSources {
      * {@link CatalogueSource}. Callers that only need prefixes (the address
      * renderer, the stats block) pay nothing for the seeding machinery.</p>
      */
-    public static List<CatalogueSource> all() {
-        return List.of(new PatternCatalogueLoader(), new SampleSource());
+    public static List<CatalogueOrigin> all() {
+        return List.of(
+            // The pinned fork. A FOREIGN authority: it moves under us, so its rows
+            // carry a pinned commit and their addresses must be re-resolved when the
+            // pin moves. Its tree is a separate checkout, so it has no workspace root
+            // — "does this address open HERE?" is not a question that can be asked of
+            // it, and saying so is better than answering it wrongly.
+            new CatalogueOrigin(
+                "java-design-patterns", "/catalogue/patterns.json", "", List.of()),
+            // Our own cure specimens. They version with the product — the detector
+            // that names a cure and the code it points at ship from one commit — so
+            // there is nothing to pin and nothing that can drift.
+            new CatalogueOrigin(
+                "jawata-samples", "/samples/samples.json", "org.jawata.samples",
+                // S4 renamed this origin's spelling. The old one is retired, not
+                // deleted: any install that seeded under it still holds those rows,
+                // and on the rename they fall out of every prefix-keyed lane at once.
+                List.of("sample:jawata-samples/")));
     }
 
     /**
@@ -40,13 +56,13 @@ public final class CatalogueSources {
      * <p>The single place the ownership question is answered, so "is this a
      * public address?" and "whose namespace is this?" cannot drift apart.</p>
      */
-    public static CatalogueSource owning(String sourceRef) {
+    public static CatalogueOrigin owning(String sourceRef) {
         if (sourceRef == null) {
             return null;
         }
-        for (CatalogueSource s : all()) {
-            if (sourceRef.startsWith(s.prefix())) {
-                return s;
+        for (CatalogueOrigin o : all()) {
+            if (sourceRef.startsWith(o.prefix())) {
+                return o;
             }
         }
         return null;

@@ -84,17 +84,17 @@ public final class CatalogueAddresses {
         // insertion order, which is not a decision anybody made.
         Map<String, Map<String, Address>> perNamespace = new LinkedHashMap<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
-        List<CatalogueSource> sources = CatalogueSources.all();
-        for (CatalogueSource s : sources) {
-            perNamespace.put(s.namespace(), new LinkedHashMap<>());
+        List<CatalogueOrigin> origins = CatalogueSources.all();
+        for (CatalogueOrigin o : origins) {
+            perNamespace.put(o.namespace(), new LinkedHashMap<>());
             // Every registered namespace present even at ZERO: an absent key and
             // a zero must not read alike — the registry's own rule.
-            counts.put(s.namespace(), 0);
+            counts.put(o.namespace(), 0);
         }
 
         if (store != null) {
             for (StoredEntry e : store.all()) {
-                CatalogueSource owner = CatalogueSources.owning(e.sourceRef());
+                CatalogueOrigin owner = CatalogueSources.owning(e.sourceRef());
                 if (owner == null) {
                     continue;
                 }
@@ -117,10 +117,10 @@ public final class CatalogueAddresses {
 
         Map<String, Address> merged = new LinkedHashMap<>();
         List<String> absent = new ArrayList<>();
-        for (CatalogueSource s : sources) {
-            merged.putAll(perNamespace.get(s.namespace()));
-            if (counts.get(s.namespace()) == 0) {
-                absent.add(s.namespace());
+        for (CatalogueOrigin o : origins) {
+            merged.putAll(perNamespace.get(o.namespace()));
+            if (counts.get(o.namespace()) == 0) {
+                absent.add(o.namespace());
             }
         }
         return new CatalogueAddresses(Collections.unmodifiableMap(merged),
@@ -152,14 +152,17 @@ public final class CatalogueAddresses {
      * Namespace &rarr; the authority behind it, for a REPORT rather than for a
      * finding.
      *
-     * <p>Separate from resolution on purpose: {@link CatalogueSource#authority()}
-     * on the pinned fork reads its snapshot, so asking for it is a JSON parse.
-     * A per-finding cure must not pay that; an audit run on demand may.</p>
+     * <p>Separate from resolution on purpose: an origin's authority is read from
+     * its MANIFEST — the fork's from its pinned commit — so asking for it is a
+     * JSON parse the first time. A per-finding cure must not pay that; an audit
+     * run on demand may. {@link CatalogueManifest#authorityOf} remembers the
+     * answer per manifest, which is safe because a classpath resource cannot
+     * change while the process runs.</p>
      */
     public static Map<String, String> authorities() {
         Map<String, String> out = new LinkedHashMap<>();
-        for (CatalogueSource s : CatalogueSources.all()) {
-            out.put(s.namespace(), s.authority());
+        for (CatalogueOrigin o : CatalogueSources.all()) {
+            out.put(o.namespace(), CatalogueManifest.authorityOf(o));
         }
         return out;
     }

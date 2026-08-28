@@ -16,7 +16,8 @@ import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
-import org.jawata.mcp.knowledge.CatalogueSource;
+import org.jawata.mcp.knowledge.CatalogueOrigin;
+import org.jawata.mcp.knowledge.CatalogueSeeder;
 import org.jawata.mcp.knowledge.CatalogueSources;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
@@ -704,12 +705,12 @@ public class JawataApplication implements IApplication {
         // ONE LIST, iterated — not one hardcoded loader (Sprint 28d). A source
         // that fails is named and SKIPPED rather than taking the others down
         // with it: one unreadable snapshot must not cost a healthy namespace.
-        for (CatalogueSource source : CatalogueSources.all()) {
+        for (CatalogueOrigin origin : CatalogueSources.all()) {
             try {
-                source.seed(store);
+                CatalogueSeeder.seed(store, origin);
             } catch (RuntimeException e) {
                 log.warn("Catalogue namespace '{}' NOT seeded: {} — design recall will "
-                    + "answer without it", source.namespace(), e.toString());
+                    + "answer without it", origin.namespace(), e.toString());
             }
         }
     }

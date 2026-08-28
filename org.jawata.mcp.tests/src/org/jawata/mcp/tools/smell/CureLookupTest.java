@@ -1,10 +1,10 @@
 package org.jawata.mcp.tools.smell;
 
 import org.jawata.mcp.knowledge.CatalogueAddresses;
-import org.jawata.mcp.knowledge.CatalogueSource;
+import org.jawata.mcp.knowledge.CatalogueOrigin;
+import org.jawata.mcp.knowledge.CatalogueSeeder;
 import org.jawata.mcp.knowledge.CatalogueSources;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
-import org.jawata.mcp.knowledge.PatternCatalogueLoader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -71,8 +71,8 @@ class CureLookupTest {
     }
 
     private void seedEverySource() {
-        for (CatalogueSource s : CatalogueSources.all()) {
-            s.seed(store);
+        for (CatalogueOrigin o : CatalogueSources.all()) {
+            CatalogueSeeder.seed(store, o);
         }
     }
 
@@ -190,7 +190,17 @@ class CureLookupTest {
     @Test
     @DisplayName("W2: a namespace holding zero rows is NAMED, and the fallback says it is a fallback")
     void anAbsentNamespaceIsNamedRatherThanReadAsAnEmptyAnswer() {
-        new PatternCatalogueLoader().seed(store);       // the fork only — samples left empty
+        // The fork ONLY — the samples namespace is deliberately left empty, which is
+        // the whole point of this test. Selected BY NAME rather than by position:
+        // registry order is a real contract for merge determinism, but a test that
+        // says get(0) breaks silently and confusingly the day the order changes.
+        CatalogueOrigin fork = CatalogueSources.all().stream()
+            .filter(o -> "java-design-patterns".equals(o.namespace()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "the fork origin is not registered — this test asserts what happens when"
+                    + " one of two namespaces is empty, and cannot run with neither"));
+        CatalogueSeeder.seed(store, fork);
 
         CatalogueAddresses addresses = CatalogueAddresses.of(store);
         assertEquals(List.of("jawata-samples"), addresses.absentNamespaces(),

@@ -73,6 +73,32 @@ public final class CatalogueSeeder {
     }
 
     /**
+     * THE FRONT DOOR — seed one origin from its own manifest.
+     *
+     * <p>This is what replaced {@code CatalogueSource#seed}. The difference is not
+     * cosmetic: an origin is now a record, so there is no method on it for a source
+     * to implement wrongly, and every step that can diverge between origins happens
+     * here, once. The old interface invited each source to write its own lifecycle
+     * and one of them accepted — skipping supersession entirely, and shipping both
+     * defects the other lane had already fixed.</p>
+     *
+     * @param limit stop after this many rows, or 0 for all. A bounded read is a
+     *     deliberate SAMPLE and is passed through as such, so the orphan sweep
+     *     withholds itself — otherwise almost every row is unclaimed for the
+     *     trivial reason the sample never reached it
+     */
+    public static Outcome seed(ExperienceStore store, CatalogueOrigin origin, int limit) {
+        CatalogueManifest manifest = CatalogueManifest.read(origin);
+        return seed(store, origin.prefix(), manifest.items(limit), manifest.declaredCount(),
+            limit > 0, manifest.authority(), origin.retiredPrefixes());
+    }
+
+    /** Seed one origin's whole manifest. */
+    public static Outcome seed(ExperienceStore store, CatalogueOrigin origin) {
+        return seed(store, origin, 0);
+    }
+
+    /**
      * Seed one source's claimed rows.
      *
      * @param store         the target

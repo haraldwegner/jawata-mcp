@@ -486,13 +486,13 @@ public final class ExperienceTool implements Tool {
         // once there is more than one source. Every registered namespace appears
         // even at zero: an absent key and a zero must not read alike.
         Map<String, Integer> perNamespace = new LinkedHashMap<>();
-        for (org.jawata.mcp.knowledge.CatalogueSource src
+        for (org.jawata.mcp.knowledge.CatalogueOrigin origin
                 : org.jawata.mcp.knowledge.CatalogueSources.all()) {
-            perNamespace.put(src.namespace(), 0);
+            perNamespace.put(origin.namespace(), 0);
         }
         for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
             String ref = e.sourceRef();
-            org.jawata.mcp.knowledge.CatalogueSource owner =
+            org.jawata.mcp.knowledge.CatalogueOrigin owner =
                 org.jawata.mcp.knowledge.CatalogueSources.owning(ref);
             if (owner != null) {
                 rows++;

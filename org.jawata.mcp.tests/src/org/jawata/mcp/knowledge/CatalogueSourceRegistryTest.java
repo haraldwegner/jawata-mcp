@@ -70,7 +70,7 @@ class CatalogueSourceRegistryTest {
     /** Ownership has ONE home, so two callers cannot disagree about a row. */
     @Test
     void the_registry_answers_who_owns_a_row() {
-        CatalogueSource fork = CatalogueSources.all().get(0);
+        CatalogueOrigin fork = CatalogueSources.all().get(0);
         String mine = fork.prefix() + "some-pattern/README.md";
 
         assertNotNull(CatalogueSources.owning(mine));
@@ -88,12 +88,20 @@ class CatalogueSourceRegistryTest {
     /** Every source declares the three things the registry needs of it. */
     @Test
     void every_registered_source_declares_its_identity_and_authority() {
-        List<CatalogueSource> all = CatalogueSources.all();
+        List<CatalogueOrigin> all = CatalogueSources.all();
         assertFalse(all.isEmpty(), "an empty registry means nothing seeds");
-        for (CatalogueSource s : all) {
-            assertFalse(s.namespace().isBlank(), "a namespace is how a degradation names it");
-            assertFalse(s.prefix().isBlank(), "a prefix is the ownership key");
-            assertFalse(s.authority().isBlank(),
+        for (CatalogueOrigin o : all) {
+            assertFalse(o.namespace().isBlank(), "a namespace is how a degradation names it");
+            assertFalse(o.prefix().isBlank(), "a prefix is the ownership key");
+            assertFalse(o.manifestResource().isBlank(),
+                "an origin that names no manifest can never be read, and would register"
+                    + " a namespace that seeds nothing");
+            // S6: the authority moved OFF the origin and into its manifest, because
+            // both origins derive it from one — the fork from its pinned commit, ours
+            // from its own field — so a value held on the record would be wrong for
+            // the fork the moment the pin moved, and would report a stale pin without
+            // saying so. It is still asserted, just read from where it now lives.
+            assertFalse(CatalogueManifest.authorityOf(o).isBlank(),
                 "authority distinguishes a pinned foreign source from our own — the"
                     + " difference that decides whether addresses can drift");
         }
@@ -119,11 +127,11 @@ class CatalogueSourceRegistryTest {
         Map<String, Object> byNamespace = (Map<String, Object>) catalogue.get("byNamespace");
         assertNotNull(byNamespace, "the per-namespace block must exist");
 
-        for (CatalogueSource s : CatalogueSources.all()) {
-            assertTrue(byNamespace.containsKey(s.namespace()),
-                () -> "namespace " + s.namespace() + " is registered and must be REPORTED"
+        for (CatalogueOrigin o : CatalogueSources.all()) {
+            assertTrue(byNamespace.containsKey(o.namespace()),
+                () -> "namespace " + o.namespace() + " is registered and must be REPORTED"
                     + " even holding nothing: " + byNamespace);
-            assertEquals(0, byNamespace.get(s.namespace()),
+            assertEquals(0, byNamespace.get(o.namespace()),
                 "this store was never seeded, so every namespace is legitimately zero"
                     + " — and says zero rather than saying nothing");
         }
@@ -145,9 +153,12 @@ class CatalogueSourceRegistryTest {
     void each_sources_rows_land_in_its_own_namespace() {
         Map<String, Integer> seededBySource = new java.util.LinkedHashMap<>();
         int total = 0;
-        for (CatalogueSource s : CatalogueSources.all()) {
-            int n = s.seed(store);
-            seededBySource.put(s.namespace(), n);
+        for (CatalogueOrigin o : CatalogueSources.all()) {
+            // S6: seeding is no longer a method ON the source — an origin is a
+            // record, so there is nothing for it to implement wrongly. The one
+            // lifecycle takes the origin instead.
+            int n = CatalogueSeeder.seed(store, o).seeded();
+            seededBySource.put(o.namespace(), n);
             total += n;
         }
         assertTrue(total > 0, "the bundled sources must actually seed");
