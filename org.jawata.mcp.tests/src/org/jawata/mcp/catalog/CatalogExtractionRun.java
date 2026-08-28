@@ -45,7 +45,15 @@ class CatalogExtractionRun {
 
         Map<String, String> reviewed =
             CatalogExtractor.readReviewed(out.resolve("situations.json"), JSON);
-        CatalogExtractor extractor = new CatalogExtractor(forkRoot, commit, reviewed);
+        // The fork's own identity, now supplied rather than hardcoded in the
+        // extractor. Its licence line stays: attribution is a condition of
+        // redistributing that prose, and S5 generalised the extractor without
+        // dropping the obligation.
+        String namespace = System.getProperty("jawata.catalog.namespace", "java-design-patterns");
+        String licence = System.getProperty("jawata.catalog.licence",
+            "MIT (fork of iluwatar/java-design-patterns), attribution retained.");
+        CatalogExtractor extractor =
+            new CatalogExtractor(forkRoot, namespace, commit, licence, reviewed);
 
         List<CatalogExtractor.Record> records = new ArrayList<>();
         CatalogExtractor.Report report = extractor.extract(sample, records);

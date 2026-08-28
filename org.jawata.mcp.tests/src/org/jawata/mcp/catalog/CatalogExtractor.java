@@ -73,22 +73,47 @@ public final class CatalogExtractor {
     }
 
     private final Path forkRoot;
+    private final String namespace;
     private final String pinnedCommit;
+    private final String licenceNote;
     private final Map<String, String> reviewedSituations;
 
     /**
-     * @param forkRoot           the pinned checkout
-     * @param pinnedCommit       the sha the snapshot is frozen at — PROVENANCE ONLY.
-     *     It never enters {@code source_ref}: the ref must be stable across
-     *     snapshots or every pattern reads as new at the next one and the whole
-     *     update path becomes unreachable.
+     * Sprint 28d Stage 6 / S5 — the origin-agnostic form.
+     *
+     * @param root         the tree to read: {@code <root>/<slug>/README.md} beside
+     *                     {@code <root>/<slug>/src/main/java/...}
+     * @param namespace    the origin's namespace, which becomes the {@code source_ref}
+     *                     prefix. It was hardcoded to the fork's, which gave any other
+     *                     tree the fork's identity — and every ownership question in
+     *                     the seeder is keyed on exactly this prefix
+     * @param authorityRef the version identity these records were derived at —
+     *     PROVENANCE ONLY. It never enters {@code source_ref}: the ref must be
+     *     stable across snapshots, or every pattern reads as new at the next one
+     *     and the whole update path becomes unreachable
      * @param reviewedSituations slug -&gt; the reviewed one-line condition; a slug
      *     absent here gets its mechanical draft and is reported as UNREVIEWED
      */
-    public CatalogExtractor(Path forkRoot, String pinnedCommit,
+    public CatalogExtractor(Path root, String namespace, String authorityRef,
                             Map<String, String> reviewedSituations) {
-        this.forkRoot = forkRoot;
-        this.pinnedCommit = pinnedCommit;
+        this(root, namespace, authorityRef, null, reviewedSituations);
+    }
+
+    /**
+     * As above, plus an attribution line carried onto every entry.
+     *
+     * @param licenceNote the redistribution terms this origin's prose ships under,
+     *     or {@code null} for an origin that has none to state. It is NOT invented
+     *     per origin: the fork's rows already carry theirs and keep it, because
+     *     attribution is a condition of redistributing that prose. An own-authored
+     *     origin supplies nothing here rather than a default
+     */
+    public CatalogExtractor(Path root, String namespace, String authorityRef,
+                            String licenceNote, Map<String, String> reviewedSituations) {
+        this.forkRoot = root;
+        this.namespace = namespace;
+        this.pinnedCommit = authorityRef;
+        this.licenceNote = licenceNote;
         this.reviewedSituations = Map.copyOf(reviewedSituations);
     }
 
@@ -161,7 +186,7 @@ public final class CatalogExtractor {
                 reviewed != null,
                 principleOf(intent),
                 detailsOf(slug, when, tradeoffs),
-                "catalogue:java-design-patterns/" + slug + "/README.md",
+                "catalogue:" + namespace + "/" + slug + "/README.md",
                 referenceType(readme, slug)));
             built++;
         }
@@ -195,10 +220,21 @@ public final class CatalogExtractor {
         if (!tradeoffs.isBlank()) {
             sb.append("\n\nConsequences (unparaphrased):\n").append(tradeoffs);
         }
-        sb.append("\n\nReference implementation: ").append(referenceTypeName(slug));
-        sb.append("\nSource: iluwatar/java-design-patterns, ").append(slug)
+        String type = referenceTypeName(slug);
+        if (!type.isBlank()) {
+            // Omitted rather than guessed when the tree holds none. A composed
+            // package for a slug with no sources is an address that does not open,
+            // and one of those is worse than saying nothing.
+            sb.append("\n\nReference implementation: ").append(type);
+        }
+        sb.append("\nSource: ").append(namespace).append(", ").append(slug)
           .append("/README.md at ").append(pinnedCommit);
-        sb.append("\nLicence: MIT (fork of iluwatar/java-design-patterns), attribution retained.");
+        if (licenceNote != null && !licenceNote.isBlank()) {
+            // Only where the origin states one. Attribution is a condition of
+            // redistributing somebody else's prose, so the fork's rows keep theirs;
+            // an own-authored origin has none to state and gets no invented default.
+            sb.append("\nLicence: ").append(licenceNote);
+        }
         return sb.toString();
     }
 
@@ -212,21 +248,30 @@ public final class CatalogExtractor {
     }
 
     private String referenceTypeName(String slug) {
-        Path src = forkRoot.resolve(slug).resolve("src/main/java/com/iluwatar")
-            .resolve(slug.replace("-", ""));
-        String pkg = "com.iluwatar." + slug.replace("-", "");
-        if (Files.isDirectory(src)) {
-            try (Stream<Path> types = Files.list(src)) {
-                return types.filter(p -> p.getFileName().toString().endsWith(".java"))
-                    .map(p -> p.getFileName().toString().replace(".java", ""))
-                    .sorted(Comparator.comparingInt((String n) -> "App".equals(n) ? 0 : 1)
-                        .thenComparing(Comparator.naturalOrder()))
-                    .findFirst().map(n -> pkg + "." + n).orElse(pkg);
-            } catch (IOException e) {
-                return pkg;
-            }
+        Path srcRoot = forkRoot.resolve(slug).resolve("src/main/java");
+        if (!Files.isDirectory(srcRoot)) {
+            return "";
         }
-        return pkg;
+        try (Stream<Path> walk = Files.walk(srcRoot)) {
+            return walk
+                .filter(p -> p.getFileName().toString().endsWith(".java"))
+                // App first where one exists — it is the fork's entry point and the
+                // most useful thing to open — then shortest-path first, so the type
+                // nearest the source root wins over one buried in a sub-package.
+                .sorted(Comparator
+                    .comparingInt((Path p) -> "App.java".equals(p.getFileName().toString()) ? 0 : 1)
+                    .thenComparingInt(p -> srcRoot.relativize(p).getNameCount())
+                    .thenComparing(p -> srcRoot.relativize(p).toString()))
+                .findFirst()
+                .map(p -> {
+                    String rel = srcRoot.relativize(p).toString();
+                    return rel.substring(0, rel.length() - ".java".length())
+                        .replace(java.io.File.separatorChar, '.');
+                })
+                .orElse("");
+        } catch (IOException e) {
+            return "";
+        }
     }
 
     /**
@@ -272,17 +317,38 @@ public final class CatalogExtractor {
     /** The committed snapshot: one array of records, plus the sidecar fields. */
     public ObjectNode snapshot(List<Record> records, ObjectMapper json) {
         ObjectNode root = json.createObjectNode();
-        root.put("fork", "iluwatar/java-design-patterns (fork: haraldwegner)");
+        root.put("namespace", namespace);
+        // pinned_commit and count are THE HEADER THE LOADER DEPENDS ON, whatever the
+        // origin. count is the completeness guard the orphan sweep refuses to run
+        // without; pinned_commit is the authority a row is re-resolved against. A
+        // generalised extractor that emits every body correctly and drops these two
+        // would silently disable the sweep and unpin the authority — which is why
+        // they are asserted present, not assumed.
         root.put("pinned_commit", pinnedCommit);
-        root.put("licence", "MIT");
-        root.put("licence_verdict", "MIT — redistribution permitted with attribution retained");
         root.put("count", records.size());
+        if (licenceNote != null && !licenceNote.isBlank()) {
+            // Kept for an origin that states one — attribution is a condition of
+            // redistributing somebody else's prose. Not invented for one that does not.
+            root.put("licence_verdict", licenceNote);
+        }
         ArrayNode arr = root.putArray("patterns");
         for (Record r : records) {
             ObjectNode n = json.createObjectNode();
             n.put("slug", r.slug());
-            n.put("type", "lesson");
-            n.put("verdict", "unproven");
+            // `reference`, and NO verdict — matching PatternCatalogueLoader's
+            // CATALOGUE_TYPE, which is the authority and cannot be referenced from
+            // this bundle. These were `lesson` / `unproven`, and the loader has
+            // always overridden both: it forces `reference` and ignores the verdict.
+            // So the snapshot asserted two things about every row that were never
+            // true of the row actually written. A published pattern is somebody
+            // else's reference, not this machine's experience — it never turned out
+            // any way at all, and `unproven` was a value invented so 187 rows could
+            // pay a debt their type does not owe.
+            //
+            // NOTE: the COMMITTED snapshot still carries the old pair. Correcting it
+            // means re-running this extraction against the fork checkout, which
+            // re-hashes every record and rewrites all 187 rows.
+            n.put("type", "reference");
             n.put("situation", r.situation());
             n.put("principle", r.principle());
             n.put("details", r.details());
