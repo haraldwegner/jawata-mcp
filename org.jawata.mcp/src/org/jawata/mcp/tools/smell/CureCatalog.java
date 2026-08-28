@@ -134,11 +134,6 @@ public final class CureCatalog {
         return List.copyOf(out);
     }
 
-    /** Whether {@code kind} has at least one runnable cure recipe. */
-    public static boolean hasRecipe(String kind) {
-        return !recipesFor(kind).isEmpty();
-    }
-
     /**
      * The OCP-cure pointer the churn detectors append to their messages.
      *

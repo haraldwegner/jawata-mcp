@@ -105,6 +105,57 @@ class CatalogueSeederMigrationTest {
         }
     }
 
+    /**
+     * THE CONTROL for the test above — added 2026-08-28 after a fresh-context audit
+     * found it absent while the checkpoint record claimed it had been delivered.
+     *
+     * <p>The positive test shows the old rows end SUPERSEDED after a rename that
+     * declares the old spelling retired. On its own that does not say WHY. The
+     * supersession could equally have come from the orphan sweep, from the new seed
+     * touching the same addresses, or from anything else that runs on a seed — and the
+     * assertion would look identical.</p>
+     *
+     * <p>So this runs the same rename with the retired-prefix argument REMOVED, and
+     * requires the old rows to stay LIVE — orphaned, answering with an address nothing
+     * backs. That is the defect the argument exists to prevent, reproduced on demand.
+     * The pair is what makes the positive test evidence rather than a coincidence: if
+     * this ever goes green with zero live rows, the supersession has some other cause
+     * and the migration is not doing the work it is credited with.</p>
+     */
+    @Test
+    void withoutTheRetiredPrefixArgumentTheOldRowsAreLeftOrphaned(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            CatalogueSeeder.seed(store, OLD_PREFIX,
+                List.of(item(OLD_PREFIX, "compose-method"),
+                        item(OLD_PREFIX, "replace-pattern-with-idiom")),
+                2, false, "before-the-rename", List.of());
+            assertEquals(2, live(under(store, OLD_PREFIX)),
+                "PROOF OF LIFE: both old-spelling rows must be live before the rename, or"
+                    + " 'they stayed live' below would be true of an empty store");
+
+            // The SAME rename as the positive test, with ONE difference: no retired
+            // prefix is declared. Everything else is held constant on purpose — that is
+            // what makes the difference in outcome attributable to this argument alone.
+            CatalogueSeeder.seed(store, NEW_PREFIX,
+                List.of(item(NEW_PREFIX, "compose-method"),
+                        item(NEW_PREFIX, "replace-pattern-with-idiom")),
+                2, false, "after-the-rename", List.of());
+
+            assertEquals(2, live(under(store, OLD_PREFIX)),
+                () -> "WITHOUT the retired-prefix argument the old rows must remain LIVE —"
+                    + " orphaned, each handing out an address nothing backs. If they were"
+                    + " superseded here, something OTHER than the migration is retiring"
+                    + " them and the positive test above credits this argument with work"
+                    + " it does not do. Statuses: "
+                    + under(store, OLD_PREFIX).stream().map(StoredEntry::status).toList());
+            assertEquals(2, live(under(store, NEW_PREFIX)),
+                "and the new spelling is seeded either way — so the store now holds BOTH"
+                    + " spellings live, which is precisely the duplicate-address state the"
+                    + " retired-prefix argument exists to prevent");
+        }
+    }
+
     @Test
     void aRetiredPrefixIsClearedEvenWhenTheSweepIsWithheld(@TempDir Path dir) throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {

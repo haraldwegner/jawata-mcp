@@ -74,6 +74,24 @@ class CatalogueSeederLifecycleTest {
 
             assertEquals(1, r.seeded(), "the sample must write exactly one pattern");
             assertEquals(1, store.count(), "and write exactly one row");
+            // RESTORED 2026-08-28 after a fresh-context audit found it missing.
+            //
+            // The pre-migration test asserted `assertEquals(1, r.inSnapshot())` — "the
+            // sample must consider exactly one pattern". S6 removed `inSnapshot()` from
+            // Outcome, so that assertion could not migrate verbatim and was dropped. The
+            // checkpoint record then claimed every assertion survived, and offered the
+            // suite TOTAL holding at 2158 as proof. That proof cannot see this: the total
+            // counts test METHODS, not assertions, so a method that quietly loses one
+            // reports the same number.
+            //
+            // Restored in the stronger form the seam now allows. The original pinned a
+            // count; this pins the PROPERTY that count existed for — that the bound
+            // actually bit. Without it, "the sample wrote one" would be equally true of
+            // an unbounded read of a one-row manifest and would say nothing about limit.
+            assertTrue(bundledSize() > 1,
+                "PROOF THE BOUND BITES: the bundled manifest must carry MORE than the"
+                    + " sample writes, or a bounded read is indistinguishable from an"
+                    + " unbounded one. carries=" + bundledSize());
 
             StoredEntry only = store.all().get(0);
             System.out.println("\n=== CATALOGUE SAMPLE (clause 5b, read this) ===");

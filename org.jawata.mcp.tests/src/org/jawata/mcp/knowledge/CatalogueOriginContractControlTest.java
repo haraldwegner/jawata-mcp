@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -180,16 +182,56 @@ class CatalogueOriginContractControlTest {
      * deliberately, since a retired spelling has no current input — so an overlap
      * would retire a live origin's whole catalogue on the next boot.
      */
+    /**
+     * The overlap predicate must DISCRIMINATE, which the first version of this test
+     * did not check.
+     *
+     * <p><b>It was a tautology, found by a fresh-context audit 2026-08-28.</b> It set
+     * {@code retired := live} and then asserted
+     * {@code live.startsWith(retired) || retired.startsWith(live)} — which reduces to
+     * {@code live.startsWith(live)}, true for every string that has ever existed. It
+     * exercised no production code and could not fail, inside the very file whose job
+     * is proving that controls can fail.</p>
+     *
+     * <p>So both directions are asserted now. The overlapping case must register, and
+     * a genuinely-retired spelling must NOT — and it is the second half that carries
+     * the weight, because without it the predicate could be true of everything and the
+     * first half would still pass.</p>
+     *
+     * <p><b>The better fix, not taken here.</b> This mirrors the two-line expression
+     * written inline in {@code CatalogueOriginContractTest}, so the rule has two
+     * homes. The design answer is to give {@link CatalogueOrigin} the invariant in its
+     * own compact constructor — refusing a namespace or a retired prefix that collides
+     * — which would make the collision unconstructible rather than merely detectable,
+     * and would let this control exercise production code by asserting the refusal.
+     * That is an open architect proposal awaiting a ruling, so the mirror stands and
+     * is named rather than hidden.</p>
+     */
     @Test
     void a_retired_prefix_that_overlaps_a_live_one_is_detectable() {
         String live = CatalogueSources.all().get(0).prefix();
+
+        // The hazard: retiring a spelling that is still LIVE. The migration supersedes
+        // every row under a retired prefix WITHOUT the completeness guard, so this would
+        // retire that origin's whole catalogue on the next boot.
         CatalogueOrigin reckless =
             new CatalogueOrigin("bogus", "/nowhere/none.json", "", List.of(live));
         String retired = reckless.retiredPrefixes().get(0);
         assertTrue(live.startsWith(retired) || retired.startsWith(live),
             "retiring '" + retired + "' while '" + live + "' is LIVE must register as an"
-                + " overlap. If it did not, the next boot would supersede that origin's"
-                + " entire catalogue with no guard to stop it");
+                + " overlap");
+
+        // THE HALF THAT MAKES THE ABOVE MEAN SOMETHING: a real retired spelling — the
+        // one S4 actually retired — must NOT register. If this failed, the predicate
+        // would be true of every pair and the assertion above would prove nothing.
+        CatalogueOrigin careful = new CatalogueOrigin(
+            "bogus", "/nowhere/none.json", "", List.of("sample:jawata-samples/"));
+        String safe = careful.retiredPrefixes().get(0);
+        assertFalse(live.startsWith(safe) || safe.startsWith(live),
+            "'" + safe + "' is a genuinely retired spelling and must NOT overlap the live"
+                + " prefix '" + live + "'. If it did, every rename would look like a"
+                + " collision and the overlap check would be an always-true assertion"
+                + " wearing a guard's clothes");
     }
 
     /**
@@ -200,6 +242,51 @@ class CatalogueOriginContractControlTest {
      * resource, and poisoning that cache from a test would leak a fake authority
      * into every later reader in the same JVM.</p>
      */
+    /**
+     * CONTRACT: {@code every_origin_gets_the_same_lifecycle} asserts that a second seed
+     * from the same manifest writes NOTHING. <b>This is the control that assertion was
+     * missing</b> — added 2026-08-28 after a fresh-context audit observed that the
+     * lifecycle property, the one the C6 clause is actually about, had no control at all
+     * while the commit message claimed "seven controls, one per contract property".
+     *
+     * <p>"The second run wrote nothing" is the same observation whether the seeder
+     * correctly recognised its own rows or is simply unable to write. Only a CHANGED
+     * input separates them, so that is what this asserts: same input twice → no write;
+     * edited input → a write. Without the third step, an inert seeder passes the
+     * contract.</p>
+     */
+    @Test
+    void the_idempotence_the_lifecycle_asserts_is_not_vacuous(@TempDir Path dir)
+            throws Exception {
+        CatalogueOrigin o = CatalogueSources.all().get(0);
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            CatalogueSeeder.Outcome first = CatalogueSeeder.seed(
+                store, o, CatalogueManifest.of(o, manifestNode(1, 1)), 0);
+            assertEquals(1, first.seeded(),
+                "PROOF OF LIFE: the seeder must write the row before its refusal to"
+                    + " rewrite it can mean anything");
+
+            CatalogueSeeder.Outcome same = CatalogueSeeder.seed(
+                store, o, CatalogueManifest.of(o, manifestNode(1, 1)), 0);
+            assertEquals(0, same.seeded(),
+                "an unchanged input must write nothing on the second pass");
+
+            // THE STEP THAT MAKES THE ZERO ABOVE MEAN SOMETHING. hashOf digests the whole
+            // row, so an edited principle is a different row at the same address.
+            ObjectNode edited = manifestNode(1, 1);
+            ((ObjectNode) edited.path("patterns").get(0))
+                .put("principle", "an edited principle, so the hash must move");
+            CatalogueSeeder.Outcome changed = CatalogueSeeder.seed(
+                store, o, CatalogueManifest.of(o, edited), 0);
+            assertTrue(changed.seeded() > 0,
+                "an EDITED row must be written. If it is not, then 'the second run wrote"
+                    + " nothing' above proves only that this seeder never writes, and the"
+                    + " whole idempotence contract is satisfied by an inert implementation"
+                    + " — which is the shape S2 found in the second source's nine-line"
+                    + " seed. seeded=" + changed.seeded());
+        }
+    }
+
     @Test
     void an_origin_declaring_no_version_identity_reads_as_unpinned() {
         CatalogueManifest anonymous =

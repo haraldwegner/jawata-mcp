@@ -89,9 +89,12 @@ class CureCatalogTest {
                 + " leaving it out would read as 'no cure known'");
         assertEquals(List.of(), CureCatalog.recipesFor("cqs"),
             "but nothing automates it, so there is no plan kind to run");
-        assertFalse(CureCatalog.hasRecipe("cqs"));
 
-        assertTrue(CureCatalog.hasRecipe("long_method"),
+        // Was `assertTrue(CureCatalog.hasRecipe("long_method"))`. hasRecipe was deleted
+        // 2026-08-28: the unwired gate showed all three of its callers were this test,
+        // so it was API added in S7 that no production path ever asked for. The check it
+        // expressed is unchanged — it was only ever recipesFor(...).isEmpty() inverted.
+        assertFalse(CureCatalog.recipesFor("long_method").isEmpty(),
             "whereas a definitional cure — the method ends composed — does run");
     }
 
@@ -99,7 +102,6 @@ class CureCatalogTest {
     @DisplayName("an unknown kind yields nothing, and null is an answer")
     void anUnknownKindYieldsNothing() {
         assertEquals(List.of(), CureCatalog.recipesFor("no_such_smell"));
-        assertFalse(CureCatalog.hasRecipe("no_such_smell"));
         assertEquals(List.of(), CureCatalog.recipesFor(null),
             "every caller passes whatever the finding carried, so null must be an answer"
                 + " rather than an exception");
