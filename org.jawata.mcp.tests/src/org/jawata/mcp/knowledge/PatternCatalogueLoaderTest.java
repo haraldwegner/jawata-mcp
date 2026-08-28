@@ -331,10 +331,22 @@ class PatternCatalogueLoaderTest {
 
     /** A snapshot carrying exactly these slugs, each a well-formed pattern. */
     private static com.fasterxml.jackson.databind.JsonNode snapshotOf(String... slugs) {
+        return snapshotDeclaring(slugs.length, slugs);
+    }
+
+    /**
+     * A snapshot that DECLARES {@code declared} patterns while carrying
+     * {@code slugs}. The real file carries its own `count`, and the orphan
+     * sweep refuses to run unless the two agree — so a fixture that omitted the
+     * count would be testing a shape the product never ships.
+     */
+    private static com.fasterxml.jackson.databind.JsonNode snapshotDeclaring(
+            int declared, String... slugs) {
         com.fasterxml.jackson.databind.ObjectMapper m =
             new com.fasterxml.jackson.databind.ObjectMapper();
         com.fasterxml.jackson.databind.node.ObjectNode root = m.createObjectNode();
         root.put("pinned_commit", "test-pin");
+        root.put("count", declared);
         com.fasterxml.jackson.databind.node.ArrayNode arr = root.putArray("patterns");
         for (String slug : slugs) {
             com.fasterxml.jackson.databind.node.ObjectNode p = arr.addObject();
@@ -375,6 +387,36 @@ class PatternCatalogueLoaderTest {
             assertEquals(1, liveCount(rowsFor(store, "state")),
                 "the pattern the snapshot still carries must be untouched — a sweep that"
                     + " retires the survivors too is worse than the bug");
+
+            // THE END THE BUG WAS ACTUALLY ABOUT. Status and answerability had
+            // drifted apart: the row looked fine and its address was dead. A
+            // test that asserts only the status pins the half that was never
+            // really in doubt, so this one closes the loop through the lookup
+            // the cure sweep itself uses.
+            assertFalse(CatalogueAddresses.of(store).resolves("design:visitor"),
+                "the retired pattern's cure key must stop resolving — while it resolves,"
+                    + " CureLookup.audit reports CLEAN and hands out an address that no"
+                    + " longer exists upstream");
+            assertTrue(CatalogueAddresses.of(store).resolves("design:state"),
+                "and the surviving pattern's key must still resolve");
+        }
+    }
+
+    @Test
+    void a_partial_snapshot_retires_nothing(@TempDir Path dir) throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            new PatternCatalogueLoader(snapshotOf("state", "visitor")).load(store);
+
+            // A snapshot that PARSES but is truncated — 1 pattern where it
+            // declares 2 — passes an is-it-empty check and would retire every
+            // pattern it happens not to carry. Against the real 187 that is 186
+            // rows gone on every user's next boot, silently. The file declares
+            // its own count, so the disagreement is checkable.
+            new PatternCatalogueLoader(snapshotDeclaring(2, "state")).load(store);
+
+            assertEquals(1, liveCount(rowsFor(store, "visitor")),
+                "a snapshot that carries fewer patterns than it declares is a truncated"
+                    + " read, not an upstream deletion — nothing may be retired on it");
         }
     }
 

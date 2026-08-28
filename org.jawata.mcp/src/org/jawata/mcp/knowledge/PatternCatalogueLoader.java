@@ -247,13 +247,32 @@ public final class PatternCatalogueLoader implements CatalogueSource {
         //   - limit > 0 is the bounded SAMPLE mode. Under a truncated snapshot
         //     every pattern outside the sample looks unclaimed, so the sweep
         //     would supersede almost the whole catalogue.
-        //   - an empty claim set means the snapshot yielded nothing — a
-        //     missing or broken resource, not an upstream that deleted all 187
-        //     patterns. Retiring the catalogue on a read failure is the
-        //     could-not-look/found-nothing confusion in its most expensive form.
+        //   - the snapshot must be COMPLETE, and it says so itself: the file
+        //     carries its own `count`. Emptiness was the guard here first, and
+        //     it only covers zero — a snapshot that parses and yields 40 of 187
+        //     patterns passes an is-it-empty check and retires the other 147 on
+        //     every user's next boot. That is the same could-not-look /
+        //     found-nothing confusion one step above the zero, and the field
+        //     that settles it was already in the file and unread. A snapshot
+        //     that does not declare a count cannot be checked, so the sweep
+        //     does not run and says why: an unverifiable input is not a
+        //     verified one.
         int orphaned = 0;
         List<String> orphanRefs = new ArrayList<>();
-        if (limit == 0 && !claimed.isEmpty()) {
+        int declared = snapshot().path("count").asInt(-1);
+        // `declared > 0`, not `>= 0`: a snapshot declaring ZERO patterns and
+        // carrying zero is internally CONSISTENT, and an earlier version of
+        // this line called that complete and swept the whole catalogue on it.
+        // The empty-snapshot guard test caught it. Consistency is not
+        // completeness — an empty read agrees with itself.
+        boolean complete = declared > 0 && declared == claimed.size();
+        if (limit == 0 && !claimed.isEmpty() && !complete) {
+            log.warn("Pattern catalogue: NOT sweeping orphans at {} — the snapshot declares {}"
+                    + " pattern(s) and yielded {} claimable ref(s). A partial snapshot would"
+                    + " retire every pattern it happens not to carry.", commit, declared,
+                claimed.size());
+        }
+        if (limit == 0 && complete) {
             for (Map.Entry<String, List<String>> live : liveByRef.entrySet()) {
                 if (claimed.contains(live.getKey())) {
                     continue;
