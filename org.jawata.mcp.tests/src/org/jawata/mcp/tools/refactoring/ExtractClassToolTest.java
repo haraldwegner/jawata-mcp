@@ -3,6 +3,8 @@ package org.jawata.mcp.tools.refactoring;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IType;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
@@ -109,6 +111,54 @@ class ExtractClassToolTest {
         String extracted = Files.readString(created);
         assertTrue(extracted.contains("label") && extracted.contains("unit"),
             () -> "the moved fields must live in the new class now:\n" + extracted);
+    }
+
+    /**
+     * S7.2 — THE DONE-DEFINITION, and it is asserted by QUERY.
+     *
+     * <p>Stage 7's binding rule is that an operation "migrates references and leaves
+     * the old shape GONE — checked by query, zero or not done". The distinction from
+     * reading the diff is the whole point: a diff shows what the tool BELIEVES it
+     * did, and a refactoring that adds the new class while leaving the old fields
+     * behind produces a diff that looks entirely correct. Only asking the model
+     * whether the field still exists can tell those apart.</p>
+     *
+     * <p>The type is re-resolved BY NAME rather than by the original coordinates,
+     * because the extraction moves lines — a position-based lookup afterwards could
+     * land on a different type and answer confidently about the wrong one.</p>
+     */
+    @Test
+    @DisplayName("S7.2: the moved fields are GONE from the original, established by query")
+    void theOldShapeIsGoneCheckedByQuery() throws Exception {
+        ICompilationUnit cu = service.getCompilationUnit(targetFile);
+        IType before = cu.getType("PointBuilder");
+        assertTrue(before.getField("label").exists() && before.getField("unit").exists(),
+            "PROOF OF LIFE: both fields must be ON the type before the move, or 'they are"
+                + " gone' afterwards is true of a type that never had them");
+
+        ToolResponse r = tool.execute(args("PointMeta", "label", "unit"));
+        assertTrue(r.isSuccess(), () -> "extract(kind=class) failed: " + r.getError());
+
+        IType after = service.getCompilationUnit(targetFile).getType("PointBuilder");
+        assertTrue(after.exists(),
+            "the original type must still exist — Extract Class moves state out of it, it"
+                + " does not delete it");
+        assertFalse(after.getField("label").exists(),
+            "'label' is still declared on PointBuilder. The operation is not done: the new"
+                + " class exists AND the old field survives, so the state now has two homes"
+                + " and the next reader cannot tell which one is authoritative");
+        assertFalse(after.getField("unit").exists(),
+            "'unit' is still declared on PointBuilder — same defect as above");
+
+        // And the state must have ARRIVED, not merely departed. Without this, deleting
+        // the fields outright would satisfy every assertion above.
+        IType extracted = service.getCompilationUnit(pkgDir.resolve("PointMeta.java"))
+            .getType("PointMeta");
+        assertTrue(extracted.exists(), "the extracted type must exist as a real type");
+        assertTrue(extracted.getField("label").exists() && extracted.getField("unit").exists(),
+            "both fields must now be declared on PointMeta. Gone-from-the-original is only"
+                + " half the done-definition; a refactoring that dropped them would pass the"
+                + " other half");
     }
 
     @Test
