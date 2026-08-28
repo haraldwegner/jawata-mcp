@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28d Stage 7 (S7.4) — a fixture project holding a VERBATIM slice of the
+  pinned upstream fork, for C7's clause that an operation must be demonstrated
+  "on code we did not author": a fixture written for the test does not satisfy it.
+
+  Deliberately SEPARATE from simple-maven. That fixture feeds roughly forty smell
+  detectors whose counts are asserted elsewhere; dropping foreign code into it
+  would shift those baselines for a reason unrelated to what they measure.
+
+  No dependencies on purpose. The slice compiles against the JDK alone, so nothing
+  here can fail for a resolution reason and be mistaken for a refactoring defect.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jawata.fixtures</groupId>
+    <artifactId>fork-circuit-breaker</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+</project>
