@@ -57,8 +57,19 @@ public final class CatalogueSeeder {
      * What one lifecycle run did. Deliberately NOT the caller's own result type:
      * how many items a source considered is the source's business (it may have
      * skipped malformed ones), while what the lifecycle wrote is this class's.
+     *
+     * <p><b>{@code migrated} is counted APART from {@code retired}, and the
+     * separation is the point.</b> Both end with a row superseded, but they answer
+     * opposite questions. A retirement says the current input dropped an item or
+     * replaced it — ordinary traffic, a number that moves whenever the source
+     * changes. A migration says rows were found under a spelling this source no
+     * longer uses, which should happen ONCE per install and then never again.
+     * Folded into one number, a migration recurring on every boot would read as
+     * normal churn, and that is exactly the signal worth seeing. Same reasoning as
+     * the sweep's own log line, which names its orphans rather than counting them:
+     * two causes needing opposite responses must not share a number.</p>
      */
-    public record Outcome(int seeded, int unchanged, int retired) {
+    public record Outcome(int seeded, int unchanged, int retired, int migrated) {
     }
 
     /**
@@ -75,10 +86,21 @@ public final class CatalogueSeeder {
      * @param bounded       true when {@code items} is a deliberate SAMPLE rather
      *                      than the whole input
      * @param authorityRef  the version identity reported in the run's result
+     * @param retiredPrefixes spellings this source USED to own and no longer does.
+     *     Every live row under one of them is superseded before anything else
+     *     happens. Empty for a source that has never been renamed — which is every
+     *     source until it is, and then forever after, because the migration must
+     *     keep running for installs that never saw the intervening versions
      */
     public static Outcome seed(
             ExperienceStore store, String prefix, List<SeedItem> items,
-            int declaredCount, boolean bounded, String authorityRef) {
+            int declaredCount, boolean bounded, String authorityRef, List<String> retiredPrefixes) {
+
+        // FIRST, before anything reads the current prefix: clear any spelling this
+        // source has abandoned. It must precede the rest because every structure
+        // below is keyed on the CURRENT prefix and therefore cannot see the old
+        // one at all.
+        int migrated = migrateRetiredPrefixes(store, prefix, retiredPrefixes);
 
         // Read the live rows ONCE, before the loop. Asking the store per item
         // would be a full scan per item, which is the kind of quiet quadratic
@@ -113,7 +135,84 @@ public final class CatalogueSeeder {
         }
 
         retired += sweepOrphans(store, liveByRef, claimed, declaredCount, bounded, authorityRef);
-        return new Outcome(seeded, unchanged, retired);
+        return new Outcome(seeded, unchanged, retired, migrated);
+    }
+
+    /**
+     * THE ONE CHANGE A PREFIX-KEYED LIFECYCLE CANNOT MAKE TO ITSELF.
+     *
+     * <p>Every ownership question here is keyed on a prefix — {@code owning()},
+     * {@code isCatalogue()}, {@link #sweepOrphans}'s {@code liveByRef}, the reseed
+     * lane rule. So the instant a source's spelling changes, its existing rows fall
+     * out of ALL of them at once. They are not superseded and not swept; they are
+     * invisible, still live, and still answering with an address nothing backs. No
+     * amount of care inside the per-item loop reaches them, because the loop only
+     * ever iterates refs the CURRENT input names.</p>
+     *
+     * <p><b>Deliberately NOT gated by the completeness guard, and this is the
+     * subtle half.</b> {@link #sweepOrphans} withholds itself unless the input is
+     * complete, because a truncated read would otherwise retire everything it
+     * happens not to carry. That reasoning does not transfer: a retired prefix has
+     * no current input AT ALL, so every row under it is stale whatever today's
+     * input contains. Sharing the gate would make the migration skip precisely when
+     * a partial read most needs it, and skip silently.</p>
+     *
+     * <p>Idempotent by construction — it only ever touches rows that are still
+     * live, so a second run finds none and reports zero. That is what makes a
+     * recurring non-zero count meaningful rather than noise.</p>
+     *
+     * <p><b>Guarded against self-retirement.</b> A retired prefix that is a prefix
+     * OF the current one — or equal to it — would sweep the source's own live rows.
+     * That is refused rather than trusted to never be configured.</p>
+     */
+    private static int migrateRetiredPrefixes(ExperienceStore store, String prefix,
+                                              List<String> retiredPrefixes) {
+        if (retiredPrefixes == null || retiredPrefixes.isEmpty()) {
+            return 0;
+        }
+        List<String> safe = new ArrayList<>();
+        for (String retired : retiredPrefixes) {
+            if (retired == null || retired.isBlank()) {
+                continue;
+            }
+            if (prefix.startsWith(retired) || retired.startsWith(prefix)) {
+                log.warn("Catalogue: REFUSING to migrate rows at '{}' — it overlaps the source's"
+                        + " current prefix '{}', so the sweep would retire the source's own live"
+                        + " rows. A retired spelling must be disjoint from the current one.",
+                    retired, prefix);
+                continue;
+            }
+            safe.add(retired);
+        }
+        if (safe.isEmpty()) {
+            return 0;
+        }
+
+        int migrated = 0;
+        List<String> migratedRefs = new ArrayList<>();
+        for (StoredEntry e : store.all()) {
+            String ref = e.sourceRef();
+            if (ref == null || ExperienceEntry.SUPERSEDED.equals(e.status())) {
+                continue;
+            }
+            for (String retired : safe) {
+                if (ref.startsWith(retired)) {
+                    if (store.setStatus(e.id(), ExperienceEntry.SUPERSEDED)) {
+                        migrated++;
+                        migratedRefs.add(ref);
+                    }
+                    break;
+                }
+            }
+        }
+        if (migrated > 0) {
+            // NAMED, like the orphan sweep: this should fire once per install and
+            // never again, so a reader needs to see WHICH rows moved, not just how
+            // many — a recurring count is a defect, and the refs say where to look.
+            log.info("Catalogue: migrated {} row(s) off retired prefix(es) {} onto '{}': {}",
+                migrated, safe, prefix, migratedRefs);
+        }
+        return migrated;
     }
 
     /**

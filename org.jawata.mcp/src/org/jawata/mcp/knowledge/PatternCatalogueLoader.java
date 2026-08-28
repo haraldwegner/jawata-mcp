@@ -188,7 +188,7 @@ public final class PatternCatalogueLoader implements CatalogueSource {
         }
 
         CatalogueSeeder.Outcome outcome =
-            CatalogueSeeder.seed(store, SOURCE_PREFIX, items, declared, limit > 0, commit);
+            CatalogueSeeder.seed(store, SOURCE_PREFIX, items, declared, limit > 0, commit, java.util.List.of());
         Result result = new Result(considered, outcome.seeded(), outcome.unchanged(),
             outcome.retired(), commit);
 

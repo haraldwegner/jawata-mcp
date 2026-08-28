@@ -74,8 +74,14 @@ class SampleSourceTest {
         return root;
     }
 
+    /**
+     * S4: the ref carries the {@code /README.md} suffix, unified with the fork's
+     * scheme. Composed here the same way the source composes it — if the two ever
+     * disagree this returns nothing, and every assertion below reads as "the row
+     * vanished" rather than "the test is looking in the wrong place".
+     */
     private static List<StoredEntry> rowsFor(H2ExperienceStore store, String slug) {
-        String ref = SampleSource.SOURCE_PREFIX + slug;
+        String ref = SampleSource.SOURCE_PREFIX + slug + "/README.md";
         return store.all().stream().filter(e -> ref.equals(e.sourceRef())).toList();
     }
 

@@ -81,14 +81,21 @@ class CureLookupTest {
     /**
      * W1 — AN ADDRESS IS READ OFF A ROW, NEVER BUILT FROM A SLUG.
      *
-     * <p><b>What makes this falsifiable.</b> The two registered sources spell
-     * their {@code source_ref}s differently: the fork's carry a
-     * {@code /README.md} tail under {@code catalogue:java-design-patterns/},
-     * the samples' carry no tail at all under {@code sample:jawata-samples/}.
-     * No single composition rule produces both, so a lookup that builds
-     * addresses gets one of these two assertions wrong whichever convention it
-     * picked. And a key nothing holds must produce NOTHING — a composer would
-     * hand back a perfectly plausible address for a pattern that does not
+     * <p><b>What makes this falsifiable — REBUILT at Stage 6/S4.</b> It used to
+     * rest on the two registered sources spelling their {@code source_ref}s
+     * incompatibly: the fork's with a {@code /README.md} tail, the samples' with
+     * no tail at all under a {@code sample:} namespace. No single composition
+     * rule produced both, so a lookup that BUILT addresses got one assertion
+     * wrong whichever convention it picked.
+     *
+     * <p><b>S4 unified the scheme on purpose, and that destroyed the property.</b>
+     * Both origins now emit {@code catalogue:<namespace>/<slug>/README.md}, so one
+     * composition rule satisfies both — the test would have kept passing while
+     * proving nothing. The divergence is therefore introduced DELIBERATELY now, by
+     * a probe row carrying a {@code source_ref} no composition rule would generate.
+     * That does not depend on the origins differing, so it survives any further
+     * unification. And a key nothing holds must still produce NOTHING — a composer
+     * would hand back a perfectly plausible address for a pattern that does not
      * exist.</p>
      */
     @Test
@@ -110,16 +117,62 @@ class CureLookupTest {
 
         CatalogueAddresses.Address sample = addresses.address("design:compose-method");
         assertNotNull(sample, "the seeded samples hold `compose-method`");
-        assertEquals("sample:jawata-samples/compose-method", sample.sourceRef());
+        assertEquals("catalogue:jawata-samples/compose-method/README.md", sample.sourceRef());
 
-        // The discriminator, stated: the two shapes are incompatible, so an
-        // address produced by ONE rule cannot satisfy both assertions above.
-        assertFalse(sample.sourceRef().endsWith("/README.md"),
-            "the samples source stores refs without a README tail — an address carrying"
-                + " one was composed with the fork's convention");
         assertNotEquals(fork.namespace(), sample.namespace(),
             "the two addresses must come from different namespaces, or this test is"
                 + " comparing one convention against itself");
+
+        // THE DISCRIMINATOR, REBUILT AT S4 — and the rebuild is the point.
+        //
+        // It used to rest on the two sources spelling their refs INCOMPATIBLY:
+        // the fork with a /README.md tail, the samples with none, so no single
+        // composition rule could satisfy both assertions. S4 unified the scheme
+        // deliberately, and that DESTROYED the property this test was leaning on:
+        // both origins now emit catalogue:<namespace>/<slug>/README.md, and a
+        // composer following that one rule would satisfy every assertion above.
+        // Updating the expected string alone would have left a guard that cannot
+        // fail for the reason it names.
+        //
+        // So the divergence is now introduced ON PURPOSE: one row whose ref no
+        // convention would ever produce. A composer cannot reach it; only a reader
+        // can. This does not depend on the two origins differing, so it survives
+        // any further unification.
+        String unComposable = "catalogue:jawata-samples/deliberately/not/the/composed/shape";
+        store.putWithSource(probeEntry(), unComposable, "hash-ref-divergence-probe");
+
+        CatalogueAddresses.Address probe =
+            CatalogueAddresses.of(store).address("design:ref-divergence-probe");
+        assertNotNull(probe, "the probe row was seeded and carries its operation key; a null"
+            + " here means the lookup missed a row that exists, not that it composed one");
+        assertEquals(unComposable, probe.sourceRef(),
+            "the address MUST be the ref the row actually carries. Any value derived from"
+                + " the slug — including the now-shared catalogue:<ns>/<slug>/README.md"
+                + " convention — proves the lookup composed rather than read");
+    }
+
+    /**
+     * A row for the composition probe: an ordinary catalogue-shaped entry whose
+     * only job is to carry an operation key at a {@code source_ref} that no
+     * composition rule in the codebase would generate.
+     */
+    private static org.jawata.mcp.knowledge.ExperienceEntry probeEntry() {
+        String situation = "when a lookup must return the address a row carries rather than"
+            + " one derived from its key";
+        return org.jawata.mcp.knowledge.ExperienceEntry.of(
+                org.jawata.mcp.knowledge.SymbolFact.of("reference",
+                    "A probe row whose source_ref no composition rule produces.",
+                    org.jawata.mcp.knowledge.Confidence.MEDIUM)
+                    .details("Seeded by CureLookupTest to keep W1 falsifiable after S4"
+                        + " unified the two address schemes.")
+                    .build())
+            .status(org.jawata.mcp.knowledge.ExperienceEntry.CANDIDATE)
+            .situation(situation)
+            .cause("a composed address answers for every key, including ones nothing holds")
+            .form(org.jawata.mcp.knowledge.EntryForm.formOf(situation))
+            .provenanceKind("catalog")
+            .operation("design:ref-divergence-probe")
+            .build();
     }
 
     // ------------------------------------------------------------------ W2

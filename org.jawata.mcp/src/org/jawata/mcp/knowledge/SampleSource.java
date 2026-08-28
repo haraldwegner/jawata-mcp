@@ -40,8 +40,30 @@ public final class SampleSource implements CatalogueSource {
     /** Where the index ships inside the bundle. */
     static final String BUNDLED_SAMPLES = "/samples/samples.json";
 
-    /** The {@code source_ref} prefix that marks a row as ours. */
-    public static final String SOURCE_PREFIX = "sample:jawata-samples/";
+    /**
+     * The {@code source_ref} prefix that marks a row as ours.
+     *
+     * <p><b>Sprint 28d Stage 6 / S4 — unified with the fork's scheme.</b> It was
+     * {@code sample:} while this lane had its own format; a second namespace was
+     * the address-level face of the second format, and it is gone with it. Both
+     * origins now emit {@code catalogue:<namespace>/<slug>/README.md}, which is
+     * what lets one query ask "does this address open?" of every catalogue row
+     * regardless of which tree it came from.</p>
+     */
+    public static final String SOURCE_PREFIX = "catalogue:jawata-samples/";
+
+    /**
+     * The spelling this source USED to own — retired at S4, migrated forever after.
+     *
+     * <p>It cannot simply be deleted. Any install that seeded rows under the old
+     * prefix still holds them, and on the rename they fall out of every
+     * prefix-keyed lane simultaneously: invisible, still live, still answering with
+     * an address nothing backs. {@link CatalogueSeeder} supersedes them on the next
+     * seed. This constant therefore stays PERMANENTLY — an install upgrading from
+     * an old version years from now needs it exactly as much as one upgrading
+     * today, and there is no version at which it becomes safe to drop.</p>
+     */
+    static final String RETIRED_PREFIX = "sample:jawata-samples/";
 
     /** The provenance value every specimen row carries — the catalogue vocabulary. */
     public static final String PROVENANCE = "catalog";
@@ -129,11 +151,12 @@ public final class SampleSource implements CatalogueSource {
                 continue;
             }
             items.add(new CatalogueSeeder.SeedItem(
-                SOURCE_PREFIX + slug, hashOf(sample), entryFor(sample, slug)));
+                SOURCE_PREFIX + slug + "/README.md", hashOf(sample), entryFor(sample, slug)));
         }
         // bounded=false: this source has no sample mode — it always claims its
         // whole index, so an unclaimed row genuinely means "no longer ours".
-        return CatalogueSeeder.seed(store, SOURCE_PREFIX, items, declared, false, authority())
+        return CatalogueSeeder.seed(store, SOURCE_PREFIX, items, declared, false, authority(),
+                java.util.List.of(RETIRED_PREFIX))
             .seeded();
     }
 
