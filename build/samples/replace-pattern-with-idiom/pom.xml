@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28d Stage 6 / S3 — the replace-pattern-with-idiom specimen slug.
+
+     One Maven module per slug, because a module carries exactly one
+     <sourceDirectory> and the upstream form puts src/main/java under each
+     slug. The reason build-helper add-source was rejected instead is recorded
+     once, in the aggregator beside this file. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.samples</artifactId>
+        <version>3.17.0</version>
+    </parent>
+
+    <artifactId>org.jawata.samples.replacepatternwithidiom</artifactId>
+
+    <build>
+        <sourceDirectory>${project.basedir}/../../../org.jawata.samples/replace-pattern-with-idiom/src/main/java</sourceDirectory>
+    </build>
+</project>

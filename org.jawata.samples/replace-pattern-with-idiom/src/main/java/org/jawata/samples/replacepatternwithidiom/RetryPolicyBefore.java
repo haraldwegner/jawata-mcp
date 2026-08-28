@@ -1,4 +1,4 @@
-package org.jawata.samples.patternidiom;
+package org.jawata.samples.replacepatternwithidiom;
 
 import java.util.function.Supplier;
 

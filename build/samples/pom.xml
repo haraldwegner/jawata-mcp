@@ -1,15 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Sprint 28d Stage 3: org.jawata.samples — the CURE SPECIMENS.
+<!-- Sprint 28d Stage 6 / S3: org.jawata.samples — the CURE SPECIMENS, in the
+     upstream pattern repository's own form.
 
      BUILT, because an address that points at code which does not compile is
      worse than no address, and the cures ship an address.
 
-     NOT SHIPPED: this artifact is deliberately absent from build/dist, so the
-     dist-completeness enforcer keeps the product byte-identical. The samples
-     are read on GitHub or in a workspace, never loaded at runtime.
+     NOT SHIPPED: these artifacts are deliberately absent from build/dist, so
+     the dist-completeness enforcer keeps the product byte-identical. The
+     samples are read on GitHub or in a workspace, never loaded at runtime.
 
      NO DEPENDENCIES, by design. A specimen that needed the engine to compile
-     would couple the product's dependency graph to demonstration code. -->
+     would couple the product's dependency graph to demonstration code.
+
+     WHY THIS IS AN AGGREGATOR WITH ONE MODULE PER SLUG, and not one module
+     with build-helper add-source. The upstream form is <slug>/README.md beside
+     <slug>/src/main/java, so two slugs are two source roots, and a Maven
+     module carries exactly one <sourceDirectory>. build-helper's add-source
+     would compile both from a single module — and it was REJECTED on a
+     measurement, not on taste: jawata's project importer does not index
+     add-source roots. build/tests-mcp adds src/extra/java that way, and
+     search_symbols resolves the class it holds ONLY inside the built jar,
+     never as source. Sprint 28d requires every samples-lane address to OPEN in
+     the workspace; under add-source the build would go green while
+     search_symbols found nothing, which is the failure this stage exists to
+     end. One module per slug gives the importer one source root each, and it
+     is the upstream layout anyway.
+
+     Adding a specimen therefore means adding a <module> here. That is the
+     intended friction: the module list and the slug directories are the same
+     fact, and a specimen with no module would not compile and so could not
+     silently ship a rotten address. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -21,8 +41,10 @@
     </parent>
 
     <artifactId>org.jawata.samples</artifactId>
+    <packaging>pom</packaging>
 
-    <build>
-        <sourceDirectory>${project.basedir}/../../org.jawata.samples/src</sourceDirectory>
-    </build>
+    <modules>
+        <module>compose-method</module>
+        <module>replace-pattern-with-idiom</module>
+    </modules>
 </project>

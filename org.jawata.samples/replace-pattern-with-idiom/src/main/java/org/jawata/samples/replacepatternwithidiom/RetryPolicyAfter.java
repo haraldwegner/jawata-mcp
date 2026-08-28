@@ -1,4 +1,4 @@
-package org.jawata.samples.patternidiom;
+package org.jawata.samples.replacepatternwithidiom;
 
 /**
  * THE CURE — {@link RetryPolicyBefore} after Replace Pattern with Idiom.
