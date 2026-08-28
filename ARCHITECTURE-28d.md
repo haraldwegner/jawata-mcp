@@ -1,4 +1,9 @@
-# ARCHITECTURE-28d — the vocabulary, the detectors, the catalogue (v2)
+# ARCHITECTURE-28d — the vocabulary, the detectors, the catalogue (v2, with v3 corrections)
+
+> **v3 (2026-08-28)** does not supersede v2 wholesale; it corrects three clauses that
+> measurement contradicted during Stage 6/S3, each marked `CORRECTED v3` or `v3:` inline,
+> and adds one recorded-but-unbuilt section (*What the catalogue is*). The v2 amendment
+> record below is left exactly as written.
 
 ## v2 AMENDMENT (2026-08-28) — the catalogue seam, superseded in part
 
@@ -31,7 +36,7 @@ our own code. No extension point is built for arrivals that will not come.
 | v1 statement | Status |
 |---|---|
 | the `CatalogueSource` registry, refactored out of `PatternCatalogueLoader` | registry SURVIVES whole (record `6221732b` records why: four sites hardcoded one loader). `CatalogueSource` as an **interface carrying `seed`** does not — it becomes `CatalogueOrigin`, a record of `(namespace, prefix, manifestResource, workspaceRoot, authority)` |
-| "excluded from our own sweeps via the source-root attribute + `excludePaths`" | **FALSE already at C3**, which recorded exclusion holding BY CONSTRUCTION (separate module, off the analysis source path) *rather than by a filter* |
+| "excluded from our own sweeps via the source-root attribute + `excludePaths`" | **FALSE already at C3**, which recorded exclusion holding BY CONSTRUCTION (separate module, off the analysis source path) *rather than by a filter*. **← v2's own replacement is ALSO false, CORRECTED v3:** the module IS on the analysis source path; it looked otherwise only because the project model was stale. The exclusion rests on the specimens tripping nothing, measured with a control. See the samples-module clause below |
 | "publicly browsable so `sample:` addresses resolve" | **FALSE.** `org.jawata.samples` has no README at all; packages are `composemethod`/`patternidiom` against slugs `compose-method`/`replace-pattern-with-idiom`. True only after Stage 6/S3–S4, then held by a standing row-side assertion |
 | "The tier rides the existing `capability` facet — perform-tier entries carry the plan kind in `capability`" | describes a wire in **neither** lane: 0 of 187 fork rows carry `capability`; the 2 sample rows do and `SampleSource.entryFor` says in a comment it deliberately does not read it |
 | "`OcpCure`'s hard-coded recipes become the FALLBACK" | S7 does MORE than extend this: fallback and declared cure become ONE table, reversing `CureCatalog`'s own javadoc ("the two are different questions and this table does not overwrite it"). A reversal, not a confirmation |
@@ -86,6 +91,66 @@ and it is the same resolve-never-compose rule (W1) the spec already binds.
   build/calibration/ (Error Prone + PMD, own CI cell) — reads fixtures, writes a
   report, NEVER the store, NEVER imported by src/
 ```
+
+## What the catalogue is (v3, 2026-08-28) — RECORDED, NOT BUILT
+
+> **Scope status: the frame is recorded; nothing here is implemented, and whether it is
+> built in 28d is an OPEN DECISION.** It appears in neither the spec's deliverables nor
+> Stage 10's text, so an executor must not read this section as a work item. It is here
+> because it changes what the catalogue *is*, which conditions how the sections below
+> read.
+
+```
+BEFORE  = the smell          → detected; on an entry, situation + symptoms
+AFTER   = the target state   → THE CATALOGUE ROW. Not a cure.
+CURE    = the route B → A    → ordered refactoring steps
+```
+
+**The 187 catalogue rows are AFTERs.** They have been spoken of as cures throughout this
+sprint, and they are not: a pattern README describes the destination, never the journey.
+That is why an address can resolve perfectly and still not tell anyone what to do, and why
+"the cure resolves" measures the wrong thing.
+
+**AFTER has two kinds, and only one of them is an address.**
+
+- A *named target form* — a catalogue pattern. "Become a State machine."
+- A *definitional end state* — the cure's own completion. Encapsulate Field →
+  *encapsulated: the slot owns its state.* No pattern is named because none is needed.
+
+**The definitional AFTER is the more checkable one**, which inverts the obvious
+expectation. "The slot owns its state" is `analyze(kind=encapsulation)` returning an empty
+external-mutator set; "the old shape is gone" is a reference query returning zero. A
+pattern-address AFTER only says *you should now look like this*, which is the harder thing
+to verify. **The discipline this needs:** if the AFTER is implicit, NAME THE CHECK that
+decides it — an implicit AFTER with no check is prose, and its cure is advisory.
+
+**The pair (B, A) is the entry identity.** B1→A, B2→A, B→A1 and B→A2 are four entries. One
+entry per pair, carrying possibly SEVERAL cures; `links[]` already admits repeated
+`cured_by`, so multiplicity needs no new column.
+
+**A cure is ordered steps naming operations that already exist** — `extract`,
+`move_method`, `encapsulate_field`, the `refactor_to_pattern` kinds — so *does this step
+exist* is a registry lookup rather than a new checker. A step no tool can express means
+the route is not runnable, which is information, not a gap to paper over.
+
+**A guard is detector presence at the site**, composing the 41 existing kinds; not an
+expression language, which is what made this look expensive. **Presence only, never
+counts:** each detector already carries a calibrated threshold, so a count comparison would
+be a threshold on a threshold tuned against no data. A count that genuinely separates two
+routes belongs in a DETECTOR, where calibration already has tests and a baseline.
+
+**Tier is derived, not assigned.** One route with all steps existing → perform
+(`cured_by`); several routes with nothing to choose between them, or missing steps, or no
+route at all → advise (`detected_by`). Several routes and no guard means choosing needs
+judgement, and the standing rule is that `cured_by` is filled only when it does not — a
+cure that is right half the time is worse than none.
+
+**Zero cures is a NORMAL state.** A cure is unfillable until its refactoring steps exist,
+which is precisely what Half A is building; the pair becomes `perform` on the day the
+operations land, with no re-authoring. An absent cure must therefore mean *absent* — never
+an empty string, a placeholder, or a defect the quality lane reports. The store already
+carries the scar of the opposite: 187 rows were made to carry `verdict: unproven` because
+their type demanded an outcome they could not have.
 
 ## Module placement, per stream
 
@@ -166,16 +231,48 @@ the 28c B2 design record, inherited whole), plus:
   them. It becomes a first-class manifest field on both origins, which is what lets
   `CureCatalog` stop hardcoding recipes. **No schema change in this sprint** still holds
   — schema v15 is untouched.
+  **v3 (2026-08-28):** under the model recorded in *What the catalogue is*, `capability`
+  names a **STEP** — one operation a cure's route may invoke — not the cure itself. A cure
+  is the ordered route; a capability is one move within it. Whatever wires this field must
+  say which of the two it means, or it will be read as the cure and the route will have no
+  home.
 - `org.jawata.samples` — a NEW Maven module in this repo: compiles in every build,
   ABSENT from the dist assembly (the completeness enforcer pins the dist content),
   ~~excluded from our own sweeps via the source-root attribute + `excludePaths`~~,
   ~~publicly browsable so `sample:` addresses resolve~~.
-  **SUPERSEDED v2 — both clauses.** The exclusion holds BY CONSTRUCTION (separate module,
-  off the analysis source path), NOT by a filter; C3 measured that. And no `sample:`
-  address resolves: there is no README in the module. Stage 6/S3 authors one per slug in
-  iluwatar's form with the specimens beside it — note that form is one source root PER
-  SLUG, so `build/samples/pom.xml`'s single `sourceDirectory` needs `build-helper` or a
-  module per slug. S4 then unifies the scheme to `catalogue:jawata-samples/<slug>/README.md`,
+  **SUPERSEDED v2 — both clauses**, and the v2 replacement is itself **CORRECTED v3
+  (2026-08-28, measured at Stage 6/S3)**.
+
+  ~~The exclusion holds BY CONSTRUCTION (separate module, off the analysis source path),
+  NOT by a filter; C3 measured that.~~ **v3: the module is ON the analysis source path.**
+  A re-import puts it there as two source roots (775 → 779 files, 45 → 47 packages); it
+  appeared off-path only because the project model was STALE — the module was added after
+  the running server had imported the workspace. What the exclusion actually rests on is
+  that the specimens trip nothing: `long_method` reads **263 with and without**
+  `excludePaths=["org.jawata.samples"]`. That is asserted with its control, because an
+  ineffective filter and an empty result are the same output — excluding the
+  `tools` path instead drops 263 → 67, so the mechanism demonstrably works.
+  **Do not add an `excludePaths` entry for the samples module**; it would be a filter with
+  nothing to filter, and it would move a baseline for a reason unrelated to the code.
+
+  ~~no `sample:` address resolves: there is no README in the module~~ — true when v2 was
+  written, fixed by S3. **The lesson v3 records is why it went unnoticed:** the module was
+  absent from the analysis model entirely, so **0 of 4** specimen types resolved and any
+  "does the address open?" check was vacuous rather than failing. A ROW-SIDE assertion is
+  necessary but NOT sufficient — it must be paired with the module actually being present
+  in the model, or it certifies nothing.
+
+  Stage 6/S3 authors one README per slug in iluwatar's form with the specimens beside it.
+  That form is one source root PER SLUG, and a Maven module carries exactly one
+  `<sourceDirectory>`, so `build/samples/pom.xml` becomes an aggregator with **ONE MODULE
+  PER SLUG**. ~~`build-helper` or a module per slug~~ — **v3: `build-helper` is
+  ELIMINATED, by measurement, not preference.** jawata's project importer does not index
+  `add-source` roots: `build/tests-mcp` adds `src/extra/java` that way, and
+  `search_symbols SpikeTestMain` resolves it ONLY inside the built jar, never as source.
+  Under `add-source` the build would go green while every samples-lane address failed to
+  open — the exact failure this stream exists to end. Do not re-open this option.
+
+  S4 then unifies the scheme to `catalogue:jawata-samples/<slug>/README.md`,
   held by a standing ROW-SIDE assertion over `store.all()` (a manifest cannot vouch for
   itself — a manifest-side check cannot see a row no manifest claims).
 - `build/calibration/` — Error Prone + PMD at pinned versions, own CI cell
