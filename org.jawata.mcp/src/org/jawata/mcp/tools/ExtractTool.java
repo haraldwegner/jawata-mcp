@@ -121,8 +121,8 @@ public class ExtractTool extends AbstractTool {
         properties.put("startColumn", Map.of("type", "integer", "description", "method/variable/constant: zero-based start column."));
         properties.put("endLine", Map.of("type", "integer", "description", "method/variable/constant: zero-based end line."));
         properties.put("endColumn", Map.of("type", "integer", "description", "method/variable/constant: zero-based end column."));
-        properties.put("line", Map.of("type", "integer", "description", "interface: zero-based line of a caret in the type."));
-        properties.put("column", Map.of("type", "integer", "description", "interface: zero-based column."));
+        properties.put("line", Map.of("type", "integer", "description", "interface/superclass/class: zero-based line of a caret in the type."));
+        properties.put("column", Map.of("type", "integer", "description", "interface/superclass/class: zero-based column."));
         properties.put("methodName", Map.of("type", "string", "description", "method: name for the extracted method."));
         properties.put("variableName", Map.of("type", "string", "description", "variable: optional name for the extracted variable."));
         properties.put("constantName", Map.of("type", "string", "description", "constant: name for the extracted constant."));
@@ -155,10 +155,19 @@ public class ExtractTool extends AbstractTool {
         // parameters of kind=class, and tomorrow is whatever the next kind brings.
         // Curating an entry above is now an improvement to the wording, never the
         // difference between a documented parameter and an invisible one.
+        // The two WRAPPER params are skipped: every delegate's schema carries them too,
+        // and taking them from a delegate would publish one delegate's wording for a
+        // parameter that belongs to the front door. withProjectKey/withAutoApply below
+        // add them once, in this tool's own terms.
         for (AbstractApplyingRefactoringTool delegate : delegates.values()) {
             Object declared = delegate.getInputSchema().get("properties");
             if (declared instanceof Map<?, ?> declaredProps) {
-                declaredProps.forEach((k, v) -> properties.putIfAbsent(String.valueOf(k), v));
+                declaredProps.forEach((k, v) -> {
+                    String name = String.valueOf(k);
+                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
+                        properties.putIfAbsent(name, v);
+                    }
+                });
             }
         }
         schema.put("properties", properties);
