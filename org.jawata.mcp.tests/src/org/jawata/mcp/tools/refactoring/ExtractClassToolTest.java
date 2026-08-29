@@ -22,6 +22,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -133,6 +134,84 @@ class ExtractClassToolTest {
         assertFalse(Files.exists(created),
             "undo must delete the created class. Leaving it behind is worse than not undoing"
                 + " at all — the state is now neither before nor after");
+    }
+
+    /**
+     * C7's PURITY half — and it needed its own test, because nothing else supplies it.
+     *
+     * <p>C7 asks for "parity (compile 0/0 + <b>purity</b>)". The compile half is
+     * asserted in {@link #itCompilesAndUndoRestores()}. The purity half was NOT
+     * asserted anywhere, and it is not enforced underneath either: {@code PurityCheck}
+     * exists, but its only production caller is {@code PlanRefactoringTool}, so the
+     * multi-step PLAN path is guarded and the atomic apply path this operation uses
+     * is not.</p>
+     *
+     * <p><b>Why compiling is not purity.</b> A refactoring that also reformatted a
+     * third file, rewrote an unrelated import, or deleted something it had no business
+     * touching would still leave every file compiling, still return success, and still
+     * pass every other assertion in this class. Purity is a question about the SET of
+     * files that changed, and only a before/after comparison of that set can answer
+     * it.</p>
+     *
+     * <p><b>Scope: Java sources only, deliberately.</b> The project is compiled during
+     * the test, so build output legitimately appears and changes; including it would
+     * make this fail for reasons that have nothing to do with the refactoring. The
+     * claim asserted is the one that matters and the one that can fail — the operation
+     * modified no Java source outside the two files it named.</p>
+     */
+    @Test
+    @DisplayName("S7.9: the operation touches no Java source outside the two files it names")
+    void theOperationTouchesNothingElse() throws Exception {
+        Path projectRoot = helper.getTempDirectory().resolve("simple-maven");
+        Path created = pkgDir.resolve("PointMeta.java");
+
+        Map<Path, String> before = javaSourceSnapshot(projectRoot);
+        assertTrue(before.size() > 1,
+            "PROOF OF LIFE: the snapshot must see more than the one file being changed,"
+                + " or 'nothing else was touched' is a claim about an empty set");
+        assertTrue(before.containsKey(targetFile), "the snapshot must include the target");
+
+        ToolResponse r = tool.execute(args("PointMeta", "label", "unit"));
+        assertTrue(r.isSuccess(), () -> "extract(kind=class) failed: " + r.getError());
+
+        Map<Path, String> after = javaSourceSnapshot(projectRoot);
+
+        Set<Path> added = new java.util.TreeSet<>(after.keySet());
+        added.removeAll(before.keySet());
+        assertEquals(Set.of(created), added,
+            "exactly one Java source may appear, and it is the extracted class");
+
+        Set<Path> removed = new java.util.TreeSet<>(before.keySet());
+        removed.removeAll(after.keySet());
+        assertEquals(Set.of(), removed, "the operation must delete no Java source");
+
+        Set<Path> changed = new java.util.TreeSet<>();
+        for (Map.Entry<Path, String> e : before.entrySet()) {
+            String now = after.get(e.getKey());
+            if (now != null && !now.equals(e.getValue())) {
+                changed.add(e.getKey());
+            }
+        }
+        assertEquals(Set.of(targetFile), changed,
+            "exactly one pre-existing Java source may differ, and it is the file the"
+                + " fields were extracted FROM. Anything else here is the operation"
+                + " reaching outside the scope it was given");
+    }
+
+    /** Every .java under the project, mapped to its exact bytes. */
+    private static Map<Path, String> javaSourceSnapshot(Path root) throws Exception {
+        Map<Path, String> snapshot = new java.util.LinkedHashMap<>();
+        try (java.util.stream.Stream<Path> walk = Files.walk(root)) {
+            for (Path p : walk.filter(Files::isRegularFile)
+                              .filter(p -> p.toString().endsWith(".java"))
+                              .toList()) {
+                // ISO-8859-1 is a lossless byte-to-char mapping, so string equality
+                // here IS byte equality — a reformat cannot slip through as "equal".
+                snapshot.put(p, new String(Files.readAllBytes(p),
+                    java.nio.charset.StandardCharsets.ISO_8859_1));
+            }
+        }
+        return snapshot;
     }
 
     private static String readQuietly(Path p) {
