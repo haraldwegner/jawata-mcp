@@ -1,9 +1,23 @@
-# ARCHITECTURE-28d — the vocabulary, the detectors, the catalogue (v2, with v3 corrections)
+# ARCHITECTURE-28d — the vocabulary, the detectors, the catalogue (v2, with v3 + v4 corrections)
 
 > **v3 (2026-08-28)** does not supersede v2 wholesale; it corrects three clauses that
 > measurement contradicted during Stage 6/S3, each marked `CORRECTED v3` or `v3:` inline,
 > and adds one recorded-but-unbuilt section (*What the catalogue is*). The v2 amendment
 > record below is left exactly as written.
+>
+> **v4 (2026-08-29)** corrects ONE clause, raised by the architect seat at the Stage 7
+> checkpoint and verified independently before folding: *Module placement, per stream*
+> specified a new package `org.jawata.mcp.refactoring.ops` on a Template Method
+> skeleton. The package does not exist, and the skeleton already did —
+> `AbstractApplyingRefactoringTool`, **22 subtypes**. The shipped placement is this
+> document's own "reuse, do not invent a second" rule applied correctly; the address
+> was what was wrong. Marked `CORRECTED v4` inline.
+>
+> **The pattern across v2, v3 and v4 is worth naming, since it is now three for three:**
+> every correction so far has been a clause that was plausible when written and that
+> nobody measured until a checkpoint forced it. This document is a baseline that later
+> checkpoints diff against, so a clause it gets wrong is re-litigated at every one of
+> them until amended.
 
 ## v2 AMENDMENT (2026-08-28) — the catalogue seam, superseded in part
 
@@ -154,6 +168,32 @@ carries the scar of the opposite: 187 rows were made to carry `verdict: unproven
 their type demanded an outcome they could not have.
 
 ## Module placement, per stream
+
+> **CORRECTED v4 (2026-08-29), at the Stage 7 checkpoint — this clause specified a
+> package that was never built, and it should not be. Both facts below were measured,
+> not recalled.**
+>
+> **`org.jawata.mcp.refactoring.ops` DOES NOT EXIST.** `refactoring/` holds 16 files of
+> machinery (`ChangeEngine`, `JdtRefactoringEngine`, `ParityGate`, `PurityCheck`,
+> `CreateCompilationUnitChange`, …) and no `ops` subpackage.
+>
+> **And the skeleton this clause specifies already existed when it was written.**
+> `org.jawata.mcp.tools.AbstractApplyingRefactoringTool` implements exactly the
+> invariant sequence described below — resolve → precondition → rewrite →
+> compile-verify → `Change` with `undoChangeId` — with `prepareChange` as its hook.
+> Measured: **22 subtypes**, all in `org.jawata.mcp.tools`.
+>
+> So Stage 7 landed Extract Class as `ExtractClassTool extends
+> AbstractApplyingRefactoringTool`, and that is this document's OWN rule applied
+> correctly: the Stream 2 paragraph says *"already a template method — reuse it, do not
+> invent a second."* Building `refactoring.ops` would have created a second Template
+> Method for a skeleton with 22 residents.
+>
+> **The shipped placement is right and the document's address was wrong.** Operations
+> live as tools under `org.jawata.mcp.tools`, on the existing skeleton. Recorded here
+> so no later checkpoint re-litigates it, and so nobody creates the package to match a
+> diagram. The dependency-direction rules below still bind — read `refactoring.ops`
+> there as "the operation tools".
 
 **Stream 1 — operations** land in a NEW package `org.jawata.mcp.refactoring.ops`,
 beside the engine they use (`JdtRefactoringEngine`, `ChangeEngine`, `ParityGate`,
