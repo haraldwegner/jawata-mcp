@@ -260,4 +260,54 @@ class ExtractClassToolTest {
                 + " make the tool guess the one design decision the caller is there to make");
         assertFalse(Files.exists(pkgDir.resolve("PointMeta.java")));
     }
+
+    /**
+     * C7 asks for refusal tests on "un-extractable shapes", and the two refusals above
+     * are NOT that. They are ARGUMENT errors — a field that is not there, an empty list
+     * — caught by this tool before JDT is ever asked. A shape refusal is the ENGINE
+     * declining because the operation cannot be carried out, and the two are worth
+     * keeping apart: argument validation proves our front door checks its inputs, while
+     * a shape refusal proves we hand JDT's own verdict back intact instead of
+     * flattening it into a generic failure.
+     *
+     * <p>This is the second kind. The extraction target already exists as a type, so
+     * the requested end state is impossible — and JDT ships
+     * {@code ExtractClassDescriptorVerification} precisely to catch it.</p>
+     *
+     * <p><b>The variable is isolated deliberately.</b> Same caret, same fields and the
+     * same default accessor setting as {@link #theFrontDoorExtractsAFieldGroup()},
+     * which SUCCEEDS. The only difference is the target name. So a refusal here cannot
+     * be some incidental property of the fixture — it is the clash.</p>
+     *
+     * <p><b>What this does not cover, said plainly:</b> a refusal rooted in the SOURCE
+     * being un-extractable rather than the target being occupied. That case is real and
+     * is pinned in {@code ExtractClassForkSliceTest} — JDT refusing
+     * "Unable to convert node to getter/setter" on fork code — and it was found by
+     * running the operation on code we did not write, not by predicting it here.</p>
+     */
+    @Test
+    @DisplayName("S7.1 refusal: extracting into a name already taken is refused with the reason")
+    void extractingIntoAnOccupiedNameIsRefused() throws Exception {
+        String before = Files.readString(targetFile);
+        assertTrue(before.contains("class PointBuilder"),
+            "PROOF OF LIFE: the clash only exists while the fixture still declares this type");
+
+        // "PointBuilder" is the very class the fields are being extracted FROM.
+        ToolResponse r = tool.execute(args("PointBuilder", "label", "unit"));
+
+        assertFalse(r.isSuccess(),
+            "extracting into an occupied name must be refused. Proceeding would either"
+                + " overwrite a type nobody asked us to touch or produce a file that cannot"
+                + " compile — and both are worse than declining");
+        assertTrue(r.getError() != null && r.getError().getMessage() != null
+                && !r.getError().getMessage().isBlank(),
+            "a refusal without a reason is indistinguishable from a crash");
+        assertTrue(r.getError().getMessage().contains("PointBuilder"),
+            () -> "the refusal must NAME the colliding type, or the caller cannot tell which"
+                + " of the names they supplied was the problem. JDT said: "
+                + r.getError().getMessage());
+
+        assertEquals(before, Files.readString(targetFile),
+            "a refused operation must leave the source byte-identical");
+    }
 }
