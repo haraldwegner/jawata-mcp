@@ -8,9 +8,11 @@ import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractTool;
+import org.jawata.mcp.tools.ExtractClassTool;
 import org.jawata.mcp.tools.ExtractConstantTool;
 import org.jawata.mcp.tools.ExtractInterfaceTool;
 import org.jawata.mcp.tools.ExtractMethodTool;
+import org.jawata.mcp.tools.ExtractSuperclassTool;
 import org.jawata.mcp.tools.ExtractTool;
 import org.jawata.mcp.tools.ExtractVariableTool;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +45,9 @@ class ExtractToolTest {
     private ObjectMapper mapper;
     private String calculatorPath;
     private Map<String, AbstractTool> narrowByKind;
+    /** All SIX, for the schema-completeness guard. Kept apart from {@link #narrowByKind},
+     *  which drives failure-parity routing and covers only the four range/interface kinds. */
+    private Map<String, AbstractTool> allDelegates;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -57,6 +62,10 @@ class ExtractToolTest {
         narrowByKind.put("variable", new ExtractVariableTool(() -> service, cache));
         narrowByKind.put("constant", new ExtractConstantTool(() -> service, cache));
         narrowByKind.put("interface", new ExtractInterfaceTool(() -> service, cache));
+
+        allDelegates = new LinkedHashMap<>(narrowByKind);
+        allDelegates.put("superclass", new ExtractSuperclassTool(() -> service, cache));
+        allDelegates.put("class", new ExtractClassTool(() -> service, cache));
     }
 
     private ObjectNode minimal(String kind) {
@@ -75,6 +84,52 @@ class ExtractToolTest {
         List<String> kinds = (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
         assertTrue(kinds.containsAll(List.of("method", "variable", "constant", "interface")));
         assertTrue(((List<String>) schema.get("required")).contains("kind"));
+    }
+
+    /**
+     * THE GUARD FOR A DEFECT THAT SHIPPED GREEN — Stage 7, found by the architect seat.
+     *
+     * <p>{@code kind=class} was added to the enum and to dispatch, and its five
+     * parameters never reached the published schema. {@code fields} is REQUIRED by the
+     * delegate and was invisible to any client reading {@code tools/list}. The
+     * operation ran correctly for anyone who already knew the argument names, so every
+     * behavioural test passed: the front door was wired for EXECUTION and unwired for
+     * CONTRACT, and no existing test compared the two lists. {@link #schema_lists_kinds()}
+     * above checks the enum and never the properties, which is precisely the gap.</p>
+     *
+     * <p><b>Why this test cannot quietly under-cover.</b> It holds its own list of
+     * delegates, and a second list is what caused the original defect — so the first
+     * assertion is that this list matches the PUBLISHED enum exactly. Ship a seventh
+     * kind without updating this test and it goes RED, rather than passing while
+     * silently checking six of seven.</p>
+     */
+    @Test
+    @DisplayName("every parameter a delegate declares is published in the front door's schema")
+    @SuppressWarnings("unchecked")
+    void schema_publishes_every_delegate_parameter() {
+        Map<String, Object> schema = tool.getInputSchema();
+        Map<String, Object> props = (Map<String, Object>) schema.get("properties");
+        List<String> publishedKinds =
+            (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
+
+        assertEquals(publishedKinds.size(), allDelegates.size(),
+            "this test's delegate list has drifted from the kinds the tool advertises: "
+                + publishedKinds + " vs " + allDelegates.keySet() + ". Add the new kind here"
+                + " — otherwise this guard passes while never looking at it");
+        assertTrue(allDelegates.keySet().containsAll(publishedKinds),
+            "every advertised kind must be represented here: " + publishedKinds);
+
+        for (Map.Entry<String, AbstractTool> e : allDelegates.entrySet()) {
+            Map<String, Object> declared =
+                (Map<String, Object>) e.getValue().getInputSchema().get("properties");
+            for (String param : declared.keySet()) {
+                assertTrue(props.containsKey(param),
+                    "kind=" + e.getKey() + " accepts '" + param + "' but the front door does"
+                        + " not declare it. A parameter absent from the schema is invisible to"
+                        + " every client reading tools/list, and the operation is undiscoverable"
+                        + " however well it runs for someone who already knows the name");
+            }
+        }
     }
 
     @Test

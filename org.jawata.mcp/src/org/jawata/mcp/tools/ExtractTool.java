@@ -22,24 +22,44 @@ import java.util.function.Supplier;
  */
 public class ExtractTool extends AbstractTool {
 
-    private static final List<String> KINDS =
-        List.of("method", "variable", "constant", "interface", "superclass", "class");
-
-    private final ExtractMethodTool method;
-    private final ExtractVariableTool variable;
-    private final ExtractConstantTool constant;
-    private final ExtractInterfaceTool interfaceTool;
-    private final ExtractSuperclassTool superclass;
-    private final ExtractClassTool classTool;
+    /**
+     * ONE map, and it is the single source of truth for three things that used to be
+     * three lists: which kinds exist, which delegate runs each, and which parameters
+     * the published schema declares.
+     *
+     * <p><b>Why it is a map and not six fields plus a switch.</b> Stage 7 added
+     * {@code kind=class} to the enum and to the switch, and its five parameters —
+     * {@code newTypeName}, {@code fields} (which the delegate marks REQUIRED),
+     * {@code fieldName}, {@code createTopLevel}, {@code createGetterSetter} — never
+     * reached {@link #getInputSchema()}. The operation was wired for EXECUTION and
+     * unwired for CONTRACT: it ran correctly for anyone who already knew the argument
+     * names, and was undiscoverable to a client reading {@code tools/list}. Nothing
+     * went red, because the schema sets no {@code additionalProperties: false} and no
+     * test compared the two lists.</p>
+     *
+     * <p>The cause is that a hand-written schema beside a dispatch switch is a COPY of
+     * the delegates' contracts, and a copy of a changing surface is wrong from the
+     * first unmirrored change with no moment at which it announces itself. Adding the
+     * five by hand would have fixed this instance and left the seventh kind to repeat
+     * it. Deriving from the map means a kind cannot be half-added.</p>
+     */
+    private final Map<String, AbstractApplyingRefactoringTool> delegates;
 
     public ExtractTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
-        this.method = new ExtractMethodTool(serviceSupplier, cache);
-        this.variable = new ExtractVariableTool(serviceSupplier, cache);
-        this.constant = new ExtractConstantTool(serviceSupplier, cache);
-        this.interfaceTool = new ExtractInterfaceTool(serviceSupplier, cache);
-        this.superclass = new ExtractSuperclassTool(serviceSupplier, cache);
-        this.classTool = new ExtractClassTool(serviceSupplier, cache);
+        Map<String, AbstractApplyingRefactoringTool> d = new LinkedHashMap<>();
+        d.put("method", new ExtractMethodTool(serviceSupplier, cache));
+        d.put("variable", new ExtractVariableTool(serviceSupplier, cache));
+        d.put("constant", new ExtractConstantTool(serviceSupplier, cache));
+        d.put("interface", new ExtractInterfaceTool(serviceSupplier, cache));
+        d.put("superclass", new ExtractSuperclassTool(serviceSupplier, cache));
+        d.put("class", new ExtractClassTool(serviceSupplier, cache));
+        this.delegates = java.util.Collections.unmodifiableMap(d);
+    }
+
+    /** The kinds, derived from the dispatch map so the two can never disagree. */
+    private List<String> kinds() {
+        return List.copyOf(delegates.keySet());
     }
 
     @Override
@@ -92,7 +112,7 @@ public class ExtractTool extends AbstractTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
+        kind.put("enum", kinds());
         kind.put("description", "Which extract refactoring to run. See the tool description for per-kind params.");
         properties.put("kind", kind);
 
@@ -120,6 +140,27 @@ public class ExtractTool extends AbstractTool {
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "type to extract from (kinds interface/superclass; the range kinds "
                 + "method/variable/constant need their coordinates)"));
+
+        // THE BACKSTOP: every parameter any delegate declares reaches the published
+        // contract, whether or not someone remembered to curate it above.
+        //
+        // putIfAbsent, deliberately, and in this order. The curated entries above win
+        // and keep their positions, because they carry something a delegate's own
+        // schema cannot: which KIND each parameter belongs to. The front door says
+        // "method/variable/constant: zero-based start line"; ExtractMethodTool says
+        // "Path to source file." Overlaying the delegates on top would publish the
+        // poorer description for five kinds in order to fix the sixth.
+        //
+        // So this loop adds only what is MISSING — which today is exactly the five
+        // parameters of kind=class, and tomorrow is whatever the next kind brings.
+        // Curating an entry above is now an improvement to the wording, never the
+        // difference between a documented parameter and an invisible one.
+        for (AbstractApplyingRefactoringTool delegate : delegates.values()) {
+            Object declared = delegate.getInputSchema().get("properties");
+            if (declared instanceof Map<?, ?> declaredProps) {
+                declaredProps.forEach((k, v) -> properties.putIfAbsent(String.valueOf(k), v));
+            }
+        }
         schema.put("properties", properties);
         // Sprint 24 (D1): filePath OR typeName (the type-targeted kinds).
         schema.put("required", List.of("kind"));
@@ -138,17 +179,13 @@ public class ExtractTool extends AbstractTool {
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
+            return ToolResponse.invalidParameter("kind", "kind is required; one of " + kinds());
         }
-        return switch (kind) {
-            case "method"    -> method.executeWithService(service, arguments);
-            case "variable"  -> variable.executeWithService(service, arguments);
-            case "constant"  -> constant.executeWithService(service, arguments);
-            case "interface" -> interfaceTool.executeWithService(service, arguments);
-            case "superclass" -> superclass.executeWithService(service, arguments);
-            case "class"     -> classTool.executeWithService(service, arguments);
-            default -> ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS);
-        };
+        AbstractApplyingRefactoringTool delegate = delegates.get(kind);
+        if (delegate == null) {
+            return ToolResponse.invalidParameter("kind",
+                "Unknown kind '" + kind + "'. Allowed: " + kinds());
+        }
+        return delegate.executeWithService(service, arguments);
     }
 }
