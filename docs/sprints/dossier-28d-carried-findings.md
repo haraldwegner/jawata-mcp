@@ -287,6 +287,45 @@ that cost.
 The finding is recorded because "the round trip has a fixed point" reads, in any
 summary, as a claim about the refactoring engine. It is a claim about one pair.
 
+## 7. A story's own section headings become its recall cues
+
+**Status: OPEN, and it is Stage 10's entry gate (R4). Home: this sprint, before
+Stage 10 — the ruling is Harald's.**
+
+**Measured 2026-08-29** by loading three story files into the live store and reading
+one back in full through `nominate` + `decide`. Its harvested `symptoms` array carried
+fourteen items, of which eleven are the story's own **bold section headings**:
+*"The case."*, *"The gap."*, *"Why it survived being written down."*, *"The repair,
+and it is one line."*, *"Where it does not hold."*
+
+**This is NOT `jawata-mcp#7`, and that misattribution is worth recording.** The issue's
+symptom 2 is *"every backticked token is harvested as a symptom"*, and that half is
+FIXED: `ExperienceMaintenance.harvestKeywords` excludes inline code spans deliberately
+and says so in its own javadoc, citing the issue by number. Not one of the fourteen
+items contains a backtick. The defect was reported under a known issue's name because
+the OUTPUT resembled the issue's description — the code that produced it said the
+opposite, in a comment, next to the exclusion.
+
+**What is actually happening.** `harvestKeywords` takes `**bold**` phrases as cues
+(Sprint 21c item A, deliberate and reasonable). The story template writes every
+section heading as a leading bold span — `**The case.** A desktop application shows…`
+— so a story's headings become its symptoms. The admission filter cannot catch them:
+`AdmissionPolicy.classify` calls a string a HEADING only when it starts with `#` or
+ends with `:`, so *"The case."* classifies as **PROSE**, and `misplaced(PROSE)` is
+false. They are grammatically prose; that is exactly why the filter passes them.
+
+**Two conventions collide.** `unheading` already exists so that load never mints a
+heading-shaped SUMMARY. Nothing does the same for a SYMPTOM.
+
+**The fix, sized:** a bold span that BEGINS its line is a section heading in this
+template, not an inline cue; mid-line emphasis stays. Roughly five lines in
+`harvestKeywords`, plus a test using a real story file — and the test matters more
+than the fix, because the current behaviour has no instrument at all.
+
+**Why it gates Stage 10.** D11's sampled ingest writes into this same path. Entering
+the stage while stories poison their own recall cues would pollute the corpus the
+stage exists to build, and a polluted corpus is not cheaply undone.
+
 ## Provenance
 
 Items 1 and 2 were found at the Sprint 28d C7 checkpoint (Stage 7, Extract Class).
