@@ -60,7 +60,39 @@ call() {   # call <tool> <json-args>
              \"params\":{\"name\":\"$1\",\"arguments\":$2}}"
 }
 
+# CHECK THE LOAD. It used to be fired and forgotten: the reply went to a file
+# nothing read, and the cleanup trap deleted that file on exit. So when the load
+# failed, the gate walked on and the NEXT call reported "no project loaded" —
+# the consequence, two steps downstream, with the cause already deleted.
+#
+# Measured 2026-08-29, and it cost a diagnosis: a version bump to 3.17.1 meant
+# org.jawata.mcp depended on an org.jawata.core:3.17.1 that `mvn package` had
+# built but never installed, so the importer's Maven resolve failed. The engine
+# said exactly that, in one precise sentence, and this gate threw the sentence
+# away. A gate that discards the one answer explaining its own failure makes
+# every future failure a fresh investigation.
 call load_project "{\"projectPath\":\"$ROOT\"}" > "$WORK/load.json"
+python3 - "$WORK/load.json" <<'PY'
+import json, sys
+try:
+    raw = json.load(open(sys.argv[1]))
+    payload = json.loads(raw["result"]["content"][0]["text"])
+except Exception as e:                      # a malformed reply is a failed load too
+    print("gate: RESULT=load-unreadable — could not parse the load_project reply:", e)
+    print("gate: raw:", open(sys.argv[1]).read()[:800])
+    sys.exit(2)
+if not payload.get("success"):
+    err = payload.get("error", {})
+    print("gate: RESULT=load-failed — load_project refused, so nothing below could")
+    print("gate: have swept anything. This is the CAUSE; 'no project loaded' is its symptom.")
+    print("gate:   code:    %s" % err.get("code"))
+    print("gate:   message: %s" % err.get("message"))
+    if err.get("hint"):
+        print("gate:   hint:    %s" % err.get("hint"))
+    sys.exit(2)
+PY
+rc=$?
+[ $rc -ne 0 ] && exit $rc
 # family="quality", NOT kind="called_only_by_tests". Naming the kind would keep
 # this gate green even if the detector were dropped from the standard sweep —
 # the gate would be reaching it by a route no ordinary user takes. Sweeping the
