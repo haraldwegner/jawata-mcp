@@ -64,8 +64,17 @@ AWAY from unpatterned code, because the literal direction has no usable corpus.
 >
 > The conclusion holds on a different reason: that one site, `monad/Validator.of()`,
 > has a **private constructor**, and the trip is only defined where the old path stays
-> open. Zero of the nine qualify. **Constructor accessibility is the blocker, not
-> Lombok.**
+> open. Zero of the nine qualify.
+>
+> **CORRECTED AGAIN at round 3.** This block previously ended "constructor
+> accessibility is the blocker, not Lombok", which is also false: **8 of the 9 are
+> dependency-blocked and 5 are private-constructor-blocked**, so dependency blocks
+> MORE. Neither filter alone reaches zero. The precise claim is that the one site the
+> dependency filter leaves is removed by accessibility — both are load-bearing.
+>
+> **That this report needed the same correction twice is the finding about the report.**
+> A watch-diff that repeats a number because it appears elsewhere has checked nothing,
+> and a watch-diff that repeats a *correction* incompletely has done it twice.
 
 What the reversal costs: the literal form would test that our TOWARD direction
 **reproduces a human's chosen factory shape**. The reversed form cannot. And the two

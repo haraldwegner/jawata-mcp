@@ -34,8 +34,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * reproducible</b> — {@code build/survey-self-returning-factories.py}. It reports
  * NINE sites in SIX classes, one of them dependency-free
  * ({@code monad/Validator.of()}), whose constructor is PRIVATE — and this trip
- * is only defined where the old path stays open. So zero of the nine qualify,
- * and the blocker is constructor accessibility rather than Lombok. This runs the
+ * is only defined where the old path stays open. So zero of the nine qualify.
+ * <b>Both filters are load-bearing:</b> 8 of the 9 are dependency-blocked and 5
+ * are private-constructor-blocked, so neither alone reaches zero — the one site
+ * the dependency filter leaves is the one accessibility removes. This runs the
  * property where the clause actually points — at human-written originals.</p>
  *
  * <h2>The corpus, and why this slice</h2>
