@@ -239,6 +239,15 @@ class ReplaceConstructorWithFactoryToolTest {
             () -> "with protectConstructor=false the constructor must remain public — the"
                 + " operation then ADDS a factory rather than replacing the constructor:\n"
                 + shipmentAfter);
+        // THE OTHER HALF THE JAVADOC PROMISES — added at C9, after the auditor found
+        // this test asserting only that the constructor STAYED and calling it "the
+        // factory is added and the constructor stays reachable". Without it the flag
+        // is pinned in one direction: an operation that refused to add anything while
+        // leaving the constructor alone would have passed.
+        assertTrue(shipmentAfter.contains("make("),
+            () -> "the factory must have been ADDED. The flag means 'add the factory AND"
+                + " leave the old path open' — asserting only the second half lets an"
+                + " operation that added nothing pass:\n" + shipmentAfter);
     }
 
     /**

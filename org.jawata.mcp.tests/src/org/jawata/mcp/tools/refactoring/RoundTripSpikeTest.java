@@ -43,11 +43,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>D3 says AWAY first, from a canonical implementation. Doing it that way
  * needs a human-authored SELF-RETURNING STATIC FACTORY as the starting point,
- * because that is the only factory shape our TOWARD direction produces. The
- * fork was surveyed for it: <b>six such sites exist in the whole repository, in
- * four classes, and every one of them carries Lombok</b> (two also Guava). The
- * fixtures compile against the JDK alone on purpose, so none of the six can be
- * a before-case without adding annotation processing to a test fixture.</p>
+ * because that is the only factory shape our TOWARD direction produces.</p>
+ *
+ * <p><b>CORRECTED at C9 after the auditor re-ran the survey.</b> This javadoc
+ * said "six sites, in four classes, every one carries Lombok". Both halves were
+ * wrong. The measurement is now reproducible —
+ * {@code build/survey-self-returning-factories.py}, which records what broke the
+ * first two attempts — and it reports <b>nine sites in six classes</b>, of which
+ * <b>one is dependency-free</b>: {@code monad/Validator.of()}.</p>
+ *
+ * <p><b>The conclusion survives, on a different and stronger reason.</b>
+ * {@code Validator}'s constructor is PRIVATE, and this trip is only defined
+ * where the old path stays open — the AWAY leg folds the factory back into its
+ * callers, which cannot compile against a constructor they may not reach. So of
+ * the nine, <b>zero</b> can serve as an AWAY-first original: eight carry a
+ * dependency the fixtures exclude, and the ninth cannot be inlined into. C9 asks
+ * for three.</p>
+ *
+ * <p>Lombok was never the real blocker; constructor accessibility is. The first
+ * claim happened to reach the right conclusion by a route that does not hold.</p>
  *
  * <p>So this runs TOWARD then AWAY instead, starting from human code that has
  * no factory — a public constructor and its call sites, which the fork has in

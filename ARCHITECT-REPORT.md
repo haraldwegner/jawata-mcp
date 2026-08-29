@@ -52,9 +52,20 @@ saying so, and C9's close should not round it up.
 ### F2 — the reversed direction loses a real check, and the loss is the interesting half
 
 D3 says AWAY then TOWARD from a canonical implementation. The stage runs TOWARD then
-AWAY from unpatterned code, because a survey of the whole fork found **six**
-self-returning static factories, in four classes, **every one carrying Lombok** — so
-the literal direction has no clean corpus.
+AWAY from unpatterned code, because the literal direction has no usable corpus.
+
+> **CORRECTED after the C9 audit, which REFUSED partly on this paragraph.** It said
+> the fork holds "six self-returning static factories, in four classes, every one
+> carrying Lombok". That was false, and **this report repeated it without re-running
+> it** — which is the watch-diff's own failure, not just the stage's: an architect pass
+> that accepts a number because it appears in four places has checked nothing. The
+> measurement is now reproducible (`build/survey-self-returning-factories.py`) and
+> reports **9 sites in 6 classes**, one dependency-free.
+>
+> The conclusion holds on a different reason: that one site, `monad/Validator.of()`,
+> has a **private constructor**, and the trip is only defined where the old path stays
+> open. Zero of the nine qualify. **Constructor accessibility is the blocker, not
+> Lombok.**
 
 What the reversal costs: the literal form would test that our TOWARD direction
 **reproduces a human's chosen factory shape**. The reversed form cannot. And the two
@@ -105,10 +116,15 @@ are NOT claimed here.
 
 **DESIGN FIX**, on three points:
 
-1. **The stage measured before it designed, and the measurement changed the design.**
-   The 8/2 count and the six-Lombok-factories survey were both taken before a line was
-   written, and both are recorded with their method. That is the opposite of the shape
-   this sprint keeps repairing — a claim made and then defended.
+1. ~~**The stage measured before it designed, and the measurement changed the
+   design.** The 8/2 count and the six-Lombok-factories survey were both taken before a
+   line was written, and both are recorded with their method.~~
+   **WITHDRAWN at C9 — this was false in its second half, and the auditor caught it.**
+   The 8-TOWARD/2-AWAY count does carry its method (counted off the front door's
+   description, operations enumerated). The factory survey carried **no method at
+   all**: four artifacts said "the fork was surveyed" and none said how, so nothing in
+   the repository let a reader re-run it — which is precisely how a wrong number
+   reached the dossier unchallenged, through this report. It is a file now.
 2. **The instrument is shown to discriminate.** The first attempt was REFUSED by JDT
    ("Selected entity is not a constructor invocation or definition"), and that red is
    kept in the commit message as the evidence the test can fail. A property test that

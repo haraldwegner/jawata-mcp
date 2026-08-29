@@ -152,7 +152,15 @@ or record explicitly that the operation's guarantee stops at the file boundary.
 
 ## 3. Rank 3's parity is proven on the authored fixture only
 
-**Status: a disclosed asymmetry between the two Stage 8 operations. Home: Stage 9.**
+**Status: ☑ RESOLVED at C9, and the C9 auditor is why.** Stage 9 was named as this
+item's home and ran on this very fixture *without closing it* — the auditor caught
+that, correctly, as a finding homed and then passed over.
+`ReplaceConstructorWithFactoryForkSliceTest#theOperationMeetsCodeWeDidNotAuthor` now
+parses BOTH touched fork files with bindings and asserts zero errors: the factory
+file whose call site moved, and the product file the factory was generated onto. The
+asymmetry with rank 2 — whose fork slice always compiled its rewrite — is gone.
+
+**Original finding, kept for the record.**
 
 `ReplaceConstructorWithFactoryForkSliceTest#theOperationMeetsCodeWeDidNotAuthor`
 asserts the file changed and that it contains `newArmy`. It never COMPILES the result.
@@ -171,7 +179,13 @@ human-authored originals and is where this is cheapest to close.
 
 ## 4. A rank-3 test's javadoc promises more than its body asserts
 
-**Status: a small declared-versus-delivered gap. Home: Stage 9, beside item 3.**
+**Status: ☑ RESOLVED at C9, beside item 3 and for the same reason.**
+`theOldPathCanBeLeftOpenOnPurpose` now asserts BOTH halves its javadoc promises: the
+constructor stayed reachable AND the factory was added. Without the second, an
+operation that added nothing while leaving the constructor alone would have passed —
+the flag was pinned in one direction only.
+
+**Original finding, kept for the record.**
 
 `ReplaceConstructorWithFactoryToolTest#theOldPathCanBeLeftOpenOnPurpose` says in its
 javadoc that "the factory is added and the constructor stays reachable". The body
@@ -183,21 +197,50 @@ times (S7.7, S7.8, C8's B1).
 ## 5. The round trip cannot check that our factory looks like a human's
 
 **Status: a declared deviation from D3's wording, and the more valuable half of the
-check is the half that is missing. Home: whichever sprint next touches the creational
-operations.**
+check is the half that is missing. HOME: Sprint 28e**, the issues sprint — to be
+filed there as an issue against the creational operations, not carried as prose.
+
+> **The earlier status line said "whichever sprint next touches the creational
+> operations", which the C9 auditor correctly refused as a rule for finding a home
+> rather than a home.** It is now named.
 
 D3 says: take a canonical implementation, run the AWAY direction, then TOWARD, and
 compare with the human original. Stage 9 runs TOWARD then AWAY instead, from
 unpatterned human code.
 
-**Why, measured rather than argued.** The literal direction needs a human-written
-SELF-RETURNING STATIC FACTORY as its starting point, because that is the only factory
-shape our TOWARD direction produces. The whole fork was surveyed for exactly that
-shape: **six sites, in four classes** — `component/GameObject` (2),
-`hexagonal-architecture/LotteryNumbers` (2), `saga/Saga` (2) — and **every one carries
-Lombok**; two also carry Guava. The fixtures compile against the JDK alone on purpose,
-so not one of the six can be a before-case without putting annotation processing into
-a test fixture.
+**Why, measured — and the first two measurements were WRONG.** The literal direction
+needs a human-written SELF-RETURNING STATIC FACTORY as its starting point, because
+that is the only factory shape our TOWARD direction produces.
+
+> **CORRECTED at C9.** This paragraph said *"six sites, in four classes, every one
+> carries Lombok"*. The auditor re-ran the survey independently and found more sites
+> and a dependency-free one, which falsified the only stated reason for the deviation.
+> A second attempt was also wrong — it counted an interface's lambda and anonymous-class
+> factories by searching a fixed character window that ran out of one method and into
+> the next. **The method is now a file**, `build/survey-self-returning-factories.py`,
+> which brace-matches the method body, refuses anonymous instantiation and non-class
+> types, and records both earlier defects in its own header.
+
+**What the corrected survey reports — 9 sites in 6 classes:**
+
+| Class | Sites | Dependency | Constructor |
+|---|---|---|---|
+| `saga/orchestration/ChapterResult` | 2 | Lombok | package-private |
+| `saga/orchestration/Saga` | 1 | Lombok | private |
+| `saga/choreography/Saga` | 1 | Lombok | private |
+| `component/GameObject` | 2 | Lombok + 7 others | implicit |
+| `hexagonal-architecture/LotteryNumbers` | 2 | Lombok + 1 other | private |
+| **`monad/Validator`** | 1 | **NONE** | **private** |
+
+**So "every one carries Lombok" was false — and the conclusion survives on a better
+reason.** Exactly one site is dependency-free, and its constructor is PRIVATE. This
+trip is only defined where the old path stays open: the AWAY leg folds the factory
+back into its callers, which cannot compile against a constructor they may not reach.
+**Zero of the nine can serve as an AWAY-first original**, and C9 asks for three.
+
+**Lombok was never the real blocker; constructor accessibility is.** The original
+claim reached the right conclusion by a route that does not hold — which is worth more
+than the conclusion, because the route is what a later reader would have trusted.
 
 **What the reversal costs, and it is not nothing.** The literal form would test that
 our TOWARD direction *reproduces the factory a human chose to write*. The reversed

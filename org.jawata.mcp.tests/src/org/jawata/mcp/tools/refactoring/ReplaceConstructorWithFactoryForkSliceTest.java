@@ -152,6 +152,51 @@ class ReplaceConstructorWithFactoryForkSliceTest {
                 + " real one");
         assertTrue(after.contains("newArmy"),
             () -> "the factory call must be present at the rewritten site:\n" + after);
+
+        // PARITY ON CODE WE DID NOT AUTHOR — added at C9, after the auditor found the
+        // gap and the stage named as its home (Stage 9) ran on this very fixture
+        // without closing it. Everything above asserts the file CHANGED and carries a
+        // string; none of it asserts the result is VALID. Rank 2's fork slice compiles
+        // its rewrite and this one did not, so rank 3's parity lived on the authored
+        // fixture alone — an asymmetry between two operations that ship together.
+        //
+        // Both files, because the operation is cross-file by nature: the call site
+        // moves in the factory, and the factory method is created on the product.
+        Path armyFile = factoryFile.resolveSibling("ElfArmy.java");
+        assertEquals(0, compileErrors(factoryFile),
+            () -> "the fork's FACTORY file must still compile after its call site moved:\n"
+                + readQuietly(factoryFile));
+        assertEquals(0, compileErrors(armyFile),
+            () -> "the fork's PRODUCT file must compile with the generated factory on it:\n"
+                + readQuietly(armyFile));
+    }
+
+    /**
+     * Errors in one file, parsed WITH BINDINGS.
+     *
+     * <p>Binding resolution is what makes this unfoolable: a reference rewritten into
+     * something that merely looks right resolves to nothing and counts here, while a
+     * text assertion would pass on it.</p>
+     */
+    private long compileErrors(Path file) throws Exception {
+        org.eclipse.jdt.core.ICompilationUnit cu = service.getCompilationUnit(file);
+        org.eclipse.jdt.core.dom.ASTParser parser =
+            org.eclipse.jdt.core.dom.ASTParser.newParser(
+                org.eclipse.jdt.core.dom.AST.getJLSLatest());
+        parser.setSource(cu);
+        parser.setResolveBindings(true);
+        org.eclipse.jdt.core.dom.CompilationUnit ast =
+            (org.eclipse.jdt.core.dom.CompilationUnit) parser.createAST(null);
+        return java.util.Arrays.stream(ast.getProblems())
+            .filter(org.eclipse.jdt.core.compiler.IProblem::isError).count();
+    }
+
+    private static String readQuietly(Path p) {
+        try {
+            return Files.readString(p);
+        } catch (Exception e) {
+            return "<unreadable: " + e + ">";
+        }
     }
 
     /**

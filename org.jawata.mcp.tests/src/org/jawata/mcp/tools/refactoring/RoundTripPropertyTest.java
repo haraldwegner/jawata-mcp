@@ -29,8 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>S9.0 established the mechanism on an authored fixture and recorded why the
  * direction is reversed from D3's wording: running AWAY first needs a
- * human-authored self-returning static factory, and a survey of the whole fork
- * found six such sites in four classes, every one carrying Lombok. This runs the
+ * human-authored self-returning static factory, and the fork holds none that
+ * can serve as one. <b>The survey behind that claim was wrong twice and is now
+ * reproducible</b> — {@code build/survey-self-returning-factories.py}. It reports
+ * NINE sites in SIX classes, one of them dependency-free
+ * ({@code monad/Validator.of()}), whose constructor is PRIVATE — and this trip
+ * is only defined where the old path stays open. So zero of the nine qualify,
+ * and the blocker is constructor accessibility rather than Lombok. This runs the
  * property where the clause actually points — at human-written originals.</p>
  *
  * <h2>The corpus, and why this slice</h2>
