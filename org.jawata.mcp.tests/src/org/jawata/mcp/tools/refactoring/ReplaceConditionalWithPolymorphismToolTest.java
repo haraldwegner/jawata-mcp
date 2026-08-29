@@ -271,6 +271,109 @@ class ReplaceConditionalWithPolymorphismToolTest {
                 + " scope");
     }
 
+    // ------------------------------------------------------------------
+    // S8.13 — THE TWO SHAPE REFUSALS, which were advertised and untested
+    // ------------------------------------------------------------------
+
+    /**
+     * The caret for a switch in the refusal fixture, found by the enclosing method's
+     * name so the two cases cannot be confused with each other.
+     */
+    private ObjectNode refusalArgs(String methodSignature) throws Exception {
+        Path file = helper.getTempDirectory().resolve(
+            "factory-target/src/main/java/com/example/factory/RefusalCases.java");
+        String source = Files.readString(file);
+        String[] lines = source.split("\n", -1);
+        int from = lineOf(source, methodSignature);
+        for (int i = from; i < lines.length; i++) {
+            int col = lines[i].indexOf("switch (mode)");
+            if (col >= 0) {
+                ObjectNode n = mapper.createObjectNode();
+                n.put("kind", "replace_conditional_with_polymorphism");
+                n.put("filePath", file.toString());
+                n.put("line", i);
+                n.put("column", col);
+                return n;
+            }
+        }
+        throw new AssertionError("no switch after: " + methodSignature);
+    }
+
+    /**
+     * REFUSAL: an arm assigns a variable the enclosing method owns.
+     *
+     * <p>It could travel as a parameter — it is read in the same arm. But Java passes
+     * by value, so the write would land on a copy and be lost, and the refactoring
+     * would change behaviour while every file still compiled. A transformation that
+     * is wrong and green is the one this operation must never perform.</p>
+     *
+     * <p>The fixture method is otherwise a perfectly good candidate — enum
+     * discriminator, arrow switch, two non-default arms plus a default — so a refusal
+     * here is about the SHAPE and not about some other precondition failing.</p>
+     */
+    @Test
+    @DisplayName("S8.13 refusal: an arm that ASSIGNS a method-scope variable, nothing written")
+    void anArmAssigningAMethodScopeVariableIsRefused() throws Exception {
+        ObjectNode args = refusalArgs("void accumulate(Mode mode, int step)");
+        Path file = Path.of(args.get("filePath").asText());
+        String before = Files.readString(file);
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(),
+            () -> "an arm that assigns `step` must be REFUSED. Moving it would pass the"
+                + " parameter by value and silently drop the write: " + r.getData());
+        assertTrue(String.valueOf(r.getError()).contains("step"),
+            () -> "the refusal must NAME the variable, or the caller cannot tell which"
+                + " of the arms' identifiers caused it: " + r.getError());
+        assertEquals(before, Files.readString(file),
+            "a refused operation must leave the source byte-identical");
+    }
+
+    /**
+     * REFUSAL: an arm uses {@code this} for something other than reaching a field.
+     *
+     * <p>Once the body is a class of its own, {@code this} IS that class, so the
+     * reference silently comes to mean the behaviour object rather than the context.
+     * In this fixture the receiving type would in fact make the compiler catch it;
+     * the refusal exists for the cases where it would not — a parameter typed
+     * {@code Object}, a varargs sink, a logger.</p>
+     */
+    @Test
+    @DisplayName("S8.13 refusal: an arm that passes `this` to somebody, nothing written")
+    void anArmPassingThisIsRefused() throws Exception {
+        ObjectNode args = refusalArgs("void announce(Mode mode, Consumer<RefusalCases> sink)");
+        Path file = Path.of(args.get("filePath").asText());
+        String before = Files.readString(file);
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(),
+            () -> "an arm passing `this` to a collaborator must be REFUSED: " + r.getData());
+        assertTrue(String.valueOf(r.getError()).contains("this"),
+            () -> "the refusal must say it is about `this`: " + r.getError());
+        assertEquals(before, Files.readString(file),
+            "a refused operation must leave the source byte-identical");
+    }
+
+    /**
+     * THE CONTROL, and without it the two refusals above prove much less.
+     *
+     * <p>A tool that refused this fixture for any reason at all would pass both. The
+     * fixture's own SLOW and default arms are ordinary — they touch only fields — so
+     * a switch built from those alone must SUCCEED. That is what makes the refusals
+     * attributable to the two shapes rather than to the file.</p>
+     */
+    @Test
+    @DisplayName("S8.13 control: the same fixture's ordinary switch is NOT refused")
+    void theOrdinaryCaseInTheSameFixtureStillSucceeds() throws Exception {
+        // Router's switch is the ordinary one and lives in the same project; if the
+        // operation were refusing everything in this fixture project, this goes red.
+        ToolResponse r = tool.execute(args());
+        assertTrue(r.isSuccess(),
+            () -> "CONTROL: an ordinary switch in the same project must still be"
+                + " accepted, or the two refusals above are about the project rather"
+                + " than about the shapes they name: " + r.getError());
+    }
+
     /** Every .java under the project, mapped to its exact bytes. */
     private static Map<Path, String> javaSourceSnapshot(Path root) throws Exception {
         Map<Path, String> snapshot = new LinkedHashMap<>();
