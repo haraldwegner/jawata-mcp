@@ -1007,6 +1007,46 @@ public class FactoryCaller {
     }
 }
 EOF_FACTORY_CALLER
+# 28d Stage 8 (S8.12): the rank-2 target, written BEFORE load_project for the same
+# reason. The arms read a method PARAMETER on purpose: the generated behaviour
+# method has to carry it, so this exercises the whole shape rather than the easy
+# half where every arm touches only fields.
+#
+# The caret below is line 14, column 8 (both zero-based) — the `switch (signal)`
+# line. Counted from this heredoc; if you edit the comment above the class, recount.
+cat > "$WS/proj/src/main/java/com/example/SignalRouter.java" << 'EOF_SIGNAL'
+package com.example;
+
+/**
+ * The switch Replace Conditional with Polymorphism acts on: an ENUM
+ * discriminator, arrow arms, and a method PARAMETER the arms read.
+ */
+public class SignalRouter {
+
+    public enum Signal { START, STOP, PAUSE }
+
+    private int count;
+    private int multiplier = 2;
+
+    public void handle(Signal signal, int amount) {
+        switch (signal) {
+            case START -> {
+                this.count = amount * multiplier;
+            }
+            case STOP -> {
+                this.count = 0;
+            }
+            default -> {
+                this.count = count + amount;
+            }
+        }
+    }
+
+    public int count() {
+        return count;
+    }
+}
+EOF_SIGNAL
 LP="$(call load_project "{\"projectPath\":\"$WS/proj\"}")"
 case "$LP" in
     *'"success":true'*|*sourceFiles*|*packages*) pass "choke-gate a real project loads in the throwaway resident" ;;
@@ -1092,6 +1132,44 @@ if grep -q "new FactoryTarget(name)" "$FACTORY_CALLER"; then
     pass "factory-stages staging left the CALL SITE untouched"
 else
     fail "factory-stages auto_apply=false rewrote the call site while reporting a staged change"
+fi
+
+# --- polymorphism-stages: 28d Stage 8 (S8.12), rank 2 at the front door -------
+# The same promise as the two above, for the stage's second floor operation:
+# refactor_to_pattern(kind=replace_conditional_with_polymorphism) is reachable
+# through the real JSON-RPC endpoint an editor uses, and it STAGES.
+#
+# "Unknown kind" keeps its own failure arm here for the reason it has one above:
+# it is the exact signature of an operation that exists and was never wired into
+# dispatch, and it reads identically to any other failure unless separated.
+SIGNAL_SRC="$WS/proj/src/main/java/com/example/SignalRouter.java"
+PX="$(call refactor_to_pattern "{\"kind\":\"replace_conditional_with_polymorphism\",
+      \"filePath\":\"$SIGNAL_SRC\",\"line\":14,\"column\":8,\"auto_apply\":false}")"
+case "$PX" in
+    *'"changeId"'*)
+        pass "polymorphism-stages replace_conditional_with_polymorphism stages at the front door" ;;
+    *'Unknown kind'*)
+        fail "polymorphism-stages the front door does not know replace_conditional_with_polymorphism —
+          the operation exists but is NOT wired into dispatch: $(printf '%s' "$PX" | head -c 300)" ;;
+    *'No switch statement'*)
+        fail "polymorphism-stages the caret missed the switch — the heredoc above moved and the
+          hardcoded line/column no longer point at it: $(printf '%s' "$PX" | head -c 300)" ;;
+    *)
+        fail "polymorphism-stages no changeId from a staged replace_conditional_with_polymorphism: $(printf '%s' "$PX" | head -c 300)" ;;
+esac
+# STAGED means NOTHING WAS WRITTEN.
+if grep -q "switch (signal)" "$SIGNAL_SRC"; then
+    pass "polymorphism-stages staging wrote nothing — the source still holds its switch"
+else
+    fail "polymorphism-stages auto_apply=false MODIFIED the source; staging is not staging"
+fi
+# The generated hierarchy is NESTED, so a staging leak shows as the interface
+# appearing in the same file rather than as a new one — which the extract check
+# above would not catch.
+if grep -q "interface HandleBehaviour" "$SIGNAL_SRC"; then
+    fail "polymorphism-stages auto_apply=false wrote the generated hierarchy into the source"
+else
+    pass "polymorphism-stages staging generated no nested types on disk"
 fi
 
 # --- cure-resolves: 28d Stage 5, a detector's cure carries a REAL address ----

@@ -99,7 +99,39 @@ than five more hand-written entries.
 
 ## 2. Cross-file reference migration is demonstrated nowhere
 
-**Status: a disclosed coverage boundary, not a defect.**
+**Status: ☑ RESOLVED in Stage 8 (`11057fc`), and the boundary is closed by PROOF
+rather than by documentation — the operation does follow its readers across a file
+boundary.**
+
+> **Harald's ruling, 2026-08-29**, which chose between the two options this item
+> offered: *"Sure we do this. Within the same file would make this refactoring only
+> halfway."* A field move that does not follow its readers is not a move.
+>
+> **The omission was STRUCTURAL, not an oversight, and that is the part worth
+> keeping.** Both fixtures named below declare the moved fields `private`. A private
+> field cannot be read from another file at all, so no test built on either could
+> have covered this case. It was not untested; it was **untestable** — which is why
+> it survived a checkpoint and a fresh-context audit. Nothing available to either
+> could have caught it.
+>
+> `ExtractClassAcrossFilesTest` drives a new fixture, `extract-crossfile`, whose
+> moved fields are **package-private** — the narrowest visibility a second file can
+> reach, therefore the narrowest shape that can ask the question. `Report.java`
+> carries three shapes the rewrite must follow: a read through a parameter, a read
+> through a local, and a **write** from outside, which a read-only rewrite would
+> miss.
+>
+> What decides it is a compile **with bindings**, not a text match: if the fields
+> move and their readers do not follow, every reference resolves to nothing. A
+> textual assertion could not take its place, because the correct rewritten form is
+> the engine's to choose and asserting one spelling would fail a correct result.
+>
+> Undo restores BOTH files byte-identically. Purity holds with its boundary redrawn:
+> the operation is *expected* to modify a file the caller never named, so the claim
+> asserted is that it touched only what it had a reason to touch.
+
+**Original finding, kept for the record: a disclosed coverage boundary, not a
+defect.**
 
 Extract Class is proven to move a field cluster and rewrite the accesses **within the
 declaring file**. No test demonstrates it rewriting a reference from a *different* file,
