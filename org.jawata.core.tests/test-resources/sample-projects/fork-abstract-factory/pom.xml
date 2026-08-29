@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28d Stage 8 (S8.4) — a VERBATIM slice of the pinned upstream fork, for
+  C8's clause that each operation must be demonstrated "on code we did not
+  author": a fixture written for the test does not satisfy it.
+
+  Deliberately SEPARATE from simple-maven, for the reason fork-circuit-breaker is:
+  that fixture feeds roughly forty smell detectors whose counts are asserted
+  elsewhere, and foreign code dropped into it would shift those baselines for a
+  reason unrelated to what they measure.
+
+  No dependencies on purpose. The slice compiles against the JDK alone, so nothing
+  here can fail for a resolution reason and be mistaken for a refactoring defect.
+  See PROVENANCE.md beside this file for the pin, the omissions and their reasons.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jawata.fixtures</groupId>
+    <artifactId>fork-abstract-factory</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+</project>
