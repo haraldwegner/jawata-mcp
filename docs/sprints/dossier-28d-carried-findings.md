@@ -196,9 +196,19 @@ times (S7.7, S7.8, C8's B1).
 
 ## 5. The round trip cannot check that our factory looks like a human's
 
-**Status: a declared deviation from D3's wording, and the more valuable half of the
-check is the half that is missing. HOME: Sprint 28e**, the issues sprint — to be
-filed there as an issue against the creational operations, not carried as prose.
+**Status: RESOLVED AT S9a.1 (2026-08-30) — MEASURED, and the recorded cause was
+wrong.** This item said the blocker was the CORPUS: no fork site could serve as an
+AWAY-first original. S9a re-measured and found the blocker is the OPERATIONS, which is
+a different finding with a different home. **The deviation is no longer a deferral**;
+what remains for Sprint 28e is the two operation-level findings at the end of this
+item, filed as issues against the creational operations.
+
+> **What the corpus argument got right and wrong.** Right: zero of the nine sites can
+> run the trip today. Wrong: the reason. Accepting Lombok in one vendored fixture —
+> this item's own first way back — would have unblocked `ChapterResult` on the
+> dependency axis and changed nothing, because the AWAY leg refuses it for a reason
+> the survey never looked at. **The cost of finding out was one authored fixture and
+> two builds**, against a vendoring exercise that would have ended at the same wall.
 
 > **The earlier status line said "whichever sprint next touches the creational
 > operations", which the C9 auditor correctly refused as a rule for finding a home
@@ -267,6 +277,67 @@ stated as such if it is ever adopted.
 Raised by the architect seat at the C9 watch-diff (F2), which judged the handling
 correct and the recording insufficient: it was declared in a commit message, a test
 javadoc and the plan, and would have been re-discovered rather than remembered.
+
+---
+
+### S9a.1 — what the trip actually does, measured on a fixture shaped on `ChapterResult`
+
+Fixture `partial-factory` holds two classes differing in ONE property, so the first
+finding has a cause rather than a correlation: `Outcome` is `ChapterResult`'s shape
+(generic, two-argument package-private constructor, two intention-named factories each
+fixing one argument), and `Verdict` is `Outcome` with the type parameter removed.
+Guarded by `PartialApplicationRoundTripProbeTest`, both tests green.
+
+**FINDING A — the AWAY leg refuses a GENERIC factory, and that alone closes D3's
+direction.** Inlining `static <K> Outcome<K> success(K val)` returns
+`REFACTORING_BROKE_COMPILE / Cannot infer type arguments for Outcome<>`, and the engine
+UNDOES the change rather than leaving the tree broken — the right behaviour, and
+asserted as such. The body's diamond infers from the method's own type parameter, which
+stops existing once the body is folded into a caller.
+
+`ChapterResult.success/failure` is generic in exactly this way. So is every other
+generic factory in the survey, and a generic self-returning factory is how the pattern
+is normally written — the first two surveys were blind to generics precisely because
+they are so common. **No corpus choice and no dependency concession reaches this.**
+
+**FINDING B — with genericity removed the trip RUNS, and returns a different KIND of
+factory than the human wrote.** On `Verdict`, AWAY succeeds (which is what attributes
+Finding A to genericity), TOWARD succeeds, and the trip does not close:
+
+| | The human wrote | After AWAY then TOWARD |
+|---|---|---|
+| the factory | `success(String val)` — HIDES `State.SUCCESS` behind a name that states an intention | `of(String value, State state)` — a FORWARDER exposing every constructor parameter |
+| every call site | `Verdict.success(order)` | `Verdict.of(order, Outcome.State.SUCCESS)` |
+
+**So the trip does not merely fail to reproduce the human's text: it pushes the constant
+the human deliberately hid back out to every caller.** That is the opposite of what
+Replace Constructor with Factory Method is for, and it is asserted as a one-to-one
+correspondence — every call site that hid the constant now spells it — rather than as a
+count, so it holds however many call sites the fixture has.
+
+**This is D3's more valuable half, answered.** The question was whether our TOWARD leg
+reproduces the factory a human chose to write. It does not, and the difference is
+structural rather than cosmetic: one mechanical forwarder cannot be two intention-named
+partial applications, whatever it is called.
+
+**Not asserted to be a defect.** A forwarder is a defensible thing for a mechanical
+refactoring to produce. What it is not is what a human wrote — and D3 exists to measure
+exactly that gap, which is now measured instead of deferred.
+
+**ONE CONFOUND, removed rather than left in.** The first run passed
+`factoryMethodName: "success"` and got back `failure(v) { return success(v, FAILURE); }`
+— a method named `success` constructing a failure. That absurdity was the test's own
+input, not the operation's behaviour, so the run was repeated with a neutral name and
+the finding above is from that run.
+
+**FOR SPRINT 28e, as issues against the creational operations:**
+1. `inline(kind=method)` cannot invert a generic factory (Finding A). Whether that is
+   fixable — re-materialising the inferred type arguments at each call site — or is a
+   permanent limit is the question to file, not a fix to assume.
+2. `replace_constructor_with_factory` emits a forwarder where the idiomatic shape is
+   often a partial application (Finding B). A `fixedArguments` parameter is the obvious
+   direction and is NOT proposed here; the finding is the input to that design, not its
+   conclusion.
 
 ## 6. The property is proven for ONE operation pair, not for the engine
 

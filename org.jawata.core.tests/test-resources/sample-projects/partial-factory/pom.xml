@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28d Stage 9a (S9a.1) — the fixture that PREDICTS what the D3-direction
+  round trip will do to a human's factory, before the Lombok-bearing slice of the
+  fork is vendored to run it for real.
+
+  It is shaped ON `com.iluwatar.saga.orchestration.ChapterResult`, which the
+  survey names as the ONLY human-written self-returning factory in the fork whose
+  constructor the AWAY leg can reach (package-private, and all twelve callers sit
+  in that same package). Faithfully: a generic type, a two-argument constructor,
+  and TWO factories that each fix one of those arguments to a different constant.
+
+  WHAT THIS FIXTURE IS FOR, and its limit stated up front: it is a MECHANISM
+  probe, not the D3 case. D3 asks for code we did not author, and this is
+  authored — the same limit factory-target declares. Its job is to answer one
+  question cheaply, on a shape we control: can the round trip close at all when
+  the human's factory is a PARTIAL APPLICATION rather than a forwarder? If it
+  cannot, that answer does not depend on the corpus and vendoring Lombok would
+  not change it.
+
+  No dependencies, so nothing here can fail to resolve and be read as a
+  refactoring defect.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jawata.fixtures</groupId>
+    <artifactId>partial-factory</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+</project>
