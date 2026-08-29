@@ -238,9 +238,18 @@ trip is only defined where the old path stays open: the AWAY leg folds the facto
 back into its callers, which cannot compile against a constructor they may not reach.
 **Zero of the nine can serve as an AWAY-first original**, and C9 asks for three.
 
-**Lombok was never the real blocker; constructor accessibility is.** The original
-claim reached the right conclusion by a route that does not hold — which is worth more
-than the conclusion, because the route is what a later reader would have trusted.
+**And the decomposition, stated precisely — because "Lombok was never the real
+blocker, constructor accessibility is" is ALSO not what the numbers say.** Of the
+nine: **8 are blocked by a dependency the fixtures exclude, and 5 by a private
+constructor.** Neither filter alone reaches zero — the dependency filter leaves one,
+accessibility leaves four. The true and narrower claim is: *the single site the
+dependency filter does not remove is removed by accessibility.* Both are load-bearing;
+neither is "the real one".
+
+The original claim reached the right conclusion by a route that does not hold — which
+matters more than the conclusion, because the route is what a later reader trusts.
+Raised by the C9 auditor at round 2, alongside its finding that this correction had
+reached the plan's body and not its status board.
 
 **What the reversal costs, and it is not nothing.** The literal form would test that
 our TOWARD direction *reproduces the factory a human chose to write*. The reversed

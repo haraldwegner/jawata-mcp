@@ -101,10 +101,26 @@ def survey(root):
             except OSError:
                 continue
 
-            # ONLY A CLASS. An interface's static factory returns a lambda or an
-            # anonymous implementation and the type has no constructor at all, so
-            # it cannot be an original for a trip whose AWAY leg inlines a
-            # constructor wrapper.
+            # ONLY A TOP-LEVEL CLASS, and this filter excludes MORE than the
+            # reason first given for it — stated in full because the header says
+            # to say what an exclusion actually excludes:
+            #
+            #   - INTERFACE: the stated reason. A static factory there returns a
+            #     lambda or an anonymous implementation and the type has no
+            #     constructor at all, so nothing can be inlined into it.
+            #   - RECORD: NOT covered by that reason. A record has a canonical
+            #     constructor and produces exactly `return new Rec(...)`. The
+            #     corpus has records (factory-method/OrcWeapon, registry/Customer,
+            #     backends-for-frontends/model/*) and a broader survey found none
+            #     with a self-returning factory — so this costs nothing HERE, and
+            #     would have to be revisited on another corpus.
+            #   - ENUM: same, and same evidence.
+            #   - NESTED types: the class is keyed on the FILE NAME, so a factory
+            #     declared inside a nested class is invisible. Also empirically
+            #     empty on this corpus, also not free in general.
+            #
+            # Three exclusions, one reason given, two of them unexamined until
+            # the C9 auditor ran a superset and checked the difference.
             if not re.search(r"\b(?:public\s+|final\s+|abstract\s+)*class\s+"
                              + re.escape(cls) + r"\b", src):
                 continue
@@ -133,9 +149,23 @@ def survey(root):
                 lombok = [i for i in imports if i.startswith("lombok")]
                 other = [i for i in imports
                          if not i.startswith(("java.", "javax.", "lombok"))]
+                # CONSTRUCTOR VISIBILITY. The first version of this line required
+                # the declaration to be `[modifier] Cls(...) {` with nothing
+                # between — so it MISSED `private Cls(int a) throws Bar {`,
+                # `@Inject private Cls(int a) {` and `private <T> Cls(T a) {`,
+                # and a miss falls through to "implicit", which the `usable`
+                # filter below treats as reachable. That is a false NEGATIVE in
+                # the safe-looking direction: a private constructor written any
+                # of those three ways would have made its class qualify as an
+                # away-first original. Found by the C9 auditor probing the
+                # instrument rather than reading it — which is the whole reason
+                # this file has a header.
                 ctors = re.findall(
-                    r"^\s*(public|protected|private)?\s*" + re.escape(cls)
-                    + r"\s*\([^)]*\)\s*\{", src, re.M)
+                    r"^[ \t]*(?:@\w+(?:\([^)]*\))?[ \t]*)*"     # annotations
+                    r"(public|protected|private)?[ \t]*"
+                    r"(?:<[^>]*>[ \t]*)?"                       # generic constructor
+                    + re.escape(cls)
+                    + r"[ \t]*\([^)]*\)[ \t]*(?:throws [\w., ]+)?\{", src, re.M)
                 vis = sorted({c if c else "package-private" for c in ctors}) or ["implicit"]
                 hits.append({
                     "module": module, "cls": cls, "method": m.group(1),

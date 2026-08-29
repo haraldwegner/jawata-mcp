@@ -60,8 +60,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * dependency the fixtures exclude, and the ninth cannot be inlined into. C9 asks
  * for three.</p>
  *
- * <p>Lombok was never the real blocker; constructor accessibility is. The first
- * claim happened to reach the right conclusion by a route that does not hold.</p>
+ * <p><b>Both filters are load-bearing, and neither alone is "the real one"</b> —
+ * corrected at C9 round 2. Of the nine: eight are blocked by a dependency, five by
+ * a private constructor. Dependency alone leaves one; accessibility alone leaves
+ * four. The precise claim is that the single site the dependency filter does not
+ * remove is removed by accessibility. The first survey reached the right conclusion
+ * by a route that does not hold.</p>
  *
  * <p>So this runs TOWARD then AWAY instead, starting from human code that has
  * no factory — a public constructor and its call sites, which the fork has in
