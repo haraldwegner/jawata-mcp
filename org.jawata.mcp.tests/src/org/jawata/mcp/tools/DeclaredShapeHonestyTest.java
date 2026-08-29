@@ -171,6 +171,8 @@ class DeclaredShapeHonestyTest {
         patterns.put("replace_pattern_with_idiom", new ReplacePatternWithIdiomTool(svc, cache));
         patterns.put("replace_constructor_with_factory",
             new ReplaceConstructorWithFactoryTool(svc, cache));
+        patterns.put("replace_conditional_with_polymorphism",
+            new ReplaceConditionalWithPolymorphismTool(svc, cache));
         assertPublishesEveryDelegateParameter(new RefactorToPatternTool(svc, cache), patterns);
     }
 

@@ -37,7 +37,11 @@ public class RefactorToPatternTool extends AbstractTool {
         // 28d Stage 8, rank 3 of the operation survey. The creational family
         // (abstract-factory, factory-method, builder, null-object) is blocked
         // without a constructor call-site rewrite, which retargetCallsTo cannot do.
-        "replace_constructor_with_factory");
+        "replace_constructor_with_factory",
+        // 28d Stage 8, rank 2 — the general dispatch-collapse the special-case
+        // tools cannot reach: an ENUM discriminator, the arrow form, and a
+        // selector that is a parameter rather than a private int field.
+        "replace_conditional_with_polymorphism");
 
     private final InlineSingletonTool inlineSingleton;
     private final ComposeMethodTool composeMethod;
@@ -48,6 +52,7 @@ public class RefactorToPatternTool extends AbstractTool {
     private final RefactorToVisitorTool refactorToVisitor;
     private final ReplacePatternWithIdiomTool replacePatternWithIdiom;
     private final ReplaceConstructorWithFactoryTool replaceConstructorWithFactory;
+    private final ReplaceConditionalWithPolymorphismTool replaceConditionalWithPolymorphism;
 
     public RefactorToPatternTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -61,6 +66,8 @@ public class RefactorToPatternTool extends AbstractTool {
         this.replacePatternWithIdiom = new ReplacePatternWithIdiomTool(serviceSupplier, cache);
         this.replaceConstructorWithFactory =
             new ReplaceConstructorWithFactoryTool(serviceSupplier, cache);
+        this.replaceConditionalWithPolymorphism =
+            new ReplaceConditionalWithPolymorphismTool(serviceSupplier, cache);
     }
 
     @Override
@@ -182,7 +189,8 @@ public class RefactorToPatternTool extends AbstractTool {
         // withAutoApply below supply them once in this tool's own terms.
         for (AbstractTool delegate : List.of(inlineSingleton, composeMethod, replaceTypeCode,
                 refactorToState, refactorToCommand, formTemplateMethod, refactorToVisitor,
-                replacePatternWithIdiom, replaceConstructorWithFactory)) {
+                replacePatternWithIdiom, replaceConstructorWithFactory,
+                replaceConditionalWithPolymorphism)) {
             Object declared = delegate.getInputSchema().get("properties");
             if (declared instanceof Map<?, ?> declaredProps) {
                 declaredProps.forEach((k, v) -> {
@@ -226,6 +234,8 @@ public class RefactorToPatternTool extends AbstractTool {
             case "replace_pattern_with_idiom" -> replacePatternWithIdiom.executeWithService(service, arguments);
             case "replace_constructor_with_factory" ->
                 replaceConstructorWithFactory.executeWithService(service, arguments);
+            case "replace_conditional_with_polymorphism" ->
+                replaceConditionalWithPolymorphism.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
