@@ -180,6 +180,61 @@ which is what the test is for, so nothing is unguarded — but the javadoc descr
 assertion that is not there, which is the family this sprint has now paid for three
 times (S7.7, S7.8, C8's B1).
 
+## 5. The round trip cannot check that our factory looks like a human's
+
+**Status: a declared deviation from D3's wording, and the more valuable half of the
+check is the half that is missing. Home: whichever sprint next touches the creational
+operations.**
+
+D3 says: take a canonical implementation, run the AWAY direction, then TOWARD, and
+compare with the human original. Stage 9 runs TOWARD then AWAY instead, from
+unpatterned human code.
+
+**Why, measured rather than argued.** The literal direction needs a human-written
+SELF-RETURNING STATIC FACTORY as its starting point, because that is the only factory
+shape our TOWARD direction produces. The whole fork was surveyed for exactly that
+shape: **six sites, in four classes** — `component/GameObject` (2),
+`hexagonal-architecture/LotteryNumbers` (2), `saga/Saga` (2) — and **every one carries
+Lombok**; two also carry Guava. The fixtures compile against the JDK alone on purpose,
+so not one of the six can be a before-case without putting annotation processing into
+a test fixture.
+
+**What the reversal costs, and it is not nothing.** The literal form would test that
+our TOWARD direction *reproduces the factory a human chose to write*. The reversed
+form cannot, and the two shapes are known to differ: a human writes an instance
+factory on a separate type; the operation writes a static method on the type itself.
+That is the check most likely to catch our operations drifting away from how people
+actually write the pattern — so it is the one worth getting back.
+
+**Two ways back, neither taken here.** Accept Lombok in one vendored fixture, paying
+annotation processing for that fixture only; or write the comparison against a
+*shape*, not bytes — assert the human's factory and ours agree on what they do rather
+than on how they are spelled, which is a different and weaker claim that should be
+stated as such if it is ever adopted.
+
+Raised by the architect seat at the C9 watch-diff (F2), which judged the handling
+correct and the recording insufficient: it was declared in a commit message, a test
+javadoc and the plan, and would have been re-discovered rather than remembered.
+
+## 6. The property is proven for ONE operation pair, not for the engine
+
+**Status: a scope fact to keep restating. No home needed; it needs not being rounded
+up.**
+
+The round trip holds for `replace_constructor_with_factory` inverted by
+`inline(kind=method)`. That is one pair out of ten pattern operations. **Nine have no
+inverse and are unmeasured by this property**, including both operations Stage 8
+shipped.
+
+The reason there is no more to prove is structural rather than an omission: counted
+off the front door's own description, there are **8 TOWARD operations and 2 AWAY, and
+no pattern carries both halves**. Closing that would mean building an inverse
+operation — a rank-2-scale build, immediately after C8 cut four operations of exactly
+that cost.
+
+The finding is recorded because "the round trip has a fixed point" reads, in any
+summary, as a claim about the refactoring engine. It is a claim about one pair.
+
 ## Provenance
 
 Items 1 and 2 were found at the Sprint 28d C7 checkpoint (Stage 7, Extract Class).

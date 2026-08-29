@@ -1,136 +1,84 @@
-# ARCHITECT — WATCH MODE, Sprint 28d Stage 8 checkpoint diff
+# ARCHITECT — WATCH MODE, Sprint 28d Stage 9 checkpoint diff
 
-**Scope:** the Stage 8 commits `522d8af`..`dbccd4c` on `sprint-28c-rescue`, judged
-against `ARCHITECTURE-28d.md`. Two operations shipped — rank 3 (Replace Constructor
-with Factory Method) and rank 2 (Replace Conditional with Polymorphism) — plus the
-cross-file Extract Class proof (S8.10).
+**Scope:** `bc535a2`, `939af3b`, `63691ff` on `sprint-28c-rescue`, judged against
+`ARCHITECTURE-28d.md`. Stage 9 is D3 — the round trip has a fixed point we did not
+author.
 
-**Incomplete delegation, ranked first per standing rule 1: NONE.**
-`find_quality_issue(kind=incomplete_delegation)` on
-`ReplaceConditionalWithPolymorphismTool` returns **0 findings, scan COMPLETE (1 file
-examined, every lookup answered)** — a real absence, not a failure to look. The
-category is empty for this diff and the report moves on.
+**Incomplete delegation, ranked first per standing rule 1: NONE, and the category is
+empty by construction here.** Stage 9 added **zero production source** — 368 lines of
+tests and one E2E block. `find_quality_issue(kind=incomplete_delegation)` on the one
+production type the stage newly depends on (`InlineTool`) returns **0 findings, scan
+COMPLETE**. A real absence, not a failure to look.
+
+---
+
+## The question this diff actually raises
+
+A stage that ships no production code is either exactly right or a skipped build, and
+nothing about the diff itself distinguishes them. So that is the finding to settle,
+and it settles in the stage's favour — but only because of what the stage measured
+first.
+
+**D3 is a PROPERTY to verify, not a capability to build.** Its own measure says so:
+*"the round-trip property test passes against human-written originals."* A stage whose
+deliverable is a property is correctly all-test. Compare Stage 8, whose deliverable was
+two operations and which shipped 909 lines of production code.
+
+**But the stage could have been a build, and the measurement is what ruled it out.**
+The trip needs both directions for one pattern. Counted off the front door's own
+description: **8 TOWARD operations, 2 AWAY, and no pattern carries both.** The
+alternative to the test-only shape was to build an inverse operation — a toward-
+singleton, or a lambda-to-anonymous — which is a rank-2-scale build for the sake of a
+property test, immediately after C8 cut four operations of exactly that cost. Not
+building it is consistent with the cut, and the cut is the human's standing decision.
 
 ---
 
 ## Findings (ranked)
 
-### F1 — the picture this watch-diff is supposed to judge against names a module that does not exist
+### F1 — the round trip is proven for ONE pairing, and the report should not read as proving the operation set
 
-> **☑ DISCHARGED IN THIS CHECKPOINT.** The C8 fresh-context auditor raised it a second
-> time and correctly refused the deferral: the report and the plan both called it a
-> one-box documentation change, and then left the box standing. So the box is
-> corrected — `ARCHITECTURE-28d.md` stream 1 now reads `org.jawata.mcp.tools` /
-> `ExtractClassTool, ...Tool` / `(AbstractApplyingRefactoringTool)`, and the
-> dependency-direction bullet that said `refactoring.ops` carries the correction with
-> its evidence. The RULE was always true; only the package it named was wrong, which
-> is exactly how a falsified clause survives — the sentence around it reads correctly.
-> If the `refactoring.ops` split is genuinely wanted it is now stated as what it is: a
-> migration step with 23 members and a gate.
+The property holds for `replace_constructor_with_factory` inverted by
+`inline(kind=method)`. That is one pair out of ten operations. Nine operations have no
+inverse and are therefore unmeasured by this property — including both of Stage 8's,
+one of which is the same operation viewed from its other end.
 
-`ARCHITECTURE-28d.md:90–93` declares stream 1 as:
+**This is not a defect and no fix is proposed.** It is a scope fact that the stage
+states honestly in its own commit message, and the reason to raise it here is that
+"the round trip has a fixed point" reads, in a status summary, as a claim about the
+refactoring engine. It is a claim about one pair. The plan and the report should keep
+saying so, and C9's close should not round it up.
 
-```
-  STREAM 1: OPERATIONS
-  org.jawata.mcp.refactoring.ops
-  ExtractClassOp, MoveFieldOp, ...
-```
+### F2 — the reversed direction loses a real check, and the loss is the interesting half
 
-**Measured, both directions:**
+D3 says AWAY then TOWARD from a canonical implementation. The stage runs TOWARD then
+AWAY from unpatterned code, because a survey of the whole fork found **six**
+self-returning static factories, in four classes, **every one carrying Lombok** — so
+the literal direction has no clean corpus.
 
-- `search_symbols("RefactoringOperation*")` → **0 results**. There is no operation
-  skeleton by that name anywhere in the workspace or its jars.
-- `find_references(kind=implementations, AbstractApplyingRefactoringTool)` → **23
-  production tools, every one in `org.jawata.mcp.tools`** — including
-  `ExtractClassTool`, `RefactorToStateTool`, and both Stage 8 additions.
+What the reversal costs: the literal form would test that our TOWARD direction
+**reproduces a human's chosen factory shape**. The reversed form cannot. And the two
+shapes are known to differ — a human writes an instance factory on a separate type;
+this operation writes a static method on the type itself.
 
-So the declared package was never built, and `ExtractClassOp` / `MoveFieldOp` never
-existed under those names. The Stage 8 changes are consistent with the REAL
-convention (23 of 23) and inconsistent with the DECLARED one, and the watch-mode
-question — *toward or away from the picture?* — has no answer as written.
+**That gap is the more valuable of the two checks**, because it is the one that would
+catch our operations drifting away from how people actually write the pattern. It is
+declared in the commit, the test javadoc and the plan, which is the right handling —
+but it should be carried as an open item with a home rather than left as a sentence
+in three places, or it will be re-discovered rather than remembered.
 
-**Why this is a finding rather than a footnote.** A future executor reading the
-architecture to place the next operation would create `org.jawata.mcp.refactoring.ops`
-and split a 23-member family in two, on the authority of a document that describes
-nothing. **This is the S7.8 shape recurring** — a falsified architecture clause — and
-Stage 7 already paid for one.
+### F3 — the E2E promise changed KIND, and the change is right but undeclared as a precedent
 
-**Design-level fix, and it is a document change, not a code change:** correct the
-stream-1 box to name `org.jawata.mcp.tools` and `AbstractApplyingRefactoringTool`,
-which is what every operation actually extends. If the `refactoring.ops` split is
-genuinely wanted, it is a migration step with 23 members and belongs in the migration
-path with a gate — not left standing as a description of the present.
+Every earlier stage's E2E promise asserts that an operation **stages** — nothing
+written, a `changeId` returned — because those promises are about reachability through
+dispatch. S9.2 **applies**, because the property under test is about the writes: it
+needs the undo path, the compile gate and the file mutations in play, and a staged
+change exercises none of them.
 
-### F2 — two refusals were DOCUMENTED and NEITHER is tested, in the same commit that introduced them
-
-> **☑ DISCHARGED IN THIS CHECKPOINT — `2a58f39` (S8.13).** Both refusals now have a
-> test, each asserting the source is byte-identical afterwards and that the message
-> NAMES its cause (`step` for the assignment, `this` for the other). A **control**
-> came with them: the ordinary switch in the same fixture project must still be
-> accepted, because a tool refusing everything there would have passed both new
-> tests. The fixture's two methods are otherwise perfectly good candidates — enum
-> discriminator, arrow switch, two non-default arms plus a default — so each refusal
-> is attributable to the shape it names rather than to some other precondition.
->
-> Discharged rather than deferred because this is the COVERAGE GATE, not new scope:
-> the refusals are behaviour this checkpoint added, and the gate says behaviour a
-> change adds is covered before the change is called done.
-
-`098cfba` added two refusals to rank 2, both of them real and both now advertised in
-the class javadoc and in the tool description a client reads:
-
-- an arm that **assigns** a method-scope variable (Java passes by value, so the write
-  would land on a copy and be lost — a behaviour change that compiles);
-- an arm using **`this`** for anything but reaching a context field (in the generated
-  class `this` IS that class).
-
-`ReplaceConditionalWithPolymorphismToolTest` has five tests. The only refusal among
-them is `aCaretAwayFromAnySwitchIsRefused`, which is an ARGUMENT refusal — the caret
-has no switch under it. **Neither shape refusal is exercised by anything.** No
-fixture contains an arm that assigns a method-scope variable, and none contains a
-bare `this`.
-
-**This is the declared-shape family one level up.** Stage 7 spent four commits on
-schemas that lied about their delegates; here the javadoc and the description make a
-promise about behaviour that no instrument checks. A refusal nothing exercises is a
-claim, and it is a claim a client is now being told to rely on.
-
-It is also the cheapest finding in this report to discharge: two arms on the existing
-fixture and two assertions, on the pattern
-`aCaretAwayFromAnySwitchIsRefused` already establishes (refused, and the source
-byte-identical afterwards).
-
-### F3 — text assembly is now the majority path for pattern transforms, and nothing factors it
-
-`ReplaceConditionalWithPolymorphismTool` builds the generated interface, the
-implementations and the dispatch table with `StringBuilder`, hardcoded two-space
-indent units (`String indent = "    "`), and wraps the result in
-`InsertEdit`/`ReplaceEdit`.
-
-**I checked whether this diverges from its siblings before calling it one, and it does
-not.** `find_pattern_usages(kind=instantiation, org.eclipse.text.edits.InsertEdit)`
-→ 6 production sites in 5 tools: `FormTemplateMethodTool`,
-`RefactorToCommandDispatcherTool`, `RefactorToStateTool`, `RefactorToVisitorTool`
-(×2), and now this one. Rank 2 follows the family convention for operations with no
-JDT engine behind them. **The finding is about the convention, not about the change.**
-
-Five hand-rolled Java emitters now exist, and:
-
-- none derives indentation from the project's formatter settings — while the
-  `generate` family already takes an `indentChar` parameter precisely because that
-  mattered enough to parameterise once;
-- an arrow arm whose body is a block survives as a nested `{ }` inside the generated
-  method (valid, harmless, and nobody chose it);
-- each emitter re-solves the same problems — indent, reindent-on-move, where to
-  insert relative to the type's closing brace.
-
-**Per the standing shape rule, the second instance is the design alarm. This is the
-fifth.** The smallest design-level alternative is one emitter the five share —
-generated-member insertion against the enclosing `TypeDeclaration`, formatter-aware
-— rather than a sixth copy when Stage 9 or the cut-line operations arrive.
-
-**Not urgent, and explicitly not a blocker for C8.** It becomes urgent at the next
-engineless operation, which is exactly when it is cheapest to have done already.
+Correct for this stage. Worth naming because it is the first applying promise in the
+script, and the next author will copy whichever neighbour they happen to read. One
+sentence in the E2E block saying *why* this one applies would prevent a staged promise
+being "fixed" into an applying one, or the reverse.
 
 ---
 
@@ -138,69 +86,54 @@ engineless operation, which is exactly when it is cheapest to have done already.
 
 | Finding | Actuator |
 |---|---|
-| F1 | a documentation correction to `ARCHITECTURE-28d.md` — one box. Not a refactoring; no plan kind applies. |
-| F2 | **test-writer seat** (`/cover`) — two fixture arms + two refusal assertions on `ReplaceConditionalWithPolymorphismToolTest`. |
-| F3 | `refactoring(action=plan)` **when it is taken**, kind `extract` (method) against the five emitters' shared shape. NOT proposed for this checkpoint. |
+| F1 | none — a scope fact to keep stating, not a change |
+| F2 | the carried-findings dossier, with a home. Not a refactoring; no plan kind applies |
+| F3 | one comment in `build/end-to-end-test.sh`, already largely present in the commit message |
 
 ## Trend (baseline diff)
 
-Nothing regressed. Gates read at `dbccd4c`, before S8.13 was written:
-
 | Gate | Result | Against |
 |---|---|---|
-| `compile_workspace` | **0 errors / 136 warnings** | the C0 baseline exactly, unmoved across all of Stage 8 |
-| full suite | **2209 total · 2207 succeeded · 0 failed · 2 aborted**, wall 481 s | C0 was 2104/2102/0/2 |
-| abort budget | **OK** — 2 aborts, 3 patterns allowed | every skip accounted for |
-| `unwired-gate.sh` | **PASS at 81**, unchanged | 81 in baseline |
-| e2e | **99 passed / 0 failed** | 96 before rank 2's three staging checks |
+| e2e | **104 passed / 0 failed** | 99 before Stage 9's five checks |
+| production source added | **0 lines** | Stage 8 added 909 |
+| `incomplete_delegation` on the newly depended-on type | **0, scan complete** | — |
 
-The S8.13 tests landed after that run, so a second full pass with them in is the
-checkpoint's own gate and is running. **This report does not claim that pass** — it
-records the numbers above, which are the ones actually read.
+The full suite, abort budget and dead-code gate were running when this was written and
+are NOT claimed here.
 
 ## Reviewed diffs — design fix or bandage
 
-**DESIGN FIX**, on all four points I checked:
+**DESIGN FIX**, on three points:
 
-1. **Rank 3 delegates rather than reimplements.** `IntroduceFactoryRefactoring` does
-   the work; the tool is 275 lines of plumbing. That is the right relationship to an
-   engine that exists.
-2. **Rank 2 does not pretend to be the State tool generalised.** The stage measured
-   `refactor_to_state`'s four preconditions, concluded lifting them produces a laxer
-   State tool rather than this operation, and then **asserted the non-overlap** —
-   `refactor_to_state` refuses rank 2's fork-slice caret and leaves the source
-   byte-identical. An argument became a test, which is what makes the boundary
-   survive someone widening the State tool later.
-3. **The refusals sit on a channel that can act in time (rule 6).** Both fire inside
-   `prepareChange`, before any edit is constructed and long before anything is
-   written. Contrast the shape rule 6 refuses — a control that can only append after
-   the artifact exists.
-4. **The mutating tools return what they DID, not homework (rule 8).** Both new
-   operations go through `AbstractApplyingRefactoringTool` and return
-   `filesModified` + `diff` + `undoChangeId`, or stage under a `changeId`. Neither
-   hands the caller a list of edits to apply.
+1. **The stage measured before it designed, and the measurement changed the design.**
+   The 8/2 count and the six-Lombok-factories survey were both taken before a line was
+   written, and both are recorded with their method. That is the opposite of the shape
+   this sprint keeps repairing — a claim made and then defended.
+2. **The instrument is shown to discriminate.** The first attempt was REFUSED by JDT
+   ("Selected entity is not a constructor invocation or definition"), and that red is
+   kept in the commit message as the evidence the test can fail. A property test that
+   has never failed is a property test nobody has checked.
+3. **The author found the vacuity hole in his own test and closed it.** The first green
+   compared the slice against its pristine bytes — which two no-op operations satisfy
+   perfectly while reporting success. A per-iteration proof of life now requires the
+   midpoint to differ. This is the exact shape the C8 auditor named one stage earlier;
+   finding it unprompted is the behaviour the audit was supposed to teach.
 
-**One contract observation, stated because rule 5(f) forbids silence about the other
-side.** Both changes ADD a `kind` to `refactor_to_pattern`'s published enum and its
-schema. The producers are the two new delegates; the consumers are MCP clients
-reading the tool schema — **which live outside this workspace and cannot be
-enumerated from here**. The change is purely additive: no existing kind, parameter or
-response field changed shape, so no consumer can break on it. No consumer-side change
-is needed. `DeclaredShapeHonestyTest` now registers both new kinds in its delegate
-map, so the published schema is checked against each delegate's parameters on the
-same axis where `extract` and `generate` both previously failed.
+**Contract observation (rule 5(f), silence forbidden).** Stage 9 changes **no
+contract**: no signature, schema, response payload or serialized format moved. The
+producers and consumers are therefore unchanged and no other side needs to change.
+The one new production dependency is a test's use of `InlineTool`, which is an existing
+registered front door used through its published interface.
 
 ## Below the fold
 
-- `ReplaceConditionalWithPolymorphismTool` is 634 lines against rank 3's 275. The
-  difference is the absent engine, not bloat — but it is the largest single tool in
-  the family and the F3 emitter would take roughly a third of it out.
-- The dist freshness guard reads `jawata.jar`'s mtime. Maven does not rewrite that
-  12 KB launcher when only bundles change, so an incremental build leaves a genuinely
-  fresh dist looking stale and the suite refuses. Conservative direction — it refuses
-  rather than testing stale code — but it costs a full clean rebuild each time, and
-  it cost one in this checkpoint.
+- The property runs on six originals where C9 asks for three. Free, and it caught
+  nothing extra — all six behaved identically, which is itself mild evidence that the
+  shape rather than the class is what the operation keys on.
+- `protectConstructor=false` is load-bearing in both the unit test and the E2E, for the
+  same reason in both places. It is commented in both, which is the right redundancy —
+  a reader of either will meet it.
 
 ## Skipped by record
 
-None. No previously declined proposal is re-argued here.
+None.
