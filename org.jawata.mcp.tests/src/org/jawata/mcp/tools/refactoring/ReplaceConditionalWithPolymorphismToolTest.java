@@ -18,9 +18,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -207,5 +212,77 @@ class ReplaceConditionalWithPolymorphismToolTest {
                 + " pointed at");
         assertEquals(before, Files.readString(routerFile),
             "a refused operation must leave the source byte-identical");
+    }
+
+    /**
+     * C8's PURITY half, which no other assertion in this class supplies.
+     *
+     * <p>Compiling is not purity. An operation that also reformatted a third file,
+     * rewrote an unrelated import, or deleted something it had no business touching
+     * would still return success, still leave everything compiling, and still pass
+     * every other test here. Purity is a question about the SET of files that
+     * changed, and only a before/after comparison of that set answers it.</p>
+     *
+     * <p>The boundary is TIGHTER than Extract Class's: this operation generates its
+     * hierarchy as nested types inside the context, so it has no reason to create a
+     * file or to touch a second one. Exactly one pre-existing source may differ and
+     * nothing may appear.</p>
+     *
+     * <p>Scope: Java sources only, deliberately. The project is compiled during the
+     * test, so build output legitimately changes; including it would fail this for
+     * reasons unrelated to the refactoring.</p>
+     */
+    @Test
+    @DisplayName("S8.9: the operation touches no Java source but the one it was pointed at")
+    void theOperationTouchesNothingElse() throws Exception {
+        Path projectRoot = helper.getTempDirectory().resolve("factory-target");
+        Map<Path, String> before = javaSourceSnapshot(projectRoot);
+        assertTrue(before.size() > 1,
+            "PROOF OF LIFE: the snapshot must see more than the file being changed, or"
+                + " 'nothing else was touched' is a claim about an empty set");
+        assertTrue(before.containsKey(routerFile), "the snapshot must include the target");
+
+        ToolResponse r = tool.execute(args());
+        assertTrue(r.isSuccess(), () -> "the operation refused: " + r.getError());
+
+        Map<Path, String> after = javaSourceSnapshot(projectRoot);
+
+        Set<Path> added = new TreeSet<>(after.keySet());
+        added.removeAll(before.keySet());
+        assertEquals(Set.of(), added,
+            "this operation nests its hierarchy inside the context, so it has no reason"
+                + " to create a file. One appearing means it took a different shape than"
+                + " the one documented");
+
+        Set<Path> removed = new TreeSet<>(before.keySet());
+        removed.removeAll(after.keySet());
+        assertEquals(Set.of(), removed, "the operation must delete no Java source");
+
+        Set<Path> changed = new TreeSet<>();
+        for (Map.Entry<Path, String> e : before.entrySet()) {
+            String now = after.get(e.getKey());
+            if (now != null && !now.equals(e.getValue())) {
+                changed.add(e.getKey());
+            }
+        }
+        assertEquals(Set.of(routerFile), changed,
+            "exactly one pre-existing Java source may differ, and it is the file the"
+                + " caret named. Anything else is the operation reaching outside its"
+                + " scope");
+    }
+
+    /** Every .java under the project, mapped to its exact bytes. */
+    private static Map<Path, String> javaSourceSnapshot(Path root) throws Exception {
+        Map<Path, String> snapshot = new LinkedHashMap<>();
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path p : walk.filter(Files::isRegularFile)
+                              .filter(p -> p.toString().endsWith(".java"))
+                              .toList()) {
+                // ISO-8859-1 is a lossless byte-to-char mapping, so string equality here
+                // IS byte equality — a reformat cannot slip through as "equal".
+                snapshot.put(p, new String(Files.readAllBytes(p), StandardCharsets.ISO_8859_1));
+            }
+        }
+        return snapshot;
     }
 }
