@@ -14,6 +14,7 @@ import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.RefactorToPatternTool;
+import org.jawata.mcp.tools.UndoRefactoringTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,9 +22,11 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -49,6 +52,7 @@ class ReplaceConstructorWithFactoryToolTest {
 
     private JdtServiceImpl service;
     private RefactorToPatternTool tool;
+    private RefactoringChangeCache cache;
     private ObjectMapper mapper;
     private Path shipmentFile;
     private Path dispatcherFile;
@@ -56,7 +60,8 @@ class ReplaceConstructorWithFactoryToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("factory-target");
-        tool = new RefactorToPatternTool(() -> service, new RefactoringChangeCache());
+        cache = new RefactoringChangeCache();
+        tool = new RefactorToPatternTool(() -> service, cache);
         mapper = new ObjectMapper();
         Path pkg = helper.getTempDirectory()
             .resolve("factory-target/src/main/java/com/example/factory");
@@ -169,6 +174,46 @@ class ReplaceConstructorWithFactoryToolTest {
             () -> "the CALLING file must compile — this is the assertion that catches a"
                 + " partial call-site rewrite once the constructor is private:\n"
                 + readQuietly(dispatcherFile));
+    }
+
+    /**
+     * UNDO — the other half of "reversible", and the half a caller bets on.
+     *
+     * <p>A mutating operation that cannot be taken back has moved the risky part of
+     * the work onto whoever ran it. Both files must come back <b>byte-identical</b>,
+     * not merely equivalent: an engine that reformats on the way back has silently
+     * rewritten code nobody asked it to touch, and the caller cannot tell that from
+     * a clean revert by reading a success.</p>
+     */
+    @Test
+    @DisplayName("S8.5: undo restores both files byte-identically")
+    void undoRestoresBothFiles() throws Exception {
+        String shipmentBefore = Files.readString(shipmentFile);
+        String dispatcherBefore = Files.readString(dispatcherFile);
+
+        ToolResponse r = tool.execute(args("of"));
+        assertTrue(r.isSuccess(), () -> "the operation refused: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String undoId = (String) data.get("undoChangeId");
+        assertNotNull(undoId, "an APPLIED refactoring owes an undo handle");
+
+        // PROOF OF LIFE: something must have changed, or the undo below would be
+        // restoring a file that was never touched and would pass for free.
+        assertTrue(!dispatcherBefore.equals(Files.readString(dispatcherFile)),
+            "precondition: the calling file must actually have been rewritten");
+
+        ToolResponse undone = new UndoRefactoringTool(() -> service, cache)
+            .execute(mapper.createObjectNode().put("undoChangeId", undoId));
+        assertTrue(undone.isSuccess(), () -> String.valueOf(undone.getError()));
+
+        assertEquals(shipmentBefore, Files.readString(shipmentFile),
+            "undo must restore the declaring file BYTE-IDENTICALLY — the factory gone and"
+                + " the constructor public again");
+        assertEquals(dispatcherBefore, Files.readString(dispatcherFile),
+            "undo must restore the CALLING file byte-identically. A cross-file operation"
+                + " that half-reverts leaves the tree in a state that is neither before nor"
+                + " after, which is worse than not undoing at all");
     }
 
     /**

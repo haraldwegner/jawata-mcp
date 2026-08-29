@@ -1,9 +1,14 @@
 package org.jawata.mcp.tools.refactoring;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
 
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
@@ -147,5 +152,82 @@ class ReplaceConstructorWithFactoryForkSliceTest {
                 + " real one");
         assertTrue(after.contains("newArmy"),
             () -> "the factory call must be present at the rewritten site:\n" + after);
+    }
+
+    /**
+     * PURITY — nothing OUTSIDE the operation's stated scope changed.
+     *
+     * <p>Compiling afterwards proves the result is valid; it does not prove the
+     * operation was surgical. A refactoring that also reformatted a third file, or
+     * rewrote an unrelated import, leaves everything compiling and every other
+     * assertion green — and diverges from what the caller asked for in a way only a
+     * whole-tree comparison can see.</p>
+     *
+     * <p><b>Measured here rather than on the authored fixture</b>, deliberately:
+     * {@code factory-target} holds two files, so "nothing else was touched" would be
+     * a claim about at most one other file. This slice holds twelve, so the same
+     * assertion is checked against ten that must come through untouched.</p>
+     *
+     * <p>Byte equality is real rather than asserted: ISO-8859-1 is a lossless
+     * byte-to-char mapping, so {@code String.equals} here is a byte comparison and a
+     * whitespace-only reformat cannot pass as equal.</p>
+     */
+    @Test
+    @DisplayName("S8.5: the operation touches nothing outside its scope")
+    void theOperationTouchesNothingElse() throws Exception {
+        Path root = helper.getTempDirectory().resolve("fork-abstract-factory");
+        Map<Path, String> before = snapshot(root);
+        assertTrue(before.size() > 5,
+            "ANTI-VACUITY: the snapshot must cover a real tree, or 'nothing else changed'"
+                + " is a claim about almost nothing. Found " + before.size() + " files");
+
+        String source = Files.readString(factoryFile);
+        int line = lineOf(source, "return new ElfArmy();");
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "replace_constructor_with_factory");
+        args.put("filePath", factoryFile.toString());
+        args.put("line", line);
+        args.put("column", source.split("\n", -1)[line].indexOf("new ElfArmy()"));
+        args.put("factoryMethodName", "newArmy");
+        args.put("protectConstructor", false);
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> "the operation refused: " + r.getError());
+
+        Map<Path, String> after = snapshot(root);
+        assertEquals(before.keySet(), after.keySet(),
+            "the operation must neither add nor delete a file in this slice");
+
+        Set<Path> changed = new LinkedHashSet<>();
+        for (Map.Entry<Path, String> e : before.entrySet()) {
+            if (!e.getValue().equals(after.get(e.getKey()))) {
+                changed.add(e.getKey());
+            }
+        }
+        assertTrue(changed.contains(factoryFile),
+            "PROOF OF LIFE: the file holding the call site must be among the changed set,"
+                + " or this test is asserting purity about an operation that did nothing");
+        // The factory lands on the product type, so ElfArmy may legitimately change too.
+        // What must NOT change is anything else — the Orc half of the slice above all,
+        // which shares interfaces with the Elf half and is where an over-broad
+        // search-and-rewrite would show first.
+        for (Path p : changed) {
+            String name = p.getFileName().toString();
+            assertTrue(name.equals("ElfKingdomFactory.java") || name.equals("ElfArmy.java"),
+                () -> "unexpected file changed: " + name + ". The operation was asked to"
+                    + " rewrite one construction of ElfArmy; everything else in the slice"
+                    + " must come through untouched. Changed: " + changed);
+        }
+    }
+
+    /** Every Java source under the tree, read as bytes. */
+    private static Map<Path, String> snapshot(Path root) throws Exception {
+        Map<Path, String> out = new LinkedHashMap<>();
+        try (var paths = Files.walk(root)) {
+            for (Path p : paths.filter(p -> p.toString().endsWith(".java")).sorted().toList()) {
+                out.put(p, Files.readString(p, java.nio.charset.StandardCharsets.ISO_8859_1));
+            }
+        }
+        return out;
     }
 }
