@@ -322,9 +322,27 @@ template, not an inline cue; mid-line emphasis stays. Roughly five lines in
 `harvestKeywords`, plus a test using a real story file — and the test matters more
 than the fix, because the current behaviour has no instrument at all.
 
-**Why it gates Stage 10.** D11's sampled ingest writes into this same path. Entering
-the stage while stories poison their own recall cues would pollute the corpus the
-stage exists to build, and a polluted corpus is not cheaply undone.
+**Which lane it affects, measured rather than assumed.** `harvestKeywords` has exactly
+**two callers**, both inside `ExperienceMaintenance` — `parse` and `section`
+(`get_call_hierarchy incoming`). Both sit on the MARKDOWN load path
+(`experience(kind=load|reseed)`), which is what Stage 10's *"ingest sampled by a
+person before bulk … crawl bounded"* names — "crawl bounded" is that class's own
+depth/file/byte limits. **The fork CATALOGUE lane is unaffected:**
+`CatalogueManifest.entryFor` reads `symptoms` straight from the manifest's JSON rows
+and never calls the harvester.
+
+**AND THE COST OF ENTERING ANYWAY IS LOWER THAN THIS ITEM FIRST CLAIMED.** The
+sentence here used to end *"a polluted corpus is not cheaply undone"*. That is
+**wrong for this lane**, and the correction matters because it was about to be put to
+Harald as the reason to rule one way. The store is rebuilt from a FILE SUBSTRATE and
+`load` is idempotent per source — re-load replaces. So entries ingested from files
+get their cues **re-derived** by re-running the load after a fix; measured today, 107
+of 297 entries carry a `memory:` source path and are repairable exactly that way.
+
+**What remains true.** The defect is real and live; entries written straight to the
+store rather than from a file are NOT repairable this way; and every recall made
+against a polluted store in the meantime is degraded. The gate is worth keeping — but
+as a *do it first, it is five lines* argument, not a *this is irreversible* one.
 
 ## Provenance
 
