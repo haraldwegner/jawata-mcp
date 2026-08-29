@@ -150,9 +150,45 @@ or record explicitly that the operation's guarantee stops at the file boundary.
 
 ---
 
+## 3. Rank 3's parity is proven on the authored fixture only
+
+**Status: a disclosed asymmetry between the two Stage 8 operations. Home: Stage 9.**
+
+`ReplaceConstructorWithFactoryForkSliceTest#theOperationMeetsCodeWeDidNotAuthor`
+asserts the file changed and that it contains `newArmy`. It never COMPILES the result.
+So for rank 3, "the code we did not author" clause proves the operation runs on
+unfamiliar code, and parity on unfamiliar code is proven nowhere — parity lives on the
+authored fixture.
+
+Rank 2 does not have this gap: `ReplaceConditionalForkSliceTest#collapsesTheDispatchInForkCode`
+parses the rewritten fork file with bindings and asserts zero errors.
+
+**The fix is one assertion** — the same `compileErrors(...)` helper the sibling test
+already uses. It is recorded rather than done because the C8 auditor ranked it
+non-blocking and the round cap is explicit: at the cap, remaining findings are named
+open items, never another round. Stage 9 exercises both operations again on
+human-authored originals and is where this is cheapest to close.
+
+## 4. A rank-3 test's javadoc promises more than its body asserts
+
+**Status: a small declared-versus-delivered gap. Home: Stage 9, beside item 3.**
+
+`ReplaceConstructorWithFactoryToolTest#theOldPathCanBeLeftOpenOnPurpose` says in its
+javadoc that "the factory is added and the constructor stays reachable". The body
+asserts only the second half. It still discriminates on the `protectConstructor` flag,
+which is what the test is for, so nothing is unguarded — but the javadoc describes an
+assertion that is not there, which is the family this sprint has now paid for three
+times (S7.7, S7.8, C8's B1).
+
 ## Provenance
 
-Both found at the Sprint 28d C7 checkpoint (Stage 7, Extract Class). Item 1 was found by
-sweeping for the *cause* of a defect the architect seat raised, after fixing its instance;
-item 2 was raised by the C7 fresh-context auditor. Neither was fixed in C7, because a
-checkpoint is not the place to widen scope.
+Items 1 and 2 were found at the Sprint 28d C7 checkpoint (Stage 7, Extract Class).
+Item 1 was found by sweeping for the *cause* of a defect the architect seat raised,
+after fixing its instance; item 2 was raised by the C7 fresh-context auditor. Neither
+was fixed in C7, because a checkpoint is not the place to widen scope. **Both are now
+RESOLVED in Stage 8** — item 1 at `bbd12a5`, item 2 at `11057fc`.
+
+Items 3 and 4 were raised by the C8 fresh-context auditor as NON-BLOCKING (N4 and N1
+in its report), alongside five blocking findings which were repaired inside the
+checkpoint at `e04f539`. They are carried rather than fixed for the reason stated in
+item 3: the round cap.
