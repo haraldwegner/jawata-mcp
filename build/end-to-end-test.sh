@@ -977,6 +977,36 @@ public class ExtractTarget {
     }
 }
 EOF_EXTRACT
+# 28d Stage 8 (S8.6): the rank-3 target, written BEFORE load_project for the same
+# reason. A constructor plus a call site in a SECOND file — the call site is the
+# point, since Replace Constructor with Factory Method exists to rewrite it, and a
+# rewrite inside the declaring file would prove much less.
+cat > "$WS/proj/src/main/java/com/example/FactoryTarget.java" << 'EOF_FACTORY'
+package com.example;
+
+/** The constructor Replace Constructor with Factory Method acts on. */
+public class FactoryTarget {
+    private final String name;
+
+    public FactoryTarget(String name) {
+        this.name = name;
+    }
+
+    public String name() {
+        return name;
+    }
+}
+EOF_FACTORY
+cat > "$WS/proj/src/main/java/com/example/FactoryCaller.java" << 'EOF_FACTORY_CALLER'
+package com.example;
+
+/** The CALL SITE, in a file other than the one declaring the constructor. */
+public class FactoryCaller {
+    public FactoryTarget make(String name) {
+        return new FactoryTarget(name);
+    }
+}
+EOF_FACTORY_CALLER
 LP="$(call load_project "{\"projectPath\":\"$WS/proj\"}")"
 case "$LP" in
     *'"success":true'*|*sourceFiles*|*packages*) pass "choke-gate a real project loads in the throwaway resident" ;;
@@ -1024,6 +1054,44 @@ if [ -e "$WS/proj/src/main/java/com/example/Address.java" ]; then
     fail "extract-class-stages auto_apply=false created the extracted class on disk"
 else
     pass "extract-class-stages staging created no file"
+fi
+
+# --- factory-stages: 28d Stage 8 (S8.6), rank 3 at the front door ------------
+# Same substance and the same declared deviation as the Stage 7 promise above:
+# refactor_to_pattern(kind=replace_constructor_with_factory) is reachable through
+# the real JSON-RPC endpoint an editor uses, and it STAGES.
+#
+# The kind was ADDED to a front door whose published schema had never carried its
+# delegates' parameters — that defect shipped twice (extract, generate) before a
+# guard existed. So "Unknown kind" gets its own failure arm here: it is the exact
+# signature of an operation that exists and was never wired into dispatch, and it
+# reads identically to any other failure unless it is separated.
+FACTORY_SRC="$WS/proj/src/main/java/com/example/FactoryTarget.java"
+FACTORY_CALLER="$WS/proj/src/main/java/com/example/FactoryCaller.java"
+FX="$(call refactor_to_pattern "{\"kind\":\"replace_constructor_with_factory\",
+      \"filePath\":\"$FACTORY_SRC\",\"line\":6,\"column\":11,
+      \"factoryMethodName\":\"of\",\"auto_apply\":false}")"
+case "$FX" in
+    *'"changeId"'*)
+        pass "factory-stages replace_constructor_with_factory stages at the front door" ;;
+    *'Unknown kind'*)
+        fail "factory-stages the front door does not know replace_constructor_with_factory —
+          the operation exists but is NOT wired into dispatch: $(printf '%s' "$FX" | head -c 300)" ;;
+    *)
+        fail "factory-stages no changeId from a staged replace_constructor_with_factory: $(printf '%s' "$FX" | head -c 300)" ;;
+esac
+# STAGED means NOTHING WAS WRITTEN — asserted on BOTH files, because this operation
+# is cross-file by nature and a staging leak would most likely show at the call site
+# rather than at the declaration.
+if grep -q "public FactoryTarget(String name)" "$FACTORY_SRC"; then
+    pass "factory-stages staging left the constructor untouched"
+else
+    fail "factory-stages auto_apply=false MODIFIED the constructor; staging is not staging"
+fi
+if grep -q "new FactoryTarget(name)" "$FACTORY_CALLER"; then
+    pass "factory-stages staging left the CALL SITE untouched"
+else
+    fail "factory-stages auto_apply=false rewrote the call site while reporting a staged change"
 fi
 
 # --- cure-resolves: 28d Stage 5, a detector's cure carries a REAL address ----
