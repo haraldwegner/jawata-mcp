@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sprint 28d Stage 8 (S8.3) — the fixture for Replace Constructor with Factory
+  Method's done-definition: a class with an explicit constructor and REAL call
+  sites in a second file, which is what the operation exists to rewrite.
+
+  Deliberately SEPARATE from simple-maven, for the reason fork-circuit-breaker
+  is: that fixture feeds roughly forty smell detectors whose counts are asserted
+  elsewhere, and adding types to it would shift baselines for a reason unrelated
+  to what they measure.
+
+  This one is AUTHORED, and that is a stated limit rather than an oversight. C8
+  rules an authored fixture insufficient for the "on code we did not author"
+  clause — that case takes a slice of the fork's own factory-method module and
+  lives beside this. What an authored fixture is good for is the done-definition
+  itself, where the shape must be controlled so a failure means the operation
+  failed rather than the input being unusual.
+
+  No dependencies on purpose: it compiles against the JDK alone, so nothing here
+  can fail for a resolution reason and be mistaken for a refactoring defect.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jawata.fixtures</groupId>
+    <artifactId>factory-target</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+</project>
