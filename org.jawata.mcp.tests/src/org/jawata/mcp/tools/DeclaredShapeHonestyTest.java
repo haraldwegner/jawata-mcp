@@ -169,6 +169,8 @@ class DeclaredShapeHonestyTest {
         patterns.put("form_template_method", new FormTemplateMethodTool(svc, cache));
         patterns.put("refactor_to_visitor", new RefactorToVisitorTool(svc, cache));
         patterns.put("replace_pattern_with_idiom", new ReplacePatternWithIdiomTool(svc, cache));
+        patterns.put("replace_constructor_with_factory",
+            new ReplaceConstructorWithFactoryTool(svc, cache));
         assertPublishesEveryDelegateParameter(new RefactorToPatternTool(svc, cache), patterns);
     }
 

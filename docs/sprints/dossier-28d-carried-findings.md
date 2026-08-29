@@ -11,7 +11,28 @@ Neither blocks C7. Both are Stage 8 work.
 
 ## 1. The published-schema defect is LIVE in `generate`
 
-**Status: unfixed, reproducible today, ships in the released dist.**
+**Status: ☑ RESOLVED in Stage 8 (`bbd12a5`), and resolved in the order this dossier
+asked for — the guard generalised FIRST, the instance repaired second.**
+
+> **What happened.** The guard was written before Stage 8 added any kind, applied to
+> all three parametric front doors, and it went **RED on this defect**: *"generate
+> kind=getters_setters accepts 'getterStyle' and the front door does not declare
+> it"*. Suite 2188 succeeded / **1 failed** before the repair, 2189 / **0 failed**
+> after, with production code the only change between the runs — so the flip is
+> attributable, and the guard is an instrument rather than decoration.
+>
+> `generate` got the same `putIfAbsent` delegate overlay `extract` received.
+> `RefactorToPatternTool` got it too **although it passed**: it was complete when the
+> guard was written, and so were the other two right up until their next kind was
+> added. Being complete today is not a property that survives the next addition
+> unless something derives it.
+>
+> The guard lives in `DeclaredShapeHonestyTest` beside the enum-axis instruments, as
+> recommended below, and each row asserts its own delegate list matches the published
+> enum first — so a new kind makes it go red rather than letting it check n−1 of n.
+
+**Original finding, kept for the record: unfixed, reproducible, shipping in the
+released dist.**
 
 ### What it is
 
