@@ -88,8 +88,9 @@ and it is the same resolve-never-compose rule (W1) the spec already binds.
 
 ```
   STREAM 1: OPERATIONS              STREAM 2: DETECTORS         STREAM 3: CATALOGUE
-  org.jawata.mcp.refactoring.ops    org.jawata.mcp.tools.smell  org.jawata.mcp.knowledge
-  ExtractClassOp, MoveFieldOp, ...  CqsDetector, Coupling...    CatalogueSources registry
+  org.jawata.mcp.tools              org.jawata.mcp.tools.smell  org.jawata.mcp.knowledge
+  ExtractClassTool, ...Tool         CqsDetector, Coupling...    CatalogueSources registry
+  (AbstractApplyingRefactoringTool)
                                                                 (CatalogueOrigin records)
         |                                 |                       + org.jawata.samples
         | registers a plan KIND           | registers a KIND      + catalog/ extractor
@@ -343,8 +344,19 @@ the 28c B2 design record, inherited whole), plus:
   `ExperienceStore` references until C5 wired the cure lookup. The permission stands; the
   precedent it claimed did not exist. Measured `forbidden_edge` production count for
   `knowledge → tools`: **0**.
-- `refactoring.ops` imports the engine and JDT; never `tools.smell`, never the
+- The OPERATIONS import the engine and JDT; never `tools.smell`, never the
   extractor.
+  **CORRECTED 2026-08-29 at C8 (the second falsified clause in this document, after
+  S7.8 fixed a different one):** this said `refactoring.ops`, and no such package
+  exists. Measured: `search_symbols("RefactoringOperation*")` → **0**;
+  `find_references(implementations, AbstractApplyingRefactoringTool)` → **23
+  production tools, every one in `org.jawata.mcp.tools`**, `ExtractClassTool` and both
+  Stage 8 additions among them. `ExtractClassOp` and `MoveFieldOp` never existed. The
+  stream-1 box above is corrected to match. The dependency RULE is unchanged and was
+  always true — only the package it named was wrong, which is exactly how a falsified
+  clause survives: the sentence around it is correct, so nothing reads oddly.
+  **If the `refactoring.ops` split is genuinely wanted it is a migration step with 23
+  members and a gate**, not a description of the present.
 - `org.jawata.samples` imports nothing of ours and nothing of ours imports it —
   it is addressed by path, compiled for honesty, and otherwise inert.
 - `catalog` (extractor) is dev-time: it may import `knowledge` (to write entries

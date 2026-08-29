@@ -17,6 +17,17 @@ category is empty for this diff and the report moves on.
 
 ### F1 — the picture this watch-diff is supposed to judge against names a module that does not exist
 
+> **☑ DISCHARGED IN THIS CHECKPOINT.** The C8 fresh-context auditor raised it a second
+> time and correctly refused the deferral: the report and the plan both called it a
+> one-box documentation change, and then left the box standing. So the box is
+> corrected — `ARCHITECTURE-28d.md` stream 1 now reads `org.jawata.mcp.tools` /
+> `ExtractClassTool, ...Tool` / `(AbstractApplyingRefactoringTool)`, and the
+> dependency-direction bullet that said `refactoring.ops` carries the correction with
+> its evidence. The RULE was always true; only the package it named was wrong, which
+> is exactly how a falsified clause survives — the sentence around it reads correctly.
+> If the `refactoring.ops` split is genuinely wanted it is now stated as what it is: a
+> migration step with 23 members and a gate.
+
 `ARCHITECTURE-28d.md:90–93` declares stream 1 as:
 
 ```

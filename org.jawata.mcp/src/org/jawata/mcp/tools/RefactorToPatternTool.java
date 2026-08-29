@@ -129,6 +129,35 @@ public class RefactorToPatternTool extends AbstractTool {
                                  interface -> a lambda. Needs: line, column on the anonymous class's
                                  `new` keyword (optional idiom, default anonymous_to_lambda).
                                  (find_modernization kind=anon_to_lambda locates candidates.)
+            - replace_constructor_with_factory — TOWARD: a constructor becomes a static
+                                 factory method and every `new X(...)` call site is rewritten
+                                 to call it, ACROSS FILES. protectConstructor defaults TRUE,
+                                 which makes the constructor private so the old path is
+                                 impossible rather than merely unused. Needs: line, column on
+                                 the class (optional factoryMethodName, default `create`;
+                                 factoryClass to put the factory on another type;
+                                 protectConstructor). Works on an implicit default
+                                 constructor too. Unblocks abstract-factory, factory-method,
+                                 builder and null-object.
+            - replace_conditional_with_polymorphism — TOWARD: a switch on an ENUM becomes one
+                                 virtual call — an interface, one implementation per arm, and
+                                 a dispatch table keyed by the discriminator, all nested in
+                                 the context. Distinct from refactor_to_state, which requires
+                                 a private int FIELD, the old labelled switch form, and the
+                                 switch as the method's only statement; this handles the
+                                 general shape (enum discriminator, arrow form, selector a
+                                 parameter or local). Variables the arms read from the
+                                 enclosing method travel as parameters on the generated
+                                 method; the response reports them as threadedParameters.
+                                 Needs: line, column on or inside the switch (optional
+                                 interfaceName, default <Method>Behaviour).
+                                 REFUSES: a non-enum discriminator, fall-through, fewer than
+                                 two non-default arms, an arm that ASSIGNS a method-scope
+                                 variable, an arm using `this` for anything but a context
+                                 field, and an arm that returns or breaks/continues to a label
+                                 outside itself. (find_quality_issue kind=switch_statements
+                                 locates candidates — but read them: most are parsers, where
+                                 the operation is the wrong answer.)
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying. Verify with compile_workspace;

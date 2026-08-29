@@ -355,23 +355,94 @@ class ReplaceConditionalWithPolymorphismToolTest {
     }
 
     /**
-     * THE CONTROL, and without it the two refusals above prove much less.
+     * REFUSAL: an arm RETURNS from the enclosing method.
      *
-     * <p>A tool that refused this fixture for any reason at all would pass both. The
-     * fixture's own SLOW and default arms are ordinary — they touch only fields — so
-     * a switch built from those alone must SUCCEED. That is what makes the refusals
-     * attributable to the two shapes rather than to the file.</p>
+     * <p>Found by the C8 auditor as a SILENT behaviour change, which is the worst
+     * kind. Today the {@code return} skips the statement after the switch; once the
+     * arm is a method on another class it leaves the generated {@code apply} and that
+     * statement runs. Nothing fails to compile, so the strict compile gate — which
+     * undoes on introduced errors — sees nothing to undo.</p>
      */
     @Test
-    @DisplayName("S8.13 control: the same fixture's ordinary switch is NOT refused")
-    void theOrdinaryCaseInTheSameFixtureStillSucceeds() throws Exception {
-        // Router's switch is the ordinary one and lives in the same project; if the
-        // operation were refusing everything in this fixture project, this goes red.
-        ToolResponse r = tool.execute(args());
+    @DisplayName("S8.14 refusal: an arm that RETURNS from the enclosing method")
+    void anArmReturningFromTheEnclosingMethodIsRefused() throws Exception {
+        ObjectNode args = refusalArgs("void shortCircuit(Mode mode)");
+        Path file = Path.of(args.get("filePath").asText());
+        String before = Files.readString(file);
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(),
+            () -> "an arm containing `return` must be REFUSED: after the move it returns"
+                + " from the generated method, so the statement after the dispatch site"
+                + " starts running. It compiles, which is why no other gate catches it: "
+                + r.getData());
+        assertTrue(String.valueOf(r.getError()).contains("return"),
+            () -> "the refusal must name the statement: " + r.getError());
+        assertEquals(before, Files.readString(file),
+            "a refused operation must leave the source byte-identical");
+    }
+
+    /**
+     * REFUSAL: an arm breaks a LABEL declared outside itself.
+     *
+     * <p>The other half of the auditor's finding, and the sharper one: the trailing
+     * terminator strip removed any {@code break} without checking for a label, so
+     * {@code break outer;} was DELETED. The arm moved without it, the file compiled,
+     * and the enclosing loop stopped stopping.</p>
+     */
+    @Test
+    @DisplayName("S8.14 refusal: an arm that breaks a label outside itself")
+    void anArmBreakingAnOuterLabelIsRefused() throws Exception {
+        ObjectNode args = refusalArgs("void scan(Mode mode, int[] values)");
+        Path file = Path.of(args.get("filePath").asText());
+        String before = Files.readString(file);
+        assertTrue(before.contains("break outer;"),
+            "PROOF OF LIFE: the fixture must carry the labelled break, or this test"
+                + " passes on a file that never posed the question");
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(),
+            () -> "an arm carrying `break outer` must be REFUSED — deleting it as an"
+                + " ordinary terminator leaves a loop that no longer breaks, and the"
+                + " result compiles: " + r.getData());
+        assertTrue(String.valueOf(r.getError()).contains("outer"),
+            () -> "the refusal must name the label: " + r.getError());
+        assertEquals(before, Files.readString(file),
+            "a refused operation must leave the source byte-identical — and in"
+                + " particular the labelled break must still be there");
+    }
+
+    /**
+     * THE CONTROL, and without it the two refusals above prove much less.
+     *
+     * <p>A tool that refused this FILE for any reason at all — an unreadable enum, a
+     * parse failure, an unrelated precondition — would pass both refusal tests while
+     * proving nothing about the shapes they name. So an accepted case must sit in the
+     * same file, and {@code tally} does: every arm touches fields only, which makes
+     * it identical to the two refused methods in every respect the operation examines
+     * except the one under test.</p>
+     *
+     * <p><b>A control in a different file would not close this.</b> It rules out
+     * "refuses everything in the project" and leaves "refuses everything in this file"
+     * standing — the narrower and likelier confound. The first version of this test
+     * targeted {@code Router.java} and was exactly that weaker instrument; the C8
+     * auditor caught it.</p>
+     */
+    @Test
+    @DisplayName("S8.13 control: an ordinary switch in the SAME FILE is NOT refused")
+    void theOrdinaryCaseInTheSameFileStillSucceeds() throws Exception {
+        ObjectNode args = refusalArgs("void tally(Mode mode)");
+        Path file = Path.of(args.get("filePath").asText());
+        String before = Files.readString(file);
+
+        ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(),
-            () -> "CONTROL: an ordinary switch in the same project must still be"
-                + " accepted, or the two refusals above are about the project rather"
-                + " than about the shapes they name: " + r.getError());
+            () -> "CONTROL: an ordinary switch in the SAME FILE as the two refused ones"
+                + " must be accepted, or those refusals are about the file rather than"
+                + " about the shapes they name: " + r.getError());
+        assertFalse(before.equals(Files.readString(file)),
+            "the control must actually TRANSFORM something — a success that wrote"
+                + " nothing would satisfy the assertion above and discriminate nothing");
     }
 
     /** Every .java under the project, mapped to its exact bytes. */

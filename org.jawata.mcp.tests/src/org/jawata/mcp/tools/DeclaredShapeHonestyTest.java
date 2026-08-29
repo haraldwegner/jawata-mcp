@@ -134,6 +134,57 @@ class DeclaredShapeHonestyTest {
         }
     }
 
+    /**
+     * THE THIRD AXIS, and the C8 auditor found both Stage 8 kinds sitting in the gap.
+     *
+     * <p>The two guards above cover the ACTION/KIND ENUM (declared equals routed) and
+     * the PARAMETER SET (every delegate parameter is published). Both were satisfied
+     * while {@code refactor_to_pattern}'s {@code getDescription()} — the only PROSE a
+     * client ever sees — documented eight of its ten kinds. The two shipped in Stage 8
+     * were in the enum, in the schema, routed and tested, and absent from the text.</p>
+     *
+     * <p><b>Why the delegate's own description does not cover it:</b>
+     * {@code JawataApplication} registers the FRONT DOOR only — "the per-pattern
+     * delegates are not registered standalone" — so no client can reach
+     * {@code ReplaceConditionalWithPolymorphismTool.getDescription()}. The front
+     * door's text is the whole documentation surface.</p>
+     *
+     * <p>Matching on the kind's literal name is deliberately crude, and it is the
+     * right crudeness: it cannot judge whether the prose is GOOD, only whether the
+     * kind is mentioned at all. That is exactly the failure that occurred — not a
+     * thin description, an absent one.</p>
+     */
+    private static void assertDescribesEveryKindItPublishes(AbstractTool frontDoor) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> props =
+            (Map<String, Object>) frontDoor.getInputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        List<String> publishedKinds =
+            (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
+        String description = frontDoor.getDescription();
+
+        assertFalse(publishedKinds.isEmpty(),
+            frontDoor.getName() + ": PROOF OF LIFE — a front door with no published kinds"
+                + " would pass the loop below without looking at anything");
+        for (String kind : publishedKinds) {
+            assertTrue(description.contains(kind),
+                frontDoor.getName() + " publishes kind '" + kind + "' and never names it in"
+                    + " its description. The delegates are not registered standalone, so"
+                    + " this text is the ONLY documentation a client can reach: the kind is"
+                    + " selectable and undocumented");
+        }
+    }
+
+    @Test
+    @DisplayName("every parametric front door describes every kind it publishes")
+    void everyFrontDoorDescribesItsKinds() {
+        RefactoringChangeCache cache = new RefactoringChangeCache();
+        Supplier<IJdtService> svc = () -> service;
+        assertDescribesEveryKindItPublishes(new ExtractTool(svc, cache));
+        assertDescribesEveryKindItPublishes(new GenerateTool(svc, cache));
+        assertDescribesEveryKindItPublishes(new RefactorToPatternTool(svc, cache));
+    }
+
     @Test
     @DisplayName("every parametric front door publishes every parameter its kinds accept")
     void everyFrontDoorPublishesItsDelegateParameters() {

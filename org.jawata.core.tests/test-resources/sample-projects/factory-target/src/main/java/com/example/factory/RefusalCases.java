@@ -70,6 +70,87 @@ public class RefusalCases {
         }
     }
 
+    /**
+     * An arm RETURNS from the enclosing method.
+     *
+     * <p>Today that skips the statement after the switch. Once the arm is a method on
+     * another class, the {@code return} leaves the generated {@code apply} and the
+     * statement after the dispatch site RUNS. The file compiles either way, so the
+     * strict compile gate cannot see it — which is what makes this a refusal rather
+     * than something left to a later check.</p>
+     */
+    public void shortCircuit(Mode mode) {
+        switch (mode) {
+            case FAST -> {
+                this.total = 0;
+                return;
+            }
+            case SLOW -> {
+                this.total = this.total + 1;
+            }
+            default -> {
+                this.total = -1;
+            }
+        }
+        this.total = this.total * 2;
+    }
+
+    /**
+     * An arm breaks a LABEL declared outside itself.
+     *
+     * <p>{@code break outer} leaves the switch AND the loop. A trailing-break strip
+     * that does not check for a label deletes it outright: the arm moves without it,
+     * everything compiles, and the loop no longer stops. That is a silent behaviour
+     * change with no compiler complaint anywhere.</p>
+     */
+    public void scan(Mode mode, int[] values) {
+        outer:
+        for (int v : values) {
+            switch (mode) {
+                case FAST -> {
+                    this.total = this.total + v;
+                    break outer;
+                }
+                case SLOW -> {
+                    this.total = this.total + 1;
+                }
+                default -> {
+                    this.total = 0;
+                }
+            }
+        }
+    }
+
+    /**
+     * THE CONTROL'S TARGET, and it must live in THIS FILE.
+     *
+     * <p>The two methods above are refused. Without an accepted case beside them, a
+     * tool that refused everything in this file — a parse failure, an unreadable
+     * enum, anything — would pass both refusal tests while proving nothing about the
+     * shapes they name.</p>
+     *
+     * <p>A control in a DIFFERENT file does not close that gap: it rules out "refuses
+     * everything in the project" and leaves "refuses everything in this file"
+     * standing, which is the narrower and more likely confound.</p>
+     *
+     * <p>Every arm here touches fields only — no method-scope assignment, no bare
+     * {@code this}, no control transfer — so it is the same shape as the two above in
+     * every respect the operation examines except the one under test.</p>
+     */
+    public void tally(Mode mode) {
+        switch (mode) {
+            case FAST -> {
+                this.total = this.total + 3;
+            }
+            case SLOW -> {
+                this.total = this.total + 1;
+            }
+            default -> {
+                this.total = 0;
+            }
+        }
+    }
+
     public int total() {
         return total;
     }

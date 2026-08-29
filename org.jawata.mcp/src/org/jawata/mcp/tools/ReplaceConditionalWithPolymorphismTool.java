@@ -7,21 +7,28 @@ import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
 import org.eclipse.jdt.core.dom.Assignment;
+import org.eclipse.jdt.core.dom.BreakStatement;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.ContinueStatement;
 import org.eclipse.jdt.core.dom.FieldAccess;
 import org.eclipse.jdt.core.dom.IVariableBinding;
+import org.eclipse.jdt.core.dom.LabeledStatement;
+import org.eclipse.jdt.core.dom.LambdaExpression;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.core.dom.PostfixExpression;
 import org.eclipse.jdt.core.dom.PrefixExpression;
 import org.eclipse.jdt.core.dom.QualifiedName;
+import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.Statement;
 import org.eclipse.jdt.core.dom.SwitchCase;
 import org.eclipse.jdt.core.dom.SwitchStatement;
 import org.eclipse.jdt.core.dom.ThisExpression;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
+import org.eclipse.jdt.core.dom.TypeDeclarationStatement;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.text.edits.InsertEdit;
 import org.eclipse.text.edits.ReplaceEdit;
@@ -34,9 +41,11 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 
@@ -104,7 +113,18 @@ import java.util.function.Supplier;
  *       a call, an argument, an inherited field. In the generated class {@code this}
  *       IS that class, so the reference would silently come to mean something
  *       else.</li>
+ *   <li><b>An arm that transfers control OUT of itself</b> — a {@code return}, or a
+ *       {@code break}/{@code continue} carrying a label declared outside the arm. A
+ *       {@code return} returns from the enclosing method today and from the generated
+ *       {@code apply} afterwards; a labelled {@code break} leaves an enclosing loop
+ *       and cannot reach it once moved. Both COMPILE after the move, which is
+ *       precisely why they are refused rather than left to the compile gate.</li>
  * </ul>
+ *
+ * <p><b>What is deliberately NOT refused:</b> the unlabelled {@code break} and
+ * {@code continue}. Either becomes illegal in the generated method, so the strict
+ * compile gate catches it and undoes the change. A refusal is reserved for what
+ * compiles — a gate that already fires needs no second one in front of it.</p>
  */
 public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefactoringTool {
 
@@ -302,12 +322,17 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
         // the generated code dependent only on what is already imported.
         nested.append(member).append("private static final java.util.Map<").append(enumType)
             .append(", ").append(ifaceName).append("> ").append(tableName(ifaceName))
-            .append(" = java.util.Map.of(\n");
+            // ofEntries, not of: Map.of tops out at TEN key/value pairs, so an enum
+            // with eleven non-default arms emitted code that would not compile. The
+            // strict gate would have caught it and undone the change, so it was never
+            // silent — but the ceiling was undocumented and arbitrary, and ofEntries
+            // is varargs and has none.
+            .append(" = java.util.Map.ofEntries(\n");
         List<Generated> keyed = generated.stream().filter(g -> !g.arm.isDefault).toList();
         for (int i = 0; i < keyed.size(); i++) {
             Generated g = keyed.get(i);
-            nested.append(inner).append(enumType).append(".").append(g.arm.label)
-                .append(", new ").append(g.className).append("()")
+            nested.append(inner).append("java.util.Map.entry(").append(enumType).append(".")
+                .append(g.arm.label).append(", new ").append(g.className).append("())")
                 .append(i < keyed.size() - 1 ? ",\n" : "\n");
         }
         nested.append(member).append(");\n");
@@ -455,12 +480,28 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
     private static Rewritten rewriteArm(Arm arm, String source, TypeDeclaration context,
         String ctxParam, CompilationUnit ast) {
         List<Statement> body = new ArrayList<>(arm.body);
-        if (!body.isEmpty() && body.get(body.size() - 1).getNodeType() == ASTNode.BREAK_STATEMENT) {
-            body.remove(body.size() - 1);
+        // Strip the arm's own terminator — but ONLY an UNLABELLED break. A labelled
+        // break leaves the switch AND an enclosing loop; deleting it silently drops
+        // the second half, and the result compiles. That is the one outcome this
+        // operation must never produce, so the labelled case is refused below rather
+        // than removed here.
+        if (!body.isEmpty()) {
+            Statement lastStatement = body.get(body.size() - 1);
+            if (lastStatement instanceof BreakStatement bs && bs.getLabel() == null) {
+                body.remove(body.size() - 1);
+            }
         }
         if (body.isEmpty()) {
             return Rewritten.refused("its body is empty. An empty arm has no behaviour "
                 + "to give a class.");
+        }
+        String escape = escapingControlTransfer(body);
+        if (escape != null) {
+            return Rewritten.refused("it contains `" + escape + "`, which leaves the "
+                + "ENCLOSING METHOD or an enclosing loop. Once the arm's body is a "
+                + "method on another class, that statement acts on the generated method "
+                + "instead — the code still compiles and does something different. No "
+                + "files were modified.");
         }
         int from = body.get(0).getStartPosition();
         Statement last = body.get(body.size() - 1);
@@ -561,6 +602,93 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
             }
         }
         return new Rewritten(out.toString(), List.copyOf(free.values()), null);
+    }
+
+    /**
+     * A statement in this arm that transfers control OUT of the arm — and therefore
+     * means something different once the arm is a method on another class.
+     *
+     * <p>Two shapes qualify, and BOTH of them compile after the move, which is what
+     * makes them worth a refusal rather than leaving them to the compile gate:</p>
+     *
+     * <ul>
+     *   <li>a {@code return} — it returns from the ENCLOSING METHOD today and from
+     *       the generated {@code apply} afterwards, so statements after the dispatch
+     *       site start running where they previously did not;</li>
+     *   <li>a {@code break}/{@code continue} carrying a LABEL declared outside the arm
+     *       — it leaves an enclosing loop today and cannot reach it afterwards.</li>
+     * </ul>
+     *
+     * <p>The UNLABELLED forms are deliberately not listed. An unlabelled {@code break}
+     * belongs to this switch and an unlabelled {@code continue} to an enclosing loop;
+     * either becomes ILLEGAL in the generated method, so the compile gate catches it
+     * and undoes the change. A refusal is reserved for what compiles.</p>
+     *
+     * <p>The walk does not descend into a lambda, an anonymous class or a local class:
+     * a {@code return} there belongs to that body and travels with it.</p>
+     *
+     * @return the offending statement in source form, or null when the arm is safe
+     */
+    private static String escapingControlTransfer(List<Statement> body) {
+        Set<String> labelsInArm = new HashSet<>();
+        for (Statement st : body) {
+            st.accept(new ASTVisitor() {
+                @Override
+                public boolean visit(LabeledStatement node) {
+                    labelsInArm.add(node.getLabel().getIdentifier());
+                    return true;
+                }
+            });
+        }
+        String[] found = new String[1];
+        for (Statement st : body) {
+            st.accept(new ASTVisitor() {
+                @Override
+                public boolean visit(LambdaExpression node) {
+                    return false;
+                }
+
+                @Override
+                public boolean visit(AnonymousClassDeclaration node) {
+                    return false;
+                }
+
+                @Override
+                public boolean visit(TypeDeclarationStatement node) {
+                    return false;
+                }
+
+                @Override
+                public boolean visit(ReturnStatement node) {
+                    if (found[0] == null) {
+                        found[0] = "return";
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean visit(BreakStatement node) {
+                    note(node.getLabel(), "break");
+                    return true;
+                }
+
+                @Override
+                public boolean visit(ContinueStatement node) {
+                    note(node.getLabel(), "continue");
+                    return true;
+                }
+
+                private void note(SimpleName label, String keyword) {
+                    if (label == null || labelsInArm.contains(label.getIdentifier())) {
+                        return;
+                    }
+                    if (found[0] == null) {
+                        found[0] = keyword + " " + label.getIdentifier();
+                    }
+                }
+            });
+        }
+        return found[0];
     }
 
     /**
