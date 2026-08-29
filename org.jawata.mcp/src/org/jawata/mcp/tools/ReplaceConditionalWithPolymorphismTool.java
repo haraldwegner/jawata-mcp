@@ -7,10 +7,15 @@ import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.FieldAccess;
 import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.NodeFinder;
+import org.eclipse.jdt.core.dom.PostfixExpression;
+import org.eclipse.jdt.core.dom.PrefixExpression;
+import org.eclipse.jdt.core.dom.QualifiedName;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.Statement;
 import org.eclipse.jdt.core.dom.SwitchCase;
@@ -28,6 +33,7 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +77,16 @@ import java.util.function.Supplier;
  * type, so a local variable, a parameter or an unrelated identifier that happens to
  * share a name is left alone.</p>
  *
+ * <h2>The method's own scope leaves with the body, so it travels as parameters</h2>
+ *
+ * <p>Fields are only half the story. An arm may also read a PARAMETER of the
+ * enclosing method, or a local declared before the switch — and those are not
+ * reachable from the context at all. Every such variable becomes a parameter on the
+ * generated interface method, and the dispatch site passes it. The set is the union
+ * across arms, because all implementations share one signature, and it is ordered by
+ * declaration position so the generated code does not shuffle between runs. The
+ * response reports it as {@code threadedParameters}.</p>
+ *
  * <h2>What it refuses, and why each refusal is real</h2>
  *
  * <ul>
@@ -81,6 +97,13 @@ import java.util.function.Supplier;
  *       there is nothing to make a method out of.</li>
  *   <li><b>Fewer than two non-default arms.</b> One arm is an if, and turning it
  *       into a hierarchy adds a type that decides nothing.</li>
+ *   <li><b>An arm that ASSIGNS a method-scope variable.</b> It can travel as a
+ *       parameter, but Java passes it by value, so the write would land on a copy
+ *       and be lost — the refactoring would change behaviour while compiling.</li>
+ *   <li><b>An arm using {@code this} for anything but reaching a context field</b> —
+ *       a call, an argument, an inherited field. In the generated class {@code this}
+ *       IS that class, so the reference would silently come to mean something
+ *       else.</li>
  * </ul>
  */
 public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefactoringTool {
@@ -107,12 +130,19 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
             This handles the general shape: enum discriminator, arrow form, and a
             selector that is a parameter or local.
 
+            Variables the arms read from the enclosing method — a parameter, a local
+            declared before the switch — travel with the bodies as parameters on the
+            generated method; the response reports them as threadedParameters.
+
             Needs: filePath + line/column on or inside the switch.
             Optional: interfaceName (default <Method>Behaviour).
 
             Refuses: a non-enum discriminator (the table needs a closed set), any
-            fall-through (an arm with no single body is not a method), and fewer than
-            two non-default arms (one arm is an if).
+            fall-through (an arm with no single body is not a method), fewer than two
+            non-default arms (one arm is an if), an arm that ASSIGNS a method-scope
+            variable (Java passes by value, so the write would be lost), and an arm
+            using `this` for anything but reaching a context field (in the generated
+            class `this` is that class).
             """;
     }
 
@@ -214,15 +244,36 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
         // with a field is left alone.
         String ctxParam = "ctx";
         List<Generated> generated = new ArrayList<>();
+        Map<String, Free> freeByName = new LinkedHashMap<>();
         for (Arm arm : arms) {
-            String body = rewriteBody(arm, source, context, ctxParam);
-            if (body == null) {
+            Rewritten rewritten = rewriteArm(arm, source, context, ctxParam, ast);
+            if (rewritten.refusal() != null) {
                 return Preparation.fail(ToolResponse.invalidParameter("switch",
-                    "Arm '" + arm.label + "' could not be moved: its body is empty. An "
-                        + "empty arm has no behaviour to give a class."));
+                    "Arm '" + (arm.isDefault ? "default" : arm.label) + "': "
+                        + rewritten.refusal()));
+            }
+            for (Free f : rewritten.free()) {
+                freeByName.putIfAbsent(f.name(), f);
             }
             generated.add(new Generated(
-                (arm.isDefault ? "Default" : pascal(arm.label)) + ifaceName, body, arm));
+                (arm.isDefault ? "Default" : pascal(arm.label)) + ifaceName,
+                rewritten.body(), arm));
+        }
+
+        // THE ARMS' FREE VARIABLES BECOME PARAMETERS. An arm body moved out of the
+        // method loses the method's scope with it, so anything it reads that is
+        // neither a field of the context nor declared inside the arm — a parameter,
+        // an enclosing local — has to travel with it or the generated class does not
+        // compile. The set is the UNION across arms, because every implementation
+        // shares the interface's one signature; ordered by declaration position so
+        // the generated code is stable run to run.
+        List<Free> free = new ArrayList<>(freeByName.values());
+        free.sort(Comparator.comparingInt(Free::declOffset).thenComparing(Free::name));
+        StringBuilder extraParams = new StringBuilder();
+        StringBuilder extraArgs = new StringBuilder();
+        for (Free f : free) {
+            extraParams.append(", ").append(f.type()).append(" ").append(f.name());
+            extraArgs.append(", ").append(f.name());
         }
 
         List<TextEdit> edits = new ArrayList<>();
@@ -234,13 +285,13 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
         nested.append(member).append("/** Generated by replace_conditional_with_polymorphism. */\n");
         nested.append(member).append("interface ").append(ifaceName).append(" {\n")
             .append(inner).append("void apply(").append(contextName).append(" ")
-            .append(ctxParam).append(");\n")
+            .append(ctxParam).append(extraParams).append(");\n")
             .append(member).append("}\n");
         for (Generated g : generated) {
             nested.append(member).append("static final class ").append(g.className)
                 .append(" implements ").append(ifaceName).append(" {\n")
                 .append(inner).append("@Override public void apply(").append(contextName)
-                .append(" ").append(ctxParam).append(") {\n")
+                .append(" ").append(ctxParam).append(extraParams).append(") {\n")
                 .append(reindent(g.body, inner + indent)).append("\n")
                 .append(inner).append("}\n")
                 .append(member).append("}\n");
@@ -272,8 +323,9 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
         String dispatch = tableName(ifaceName) + ".getOrDefault(" + selector.getIdentifier()
             + ", " + (fallback == null ? "null" : "new " + fallback.className + "()") + ")";
         String call = fallback == null
-            ? "{ " + ifaceName + " b = " + dispatch + "; if (b != null) { b.apply(this); } }"
-            : dispatch + ".apply(this);";
+            ? "{ " + ifaceName + " b = " + dispatch + "; if (b != null) { b.apply(this"
+                + extraArgs + "); } }"
+            : dispatch + ".apply(this" + extraArgs + ");";
         edits.add(new ReplaceEdit(sw.getStartPosition(), sw.getLength(), call));
 
         IFile file = (IFile) cu.getResource();
@@ -287,6 +339,11 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
         extras.put("discriminator", enumType);
         extras.put("implementations", generated.stream().map(g -> g.className).toList());
         extras.put("armsMoved", generated.size());
+        // Reported, not merely done: these are the enclosing method's variables the
+        // arms read, threaded through the generated signature. A caller reading the
+        // response can see what the moved bodies still depend on.
+        extras.put("threadedParameters", free.stream()
+            .map(f -> f.type() + " " + f.name()).toList());
         String summary = "replace conditional with polymorphism: " + contextName + "."
             + methodName + " -> " + ifaceName + " with " + generated.size()
             + " implementation(s)";
@@ -358,59 +415,136 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
     // ---------- the context rewrite ----------
 
     /**
+     * What moving one arm's body out of the method produces: the rewritten source,
+     * the variables it still needs from the method's scope, and — where the body
+     * cannot be moved soundly — the reason, in place of a silent transformation.
+     */
+    private record Rewritten(String body, List<Free> free, String refusal) {
+        static Rewritten refused(String why) {
+            return new Rewritten(null, List.of(), why);
+        }
+    }
+
+    /**
+     * A variable an arm reads that the ENCLOSING METHOD owns, so it has to travel
+     * with the body: a parameter, or a local declared before the switch.
+     *
+     * @param declOffset where it is declared, so the generated signature's parameter
+     *     order is the source's own and therefore stable between runs
+     */
+    private record Free(String name, String type, int declOffset) {
+    }
+
+    /**
      * An arm's source with every reference to the context's own state redirected at
-     * the parameter, and any trailing {@code break} dropped.
+     * the parameter, any trailing {@code break} dropped, and the method-scope
+     * variables it reads collected.
      *
      * <p>BINDING-DRIVEN, not textual. A {@code SimpleName} is rewritten only where it
      * resolves to a field of the enclosing type, so a local, a parameter or an
      * unrelated identifier sharing the name is untouched — the difference between a
      * refactoring and a search-and-replace.</p>
      *
-     * @return the rewritten body, or null when the arm has no statements
+     * <p><b>Two refusals live here rather than in a precondition</b>, because both
+     * are properties of an individual arm's body that only this walk can see: an arm
+     * that ASSIGNS a method-scope variable (the write would land on a copy and be
+     * lost), and an arm that uses {@code this} for anything but reaching a context
+     * field (in the generated class {@code this} is that class, so the reference
+     * would silently change meaning).</p>
      */
-    private static String rewriteBody(Arm arm, String source, TypeDeclaration context,
-        String ctxParam) {
+    private static Rewritten rewriteArm(Arm arm, String source, TypeDeclaration context,
+        String ctxParam, CompilationUnit ast) {
         List<Statement> body = new ArrayList<>(arm.body);
         if (!body.isEmpty() && body.get(body.size() - 1).getNodeType() == ASTNode.BREAK_STATEMENT) {
             body.remove(body.size() - 1);
         }
         if (body.isEmpty()) {
-            return null;
+            return Rewritten.refused("its body is empty. An empty arm has no behaviour "
+                + "to give a class.");
         }
         int from = body.get(0).getStartPosition();
         Statement last = body.get(body.size() - 1);
         int to = last.getStartPosition() + last.getLength();
+        String contextName = context.getName().getIdentifier();
 
         // Collected by absolute offset, applied HIGH-TO-LOW so an earlier edit never
         // shifts a later one's position.
         TreeMap<Integer, int[]> qualified = new TreeMap<>();
         TreeMap<Integer, Integer> bare = new TreeMap<>();
+        Map<String, Free> free = new LinkedHashMap<>();
+        String[] refusal = new String[1];
         for (Statement st : body) {
             st.accept(new ASTVisitor() {
                 @Override
-                public boolean visit(SimpleName node) {
-                    if (!(node.resolveBinding() instanceof IVariableBinding b) || !b.isField()) {
+                public boolean visit(ThisExpression node) {
+                    if (node.getParent() instanceof FieldAccess fa
+                        && fa.getExpression() == node
+                        && fa.resolveFieldBinding() != null
+                        && fa.resolveFieldBinding().getDeclaringClass() != null
+                        && contextName.equals(
+                            fa.resolveFieldBinding().getDeclaringClass().getName())) {
                         return true;
                     }
-                    if (!context.getName().getIdentifier()
-                        .equals(b.getDeclaringClass() == null ? null
-                            : b.getDeclaringClass().getName())) {
-                        return true;
-                    }
-                    ASTNode parent = node.getParent();
-                    if (parent instanceof org.eclipse.jdt.core.dom.FieldAccess fa
-                        && fa.getExpression() instanceof ThisExpression) {
-                        // `this.x` -> `ctx.x`: replace the whole `this` expression.
-                        qualified.put(fa.getExpression().getStartPosition(),
-                            new int[] {fa.getExpression().getLength()});
-                    } else if (!(parent instanceof org.eclipse.jdt.core.dom.FieldAccess)
-                        && !(parent instanceof org.eclipse.jdt.core.dom.QualifiedName)) {
-                        // a BARE field reference — the case a `this`-only rule misses
-                        bare.put(node.getStartPosition(), node.getLength());
+                    if (refusal[0] == null) {
+                        refusal[0] = "it uses `this` for something other than reaching a "
+                            + "field of " + contextName + " — a call, an argument, or an "
+                            + "inherited field. Once the body is a class of its own, "
+                            + "`this` IS that class, so the reference would silently "
+                            + "change meaning. No files were modified.";
                     }
                     return true;
                 }
+
+                @Override
+                public boolean visit(SimpleName node) {
+                    if (!(node.resolveBinding() instanceof IVariableBinding b)) {
+                        return true;
+                    }
+                    if (b.isField()) {
+                        if (!contextName.equals(b.getDeclaringClass() == null ? null
+                            : b.getDeclaringClass().getName())) {
+                            return true;
+                        }
+                        ASTNode parent = node.getParent();
+                        if (parent instanceof FieldAccess fa
+                            && fa.getExpression() instanceof ThisExpression) {
+                            // `this.x` -> `ctx.x`: replace the whole `this` expression.
+                            qualified.put(fa.getExpression().getStartPosition(),
+                                new int[] {fa.getExpression().getLength()});
+                        } else if (!(parent instanceof FieldAccess)
+                            && !(parent instanceof QualifiedName)) {
+                            // a BARE field reference — the case a `this`-only rule misses
+                            bare.put(node.getStartPosition(), node.getLength());
+                        }
+                        return true;
+                    }
+                    // NOT a field, so a parameter or a local. One declared INSIDE this
+                    // arm travels with the body and needs nothing; anything else is
+                    // owned by the method's scope, which the body is about to leave.
+                    ASTNode decl = ast.findDeclaringNode(b);
+                    if (decl != null && decl.getStartPosition() >= from
+                        && decl.getStartPosition() < to) {
+                        return true;
+                    }
+                    if (isWritten(node)) {
+                        if (refusal[0] == null) {
+                            refusal[0] = "it ASSIGNS `" + node.getIdentifier() + "`, which "
+                                + "the enclosing method owns. Java passes a parameter by "
+                                + "value, so the write would land on a copy and be lost — "
+                                + "the refactoring would change behaviour. No files were "
+                                + "modified.";
+                        }
+                        return true;
+                    }
+                    free.putIfAbsent(b.getName(), new Free(b.getName(),
+                        b.getType() == null ? "Object" : b.getType().getName(),
+                        decl == null ? Integer.MAX_VALUE : decl.getStartPosition()));
+                    return true;
+                }
             });
+        }
+        if (refusal[0] != null) {
+            return Rewritten.refused(refusal[0]);
         }
 
         StringBuilder out = new StringBuilder(source.substring(from, to));
@@ -426,7 +560,24 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
                 out.replace(pos, pos + len, e.getValue());
             }
         }
-        return out.toString();
+        return new Rewritten(out.toString(), List.copyOf(free.values()), null);
+    }
+
+    /**
+     * Is this name being WRITTEN — the target of an assignment, or an operand of
+     * {@code ++}/{@code --}? Reading a method-scope variable survives the move as a
+     * parameter; writing one does not, and the two must not be confused.
+     */
+    private static boolean isWritten(SimpleName node) {
+        ASTNode parent = node.getParent();
+        if (parent instanceof Assignment assignment) {
+            return assignment.getLeftHandSide() == node;
+        }
+        if (parent instanceof PrefixExpression prefix) {
+            return prefix.getOperator() == PrefixExpression.Operator.INCREMENT
+                || prefix.getOperator() == PrefixExpression.Operator.DECREMENT;
+        }
+        return parent instanceof PostfixExpression;
     }
 
     // ---------- small helpers ----------
