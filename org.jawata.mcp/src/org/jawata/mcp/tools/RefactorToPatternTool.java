@@ -157,6 +157,35 @@ public class RefactorToPatternTool extends AbstractTool {
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "target method (kind form_template_method); the switch- and range-targeted "
                 + "kinds keep their coordinates"));
+
+        // THE BACKSTOP — every parameter any delegate declares reaches the published
+        // contract, whether or not someone curated it above.
+        //
+        // Added BEFORE this tool gains a kind, deliberately. This front door happened
+        // to be complete when the guard was written, and that is exactly the state
+        // `extract` and `generate` were in before their next kind was added: a
+        // hand-written schema beside a dispatch switch is a COPY of the delegates'
+        // contracts, correct until the first unmirrored change and silent about it
+        // afterwards. Being complete today is not a property that survives the next
+        // addition unless something derives it.
+        //
+        // putIfAbsent: the curated entries above win and keep their positions, because
+        // they carry which KIND each parameter belongs to — a delegate's own schema
+        // cannot say that. The two wrapper params are skipped so withProjectKey and
+        // withAutoApply below supply them once in this tool's own terms.
+        for (AbstractTool delegate : List.of(inlineSingleton, composeMethod, replaceTypeCode,
+                refactorToState, refactorToCommand, formTemplateMethod, refactorToVisitor,
+                replacePatternWithIdiom)) {
+            Object declared = delegate.getInputSchema().get("properties");
+            if (declared instanceof Map<?, ?> declaredProps) {
+                declaredProps.forEach((k, v) -> {
+                    String name = String.valueOf(k);
+                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
+                        properties.putIfAbsent(name, v);
+                    }
+                });
+            }
+        }
         schema.put("properties", properties);
         // Sprint 24 (D1): filePath OR the name form (the symbol-targeted kinds).
         schema.put("required", List.of("kind"));

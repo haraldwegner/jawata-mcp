@@ -118,6 +118,37 @@ public class GenerateTool extends AbstractTool {
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "type to generate into"));
+
+        // THE BACKSTOP — every parameter any delegate declares reaches the published
+        // contract, whether or not someone curated it above.
+        //
+        // This tool shipped the defect that motivated the guard, and shipped it in the
+        // WORSE form: the prose description above advertises getterStyle, setterStyle
+        // and generateJavadoc, while the schema declared none of them. So the two
+        // halves of the published contract contradicted each other — a client reading
+        // the description sends a parameter the schema omits, and a client trusting
+        // the schema never learns the option exists. Caught by
+        // DeclaredShapeHonestyTest#everyFrontDoorPublishesItsDelegateParameters, which
+        // went red on `getterStyle` before this loop existed.
+        //
+        // putIfAbsent, and in this order: the curated entries above win and keep their
+        // positions, because they carry what a delegate's own schema cannot — which
+        // KIND each parameter belongs to. The two wrapper params are skipped because
+        // withProjectKey/withAutoApply below add them once, in this tool's own terms;
+        // taking them from a delegate would publish one delegate's wording for a
+        // parameter that belongs to the front door.
+        for (AbstractTool delegate : List.of(constructor, gettersSetters, equalsHashCode,
+                toStringTool, testSkeleton, overrideMethods, copyClass)) {
+            Object declared = delegate.getInputSchema().get("properties");
+            if (declared instanceof Map<?, ?> declaredProps) {
+                declaredProps.forEach((k, v) -> {
+                    String name = String.valueOf(k);
+                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
+                        properties.putIfAbsent(name, v);
+                    }
+                });
+            }
+        }
         schema.put("properties", properties);
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of("kind"));

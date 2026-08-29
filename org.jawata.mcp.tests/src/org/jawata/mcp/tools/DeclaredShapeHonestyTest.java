@@ -3,16 +3,28 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.tools.codegen.CopyClassTool;
+import org.jawata.mcp.tools.codegen.GenerateConstructorTool;
+import org.jawata.mcp.tools.codegen.GenerateEqualsHashCodeTool;
+import org.jawata.mcp.tools.codegen.GenerateGettersSettersTool;
+import org.jawata.mcp.tools.codegen.GenerateTestSkeletonTool;
+import org.jawata.mcp.tools.codegen.GenerateToStringTool;
+import org.jawata.mcp.tools.codegen.GenerateTool;
+import org.jawata.mcp.tools.codegen.OverrideMethodsTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -58,6 +70,106 @@ class DeclaredShapeHonestyTest {
     private List<String> actionEnum(AbstractTool tool) {
         Map<String, Object> props = (Map<String, Object>) tool.getInputSchema().get("properties");
         return (List<String>) ((Map<String, Object>) props.get("action")).get("enum");
+    }
+
+    // ------------------------------------------------------------------
+    // THE PARAMETER AXIS — the half this class did not guard
+    // ------------------------------------------------------------------
+
+    /**
+     * Every instrument above guards the ACTION/KIND axis: the declared action set
+     * must equal the routed action set. <b>Both defects found in Stage 7 and 8
+     * landed on the other axis</b> — the kind was declared correctly and its
+     * PARAMETERS were not.
+     *
+     * <p>Measured: {@code extract} gained {@code kind=class} in the enum and in
+     * dispatch while all five of its parameters — including {@code fields}, which
+     * the delegate marks REQUIRED — never reached the published schema. The
+     * operation ran correctly for anyone who already knew the argument names and
+     * was undiscoverable to a client reading {@code tools/list}. Nothing went red:
+     * the schema sets no {@code additionalProperties: false}, so undeclared
+     * parameters still execute, and every test of the operation supplies the
+     * arguments itself.</p>
+     *
+     * <p><b>The cause is not forgetfulness.</b> A hand-written schema beside a
+     * dispatch switch is a COPY of the delegates' contracts, and a copy of a
+     * changing surface is wrong from the first unmirrored change with no moment at
+     * which it announces itself. So this guard is written once and applied to every
+     * parametric front door, rather than per tool.</p>
+     */
+    private void assertPublishesEveryDelegateParameter(
+        AbstractTool frontDoor, Map<String, AbstractTool> delegatesByKind) {
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> props =
+            (Map<String, Object>) frontDoor.getInputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        List<String> publishedKinds =
+            (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
+
+        // FIRST, so this guard cannot silently under-cover: a SECOND LIST is what
+        // caused the defect, and this test holds one. Ship a new kind without
+        // adding it here and the assertion below goes red instead of the guard
+        // quietly checking n-1 of n.
+        assertEquals(publishedKinds.size(), delegatesByKind.size(),
+            frontDoor.getName() + ": this guard's delegate list has drifted from the kinds"
+                + " the tool advertises — published " + publishedKinds + " vs guarded "
+                + delegatesByKind.keySet() + ". Add the new kind here, or the guard passes"
+                + " while never looking at it");
+        assertTrue(delegatesByKind.keySet().containsAll(publishedKinds),
+            frontDoor.getName() + ": every advertised kind must be represented: " + publishedKinds);
+
+        for (Map.Entry<String, AbstractTool> e : delegatesByKind.entrySet()) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> declared =
+                (Map<String, Object>) e.getValue().getInputSchema().get("properties");
+            for (String param : declared.keySet()) {
+                assertTrue(props.containsKey(param),
+                    frontDoor.getName() + " kind=" + e.getKey() + " accepts '" + param
+                        + "' and the front door does not declare it. A parameter absent from"
+                        + " the published schema is invisible to every client reading"
+                        + " tools/list, however well the operation runs for someone who"
+                        + " already knows the name");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("every parametric front door publishes every parameter its kinds accept")
+    void everyFrontDoorPublishesItsDelegateParameters() {
+        RefactoringChangeCache cache = new RefactoringChangeCache();
+        Supplier<IJdtService> svc = () -> service;
+
+        Map<String, AbstractTool> extract = new LinkedHashMap<>();
+        extract.put("method", new ExtractMethodTool(svc, cache));
+        extract.put("variable", new ExtractVariableTool(svc, cache));
+        extract.put("constant", new ExtractConstantTool(svc, cache));
+        extract.put("interface", new ExtractInterfaceTool(svc, cache));
+        extract.put("superclass", new ExtractSuperclassTool(svc, cache));
+        extract.put("class", new ExtractClassTool(svc, cache));
+        assertPublishesEveryDelegateParameter(new ExtractTool(svc, cache), extract);
+
+        Map<String, AbstractTool> generate = new LinkedHashMap<>();
+        generate.put("constructor", new GenerateConstructorTool(svc, cache));
+        generate.put("getters_setters", new GenerateGettersSettersTool(svc, cache));
+        generate.put("equals_hashcode", new GenerateEqualsHashCodeTool(svc, cache));
+        generate.put("tostring", new GenerateToStringTool(svc, cache));
+        generate.put("test_skeleton", new GenerateTestSkeletonTool(svc, cache));
+        generate.put("override_methods", new OverrideMethodsTool(svc, cache));
+        generate.put("copy_class", new CopyClassTool(svc, cache));
+        assertPublishesEveryDelegateParameter(new GenerateTool(svc, cache), generate);
+
+        Map<String, AbstractTool> patterns = new LinkedHashMap<>();
+        patterns.put("inline_singleton", new InlineSingletonTool(svc, cache));
+        patterns.put("compose_method", new ComposeMethodTool(svc, cache));
+        patterns.put("replace_type_code_with_class", new ReplaceTypeCodeWithClassTool(svc, cache));
+        patterns.put("refactor_to_state", new RefactorToStateTool(svc, cache));
+        patterns.put("refactor_to_command_dispatcher",
+            new RefactorToCommandDispatcherTool(svc, cache));
+        patterns.put("form_template_method", new FormTemplateMethodTool(svc, cache));
+        patterns.put("refactor_to_visitor", new RefactorToVisitorTool(svc, cache));
+        patterns.put("replace_pattern_with_idiom", new ReplacePatternWithIdiomTool(svc, cache));
+        assertPublishesEveryDelegateParameter(new RefactorToPatternTool(svc, cache), patterns);
     }
 
     // ------------------------------------------------------------------
