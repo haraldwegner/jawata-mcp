@@ -1134,6 +1134,60 @@ else
     fail "factory-stages auto_apply=false rewrote the call site while reporting a staged change"
 fi
 
+# --- round-trip: 28d Stage 9 (S9.2), the fixed point OVER THE WIRE ------------
+# Stage 9's named promise. The unit test proves the property in-process; this
+# proves the two directions compose to the identity when driven through the real
+# JSON-RPC endpoint, APPLIED rather than staged — which is the only way the undo
+# path, the compile gate and the file writes are all in play.
+#
+# Both legs are asserted for success separately. A round trip that closes because
+# NEITHER direction did anything is the failure mode this whole stage is about,
+# so the midpoint is checked between them.
+RT_SRC="$WS/proj/src/main/java/com/example/FactoryTarget.java"
+RT_CALLER="$WS/proj/src/main/java/com/example/FactoryCaller.java"
+RT_BEFORE_SRC="$(cat "$RT_SRC")"
+RT_BEFORE_CALLER="$(cat "$RT_CALLER")"
+
+# TOWARD, applied. protectConstructor=false is load-bearing: the default makes
+# the constructor private, and inlining the factory would then rewrite call
+# sites into something they cannot reach.
+RT1="$(call refactor_to_pattern "{\"kind\":\"replace_constructor_with_factory\",
+      \"filePath\":\"$RT_SRC\",\"line\":6,\"column\":11,
+      \"factoryMethodName\":\"of\",\"protectConstructor\":false}")"
+case "$RT1" in
+    *'"undoChangeId"'*) pass "round-trip TOWARD applied at the front door" ;;
+    *) fail "round-trip TOWARD did not apply: $(printf '%s' "$RT1" | head -c 300)" ;;
+esac
+if grep -q "FactoryTarget.of(name)" "$RT_CALLER"; then
+    pass "round-trip the call site moved to the factory"
+else
+    fail "round-trip TOWARD reported success and the call site did not move — the AWAY leg would then close trivially: $(head -c 300 "$RT_CALLER")"
+fi
+
+# AWAY: inline the factory back. The caret is the generated method.
+RT_OF_LINE="$(grep -n ' of(' "$RT_SRC" | head -1 | cut -d: -f1)"
+RT_OF_LINE=$((RT_OF_LINE - 1))
+RT_OF_COL="$(awk -v n="$((RT_OF_LINE + 1))" 'NR==n{print index($0, "of(") - 1}' "$RT_SRC")"
+RT2="$(call inline "{\"kind\":\"method\",\"filePath\":\"$RT_SRC\",
+      \"line\":$RT_OF_LINE,\"column\":$RT_OF_COL}")"
+case "$RT2" in
+    *'"undoChangeId"'*) pass "round-trip AWAY applied at the front door" ;;
+    *) fail "round-trip AWAY did not apply — inline(kind=method) does not invert the factory over the wire: $(printf '%s' "$RT2" | head -c 300)" ;;
+esac
+
+# THE FIXED POINT. Byte-identical, both files, or the two directions do not
+# compose to the identity outside the test harness.
+if [ "$(cat "$RT_CALLER")" = "$RT_BEFORE_CALLER" ]; then
+    pass "round-trip the CALL SITE returned byte-identically"
+else
+    fail "round-trip the call site did not return: $(diff <(printf '%s' "$RT_BEFORE_CALLER") "$RT_CALLER" | head -c 400)"
+fi
+if [ "$(cat "$RT_SRC")" = "$RT_BEFORE_SRC" ]; then
+    pass "round-trip the DECLARING file returned byte-identically"
+else
+    fail "round-trip the declaring file did not return: $(diff <(printf '%s' "$RT_BEFORE_SRC") "$RT_SRC" | head -c 400)"
+fi
+
 # --- polymorphism-stages: 28d Stage 8 (S8.12), rank 2 at the front door -------
 # The same promise as the two above, for the stage's second floor operation:
 # refactor_to_pattern(kind=replace_conditional_with_polymorphism) is reachable
