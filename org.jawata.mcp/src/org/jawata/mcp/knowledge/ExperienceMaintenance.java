@@ -1,23 +1,21 @@
 package org.jawata.mcp.knowledge;
 
-import org.jawata.core.IJdtService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+
+import org.jawata.core.IJdtService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 21 Stage 4 — store maintenance: {@code initial_load} (seed from memory files),
@@ -35,15 +33,16 @@ public final class ExperienceMaintenance {
     /** Relative markdown links to .md files — the MEMORY.md index convention. */
     private static final Pattern MD_LINK = Pattern.compile("\\]\\(([^)#?:]+\\.md)\\)");
 
-    // Sprint 21c (item A): the cue-dense body structure the symptom matcher never saw.
+    /** Section boundaries. Sprint 28d S10.0 removed the OTHER use of this pattern —
+     *  harvesting heading text as a recall cue — and left this one: splitting a body
+     *  into sections is structural and carries no claim about what anyone will search
+     *  for. BOLD and QUOTED went with the harvester; they existed only to feed it. */
     private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+(.+)$");
-    private static final Pattern BOLD = Pattern.compile("\\*\\*([^*\\n]+)\\*\\*");
     /** jawata-mcp#7: managed-block delimiters and any other HTML comment. */
     private static final Pattern HTML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
-    /** C4 live-gate finding: quoted error strings ("Lock file recently modified") are
-     *  THE classic symptom cue and lived only in prose details — harvest them too. */
-    private static final Pattern QUOTED = Pattern.compile("\"([^\"\\n]{3,80})\"");
-    /** Keyword-harvest backstop per entry — hitting it is reported, never silent. */
+    /** Per-entry cue backstop — hitting it is reported, never silent. Now a bound on
+     *  what an AUTHOR declared rather than on what a harvester scraped, so reaching it
+     *  means someone wrote thirty cues by hand. */
     static final int MAX_KEYWORDS_PER_ENTRY = 30;
 
     // Sprint 21b (item C): the crawl finds EVERYTHING reachable — these are runaway
@@ -991,6 +990,11 @@ public final class ExperienceMaintenance {
         String cause = null;
         String verdict = null;
         String reviewed = null;
+        // Sprint 28d S10.0: THE AUTHOR'S OWN CUES. Empty — not null — because
+        // "declared nothing" and "declared none" must be the same outcome: no cues.
+        // A null here would invite a "fall back to harvesting" branch, which is the
+        // defect this field exists to remove.
+        List<String> symptoms = new ArrayList<>();
         StringBuilder body = new StringBuilder();
 
         String[] lines = content.split("\n", -1);
@@ -1019,6 +1023,28 @@ public final class ExperienceMaintenance {
                     case "cause", "complication" -> cause = emptyToNull(v);
                     case "verdict" -> verdict = emptyToNull(v);
                     case "reviewed" -> reviewed = emptyToNull(v);
+                    // Sprint 28d S10.0: the author states the cues, in either shape a
+                    // person actually writes — inline `symptoms: a, b` or a YAML block
+                    // list beneath the key. Supporting one and silently ignoring the
+                    // other would be the same failure as having no field: the author
+                    // declares, nothing arrives, and nobody is told.
+                    case "symptoms" -> {
+                        String inline = emptyToNull(v);
+                        if (inline != null) {
+                            for (String part : inline.split(",")) {
+                                addCue(symptoms, stripMatchingQuotes(part.strip()));
+                            }
+                        } else {
+                            while (i + 1 < lines.length) {
+                                String next = lines[i + 1].strip();
+                                if (!next.startsWith("- ")) {
+                                    break;
+                                }
+                                addCue(symptoms, stripMatchingQuotes(next.substring(2).strip()));
+                                i++;
+                            }
+                        }
+                    }
                     default -> { }
                 }
             }
@@ -1046,13 +1072,23 @@ public final class ExperienceMaintenance {
             name = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
         }
         Split split = splitSections(bodyStr);
-        // Keywords for the PARENT entry: with sections, only the preamble — each
-        // section harvests its own body (Sprint 21c item B).
-        List<String> keywords =
-            harvestKeywords(split.sections().isEmpty() ? bodyStr : split.preamble());
+        // Sprint 28d S10.0: THE CUES ARE THE AUTHOR'S, AND THERE IS NO FALLBACK.
+        //
+        // This line used to read `harvestKeywords(...)`, which scraped the body's
+        // FORMATTING — headings, `**bold**` spans — into the cue index. That index is
+        // the VOUCHING lane: similarity nominates by topical overlap, the exact cue
+        // says "this one genuinely applies". A scraped cue enters it carrying the
+        // author's authority with nobody having vouched, so the lane was being forged
+        // rather than merely made noisy.
+        //
+        // Four rounds narrowed WHAT it scraped (mcp#7 excluded backticks; it took bold
+        // instead, and the story template opens every section with a bold heading — so
+        // `recall(symptom="The case")` returned five unrelated stories). Harald,
+        // 2026-08-30: "Find the cue by content and not by a format. This is nonsense."
+        // The fifth narrowing is refused; the guess is removed.
         return new MemoryDoc(name, description, type, symbol, language, situation, cause,
-            verdict, reviewed, bodyStr, links, fileLinks, keywords, split.preamble(),
-            split.sections());
+            verdict, reviewed, bodyStr, links, fileLinks, List.copyOf(symptoms),
+            split.preamble(), split.sections());
     }
 
     /** Sprint 21c (item B): a heading-bounded body slice — the atomic fact. */
@@ -1091,8 +1127,13 @@ public final class ExperienceMaintenance {
     }
 
     private static Section section(String heading, String body) {
-        return new Section(heading, body, wikilinks(body),
-            harvestKeywords("## " + heading + "\n" + body));
+        // Sprint 28d S10.0: NO CUES FOR A SECTION, and this is the deliberate half of
+        // the trade rather than an oversight. Cues are declared in frontmatter, which is
+        // file-level, so a section has no way to declare its own — and inventing them
+        // from the section's heading is precisely the defect being removed. A section
+        // stays findable through its summary and body, which BM25 reads since D9; what
+        // it loses is the ability to VOUCH, which it never legitimately had.
+        return new Section(heading, body, wikilinks(body), List.of());
     }
 
     private static List<String> wikilinks(String text) {
@@ -1148,60 +1189,55 @@ public final class ExperienceMaintenance {
         return false;
     }
 
-    /**
-     * Sprint 21c (item A): harvest the body's cue-dense structure — headings (all
-     * levels), {@code **bold**} phrases, {@code [[wikilink]]} names and quoted
-     * error strings — as keyword phrases for the symptom index. Fenced
-     * {@code ```} blocks are code, not cues. jawata-mcp#7: inline {@code `code`}
-     * spans are deliberately NOT harvested (a backticked token is tool/artifact
-     * content, and a bare word survives admission as prose — the body carries it,
-     * and BM25 reads the body since D9). Deduplicated after normalization; phrases
-     * capped to the VARCHAR(512) symptom column.
-     */
-    static List<String> harvestKeywords(String body) {
-        List<String> out = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        StringBuilder prose = new StringBuilder();
-        boolean fenced = false;
-        for (String line : body.split("\n", -1)) {
-            String s = line.strip();
-            if (s.startsWith("```")) {
-                fenced = !fenced;
-                continue;
-            }
-            if (fenced) {
-                continue;
-            }
-            Matcher h = HEADING.matcher(s);
-            if (h.matches()) {
-                addKeyword(out, seen, h.group(1).replace("**", "").replace("`", ""));
-            }
-            prose.append(line).append('\n');
-        }
-        // jawata-mcp#7: inline code spans (`grep`, `.java`, `claude`) are
-        // deliberately NOT harvested as cues. A backticked token is tool/artifact
-        // content, and a bare-word span survives admission as prose — that was
-        // the poison ("recall(symptom=\"grep\") returned a whole section"). The
-        // body still carries it verbatim, and BM25 reads the body (D9).
-        for (Pattern p : List.of(BOLD, WIKILINK, QUOTED)) {
-            Matcher m = p.matcher(prose);
-            while (m.find()) {
-                addKeyword(out, seen, m.group(1));
-            }
-        }
-        return out;
-    }
+    // ------------------------------------------------------------------------------
+    // DELETED at Sprint 28d S10.0: `harvestKeywords` and its `addKeyword` helper.
+    //
+    // They scraped the body's FORMATTING — headings, `**bold**` spans, wikilink names,
+    // quoted strings — into the cue index, which is the lane that VOUCHES. Similarity
+    // nominates by topical overlap; an exact cue asserts that an entry genuinely
+    // applies, on the author's authority. Scraped phrases entered that lane
+    // indistinguishable from declared ones, so it was being forged.
+    //
+    // FOUR ROUNDS NARROWED WHAT IT READ AND NONE OF THEM REACHED THE DEFECT.
+    // mcp#7 excluded inline code spans, so it took bold instead — and the story
+    // template opens every section with a bold heading, so every story became findable
+    // by the same handful of phrases. Measured 2026-08-30: `recall(symptom="The case")`
+    // returned FIVE unrelated stories, `recall(symptom="Why this correction exists")`
+    // returned none. The difference between them was typography.
+    //
+    // A FIFTH NARROWING WAS PROPOSED AND REFUSED — Harald, 2026-08-30: "Find the cue by
+    // content and not by a format. This is nonsense", and "Why guessing at all." The
+    // guess is gone rather than narrowed; cues now come from the `symptoms:` frontmatter
+    // field, and a file that declares none has none.
+    //
+    // If a future change reaches for a harvester again, the question to answer first is
+    // why the author cannot simply state the cue — that answer was "there is no field
+    // for it", for four rounds, and nobody checked.
+    // ------------------------------------------------------------------------------
 
-    private static void addKeyword(List<String> out, Set<String> seen, String phrase) {
-        String p = phrase.strip();
-        if (p.length() < 3) {
-            return;                                    // single chars are noise, not cues
+    /**
+     * Add one AUTHOR-DECLARED cue: de-duplicated, and clipped to the storage column.
+     *
+     * <p>The 512-char clip is the one thing worth keeping from the deleted harvester.
+     * {@code experience_symptom.symptom} is {@code VARCHAR(512)}, so an over-long cue
+     * breaks the insert rather than the cue — a whole file fails to load because one
+     * phrase was too long. The old {@code addKeyword} clipped for exactly this reason
+     * and the clip left with it; putting it back here is not defensive coding, it is
+     * the column's own limit expressed where values enter.</p>
+     *
+     * <p><b>No minimum length, unlike the harvester.</b> That skipped anything under
+     * three characters because a scraped two-character fragment is noise. A DECLARED
+     * two-character cue is a person saying "GC" or "IO" on purpose, and second-guessing
+     * it would be the same mistake in miniature — deciding for the author what their
+     * cue is worth.</p>
+     */
+    private static void addCue(List<String> cues, String cue) {
+        if (cue == null || cue.isBlank()) {
+            return;
         }
-        if (p.length() > 512) {
-            p = p.substring(0, 512);                   // experience_symptom column limit
-        }
-        if (seen.add(H2ExperienceStore.normalize(p))) {
-            out.add(p);
+        String c = cue.length() > 512 ? cue.substring(0, 512) : cue;
+        if (!cues.contains(c)) {
+            cues.add(c);
         }
     }
 

@@ -73,21 +73,32 @@ class ExperienceMaintenanceTest {
     }
 
     /**
-     * Sprint 27a D10 — the load channel obeys the admission routing: harvested
-     * keywords with misplaced shapes (paths, backticked code, headings) never
-     * land as symptom rows (they stay in the body they were harvested from,
-     * where word-matching reads them since D9), the suppression is REPORTED
-     * (a silent drop is this project's recorded deepest bug class), the file
-     * NAME slug is prosified so its cue phrasing stays a legal symptom, and a
-     * section heading becomes summary TEXT, not a heading-shaped summary.
+     * Sprint 27a D10, REWRITTEN at 28d S10.0 against DECLARED cues.
+     *
+     * <p>The load channel obeys the admission routing: a cue with a misplaced shape
+     * (a path, a flag, a heading) never lands as a symptom row, and the suppression is
+     * REPORTED — a silent drop is this project's recorded deepest bug class. The file
+     * NAME slug still arrives prosified, and a section heading still becomes summary
+     * TEXT rather than a heading-shaped summary.</p>
+     *
+     * <p><b>Why this survived the harvester's deletion when three siblings did not.</b>
+     * Those three were about WHERE cues come from, which is the thing that changed.
+     * This is about what happens to a cue once it exists, which is unchanged — and it
+     * matters MORE now, not less: a person can declare a path or a flag as a cue just
+     * as easily as a scraper could produce one, and the routing is the only thing
+     * standing between that and the vouching lane.</p>
      */
     @Test
-    void load_routes_misplaced_harvest_and_reports_the_suppression(@TempDir Path dir)
+    void load_routes_misplaced_cues_and_reports_the_suppression(@TempDir Path dir)
             throws IOException {
         writeMemory(dir, "renders-blank-on-aarch64.md",
-            "name: renders-blank-on-aarch64\ndescription: the view renders blank on aarch64\ntype: reference",
-            "Pass **--no-verify** to reproduce and inspect \"src/main/Renderer.java\" for the trace.\n"
-            + "\n## Root cause:\n\nThe **native buffer** is sized before the scale factor arrives.\n");
+            "name: renders-blank-on-aarch64\ndescription: the view renders blank on aarch64\n"
+                + "type: reference\n"
+                // Two misplaced shapes and one legitimate cue, all DECLARED. The author
+                // wrote every one of them; admission still refuses two.
+                + "symptoms: --no-verify, src/main/Renderer.java, native buffer",
+            "The scale factor arrives after the buffer is sized.\n"
+            + "\n## Root cause:\n\nThe native buffer is sized before the scale factor arrives.\n");
 
         Map<String, Object> report = maint(fqn -> null).load(dir);
 
@@ -743,82 +754,57 @@ class ExperienceMaintenanceTest {
         assertTrue(reason.contains("situation"), "the field is named: " + reason);
     }
 
+    // ------------------------------------------------------------------------------
+    // DELETED at Sprint 28d S10.0 — three tests, and they were CORRECT tests of a
+    // mechanism that no longer exists:
+    //
+    //   load_harvests_body_structure_as_symptom_cues   headings and **bold** phrases
+    //                                                  become cues
+    //   harvest_skips_fenced_code_blocks               ...but not inside ``` fences
+    //   harvest_indexes_quoted_error_strings_as_cues   "quoted strings" become cues
+    //
+    // The cue harvester is gone (see ExperienceMaintenance, same sprint): cues are
+    // declared in frontmatter, and a file that declares none has none. So all three
+    // assert an outcome the loader is now designed NOT to produce.
+    //
+    // THEY ARE DELETED RATHER THAN ADJUSTED, and the difference matters. Rewriting them
+    // to expect the new behaviour would leave three tests whose SUBJECT is a harvester,
+    // dressed as tests of something else — and the next person would read them as an
+    // argument for bringing it back. Two sibling tests WERE rewritten instead, because
+    // the property each pinned still exists and only its input changed: the admission
+    // routing and the per-entry cap now apply to declared cues.
+    //
+    // What replaces them: DeclaredCuesReplaceHarvestingTest, which asserts the
+    // opposite direction — that a story's own section headings resolve to NOTHING.
+    // ------------------------------------------------------------------------------
+
+    /**
+     * Sprint 28d S10.0 — REWRITTEN against DECLARED cues; the property is unchanged.
+     *
+     * <p>Thirty per entry is a runaway backstop and hitting it is REPORTED, never
+     * silent — a silent drop is this project's recorded deepest bug class. What changed
+     * is only what the cap counts: it used to bound what a harvester scraped out of a
+     * body, and now bounds what a person wrote down. That makes hitting it a stronger
+     * signal rather than a weaker one — forty scraped phrases is an accident of prose
+     * length, forty declared cues is someone doing something odd on purpose.</p>
+     */
     @Test
-    void load_harvests_body_structure_as_symptom_cues(@TempDir Path dir) throws IOException {
-        // Sprint 21c (item A): headings, **bold** phrases, `backticked` terms and
-        // [[wikilink]] names are the cue-dense keyword surface the matcher never saw.
-        writeMemory(dir, "k.md",
-            "name: k\ndescription: the keyword harvest reads this body\ntype: reference",
-            "## Loader fingerprint self-heal\n\n"
-                + "The **skip-unchanged hash** mixes in `LOADER_VERSION` so a bump\n"
-                + "re-ingests the corpus once. See [[recall-gap-lesson]].\n");
-        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
-
-        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
-        // Sprint 27a D10 amends the 21c contract: PROSE-shaped harvest (heading
-        // text, bold phrases) still lands as symptom rows and exact-matches;
-        // code/tag-shaped harvest (`LOADER_VERSION`, wikilink slugs) no longer
-        // becomes symptom rows — it stays in the body it was harvested from,
-        // and the cue still REACHES the entry through the word/meaning path,
-        // labelled as a nominee rather than vouched.
-        for (String cue : List.of("loader fingerprint self-heal", "skip-unchanged hash")) {
-            assertEquals(ExperienceRetrieval.RESULT_MATCH,
-                retrieval.recall(new RecallQuery(null, null, null, cue, null)).get("result"),
-                "prose-shaped harvested cue exact-matches: " + cue);
-        }
-        for (String cue : List.of("loader_version", "recall-gap-lesson")) {
-            Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, cue, null));
-            boolean reachable = ExperienceRetrieval.RESULT_MATCH.equals(r.get("result"))
-                || (ExperienceRetrieval.RESULT_ANALOGY.equals(r.get("result"))
-                    && r.get("analogies") instanceof List<?> a && !a.isEmpty());
-            assertTrue(reachable,
-                "code/tag-shaped harvest is routed, not lost — the cue still reaches"
-                + " the entry as a nominee: " + cue + " -> " + r.get("result"));
-        }
-    }
-
-    @Test
-    void harvest_skips_fenced_code_blocks(@TempDir Path dir) throws IOException {
-        // Sprint 21c (item A, audit finding): code is not a cue source — bold/backtick
-        // inside ``` fences must not become symptom rows.
-        writeMemory(dir, "c.md",
-            "name: c\ndescription: a fenced block sits inside this body\ntype: reference",
-            "Real cue: **dmabuf renderer disable**.\n"
-                + "```bash\n"
-                + "echo **shellglobnoise** `fencedterm`\n"
-                + "```\n"
-                + "after the fence\n");
-        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
-
-        // v3.4.1: keyword-only ON PURPOSE. The subject is the HARVESTER —
-        // whether a word inside a ``` fence became a symptom row — so the
-        // question belongs to the keyword/symptom index. Under the full union
-        // an unrelated word still finds the one stored entry as a labeled
-        // analogy, which is correct and a different question entirely.
-        ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(store, () -> null);
-        assertEquals(ExperienceRetrieval.RESULT_MATCH,
-            retrieval.recall(new RecallQuery(null, null, null, "dmabuf renderer disable", null)).get("result"));
-        assertEquals(ExperienceRetrieval.RESULT_ABSENCE,
-            retrieval.recall(new RecallQuery(null, null, null, "fencedterm", null)).get("result"),
-            "fenced code is not a keyword source");
-    }
-
-    @Test
-    void harvest_caps_keywords_per_entry_and_reports_it(@TempDir Path dir) throws IOException {
-        // Sprint 21c (item A): 30/entry is a runaway backstop — hitting it is REPORTED.
-        // Headingless on purpose: the cap is per ENTRY, and a headingless file is one entry.
-        // jawata-mcp#7: bold prose phrases (a harvested cue source), not code spans.
-        StringBuilder body = new StringBuilder("prose with many terms: ");
+    void the_per_entry_cue_cap_applies_to_declared_cues_and_is_reported(@TempDir Path dir)
+            throws IOException {
+        StringBuilder cues = new StringBuilder();
         for (int i = 0; i < 40; i++) {
-            body.append("**unique term number ").append(i).append("** and ");
+            cues.append(i == 0 ? "" : ", ").append("unique cue number ").append(i);
         }
-        writeMemory(dir, "big.md", "name: big\ndescription: the keyword cap applies to this body\ntype: reference", body.toString());
+        writeMemory(dir, "big.md",
+            "name: big\ndescription: the cue cap applies to this entry\ntype: reference\n"
+                + "symptoms: " + cues,
+            "a body with no cues of its own");
 
         Map<String, Object> report = maint(fqn -> null).load(dir, true);
         assertEquals(1, report.get("loaded"));
         assertEquals(1, report.get("keyword_capped"), "cap hit is reported, not silent");
         StoredEntry e = store.all().get(0);
-        assertEquals(31, e.symptoms().size(), "30 harvested keywords + the name symptom");
+        assertEquals(31, e.symptoms().size(), "30 declared cues + the name symptom");
     }
 
     @Test
@@ -900,28 +886,38 @@ class ExperienceMaintenanceTest {
         assertEquals(4L, active, "same-heading sections across files are NOT duplicates");
     }
 
+    /**
+     * Sprint 28d S10.0 — REWRITTEN, and it was silently VACUOUS before the rewrite.
+     *
+     * <p>The old version put a 600-character {@code **bold**} phrase in the BODY and
+     * asserted the file loaded. Once the harvester was deleted that phrase stopped
+     * being a cue at all, so the test passed by loading a file with no over-long value
+     * anywhere near the column — green, and testing nothing. It would have stayed that
+     * way indefinitely: nothing about a passing test announces that its subject left.</p>
+     *
+     * <p>The property is real and still applies: {@code experience_symptom.symptom} is
+     * {@code VARCHAR(512)}, and one over-long value fails the INSERT — so the whole file
+     * fails to load because of a single phrase. The clip used to live in the harvester's
+     * {@code addKeyword} and left with it; it now lives where declared cues enter.</p>
+     */
     @Test
-    void harvest_indexes_quoted_error_strings_as_cues(@TempDir Path dir) throws IOException {
-        // Sprint 21c C4 live-gate finding: "Lock file recently modified" lived only in
-        // prose details — quoted strings are the classic error-message symptom cue.
-        writeMemory(dir, "q.md", "name: q\ndescription: a quoted error string sits in this body\ntype: reference",
-            "The swap race surfaced as \"Lock file recently modified\" during boot.\n");
-        assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
+    void an_oversize_declared_cue_is_clipped_and_the_file_still_loads(@TempDir Path dir)
+            throws IOException {
+        writeMemory(dir, "l.md",
+            "name: l\ndescription: an oversize declared cue sits in this frontmatter\n"
+                + "type: reference\nsymptoms: " + "x".repeat(600),
+            "body");
 
-        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
-        assertEquals(ExperienceRetrieval.RESULT_MATCH,
-            retrieval.recall(new RecallQuery(null, null, null, "lock file recently modified", null)).get("result"),
-            "the quoted error string is a recallable cue");
-    }
-
-    @Test
-    void harvest_truncates_oversize_phrases_to_the_column_limit(@TempDir Path dir) throws IOException {
-        // experience_symptom.symptom is VARCHAR(512) — an oversize bold phrase must not
-        // break the insert.
-        writeMemory(dir, "l.md", "name: l\ndescription: an oversize phrase sits in this body\ntype: reference",
-            "**" + "x".repeat(600) + "**\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"),
-            "oversize phrase truncated, ingest survives");
+            "an over-long cue is clipped to the column, so the INSERT survives — before"
+                + " the clip moved here, one long phrase failed the whole file");
+
+        // AND IT ARRIVED, clipped rather than dropped. Asserting only that the load
+        // survived would also pass if the cue were discarded entirely, which is a
+        // different behaviour wearing the same green.
+        StoredEntry e = store.all().get(0);
+        assertTrue(e.symptoms().stream().anyMatch(s -> s.length() == 512),
+            "the cue is present at exactly the column width: " + e.symptoms());
     }
 
     @Test

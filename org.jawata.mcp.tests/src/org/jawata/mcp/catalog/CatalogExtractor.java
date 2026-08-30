@@ -130,10 +130,31 @@ public final class CatalogExtractor {
         this.reviewedSituations = Map.copyOf(reviewedSituations);
     }
 
-    /** One extracted pattern, before it becomes a store row. */
+    /**
+     * One extracted pattern, before it becomes a store row.
+     *
+     * <p>Sprint 28d S10.1 adds {@code category} and {@code tags}: THE PATTERN'S OWN
+     * CLASSIFICATION, which the source declares and this extractor used to discard.
+     * Harald, 2026-08-30: <i>"we have different patterns for different situations:
+     * create an object -&gt; creational pattern like builder or factory. So you can
+     * distinguish"</i>.</p>
+     *
+     * <p>185 of the 188 upstream READMEs declare {@code category:} across 16 values
+     * (Behavioral 40, Structural 34, Architectural 27, Concurrency 22, Creational 14,
+     * …), and none of it reached the store. Two existing fields look like they might
+     * have served and do not: {@code type} is the constant {@code reference} on every
+     * row, and {@code referenceType} — despite the name — holds the Java entry-point
+     * class. Nor could it be recovered downstream: 170 of 187 rows never name a family
+     * anywhere in their prose.</p>
+     *
+     * <p><b>{@code category} is nullable on purpose.</b> Three READMEs declare none.
+     * Defaulting them would file three patterns under a family nobody assigned them,
+     * and a wrong classification is worse than an absent one — an absent one can be
+     * answered with "we do not know".</p>
+     */
     public record Record(String slug, String situation, boolean situationReviewed,
                          String principle, String details, String sourceRef,
-                         String referenceType) {
+                         String referenceType, String category, List<String> tags) {
     }
 
     /** What the run saw, so a count is never inferred from the output's length. */
@@ -200,10 +221,92 @@ public final class CatalogExtractor {
                 principleOf(intent),
                 detailsOf(slug, when, tradeoffs),
                 "catalogue:" + namespace + "/" + slug + "/README.md",
-                referenceType(readme, slug)));
+                referenceType(readme, slug),
+                frontmatterScalar(text, "category"),
+                frontmatterList(text, "tag")));
             built++;
         }
         return new Report(files.size(), built, unreviewed, missing);
+    }
+
+    /**
+     * The YAML frontmatter block — everything between the opening and closing
+     * {@code ---}. Returns empty for a README with none, which is a normal state and
+     * not an error: the caller then sees no category and records that honestly.
+     *
+     * <p>Bounded to the frontmatter ON PURPOSE. A README body can contain a line
+     * beginning {@code category:} in prose or inside a fenced block, and a whole-file
+     * scan would read it as the declaration. The frontmatter is where the author
+     * declares; everywhere else is where they write.</p>
+     */
+    private static String frontmatter(String text) {
+        if (!text.startsWith("---\n")) {
+            return "";
+        }
+        int end = text.indexOf("\n---", 4);
+        return end < 0 ? "" : text.substring(4, end + 1);
+    }
+
+    /** A scalar frontmatter value ({@code category: Creational}), or null if absent. */
+    private static String frontmatterScalar(String text, String key) {
+        for (String line : frontmatter(text).split("\n", -1)) {
+            if (line.startsWith(key + ":")) {
+                String v = line.substring(key.length() + 1).strip();
+                if (v.length() >= 2 && (v.charAt(0) == '"' || v.charAt(0) == '\'')
+                        && v.charAt(0) == v.charAt(v.length() - 1)) {
+                    v = v.substring(1, v.length() - 1);
+                }
+                return v.isBlank() ? null : v;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A frontmatter LIST value, in both shapes the fork writes:
+     * {@code tag: [a, b]} inline, and the block form
+     *
+     * <pre>
+     * tag:
+     *   - Gang of Four
+     *   - Instantiation
+     * </pre>
+     *
+     * <p>Both, because reading only one and silently returning empty for the other
+     * would look exactly like a pattern that declared no tags — a wrong answer wearing
+     * the shape of a correct one. The fork uses the block form; the inline form is
+     * accepted so a future README written the other way is not silently thinned.</p>
+     */
+    private static List<String> frontmatterList(String text, String key) {
+        List<String> out = new ArrayList<>();
+        String[] lines = frontmatter(text).split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (!lines[i].startsWith(key + ":")) {
+                continue;
+            }
+            String inline = lines[i].substring(key.length() + 1).strip();
+            if (inline.startsWith("[") && inline.endsWith("]")) {
+                for (String part : inline.substring(1, inline.length() - 1).split(",")) {
+                    String v = part.strip();
+                    if (!v.isBlank()) {
+                        out.add(v);
+                    }
+                }
+                return out;
+            }
+            for (int j = i + 1; j < lines.length; j++) {
+                String item = lines[j].strip();
+                if (!item.startsWith("- ")) {
+                    break;
+                }
+                String v = item.substring(2).strip();
+                if (!v.isBlank()) {
+                    out.add(v);
+                }
+            }
+            return out;
+        }
+        return out;
     }
 
     private static String body(Pattern p, String text) {

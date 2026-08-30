@@ -360,6 +360,59 @@ summary, as a claim about the refactoring engine. It is a claim about one pair.
 
 ## 7. A story's own section headings become its recall cues
 
+### R4 MEASURED 2026-08-30 — four of mcp#7's five symptoms are gone; the class is not
+
+**Stage 10's entry gate is R4: rule on `mcp#7`.** The plan's note said the issue
+"reads CLOSED, so this gate may be dischargeable". **It is OPEN** — that note is
+stale. Measured against the running store (297 entries, 107 file-backed, 187
+catalogue):
+
+| mcp#7 symptom | measured | how |
+|---|---|---|
+| 1. every section lands as `type: note`, starving the primer | **GONE** | no `note` type in the store; primer serves domain rows at SessionStart |
+| 2. backticked tokens harvested as symptoms | **GONE** | `recall(symptom="grep")` returns proper stories, not a CLAUDE.md section |
+| 3. two byte-identical CLAUDE.md files double-ingested | **no duplicate rows** | no CLAUDE.md section returned by any probe. **CAVEAT: the precondition — whether both files still exist and are identical — could NOT be checked; the workspace guard blocks `/home/harald/CLAUDE.md` and needs Harald's approval.** So the OUTCOME is measured absent, the CAUSE is unverified |
+| 4. marker sections (`<!-- jawata-studio:claude:start -->`) become entries | **GONE** | `recall(symptom="jawata-studio:claude:start")` returns no such entry |
+| 5. `dedup` blind to byte-identical pairs | **`group_count: 0`** | and no duplicate pair surfaced by any probe. Note this is a weaker measurement than the others: zero groups is consistent with "no duplicates exist" AND with "still blind", and nothing here separates them without creating a duplicate, which would pollute the store |
+
+**BUT THE DEFECT CLASS IS LIVE, IN A DIFFERENT MARKER.** Symptom 2 was cues
+harvested from backticks. `harvestKeywords` now excludes inline code spans —
+citing mcp#7 by number — and harvests **bold spans** instead. The story template
+writes every section heading as a leading bold span, and `AdmissionPolicy.classify`
+calls something a HEADING only when it starts with `#` or ends with `:`, so
+*"The case."* classifies as PROSE and is admitted as a cue.
+
+**The discriminating measurement, 2026-08-30:**
+
+- `recall(symptom="The case")` → **FIVE DIRECT HITS**, whose only relationship to
+  the phrase is `**The case.**` appearing as a section heading in their bodies.
+- `recall(symptom="Why this correction exists")` → **zero direct hits**, semantic
+  neighbours only.
+
+The contrast is the evidence: one phrase that appears as a bold heading resolves as
+a cue, one that does not appear at all resolves as nothing.
+
+**AND THE DESIGN FAULT UNDER IT, which is why narrowing the marker is the wrong
+fix.** The frontmatter parser has **no `symptoms` case at all**, and is a
+single-line `key: value` parser. An author literally cannot state their own cues.
+So the loader must guess, and the guessing heuristic is the symptom rather than
+the disease — mcp#7's own suggested fix (c) said *"symptoms only from an explicit
+frontmatter field"*, and only the first half of that clause was implemented.
+
+**SCOPE, measured:** `harvestKeywords` has exactly two callers, `parse` and
+`section`, both on the markdown load path. The catalogue lane reads symptoms from
+JSON and is unaffected — so this touches the 107 file-backed entries, not the 187
+catalogue rows.
+
+**COST OF THE POLLUTION, corrected before it was put to Harald:** an earlier draft
+called it "not cheaply undone". Measured: 107 of 297 entries are file-backed and
+repairable by re-loading them once the parser accepts declared cues. It is not a
+one-way door.
+
+---
+
+## 7b. The original finding, as first recorded
+
 **Status: OPEN, and it is Stage 10's entry gate (R4). Home: this sprint, before
 Stage 10 — the ruling is Harald's.**
 
