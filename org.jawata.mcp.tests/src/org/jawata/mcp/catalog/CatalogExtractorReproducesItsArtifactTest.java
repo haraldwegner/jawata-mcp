@@ -111,6 +111,45 @@ class CatalogExtractorReproducesItsArtifactTest {
     }
 
     /**
+     * KEY ORDER IS PART OF THE ARTIFACT, and nothing was pinning it.
+     *
+     * <p>{@code CatalogueManifest.hashOf} digests {@code row.toString()} — the whole
+     * serialised row — and that hash decides seeded-versus-unchanged. So moving a field
+     * from one position to another, with every value identical, re-hashes all 187 rows
+     * and costs a full supersede-and-rewrite for no semantic change at all.</p>
+     *
+     * <p><b>This is not hypothetical.</b> Folding three repeated presence-guards into one
+     * writer moved {@code cause} below {@code source_ref}. The values were byte-identical;
+     * the file was not. A parity run against the previous artifact caught it; no test
+     * would have, because every test asserted on VALUES.</p>
+     *
+     * <p>Pinned as the exact sequence rather than a set, since a set cannot fail on the
+     * thing that actually went wrong.</p>
+     */
+    @Test
+    @DisplayName("S10.1: the row's field order is pinned, because the row hash digests it")
+    void the_field_order_is_part_of_the_artifact(@TempDir Path root) throws IOException {
+        writeReadme(root, "builder");
+        Path pkg = root.resolve("builder/src/main/java/com/iluwatar/builder");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("App.java"),
+            "package com.iluwatar.builder;\n\npublic final class App { }\n",
+            StandardCharsets.UTF_8);
+
+        JsonNode row = snapshotRow(root, Map.of("builder", "the parts combine"));
+
+        List<String> order = new ArrayList<>();
+        row.fieldNames().forEachRemaining(order::add);
+        assertEquals(
+            List.of("slug", "type", "situation", "cause", "principle", "details",
+                "source_ref", "entry_point_class", "category"),
+            order,
+            () -> "the row hash covers the serialised row, so a reordering supersedes and"
+                + " rewrites all 187 entries while changing nothing. Change this list only"
+                + " when you MEAN to pay that. Got: " + order);
+    }
+
+    /**
      * The curated file is read under its own key, exactly as situations are.
      *
      * <p>Two curated inputs handled two different ways is how the next person picks the

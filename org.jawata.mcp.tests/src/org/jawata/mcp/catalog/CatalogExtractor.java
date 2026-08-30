@@ -605,45 +605,40 @@ public final class CatalogExtractor {
             // re-hashes every record and rewrites all 187 rows.
             n.put("type", "reference");
             n.put("situation", r.situation());
-            // The design FORCE — read by CatalogueManifest.entryFor and ranked on by the
-            // recall differential when two patterns share a situation. It existed only in
-            // the committed snapshot until now, so re-running this extraction DELETED all
-            // 187 of them, invisibly, until a recall stopped discriminating. Absent stays
-            // absent: an invented cause would be ranked on, and a wrong one is worse than
-            // none.
-            if (r.cause() != null && !r.cause().isBlank()) {
-                n.put("cause", r.cause());
-            }
+            // EVERY OPTIONAL FIELD GOES THROUGH ONE WRITER, and that is the design fix
+            // rather than the three repetitions it replaces. See putIfPresent.
+            //
+            // KEY ORDER IS LOAD-BEARING and this line's position is not cosmetic:
+            // CatalogueManifest.hashOf digests `row.toString()`, the WHOLE serialised
+            // row, so moving a key changes every row's hash and costs a full
+            // 187-supersede-and-rewrite for an identical set of values. Caught by the
+            // parity check: the first version of this refactor put `cause` after
+            // `source_ref`, produced byte-identical VALUES, and would have churned all
+            // 187 rows for nothing.
+            //
+            // cause — the design FORCE, read by CatalogueManifest.entryFor and ranked on
+            // by the recall differential when two patterns share a situation. It existed
+            // ONLY in the committed snapshot, so re-running this extraction deleted all
+            // 187, invisibly, until a recall stopped discriminating.
+            putIfPresent(n, "cause", r.cause());
             n.put("principle", r.principle());
             n.put("details", r.details());
             n.put("source_ref", r.sourceRef());
-            // S10.1c: this holds `com.iluwatar.builder.App` — the Java entry point,
+            // entry_point_class — `com.iluwatar.builder.App`, the Java entry point and
             // never a classification. Under its old name, `reference_type`, it was read
             // as the pattern's family by the one person who looked, which is the whole
-            // reason S10.1 exists. Renamed at the same regeneration as the two fields
-            // below so the 187 rows are re-hashed ONCE: hashOf digests the entire row,
-            // so every field added or renamed here costs a full supersede-and-rewrite
-            // of all of them, and two separate landings would cost that twice.
-            // ABSENT, not "". naked-objects is the one pattern at this pin with no Java
-            // source anywhere — a README and an `etc` directory — so it has no entry
-            // point, and an empty string on the row reads as a value. Same rule as
-            // `category` and `cause` above; this is the third place in one stage where
-            // writing absence as presence would have shipped a wrong answer.
-            if (r.entryPointClass() != null && !r.entryPointClass().isBlank()) {
-                n.put("entry_point_class", r.entryPointClass());
-            }
-            // S10.1a — the pattern's OWN classification, which the source declares and
+            // reason S10.1 exists. Renamed alongside the fields below so the 187 rows are
+            // re-hashed ONCE: hashOf digests the entire row, so each field added or
+            // renamed costs a full supersede-and-rewrite of all of them.
+            putIfPresent(n, "entry_point_class", r.entryPointClass());
+            // category — the pattern's OWN classification, which the source declares and
             // this extractor discarded until now. Harald, 2026-08-30: "we have different
             // patterns for different situations: create an object -> creational pattern
-            // like builder or factory. So you can distinguish".
-            //
-            // ABSENT IS WRITTEN AS ABSENT. Three of the 188 upstream READMEs declare no
-            // category; they get no key rather than a default. A row filed under a family
-            // nobody assigned it is worse than one carrying none, because "we do not
-            // know" is an answer a reader can act on and a wrong family is not.
-            if (r.category() != null && !r.category().isBlank()) {
-                n.put("category", r.category());
-            }
+            // like builder or factory. So you can distinguish". Measured at the pin: all
+            // 187 READMEs name a family, so nothing upstream currently exercises the
+            // absent branch — the rule stands regardless, because it is a rule and not a
+            // census.
+            putIfPresent(n, "category", r.category());
             if (!r.tags().isEmpty()) {
                 ArrayNode tags = n.putArray("tags");
                 r.tags().forEach(tags::add);
@@ -651,6 +646,34 @@ public final class CatalogExtractor {
             arr.add(n);
         }
         return root;
+    }
+
+    /**
+     * Write an OPTIONAL field, or write nothing — never {@code ""}.
+     *
+     * <p><b>Why one writer instead of a guard per field.</b> This stage shipped the same
+     * defect three times in three fields: {@code category} and {@code tags} were DECLARED
+     * upstream and read as absent, and {@code entry_point_class} was genuinely absent and
+     * written as an empty string. Different directions, one consequence — a consumer
+     * cannot tell "the author said nothing" from "we failed to read it", so both become
+     * the same value and the difference is lost where it matters.</p>
+     *
+     * <p>{@code ARCHITECTURE-28d.md} already stated the rule, in "What the catalogue is":
+     * <i>"An absent cure must therefore mean absent — never an empty string, a
+     * placeholder…"</i>. It was prose in a document, enforced by nothing, and three
+     * violations shipped past it. The repair is not a fourth careful {@code if}: it is
+     * making the writer the only way in, so a field added later cannot get this wrong
+     * without going out of its way. Same move the namespace-collision invariant made at
+     * C6 when it left a test and became unconstructible in {@code CatalogueOrigin}.</p>
+     *
+     * <p>Both halves are asserted: the present case reaches the snapshot, and the absent
+     * case leaves NO KEY — without the second, a writer that emitted a constant would
+     * satisfy the first.</p>
+     */
+    private static void putIfPresent(ObjectNode n, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            n.put(key, value);
+        }
     }
 
     /** slug -&gt; reviewed situation, from the committed curation file. */
