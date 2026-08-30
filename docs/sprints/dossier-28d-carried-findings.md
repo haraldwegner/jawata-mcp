@@ -480,3 +480,74 @@ Items 3 and 4 were raised by the C8 fresh-context auditor as NON-BLOCKING (N4 an
 in its report), alongside five blocking findings which were repaired inside the
 checkpoint at `e04f539`. They are carried rather than fixed for the reason stated in
 item 3: the round cap.
+
+## 8. Nothing checks that a catalogue row's entry-point address opens
+
+**Found at the Stage 10 checkpoint, 2026-08-30, by diffing the regenerated snapshot
+against the committed one — a comparison that existed nowhere.**
+
+A catalogue row carries TWO addresses and only one of them is guarded:
+
+- `source_ref` — the README path. `CatalogueAddressesOpenTest` resolves it against real
+  files. But it checks only origins where `inWorkspace()` is true, and the fork is not in
+  this workspace, so **all 187 fork rows are skipped by name**.
+- `entry_point_class` — the Java entry point, e.g. `com.iluwatar.builder.App`. **Checked by
+  nothing at all.**
+
+**The cost, measured:** 111 of 187 committed entry-point addresses resolve to a real source
+file at the pin. The other **76 point at nothing** — they were composed from the slug
+(`com.iluwatar.backendsforfrontends`) where the tree holds `com.iluwatar.bff.App`. Both
+were checked; only the resolved one exists.
+
+**Why this is carried rather than fixed.** The composer was already replaced by a resolver
+at S5, so regenerating repairs all 76 — that is decision 1, and it is Harald's. What is NOT
+fixed is the missing GUARD. A test that resolves entry points against the fork would be a
+gate bound to someone else's checkout, which cannot run where that checkout is not; the
+recorded lesson on that is explicit. The honest options are a resolver-side invariant (the
+extractor only ever emits an address it read off a real file — true today by construction,
+asserted nowhere) or an origin-aware address check that can see out-of-workspace origins.
+
+**Home: Sprint 28e**, with the address-checking work.
+
+## 9. The plan's own counts were wrong in four places, and only measuring found it
+
+**Not a code defect — a process one, and it recurred inside a single stage.**
+
+Stage 10's text asserted "185 of 188 READMEs declare `category:`, across 16 values" and
+"three READMEs declare none". Measured at the pin: **187 READMEs, all 187 name a family,
+15 values.** Nothing was missing; two spell the key `categories:` and one count was wrong.
+
+The same numbers had been copied into two javadoc blocks, which then survived four commits
+that disproved them — corrected at `df19c71`. That is the C9 finding again: *a correction
+that reaches one artifact and not the others is not a correction.*
+
+**And one verification of that correction was VACUOUS.** A `grep` over
+`CatalogExtractor.java` returns NOTHING while the matched text is plainly in the file —
+confirmed by reading it. So the sweep that was to prove the stale numbers were gone
+reported clean while unable to see the file at all. Every later check on that file used
+`Read`. **An empty result from a tool that cannot see the file is indistinguishable from an
+empty result meaning nothing is there** — and this project has met that shape before.
+
+**Home: worth a tooling issue against whatever intercepts that path**, and worth the
+standing habit of never accepting a clean sweep as evidence without a positive control.
+
+## 10. Key ORDER in the snapshot is load-bearing and nothing pinned it
+
+**Found by the parity check at `9920abd`, not by any test.**
+
+`CatalogueManifest.hashOf` digests `row.toString()` — the whole serialised row — and that
+hash decides seeded-versus-unchanged. So moving one field from one position to another,
+with every value identical, re-hashes all 187 rows and costs a full supersede-and-rewrite
+for no semantic change whatsoever.
+
+Folding three repeated presence-guards into one writer did exactly that: `cause` moved
+below `source_ref`, values byte-identical, file different. **No test would have caught it,
+because every test asserts on VALUES.** A regeneration compared against the previous
+artifact caught it in one command.
+
+Now pinned by `the_field_order_is_part_of_the_artifact`, with the cost in the failure
+message. Carried here because the general lesson is not about this field: **wherever an
+identity hash covers a serialisation, the serialisation's shape is part of the contract**,
+and that is true of any other row-hashed artifact in this codebase.
+
+**Home: no work item — recorded so the next person who reorders knows what it costs.**
