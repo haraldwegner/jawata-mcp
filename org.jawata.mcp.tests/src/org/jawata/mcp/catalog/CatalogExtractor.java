@@ -447,31 +447,79 @@ public final class CatalogExtractor {
         return referenceTypeName(slug);
     }
 
-    private String referenceTypeName(String slug) {
-        Path srcRoot = forkRoot.resolve(slug).resolve("src/main/java");
-        if (!Files.isDirectory(srcRoot)) {
-            return "";
+    /**
+     * EVERY source root under the slug, not just the flat one.
+     *
+     * <p><b>Measured 2026-08-30 at pin {@code 22a34127d}:</b> seven of the 187 patterns
+     * are MULTI-MODULE — {@code <slug>/<module>/src/main/java/...} — and have no
+     * {@code <slug>/src/main/java} at all. Looking only at the flat layout found nothing
+     * for all seven and returned the empty string, which then travelled onto the row as
+     * a value. Six of them have 7 to 15 source files sitting one directory deeper.</p>
+     *
+     * <p>Ordered so the answer is deterministic across roots: flat first if it exists,
+     * then the nested roots in path order.</p>
+     */
+    private List<Path> sourceRoots(String slug) {
+        Path slugDir = forkRoot.resolve(slug);
+        List<Path> roots = new ArrayList<>();
+        Path flat = slugDir.resolve("src/main/java");
+        if (Files.isDirectory(flat)) {
+            roots.add(flat);
         }
-        try (Stream<Path> walk = Files.walk(srcRoot)) {
-            return walk
-                .filter(p -> p.getFileName().toString().endsWith(".java"))
-                // App first where one exists — it is the fork's entry point and the
-                // most useful thing to open — then shortest-path first, so the type
-                // nearest the source root wins over one buried in a sub-package.
-                .sorted(Comparator
-                    .comparingInt((Path p) -> "App.java".equals(p.getFileName().toString()) ? 0 : 1)
-                    .thenComparingInt(p -> srcRoot.relativize(p).getNameCount())
-                    .thenComparing(p -> srcRoot.relativize(p).toString()))
-                .findFirst()
-                .map(p -> {
-                    String rel = srcRoot.relativize(p).toString();
-                    return rel.substring(0, rel.length() - ".java".length())
-                        .replace(java.io.File.separatorChar, '.');
-                })
-                .orElse("");
+        if (!Files.isDirectory(slugDir)) {
+            return roots;
+        }
+        try (Stream<Path> walk = Files.walk(slugDir)) {
+            walk.filter(Files::isDirectory)
+                .filter(p -> p.endsWith(Path.of("src", "main", "java")))
+                .filter(p -> !p.equals(flat))
+                .sorted(Comparator.comparing(Path::toString))
+                .forEach(roots::add);
         } catch (IOException e) {
-            return "";
+            // An unreadable tree yields the roots found so far. Returning none here
+            // would be indistinguishable from a slug that genuinely has no sources.
+            return roots;
         }
+        return roots;
+    }
+
+    /**
+     * The entry point, or {@code ""} when the slug genuinely has no Java source.
+     *
+     * <p>{@code naked-objects} is the one such pattern at this pin — a README and an
+     * {@code etc} directory, no sources anywhere. The caller omits the field entirely
+     * rather than writing {@code ""}, because an empty address on a row reads as a value
+     * and this project has shipped that confusion three times in one stage.</p>
+     */
+    private String referenceTypeName(String slug) {
+        List<Path> roots = sourceRoots(slug);
+        String best = null;
+        int bestRank = Integer.MAX_VALUE;
+        int bestDepth = Integer.MAX_VALUE;
+        for (Path srcRoot : roots) {
+            try (Stream<Path> walk = Files.walk(srcRoot)) {
+                for (Path p : walk.filter(x -> x.getFileName().toString().endsWith(".java"))
+                                  .sorted(Comparator.comparing(x -> srcRoot.relativize(x).toString()))
+                                  .toList()) {
+                    // App first where one exists — it is the fork's entry point and the
+                    // most useful thing to open — then shortest-path first, so the type
+                    // nearest a source root wins over one buried in a sub-package.
+                    int rank = "App.java".equals(p.getFileName().toString()) ? 0 : 1;
+                    int depth = srcRoot.relativize(p).getNameCount();
+                    if (rank < bestRank || (rank == bestRank && depth < bestDepth)) {
+                        String rel = srcRoot.relativize(p).toString();
+                        best = rel.substring(0, rel.length() - ".java".length())
+                            .replace(java.io.File.separatorChar, '.');
+                        bestRank = rank;
+                        bestDepth = depth;
+                    }
+                }
+            } catch (IOException e) {
+                // Skip an unreadable root; another may still answer.
+                continue;
+            }
+        }
+        return best == null ? "" : best;
     }
 
     /**
@@ -569,7 +617,14 @@ public final class CatalogExtractor {
             // below so the 187 rows are re-hashed ONCE: hashOf digests the entire row,
             // so every field added or renamed here costs a full supersede-and-rewrite
             // of all of them, and two separate landings would cost that twice.
-            n.put("entry_point_class", r.entryPointClass());
+            // ABSENT, not "". naked-objects is the one pattern at this pin with no Java
+            // source anywhere — a README and an `etc` directory — so it has no entry
+            // point, and an empty string on the row reads as a value. Same rule as
+            // `category` and `cause` above; this is the third place in one stage where
+            // writing absence as presence would have shipped a wrong answer.
+            if (r.entryPointClass() != null && !r.entryPointClass().isBlank()) {
+                n.put("entry_point_class", r.entryPointClass());
+            }
             // S10.1a — the pattern's OWN classification, which the source declares and
             // this extractor discarded until now. Harald, 2026-08-30: "we have different
             // patterns for different situations: create an object -> creational pattern

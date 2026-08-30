@@ -112,6 +112,64 @@ class CatalogExtractorOriginTest {
                 + " this stage exists to end");
     }
 
+    /**
+     * A MULTI-MODULE slug resolves from its nested source root.
+     *
+     * <p><b>Measured 2026-08-30 at pin {@code 22a34127d}:</b> seven of the fork's 187
+     * patterns put their sources in {@code <slug>/<module>/src/main/java} and have no
+     * {@code <slug>/src/main/java} at all — the four microservices patterns,
+     * onion-architecture and polling-publisher among them, carrying 7 to 15 source files
+     * each. The resolver looked only at the flat layout, found nothing for all seven, and
+     * returned the empty string, which then travelled onto the row AS A VALUE.</p>
+     *
+     * <p>The fixture has ONLY the nested layout, so a resolver that still checks just the
+     * flat path fails here rather than passing on the other shape.</p>
+     */
+    @Test
+    void aMultiModuleSlugResolvesFromItsNestedSourceRoot(@TempDir Path root) throws Exception {
+        Path slug = root.resolve("microservices-aggregrator");
+        Files.writeString(Files.createDirectories(slug).resolve("README.md"), README,
+            StandardCharsets.UTF_8);
+        Path pkg = slug.resolve("aggregator-service/src/main/java/com/iluwatar/aggregator");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("App.java"),
+            "package com.iluwatar.aggregator;\n\npublic final class App { }\n",
+            StandardCharsets.UTF_8);
+
+        CatalogExtractor.Record r = onlyRecord(root, "java-design-patterns");
+
+        assertEquals("com.iluwatar.aggregator.App", r.entryPointClass(),
+            "the sources are one module deeper than the flat layout. Looking only at"
+                + " <slug>/src/main/java found nothing for seven real patterns and wrote an"
+                + " empty string onto each row");
+    }
+
+    /**
+     * A slug with NO Java source carries no entry-point key at all.
+     *
+     * <p>{@code naked-objects} is exactly this at the pin: a README and an {@code etc}
+     * directory, no sources anywhere. An empty string on the row reads as a value, so the
+     * snapshot omits the field — the same rule as {@code category} and {@code cause}.</p>
+     */
+    @Test
+    void aSlugWithNoSourcesCarriesNoEntryPointKey(@TempDir Path root) throws Exception {
+        Path slug = root.resolve("naked-objects");
+        Files.writeString(Files.createDirectories(slug).resolve("README.md"), README,
+            StandardCharsets.UTF_8);
+        Files.createDirectories(slug.resolve("etc"));
+
+        CatalogExtractor extractor =
+            new CatalogExtractor(root, "java-design-patterns", "test-authority", Map.of());
+        List<CatalogExtractor.Record> records = new ArrayList<>();
+        extractor.extract(0, records);
+        var row = extractor.snapshot(records, new com.fasterxml.jackson.databind.ObjectMapper())
+            .path("patterns").path(0);
+
+        assertTrue(row.path("entry_point_class").isMissingNode(),
+            () -> "no sources means no entry point, and the field must be ABSENT rather"
+                + " than \"\" — an empty address on a row reads as a value. Row: " + row);
+    }
+
     @Test
     void theProvenanceNamesTheOriginsOwnAuthority(@TempDir Path root) throws Exception {
         fixture(root);
