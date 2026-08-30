@@ -105,7 +105,7 @@ class CatalogExtractorOriginTest {
 
         CatalogExtractor.Record r = onlyRecord(root, "jawata-samples");
 
-        assertEquals("org.example.deliberately.other.OrderReport", r.referenceType(),
+        assertEquals("org.example.deliberately.other.OrderReport", r.entryPointClass(),
             "the reference type must be READ off the tree. The slug is `order-report`, so a"
                 + " composer built from it would answer with an `...orderreport` package that"
                 + " does not exist — an address that does not open, which is the whole defect"

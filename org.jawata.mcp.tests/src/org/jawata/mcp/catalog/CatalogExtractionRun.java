@@ -74,7 +74,7 @@ class CatalogExtractionRun {
                     + (r.situationReviewed() ? "  [reviewed]" : "  [DRAFT]"));
                 System.out.println("situation : " + r.situation());
                 System.out.println("principle : " + r.principle());
-                System.out.println("ref type  : " + r.referenceType());
+                System.out.println("ref type  : " + r.entryPointClass());
                 System.out.println("details   : "
                     + r.details().replace("\n", "\n            "));
             }

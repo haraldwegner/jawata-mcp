@@ -154,7 +154,7 @@ public final class CatalogExtractor {
      */
     public record Record(String slug, String situation, boolean situationReviewed,
                          String principle, String details, String sourceRef,
-                         String referenceType, String category, List<String> tags) {
+                         String entryPointClass, String category, List<String> tags) {
     }
 
     /** What the run saw, so a count is never inferred from the output's length. */
@@ -469,7 +469,30 @@ public final class CatalogExtractor {
             n.put("principle", r.principle());
             n.put("details", r.details());
             n.put("source_ref", r.sourceRef());
-            n.put("reference_type", r.referenceType());
+            // S10.1c: this holds `com.iluwatar.builder.App` — the Java entry point,
+            // never a classification. Under its old name, `reference_type`, it was read
+            // as the pattern's family by the one person who looked, which is the whole
+            // reason S10.1 exists. Renamed at the same regeneration as the two fields
+            // below so the 187 rows are re-hashed ONCE: hashOf digests the entire row,
+            // so every field added or renamed here costs a full supersede-and-rewrite
+            // of all of them, and two separate landings would cost that twice.
+            n.put("entry_point_class", r.entryPointClass());
+            // S10.1a — the pattern's OWN classification, which the source declares and
+            // this extractor discarded until now. Harald, 2026-08-30: "we have different
+            // patterns for different situations: create an object -> creational pattern
+            // like builder or factory. So you can distinguish".
+            //
+            // ABSENT IS WRITTEN AS ABSENT. Three of the 188 upstream READMEs declare no
+            // category; they get no key rather than a default. A row filed under a family
+            // nobody assigned it is worse than one carrying none, because "we do not
+            // know" is an answer a reader can act on and a wrong family is not.
+            if (r.category() != null && !r.category().isBlank()) {
+                n.put("category", r.category());
+            }
+            if (!r.tags().isEmpty()) {
+                ArrayNode tags = n.putArray("tags");
+                r.tags().forEach(tags::add);
+            }
             arr.add(n);
         }
         return root;

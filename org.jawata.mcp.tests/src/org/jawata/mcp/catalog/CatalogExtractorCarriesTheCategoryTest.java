@@ -1,5 +1,8 @@
 package org.jawata.mcp.catalog;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -135,5 +138,89 @@ class CatalogExtractorCarriesTheCategoryTest {
         assertTrue(records.get(0).category() == null || records.get(0).category().isBlank(),
             "and it is UNCATEGORISED rather than defaulted into somebody's family: "
                 + records.get(0).category());
+    }
+
+    /**
+     * THE WIRING HALF, and it is the half that was missing.
+     *
+     * <p>The three tests above assert the category reaches the {@code Record}. All three
+     * passed while {@code snapshot} emitted seven fields and neither new one — so the
+     * classification was parsed, held in memory, and dropped on the floor one method
+     * later. Nothing downstream could have seen it, and no test said so.</p>
+     *
+     * <p>That is the shape this project has shipped before: a capability built, tested at
+     * the point it is produced, and never asserted at the point it is CONSUMED. The
+     * snapshot is the only artifact that leaves this class, so it is the only place the
+     * claim "the pattern keeps its family" can actually be checked.</p>
+     */
+    @Test
+    @DisplayName("S10.1a: the category and tags reach the SNAPSHOT, not just the record")
+    void the_classification_reaches_the_snapshot(@TempDir Path root) throws IOException {
+        writeReadme(root, "builder",
+            "title: \"Builder Pattern in Java\"\ncategory: Creational\n"
+                + "tag: [Gang of Four, Instantiation]");
+
+        List<CatalogExtractor.Record> records = extract(root);
+        ObjectMapper json = new ObjectMapper();
+        JsonNode row = new CatalogExtractor(root, "java-design-patterns", "22a34127", Map.of())
+            .snapshot(records, json).path("patterns").path(0);
+
+        assertEquals("Creational", row.path("category").asText(null),
+            () -> "the declared family must be IN the snapshot — the record holding it is"
+                + " not the deliverable, because nothing downstream reads a record. Row: "
+                + row);
+        assertEquals(List.of("Gang of Four", "Instantiation"),
+            List.of(row.path("tags").get(0).asText(), row.path("tags").get(1).asText()),
+            () -> "and the tags with it, in declaration order. Row: " + row);
+    }
+
+    /**
+     * The absent case, at the snapshot rather than the record — for the same reason.
+     *
+     * <p>Three of the 188 upstream READMEs declare no category. The row must carry NO
+     * category key rather than an empty string: a consumer filtering on presence and a
+     * consumer filtering on non-emptiness then agree, and neither can read {@code ""} as
+     * a family named "".</p>
+     */
+    @Test
+    @DisplayName("S10.1a: an uncategorised pattern gets NO category key, not an empty one")
+    void an_uncategorised_pattern_carries_no_key(@TempDir Path root) throws IOException {
+        writeReadme(root, "mystery", "title: \"Mystery Pattern\"\nlanguage: en");
+
+        List<CatalogExtractor.Record> records = extract(root);
+        ObjectMapper json = new ObjectMapper();
+        JsonNode row = new CatalogExtractor(root, "java-design-patterns", "22a34127", Map.of())
+            .snapshot(records, json).path("patterns").path(0);
+
+        assertTrue(row.path("category").isMissingNode(),
+            () -> "an absent category is absent, never \"\": " + row);
+        assertTrue(row.path("tags").isMissingNode(),
+            () -> "and an empty tag list writes no array at all: " + row);
+    }
+
+    /**
+     * S10.1c — the misnamed field, asserted at the wire.
+     *
+     * <p>{@code reference_type} holds {@code com.iluwatar.builder.App}: an entry-point
+     * class, not a classification. It was read as the family by the one person who
+     * looked, which is how S10.1 started. The rename is asserted on the snapshot because
+     * the snapshot is what a later reader opens.</p>
+     */
+    @Test
+    @DisplayName("S10.1c: the entry-point class is spelled as what it is")
+    void the_entry_point_class_is_not_called_a_reference_type(@TempDir Path root)
+            throws IOException {
+        writeReadme(root, "builder", "title: \"Builder\"\ncategory: Creational");
+
+        List<CatalogExtractor.Record> records = extract(root);
+        ObjectMapper json = new ObjectMapper();
+        JsonNode row = new CatalogExtractor(root, "java-design-patterns", "22a34127", Map.of())
+            .snapshot(records, json).path("patterns").path(0);
+
+        assertTrue(row.path("reference_type").isMissingNode(),
+            () -> "the old spelling must be GONE, not carried alongside — two names for one"
+                + " field is how the next reader picks the wrong one. Row: " + row);
+        assertTrue(row.has("entry_point_class"),
+            () -> "and the field itself must still be there under its real name: " + row);
     }
 }
