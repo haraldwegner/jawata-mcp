@@ -26,6 +26,31 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
+    # THE PATCH-STREAK GATE — Sprint 28d S9a.2. FIRST, deliberately.
+    #
+    # It has the same blocking power anywhere before "Create GitHub Release",
+    # but placed here it costs seconds instead of running after the 75-minute
+    # test step. A gate that fires late is still correct and still wastes the
+    # build it was meant to precede.
+    #
+    # Two releases in this project have been runs of patches where each fix
+    # broke something DIFFERENT from the last — 2026-08-13 (nine tags) and
+    # 2026-08-29 (four). Both were one design flaw being moved around. This
+    # stops the second release of such a run and asks for the architect.
+    #
+    # STREAK_OVERRIDE comes from a repository variable Harald sets, NOT from
+    # anything the releasing agent can write. An escape hatch controlled by the
+    # gated party is a formality, not a control.
+    - name: Patch-streak gate
+      if: startsWith(github.ref, 'refs/tags/')
+      env:
+        STREAK_OVERRIDE: ${{ vars.STREAK_OVERRIDE }}
+      run: |
+        # checkout@v5 clones shallow with no tags, and the gate is worthless
+        # without them — it would see an empty window and pass everything.
+        git fetch --tags --quiet --unshallow 2>/dev/null || git fetch --tags --quiet
+        bash build/patch-streak-gate.sh "${GITHUB_REF_NAME}" --explain
+
     - name: Set up JDK 21
       uses: actions/setup-java@v5
       with:
