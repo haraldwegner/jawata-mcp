@@ -28,10 +28,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>What was measured, 2026-08-30</h2>
  *
- * <p><b>Upstream:</b> 185 of 188 pattern READMEs declare {@code category:} in their
- * frontmatter, across 16 values — Behavioral 40, Structural 34, Architectural 27,
- * Concurrency 22, Creational 14, then Data access, Functional, Resilience, Integration,
- * Testing, Messaging and the rest. They carry {@code tag:} as well.</p>
+ * <p><b>Upstream, CORRECTED 2026-08-30 by measuring it.</b> This paragraph first said
+ * "185 of 188 pattern READMEs declare {@code category:}, across 16 values". There are
+ * <b>187</b> READMEs and <b>every one of them names a family</b>, across 15 values —
+ * Behavioral 41, Structural 35, Architectural 27, Concurrency 22, Creational 14, Data
+ * access 12, Functional 8, Integration 6, Resilience 6, Messaging 4, Testing 4,
+ * Performance optimization 3, Resource management 3, Idiom 1, Service Discovery 1. 185
+ * spell the key {@code category:}; two spell it {@code categories:}. They carry a tag
+ * list as well, under {@code tag:} (182) or {@code tags:} (5).</p>
+ *
+ * <p>The original numbers are quoted rather than overwritten because the correction IS
+ * the finding: an exact key match reported "the author declared nothing" about authors
+ * who had declared it.</p>
  *
  * <p><b>Downstream:</b> the 187 stored rows carry {@code slug, type, situation,
  * principle, details, source_ref, reference_type, cause}. No category. No tags. And two
@@ -251,7 +259,9 @@ class CatalogExtractorCarriesTheCategoryTest {
     /**
      * The absent case, at the snapshot rather than the record — for the same reason.
      *
-     * <p>Three of the 188 upstream READMEs declare no category. The row must carry NO
+     * <p>No upstream README actually lacks a category — the "three" this comment once
+     * claimed were two spelling the key {@code categories:} plus one miscount. The case is
+     * kept anyway, because it is the CONTRACT and not a census: the row must carry NO
      * category key rather than an empty string: a consumer filtering on presence and a
      * consumer filtering on non-emptiness then agree, and neither can read {@code ""} as
      * a family named "".</p>

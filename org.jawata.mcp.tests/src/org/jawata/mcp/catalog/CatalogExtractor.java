@@ -155,18 +155,25 @@ public final class CatalogExtractor {
      * create an object -&gt; creational pattern like builder or factory. So you can
      * distinguish"</i>.</p>
      *
-     * <p>185 of the 188 upstream READMEs declare {@code category:} across 16 values
-     * (Behavioral 40, Structural 34, Architectural 27, Concurrency 22, Creational 14,
-     * …), and none of it reached the store. Two existing fields look like they might
-     * have served and do not: {@code type} is the constant {@code reference} on every
-     * row, and {@code referenceType} — despite the name — holds the Java entry-point
-     * class. Nor could it be recovered downstream: 170 of 187 rows never name a family
-     * anywhere in their prose.</p>
+     * <p><b>CORRECTED 2026-08-30 by measuring it.</b> This said "185 of the 188 upstream
+     * READMEs declare {@code category:} across 16 values". There are <b>187</b> READMEs
+     * and <b>all 187 name a family</b>, across 15 values (Behavioral 41, Structural 35,
+     * Architectural 27, Concurrency 22, Creational 14, …): 185 spell the key
+     * {@code category:} and two spell it {@code categories:}. None of it reached the
+     * store. Two existing fields look like they might have served and do not:
+     * {@code type} is the constant {@code reference} on every row, and the field once
+     * called {@code referenceType} — despite the name — holds the Java entry-point class
+     * (now {@code entryPointClass}). Nor could it be recovered downstream: 170 of 187
+     * rows never name a family anywhere in their prose, which is why it has to come from
+     * the frontmatter.</p>
      *
-     * <p><b>{@code category} is nullable on purpose.</b> Three READMEs declare none.
-     * Defaulting them would file three patterns under a family nobody assigned them,
-     * and a wrong classification is worse than an absent one — an absent one can be
-     * answered with "we do not know".</p>
+     * <p><b>{@code category} is nullable on purpose, though nothing upstream currently
+     * needs it to be.</b> No README at this pin declares no family — the "three" this
+     * comment once claimed were the two plural spellings plus a miscount. The nullable
+     * contract stands anyway, because it is a rule and not a census: defaulting an
+     * undeclared pattern would file it under a family nobody assigned it, and a wrong
+     * classification is worse than an absent one — an absent one can be answered with
+     * "we do not know".</p>
      */
     public record Record(String slug, String situation, boolean situationReviewed,
                          String cause, String principle, String details, String sourceRef,
