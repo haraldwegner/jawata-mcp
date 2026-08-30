@@ -222,8 +222,8 @@ public final class CatalogExtractor {
                 detailsOf(slug, when, tradeoffs),
                 "catalogue:" + namespace + "/" + slug + "/README.md",
                 referenceType(readme, slug),
-                frontmatterScalar(text, "category"),
-                frontmatterList(text, "tag")));
+                categoryOf(text),
+                tagsOf(text)));
             built++;
         }
         return new Report(files.size(), built, unreviewed, missing);
@@ -245,6 +245,52 @@ public final class CatalogExtractor {
         }
         int end = text.indexOf("\n---", 4);
         return end < 0 ? "" : text.substring(4, end + 1);
+    }
+
+    /**
+     * The pattern's declared family, under EITHER spelling the fork uses.
+     *
+     * <p><b>Measured at pin {@code 22a34127d}, 2026-08-30, over all 187 READMEs:</b>
+     * 185 write {@code category:}, 2 write {@code categories:} (component →
+     * Structural, serialized-entity → Data access), and <b>none writes neither</b>.
+     * Both plural values are plain scalars, not lists.</p>
+     *
+     * <p><b>Why the synonym rather than "those two have no category".</b> The key
+     * match is exact — {@code startsWith(key + ":")} — so reading only the singular
+     * reports {@code null} for two patterns whose family is sitting in the file. That
+     * is not an absent category, it is a MISSED one, and the two are opposite kinds of
+     * answer: {@code null} means "upstream did not say", and saying it about an author
+     * who did say is a wrong answer wearing a correct one's shape. The plan recorded
+     * "185 of 188 declare a category, 3 have none" — wrong on both halves; there are
+     * 187 READMEs and every one of them names a family.</p>
+     *
+     * <p>The singular wins where a README somehow carried both, because it is the
+     * fork's own documented key and the 185-file majority.</p>
+     */
+    private static String categoryOf(String text) {
+        String singular = frontmatterScalar(text, "category");
+        return singular != null ? singular : frontmatterScalar(text, "categories");
+    }
+
+    /**
+     * The pattern's declared tags, under EITHER spelling — the same split as
+     * {@link #categoryOf}, found the same way and worth stating separately because
+     * the majority runs the other direction.
+     *
+     * <p><b>Measured at pin {@code 22a34127d} over all 187 READMEs:</b> 182 write
+     * {@code tag:} and 5 write {@code tags:} (client-session, context-object,
+     * model-view-intent, notification, page-controller). <b>None writes neither.</b>
+     * So the singular is the majority key here while the PLURAL is the majority key
+     * for the family — which is why neither can be assumed from the other.</p>
+     *
+     * <p>Reading one spelling returned an empty list for the other five, and an empty
+     * list is how this record says "the author declared no tags". Seven of 187 rows
+     * carried that wrong answer before this: five from the spelling, two more from a
+     * blank line the block reader broke on.</p>
+     */
+    private static List<String> tagsOf(String text) {
+        List<String> singular = frontmatterList(text, "tag");
+        return singular.isEmpty() ? frontmatterList(text, "tags") : singular;
     }
 
     /** A scalar frontmatter value ({@code category: Creational}), or null if absent. */
@@ -294,8 +340,29 @@ public final class CatalogExtractor {
                 }
                 return out;
             }
+            // BLANK LINES BETWEEN THE KEY AND ITS FIRST ITEM ARE SKIPPED, and this
+            // is a measured defect rather than defensive coding. Two of the fork's
+            // 187 READMEs — thread-pool-executor and thread-specific-storage — write
+            //
+            //     tag:
+            //                     <- this line
+            //     - Performance
+            //
+            // and the original loop broke on the first non-item line, which was that
+            // blank. Both returned an EMPTY list while declaring five tags each: the
+            // exact failure this method's own javadoc names two paragraphs up, "a
+            // wrong answer wearing the shape of a correct one". It said the right
+            // thing and did the wrong one.
+            //
+            // Blanks INSIDE the list are skipped for the same reason. The list still
+            // ends at the first non-blank line that is not an item, so a following
+            // key or the closing `---` terminates it and no other key's items can be
+            // absorbed.
             for (int j = i + 1; j < lines.length; j++) {
                 String item = lines[j].strip();
+                if (item.isEmpty()) {
+                    continue;
+                }
                 if (!item.startsWith("- ")) {
                     break;
                 }

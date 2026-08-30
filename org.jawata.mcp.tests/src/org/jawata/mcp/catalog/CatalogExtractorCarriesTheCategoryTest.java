@@ -141,6 +141,80 @@ class CatalogExtractorCarriesTheCategoryTest {
     }
 
     /**
+     * THE FORK SPELLS THE KEY TWO WAYS, and reading one is a wrong answer.
+     *
+     * <p>Measured over all 187 READMEs at pin {@code 22a34127d}: 185 write
+     * {@code category:}, two write {@code categories:} — component (Structural) and
+     * serialized-entity (Data access) — and none writes neither. An exact key match
+     * on the singular returns {@code null} for those two, which is indistinguishable
+     * from "upstream declared no family" while the family sits in the file.</p>
+     *
+     * <p>The fixture uses the PLURAL only, so the test fails if the synonym is
+     * dropped; a fixture carrying both would pass on the singular alone.</p>
+     */
+    @Test
+    @DisplayName("S10.1a: the plural spelling the fork also uses is read, not missed")
+    void the_plural_key_spelling_is_read_too(@TempDir Path root) throws IOException {
+        writeReadme(root, "component", "title: \"Component\"\ncategories: Structural");
+
+        List<CatalogExtractor.Record> records = extract(root);
+        assertEquals("Structural", records.get(0).category(),
+            () -> "component declares `categories: Structural` upstream. Reading only the"
+                + " singular reports no family for a pattern that named one — a missed"
+                + " category, not an absent one, and the two mean opposite things");
+    }
+
+    /**
+     * The SAME split on the tag key, and the majority runs the other way.
+     *
+     * <p>Measured at the pin: 182 READMEs write {@code tag:}, 5 write {@code tags:}
+     * (client-session, context-object, model-view-intent, notification,
+     * page-controller), none writes neither. So the plural is the minority here and
+     * the majority for the family — neither can be assumed from the other, which is
+     * why both keys get their own test rather than one shared one.</p>
+     */
+    @Test
+    @DisplayName("S10.1a: the plural tag key is read too")
+    void the_plural_tag_key_is_read_too(@TempDir Path root) throws IOException {
+        writeReadme(root, "client-session",
+            "title: \"Client Session\"\ncategory: Behavioral\ntags:\n  - Client-server\n  - State tracking");
+
+        List<CatalogExtractor.Record> records = extract(root);
+        assertEquals(List.of("Client-server", "State tracking"), records.get(0).tags(),
+            () -> "an empty list is how this record says 'the author declared no tags'."
+                + " Five READMEs declared tags under the plural key and got that answer");
+    }
+
+    /**
+     * A BLANK LINE BEFORE THE FIRST ITEM ENDED THE LIST, and two patterns lost five
+     * tags each to it.
+     *
+     * <p>thread-pool-executor and thread-specific-storage write {@code tag:}, then a
+     * blank line, then their items. The block reader broke on the first non-item line
+     * — the blank — and returned empty. Both declared five tags and the snapshot said
+     * they had none.</p>
+     *
+     * <p>The fixture reproduces the exact upstream shape. The control is the closing
+     * assertion: the list must still STOP at a following key, or blank-skipping would
+     * swallow the next field's items.</p>
+     */
+    @Test
+    @DisplayName("S10.1a: a blank line before the first item does not end the list")
+    void a_blank_line_before_the_items_does_not_end_the_list(@TempDir Path root)
+            throws IOException {
+        writeReadme(root, "thread-pool-executor",
+            "title: \"Thread-Pool Executor\"\ncategory: Concurrency\ntag:\n\n- Performance\n- Scalability");
+
+        List<CatalogExtractor.Record> records = extract(root);
+        assertEquals(List.of("Performance", "Scalability"), records.get(0).tags(),
+            () -> "the items follow a blank line, exactly as two upstream READMEs write"
+                + " them; breaking on the blank reported five declared tags as none");
+        assertEquals("Concurrency", records.get(0).category(),
+            () -> "and the control: the list must still stop at the next key rather than"
+                + " running on through the rest of the frontmatter");
+    }
+
+    /**
      * THE WIRING HALF, and it is the half that was missing.
      *
      * <p>The three tests above assert the category reaches the {@code Record}. All three
