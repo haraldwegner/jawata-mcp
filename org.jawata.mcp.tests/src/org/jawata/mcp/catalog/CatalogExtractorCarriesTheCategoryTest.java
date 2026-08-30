@@ -295,6 +295,17 @@ class CatalogExtractorCarriesTheCategoryTest {
     void the_entry_point_class_is_not_called_a_reference_type(@TempDir Path root)
             throws IOException {
         writeReadme(root, "builder", "title: \"Builder\"\ncategory: Creational");
+        // A REAL SOURCE FILE, because the second assertion needs the field to be
+        // PRESENT. This test first shipped against a README-only fixture and went red
+        // the moment `77e2277` made the snapshot omit the field for a slug with no Java
+        // source — which was the correct behaviour meeting an assertion that assumed the
+        // old one. Asserting "the new name is there" over a fixture that cannot produce
+        // it was proving nothing even while it passed.
+        Path pkg = root.resolve("builder/src/main/java/com/iluwatar/builder");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("App.java"),
+            "package com.iluwatar.builder;\n\npublic final class App { }\n",
+            StandardCharsets.UTF_8);
 
         List<CatalogExtractor.Record> records = extract(root);
         ObjectMapper json = new ObjectMapper();
