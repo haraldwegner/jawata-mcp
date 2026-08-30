@@ -45,6 +45,11 @@ class CatalogExtractionRun {
 
         Map<String, String> reviewed =
             CatalogExtractor.readReviewed(out.resolve("situations.json"), JSON);
+        // The second curated input. It exists because the 187 causes were authored
+        // straight into patterns.json and lived in no other file, so this run could not
+        // reproduce its own committed artifact — every regeneration dropped all of them.
+        Map<String, String> causes =
+            CatalogExtractor.readCurated(out.resolve("causes.json"), JSON, "causes");
         // The fork's own identity, now supplied rather than hardcoded in the
         // extractor. Its licence line stays: attribution is a condition of
         // redistributing that prose, and S5 generalised the extractor without
@@ -53,7 +58,7 @@ class CatalogExtractionRun {
         String licence = System.getProperty("jawata.catalog.licence",
             "MIT (fork of iluwatar/java-design-patterns), attribution retained.");
         CatalogExtractor extractor =
-            new CatalogExtractor(forkRoot, namespace, commit, licence, reviewed);
+            new CatalogExtractor(forkRoot, namespace, commit, licence, reviewed, causes);
 
         List<CatalogExtractor.Record> records = new ArrayList<>();
         CatalogExtractor.Report report = extractor.extract(sample, records);
@@ -61,6 +66,9 @@ class CatalogExtractionRun {
         System.out.println("[CATALOG] readmes seen: " + report.readmesSeen()
             + " | records built: " + report.recordsBuilt()
             + " | reviewed situations available: " + reviewed.size()
+            + " | curated causes available: " + causes.size()
+            + " | records WITHOUT a cause: "
+            + records.stream().filter(r -> r.cause() == null || r.cause().isBlank()).count()
             + " | still on a DRAFT: " + report.unreviewed().size()
             + " | missing a template section: " + report.missingSection().size());
         if (!report.missingSection().isEmpty()) {

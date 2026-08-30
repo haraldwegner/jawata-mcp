@@ -90,6 +90,7 @@ public final class CatalogExtractor {
     private final String pinnedCommit;
     private final String licenceNote;
     private final Map<String, String> reviewedSituations;
+    private final Map<String, String> curatedCauses;
 
     /**
      * Sprint 28d Stage 6 / S5 — the origin-agnostic form.
@@ -109,7 +110,7 @@ public final class CatalogExtractor {
      */
     public CatalogExtractor(Path root, String namespace, String authorityRef,
                             Map<String, String> reviewedSituations) {
-        this(root, namespace, authorityRef, null, reviewedSituations);
+        this(root, namespace, authorityRef, null, reviewedSituations, Map.of());
     }
 
     /**
@@ -123,11 +124,26 @@ public final class CatalogExtractor {
      */
     public CatalogExtractor(Path root, String namespace, String authorityRef,
                             String licenceNote, Map<String, String> reviewedSituations) {
+        this(root, namespace, authorityRef, licenceNote, reviewedSituations, Map.of());
+    }
+
+    /**
+     * As above, plus the curated causes.
+     *
+     * @param curatedCauses slug -&gt; the design FORCE this pattern answers. Absent for a
+     *     slug means the row carries no cause, which is a normal state and NOT a default:
+     *     an invented cause would be ranked on by the recall differential, so a wrong one
+     *     is worse than none. See {@link #readCurated} for why this input exists at all
+     */
+    public CatalogExtractor(Path root, String namespace, String authorityRef,
+                            String licenceNote, Map<String, String> reviewedSituations,
+                            Map<String, String> curatedCauses) {
         this.forkRoot = root;
         this.namespace = namespace;
         this.pinnedCommit = authorityRef;
         this.licenceNote = licenceNote;
         this.reviewedSituations = Map.copyOf(reviewedSituations);
+        this.curatedCauses = Map.copyOf(curatedCauses);
     }
 
     /**
@@ -153,7 +169,7 @@ public final class CatalogExtractor {
      * answered with "we do not know".</p>
      */
     public record Record(String slug, String situation, boolean situationReviewed,
-                         String principle, String details, String sourceRef,
+                         String cause, String principle, String details, String sourceRef,
                          String entryPointClass, String category, List<String> tags) {
     }
 
@@ -218,6 +234,7 @@ public final class CatalogExtractor {
                 slug,
                 reviewed != null ? reviewed : draftSituation(when),
                 reviewed != null,
+                curatedCauses.get(slug),
                 principleOf(intent),
                 detailsOf(slug, when, tradeoffs),
                 "catalogue:" + namespace + "/" + slug + "/README.md",
@@ -533,6 +550,15 @@ public final class CatalogExtractor {
             // re-hashes every record and rewrites all 187 rows.
             n.put("type", "reference");
             n.put("situation", r.situation());
+            // The design FORCE — read by CatalogueManifest.entryFor and ranked on by the
+            // recall differential when two patterns share a situation. It existed only in
+            // the committed snapshot until now, so re-running this extraction DELETED all
+            // 187 of them, invisibly, until a recall stopped discriminating. Absent stays
+            // absent: an invented cause would be ranked on, and a wrong one is worse than
+            // none.
+            if (r.cause() != null && !r.cause().isBlank()) {
+                n.put("cause", r.cause());
+            }
             n.put("principle", r.principle());
             n.put("details", r.details());
             n.put("source_ref", r.sourceRef());
@@ -567,13 +593,34 @@ public final class CatalogExtractor {
 
     /** slug -&gt; reviewed situation, from the committed curation file. */
     public static Map<String, String> readReviewed(Path file, ObjectMapper json) throws IOException {
+        return readCurated(file, json, "situations");
+    }
+
+    /**
+     * slug -&gt; a hand-curated value, under the named top-level object.
+     *
+     * <p><b>Why there is a second curated input.</b> The 187 committed rows each carry a
+     * {@code cause} — the design FORCE the pattern answers, which is what a recall
+     * differential discriminates on when two patterns share a situation (Factory and
+     * Builder both answer "constructing an object"). Those causes were authored straight
+     * into {@code patterns.json} and existed in no other file, so this extractor could
+     * not reproduce its own committed artifact: every regeneration silently dropped all
+     * 187 of them, and the loss would have been invisible until a recall stopped
+     * discriminating.</p>
+     *
+     * <p>They now live in {@code causes.json} beside {@code situations.json} and are read
+     * the same way, because two curated inputs handled two different ways is how the next
+     * person picks the wrong one.</p>
+     */
+    public static Map<String, String> readCurated(Path file, ObjectMapper json, String key)
+            throws IOException {
         if (!Files.isRegularFile(file)) {
             return Map.of();
         }
         Map<String, String> out = new LinkedHashMap<>();
         JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
-        JsonNode situations = root.path("situations");
-        situations.fieldNames().forEachRemaining(k -> out.put(k, situations.get(k).asText()));
+        JsonNode values = root.path(key);
+        values.fieldNames().forEachRemaining(k -> out.put(k, values.get(k).asText()));
         return out;
     }
 }
