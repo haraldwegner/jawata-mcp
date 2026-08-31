@@ -20,7 +20,8 @@ declares the design that cures it, and 11 of its 12 declared designs are fork
 folders. The hypothesis was *"a pattern's own folder is the worked example of
 that cure, so the smell it cures should be rarer there."*
 
-**That hypothesis is wrong, and finding out is one of this stage's two real
+**That hypothesis is unsound as a general rule — though its one well-powered
+instance fits it — and finding out is one of this stage's two real
 results.** See §3.
 
 ---
@@ -99,7 +100,7 @@ it in a private static nested class. Two of the corpus's six singletons use it.
 
 ---
 
-## 3. RESULT TWO — the derived axis, and why the hypothesis failed
+## 3. RESULT TWO — the derived axis, and why it does not generalise
 
 **Regenerate with:** `build/calibration-density.py <findings.tsv>`. Its method,
 stated because the table cannot be re-derived without it: the rate is taken over
