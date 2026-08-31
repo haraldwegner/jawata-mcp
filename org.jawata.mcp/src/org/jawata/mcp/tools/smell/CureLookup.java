@@ -104,6 +104,17 @@ public final class CureLookup {
                      .append(String.join(" / ", fallbackRecipes)).append('.');
                 }
             }
+            // Stage 11a — the DERIVED tier, appended so every branch above keeps
+            // its pinned wording. A kind with nothing declared stays BLANK: the
+            // blank is a contract (OcpDetector's fallback branch keys on it), and
+            // a tier sentence on an empty answer would flip that branch for the
+            // one case where the table has nothing to derive from.
+            if (b.length() > 0) {
+                CureTier.Derivation tier = CureTier.derive(kind);
+                b.append(tier.tier() == CureTier.Tier.PERFORM
+                    ? " TIER: PERFORM — run refactor_to_pattern kind=" + tier.recipe() + "."
+                    : " TIER: ADVISE — " + tier.reason() + ".");
+            }
             return b.toString();
         }
     }

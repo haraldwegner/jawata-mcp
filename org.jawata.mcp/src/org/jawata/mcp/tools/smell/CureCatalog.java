@@ -102,6 +102,33 @@ public final class CureCatalog {
             new Cure("inline_singleton", "design:singleton")));
         m.put("long_method", List.of(
             new Cure("compose_method", "design:compose-method")));
+
+        // Stage 11a — the table's two invariants are UNCONSTRUCTIBLE rather than
+        // merely detectable (the same move C6 made for namespace collision):
+        //   1. the pair (kind, operation) is the ENTRY IDENTITY — declared at
+        //      most once, or two rows claim one route set;
+        //   2. every recipe names a kind the front door PUBLISHES — a step no
+        //      registered operation backs would read as runnable and refuse at
+        //      the front door, which is the drift CureTier's missing-step branch
+        //      exists to surface at lookup time. Here it cannot even load.
+        // The registry is the tool's own list through its accessor, never a copy.
+        java.util.Set<String> published = new java.util.HashSet<>(
+            org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds());
+        for (Map.Entry<String, List<Cure>> e : m.entrySet()) {
+            java.util.Set<String> ops = new java.util.HashSet<>();
+            for (Cure c : e.getValue()) {
+                if (!ops.add(c.operation())) {
+                    throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
+                        + "' declares operation '" + c.operation() + "' twice — the pair"
+                        + " is the entry identity");
+                }
+                if (c.recipe() != null && !published.contains(c.recipe())) {
+                    throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
+                        + "' declares step '" + c.recipe() + "' and no registered"
+                        + " operation backs it");
+                }
+            }
+        }
         return Map.copyOf(m);
     }
 

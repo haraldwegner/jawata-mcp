@@ -43,6 +43,18 @@ public class RefactorToPatternTool extends AbstractTool {
         // selector that is a parameter rather than a private int field.
         "replace_conditional_with_polymorphism");
 
+    /**
+     * The published kind list, for callers that must check a step EXISTS —
+     * Stage 11a's tier derivation reads it as the operation registry.
+     *
+     * <p>An accessor rather than a copy: this list is the registration line's
+     * own source, and a second spelling of it elsewhere would be the copy that
+     * goes stale when a kind ships.</p>
+     */
+    public static List<String> publishedKinds() {
+        return KINDS;
+    }
+
     private final InlineSingletonTool inlineSingleton;
     private final ComposeMethodTool composeMethod;
     private final ReplaceTypeCodeWithClassTool replaceTypeCode;

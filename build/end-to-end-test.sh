@@ -1253,6 +1253,32 @@ case "$OCPQ" in
     *) fail "cure-resolves no resolved cure and no degradation on the ocp findings — the cure sentence is neither the store's nor declared as a fallback: $(printf '%s' "$OCPQ" | head -c 400)" ;;
 esac
 
+# --- cure-tier-derived: 28d Stage 11a, the tier is DERIVED, not assigned -----
+# The cure model: one runnable route whose step the front door publishes derives
+# PERFORM, and the finding says so, naming what to run. OcpTarget carries both
+# traces, so both perform-tier answers must appear — the switch trace's and the
+# type-code trace's, each with its own step.
+case "$OCPQ" in
+    *'TIER: PERFORM — run refactor_to_pattern kind=refactor_to_state.'*)
+        pass "cure-tier-derived the switch trace derives PERFORM and names refactor_to_state" ;;
+    *) fail "cure-tier-derived no PERFORM tier naming refactor_to_state on the switch trace — the derivation did not reach the finding: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+esac
+case "$OCPQ" in
+    *'TIER: PERFORM — run refactor_to_pattern kind=replace_type_code_with_class.'*)
+        pass "cure-tier-derived the type-code trace derives PERFORM and names replace_type_code_with_class" ;;
+    *) fail "cure-tier-derived no PERFORM tier naming replace_type_code_with_class on the type-code trace: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+esac
+# THE CONTROL: the missing-step signature must NOT fire on a real build. It
+# appears only when the cure table declares a step the shipped front door does
+# not publish — which is exactly the drift the derivation exists to surface,
+# and exactly what must not be true of a dist we are about to trust.
+case "$OCPQ" in
+    *'not in the operation registry'*)
+        fail "cure-tier-derived the table declares a step the shipped front door does not publish: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+    *)
+        pass "cure-tier-derived no declared step is missing from the shipped operation registry" ;;
+esac
+
 # pre-advice seeding: a prose lesson the refactor's pre-advice can reach
 call experience '{"kind":"record","type":"lesson",
   "summary":"renaming a method that a test references by its string name breaks the test silently",
