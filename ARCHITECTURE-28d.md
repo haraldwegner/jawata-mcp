@@ -111,10 +111,13 @@ and it is the same resolve-never-compose rule (W1) the spec already binds.
 ## What the catalogue is (v3, 2026-08-28) — RULED 2026-08-31: BUILT IN 28d
 
 > **Scope status: RULED by Harald, 2026-08-31 —** *"Build it in 28d, why defer? 28e is
-> bug fixing mainly."* The open decision recorded here is closed: this section IS a work
-> item, homed as **Stage 11a** of the 28d plan (pair identity, routes as ordered steps
-> over existing operations, tier derived from route count + step existence). Until
-> Stage 11a closes, nothing here is implemented.
+> bug fixing mainly."* — **and BUILT, Stage 11a, commit `654fb38`.** The tier is DERIVED
+> at ask-time (`CureTier.derive`: route count + step existence against the front door's
+> published kind list); the pair (kind, operation) identity and step existence are
+> enforced in `CureCatalog`'s builder, so a violating table cannot load; the derived
+> tier reaches every ocp finding's cure sentence in production. Deferred with pins:
+> multi-step routes (a delivery-condition test on `Cure`'s two-component shape) and
+> guard machinery (no route declares a guard yet — see the widening note below).
 
 ```
 BEFORE  = the smell          → detected; on an entry, situation + symptoms
@@ -148,6 +151,18 @@ entry per pair, carrying possibly SEVERAL cures; `links[]` already admits repeat
 `move_method`, `encapsulate_field`, the `refactor_to_pattern` kinds — so *does this step
 exist* is a registry lookup rather than a new checker. A step no tool can express means
 the route is not runnable, which is information, not a gap to paper over.
+
+> **THE REGISTRY IS NARROWER THAN THIS VOCABULARY, pre-declared (Stage 11a, architect
+> watch-diff).** The shipped registry is the `refactor_to_pattern` kind list ONLY —
+> today every runnable step in the table is such a kind, so nothing is refused. But the
+> sentence above sanctions `extract` / `move_method` / `encapsulate_field` as steps, and
+> `CureCatalog`'s step-existence guard would refuse a table declaring one: the class
+> would fail to LOAD. So the first route naming a standalone operation must, in the same
+> change, widen the registry (`CureTier`'s default and the builder guard both) to the
+> union with the standalone operation tools' names — a documented widening step, never a
+> boot failure to diagnose. Likewise the tier rule "several runnable routes → ADVISE"
+> silently encodes *no guard exists yet*; when guards land, THAT rule is the clause that
+> changes.
 
 **A guard is detector presence at the site**, composing the 41 existing kinds; not an
 expression language, which is what made this look expensive. **Presence only, never
@@ -340,6 +355,13 @@ the 28c B2 design record, inherited whole), plus:
   pre-existing, Harald's ruling pending, and this sprint must not add a second.
 - `tools.smell` may READ the store ~~(it already does for baselines)~~; it may not
   import `refactoring.ops`. The only detector→cure connection is the entry id.
+  **AMENDED 2026-08-31 (Stage 11a, architect watch-diff):** one measured edge is
+  admitted — `tools.smell → tools.RefactorToPatternTool#publishedKinds()`, a DATA
+  READ of the published kind list, used by the tier derivation and the table's own
+  step-existence guard. It is a list read, never an invocation of an operation; a
+  detector still performs nothing. Admitting it here beats abstracting the seam: a
+  one-implementation registry interface would be the zero-reader machinery this
+  sprint keeps refusing.
   **SUPERSEDED v2 — the parenthetical was false when written:** `tools.smell` held ZERO
   `ExperienceStore` references until C5 wired the cure lookup. The permission stands; the
   precedent it claimed did not exist. Measured `forbidden_edge` production count for
