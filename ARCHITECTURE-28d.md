@@ -108,13 +108,13 @@ and it is the same resolve-never-compose rule (W1) the spec already binds.
   report, NEVER the store, NEVER imported by src/
 ```
 
-## What the catalogue is (v3, 2026-08-28) — RECORDED, NOT BUILT
+## What the catalogue is (v3, 2026-08-28) — RULED 2026-08-31: BUILT IN 28d
 
-> **Scope status: the frame is recorded; nothing here is implemented, and whether it is
-> built in 28d is an OPEN DECISION.** It appears in neither the spec's deliverables nor
-> Stage 10's text, so an executor must not read this section as a work item. It is here
-> because it changes what the catalogue *is*, which conditions how the sections below
-> read.
+> **Scope status: RULED by Harald, 2026-08-31 —** *"Build it in 28d, why defer? 28e is
+> bug fixing mainly."* The open decision recorded here is closed: this section IS a work
+> item, homed as **Stage 11a** of the 28d plan (pair identity, routes as ordered steps
+> over existing operations, tier derived from route count + step existence). Until
+> Stage 11a closes, nothing here is implemented.
 
 ```
 BEFORE  = the smell          → detected; on an entry, situation + symptoms
