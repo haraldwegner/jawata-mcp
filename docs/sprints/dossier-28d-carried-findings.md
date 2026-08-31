@@ -551,3 +551,72 @@ identity hash covers a serialisation, the serialisation's shape is part of the c
 and that is true of any other row-hashed artifact in this codebase.
 
 **Home: no work item — recorded so the next person who reorders knows what it costs.**
+
+---
+
+## 11. The tiered cure renders on ONE detector, though five declare cures
+
+**Found by the Stage 12 as-built pass (S12.1), 2026-08-31 — not by any gate.**
+
+The as-built pass is CLEAN: all seventeen capabilities this sprint claims resolve to real
+symbols, every one has a production caller, and every chain terminates at a tool
+`JawataApplication` registers. Nothing is test-only and nothing is unresolved. Two of the
+strongest pieces of evidence are worth keeping because they close defect classes this
+sprint spent months on:
+
+- **Registration IS publication for detectors.** `FindQualityIssueTool.getInputSchema()`
+  projects its `kind` enum straight from the catalog the detectors register into, so a
+  kind cannot be routed-but-unpublished. There is no second list to drift.
+- **The store is threaded in PRODUCTION.** `JawataApplication` uses the two-argument
+  `FindQualityIssueTool(jdt, store)` constructor; the storeless one-argument form exists
+  for tests and says so. That is the exact v3.4.0 defect — a feature inert in production
+  while its tests supply the wiring themselves — and on this branch it is closed.
+
+**The finding, which is a THINNESS rather than a break.** `CureTier.derive` has exactly
+one production caller (`CureLookup.Cures#hint`), and `hint()` has exactly one
+(`OcpDetector`). So the address-resolved, tiered cure sentence ships on **`ocp` findings
+only**.
+
+> **SCOPE CORRECTED 2026-08-31 by the architect's as-built pass — I undercounted this
+> by more than half.** It is not "the four new principle detectors". Measured over the
+> whole table, there are THREE rungs:
+> - **`ocp`** — resolved address AND derived tier.
+> - **`divergent_change`, `shotgun_surgery`** — `CureCatalog.ocpHint()`: plan kinds, no
+>   address, no tier, built from the IDENTICAL `OPEN_THE_AXIS` rows that `ocp` resolves
+>   fully.
+> - **EIGHT kinds render nothing** — `switch_statements`, `type_code`, `singleton`,
+>   `long_method`, `cqs`, `coupling`, `composition_over_inheritance`, `encapsulation`.
+>
+> **And the sharpest instance is not among the new detectors at all.** `OcpDetector`
+> HOLDS instances of `SwitchStatementsDetector` and `TypeCodeDetector` and relabels their
+> findings — so the same measurement, at the same line, carries a resolved address plus
+> `TIER: PERFORM` when swept as `ocp`, and a bare sentence when swept under its own kind.
+> The drift the S7 fold was built to kill (two homes for one fact) has reappeared one
+> layer up, as three renderings of one table.
+>
+> Cost of closing, corrected: **8 kinds gain a cure sentence and 2 change one** — not the
+> 4 this item first estimated.
+
+Those rows are still reachable through two other doors, so this is not a hollow member:
+`refactoring(action="plan")` reads `CureCatalog.recipesFor`, and `experience(kind="stats")`
+runs `CureLookup.audit` over **every** declared operation. But a reader of a `cqs` finding
+gets less than a reader of an `ocp` finding, for no reason a user could infer.
+
+**Home: Sprint 28e.** It is a one-line-per-detector change (call `CureLookup.forKind` and
+append `hint()`, as `OcpDetector.relabel` does), but it changes user-visible finding text
+on four kinds, which is a deliberate act and not a drive-by.
+
+## 12. The running resident is not this branch — read the SOURCE, not the live schema
+
+**Recorded at S12.1 so nobody draws the wrong conclusion in either direction.**
+
+The live `jawata-javata-dev` server is v3.17.2, and its published `find_quality_issue`
+kind list does NOT contain `cqs`, `coupling`, `composition_over_inheritance`, `ocp` or
+`encapsulation`. That is a fact about a deployed binary predating this work — **not**
+evidence that the branch fails to register them, which the as-built pass measured
+directly and found registered.
+
+The trap runs both ways: a live schema showing the kinds would not prove the branch
+registers them either, because the resident could be newer than the checkout. Any
+wiring claim about this sprint is answered from the source and the built dist, never
+from whatever happens to be running.

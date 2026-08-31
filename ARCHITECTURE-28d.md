@@ -104,8 +104,9 @@ and it is the same resolve-never-compose rule (W1) the spec already binds.
         |  entry.capability names         |  (a string, never          |
         |  the plan kind (data) --------- +   a call)                  v
         |                                                    architect seat resolves
-  build/calibration/ (Error Prone + PMD, own CI cell) — reads fixtures, writes a
-  report, NEVER the store, NEVER imported by src/
+  build/calibration{.sh,-baselines.sh,-density.py} (Error Prone + PMD, pinned by
+  sha256; NO CI cell — cut, see v5) — writes a report, NEVER the store (asserted),
+  NEVER imported by src/
 ```
 
 ## What the catalogue is (v3, 2026-08-28) — RULED 2026-08-31: BUILT IN 28d
@@ -225,6 +226,12 @@ implementing the existing staged-change lifecycle.
   `Change` with `undoChangeId`. Hooks: the target shape, the precondition, the
   rewrite. The eight existing pattern transforms are NOT retrofitted in this sprint —
   they are the do-not-touch list's first entry.
+- **CORRECTED v5 (2026-08-31, architect as-built pass):** Move Field did NOT ship as a
+  peer operation — it is folded INSIDE Extract Class, on the survey recorded in that
+  operation's own javadoc: 2 standalone paths against 9 as the constituent atom, and
+  Move Function cannot substitute because it needs a target that already owns the state.
+  The done-definition below binds unchanged; only the operation count differs from what
+  this section predicted.
 - **The done-definition, from the hard-half lesson and binding on every operation:**
   Extract Class and Move Field MOVE things, so each operation's contract includes
   migrating the references and leaving the old shape gone — the check is a query
@@ -304,6 +311,15 @@ the 28c B2 design record, inherited whole), plus:
   is the ordered route; a capability is one move within it. Whatever wires this field must
   say which of the two it means, or it will be read as the cure and the route will have no
   home.
+  **CORRECTED v5 (2026-08-31, architect as-built pass):** *"It becomes a first-class
+  manifest field on both origins, which is what lets `CureCatalog` stop hardcoding
+  recipes"* — **the sprint built neither half, deliberately.** No manifest carries
+  `capability`, and `CureCatalog` hardcodes its keys ON PURPOSE, for a reason that
+  contradicts the sentence above: a key assembled from a naming convention is exactly
+  the composition this design forbids one level up, and it would silently follow the
+  fork's slug spelling while mis-spelling the samples'. The plan was to stop hardcoding;
+  the built answer is that hardcoding the KEYS is correct and only the ADDRESSES must be
+  resolved. Left as an unamended clause it would be re-litigated at every checkpoint.
 - `org.jawata.samples` — a NEW Maven module in this repo: compiles in every build,
   ABSENT from the dist assembly (the completeness enforcer pins the dist content),
   ~~excluded from our own sweeps via the source-root attribute + `excludePaths`~~,
@@ -343,10 +359,20 @@ the 28c B2 design record, inherited whole), plus:
   S4 then unifies the scheme to `catalogue:jawata-samples/<slug>/README.md`,
   held by a standing ROW-SIDE assertion over `store.all()` (a manifest cannot vouch for
   itself — a manifest-side check cannot see a row no manifest claims).
-- `build/calibration/` — Error Prone + PMD at pinned versions, own CI cell
-  (skip-is-failure there and only there), writes the agreement report. **No src/
-  code may import or invoke it; it may never write the store** — asserted, not
-  assumed: the store's row count is compared before/after a calibration run.
+- ~~`build/calibration/` — Error Prone + PMD at pinned versions, own CI cell
+  (skip-is-failure there and only there), writes the agreement report.~~
+  **CORRECTED v5 (2026-08-31): there is no `build/calibration/` directory and no CI
+  cell.** As built: three loose scripts — `build/calibration.sh` (our detectors),
+  `build/calibration-baselines.sh` (PMD + Error Prone, pinned by sha256),
+  `build/calibration-density.py` (the derived table) — plus the report at
+  `docs/sprints/calibration-28d.md`. **The CI cell was CUT on Harald's ruling** that a
+  one-off measurement re-runs from its recorded pins by hand; a weekly re-run guards no
+  regression, because the corpus is pinned and the durable finding does not move with our
+  commits. The clause is asserted in THREE places in this document (here, the diagram,
+  and the test-surface section) and all three were false. **What still holds, and is
+  asserted rather than assumed: no src/ code imports or invokes it, and it may never
+  write the store — the row count is compared before and after, by the script itself,
+  which exits non-zero if it moved (189/189, both runs).**
 
 ## Dependency direction (who may know whom)
 
