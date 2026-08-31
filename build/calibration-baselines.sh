@@ -65,6 +65,18 @@ echo "=== PMD over the whole corpus (it parses source; no build needed) ==="
     -f csv -r "$SCRATCH/pmd-all.csv" --no-cache --no-progress > "$SCRATCH/pmd-all.log" 2>&1
 echo "  exit=$? (4 = violations found)  main-source findings: $(grep -c '/src/main/java/' "$SCRATCH/pmd-all.csv")"
 
+# The LABELLED subset gets its own run, because the report publishes a number
+# for it and a number with no producer is not published. (The first cut of this
+# script ran only the corpus-wide sweep, so the per-module figure in the report
+# had no committed way to be regenerated — the C11 audit found it.)
+echo "=== PMD over the 11 labelled modules ==="
+DIRS=""
+for d in $MODULES; do DIRS="$DIRS,$FORK/$d/src/main/java"; done
+"$T/pmd-bin-$PMD_VER/bin/pmd" check -d "${DIRS#,}" -R rulesets/java/quickstart.xml \
+    -f csv -r "$SCRATCH/pmd-labelled.csv" --no-cache --no-progress \
+    > "$SCRATCH/pmd-labelled.log" 2>&1
+echo "  exit=$? (4 = violations found)  findings: $(($(wc -l < "$SCRATCH/pmd-labelled.csv") - 1))"
+
 echo "=== compile the labelled modules into the ISOLATED repo (Error Prone needs a compile) ==="
 ( cd "$FORK" && mvn -B -pl "${MODULES// /,}" compile -s "$SETTINGS" \
     -Dmaven.repo.local="$M" -DskipTests -Dmaven.test.skip=true \
