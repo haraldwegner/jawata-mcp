@@ -33,8 +33,36 @@ public final class Sweeps {
     private Sweeps() {
     }
 
-    /** How long a fixture sweep may take before the test fails rather than hangs. */
-    private static final long DEADLINE_MILLIS = 120_000;
+    /**
+     * How long a fixture sweep may take before the test fails rather than hangs.
+     *
+     * <p><b>This is a HANG BACKSTOP, not a latency budget</b>, and confusing the
+     * two is what made it flake. At 120 s it sat close enough to a legitimate
+     * slow run that ordinary variation crossed it, so a healthy sweep on a busy
+     * or slower machine failed with an assertion that reads exactly like a
+     * regression — and a different test each time, which is the signature.</p>
+     *
+     * <p>Measured 2026-09-01, and the measurements are why this is now 600 s.
+     * {@code SweepHardeningTest} runs its four tests in 70 s wall on an idle
+     * 20-core box, so one sweep is tens of seconds; four suite shards in
+     * parallel pushed one past 120 s. Then CI — <b>serial</b>, one JVM, 1976 s
+     * total — blew the same ceiling on a DIFFERENT test. That second run is the
+     * important one: it refutes "marginal under parallel load" (mcp#66's title)
+     * and shows the ceiling was simply too close to the work on any slower
+     * machine. A two-core runner against twenty needs no concurrency to be five
+     * times slower.</p>
+     *
+     * <p>Raising it costs nothing when things are healthy: a passing sweep never
+     * waits for the deadline, it returns when the sweep finishes. It costs only
+     * on a genuine hang, where the alternative is a suite that never ends — and
+     * ten minutes to discover a hang is a fair price for never again reading a
+     * slow machine as a broken one.</p>
+     *
+     * <p>{@code jawata.test.sweep.deadline.ms} overrides it, for a machine
+     * slower than any measured here.</p>
+     */
+    private static final long DEADLINE_MILLIS =
+        Long.getLong("jawata.test.sweep.deadline.ms", 600_000L);
 
     /**
      * Execute {@code args}, routing a whole-family request through

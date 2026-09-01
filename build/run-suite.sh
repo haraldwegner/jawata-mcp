@@ -65,16 +65,46 @@ done
 # are read from disk at run time and never compiled into a bundle (measured: none
 # of them appear as classes in either test bundle), so touching one stales
 # nothing.
+#
+# THE REFERENCE IS THE OLDEST ARTIFACT, NOT jawata.jar, and the difference is a
+# defect this guard shipped with. jawata.jar is the boot LAUNCHER — the module
+# that changes least often — so an incremental build that correctly rebuilds the
+# changed bundle leaves it untouched and the guard called the whole dist stale.
+# Measured 2026-09-01: bundles/org.jawata.core-4.0.0.jar at 14:52:03 against
+# jawata.jar at 12:46:25, after a build that was entirely correct, and the run
+# was refused.
+#
+# The proxy was unsound in BOTH directions, which is the part that matters. It
+# false-REFUSES as above; it would also have PASSED a dist whose launcher was
+# rebuilt while a bundle was not, which is precisely the silent-wrong-code case
+# the guard exists to catch.
+#
+# The sound question is "is any source newer than the artifact that contains
+# it", and computing that exactly means mapping every file to its bundle. The
+# OLDEST artifact is the conservative answer to the same question: nothing can be
+# stale if no source is newer than the oldest thing in the dist. It can refuse a
+# dist that is actually fine (a source newer than the oldest jar but older than
+# its own), and that direction is the safe one — a needless rebuild costs
+# minutes, a green about the previous build costs a sprint.
+# OUR OWN jars only. Third-party jars are COPIED into the dist and keep their
+# upstream timestamps, so the oldest jar in the tree is apiguardian-api-1.1.2.jar
+# dated 2021 — which says nothing whatever about when we last built. This
+# guard's own control caught it: with every jar considered, the repaired guard
+# REFUSED a correctly built tree, which is worse than the defect it replaced.
+OLDEST_ARTIFACT=$(find "$DIST" -name 'org.jawata.*.jar' -type f -printf '%T@ %p\n' 2>/dev/null \
+                    | sort -n | head -1 | cut -d' ' -f2-)
+[ -n "$OLDEST_ARTIFACT" ] || OLDEST_ARTIFACT="$DIST/jawata.jar"
 STALE_SRC=$(find "$ROOT" \( -name '*.java' -o -path '*/resources/*' \) \
                 -type f \
                 -not -path '*/target/*' \
                 -not -path '*/test-resources/*' \
                 -not -path '*/.git/*' \
-                -newer "$DIST/jawata.jar" -print -quit 2>/dev/null)
+                -newer "$OLDEST_ARTIFACT" -print -quit 2>/dev/null)
 if [ -n "$STALE_SRC" ]; then
     echo "FATAL: the dist is OLDER than the source, so this run would test the PREVIOUS build."
     echo "  source newer than the dist: $STALE_SRC"
-    echo "  dist built:                 $(date -r "$DIST/jawata.jar" '+%Y-%m-%d %H:%M:%S')"
+    echo "  oldest dist artifact:       $OLDEST_ARTIFACT"
+    echo "  built:                      $(date -r "$OLDEST_ARTIFACT" '+%Y-%m-%d %H:%M:%S')"
     echo "Rebuild first:  mvn -f build/pom.xml clean package -DskipTests"
     exit 2
 fi
