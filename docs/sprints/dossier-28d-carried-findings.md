@@ -786,3 +786,48 @@ guard proves we understand the failure mode; we simply pointed it inward.
 **Home: Sprint 28e.** Same reasoning as findings 13 and 14: Sprint 29 launches on
 v4.0, and a launch is precisely when the largest number of machines take the
 update simultaneously.
+
+---
+
+## D12 — the v4.0 dogfood window, opened 2026-09-01 13:42
+
+**This section is the dogfood record D12 asks for. It is NOT a close-out**, because
+D12's own measure forbids that: *"the release stage ends shipped either way — a patch
+release, or a recorded clean window with its probes; same-day green is not the
+measure."* The window opened when v4.0.0 published and has run for hours, not days.
+What follows is the finding branch, which is the branch this window actually took.
+
+Every item below came from USING the product to ship itself, not from a review pass.
+That is what "in anger" was supposed to mean, and it is why the yield is this high.
+
+### Fixed before or during the release
+
+| # | Finding | Fix |
+|---|---|---|
+| a | The suite's load guard was a load-average threshold at half the core count. This host has 20 cores, so it refused above 10; the incident that motivated it ran at 7.76. **It would have gone green on its own motivating run.** | `8f14591` — replaced with a check for a named competing job. Its own control then caught a second defect in it: the pattern `maven` matched the editor's sandbox proxies, whose command line carries a network allow-list containing `maven.org`, so it refused on a completely idle machine |
+| b | The release's patch-streak gate **killed its own step with zero output** — no verdict, no error — because a `git fetch` under `bash -e` sent its stderr to `/dev/null`. Two causes were indistinguishable from that output, because there was none | `5210ddc` — every branch reports itself, tags are listed before the gate reads them, and a fetch that cannot deliver tags fails loudly rather than leaving the gate to judge an empty window and pass everything |
+| c | Three sample poms named a parent version the bump could not see. The version sites were derived by grepping the CURRENT version, `3.17.2`, which by construction finds only files that already AGREE — a module pinned to `3.17.0` is invisible to that search precisely because it is inconsistent | `e4ae0c6`. It also survived a local build because a stale parent sat in the local repository; CI starts cold and died at once |
+
+### Found in the window, fixed here
+
+| # | Finding | State |
+|---|---|---|
+| d | **The resolved classpath died with the process.** Every restart re-resolved every project, and the residents all restart together when a release lands — measured at three residents drawing ~10 of 20 cores, load 17, and a machine unusable for minutes. At 290 repositories that is 290 Maven runs | FIXED — `ClasspathCache`, persistent, keyed by the same pom content hash. Proven by disabling the disk tier and watching 4 of 5 new tests go red |
+| e | The in-memory cap was **64 entries against 290 repositories**, so the cache was already too small before any restart | FIXED with (d) — raised to 512, and the cap stops mattering once a miss costs a file read instead of a Maven run |
+
+### Found in the window, NOT fixed
+
+| # | Finding | Why it stands |
+|---|---|---|
+| f | **The dist staleness guard reads the wrong file.** It takes `jawata.jar` as "when was the dist built", but that is the boot launcher — the module that changes least. Measured: `bundles/org.jawata.core-4.0.0.jar` at 14:52:03 against `jawata.jar` at 12:46:25 after a correct incremental build, and the guard refused. It errs safe here, but the proxy is unsound in BOTH directions: a launcher that rebuilt while a bundle did not would pass wrongly | Needs a sound check — compare each source against the artifact that would contain it, or at minimum against the OLDEST dist artifact rather than one arbitrary file |
+| g | **`mcp#66`'s diagnosis is wrong.** Its title reads *"marginal under parallel suite load"*, but CI run #45 was SERIAL — one JVM, 1976 s, no shards — and still blew the 120 s ceiling. Parallelism was one way to cross the limit, not the cause; the limit is simply too tight for a slower machine | As titled it points the fix at sharding rather than at the fixed number. Editing a public tracker is outward-facing and waits for Harald's word |
+| h | The **fleet-restart stampede's studio half** — staggering the restarts, deferring the re-index, or offering the update rather than taking it | Finding 15 above. (d) makes each resident's re-import cheap; it does not stop three of them starting at once |
+
+### What this window says about D12
+
+The branch taken is **findings, not a clean window**. By D12's own wording those
+findings go to a patch release on Harald's word. Three of the eight are already fixed
+on `main`; (d) and (e) are fixed and awaiting the gate; (f), (g) and (h) are recorded
+and unfixed.
+
+The window stays OPEN. A day is not days, and the measure says so.
