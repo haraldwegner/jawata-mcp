@@ -203,6 +203,68 @@ else
     echo "note: jdk.incubator.vector is not available in this JVM — the suite" \
          "runs on the scalar backend (correct, slower)" >&2
 fi
+# ---------------------------------------------------------------- load guard
+#
+# REFUSE to start on a machine that is already busy, because the failures this
+# produces are indistinguishable from regressions.
+#
+# Measured 2026-08-31/09-01: a whole-corpus analysis run was started beside this
+# suite. Twice it went red, and each time the failing tests were DIFFERENT and
+# each looked like a real defect — a CPU-profiler test whose own hot loop lost
+# the top sample to an unrelated JDK method, and family sweeps timing out at
+# their 120s ceiling. Load average across the window was 7.76; on a quiet
+# machine the identical tree was 0 failed, twice.
+#
+# The knowledge form of this rule ("do not run heavy analysis beside the suite")
+# cannot fire: it is needed exactly when the person is busy doing the other
+# thing. So the gate reads the machine instead.
+#
+# NOT A LOAD THRESHOLD, and the first version of this guard was one — measured
+# and discarded. It refused above half the cores; this host has 20, so it
+# refused above 10, and the load across the incident window was 7.76. The guard
+# would have gone GREEN on the very run that motivated it. A number chosen for
+# feeling conservative is a guess wearing a rule, and that is the same defect
+# the release gate was repaired for earlier in this sprint.
+#
+# The real condition is not "the machine is busy" in the abstract — it is
+# "another heavy job of ours is running": a corpus analysis, a Maven build, a
+# linter over a whole tree. That is a fact you can look up, with no threshold to
+# tune and nothing to be wrong about.
+#
+# JAWATA_SUITE_IGNORE_LOAD=1 proceeds anyway, and says so rather than passing
+# silently.
+# THE PATTERNS ARE DELIBERATELY SPECIFIC, and the loose version was caught by
+# this guard's own control run. `maven` alone matched the editor's sandbox proxy
+# processes, because their command line carries a network allow-list containing
+# the string "maven.org" — so the guard refused on a COMPLETELY IDLE machine,
+# which is the failure that makes a control useless (a guard that always
+# refuses is turned off within a day).
+#
+# Each token below is a launcher class, a distribution directory or a compiler
+# flag: strings that appear when the tool is actually RUNNING and cannot appear
+# inside a configuration blob.
+COMPETITORS=$(pgrep -a -f \
+    'classworlds\.launcher\.Launcher|pmd-bin-|net\.sourceforge\.pmd|Xplugin:ErrorProne|build/calibration' \
+    2>/dev/null | grep -v 'run-suite\|cursorsandbox\|--policy-json' | head -4)
+if [ -n "$COMPETITORS" ]; then
+    if [ "${JAWATA_SUITE_IGNORE_LOAD:-0}" = "1" ]; then
+        echo "note: heavy jobs are running and JAWATA_SUITE_IGNORE_LOAD=1 was set." >&2
+        echo "      Timing-sensitive failures in this run are NOT evidence about the tree." >&2
+    else
+        echo "REFUSED: another heavy job is running, and this suite has" >&2
+        echo "timing-sensitive cells (CPU sampling; sweeps with a 120s ceiling)." >&2
+        echo "Beside a competing job they fail in ways that read exactly like" >&2
+        echo "regressions — measured twice, different tests each time, clean on a" >&2
+        echo "quiet machine both times. The diagnosis costs more than the wait." >&2
+        echo "" >&2
+        printf '  %s\n' "$COMPETITORS" >&2
+        echo "" >&2
+        echo "Wait for them, or set JAWATA_SUITE_IGNORE_LOAD=1 to proceed knowing" >&2
+        echo "a red result may be about the contention and not the code." >&2
+        exit 2
+    fi
+fi
+
 START=$(date +%s)
 PIDS=()
 for s in $(seq 0 $((SHARDS - 1))); do
