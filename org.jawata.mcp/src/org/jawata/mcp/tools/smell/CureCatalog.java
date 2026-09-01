@@ -94,8 +94,35 @@ public final class CureCatalog {
         // table or they drift the moment either is edited.
         m.put("divergent_change", OPEN_THE_AXIS);
         m.put("shotgun_surgery", OPEN_THE_AXIS);
+        // The detector's own sentence says "Consider Replace Conditional with
+        // Polymorphism", and Sprint 28d BUILT that operation — for this smell.
+        // The table was never told, so until v4.0.2 a reader got one refactoring
+        // named in the prose and a different one offered as runnable, in the same
+        // message.
+        //
+        // REPLACED, not added, and the tier model is why. It derives PERFORM from
+        // ONE route whose steps exist, and ADVISE from several with nothing to
+        // choose between them. Keeping State alongside would have been defensible
+        // as design — a switch on an int STATE field really is a State candidate —
+        // and it would have downgraded this kind from a runnable instruction to
+        // advice. The first attempt did exactly that and CureTierTest caught it:
+        // expected PERFORM, got ADVISE. A second route is not free; it costs the
+        // tier, and here the cost buys nothing the prose asked for.
+        //
+        // State stays reachable: OPEN_THE_AXIS routes ocp, divergent_change and
+        // shotgun_surgery to it, so nothing lost an address.
         m.put("switch_statements", List.of(
-            new Cure("refactor_to_state", "design:state")));
+            new Cure("replace_conditional_with_polymorphism", "design:strategy")));
+        // UNCHANGED, deliberately. Sprint 28d's other new operation,
+        // replace_constructor_with_factory, is referenced by no cure — and the
+        // first attempt at this fix bolted it on here to satisfy a test asserting
+        // that every shipped operation is reachable from some smell. That test was
+        // wrong and is gone: no detector's prose asks for a factory, so the entry
+        // would have served the check rather than a reader, and the second route
+        // would have cost this kind its PERFORM tier as well.
+        //
+        // The honest state is that the operation exists with no smell recommending
+        // it. That is recorded as a finding, not papered over with a row.
         m.put("type_code", List.of(
             new Cure("replace_type_code_with_class", "design:type-object")));
         m.put("singleton", List.of(

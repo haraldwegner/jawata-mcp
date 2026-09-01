@@ -64,7 +64,18 @@ class CureCatalogTest {
         assertEquals(List.of("inline_singleton"), CureCatalog.recipesFor("singleton"));
         assertEquals(List.of("replace_type_code_with_class"),
             CureCatalog.recipesFor("type_code"));
-        assertEquals(List.of("refactor_to_state"),
+        // CHANGED DELIBERATELY, v4.0.2, and this guard is why it is deliberate.
+        // It pins what the deleted table held, so a migration cannot lose a
+        // mapping by accident — and it correctly refused this edit until the
+        // reason was written down.
+        //
+        // The reason: the detector's own sentence recommends Replace Conditional
+        // with Polymorphism, Sprint 28d built that operation for this smell, and
+        // the table still pointed at State — so one finding named two different
+        // refactorings. Found by dogfooding v4.0.1 with one call against real
+        // code. State did not "survive" here because it was replaced on purpose,
+        // and it remains reachable through OPEN_THE_AXIS.
+        assertEquals(List.of("replace_conditional_with_polymorphism"),
             CureCatalog.recipesFor("switch_statements"));
         assertEquals(List.of("compose_method"), CureCatalog.recipesFor("long_method"));
 

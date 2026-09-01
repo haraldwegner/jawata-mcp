@@ -87,9 +87,21 @@ class CureTierTest {
     @Test
     @DisplayName("a step missing from the registry derives ADVISE and NAMES the step — then PERFORM with the real registry")
     void aFabricatedStepDerivesAdviseNeverPerform() {
+        // The step this kind needs CHANGED in v4.0.2 — switch_statements now
+        // routes to replace_conditional_with_polymorphism, the operation its own
+        // prose recommends and which Sprint 28d built for it. The test's intent is
+        // untouched: remove the step this kind depends on, and the tier must fall
+        // to ADVISE naming it. Only the literal moved.
+        //
+        // Worth noting how this surfaced: the first attempt at that change ADDED
+        // the new route beside State instead of replacing it, and this test caught
+        // the cost — two routes derive ADVISE, so a runnable instruction would
+        // have become advice. The tier model priced the second route and the
+        // answer was no.
+
         // (1) BROKEN FIRST — the registry loses the one step switch_statements needs.
         List<String> without = new ArrayList<>(RefactorToPatternTool.publishedKinds());
-        assertTrue(without.remove("refactor_to_state"),
+        assertTrue(without.remove("replace_conditional_with_polymorphism"),
             "the registry must actually contain the step this test removes, or the"
                 + " 'broken' run is broken for a different reason than intended");
 
@@ -97,14 +109,14 @@ class CureTierTest {
         assertEquals(CureTier.Tier.ADVISE, broken.tier(),
             "a route whose step no registered operation backs cannot be performed");
         assertNull(broken.recipe());
-        assertTrue(broken.reason().contains("refactor_to_state"),
+        assertTrue(broken.reason().contains("replace_conditional_with_polymorphism"),
             () -> "the missing step is NAMED — a bare ADVISE cannot tell a design"
                 + " decision from a mis-spelled table row: " + broken.reason());
 
         // (2) REPAIRED SECOND — the real registry, same kind.
         CureTier.Derivation repaired = CureTier.derive("switch_statements");
         assertEquals(CureTier.Tier.PERFORM, repaired.tier());
-        assertEquals("refactor_to_state", repaired.recipe());
+        assertEquals("replace_conditional_with_polymorphism", repaired.recipe());
     }
 
     // ---------------------------------------------------- standing invariants
@@ -129,12 +141,19 @@ class CureTierTest {
     @Test
     @DisplayName("the hint carries the derived tier, and a perform answer names what to run")
     void theHintCarriesTheDerivedTier() {
+        // v4.0.2: switch_statements routes to replace_conditional_with_polymorphism.
+        // The fixture had to follow, and the reason is in this javadoc already —
+        // the tier is derived from the KIND, not from the fields handed in, so a
+        // stale fixture produces a hint that contradicts itself: one recipe in the
+        // resolved half, another in the tier. That is the very defect this release
+        // fixes, reproduced here by a test fixture rather than by the table.
         CureLookup.Cures perform = new CureLookup.Cures("switch_statements",
-            List.of(new CureLookup.ResolvedCure("refactor_to_state", "design:state",
-                "java-design-patterns", "catalogue:java-design-patterns/state/README.md")),
+            List.of(new CureLookup.ResolvedCure("replace_conditional_with_polymorphism",
+                "design:strategy", "java-design-patterns",
+                "catalogue:java-design-patterns/strategy/README.md")),
             List.of(), null, List.of());
         assertTrue(perform.hint().contains(
-                "TIER: PERFORM — run refactor_to_pattern kind=refactor_to_state"),
+                "TIER: PERFORM — run refactor_to_pattern kind=replace_conditional_with_polymorphism"),
             () -> "a one-route kind's finding must say PERFORM and name the run: "
                 + perform.hint());
 

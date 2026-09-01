@@ -110,9 +110,15 @@ class OcpDetectorTest {
         assertTrue(String.valueOf(findingsIn(TYPE_CODE_TRACE).get(0).get("message"))
                 .contains("replace_type_code_with_class"),
             "type_code's cure recipe is replace_type_code_with_class");
+        // v4.0.2: the fourth place this one fact was pinned. The switch-statement
+        // kind routes to replace_conditional_with_polymorphism now — the operation
+        // its own prose recommends — and changing that meant editing four separate
+        // assertions in four files, each holding the literal independently. Worth
+        // noticing: a fact asserted in four places is a fact that can be corrected
+        // in three.
         assertTrue(String.valueOf(findingsIn(SWITCH_TRACE).get(0).get("message"))
-                .contains("refactor_to_state"),
-            "switch_statements' cure recipe is refactor_to_state");
+                .contains("replace_conditional_with_polymorphism"),
+            "the switch-statement kind's cure recipe is replace_conditional_with_polymorphism");
     }
 
     // ------------------------------------------------------------- the zero
