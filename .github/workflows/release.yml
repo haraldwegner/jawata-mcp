@@ -48,7 +48,33 @@ jobs:
       run: |
         # checkout@v5 clones shallow with no tags, and the gate is worthless
         # without them — it would see an empty window and pass everything.
-        git fetch --tags --quiet --unshallow 2>/dev/null || git fetch --tags --quiet
+        #
+        # THE FETCH USED TO BE ABLE TO KILL THIS STEP SILENTLY, and on v4.0.0's
+        # first run it did: the step exited 1 having printed NOTHING — no
+        # verdict, no error, no clue. Two causes were indistinguishable from
+        # that output, because there was none: a fetch failing under `bash -e`
+        # with its stderr sent to /dev/null, and the gate itself refusing. The
+        # old line discarded exactly the evidence needed to tell them apart.
+        #
+        # So: stderr is never discarded, every branch says what it did, and a
+        # fetch that cannot deliver tags FAILS LOUDLY instead of leaving the
+        # gate to judge an empty window and pass everything. `--force` because
+        # checkout leaves a local tag ref of its own, and a fetch that would
+        # "clobber" it is refused with exit 1 — survivable, but only if it is
+        # allowed to happen rather than aborting the step.
+        set -x
+        if git fetch --tags --force --quiet --unshallow; then
+          echo "fetched tags (unshallowed)"
+        elif git fetch --tags --force --quiet; then
+          echo "fetched tags (repository was already complete)"
+        else
+          echo "FATAL: could not fetch tags. The streak gate reads the release" >&2
+          echo "window from them, so without them it would see nothing and pass" >&2
+          echo "everything — which is worse than failing here." >&2
+          exit 2
+        fi
+        echo "--- tags visible to the gate (last 5) ---"
+        git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | tail -5
         bash build/patch-streak-gate.sh "${GITHUB_REF_NAME}" --explain
 
     - name: Set up JDK 21
