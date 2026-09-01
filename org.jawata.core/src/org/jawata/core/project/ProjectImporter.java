@@ -1213,13 +1213,19 @@ public class ProjectImporter {
     /**
      * Sprint 23 (Stage 6): resolution cache keyed by the CONTENT of every
      * pom.xml in the project tree. The mvn shell-out costs seconds; the same
-     * unchanged pom set (fixture suites, project re-loads) pays it once per
-     * JVM. Any pom edit changes the key; entries are absolute repository
-     * paths, location-independent. Bounded.
+     * unchanged pom set (fixture suites, project re-loads) pays it once. Any
+     * pom edit changes the key; entries are absolute repository paths,
+     * location-independent.
+     *
+     * <p>2026-09-01: the cache now SURVIVES THE PROCESS ({@link ClasspathCache}).
+     * It used to say "once per JVM", and that clause was the whole defect — the
+     * residents all restart together when a release lands, so every one of them
+     * re-resolved every project at the same instant. At 290 repositories that is
+     * 290 Maven runs, measured as ten of twenty cores and a machine unusable for
+     * minutes. The key was already a content hash, which is what makes writing it
+     * to disk safe; see {@code ClasspathCache} for the half the hash does not
+     * cover.</p>
      */
-    private static final java.util.concurrent.ConcurrentHashMap<String, List<String>>
-        MAVEN_CLASSPATH_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final int MAVEN_CLASSPATH_CACHE_MAX = 64;
 
     private static String pomTreeHash(java.nio.file.Path projectPath) {
         try {
@@ -1264,20 +1270,16 @@ public class ProjectImporter {
                     + " Make Maven reachable, then reload the project.");
         }
         String cacheKey = pomTreeHash(projectPath);
-        if (cacheKey != null) {
-            List<String> cached = MAVEN_CLASSPATH_CACHE.get(cacheKey);
-            if (cached != null) {
-                log.debug("Maven classpath served from cache ({} entries)", cached.size());
-                return new ArrayList<>(cached);
-            }
+        List<String> cached = ClasspathCache.get(cacheKey);
+        if (cached != null) {
+            log.debug("Maven classpath served from cache ({} entries)", cached.size());
+            return cached;
         }
         DependencyResolutionException firstFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 List<String> jars = runMavenBuildClasspath(mvnCmd, projectPath);
-                if (cacheKey != null && MAVEN_CLASSPATH_CACHE.size() < MAVEN_CLASSPATH_CACHE_MAX) {
-                    MAVEN_CLASSPATH_CACHE.put(cacheKey, List.copyOf(jars));
-                }
+                ClasspathCache.put(cacheKey, jars);
                 return jars; // may be genuinely empty: a pom with no dependencies
             } catch (DependencyResolutionException e) {
                 log.warn("Maven dependency resolution attempt {}/2 failed for {}: {}",
