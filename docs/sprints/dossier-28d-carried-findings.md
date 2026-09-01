@@ -732,3 +732,57 @@ per commit nor gets run deliberately when retrieval changes.
   live in the suite honestly because it asserts something that must hold on every commit.
 
 **Home: Sprint 28e**, with finding 13 — the two share the case-authoring work.
+
+---
+
+## 15. Publishing a release makes every user's machine unusable for minutes
+
+**Measured on this machine at 2026-09-01 13:59, seventeen minutes after v4.0.0
+published — by the user noticing, not by any gate.**
+
+v4.0.0 was published at 13:42. At **13:59:47** all three jawata residents
+restarted together onto `jawata-v4.0.0/jawata.jar`, and each began re-importing
+its workspace from cold:
+
+```
+651374  13:59:47  189%   javata-dev
+651380  13:59:47  211%   orb-strategy
+651414  13:59:47  133%   patterns
+```
+
+Plus their spawned children — one caught running a Maven `dependency:build-classpath`
+against `java-design-patterns`, a large repository. Total draw was roughly **1000% CPU,
+about ten of twenty cores**, sustained. Load average 17.07. The user's report was
+"machine was stuck for minutes", and that is exactly what it was.
+
+**The mechanism.** A release lands; studio detects it, downloads it, and restarts
+the fleet. Every resident then rebuilds its workspace index from nothing, at the
+same instant, because they all learned about the same release at the same time.
+Nothing staggers them and nothing waits for the machine to be idle.
+
+**Why this is a product defect and not an accident of tonight.** It is not
+specific to this release, this machine, or three workspaces. Any user with more
+than one workspace gets a simultaneous cold re-index the moment we publish
+anything — and the more workspaces they have, the worse it scales. The moment we
+ship is the moment their machine becomes unusable, which is the worst possible
+pairing: our release, their outage, and no warning that the two are connected.
+
+**The asymmetry that makes it embarrassing.** This same sprint added a guard that
+refuses to start the TEST SUITE beside a competing heavy job, because contention
+manufactures failures that read as regressions. So the product protects its own
+suite from other people's load and imposes exactly that load on its users. The
+guard proves we understand the failure mode; we simply pointed it inward.
+
+**Directions, none of them chosen here:**
+
+- **Stagger.** Residents restart on a spread rather than together — the cheapest
+  fix and it does not reduce total work, only its concentration.
+- **Defer the re-index.** Restart onto the new engine immediately (that is cheap);
+  rebuild the index lazily, on first use or when the machine is idle. The
+  expensive half is the import, not the restart.
+- **Ask.** A release is not an emergency. Offer the update and let the user take
+  it when they are not mid-task, which is what every well-behaved desktop tool does.
+
+**Home: Sprint 28e.** Same reasoning as findings 13 and 14: Sprint 29 launches on
+v4.0, and a launch is precisely when the largest number of machines take the
+update simultaneously.
