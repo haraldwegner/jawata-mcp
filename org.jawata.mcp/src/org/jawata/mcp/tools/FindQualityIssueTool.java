@@ -76,12 +76,44 @@ public class FindQualityIssueTool extends AbstractTool {
      */
     public FindQualityIssueTool(Supplier<IJdtService> serviceSupplier,
                                 Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
-        this(new JawataService(serviceSupplier,
+        this(new JawataService(serviceSupplier, cured(serviceSupplier, store)));
+    }
+
+    /**
+     * Build the catalog, then give EVERY AST detector in it the store its cures
+     * resolve against — Sprint 28d, Stage 12.
+     *
+     * <p><b>What this fixes.</b> Only one registry took the store, and it passed
+     * it to one detector, so exactly one kind's findings carried a cure with an
+     * address behind it. Twelve kinds declare a cure; one rendered it fully, two
+     * rendered a stripped form built from the SAME rows, and eight rendered
+     * nothing. The sharpest symptom was not a new detector at all: {@code ocp}
+     * holds the switch-statements and type-code detectors and relabels their
+     * findings, so one measurement, at one line, answered richly under {@code
+     * ocp} and bare under its own kind.</p>
+     *
+     * <p><b>Why HERE and not in {@code DetectorCatalog.register}.</b> The catalog
+     * lives in {@code domain}, which must not learn about the store — that edge
+     * is the dependency direction the architecture protects. This class already
+     * holds both halves, so the join costs no new edge. It is also the one place
+     * every registry's output passes through, which is what stops the next
+     * detector from having to remember its own wiring.</p>
+     */
+    private static org.jawata.mcp.domain.DetectorCatalog cured(
+            Supplier<IJdtService> serviceSupplier,
+            Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
+        org.jawata.mcp.domain.DetectorCatalog catalog =
             DependencyDetectors.registerInto(
                 KerievskyDetectors.registerInto(
                     SolidDetectors.registerInto(
                         FowlerDetectors.registerInto(
-                            QualityDetectors.builtins(serviceSupplier), store))))));
+                            QualityDetectors.builtins(serviceSupplier), store))));
+        for (org.jawata.mcp.domain.Detector d : catalog.all()) {
+            if (d instanceof org.jawata.mcp.tools.smell.AbstractAstDetector ast) {
+                ast.useStore(store);
+            }
+        }
+        return catalog;
     }
 
     /** The seam: project from the supplied service's detector catalog. */

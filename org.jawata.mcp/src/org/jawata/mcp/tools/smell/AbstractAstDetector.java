@@ -41,10 +41,83 @@ public abstract class AbstractAstDetector implements Detector {
     private final String description;
     private final int defaultThreshold;
 
+    /**
+     * The store a finding's cure is RESOLVED from — injected at registration,
+     * never constructed here.
+     *
+     * <p><b>Why it lives on the base and not on each detector.</b> Until Sprint
+     * 28d's Stage 12 exactly ONE detector held a store, so exactly one kind's
+     * findings carried a cure with an address behind it. Twelve kinds declare a
+     * cure in {@link CureCatalog}; one rendered it fully, two rendered a
+     * stripped version built from the same rows, and eight rendered nothing.
+     * The capability was never missing — only the wiring was, and it was
+     * per-detector wiring, so every new detector would have had to remember it.
+     * Here it is remembered once.</p>
+     *
+     * <p>The default supplier yields null, and null is NOT a skip: it produces
+     * the same "every namespace absent" answer an empty store does, so the
+     * sentence says DEGRADED and names what is missing. A no-store path that
+     * printed nothing would be the silent default this sprint exists to remove.</p>
+     */
+    private java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> store =
+        () -> null;
+
     protected AbstractAstDetector(String kind, String description, int defaultThreshold) {
         this.kind = kind;
         this.description = description;
         this.defaultThreshold = defaultThreshold;
+    }
+
+    /**
+     * Inject the store the cures resolve against. Called once, at registration,
+     * for every detector in the catalog — see {@code FindQualityIssueTool}.
+     */
+    public final void useStore(
+            java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> supplier) {
+        this.store = supplier == null ? () -> null : supplier;
+    }
+
+    /**
+     * True when this detector composes its OWN cure sentence and the base must
+     * not append a second one.
+     *
+     * <p>An explicit opt-out, not a check on the message text: keying "has a
+     * cure already" on a substring would make the rendering depend on wording
+     * that is itself user-visible and free to change — a behavioural contract
+     * resting on a string, which is the seam this sprint was warned about one
+     * layer down. {@link OcpDetector} overrides it because it frames the cure
+     * with the principle's own lead sentence.</p>
+     */
+    protected boolean rendersOwnCure() {
+        return false;
+    }
+
+    /**
+     * Append each finding's RESOLVED cure — the one place it happens.
+     *
+     * <p>The address index is built ONCE per scan, not once per finding:
+     * indexing walks every row in the store, so per-finding construction would
+     * be a full scan per finding on a sweep that produces hundreds.</p>
+     *
+     * <p>A kind that declares no cure gets nothing appended — {@code hint()}
+     * returns blank there, and blank is a contract other branches read.</p>
+     */
+    private List<Finding> withCures(List<Finding> found) {
+        if (rendersOwnCure() || found.isEmpty()) {
+            return found;
+        }
+        org.jawata.mcp.knowledge.CatalogueAddresses addresses =
+            org.jawata.mcp.knowledge.CatalogueAddresses.of(store.get());
+        List<Finding> out = new ArrayList<>(found.size());
+        Map<String, String> byKind = new LinkedHashMap<>();   // one lookup per KIND, not per finding
+        for (Finding f : found) {
+            String cure = byKind.computeIfAbsent(f.kind(),
+                k -> CureLookup.forKind(addresses, k).hint());
+            out.add(cure.isBlank() ? f
+                : new Finding(f.kind(), f.filePath(), f.line(), f.column(), f.severity(),
+                    f.message() + cure, f.symbol()));
+        }
+        return out;
     }
 
     @Override
@@ -162,8 +235,12 @@ public abstract class AbstractAstDetector implements Detector {
 
         Map<String, Object> scan = buildScanReport(listed, examined, unreadable, unparseable, bindingsDead, degraded,
 				missed);
-        return Findings.toResponse(findings, scan,
-            steeringFor(findings.size(), examined, missed, degraded));
+        // Stage 12: the resolved cure is appended HERE, once, for every detector —
+        // so a reader of any cure-declaring kind gets what a reader of `ocp` gets.
+        List<Finding> answered = withCures(findings);
+
+        return Findings.toResponse(answered, scan,
+            steeringFor(answered.size(), examined, missed, degraded));
     }
 
 	private Map<String, Object> buildScanReport(int listed, int examined, List<String> unreadable,

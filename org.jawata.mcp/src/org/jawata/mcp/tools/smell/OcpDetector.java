@@ -61,6 +61,17 @@ import java.util.List;
 public final class OcpDetector extends AbstractAstDetector {
 
     /**
+     * This detector composes its own cure, framed by the principle's lead
+     * sentence, so the base must not append a second one. See
+     * {@link AbstractAstDetector#rendersOwnCure()} — an explicit opt-out rather
+     * than a check on the message text.
+     */
+    @Override
+    protected boolean rendersOwnCure() {
+        return true;
+    }
+
+    /**
      * The traces. Held as instances, not re-implemented — a change to either
      * detector's rule reaches this kind automatically, which is the only way two
      * names over one measurement stay honest.
