@@ -1,164 +1,135 @@
-# ARCHITECT — WATCH MODE, Sprint 28d Stage 9 checkpoint diff
+# Architect watch-diff — the v3.14.0 → v4.0.1 release run
 
-**Scope:** `bc535a2`, `939af3b`, `63691ff` on `sprint-28c-rescue`, judged against
-`ARCHITECTURE-28d.md`. Stage 9 is D3 — the round trip has a fixed point we did not
-author.
+Run at the patch-streak gate's own instruction, after it refused v4.0.1.
 
-**Incomplete delegation, ranked first per standing rule 1: NONE, and the category is
-empty by construction here.** Stage 9 added **zero production source** — 368 lines of
-tests and one E2E block. `find_quality_issue(kind=incomplete_delegation)` on the one
-production type the stage newly depends on (`InlineTool`) returns **0 findings, scan
-COMPLETE**. A real absence, not a failure to look.
+**The gate's question:** is this run one design flaw being moved around, or
+independent fixes that coincided?
 
----
+**Answer: ONE FLAW, moved around at least seven times — but not the flaw the
+gate assumes.** Its text expects "each patch breaks something DIFFERENT from the
+last". That is not what happened. Each patch fixed a different *instance of the
+same defect class*, and the class is not in the product's features. It is in the
+code that produces **verdicts**.
 
-## The question this diff actually raises
-
-A stage that ships no production code is either exactly right or a skipped build, and
-nothing about the diff itself distinguishes them. So that is the finding to settle,
-and it settles in the stage's favour — but only because of what the stage measured
-first.
-
-**D3 is a PROPERTY to verify, not a capability to build.** Its own measure says so:
-*"the round-trip property test passes against human-written originals."* A stage whose
-deliverable is a property is correctly all-test. Compare Stage 8, whose deliverable was
-two operations and which shipped 909 lines of production code.
-
-**But the stage could have been a build, and the measurement is what ruled it out.**
-The trip needs both directions for one pattern. Counted off the front door's own
-description: **8 TOWARD operations, 2 AWAY, and no pattern carries both.** The
-alternative to the test-only shape was to build an inverse operation — a toward-
-singleton, or a lambda-to-anonymous — which is a rank-2-scale build for the sake of a
-property test, immediately after C8 cut four operations of exactly that cost. Not
-building it is consistent with the cut, and the cut is the human's standing decision.
-
----
+**Evidence basis, stated because it bounds the finding:** commit subjects for the
+ten tags, not their diffs; full knowledge of v4.0.1's four fixes and the three
+gate defects found on release day, because this agent made and fixed them.
+Measured: **19 of the run's 124 commits touch a gate or guard.**
 
 ## Findings (ranked)
 
-### F1 — the round trip is proven for ONE pairing, and the report should not read as proving the operation set
+### F1 — A gate that cannot distinguish its own three states
 
-The property holds for `replace_constructor_with_factory` inverted by
-`inline(kind=method)`. That is one pair out of ten operations. Nine operations have no
-inverse and are therefore unmeasured by this property — including both of Stage 8's,
-one of which is the same operation viewed from its other end.
+Every gate answers one of three things: *I checked and it holds*, *I checked and
+it is broken*, *I could not check*. The third keeps collapsing into one of the
+first two, and each collapse shipped as its own release:
 
-**This is not a defect and no fix is proposed.** It is a scope fact that the stage
-states honestly in its own commit message, and the reason to raise it here is that
-"the round trip has a fixed point" reads, in a status summary, as a claim about the
-refactoring engine. It is a claim about one pair. The plan and the report should keep
-saying so, and C9's close should not round it up.
-
-### F2 — the reversed direction loses a real check, and the loss is the interesting half
-
-D3 says AWAY then TOWARD from a canonical implementation. The stage runs TOWARD then
-AWAY from unpatterned code, because the literal direction has no usable corpus.
-
-> **CORRECTED after the C9 audit, which REFUSED partly on this paragraph.** It said
-> the fork holds "six self-returning static factories, in four classes, every one
-> carrying Lombok". That was false, and **this report repeated it without re-running
-> it** — which is the watch-diff's own failure, not just the stage's: an architect pass
-> that accepts a number because it appears in four places has checked nothing. The
-> measurement is now reproducible (`build/survey-self-returning-factories.py`) and
-> reports **9 sites in 6 classes**, one dependency-free.
->
-> The conclusion holds on a different reason: that one site, `monad/Validator.of()`,
-> has a **private constructor**, and the trip is only defined where the old path stays
-> open. Zero of the nine qualify.
->
-> **CORRECTED AGAIN at round 3.** This block previously ended "constructor
-> accessibility is the blocker, not Lombok", which is also false: **8 of the 9 are
-> dependency-blocked and 5 are private-constructor-blocked**, so dependency blocks
-> MORE. Neither filter alone reaches zero. The precise claim is that the one site the
-> dependency filter leaves is removed by accessibility — both are load-bearing.
->
-> **That this report needed the same correction twice is the finding about the report.**
-> A watch-diff that repeats a number because it appears elsewhere has checked nothing,
-> and a watch-diff that repeats a *correction* incompletely has done it twice.
-
-What the reversal costs: the literal form would test that our TOWARD direction
-**reproduces a human's chosen factory shape**. The reversed form cannot. And the two
-shapes are known to differ — a human writes an instance factory on a separate type;
-this operation writes a static method on the type itself.
-
-**That gap is the more valuable of the two checks**, because it is the one that would
-catch our operations drifting away from how people actually write the pattern. It is
-declared in the commit, the test javadoc and the plan, which is the right handling —
-but it should be carried as an open item with a home rather than left as a sentence
-in three places, or it will be re-discovered rather than remembered.
-
-### F3 — the E2E promise changed KIND, and the change is right but undeclared as a precedent
-
-Every earlier stage's E2E promise asserts that an operation **stages** — nothing
-written, a `changeId` returned — because those promises are about reachability through
-dispatch. S9.2 **applies**, because the property under test is about the writes: it
-needs the undo path, the compile gate and the file mutations in play, and a staged
-change exercises none of them.
-
-Correct for this stage. Worth naming because it is the first applying promise in the
-script, and the next author will copy whichever neighbour they happen to read. One
-sentence in the E2E block saying *why* this one applies would prevent a staged promise
-being "fixed" into an applying one, or the reverse.
-
----
-
-## Dispatches
-
-| Finding | Actuator |
+| Release | The collapse |
 |---|---|
-| F1 | none — a scope fact to keep stating, not a change |
-| F2 | the carried-findings dossier, with a home. Not a refactoring; no plan kind applies |
-| F3 | one comment in `build/end-to-end-test.sh`, already largely present in the commit message |
+| v3.14.0/.1 | an unwired baseline entry carried no reason — "accepted deliberately" indistinguishable from "accepted by accident" |
+| v3.14.2 | a guard added to make delivery *honest* — the same shape, named |
+| v3.17.2 | the hollow-wiring gate **discarded the error explaining its own failure** — "broken" indistinguishable from "could not check" |
+| v4.0.0 pre-release | the load guard would have gone **green on its own motivating incident** — "quiet machine" indistinguishable from "blind guard" |
+| v4.0.0 release day | the streak gate exited 1 printing **nothing at all** — "the fetch failed" indistinguishable from "the gate refused" |
+| v4.0.1 (3) | the staleness guard read the launcher — "genuinely stale" indistinguishable from "the launcher didn't change" |
+| v4.0.1 (4) | the sweep deadline failed healthy runs — "regression" indistinguishable from "slow machine" |
 
-## Trend (baseline diff)
+Seven instances. The store cluster (v3.15.0, v3.16.0, v3.17.0, v3.17.1 —
+*"reports what the store knows"*, *"reports its own drift"*, *"only deletes what
+it can rebuild"*) is the **same abstraction one layer over**: an output
+collapsing two distinguishable states into one value. The store's own recorded
+lesson already names it — *"not declared" and "we failed to read it" became THE
+SAME VALUE*.
 
-| Gate | Result | Against |
-|---|---|---|
-| e2e | **104 passed / 0 failed** | 99 before Stage 9's five checks |
-| production source added | **0 lines** | Stage 8 added 909 |
-| `incomplete_delegation` on the newly depended-on type | **0, scan complete** | — |
+**Why it recurs.** Every gate re-implements decide-then-report, and the
+reporting half is an exit code or a boolean. A shell gate's vocabulary is
+`exit 0` / `exit 2`; there is no third word, so the third state has nowhere to go
+and is silently spent as one of the other two.
 
-The full suite, abort budget and dead-code gate were running when this was written and
-are NOT claimed here.
+**DESIGN FIX — give the verdict its behaviour.** One `Verdict` type, shared by
+every gate, with three constructors and no fourth: `holds(evidence)`,
+`broken(reason)`, `couldNotCheck(why)`. A gate returns a `Verdict`; the runner
+maps it to an exit code. The distinction stops being each author's discipline and
+becomes unrepresentable-as-one. The shell gates take the same contract as a
+required output line before any exit.
+
+This is the standing bias applied literally: the data (which state, and why) and
+the logic reporting it live apart, so the logic is rewritten per gate and drifts.
+Move it into the object.
+
+### F2 — Gates ship unexercised, and the first firing is production
+
+The streak gate was added *in the release it first ran on*, and failed. The load
+guard would have passed its own incident. Sprint 27's headline gate has never run
+for want of a corpus. A gate that has never produced its non-trivial verdict is a
+claim, not an instrument — a detector that never fires and a corpus with nothing
+to find are byte-identical.
+
+**DESIGN FIX:** a gate ships with a control that makes it fire — the red-then-
+green pair. The staleness repair did this and it earned its keep immediately: the
+first attempt made a 2021 third-party jar the reference, so every correct tree
+would have been refused. Worse than the bug, caught in one run, never left the
+working tree.
+
+### F3 — The reference a gate measures against is chosen, not derived
+
+Three of the recent defects are one mistake: an arbitrary reference standing in
+for the real quantity. The load guard used a load-average threshold at half the
+core count (the incident ran below it). The staleness guard used the launcher as
+proxy for "the dist" (the module that changes least). The sweep used 120 s as
+proxy for "too long" (a hang backstop priced as a latency budget).
+
+**DESIGN FIX:** a gate states the quantity it means and derives its reference
+from that quantity. "Is another heavy job running" is a process lookup, not a
+load number. "Is the dist older than the source" is the oldest artifact *we
+build*, not one file. "Has it hung" is far above the worst legitimate run.
 
 ## Reviewed diffs — design fix or bandage
 
-**DESIGN FIX**, on three points:
+| Change | Verdict |
+|---|---|
+| (1) classpath cache persists | **DESIGN FIX.** The key was already a content hash; persisting is the correct consequence. The existence check is the design work — it names the half the hash does not cover instead of assuming it |
+| (2) cache cap 64 → 512 | **BANDAGE, acceptable as one.** Still a chosen number. With disk behind it a miss costs a file read, so the cliff is gone rather than moved — but the smallest design alternative is an eviction policy, not a bigger constant |
+| (3) staleness reference | **DESIGN FIX** — replaces a proxy with a derivation, and carries its control |
+| (4) sweep deadline 120 s → 600 s | **BANDAGE**, and the right one: a backstop belongs far from the work. But 600 is chosen too, and the design answer is that a hang is detected by *no progress*, not by elapsed time |
 
-1. ~~**The stage measured before it designed, and the measurement changed the
-   design.** The 8/2 count and the six-Lombok-factories survey were both taken before a
-   line was written, and both are recorded with their method.~~
-   **WITHDRAWN at C9 — this was false in its second half, and the auditor caught it.**
-   The 8-TOWARD/2-AWAY count does carry its method (counted off the front door's
-   description, operations enumerated). The factory survey carried **no method at
-   all**: four artifacts said "the fork was surveyed" and none said how, so nothing in
-   the repository let a reader re-run it — which is precisely how a wrong number
-   reached the dossier unchallenged, through this report. It is a file now.
-2. **The instrument is shown to discriminate.** The first attempt was REFUSED by JDT
-   ("Selected entity is not a constructor invocation or definition"), and that red is
-   kept in the commit message as the evidence the test can fail. A property test that
-   has never failed is a property test nobody has checked.
-3. **The author found the vacuity hole in his own test and closed it.** The first green
-   compared the slice against its pristine bytes — which two no-op operations satisfy
-   perfectly while reporting success. A per-iteration proof of life now requires the
-   midpoint to differ. This is the exact shape the C8 auditor named one stage earlier;
-   finding it unprompted is the behaviour the audit was supposed to teach.
+## Dispatches
 
-**Contract observation (rule 5(f), silence forbidden).** Stage 9 changes **no
-contract**: no signature, schema, response payload or serialized format moved. The
-producers and consumers are therefore unchanged and no other side needs to change.
-The one new production dependency is a test's use of `InlineTool`, which is an existing
-registered front door used through its published interface.
+- **F1** → `refactoring(action=plan)`, kind `extract`, target: a `Verdict` type in
+  `org.jawata.core`, then migrate the Java-side gates one at a time,
+  parity-gated. The shell gates take the contract, not the type.
+- **F2** → the test-writer seat: every existing gate owes a control that fires
+  it. Start with the three that have never fired in anger.
+- **F3** → no new mechanism; it is a review question F1's type makes askable,
+  because `holds(evidence)` forces the author to name what was measured.
+
+## Trend
+
+The run is **not** degenerate patching. Nine of ten releases shipped real
+capability or real repair, and the suite grew 2109 → 2246 across it with zero
+failures at the close. What the streak measures correctly is **cadence**; what it
+cannot see is that the cadence is driven by one unfixed defect class, which is
+worse news than the streak itself.
+
+## Recommendation — advisory; the ranking is the human's
+
+**Ship v4.0.1.** The four fixes are correct, proven, and two repair live defects
+in what users are running now. Withholding them to protest a pattern punishes the
+wrong thing.
+
+**Then take F1 before the next feature.** On this evidence there will be an
+eighth instance, and it will cost another release. The streak gate is right that
+the action is not another fix — but the action it should provoke is F1, not a
+pause.
 
 ## Below the fold
 
-- The property runs on six originals where C9 asks for three. Free, and it caught
-  nothing extra — all six behaved identically, which is itself mild evidence that the
-  shape rather than the class is what the operation keys on.
-- `protectConstructor=false` is load-bearing in both the unit test and the E2E, for the
-  same reason in both places. It is commented in both, which is the right redundancy —
-  a reader of either will meet it.
+- The samples-poms miss (v4.0.0) is F3 in a different costume: version sites
+  derived by grepping the *current* version, which finds only files that already
+  agree.
+- `mcp#66` is F1's reporting half — a title naming the wrong cause survives
+  because nothing forced the gate to state what it measured.
 
 ## Skipped by record
 
-None.
+None — no previously-declined proposal is re-argued here.
