@@ -620,3 +620,115 @@ The trap runs both ways: a live schema showing the kinds would not prove the bra
 registers them either, because the resident could be newer than the checkout. Any
 wiring claim about this sprint is answered from the source and the built dist, never
 from whatever happens to be running.
+
+---
+
+## 13. Sprint 27's headline gate has no corpus and cannot run on any machine
+
+**Found while reading the two `aborted` cells in the v4.0 release suite, 2026-09-01 —
+not by any gate. The suite has reported these two as aborted on every run, which is
+correct behaviour and is the only reason they were ever noticed.**
+
+`CalibrationGateTest` is Sprint 27 C4: twelve cues, phrased as a person would ask them,
+scored against accept sets frozen at C0 *before any retrieval code existed*. A cue passes
+when the winning entry is in its accept set and the designated entry is inside the
+twelve-wide nomination window. Bar `≥10 of 12`, against a measured keyword baseline of
+`1 of 12` — that gap is the whole claim, not the absolute score.
+
+It aborts, loudly and by design, when `-Djawata.embed.corpus` names no readable file. Its
+own comment says why: *"a gate that silently skips is indistinguishable from one that
+passed"*, and an earlier version returned instead of aborting, which JUnit recorded as a
+PASS.
+
+**What is actually wrong is not the missing file.** The accept sets ARE committed —
+`org.jawata.mcp.tests/test-resources/embed-goldens/accept-sets.json`, in the repository
+since July. The corpus they are answers *about* is not: the javadoc describes it as *"a
+dump of a real 2054-entry store, which is NOT committed (it is personal knowledge, and
+pinned by sha256 rather than vendored)"*. So the repository holds committed answers to
+questions about absent data.
+
+**It cannot be repaired by exporting the current store.** Measured 2026-09-01: the live
+store holds **305 entries** against the 2054 the accept sets were frozen against, with 202
+tombstones and a rebuild in between. The accept sets name entries by opaque id — the
+paraphrase cue's designated answer is `5f7373f4`. Against a different corpus those answers
+are mostly not present to be found, so a run would fail for reasons that say nothing about
+retrieval, and a pass would be as meaningless as a failure.
+
+**Nor by committing the old dump.** A dump is frozen to one schema; committing it means
+migrating it on every schema change, and a migrated corpus is no longer the artefact the
+answers were frozen against.
+
+**The design fault, stated generally:** the gate's input lives outside the product. A check
+whose corpus is a personal file on one machine runs only on that machine, only until the
+file moves, and reports nothing when it stops — which is exactly what happened. Nothing
+broke; the input left.
+
+**The repair (Harald's, 2026-09-01).** Author the corpus as CASES, in the `.md` +
+frontmatter form the store's substrate already uses, and load them with the ordinary
+`experience(kind=load, path=…)` reader into a THROWAWAY store; measure; drop the store.
+Three properties follow, and each answers one of the objections above:
+
+- **Schema drift disappears** — the cases are source, not a database. Loading writes them
+  through today's writer against today's schema, every run. Nothing to migrate.
+- **One reader serves both** the real substrate and the benchmark, so a fix to the loader
+  cannot reach one and miss the other. A bespoke fixture format would be a second
+  lifecycle nothing forces to agree with the first.
+- **The frozen answers become readable.** A story file is identified by its `name:` slug
+  rather than `5f7373f4`, so the expected answers are names a reviewer can check — which
+  matters most here, because the answers are precisely what nobody may quietly adjust.
+
+Two constraints are load-bearing and must not be dropped in execution:
+
+1. **The cases need deliberate near-misses or the benchmark measures nothing.** The old
+   corpus was hard because 2054 real entries contain plenty of things that merely *look*
+   like the answer. Thirty clean cases with one obvious answer each would score 12 of 12
+   on keyword matching too, collapsing the gap against the `1 of 12` baseline that is the
+   entire point. Each case needs plausible wrong answers beside the right one — same
+   vocabulary, different meaning. Built that way a small corpus is *harder* than the real
+   one, by design rather than by luck.
+2. **Write the cases and questions, freeze the answers, THEN run it the first time.** The
+   original accept sets were frozen before retrieval code existed, and that is the only
+   reason they mean anything. Answers written after watching what the search returns are
+   self-marking.
+
+**One hazard to design around:** the case files must live where a reseed does NOT crawl.
+`experience(kind=reseed)` sweeps the configured default roots and follows `[[wikilinks]]`
+transitively, so cases under `docs/knowledge/stories` would be loaded into the real store —
+including the deliberately wrong ones, which are written to be plausible and would then
+answer real questions. They belong under this repository's test resources, beside the
+accept sets, with no link path from the substrate.
+
+**Home: Sprint 28e**, and it must land BEFORE Sprint 29. The reason is 29 rather than
+anything about 28d: 29 launches on v4.0, and launching with retrieval quality unmeasured
+is the version of this that costs something. Tonight's release does not, because no run
+since the store was rebuilt could have executed this gate either.
+
+**Scope:** a day. The cases are the work; the loading and dropping are trivial.
+
+---
+
+## 14. A quality benchmark is installed as a per-commit test
+
+**The same reading, 2026-09-01. Separate finding because it has a separate repair, and
+fixing 13 without fixing this one just relocates the problem.**
+
+`CalibrationGateTest` is not a test. A test asserts behaviour that must hold on every
+commit. This measures *how much semantic retrieval buys over keyword matching* on
+realistic data — a number that only means something when the retrieval algorithm changes,
+and that requires a corpus and answers cut together as one artefact.
+
+Installed in the per-commit suite it takes a slot in all 2241 tests, aborts, and reports
+nothing. That is the least useful of the three possible states: it neither guards anything
+per commit nor gets run deliberately when retrieval changes.
+
+**The repair is two moves, not one:**
+
+- **Move the benchmark out of the suite.** It runs when retrieval changes, against a
+  snapshot taken then, with answers frozen then. Corpus and answers are ONE artefact —
+  an old corpus with new answers and a new corpus with old answers are both meaningless.
+- **Put a smaller guard in its place**, if retrieval needs per-commit cover at all. That
+  is a different and much cheaper thing: a handful of committed entries proving the search
+  is wired, ranks, and honours the nomination window. **Mechanism, not quality.** It can
+  live in the suite honestly because it asserts something that must hold on every commit.
+
+**Home: Sprint 28e**, with finding 13 — the two share the case-authoring work.
