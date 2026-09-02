@@ -216,21 +216,31 @@ modes of `ChangeMethodSignatureTool` and `ExtractSuperclassTool`. **`ExtractClas
 is NOT the template** — it wraps an Eclipse engine, and copying it for a row we must
 write ourselves starts the work in the wrong shape, silently.
 
-**The seven Eclipse engines to expose, and the rows blocked until each exists:**
+**The six Eclipse engines to expose.** Two columns, because they are different
+questions: the row an engine IS, and the rows that WAIT on it because they use it as a
+part. Rows 21 and 55 are exposures in their own right and wait on nothing.
 
-| Engine | Rows blocked on it |
-|---|---|
-| `IntroduceParameterObjectProcessor` | 21 |
-| `IntroduceParameterRefactoring` | 55, 27 |
-| `MoveStaticMembersProcessor` | 23, 24 |
-| `JavaDeleteProcessor` | 34, 37, 2 |
-| `UseSuperTypeProcessor` | 4 |
-| `PromoteTempToFieldRefactoring` | 48 |
-| `ConvertToRecordRefactoring` | smell 22 |
+| Engine | The row it implements | Rows that wait on it |
+|---|---|---|
+| `IntroduceParameterObjectProcessor` | 21 | — |
+| `IntroduceParameterRefactoring` | 55 | 27 |
+| `MoveStaticMembersProcessor` | — | 23, 24 |
+| `JavaDeleteProcessor` | — | 2, 34, 37 |
+| `UseSuperTypeProcessor` | — | 4 |
+| `PromoteTempToFieldRefactoring` | — | 48 |
 
-Five more ship unexposed and are not needed here: `IntroduceIndirectionRefactoring`,
-`InlineConstantRefactoring`, `ReplaceInvocationsRefactoring`, `MakeStaticRefactoring`,
-`ChangeTypeRefactoring`.
+**Eight refactorings wait**: 2, 4, 23, 24, 27, 34, 37, 48. That is the same eight §10
+counts, and it agrees with 37 of 45 having no predecessor.
+
+**`ConvertToRecordRefactoring` is NOT needed, and this document said it was.** The
+spec's smell row 22 records that the finder already ships as
+`find_modernization(class_to_record)` and only has to be registered as a reportable
+smell. The spec governs scope. Consequence: **no detector waits on anything**, and all
+six can start on day one.
+
+Six more ship unexposed and are not needed here: `ConvertToRecordRefactoring`,
+`IntroduceIndirectionRefactoring`, `InlineConstantRefactoring`,
+`ReplaceInvocationsRefactoring`, `MakeStaticRefactoring`, `ChangeTypeRefactoring`.
 
 ---
 
@@ -290,12 +300,13 @@ There is no golden tool list or count to break: `getToolCount` has eight referen
 two in the application and six inside a test that builds its own registry.
 
 **The work barely constrains itself.** 37 of the 45 refactorings have no predecessor;
-8 do, plus one smell, and all wait on the seven engine exposures above.
+8 do — rows 2, 4, 23, 24, 27, 34, 37 and 48 — and all wait on the six engine exposures
+above. **No smell waits on anything.**
 
 ```
   W0  P1 + P2                        1 lane      everything routed or composed waits here
    │
-   ├─ W1  the 7 engine exposures     ≤ 7 lanes
+   ├─ W1  the 6 engine exposures     ≤ 6 lanes
    │        └─ W3  the 8 composed rows  ≤ 8 lanes  (need W1 + P2)
    ├─ W2  the independent rows       3–4 lanes in practice
    └─ W4  rows 56 and 57             last
@@ -324,7 +335,7 @@ exceeded the client timeout, and a later reader must not rank it last on a false
 | Stage | Ships | Gate |
 |---|---|---|
 | 0 | P1 + P2, and the four unreachable fixes routed | `CureCatalog` loads with a standalone step; a feature-envy finding offers `move_method` **at whatever tier the rule derives — perform OR advise** |
-| 1 | the 7 engine exposures; the two renames (§5); the four folds (§5b) | each affected tool passes all three honesty axes; each retired name answers; the published tool count is 42 |
+| 1 | the 6 engine exposures; the two renames (§5); the four folds (§5b) | each affected tool passes all three honesty axes; each retired name answers; the published tool count is 42 |
 | 2 | the 8 composed rows as recipes | each recipe parity-gated at every step, on code we did not author |
 | 3 | the independent in-method rows, demand-first | the per-operation battery |
 | 4 | the cross-file rows, demand-first: 16 · 28/53 · 54 · 22 · 61 · 17/38 · then the rest | the per-operation battery; order re-checked against the calibration corpus first |
