@@ -84,6 +84,16 @@ public class SampleTest {
         // This should not be detected as a test
     }
 
+    // Sprint 28d-rescue: a deliberately BADLY NAMED method in TEST source, for the
+    // same reason longTestHelper below exists. The naming check predated the
+    // includeTests switch and scanned test code, reporting 1,533 violations on the
+    // product's own repository — deliberate test names, burying the real findings.
+    // It must NOT flag this unless includeTests=true. Package-private and unused, so
+    // the unused-code check (which targets private members) ignores it, exactly as it
+    // ignores longTestHelper. Not a @Test method, so FindTestsTool ignores it too.
+    void Bad_Test_Method_Name() {
+    }
+
     // Sprint 17 (v1.2.1): a deliberately long method in TEST source. The smell
     // detectors exclude test sources by default, so long_method must NOT flag
     // this unless includeTests=true. (Not a @Test method → FindTestsTool ignores it.)
