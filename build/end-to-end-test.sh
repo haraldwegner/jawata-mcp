@@ -1259,9 +1259,13 @@ esac
 # traces, so both perform-tier answers must appear — the switch trace's and the
 # type-code trace's, each with its own step.
 case "$OCPQ" in
-    *'TIER: PERFORM — run refactor_to_pattern kind=refactor_to_state.'*)
-        pass "cure-tier-derived the switch trace derives PERFORM and names refactor_to_state" ;;
-    *) fail "cure-tier-derived no PERFORM tier naming refactor_to_state on the switch trace — the derivation did not reach the finding: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+    # v4.0.2: the FIFTH place this one fact was pinned — four test files and
+    # this script each held 'which refactoring does the switch kind recommend'
+    # as their own literal. The kind routes to the operation its own prose
+    # names now, and every copy had to be found by a red run of its owner.
+    *'TIER: PERFORM — run refactor_to_pattern kind=replace_conditional_with_polymorphism.'*)
+        pass "cure-tier-derived the switch trace derives PERFORM and names replace_conditional_with_polymorphism" ;;
+    *) fail "cure-tier-derived no PERFORM tier naming replace_conditional_with_polymorphism on the switch trace — the derivation did not reach the finding: $(printf '%s' "$OCPQ" | head -c 400)" ;;
 esac
 case "$OCPQ" in
     *'TIER: PERFORM — run refactor_to_pattern kind=replace_type_code_with_class.'*)
