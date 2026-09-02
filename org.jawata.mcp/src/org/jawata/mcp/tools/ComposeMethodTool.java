@@ -128,20 +128,13 @@ public class ComposeMethodTool extends AbstractTool {
         org.jawata.mcp.refactoring.Recipe recipe =
             new org.jawata.mcp.refactoring.Recipe("compose method", steps);
 
-        // Refuse a recipe naming an operation nothing publishes BEFORE anything is
-        // applied, so no partial application has to be rolled back to discover it.
-        // Skipped when nothing has registered — an unwired registry cannot answer.
-        org.jawata.mcp.refactoring.OperationRegistry operations =
-            org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
-        if (operations.isWired()) {
-            List<String> unknown = recipe.validate(operations);
-            if (!unknown.isEmpty()) {
-                return ToolResponse.error("REFACTORING_FAILED",
-                    "compose_method names step(s) no registered operation backs: "
-                        + String.join(", ", unknown),
-                    "Nothing was applied. This is a defect in the recipe, not in the input.");
-            }
-        }
+        // NO EAGER STEP VALIDATION HERE, deliberately. It was added and removed in the
+        // same stage: the registry it would consult is process-wide and fills as tools
+        // register, so in any JVM where some tools registered and this one did not, a
+        // perfectly valid recipe was refused. And it would prove nothing about what
+        // runs — the builder below resolves the step itself and never reads the name.
+        // The check belongs with the stage that makes recipes data supplied from
+        // outside; until then it would be ceremony that fails on wiring order.
 
         // The builder is the seam: `refactoring` may not depend on `tools`, so the
         // layer that knows how to turn an operation name into a change supplies it.

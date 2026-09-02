@@ -154,6 +154,20 @@ class PlanRefactoringTool extends AbstractTool {
             }
             sourceSmell = kind;
             kind = recipes.get(0);
+            // A CURE IS NOT ALWAYS A PLAN KIND, and it became possible for it not to be
+            // the moment a cure could name a standalone operation. Without this, a smell
+            // whose cure is `move_method` / `extract` / `encapsulate_field` fell through
+            // to the catch-all step builder and produced a SUCCESSFUL plan whose one step
+            // was `refactor_to_pattern kind=move_method` — a call that does not exist.
+            // Before the cure table was widened these kinds were rejected honestly; a
+            // plan that cannot run is worse than no plan, so they are rejected again,
+            // and the refusal names what to run instead.
+            if (!PLAN_KINDS.contains(kind)) {
+                return ToolResponse.invalidParameter("kind",
+                    "'" + sourceSmell + "' is cured by '" + kind + "', which is a standalone"
+                        + " operation rather than a multi-step plan. Call " + kind
+                        + " directly; action=plan runs only " + PLAN_KINDS + ".");
+            }
         }
         String filePath = getStringParam(args, "filePath");
         if (filePath == null || filePath.isBlank()) {

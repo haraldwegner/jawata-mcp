@@ -157,8 +157,26 @@ public final class LearnerEventStore {
         }
     }
 
+    /**
+     * The width of {@code learner_state.learner}. A key longer than this cannot be
+     * stored, and the failure is invisible where it matters: the write fails, the read
+     * maps a missing row to "nothing recorded yet", and the feature above simply never
+     * remembers. That happened — the change reviewer keyed on an absolute path — so a
+     * key that cannot fit is now refused ONCE with the length named, rather than
+     * retried eight times and buried in a log nobody reads per edit.
+     */
+    private static final int LEARNER_KEY_WIDTH = 60;
+
     /** Persists a learner's state. Retries + loud on final failure, like {@link #append}. */
     public void saveState(String learner, String stateJson) {
+        if (learner != null && learner.length() > LEARNER_KEY_WIDTH) {
+            failedWrites.incrementAndGet();
+            log.error("LEARNER STATE KEY TOO LONG: {} chars, column holds {} — '{}'."
+                    + " This write can never succeed; the caller must bound its key."
+                    + " Retrying would only hide it.",
+                learner.length(), LEARNER_KEY_WIDTH, learner);
+            return;
+        }
         synchronized (store) {
             try {
                 withRetry(WRITE_ATTEMPTS, () -> {

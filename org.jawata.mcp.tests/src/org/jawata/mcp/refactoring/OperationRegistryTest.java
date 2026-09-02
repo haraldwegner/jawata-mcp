@@ -28,7 +28,7 @@ class OperationRegistryTest {
     /** A tool with a kind enum, so the schema-reading path is exercised. */
     private static final class Parametric implements Tool {
         @Override public String getName() {
-            return "pretend_front_door";
+            return "extract";          // a refactoring front door: its kinds ARE operations
         }
         @Override public String getDescription() {
             return "kind alpha, kind beta";
@@ -45,13 +45,14 @@ class OperationRegistryTest {
     /** A tool with no kinds at all — the ordinary case. */
     private static final class Standalone implements Tool {
         @Override public String getName() {
-            return "pretend_standalone";
+            return "find_quality_issue";   // a REPORTING tool: its kinds are questions
         }
         @Override public String getDescription() {
-            return "does one thing";
+            return "kind gamma — a question, not a transformation";
         }
         @Override public Map<String, Object> getInputSchema() {
-            return Map.of("properties", Map.of("filePath", Map.of("type", "string")));
+            return Map.of("properties", Map.of(
+                "kind", Map.of("type", "string", "enum", List.of("gamma"))));
         }
         @Override public ToolResponse execute(JsonNode arguments) {
             return ToolResponse.success(Map.of());
@@ -73,14 +74,26 @@ class OperationRegistryTest {
     }
 
     /**
-     * The singleton is global, and this test empties it. Without restoring it, every
-     * later test in the same JVM that derives a cure tier would see a registry holding
-     * two fabricated tools — an order dependency between test classes, invisible until
-     * it bites.
+     * The singleton is global and this test writes to it, so it must be left exactly as
+     * it was found. CLEARING is not restoring: it replaces one kind of pollution with
+     * another, and a later test class deriving a cure tier would see an empty registry
+     * rather than whatever the run had built up. The contents are captured before and
+     * put back after.
      */
+    private java.util.Set<String> before;
+
+    @org.junit.jupiter.api.BeforeEach
+    void captureTheSingleton() {
+        before = OperationRegistry.theRegistry().all();
+    }
+
     @org.junit.jupiter.api.AfterEach
     void restoreTheSingleton() {
-        OperationRegistry.theRegistry().clear();
+        OperationRegistry live = OperationRegistry.theRegistry();
+        live.clear();
+        for (String operation : before) {
+            live.register(operation, List.of());
+        }
     }
 
     @Test
@@ -96,10 +109,14 @@ class OperationRegistryTest {
         tools.register(new Parametric());
         tools.register(new Standalone());
 
-        assertTrue(live.has("pretend_front_door"), "the front door's name arrived by registering it");
+        assertTrue(live.has("extract"), "the tool's name arrived by registering it");
         assertTrue(live.has("alpha"), "its kinds were READ off its own schema, not listed here");
         assertTrue(live.has("beta"), "its kinds were READ off its own schema, not listed here");
-        assertTrue(live.has("pretend_standalone"),
-            "a tool with no kind enum still publishes its own name — the ordinary case");
+        assertTrue(live.has("find_quality_issue"),
+            "every registered tool publishes its own name — a tool IS an operation");
+        assertFalse(live.has("gamma"),
+            "A REPORTING TOOL'S KINDS ARE NOT OPERATIONS. find_quality_issue publishes"
+                + " kinds like god_class and naming; harvesting them would let a cure"
+                + " step name a smell and be called runnable");
     }
 }

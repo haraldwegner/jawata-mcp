@@ -130,8 +130,13 @@ public final class CureLookup {
             if (degradation != null) {
                 b.append(' ').append(degradation);
                 if (!fallbackRecipes.isEmpty()) {
-                    b.append(" Hardcoded fallback: refactor_to_pattern kind=")
-                     .append(String.join(" / ", fallbackRecipes)).append('.');
+                    // Through invocationOf like every other branch. This one was missed,
+                    // and it is reachable: it fires when the catalogue namespace holds
+                    // zero rows, which is exactly when a reader most needs the sentence
+                    // to be right.
+                    b.append(" Hardcoded fallback: ")
+                     .append(String.join(" / ", fallbackRecipes.stream()
+                         .map(Cures::invocationOf).toList())).append('.');
                 }
             }
             // Stage 11a — the DERIVED tier, appended so every branch above keeps

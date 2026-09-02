@@ -65,6 +65,12 @@ public class FindNamingViolationsTool extends AbstractTool {
 
             If filePath is omitted, scans all project files.
 
+            TEST SOURCES ARE EXCLUDED unless includeTests=true. Test method names are
+            deliberately written to read as sentences, so scanning them buries the real
+            findings: on this repository the scan reported 1,533 violations, and the
+            sample was entirely intentional test names. This is the same switch, with
+            the same default, that every code-smell check already takes.
+
             Requires load_project to be called first.
             """;
     }
@@ -81,6 +87,13 @@ public class FindNamingViolationsTool extends AbstractTool {
         filePath.put("description", "File to check (omit to scan all files)");
         properties.put("filePath", filePath);
 
+        Map<String, Object> includeTests = new LinkedHashMap<>();
+        includeTests.put("type", "boolean");
+        includeTests.put("description",
+            "Include test sources (default false). Test method names are deliberately"
+                + " unconventional; scanning them hides the production findings.");
+        properties.put("includeTests", includeTests);
+
         schema.put("properties", properties);
         schema.put("required", List.of());
 
@@ -90,6 +103,12 @@ public class FindNamingViolationsTool extends AbstractTool {
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         String filePathStr = getStringParam(arguments, "filePath");
+        // The SAME switch and the SAME classifier the code-smell checks use — not a
+        // second derivation of test-ness. This check predates the switch and never
+        // received it, which is why it was the one scan still reporting deliberate
+        // test names as violations.
+        boolean includeTests =
+            org.jawata.mcp.tools.smell.AbstractAstDetector.includeTests(arguments);
 
         try {
             List<Path> files;
@@ -103,6 +122,10 @@ public class FindNamingViolationsTool extends AbstractTool {
             List<Map<String, Object>> violations = new ArrayList<>();
 
             for (Path file : files) {
+                if (!includeTests
+                    && org.jawata.mcp.tools.smell.AbstractAstDetector.isTestSource(file, service)) {
+                    continue;
+                }
                 ICompilationUnit cu = service.getCompilationUnit(file);
                 if (cu == null) continue;
 

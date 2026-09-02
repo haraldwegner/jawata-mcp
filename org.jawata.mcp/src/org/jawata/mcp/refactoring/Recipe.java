@@ -26,11 +26,14 @@ import java.util.List;
  * to turn (operation, arguments) into a {@link Change}. That keeps the arrow pointing
  * one way and makes the resolution testable with a builder that resolves nothing.</p>
  *
- * <h2>Steps are validated before anything is applied</h2>
+ * <h2>Step validation is NOT here yet, and that is deliberate</h2>
  *
- * <p>A recipe naming an operation nothing publishes is a defect in the recipe, not a
- * runtime surprise: {@link #validate} refuses it up front, so no partial application
- * happens and no rollback is needed to discover it.</p>
+ * <p>Checking each step against the {@link OperationRegistry} sounds free and is not:
+ * the registry is process-wide and fills as tools register, so a check running in a
+ * partially-wired process refuses recipes that are perfectly valid. It earns its place
+ * when recipes are declared from outside this codebase; while the only recipe is built
+ * by the tool that runs it, the check would fail on wiring order and prove nothing
+ * about what executes.</p>
  */
 public record Recipe(String name, List<RecipeStep> steps) {
 
@@ -46,23 +49,6 @@ public record Recipe(String name, List<RecipeStep> steps) {
     public interface StepBuilder {
         /** @return the change to perform, or null to abort the recipe. */
         Change build(String operation, JsonNode arguments) throws Exception;
-    }
-
-    /**
-     * Every step names an operation the registry publishes.
-     *
-     * @return the steps naming nothing published, in order; empty when the recipe is
-     *         runnable. Returned rather than thrown so a caller can name all of them
-     *         at once instead of one per run.
-     */
-    public List<String> validate(OperationRegistry registry) {
-        List<String> unknown = new ArrayList<>();
-        for (RecipeStep step : steps) {
-            if (!registry.has(step.operation())) {
-                unknown.add(step.operation());
-            }
-        }
-        return List.copyOf(unknown);
     }
 
     /**

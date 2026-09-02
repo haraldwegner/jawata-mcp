@@ -96,4 +96,32 @@ class RecipeBridgeTest {
         ToolResponse r = tool.execute(plan);
         assertFalse(r.isSuccess(), "no recipe -> honest rejection");
     }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName(
+        "a smell cured by a standalone operation is rejected, not planned into a call that does not exist")
+    void smellCuredByAStandaloneOperation_isRejected() {
+        // THIS IS THE COVERAGE THE TEST ABOVE GAVE UP. It used to use god_class,
+        // because god_class had no cure at all. Sprint 28d-rescue gave god_class a
+        // runnable cure (`extract`) — and `extract` is a standalone operation, not one
+        // of the plan kinds. Without a guard the bridge took the cure, fell through to
+        // the catch-all step builder, and returned a SUCCESSFUL plan whose only step was
+        // `refactor_to_pattern kind=extract`. That call does not exist.
+        for (String smell : java.util.List.of("god_class", "feature_envy",
+                "temporary_field", "encapsulation")) {
+            ObjectNode plan = mapper.createObjectNode();
+            plan.put("action", "plan");
+            plan.put("kind", smell);
+            plan.put("filePath", registryFile.toString());
+            plan.put("line", 2);
+            plan.put("column", 13);
+
+            ToolResponse r = tool.execute(plan);
+            assertFalse(r.isSuccess(), smell
+                + " is cured by a standalone operation, so action=plan must refuse it"
+                + " rather than emit a step nothing can run");
+            assertTrue(String.valueOf(r.getError()).contains("standalone operation"),
+                "the refusal must say WHY and name what to run instead: " + r.getError());
+        }
+    }
 }

@@ -108,6 +108,15 @@ public class ToolRegistry {
     }
 
     /**
+     * The tools whose published kinds ARE operations a cure step may name. Everything
+     * else registers its own name and no kinds — a tool is an operation, but a
+     * reporting tool's kind enum is a list of questions, not of transformations.
+     */
+    private static final Set<String> REFACTORING_FRONT_DOORS = Set.of(
+        "extract", "inline", "move", "move_in_hierarchy", "apply_cleanup",
+        "refactor_to_pattern", "generate", "refactoring");
+
+    /**
      * Register a tool with the registry.
      *
      * <p>Sprint 28d-rescue (P1): this is also where the tool's operations enter
@@ -134,6 +143,15 @@ public class ToolRegistry {
      * enum simply publishes none, which is the ordinary case.</p>
      */
     private static List<String> publishedKindsOf(Tool tool) {
+        // ONLY THE TOOLS WHOSE KINDS ARE OPERATIONS. A `kind` enum is a common shape:
+        // find_quality_issue publishes `god_class` and `naming`, analyze publishes
+        // `method`, inspect publishes `source`. Harvesting every one of them put
+        // hundreds of non-operations into a flat namespace, so a cure step named
+        // `god_class` would have validated and been called runnable — the registry's
+        // own promise ("the only thing a cure step may name") reduced to a word.
+        if (!REFACTORING_FRONT_DOORS.contains(tool.getName())) {
+            return List.of();
+        }
         try {
             Object props = tool.getInputSchema().get("properties");
             if (!(props instanceof Map<?, ?> properties)) {

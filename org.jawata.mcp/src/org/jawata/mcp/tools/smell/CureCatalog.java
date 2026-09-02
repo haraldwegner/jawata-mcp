@@ -24,9 +24,10 @@ import java.util.Map;
  * <h2>Why the recipe may be null</h2>
  * <p>A {@code recipe} is a runnable, parity-gated plan kind. Four of this
  * sprint's five principle kinds have no such transform — {@code cqs},
- * {@code coupling}, {@code composition_over_inheritance} and
- * {@code encapsulation} are cured by a design decision, not by an automated
- * rewrite. Their cure is still an ADDRESS a reader can open, so they belong
+ * {@code coupling} and {@code composition_over_inheritance} are cured by a design
+ * decision, not by an automated rewrite. ({@code encapsulation} was the fourth until
+ * Sprint 28d-rescue routed it to {@code encapsulate_field}, which had shipped for
+ * sprints and which this table could not name.) Their cure is still an ADDRESS a reader can open, so they belong
  * here with a null recipe rather than being left out and reading as "no cure
  * known".
  *
@@ -204,11 +205,6 @@ public final class CureCatalog {
      */
     public static String adviceFor(String refactoring) {
         return refactoring == null ? null : ADVICE_ONLY.get(refactoring);
-    }
-
-    /** Every refactoring declined as advice-only, for the audit that counts them. */
-    public static java.util.Set<String> adviceOnly() {
-        return ADVICE_ONLY.keySet();
     }
 
     private CureCatalog() {

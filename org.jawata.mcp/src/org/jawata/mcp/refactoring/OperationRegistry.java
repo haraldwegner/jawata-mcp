@@ -25,6 +25,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <h2>What counts as an operation</h2>
  *
+ * <p>Kinds are harvested only from the tools whose kinds are transformations — the
+ * list is {@code ToolRegistry}'s own. A reporting tool's {@code kind} enum lists
+ * questions rather than operations, and admitting them would let a cure step name
+ * {@code god_class} and be called runnable.</p>
+ *
  * <p>Both halves, because a cure step may name either: the TOOL NAME
  * ({@code move_method}, {@code encapsulate_field}) and, for a parametric front door,
  * every KIND it publishes ({@code extract}'s {@code class}, {@code refactor_to_pattern}'s
@@ -97,7 +102,7 @@ public final class OperationRegistry {
         return Set.copyOf(publishedBy.keySet());
     }
 
-    /** The tool publishing an operation, or null — used only in refusal messages. */
+    /** The tool publishing an operation, or null when nothing does. */
     public String toolFor(String operation) {
         return operation == null ? null : publishedBy.get(operation);
     }

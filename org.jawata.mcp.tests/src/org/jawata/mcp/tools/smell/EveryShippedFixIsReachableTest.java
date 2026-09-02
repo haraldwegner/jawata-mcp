@@ -97,6 +97,29 @@ class EveryShippedFixIsReachableTest {
             "PROOF OF LIFE: an operation we DO run is not advice-only");
     }
 
+    @Test
+    @DisplayName("the rendered finding NAMES the operation, and never as a pattern call")
+    void theRenderedFindingNamesTheOperation() {
+        // The table is not the product. A reader meets the SENTENCE, and the sentence
+        // is where both earlier defects lived: it said NO CATALOGUE ADDRESS for a cure
+        // that had none to claim, and it spelled every invocation as
+        // `refactor_to_pattern kind=X` — which for these four is a call that does not
+        // exist. Asserting the table would have caught neither.
+        // A null store yields the same answer as an empty one by contract, and these
+        // four cures claim no address anyway — so the rendering under test is the
+        // no-design branch, not a resolution.
+        org.jawata.mcp.knowledge.CatalogueAddresses none =
+            org.jawata.mcp.knowledge.CatalogueAddresses.of(null);
+        for (String[] route : ROUTES) {
+            String hint = CureLookup.forKind(none, route[0]).hint();
+            assertTrue(hint.contains(route[1]),
+                route[0] + "'s finding must name '" + route[1] + "': " + hint);
+            assertFalse(hint.contains("refactor_to_pattern kind=" + route[1]),
+                route[1] + " is a standalone operation; offering it as a pattern call"
+                    + " tells the reader to run something that does not exist: " + hint);
+        }
+    }
+
     private static List<String> allDeclaredRecipes() {
         List<String> all = new java.util.ArrayList<>();
         for (String kind : List.of("ocp", "cqs", "coupling", "composition_over_inheritance",

@@ -202,18 +202,52 @@ public class WatchEngine {
             kind + " at " + path + (line != null ? ":" + line : "") + " — " + message});
     }
 
+    /**
+     * THE BASELINE KEY, BOUNDED BY CONSTRUCTION.
+     *
+     * <p>It used to be {@code "watch:" + path} with the file's ABSOLUTE path. The
+     * column that holds it is {@code learner VARCHAR(60)}, and real paths pass sixty
+     * characters, so every write failed all eight retries and logged it — while the
+     * read mapped the missing row to an empty baseline. The engine then reported a
+     * file's entire pre-existing backlog as newly introduced, on every edit, for ever:
+     * a stateful feature presenting as a stateless one.</p>
+     *
+     * <p>Widening the column would only move the ceiling — {@code learner} is the
+     * primary key for every learner's state, so the next long key breaks again. A
+     * fixed-width digest cannot exceed the column whatever the path, which removes the
+     * failure rather than postponing it. The readable prefix says which learner owns
+     * the row; the path itself is not needed to look one up, because the caller always
+     * has it.</p>
+     */
+    private static String baselineKey(String path) {
+        try {
+            java.security.MessageDigest sha =
+                java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = sha.digest(path.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder("watch:");
+            for (int i = 0; i < 20; i++) {          // 6 + 40 = 46 chars, inside the column
+                hex.append(String.format("%02x", digest[i]));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            // SHA-256 is required of every JVM; if it is genuinely absent, a truncated
+            // key would collide silently, which is worse than not remembering at all.
+            throw new IllegalStateException("SHA-256 unavailable; cannot key watch state", e);
+        }
+    }
+
     private Set<String> loadBaseline(String path) {
         if (events == null) {
             return Set.of();
         }
-        return events.loadState("watch:" + path)
+        return events.loadState(baselineKey(path))
             .map(s -> (Set<String>) new LinkedHashSet<>(List.of(s.split("\n"))))
             .orElse(Set.of());
     }
 
     private void saveBaseline(String path, Set<String> keys) {
         if (events != null) {
-            events.saveState("watch:" + path, String.join("\n", keys));
+            events.saveState(baselineKey(path), String.join("\n", keys));
         }
     }
 }
