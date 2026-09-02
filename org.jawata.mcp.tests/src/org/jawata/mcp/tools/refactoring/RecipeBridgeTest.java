@@ -86,7 +86,9 @@ class RecipeBridgeTest {
     void smellWithoutRecipe_isRejected() {
         ObjectNode plan = mapper.createObjectNode();
         plan.put("action", "plan");
-        plan.put("kind", "god_class");                 // a real smell, but no cure recipe
+        // Was god_class until Sprint 28d-rescue gave it a runnable cure (`extract`).
+        // cqs still declares a DESIGN with no recipe, which is the state this asserts.
+        plan.put("kind", "cqs");                       // a real smell, but no cure recipe
         plan.put("filePath", registryFile.toString());
         plan.put("line", 2);
         plan.put("column", 13);

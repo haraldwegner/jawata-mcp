@@ -85,8 +85,8 @@ public final class CureCatalog {
         m.put("composition_over_inheritance", List.of(
             new Cure(null, "design:delegation"),
             new Cure(null, "design:strategy")));
-        m.put("encapsulation", List.of(
-            new Cure(null, "design:private-class-data")));
+        // encapsulation's runnable route is declared with the other three below,
+        // where the reason they were unreachable is written down once.
 
         // --- the traces and smells that already had recipes ------------------
         // Same designs as `ocp` because they ARE its traces: OcpDetector relabels
@@ -130,36 +130,119 @@ public final class CureCatalog {
         m.put("long_method", List.of(
             new Cure("compose_method", "design:compose-method")));
 
-        // Stage 11a — the table's two invariants are UNCONSTRUCTIBLE rather than
-        // merely detectable (the same move C6 made for namespace collision):
-        //   1. the pair (kind, operation) is the ENTRY IDENTITY — declared at
-        //      most once, or two rows claim one route set;
-        //   2. every recipe names a kind the front door PUBLISHES — a step no
-        //      registered operation backs would read as runnable and refuse at
-        //      the front door, which is the drift CureTier's missing-step branch
-        //      exists to surface at lookup time. Here it cannot even load.
-        // The registry is the tool's own list through its accessor, never a copy.
-        java.util.Set<String> published = new java.util.HashSet<>(
-            org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds());
+        // --- Sprint 28d-rescue, S0: the four fixes that already SHIPPED and could not
+        // be offered. Not new operations — `move_method`, `extract` and
+        // `encapsulate_field` have been in the product for sprints. They were
+        // unreachable because this table could only name a `refactor_to_pattern` kind,
+        // so the detector whose own prose says "move the method" offered nothing
+        // runnable. feature_envy alone reports 713 findings on this repository.
+        //
+        // Each is ONE route, so CureTier derives PERFORM — but the gate must not
+        // demand it: the rule derives, and a second route arriving later would
+        // correctly make it ADVISE.
+        //
+        // THREE OF THE FOUR CARRY NO DESIGN ADDRESS, and that is the honest state
+        // rather than an omission. This record's own contract says "a recipe with no
+        // design still runs": the operation field points at a catalogue row a reader
+        // can OPEN, and the catalogue holds no row for "move the method to the data"
+        // or "split this class" — they are refactorings, not patterns. Writing
+        // `design:feature-envy` invented an address: it resolved to nothing, and the
+        // finding then rendered NO CATALOGUE ADDRESS, which is worse than offering the
+        // runnable fix with no further reading. Encapsulation keeps the address it
+        // already had, because that one exists.
+        m.put("feature_envy", List.of(
+            new Cure("move_method", null)));
+        m.put("god_class", List.of(
+            new Cure("extract", null)));
+        m.put("temporary_field", List.of(
+            new Cure("extract", null)));
+        m.put("encapsulation", List.of(
+            new Cure("encapsulate_field", "design:private-class-data")));
+
+        // INVARIANT 1, checkable here because it needs nothing outside the table:
+        // the pair (kind, operation) is the ENTRY IDENTITY — declared at most once,
+        // or two rows claim one route set.
         for (Map.Entry<String, List<Cure>> e : m.entrySet()) {
             java.util.Set<String> ops = new java.util.HashSet<>();
             for (Cure c : e.getValue()) {
-                if (!ops.add(c.operation())) {
+                // A null address is "no design to read", not an identity — two of them
+                // under one kind would be two distinct runnable routes, not a duplicate.
+                if (c.operation() != null && !ops.add(c.operation())) {
                     throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
                         + "' declares operation '" + c.operation() + "' twice — the pair"
                         + " is the entry identity");
                 }
-                if (c.recipe() != null && !published.contains(c.recipe())) {
-                    throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
-                        + "' declares step '" + c.recipe() + "' and no registered"
-                        + " operation backs it");
-                }
             }
         }
+        // INVARIANT 2 — every recipe names a published operation — moved to
+        // validateAgainst. See its javadoc for why it cannot live here.
         return Map.copyOf(m);
     }
 
+    /**
+     * REFACTORINGS WE DECLINE TO AUTOMATE, each pointing at where it is described.
+     *
+     * <p>Separate from {@link #BY_KIND} because these are not cures for a smell: no
+     * detector asks for them, so there is no kind to key them under. Keyed by the
+     * refactoring's own name instead.</p>
+     *
+     * <p>Change Value to Reference is here on Harald's ruling of 2026-09-02: which
+     * field is the identity key, and where the shared instances live, are design
+     * decisions a tool would have to guess. The entry keeps it REACHABLE — a reader
+     * meeting it is pointed at the repository pattern — while it stays absent from
+     * every runnable list, which is the whole content of "advice only".</p>
+     */
+    private static final Map<String, String> ADVICE_ONLY = Map.of(
+        "change_value_to_reference", "design:repository");
+
+    /**
+     * Where a declined refactoring is described, or null if it is not declined.
+     *
+     * <p>Never returns a recipe: an advice entry has no runnable half by
+     * construction, which is what {@link #recipesFor} not knowing about this map
+     * enforces.</p>
+     */
+    public static String adviceFor(String refactoring) {
+        return refactoring == null ? null : ADVICE_ONLY.get(refactoring);
+    }
+
+    /** Every refactoring declined as advice-only, for the audit that counts them. */
+    public static java.util.Set<String> adviceOnly() {
+        return ADVICE_ONLY.keySet();
+    }
+
     private CureCatalog() {
+    }
+
+    /**
+     * INVARIANT 2: every declared step names an operation something publishes.
+     *
+     * <p>A step no registered operation backs would read as runnable and then refuse at
+     * the front door — the drift {@code CureTier}'s missing-step branch surfaces at
+     * lookup time. This throws instead, so it cannot ship.</p>
+     *
+     * <p><b>Why this is not in the static initializer, where it used to be.</b> It used
+     * to validate against one front door's published kinds, which is a constant and so
+     * could be read at class-load. It now validates against
+     * {@link org.jawata.mcp.refactoring.OperationRegistry}, which tools populate as they
+     * register — so at class-load the registry may legitimately be empty, and a check
+     * there would refuse every step for a reason that is about ORDERING rather than
+     * about a wrong table. Called once from the application after registration, it asks
+     * the same question at the first moment the answer is true, and it still THROWS:
+     * boot fails loudly on a table naming a step nothing backs.</p>
+     *
+     * @throws IllegalStateException naming the kind, the step, and that nothing backs it
+     */
+    public static void validateAgainst(org.jawata.mcp.refactoring.OperationRegistry registry) {
+        for (Map.Entry<String, List<Cure>> e : BY_KIND.entrySet()) {
+            for (Cure c : e.getValue()) {
+                if (c.recipe() != null && !registry.has(c.recipe())) {
+                    throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
+                        + "' declares step '" + c.recipe() + "' and no registered"
+                        + " operation backs it. Registered: " + registry.all());
+                }
+            }
+        }
     }
 
     /** The declared cures for a smell kind, best-first; empty when none is declared. */
@@ -240,7 +323,9 @@ public final class CureCatalog {
         java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
         for (List<Cure> cures : BY_KIND.values()) {
             for (Cure c : cures) {
-                out.add(c.operation());
+                if (c.operation() != null) {
+                    out.add(c.operation());
+                }
             }
         }
         return List.copyOf(out);

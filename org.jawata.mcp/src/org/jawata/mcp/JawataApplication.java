@@ -339,6 +339,16 @@ public class JawataApplication implements IApplication {
 
         log.info("Registered {} tools", toolRegistry.getToolCount());
 
+        // Sprint 28d-rescue (P1). Every tool has now fed its operations into the
+        // registry, so this is the first moment the question "does anything back this
+        // cure step?" has a true answer. It THROWS on a table naming a step nothing
+        // publishes — boot fails loudly rather than serving a cure that would refuse at
+        // the front door. It used to run in CureCatalog's static initializer, which can
+        // no longer work: the registry is populated by registration, and a class-load
+        // before that would refuse every step for a reason about ordering.
+        org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(
+            org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+
         // Sprint 28a (D11): install this server's workspace identity BEFORE the
         // message loop, from the same workspace.json the async load will read —
         // the initialize handshake must never race the project load. The live

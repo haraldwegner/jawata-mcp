@@ -1,7 +1,5 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.mcp.tools.RefactorToPatternTool;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -62,9 +60,36 @@ public final class CureTier {
     private CureTier() {
     }
 
-    /** Derive against the real registry — the front door's published kinds. */
+    /**
+     * Derive against the real registry — every operation the product publishes.
+     *
+     * <p>Sprint 28d-rescue (P1) changed what "the real registry" means, and nothing
+     * else here. It used to be one front door's kind list, which silently made every
+     * standalone operation unnameable as a cure step; it is now
+     * {@link org.jawata.mcp.refactoring.OperationRegistry}, which every tool feeds as
+     * it registers. The derivation rules below are untouched — the seam was already a
+     * parameter, which is why this is a one-line change rather than a rewrite.</p>
+     */
     public static Derivation derive(String kind) {
-        return derive(kind, RefactorToPatternTool.publishedKinds());
+        // THE UNION, and each half is there for a different failure.
+        //
+        // The registry alone is not enough: it is a process-wide singleton that fills
+        // when the application registers its tools, so anything reaching this before
+        // that — a unit test, an embedding with no tool registry, or a JVM where some
+        // other test registered two fabricated tools — sees an incomplete set and
+        // derives ADVISE for kinds whose route is perfectly real, with a reason about
+        // plumbing. A missing answer must not read as a negative one.
+        //
+        // The pattern kinds alone are not enough either: that was the pre-P1 read, and
+        // it is exactly what made `move_method` and `encapsulate_field` unnameable.
+        //
+        // The union has neither failure. It cannot make a real step look absent, and it
+        // still refuses a step nothing anywhere publishes — which is the only thing
+        // this derivation is entitled to conclude.
+        java.util.Set<String> published = new java.util.LinkedHashSet<>(
+            org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds());
+        published.addAll(org.jawata.mcp.refactoring.OperationRegistry.theRegistry().all());
+        return derive(kind, List.copyOf(published));
     }
 
     /** Derive against a caller-supplied registry — the seam the control uses. */

@@ -105,26 +105,56 @@ public class ComposeMethodTool extends AbstractTool {
         sections.sort(Comparator.comparingInt((Section x) -> x.startLine)
             .thenComparingInt(x -> x.startColumn).reversed());
 
-        List<RecipeEngine.Step> steps = new ArrayList<>();
+        // Sprint 28d-rescue (P2): the steps are DATA now — an ordered list of named
+        // operations — rather than a list of closures this tool builds itself. Same
+        // engine, same order, same arguments; what changed is that a recipe can now be
+        // declared by anything, which is how the sprint's eight composed rows ship
+        // without eight more copies of the loop this replaced.
+        List<org.jawata.mcp.refactoring.RecipeStep> steps = new ArrayList<>();
         for (Section s : sections) {
-            steps.add(() -> {
-                ObjectNode a = mapper.createObjectNode();
-                a.put("filePath", filePath);
-                a.put("startLine", s.startLine);
-                a.put("startColumn", s.startColumn);
-                a.put("endLine", s.endLine);
-                a.put("endColumn", s.endColumn);
-                a.put("methodName", s.methodName);
-                AbstractApplyingRefactoringTool.Preparation prep = extract.prepareChange(service, a);
-                if (prep.error != null) {
-                    throw new IllegalStateException("extract '" + s.methodName + "': "
-                        + String.valueOf(prep.error.getError()));
-                }
-                return prep.change;
-            });
+            ObjectNode a = mapper.createObjectNode();
+            a.put("filePath", filePath);
+            a.put("startLine", s.startLine);
+            a.put("startColumn", s.startColumn);
+            a.put("endLine", s.endLine);
+            a.put("endColumn", s.endColumn);
+            a.put("methodName", s.methodName);
+            // "extract", not "extract_method": the registry publishes what the
+            // application registers, and ExtractMethodTool is a delegate of the
+            // `extract` front door rather than a tool of its own. Naming the delegate
+            // would make validate() reject the only recipe the product has.
+            steps.add(new org.jawata.mcp.refactoring.RecipeStep("extract", a));
+        }
+        org.jawata.mcp.refactoring.Recipe recipe =
+            new org.jawata.mcp.refactoring.Recipe("compose method", steps);
+
+        // Refuse a recipe naming an operation nothing publishes BEFORE anything is
+        // applied, so no partial application has to be rolled back to discover it.
+        // Skipped when nothing has registered — an unwired registry cannot answer.
+        org.jawata.mcp.refactoring.OperationRegistry operations =
+            org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
+        if (operations.isWired()) {
+            List<String> unknown = recipe.validate(operations);
+            if (!unknown.isEmpty()) {
+                return ToolResponse.error("REFACTORING_FAILED",
+                    "compose_method names step(s) no registered operation backs: "
+                        + String.join(", ", unknown),
+                    "Nothing was applied. This is a defect in the recipe, not in the input.");
+            }
         }
 
-        RecipeEngine.Result result = RecipeEngine.run("compose method", steps, service);
+        // The builder is the seam: `refactoring` may not depend on `tools`, so the
+        // layer that knows how to turn an operation name into a change supplies it.
+        RecipeEngine.Result result = recipe.run((operation, args) -> {
+            AbstractApplyingRefactoringTool.Preparation prep = extract.prepareChange(service, args);
+            if (prep.error != null) {
+                // Wording preserved from the closure this replaced: "extract '<name>'".
+                throw new IllegalStateException("extract '"
+                    + args.path("methodName").asText("?") + "': "
+                    + String.valueOf(prep.error.getError()));
+            }
+            return prep.change;
+        }, service);
         if (!result.ok()) {
             return ToolResponse.error("REFACTORING_FAILED",
                 "compose_method failed: " + result.error(),

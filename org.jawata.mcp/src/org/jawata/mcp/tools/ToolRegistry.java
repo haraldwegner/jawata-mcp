@@ -109,6 +109,11 @@ public class ToolRegistry {
 
     /**
      * Register a tool with the registry.
+     *
+     * <p>Sprint 28d-rescue (P1): this is also where the tool's operations enter
+     * {@link org.jawata.mcp.refactoring.OperationRegistry}. Here rather than in each
+     * tool's constructor because this method already sees every tool exactly once, so
+     * the operation list cannot drift from the tool list.</p>
      */
     public void register(Tool tool) {
         String name = tool.getName();
@@ -116,7 +121,45 @@ public class ToolRegistry {
             log.warn("Overwriting existing tool: {}", name);
         }
         tools.put(name, tool);
+        org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
+            .register(name, publishedKindsOf(tool));
         log.debug("Registered tool: {}", name);
+    }
+
+    /**
+     * The kinds a parametric front door publishes, read off its own schema.
+     *
+     * <p>Read rather than copied, for the reason the front-door honesty test exists: a
+     * second home for one fact is a fact that goes stale. A tool with no {@code kind}
+     * enum simply publishes none, which is the ordinary case.</p>
+     */
+    private static List<String> publishedKindsOf(Tool tool) {
+        try {
+            Object props = tool.getInputSchema().get("properties");
+            if (!(props instanceof Map<?, ?> properties)) {
+                return List.of();
+            }
+            Object kind = properties.get("kind");
+            if (!(kind instanceof Map<?, ?> kindSchema)) {
+                return List.of();
+            }
+            Object values = kindSchema.get("enum");
+            if (!(values instanceof List<?> enumeration)) {
+                return List.of();
+            }
+            List<String> kinds = new java.util.ArrayList<>();
+            for (Object value : enumeration) {
+                if (value instanceof String s) {
+                    kinds.add(s);
+                }
+            }
+            return List.copyOf(kinds);
+        } catch (RuntimeException e) {
+            // A schema this malformed is a defect the schema tests catch loudly; it must
+            // not take registration down with it.
+            log.warn("could not read published kinds of {}: {}", tool.getName(), e.toString());
+            return List.of();
+        }
     }
 
     /**

@@ -80,6 +80,22 @@ public final class CureLookup {
          * not have to know which branch produced a message to find the runnable
          * answer in it.</p>
          */
+        /**
+         * HOW A READER ACTUALLY CALLS IT.
+         *
+         * <p>Every branch used to spell the invocation {@code refactor_to_pattern
+         * kind=X}, which was true while every runnable cure happened to be a pattern
+         * kind. P1 widened what a cure may name, and the sentence did not follow: a
+         * feature-envy finding would have said "run refactor_to_pattern
+         * kind=move_method", a call that does not exist. A standalone operation is
+         * invoked by its own name.</p>
+         */
+        private static String invocationOf(String operation) {
+            return org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds().contains(operation)
+                ? "refactor_to_pattern kind=" + operation
+                : operation;
+        }
+
         public String hint() {
             StringBuilder b = new StringBuilder();
             if (!resolved.isEmpty()) {
@@ -89,9 +105,23 @@ public final class CureLookup {
                     names.add(c.recipe() == null ? c.operation() : c.recipe());
                     addresses.add(c.operation() + " <" + c.address() + ">");
                 }
-                b.append(" refactor_to_pattern kind=").append(String.join(" / ", names))
+                b.append(' ').append(String.join(" / ", names.stream().map(Cures::invocationOf).toList()))
                  .append(" — design(s) in the catalogue: ")
                  .append(String.join(", ", addresses)).append('.');
+            }
+            List<String> noDesign = new ArrayList<>();
+            for (CureCatalog.Cure c : CureCatalog.curesFor(kind)) {
+                if (c.operation() == null && c.recipe() != null) {
+                    noDesign.add(c.recipe());
+                }
+            }
+            if (!noDesign.isEmpty()) {
+                // A runnable step with no catalogue row: the fix is offered and no
+                // address is claimed. Distinct from an address that WAS declared and did
+                // not resolve, which is a defect and says so in the branch below.
+                b.append(' ').append(String.join(" / ", noDesign.stream()
+                     .map(Cures::invocationOf).toList()))
+                 .append(" — no catalogue design for this one; the operation is the cure.");
             }
             if (!unresolved.isEmpty()) {
                 b.append(" NO CATALOGUE ADDRESS for: ").append(String.join(", ", unresolved))
@@ -112,7 +142,7 @@ public final class CureLookup {
             if (b.length() > 0) {
                 CureTier.Derivation tier = CureTier.derive(kind);
                 b.append(tier.tier() == CureTier.Tier.PERFORM
-                    ? " TIER: PERFORM — run refactor_to_pattern kind=" + tier.recipe() + "."
+                    ? " TIER: PERFORM — run " + invocationOf(tier.recipe()) + "."
                     : " TIER: ADVISE — " + tier.reason() + ".");
             }
             return b.toString();
@@ -141,6 +171,14 @@ public final class CureLookup {
         List<ResolvedCure> resolved = new ArrayList<>();
         List<String> unresolved = new ArrayList<>();
         for (CureCatalog.Cure c : declared) {
+            if (c.operation() == null) {
+                // Declared with no design to read — see CureCatalog's note on the four
+                // widened routes. NOT unresolved: nothing was claimed and lost, so it
+                // must not be counted as a broken mapping. hint() reads it back from
+                // the table, which keeps this record's shape — and the control test
+                // that constructs it — untouched.
+                continue;
+            }
             CatalogueAddresses.Address a = addresses.address(c.operation());
             if (a == null) {
                 unresolved.add(c.operation());
