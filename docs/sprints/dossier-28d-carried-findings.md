@@ -831,3 +831,35 @@ on `main`; (d) and (e) are fixed and awaiting the gate; (f), (g) and (h) are rec
 and unfixed.
 
 The window stays OPEN. A day is not days, and the measure says so.
+
+## 16. The v4.0.3 dogfood: two defects older than this sprint, made audible by it
+
+Measured 2026-09-02 against the released 4.0.3 engine. Both are FOLDED INTO
+`sprint-28d-rescue-fowler.md` as its D7, on Harald's order — not fixed here.
+
+**(a) The architect watch reports a file's whole pre-existing backlog as newly
+introduced, on every edit.** A rename produced *"this edit introduces a code smell —
+naming at CatalogueSeeder.java:56"*; the rename was undone and the finding still
+stands on the untouched file, so it was never introduced by anything.
+
+The cause is not a missing diff — `WatchEngine.watch` DOES load a per-path baseline
+and skip everything in it. It is the baseline's key: `watch:<absolute path>`, stored
+in `learner_state.learner`, declared `VARCHAR(60) PRIMARY KEY` in
+`SchemaMigrations`. Real paths run past 60 characters, so `saveState` fails all eight
+attempts and logs `LEARNER STATE WRITE FAILED`; `loadBaseline` then returns an empty
+set forever. Seen in this machine's suite log and in the Windows CI log alike, with
+H2's own message: *Value too long for column "LEARNER CHARACTER VARYING(60)":
+'watch:/tmp/…/PrimitiveObsessionTargets.java… (113)'*.
+
+Origin: the watch shipped in Sprint 26 (`6635d92`). 28d widened it to the
+`violations`/`issues`/`cycles` shapes, which is what made a Sprint-26 defect audible
+on naming findings.
+
+**(b) The naming detector cannot exclude test sources.** 1,533 violations over 817
+files; the sample at offset 400 is entirely deliberate snake_case test method names
+(`a_failed_write_is_counted_loudly`). The Fowler smell kinds accept `includeTests`
+(default false, on the stated reasoning that test code legitimately looks different),
+added in the Sprint 17 follow-up `4d5cb6e`; naming predates it and never received it.
+Consequence: the detector is unusable on this repository, and its one genuine finding
+in the inspected file — a logger field flagged as a constant — is buried under
+fifteen hundred.
