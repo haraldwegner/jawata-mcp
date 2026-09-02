@@ -172,9 +172,14 @@ cat <<'WHY'
         over the WHOLE run — not the last patch — and ask its question: design
         fix, or bandage?
 
-        TO PROCEED ANYWAY: Harald sets STREAK_OVERRIDE (a workflow_dispatch
-        input, a repository variable, or a re-run he triggers). Deliberately not
-        anything the releasing agent can write — an escape hatch the gated party
-        controls is not an escape hatch, it is a formality.
+        TO PROCEED: put the streak in front of Harald and get his word. This is
+        a DEV-MACHINE gate (his ruling, 2026-09-02) — it runs here, before the
+        tag is pushed, because this is where the decision it provokes can
+        actually be made: the agent stops, asks in conversation, and his answer
+        clears it. Then re-run with STREAK_OVERRIDE=<his words> so the log
+        carries the ruling. The variable is the RECORD of his word, never a
+        substitute for it — setting it without asking is bypassing him, and the
+        one time this gate sat in CI instead, it fired after his decision and
+        demanded it again through a settings page. It lasted one evening there.
 WHY
 exit 1

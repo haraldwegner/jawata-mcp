@@ -26,56 +26,24 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
-    # THE PATCH-STREAK GATE — Sprint 28d S9a.2. FIRST, deliberately.
+    # THE PATCH-STREAK GATE IS NOT HERE ANY MORE, AND ITS ABSENCE IS A DECISION
+    # (Harald, 2026-09-02): "A quality gate like too many patches is a dev
+    # quality gate which stays on this machine and should not be part of the CI."
     #
-    # It has the same blocking power anywhere before "Create GitHub Release",
-    # but placed here it costs seconds instead of running after the 75-minute
-    # test step. A gate that fires late is still correct and still wastes the
-    # build it was meant to precede.
+    # He is right, and one evening proved it. The gate lives in
+    # build/patch-streak-gate.sh and the release flow runs it ON THE DEV MACHINE
+    # before a tag is pushed — which is the channel that can act in time: the
+    # agent doing the tagging is stopped, the human is asked in conversation, and
+    # the human's word clears it. That happened for v4.0.2, exactly as designed.
+    # THEN this CI copy fired on the pushed tag and demanded the same decision a
+    # second time — clearable only by a repository-settings edit, an interface
+    # nobody reaches for mid-release. A control that fires AFTER the decision it
+    # exists to provoke, on a channel that cannot carry the human's answer, adds
+    # rounds and subtracts nothing.
     #
-    # Two releases in this project have been runs of patches where each fix
-    # broke something DIFFERENT from the last — 2026-08-13 (nine tags) and
-    # 2026-08-29 (four). Both were one design flaw being moved around. This
-    # stops the second release of such a run and asks for the architect.
-    #
-    # STREAK_OVERRIDE comes from a repository variable Harald sets, NOT from
-    # anything the releasing agent can write. An escape hatch controlled by the
-    # gated party is a formality, not a control.
-    - name: Patch-streak gate
-      if: startsWith(github.ref, 'refs/tags/')
-      env:
-        STREAK_OVERRIDE: ${{ vars.STREAK_OVERRIDE }}
-      run: |
-        # checkout@v5 clones shallow with no tags, and the gate is worthless
-        # without them — it would see an empty window and pass everything.
-        #
-        # THE FETCH USED TO BE ABLE TO KILL THIS STEP SILENTLY, and on v4.0.0's
-        # first run it did: the step exited 1 having printed NOTHING — no
-        # verdict, no error, no clue. Two causes were indistinguishable from
-        # that output, because there was none: a fetch failing under `bash -e`
-        # with its stderr sent to /dev/null, and the gate itself refusing. The
-        # old line discarded exactly the evidence needed to tell them apart.
-        #
-        # So: stderr is never discarded, every branch says what it did, and a
-        # fetch that cannot deliver tags FAILS LOUDLY instead of leaving the
-        # gate to judge an empty window and pass everything. `--force` because
-        # checkout leaves a local tag ref of its own, and a fetch that would
-        # "clobber" it is refused with exit 1 — survivable, but only if it is
-        # allowed to happen rather than aborting the step.
-        set -x
-        if git fetch --tags --force --quiet --unshallow; then
-          echo "fetched tags (unshallowed)"
-        elif git fetch --tags --force --quiet; then
-          echo "fetched tags (repository was already complete)"
-        else
-          echo "FATAL: could not fetch tags. The streak gate reads the release" >&2
-          echo "window from them, so without them it would see nothing and pass" >&2
-          echo "everything — which is worse than failing here." >&2
-          exit 2
-        fi
-        echo "--- tags visible to the gate (last 5) ---"
-        git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | tail -5
-        bash build/patch-streak-gate.sh "${GITHUB_REF_NAME}" --explain
+    # The discipline is unchanged, only its address: the local gate refuses, the
+    # human rules, the record of the ruling is the conversation and the tag that
+    # follows it.
 
     - name: Set up JDK 21
       uses: actions/setup-java@v5
