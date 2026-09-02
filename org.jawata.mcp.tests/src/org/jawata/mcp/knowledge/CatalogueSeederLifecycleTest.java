@@ -331,9 +331,22 @@ class CatalogueSeederLifecycleTest {
      * <p>This test states the contract as the deliverable words it. A failure
      * here is not a broken build: it is the disposition being reported for the
      * first time, and the message names what the store actually did.</p>
+     *
+     * <p><b>CONTRACT CHANGED 2026-09-02, on Harald's ruling</b> — <em>"I do not
+     * want to have a new version of the catalogue and leave the old in there. 10
+     * updates 1870 redundant entries!"</em> Superseding satisfied the paragraph
+     * above (the two rows ARE related, and only one answers) while leaving the
+     * displaced copy in the store forever: nothing collects it, because the
+     * per-item path only iterates refs the current input names and the orphan
+     * sweep reads live rows only. Measured on his store: 187 live catalogue rows
+     * and 187 stranded ones. The disposition is now REMOVAL — a catalogue row is
+     * derived, so the copy a replacement displaces is a duplicate, not history.
+     * This is the second copy of that pinned fact; the first was in
+     * {@code SamplesOriginLifecycleTest}, and it was found by the suite rather
+     * than by the sweep that should have caught both at once.</p>
      */
     @Test
-    void an_upstream_edit_supersedes_the_incumbent_rather_than_duplicating_it(@TempDir Path dir)
+    void an_upstream_edit_replaces_the_incumbent_and_leaves_nothing_behind(@TempDir Path dir)
             throws Exception {
         com.fasterxml.jackson.databind.ObjectMapper json =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -362,17 +375,17 @@ class CatalogueSeederLifecycleTest {
                 }
             }
 
-            assertEquals(2, rows.size(),
-                () -> "the incumbent must SURVIVE the edit — one row would mean the newcomer"
-                    + " overwrote it: " + rows.size());
+            assertEquals(1, rows.size(),
+                () -> "an upstream edit must leave exactly ONE row. Two means the displaced"
+                    + " copy is still in the store, and nothing can ever reach it again —"
+                    + " which is how ten passes over 187 patterns become 1,870 rows."
+                    + " Statuses: " + rows.stream().map(StoredEntry::status).toList());
 
             long live = rows.stream().filter(e -> !"superseded".equals(e.status())).count();
             assertEquals(1, live,
-                () -> "exactly ONE version of a pattern may answer questions. Both rows are"
-                    + " live, so an upstream edit DUPLICATES the catalogue instead of"
-                    + " updating it, and the stale text keeps answering beside the current"
-                    + " one with nothing to tell them apart. Statuses: "
-                    + rows.stream().map(StoredEntry::status).toList());
+                () -> "and the surviving row must be the LIVE newcomer. A superseded row left"
+                    + " answering in its place would mean the replacement removed the wrong"
+                    + " one. Statuses: " + rows.stream().map(StoredEntry::status).toList());
         }
     }
 

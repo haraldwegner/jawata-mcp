@@ -31,10 +31,26 @@ import java.util.Set;
  *
  * <h2>The order of operations, and why it is that order</h2>
  *
- * <p>Retire BEFORE writing the newcomer. On a store that could be read
- * concurrently, retire-then-write leaves a moment with no live copy and
- * write-then-retire leaves a moment with two — and two live copies is the defect
+ * <p>Remove the incumbent BEFORE writing the newcomer. On a store that could be
+ * read concurrently, remove-then-write leaves a moment with no live copy and
+ * write-then-remove leaves a moment with two — and two live copies is the defect
  * itself, because the address index resolves whichever row comes back first.</p>
+ *
+ * <h2>REMOVE, not supersede (2026-09-02, Harald's ruling)</h2>
+ *
+ * <p>Until this version every step here marked the displaced row
+ * {@code superseded} and left it in the store. Nothing collected those rows —
+ * the per-item path only iterates refs the current input names, and the orphan
+ * sweep reads live rows only — so each pass over an edited catalogue left one
+ * behind per changed pattern, permanently. Measured on the author's own store:
+ * 187 live rows and 187 superseded ones. His ruling: <em>"I do not want to have
+ * a new version of the catalogue and leave the old in there. 10 updates 1870
+ * redundant entries!"</em></p>
+ *
+ * <p>The reason removal is right HERE and would be wrong for a hand-written
+ * experience: a catalogue row is DERIVED. Its manifest reproduces it exactly, so
+ * the copy a replacement displaces is a duplicate answering the same address,
+ * not a piece of history anything can rebuild from.</p>
  */
 public final class CatalogueSeeder {
 
@@ -59,7 +75,7 @@ public final class CatalogueSeeder {
      * skipped malformed ones), while what the lifecycle wrote is this class's.
      *
      * <p><b>{@code migrated} is counted APART from {@code retired}, and the
-     * separation is the point.</b> Both end with a row superseded, but they answer
+     * separation is the point.</b> Both end with a row removed, but they answer
      * opposite questions. A retirement says the current input dropped an item or
      * replaced it — ordinary traffic, a number that moves whenever the source
      * changes. A migration says rows were found under a spelling this source no
@@ -140,17 +156,27 @@ public final class CatalogueSeeder {
         // one at all.
         int migrated = migrateRetiredPrefixes(store, prefix, retiredPrefixes);
 
-        // Read the live rows ONCE, before the loop. Asking the store per item
-        // would be a full scan per item, which is the kind of quiet quadratic
-        // that only shows up on somebody else's machine.
+        // Read the rows ONCE, before the loop. Asking the store per item would be
+        // a full scan per item, which is the kind of quiet quadratic that only
+        // shows up on somebody else's machine.
+        //
+        // Superseded rows are collected SEPARATELY rather than skipped: under this
+        // prefix they are the leftovers of the version that used to supersede in
+        // place, and they are what this pass exists to clear.
         Map<String, List<String>> liveByRef = new HashMap<>();
+        List<String> leftovers = new ArrayList<>();
         for (StoredEntry e : store.all()) {
             String ref = e.sourceRef();
-            if (ref != null && ref.startsWith(prefix)
-                    && !ExperienceEntry.SUPERSEDED.equals(e.status())) {
+            if (ref == null || !ref.startsWith(prefix)) {
+                continue;
+            }
+            if (ExperienceEntry.SUPERSEDED.equals(e.status())) {
+                leftovers.add(e.id());
+            } else {
                 liveByRef.computeIfAbsent(ref, k -> new ArrayList<>()).add(e.id());
             }
         }
+        purgeLeftovers(store, prefix, leftovers);
 
         int seeded = 0;
         int unchanged = 0;
@@ -163,17 +189,47 @@ public final class CatalogueSeeder {
                 unchanged++;
                 continue;
             }
-            for (String incumbent : liveByRef.getOrDefault(item.sourceRef(), List.of())) {
-                if (store.setStatus(incumbent, ExperienceEntry.SUPERSEDED)) {
-                    retired++;
-                }
-            }
+            // REMOVE the incumbent, do not supersede it. A catalogue row is
+            // DERIVED — the manifest can produce it again — so the copy it
+            // replaces is not history, it is a duplicate that answers the same
+            // address. Superseding kept one such copy PER EDIT: ten passes over
+            // 187 rows left 1,870 rows behind, and nothing ever collected them.
+            retired += store.deleteByIds(liveByRef.getOrDefault(item.sourceRef(), List.of()));
             store.putWithSource(item.entry(), item.sourceRef(), item.hash());
             seeded++;
         }
 
         retired += sweepOrphans(store, liveByRef, claimed, declaredCount, bounded, authorityRef);
         return new Outcome(seeded, unchanged, retired, migrated);
+    }
+
+    /**
+     * THE LEFTOVERS OF AN EARLIER LIFECYCLE, CLEARED ONCE.
+     *
+     * <p>Until this version every replacement here marked the incumbent
+     * {@code superseded} and left it in the store. Nothing ever collected those
+     * rows: the per-item path only iterates refs the current input names, and the
+     * orphan sweep reads LIVE rows only, so a superseded row was unreachable by
+     * both. They accumulated one per edited pattern per pass.</p>
+     *
+     * <p>So this pass removes every superseded row under the prefix. It is keyed
+     * on ids, not on the ref, because a leftover and the row that replaced it
+     * share a ref — {@code deleteBySource} would take the live one with it.</p>
+     *
+     * <p>Idempotent by construction: the lifecycle no longer creates superseded
+     * rows in this lane, so a second run finds none. A recurring non-zero count
+     * means something else is still superseding catalogue rows, which is worth
+     * seeing — hence the log line.</p>
+     */
+    private static int purgeLeftovers(ExperienceStore store, String prefix, List<String> ids) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        int purged = store.deleteByIds(ids);
+        log.info("Catalogue: removed {} superseded leftover row(s) under '{}' — a catalogue row"
+                + " is derived, so the copy a replacement supersedes is a duplicate rather than"
+                + " history.", purged, prefix);
+        return purged;
     }
 
     /**
@@ -195,9 +251,13 @@ public final class CatalogueSeeder {
      * input contains. Sharing the gate would make the migration skip precisely when
      * a partial read most needs it, and skip silently.</p>
      *
-     * <p>Idempotent by construction — it only ever touches rows that are still
-     * live, so a second run finds none and reports zero. That is what makes a
-     * recurring non-zero count meaningful rather than noise.</p>
+     * <p>Idempotent by construction — the rows it touches are REMOVED, so a second
+     * run finds none and reports zero. That is what makes a recurring non-zero
+     * count meaningful rather than noise.</p>
+
+     * <p>It takes rows under a retired spelling WHATEVER their status, superseded
+     * ones included. A superseded row there is doubly dead: it was already a
+     * displaced duplicate, and its address is a spelling nothing uses.</p>
      *
      * <p><b>Guarded against self-retirement.</b> A retired prefix that is a prefix
      * OF the current one — or equal to it — would sweep the source's own live rows.
@@ -226,29 +286,31 @@ public final class CatalogueSeeder {
             return 0;
         }
 
-        int migrated = 0;
+        List<String> doomed = new ArrayList<>();
         List<String> migratedRefs = new ArrayList<>();
         for (StoredEntry e : store.all()) {
             String ref = e.sourceRef();
-            if (ref == null || ExperienceEntry.SUPERSEDED.equals(e.status())) {
+            if (ref == null) {
                 continue;
             }
             for (String retired : safe) {
                 if (ref.startsWith(retired)) {
-                    if (store.setStatus(e.id(), ExperienceEntry.SUPERSEDED)) {
-                        migrated++;
-                        migratedRefs.add(ref);
-                    }
+                    // Whatever its status. A row under an abandoned spelling has no
+                    // input behind it at all, so a superseded one there is doubly
+                    // dead — it was already a duplicate, and its address is gone too.
+                    doomed.add(e.id());
+                    migratedRefs.add(ref);
                     break;
                 }
             }
         }
+        int migrated = doomed.isEmpty() ? 0 : store.deleteByIds(doomed);
         if (migrated > 0) {
             // NAMED, like the orphan sweep: this should fire once per install and
             // never again, so a reader needs to see WHICH rows moved, not just how
             // many — a recurring count is a defect, and the refs say where to look.
-            log.info("Catalogue: migrated {} row(s) off retired prefix(es) {} onto '{}': {}",
-                migrated, safe, prefix, migratedRefs);
+            log.info("Catalogue: removed {} row(s) under retired prefix(es) {}, now owned by"
+                    + " '{}': {}", migrated, safe, prefix, migratedRefs);
         }
         return migrated;
     }
@@ -256,8 +318,8 @@ public final class CatalogueSeeder {
     /**
      * THE ROWS THE INPUT NO LONGER CLAIMS.
      *
-     * <p>Supersession above is per-item and keyed on the ref that item claims, so
-     * it can only ever retire a row the CURRENT input still names. An item the
+     * <p>The replacement above is per-item and keyed on the ref that item claims,
+     * so it can only ever remove a row the CURRENT input still names. An item the
      * source drops is never iterated, so its row stayed live indefinitely —
      * carrying a key that still resolves and an address that no longer exists.
      * Nothing failed: the cure audit asks whether a live row carries the key, and
@@ -297,24 +359,21 @@ public final class CatalogueSeeder {
             return 0;
         }
 
-        int orphaned = 0;
+        List<String> doomed = new ArrayList<>();
         List<String> orphanRefs = new ArrayList<>();
         for (Map.Entry<String, List<String>> live : liveByRef.entrySet()) {
             if (claimed.contains(live.getKey())) {
                 continue;
             }
-            for (String id : live.getValue()) {
-                if (store.setStatus(id, ExperienceEntry.SUPERSEDED)) {
-                    orphaned++;
-                }
-            }
+            doomed.addAll(live.getValue());
             orphanRefs.add(live.getKey());
         }
+        int orphaned = doomed.isEmpty() ? 0 : store.deleteByIds(doomed);
         if (orphaned > 0) {
             // NAMED, not just counted: "3 retired" is the same line whether
             // upstream dropped three items or an input bump mangled three slugs,
             // and those need opposite responses.
-            log.info("Catalogue: retired {} row(s) for {} item(s) no longer in the input at {}: {}",
+            log.info("Catalogue: removed {} row(s) for {} item(s) no longer in the input at {}: {}",
                 orphaned, orphanRefs.size(), authorityRef, orphanRefs);
         }
         return orphaned;

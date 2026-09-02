@@ -160,6 +160,13 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public int deleteByIds(java.util.List<String> ids) {
+        synchronized (lock) {
+            return delegate.deleteByIds(ids);
+        }
+    }
+
+    @Override
     public long wipe() {
         synchronized (lock) {
             return delegate.wipe();

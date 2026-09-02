@@ -53,7 +53,7 @@ import java.util.List;
  * @param retiredPrefixes  spellings this origin USED to own. They cannot simply
  *     be forgotten: on a rename the old rows fall out of every prefix-keyed lane
  *     at once — invisible, still live, still answering with an address nothing
- *     backs — so {@link CatalogueSeeder} supersedes them on the next seed. An
+ *     backs — so {@link CatalogueSeeder} removes them on the next seed. An
  *     entry here is PERMANENT; an install upgrading from an old version years
  *     from now needs it exactly as much as one upgrading today
  */
@@ -101,7 +101,7 @@ public record CatalogueOrigin(
                 throw new IllegalArgumentException(
                     "origin '" + namespace + "' retires '" + retired + "', which overlaps its"
                         + " OWN live prefix '" + live + "'. The retired-prefix migration"
-                        + " supersedes every row under a retired prefix WITHOUT the"
+                        + " REMOVES every row under a retired prefix WITHOUT the"
                         + " completeness guard — deliberately, because a retired spelling has"
                         + " no current input to be complete against — so this origin would"
                         + " retire its entire catalogue on the next boot.");

@@ -138,6 +138,21 @@ public interface ExperienceStore extends AutoCloseable {
     /** Remove all entries (+ children) that came from a given source; returns rows removed. */
     int deleteBySource(String sourceRef);
 
+    /**
+     * Remove exactly the entries named, by id; returns rows removed.
+     *
+     * <p>The id form exists because {@link #deleteBySource} cannot express "this
+     * row and not its twin": a replaced catalogue row and the row replacing it
+     * share a {@code sourceRef}, so a delete keyed on the ref would take the live
+     * one with the dead one. Any lane that REPLACES a row rather than appending
+     * to it needs this.</p>
+     *
+     * <p>Abstract, not defaulted, for the same reason {@link #tombstone} is: a
+     * wrapper that silently inherited a no-op would report a removal it never
+     * made, and every count downstream would agree with it.</p>
+     */
+    int deleteByIds(java.util.List<String> ids);
+
     /** Remove everything (maintenance: wipe); returns the entry count removed. */
     long wipe();
 

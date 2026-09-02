@@ -111,6 +111,11 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public int deleteByIds(java.util.List<String> ids) {
+        throw boom();
+    }
+
+    @Override
     public long wipe() {
         throw boom();
     }

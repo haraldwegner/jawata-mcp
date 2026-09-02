@@ -106,8 +106,23 @@ class SamplesOriginLifecycleTest {
         return rows.stream().filter(e -> !ExperienceEntry.SUPERSEDED.equals(e.status())).count();
     }
 
+    /**
+     * CONTRACT CHANGED 2026-09-02, on Harald's ruling: <em>"I do not want to have a
+     * new version of the catalogue and leave the old in there. 10 updates 1870
+     * redundant entries!"</em>
+     *
+     * <p>This test previously required the incumbent to SURVIVE the edit as a
+     * superseded row, and that requirement was the defect: nothing ever collected
+     * those rows — the per-item path only iterates refs the current input names,
+     * and the orphan sweep reads live rows only — so each edit left one behind, per
+     * pattern, per pass. Measured on his store: 187 live catalogue rows and 187
+     * superseded ones, half the catalogue being a copy nothing could reach.</p>
+     *
+     * <p>A catalogue row is DERIVED — the manifest reproduces it — so the copy a
+     * replacement displaces is a duplicate, not history. The store keeps ONE.</p>
+     */
     @Test
-    void an_edited_sample_supersedes_its_incumbent_rather_than_duplicating_it(@TempDir Path dir)
+    void an_edited_sample_replaces_its_incumbent_and_leaves_nothing_behind(@TempDir Path dir)
             throws Exception {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
             seedFrom(store, indexOf("compose-method"));
@@ -117,15 +132,52 @@ class SamplesOriginLifecycleTest {
             seedFrom(store, edited("compose-method"));
 
             List<StoredEntry> rows = rowsFor(store, "compose-method");
-            assertEquals(2, rows.size(),
-                () -> "the incumbent must SURVIVE the edit — one row would mean the newcomer"
-                    + " overwrote it: " + rows.size());
+            assertEquals(1, rows.size(),
+                () -> "an edit must leave exactly ONE row. Two means the displaced copy is"
+                    + " still in the store, which is how ten passes over 187 patterns become"
+                    + " 1,870 rows nothing can reach. Statuses: "
+                    + rows.stream().map(StoredEntry::status).toList());
             assertEquals(1, liveCount(rows),
-                () -> "exactly ONE version of a sample may answer. Both rows live means an edit"
-                    + " DUPLICATES the entry instead of updating it, and because"
-                    + " CatalogueAddresses merges with putIfAbsent the address resolves to"
-                    + " whichever the store returns first — arbitrarily the stale one."
-                    + " Statuses: " + rows.stream().map(StoredEntry::status).toList());
+                () -> "and the surviving row must be the LIVE newcomer — a replacement that"
+                    + " removes the incumbent and leaves a superseded row answering in its"
+                    + " place has deleted the wrong one. Statuses: "
+                    + rows.stream().map(StoredEntry::status).toList());
+        }
+    }
+
+    /**
+     * THE LEFTOVERS OF THE PREVIOUS CONTRACT, on a store that already carries them.
+     *
+     * <p>Fixing the replacement path is not enough by itself: a row superseded by
+     * an OLDER version sits under the prefix with no input naming it, so neither
+     * the per-item path nor the orphan sweep can ever see it again. Without this
+     * pass those rows are immortal, and the store his ruling is about would stay
+     * exactly as large as it is.</p>
+     */
+    @Test
+    void a_seed_clears_superseded_leftovers_an_older_version_left(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            seedFrom(store, indexOf("compose-method"));
+            List<StoredEntry> seeded = rowsFor(store, "compose-method");
+            assertEquals(1, seeded.size(), "PROOF OF LIFE: one row before the leftover is made");
+
+            // Reproduce by hand what the old version left behind: the displaced copy,
+            // superseded and stranded under the prefix.
+            store.setStatus(seeded.get(0).id(), ExperienceEntry.SUPERSEDED);
+            assertEquals(0, liveCount(rowsFor(store, "compose-method")),
+                "PROOF OF LIFE: the leftover state exists and answers nothing");
+
+            seedFrom(store, indexOf("compose-method"));
+
+            List<StoredEntry> rows = rowsFor(store, "compose-method");
+            assertEquals(1, rows.size(),
+                () -> "a seed must clear the superseded leftovers under its own prefix, or"
+                    + " every row an older version stranded stays forever — nothing else can"
+                    + " reach them. Statuses: " + rows.stream().map(StoredEntry::status).toList());
+            assertEquals(1, liveCount(rows),
+                "and the lane heals: with the leftover gone the ref has no row and no hash,"
+                    + " so the same input writes a live one rather than reporting it unchanged");
         }
     }
 
