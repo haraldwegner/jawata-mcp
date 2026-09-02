@@ -210,6 +210,10 @@ public class DebugTool extends AbstractTool {
                             The program KEEPS RUNNING at full speed. Optional budget
                             (default 1000 events), after which the probe stops itself and
                             says so — a probe on a hot path would otherwise stream forever.
+                            A class that is not loaded YET does not fail here either: the
+                            probe is deferred, reports `bound: false` with the reason, and
+                            attaches the moment the class loads — so a seam can be probed
+                            immediately after launch, before the program reaches it.
             - probe_read  — the values it has streamed. They also land in `hitStream`, so a
                             file monitor gets them as they happen.
             - probe_list / probe_clear — as they read.
@@ -910,6 +914,16 @@ public class DebugTool extends AbstractTool {
             optionalInt(arguments, "line"), getStringParam(arguments, "method"),
             getStringParam(arguments, "field"), stringList(arguments, "capture"),
             optionalInt(arguments, "budget"));
+
+        if (!Boolean.TRUE.equals(probe.get("bound"))) {
+            // Same shape as breakpoint_set's: a deferred probe is not a failed one, and the
+            // difference has to be visible in the ANSWER, not only in a field of the payload.
+            return ToolResponse.success(probe, ResponseMeta.builder()
+                .steering("DEFERRED, not failed — the class is not loaded yet. The probe "
+                    + "attaches when it loads; probe_list shows when 'bound' flips to true. "
+                    + "Nothing before that moment is observed.")
+                .build());
+        }
 
         return ToolResponse.success(probe, ResponseMeta.builder()
             .steering(Boolean.TRUE.equals(probe.get("perturbs"))

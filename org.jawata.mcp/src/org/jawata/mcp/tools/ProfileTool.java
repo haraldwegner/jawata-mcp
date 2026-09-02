@@ -1110,35 +1110,58 @@ public class ProfileTool extends AbstractTool {
     }
 
     /**
-     * Arm a method_trace probe, tolerating the window right after {@code resume()}
-     * where the target class has been told to run but has not finished LOADING yet.
+     * Arm a method_trace probe and wait until it is actually WATCHING before the
+     * measurement window starts.
      *
-     * <p>{@code setProbe} has no deferred-install for probes (unlike breakpoints,
-     * which already bind the moment a class loads) — found live: immediately after
-     * {@code debug(action=resume)}, arming a probe on the very class whose {@code
-     * main()} is about to execute failed with {@code TYPE_NOT_LOADED} every time,
-     * because {@code resume()} does not wait for anything inside the target before
-     * returning. Rather than change Stage 10's shipped, already-tested {@code
-     * DebugController} for a gap only THIS caller has hit, the wait is contained
-     * here: retry the exact same call for up to 3s. A class that genuinely never
-     * loads still fails, just not falsely, this fast.</p>
+     * <p>Right after {@code debug(action=resume)} the target class has been told to run
+     * but may not have finished LOADING: {@code resume()} does not wait for anything
+     * inside the target before returning. Probes now DEFER like breakpoints — the probe
+     * is accepted and attaches when the class arrives — so what is left here is not error
+     * handling but timing: a window that starts before the probe binds measures a stretch
+     * of the program the probe could not see, and reports the shortfall as a low sample
+     * count rather than as a wait.</p>
+     *
+     * <p>What this replaced, and why the replacement is not the same shape: the previous
+     * version retried the whole {@code setProbe} call for 3 seconds against a controller
+     * that refused outright, with a comment declining to change the controller "for a gap
+     * only THIS caller has hit". That comment was wrong twice — the gap is anyone's who
+     * profiles a seam straight after starting a program, and 3 seconds is a number tuned
+     * on the machine that wrote it. It expired on a loaded Windows CI runner and failed
+     * the test as though the seam were broken.</p>
      */
     private Map<String, Object> armProbeWaitingForClassLoad(DebugController debugger,
                                                             String className, String methodName)
             throws Exception {
-        long deadline = System.currentTimeMillis() + 3_000L;
-        while (true) {
-            try {
-                return debugger.setProbe("method_trace", className, null, methodName, null,
-                    List.of(), LATENCY_PROBE_BUDGET);
-            } catch (DebugController.DebugException e) {
-                if (!"TYPE_NOT_LOADED".equals(e.code) || System.currentTimeMillis() >= deadline) {
-                    throw e;
-                }
-                Thread.sleep(100);
+        Map<String, Object> armed = debugger.setProbe("method_trace", className, null,
+            methodName, null, List.of(), LATENCY_PROBE_BUDGET);
+        if (Boolean.TRUE.equals(armed.get("bound"))) {
+            return armed;
+        }
+        String probeId = (String) armed.get("probeId");
+        // A BACKSTOP, not a budget: a class that loads pays nothing here (the loop exits on
+        // the first check that sees it bound), so the ceiling only has to beat "never".
+        long deadline = System.currentTimeMillis() + CLASS_LOAD_BACKSTOP_MILLIS;
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+            Map<String, Object> now = debugger.probeReport(probeId).orElse(armed);
+            if (Boolean.TRUE.equals(now.get("bound"))) {
+                return now;
             }
         }
+        debugger.clearProbe(probeId);
+        throw new DebugController.DebugException("TYPE_NOT_LOADED",
+            className + " has not loaded in the target after "
+                + (CLASS_LOAD_BACKSTOP_MILLIS / 1000) + "s, so there is nothing to trace. The"
+                + " probe was armed and waiting, which means the class was never reached —"
+                + " check that the program actually calls it.");
     }
+
+    /**
+     * How long the seam waits for its class to appear before calling it absent. Generous on
+     * purpose: a healthy run never touches it, and the machines that need it are the slow
+     * ones where the previous 3-second wait expired.
+     */
+    private static final long CLASS_LOAD_BACKSTOP_MILLIS = 30_000L;
 
     private Integer optionalInt(JsonNode arguments, String field) {
         JsonNode node = arguments.get(field);

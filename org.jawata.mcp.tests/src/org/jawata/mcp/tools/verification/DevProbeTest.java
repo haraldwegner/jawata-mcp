@@ -42,6 +42,7 @@ class DevProbeTest {
     private ObjectMapper om;
     private List<String> source;
     private String sessionId;
+    private Path classes;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -54,7 +55,7 @@ class DevProbeTest {
             .resolve("src/main/java/com/example/debug/DebugTarget.java");
         source = Files.readAllLines(file);
 
-        Path classes = Files.createTempDirectory("jawata-debug-probe-");
+        classes = Files.createTempDirectory("jawata-debug-probe-");
         assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(
             null, null, null, "-g", "-d", classes.toString(), file.toString()));
 
@@ -169,6 +170,93 @@ class DevProbeTest {
         return threads.stream()
             .filter(t -> "main".equals(t.get("name")))
             .findFirst().orElseThrow(() -> new AssertionError("no main thread"));
+    }
+
+    // ------------------------------------------------- deferral: before the class exists
+
+    /**
+     * A probe armed BEFORE its class is loaded is accepted and waits, exactly as a
+     * breakpoint does.
+     *
+     * <p>It used to be refused outright with {@code TYPE_NOT_LOADED}, and the asymmetry was
+     * invisible from either side: the same JVM, the same class, the same instant — a
+     * breakpoint waited and said so, a probe was turned away. Callers papered over it with
+     * their own retry loops, and one of those, tuned at 3 seconds on a developer machine,
+     * expired on a loaded CI runner and reported a working seam as broken.</p>
+     *
+     * <p>Note what this test does NOT do: it never forces the class to load first. That is
+     * the whole point — {@link #startAndRunToLoadTheClass()} exists because a probe could
+     * not be armed without it, and this session deliberately skips it.</p>
+     */
+    @Test
+    @DisplayName("a probe armed before the class loads is accepted, waits, and then attaches")
+    void aProbeArmedBeforeTheClassLoadsWaitsAndThenBinds() throws Exception {
+        // A SECOND session, held before its first instruction: nothing of the target is
+        // loaded yet, which is the state the old code refused to work in.
+        ObjectNode launch = action("launch");
+        launch.put("mainClass", TARGET);
+        launch.put("classpath", classes.toString());
+        String held = (String) ok(launch).get("sessionId");
+
+        ObjectNode probe = action("probe_set");
+        probe.put("sessionId", held);
+        probe.put("kind", "method_trace");
+        probe.put("className", TARGET);
+        probe.put("method", "offset");
+        Map<String, Object> armed = ok(probe);
+
+        assertEquals(Boolean.FALSE, armed.get("bound"),
+            "PROOF OF LIFE: the class really is absent at this point, so the probe must come"
+                + " back PENDING — if it were already bound the test would be proving nothing"
+                + " about deferral: " + armed);
+        assertEquals(Boolean.TRUE, armed.get("pending"), "and it says so: " + armed);
+        assertNotNull(armed.get("pendingReason"), "with a reason a reader can act on: " + armed);
+        String probeId = (String) armed.get("probeId");
+
+        // Now start the program. The class loads, and the probe attaches by itself.
+        ObjectNode go = action("resume");
+        go.put("sessionId", held);
+        assertTrue(tool.execute(go).isSuccess());
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        Map<String, Object> report = armed;
+        while (System.currentTimeMillis() < deadline) {
+            ObjectNode list = action("probe_list");
+            list.put("sessionId", held);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> probes =
+                (List<Map<String, Object>>) ok(list).get("probes");
+            report = probes.stream()
+                .filter(pr -> probeId.equals(pr.get("probeId")))
+                .findFirst().orElseThrow(() -> new AssertionError("the probe vanished"));
+            if (Boolean.TRUE.equals(report.get("bound"))) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertEquals(Boolean.TRUE, report.get("bound"),
+            "the probe must attach the moment the class arrives — a probe that stays pending"
+                + " forever is the old refusal wearing a nicer message: " + report);
+
+        // And it is a REAL attachment: events flow from the method it was waiting for.
+        ObjectNode read = action("probe_read");
+        read.put("sessionId", held);
+        read.put("probeId", probeId);
+        long eventDeadline = System.currentTimeMillis() + 30_000;
+        int seen = 0;
+        while (System.currentTimeMillis() < eventDeadline) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> events =
+                (List<Map<String, Object>>) ok(read).get("events");
+            seen = events.size();
+            if (seen > 0) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertTrue(seen > 0,
+            "a bound probe must stream: binding without events would mean the requests were"
+                + " built against the wrong class");
     }
 
     // ------------------------------------------------------------ the proof

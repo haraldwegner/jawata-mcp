@@ -647,6 +647,22 @@ public final class DebugController implements AutoCloseable {
                 }
             }
         }
+        // PROBES DEFER TOO. They did not, and the asymmetry was invisible from either side:
+        // a breakpoint set before its class loaded waited and said so, while a probe set in
+        // the same moment was refused outright — same JVM, same class, opposite answers.
+        for (Probe probe : probes.values()) {
+            if (!probe.bound && type.name().equals(probe.className)) {
+                try {
+                    installProbe(probe, type);
+                    if (probe.deferred != null) {
+                        vm.eventRequestManager().deleteEventRequest(probe.deferred);
+                        probe.deferred = null;
+                    }
+                } catch (DebugException e) {
+                    probe.pendingReason = e.getMessage();
+                }
+            }
+        }
     }
 
     private void install(Bp bp, ReferenceType type) throws DebugException {
@@ -1246,13 +1262,20 @@ public final class DebugController implements AutoCloseable {
         final List<String> capture;
         final boolean perturbs;
         final int budget;
+        /** Kept for the DEFERRED install: the requests are built when the class arrives. */
+        final Integer line;
+        final String methodName;
+        final String fieldName;
+        volatile ClassPrepareRequest deferred;
+        volatile boolean bound;
+        volatile String pendingReason;
         final AtomicInteger seen = new AtomicInteger();
         final List<EventRequest> requests = new ArrayList<>();
         volatile boolean stopped;
         volatile String stoppedReason;
 
         Probe(String id, String kind, String className, String describe, List<String> capture,
-              boolean perturbs, int budget) {
+              boolean perturbs, int budget, Integer line, String methodName, String fieldName) {
             this.id = id;
             this.kind = kind;
             this.className = className;
@@ -1260,6 +1283,9 @@ public final class DebugController implements AutoCloseable {
             this.capture = capture;
             this.perturbs = perturbs;
             this.budget = budget;
+            this.line = line;
+            this.methodName = methodName;
+            this.fieldName = fieldName;
         }
 
         Map<String, Object> report() {
@@ -1271,6 +1297,11 @@ public final class DebugController implements AutoCloseable {
             described.put("budget", budget);
             described.put("perturbs", perturbs);
             described.put("suspendsTarget", perturbs);
+            described.put("bound", bound);
+            if (!bound && pendingReason != null) {
+                described.put("pending", true);
+                described.put("pendingReason", pendingReason);
+            }
             if (!capture.isEmpty()) {
                 described.put("capture", capture);
             }
@@ -1294,25 +1325,89 @@ public final class DebugController implements AutoCloseable {
                                         List<String> capture, Integer budget)
             throws DebugException {
         requireLive();
-        if (vm.classesByName(className).isEmpty()) {
-            throw new DebugException("TYPE_NOT_LOADED",
-                className + " is not loaded yet. A probe watches a running program, so the "
-                    + "class has to be in it — start the program first, or break on it once.");
-        }
-        ReferenceType type = resolveUniqueType(className,
-            "Probing " + className);
         List<String> captures = capture == null ? List.of() : List.copyOf(capture);
-        int bound = budget == null || budget <= 0 ? DEFAULT_PROBE_BUDGET : budget;
+        int effectiveBudget = budget == null || budget <= 0 ? DEFAULT_PROBE_BUDGET : budget;
         String id = "probe-" + ids.incrementAndGet();
 
+        // THE CALLER'S OWN MISTAKES ARE REFUSED NOW; only what depends on the target
+        // program's state is deferred. A method_trace with no method name is wrong whether
+        // or not the class is loaded, and telling the caller later would be telling them
+        // in the wrong place.
+        String describe;
+        boolean perturbs = false;
+        switch (kind) {
+            case "field_watch" -> {
+                if (fieldName == null) {
+                    throw new DebugException("PROBE_NEEDS_FIELD",
+                        "field_watch needs a field name.");
+                }
+                describe = className + "#" + fieldName;
+            }
+            case "method_trace" -> {
+                if (methodName == null) {
+                    throw new DebugException("PROBE_NEEDS_METHOD",
+                        "method_trace needs a method name.");
+                }
+                describe = className + "#" + methodName + "()";
+            }
+            case "logpoint" -> {
+                if (line == null) {
+                    throw new DebugException("PROBE_NEEDS_LINE", "A logpoint needs a line.");
+                }
+                describe = className + ":" + line;
+                // Capturing expressions means reading a frame, and a frame can only be read
+                // while the thread is stopped. So THIS probe stops it — briefly, and it
+                // resumes itself — and it says so.
+                perturbs = !captures.isEmpty();
+            }
+            default -> throw new DebugException("PROBE_UNKNOWN_KIND",
+                "Unknown probe kind '" + kind + "'. One of: field_watch, method_trace, "
+                    + "logpoint.");
+        }
+
+        Probe probe = new Probe(id, kind, className, describe, captures, perturbs,
+            effectiveBudget, line, methodName, fieldName);
+
+        if (vm.classesByName(className).isEmpty()) {
+            // DEFER, exactly as a breakpoint does. A probe asked for right after the program
+            // starts used to be refused outright, which made "is the class there yet?" the
+            // caller's problem and made the answer depend on how fast the machine is: the
+            // same request succeeded here and failed on a slower CI runner, in the one test
+            // that measures a seam immediately after launching the target.
+            ClassPrepareRequest prepare = vm.eventRequestManager().createClassPrepareRequest();
+            prepare.addClassFilter(className);
+            prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
+            prepare.enable();
+            probe.deferred = prepare;
+            probe.bound = false;
+            probe.pendingReason = className + " is not loaded yet — the probe will attach the "
+                + "moment it is, and 'bound' will flip to true. Nothing before that point is "
+                + "observed, so a probe set before the class loads sees the program from its "
+                + "first use of the class, not from its start.";
+            probes.put(id, probe);
+            return probe.report();
+        }
+
+        installProbe(probe, resolveUniqueType(className, "Probing " + className));
+        probes.put(id, probe);
+        return probe.report();
+    }
+
+    /**
+     * Build and arm one probe's requests against a class that IS loaded.
+     *
+     * <p>Split out of {@link #setProbe} so the immediate path and the deferred one install
+     * identically — the defect this replaced was not a missing branch but a second place
+     * where installation could have been written differently.</p>
+     */
+    private void installProbe(Probe probe, ReferenceType type) throws DebugException {
+        String className = probe.className;
+        List<String> captures = probe.capture;
         EventRequestManager erm = vm.eventRequestManager();
-        Probe probe;
         try {
-            switch (kind) {
+            switch (probe.kind) {
                 case "field_watch" -> {
-                    Field field = field(type, fieldName);
-                    probe = new Probe(id, kind, className, className + "#" + fieldName,
-                        captures, false, bound);
+                    Field field = field(type, probe.fieldName);
                     if (vm.canWatchFieldModification()) {
                         probe.requests.add(erm.createModificationWatchpointRequest(field));
                     }
@@ -1325,12 +1420,6 @@ public final class DebugController implements AutoCloseable {
                     }
                 }
                 case "method_trace" -> {
-                    if (methodName == null) {
-                        throw new DebugException("PROBE_NEEDS_METHOD",
-                            "method_trace needs a method name.");
-                    }
-                    probe = new Probe(id, kind, className, className + "#" + methodName + "()",
-                        captures, false, bound);
                     com.sun.jdi.request.MethodEntryRequest entry = erm.createMethodEntryRequest();
                     entry.addClassFilter(type);
                     probe.requests.add(entry);
@@ -1339,30 +1428,22 @@ public final class DebugController implements AutoCloseable {
                     probe.requests.add(exit);
                 }
                 case "logpoint" -> {
-                    if (line == null) {
-                        throw new DebugException("PROBE_NEEDS_LINE", "A logpoint needs a line.");
-                    }
                     List<Location> locations;
                     try {
-                        locations = type.locationsOfLine(line);
+                        locations = type.locationsOfLine(probe.line);
                     } catch (AbsentInformationException e) {
                         throw new DebugException("BREAKPOINT_NO_LINE_TABLE",
                             className + " was compiled without line numbers.");
                     }
                     if (locations.isEmpty()) {
                         throw new DebugException("BREAKPOINT_NO_CODE_AT_LINE",
-                            "No executable code at " + className + ":" + line + ".");
+                            "No executable code at " + className + ":" + probe.line + ".");
                     }
-                    // Capturing expressions means reading a frame, and a frame can only be
-                    // read while the thread is stopped. So THIS probe stops it — briefly, and
-                    // it resumes itself — and it says so.
-                    probe = new Probe(id, kind, className, className + ":" + line,
-                        captures, !captures.isEmpty(), bound);
                     probe.requests.add(erm.createBreakpointRequest(locations.get(0)));
                 }
                 default -> throw new DebugException("PROBE_UNKNOWN_KIND",
-                    "Unknown probe kind '" + kind + "'. One of: field_watch, method_trace, "
-                        + "logpoint.");
+                    "Unknown probe kind '" + probe.kind + "'. One of: field_watch, "
+                        + "method_trace, logpoint.");
             }
         } catch (DebugException e) {
             throw e;
@@ -1377,11 +1458,11 @@ public final class DebugController implements AutoCloseable {
             // expressions is the one exception, and it is flagged as perturbing.
             request.setSuspendPolicy(probe.perturbs
                 ? EventRequest.SUSPEND_EVENT_THREAD : EventRequest.SUSPEND_NONE);
-            request.putProperty("jawata.probe", id);
+            request.putProperty("jawata.probe", probe.id);
             request.enable();
         }
-        probes.put(id, probe);
-        return probe.report();
+        probe.bound = true;
+        probe.pendingReason = null;
     }
 
     /** @return true when the event set should be resumed (a probe never holds the program). */
@@ -1500,6 +1581,16 @@ public final class DebugController implements AutoCloseable {
             } catch (Exception e) {
                 log.debug("clearing probe {} failed: {}", probeId, e.getMessage());
             }
+        }
+        // A probe cleared while still WAITING for its class owns one more request — the
+        // class-prepare watch. Leaving it behind would arm a probe nobody holds a handle to.
+        if (probe.deferred != null) {
+            try {
+                vm.eventRequestManager().deleteEventRequest(probe.deferred);
+            } catch (Exception e) {
+                log.debug("clearing deferred probe {} failed: {}", probeId, e.getMessage());
+            }
+            probe.deferred = null;
         }
         return true;
     }
