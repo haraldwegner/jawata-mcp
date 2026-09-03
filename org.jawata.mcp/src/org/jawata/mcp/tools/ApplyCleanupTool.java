@@ -147,6 +147,10 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
 
             USAGE: apply_cleanup(kind="<kind>")  — whole default project
                    apply_cleanup(kind="<kind>", filePath="path/to/File.java")
+                   apply_cleanup(kind="<kind>", filePath=..., line=N, column=M)
+                          — just the member at that position, which is how a finding
+                            that names ONE method is answered without rewriting the
+                            whole file around it
 
             KINDS:
 """
@@ -172,6 +176,11 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
         filePath.put("type", "string");
         filePath.put("description", "Optional. Restrict to one file; omit to sweep the whole project.");
         properties.put("filePath", filePath);
+        properties.put("line", Map.of("type", "integer",
+            "description", "Optional, ZERO-BASED. Restrict the rewrite to the member at this "
+                + "position — the way a finding names one method. Needs filePath."));
+        properties.put("column", Map.of("type", "integer",
+            "description", "Optional, ZERO-BASED column of that position (default 0)."));
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
@@ -189,8 +198,18 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS));
         }
 
+        int line = getIntParam(arguments, "line", -1);
+        int column = getIntParam(arguments, "column", 0);
+        boolean scopedToMember = line >= 0;
+
         List<Path> targets = new ArrayList<>();
         String filePath = getStringParam(arguments, "filePath");
+        if (scopedToMember && (filePath == null || filePath.isBlank())) {
+            // A position with no file is not a narrower request, it is an ambiguous one.
+            return Preparation.fail(ToolResponse.invalidParameter("line",
+                "A position needs the file it is in — pass filePath with line/column. "
+                    + "Without it there is no way to know which file the line belongs to."));
+        }
         if (filePath != null && !filePath.isBlank()) {
             Path path = Path.of(filePath);
             if (service.getCompilationUnit(path) == null) {
@@ -220,6 +239,12 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
             scan.examined();
 
             TextEdit edit = RULES.get(kind).edit(ast);
+            if (scopedToMember) {
+                // The caller pointed at one member, so answer about that member. Null here
+                // means the rewrite touched nothing inside it, which is the sweep's own
+                // word for "read it, nothing to change".
+                edit = org.jawata.mcp.tools.shared.MemberScope.restrict(edit, ast, line, column);
+            }
             if (edit == null || (!edit.hasChildren() && edit.getLength() == 0)) {
                 continue;
             }
@@ -255,6 +280,9 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
         Map<String, Object> extras = new LinkedHashMap<>();
         extras.put("kind", kind);
         extras.put("hasChanges", true);
+        if (scopedToMember) {
+            extras.put("scopedToMemberAt", line + ":" + column);
+        }
         extras.put("filesChanged", editsByFile.size());
         extras.put("editCount", totalEdits);
         extras.putAll(scan.describe());
