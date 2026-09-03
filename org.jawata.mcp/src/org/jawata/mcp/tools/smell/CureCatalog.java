@@ -229,6 +229,53 @@ public final class CureCatalog {
     }
 
     /**
+     * OPERATIONS THAT SHIP AND THAT NO SMELL NAMES, with the reason for each.
+     *
+     * <p>The sprint's per-row contract says a row is "routed, or listed as unrouted with
+     * the reason". Five of stage 3's six were neither, which reads as an oversight and
+     * is not one — but a reader cannot tell those apart from an empty table, which is the
+     * whole point of writing it down.</p>
+     *
+     * <p>This is NOT {@link #ADVICE_ONLY}. Those are refactorings we decline to automate;
+     * these are automated and runnable, and simply have no detector whose finding calls
+     * for them. That is a gap in the DETECTOR side, recorded here so it is visible from
+     * the table a reader already opens.</p>
+     */
+    private static final Map<String, String> SHIPPED_BUT_UNROUTED = Map.of(
+        // The two OLDER than stage 3, found by the guard rather than by the review that
+        // prompted it. They have shipped unrouted since Sprint 15 and nobody had said why.
+        "apply_cleanup kind=add_final",
+        "no detector reports a missing `final`. It is hygiene applied in bulk rather than"
+            + " a finding about a place — a detector for it would report thousands of"
+            + " rows nobody would read one at a time.",
+        "apply_cleanup kind=redundant_modifiers",
+        "same shape as add_final: bulk hygiene, not a finding. JDT's own engine performs"
+            + " it and the natural way to reach it is the sweep, not a report.",
+        "apply_cleanup kind=guard_clauses",
+        "no detector reports nested conditionals. `long_method` is the nearest, and it"
+            + " already has one route — compose_method — which the tier model turns to"
+            + " ADVISE the moment a second is added, so bolting this on would cost that"
+            + " kind its runnable instruction to buy this one a mention.",
+        "apply_cleanup kind=consolidate_conditional",
+        "no detector reports repeated checks with one outcome. It would be a real"
+            + " detector and it is not one of this sprint's six.",
+        "apply_cleanup kind=control_flag_to_break",
+        "no detector reports a control flag. The shape is narrow enough that a detector"
+            + " for it would fire about as rarely as the rewrite does.",
+        "apply_cleanup kind=slide_declaration",
+        "no detector reports a declaration far from its use. It is a step INSIDE a"
+            + " long-method cure rather than a finding of its own — which is why the"
+            + " plan lists it as what makes Extract Function possible.",
+        "apply_cleanup kind=split_loop",
+        "no detector reports a loop doing two things. `long_method` does not, and a"
+            + " loop-level detector is not among this sprint's six.");
+
+    /** Why an operation that ships is reachable from no finding, or null if it is. */
+    public static String unroutedReason(String operation) {
+        return operation == null ? null : SHIPPED_BUT_UNROUTED.get(operation);
+    }
+
+    /**
      * REFACTORINGS WE DECLINE TO AUTOMATE, each pointing at where it is described.
      *
      * <p>Separate from {@link #BY_KIND} because these are not cures for a smell: no
