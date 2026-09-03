@@ -105,7 +105,8 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                         + "                        fields, public/static nested types).",
                     ApplyCleanupTool::redundantModifiersEdit),
                 new org.jawata.mcp.tools.statements.GuardClausesRule(),
-                new org.jawata.mcp.tools.statements.ConsolidateConditionalRule())) {
+                new org.jawata.mcp.tools.statements.ConsolidateConditionalRule(),
+                new org.jawata.mcp.tools.statements.ControlFlagToBreakRule())) {
             m.put(rule.kind(), rule);
         }
         return m;
