@@ -10,8 +10,15 @@
   a reason unrelated to what they measure. Proven again this sprint — a single
   seven-token helper added to simple-maven moved four clone-detection tests.
 
-  No dependencies on purpose. The slice compiles against the JDK alone, so nothing
-  here can fail for a resolution reason and be mistaken for a refactoring defect.
+  THIS ONE DECLARES A DEPENDENCY, unlike its sibling fixtures. The sentence that used to
+  stand here — "no dependencies on purpose, the slice compiles against the JDK alone" —
+  came across with the template and was left sitting above a dependencies block, saying
+  the opposite of what this file does. An architect review found it.
+
+  The dependency is real and needed: this slice logs. Every substantial Lombok-free module
+  in the fork logs, and refusing slf4j leaves only modules too small to contain any of
+  Stage 3's shapes. The version tracks jawata's own v.slf4j so the jar already resolves.
+  PROVENANCE.md carries the rest.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

@@ -266,13 +266,14 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 - *Refactor to patterns (Kerievsky)* — `refactor_to_pattern` *(inline_singleton / compose_method /
   replace_type_code_with_class / refactor_to_state / refactor_to_command_dispatcher /
   form_template_method / refactor_to_visitor / replace_pattern_with_idiom /
-  replace_constructor_with_factory / replace_conditional_with_polymorphism)* — behaviour-preserving,
+  replace_constructor_with_factory / replace_conditional_with_polymorphism /
+  decompose_conditional)* — behaviour-preserving,
   reversible, compiling; toward a pattern when complexity warrants and away from one that has
   outlived its use. OCP cure: `divergent_change` / `shotgun_surgery` point at a runnable
   `refactoring(action=plan, kind=refactor_to_state | refactor_to_command_dispatcher |
   form_template_method)`.
 - *Imports & modernise* — `organize_imports` *(scope: file / project / workspace)*,
-  `find_modernization` *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers / guard_clauses / consolidate_conditional / control_flag_to_break / loop_to_pipeline / slide_declaration / split_loop)*
+  `find_modernization` *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers / guard_clauses / consolidate_conditional / control_flag_to_break / loop_to_pipeline / slide_declaration / split_loop / return_modified_value / remove_dead_code)*
 - *Null-safety* — `apply_null_annotations` *(add / migrate)*
 - *Format* — `format`
 - *Quick fixes* — `quick_fix` *(suggest_imports / list / apply)*, `validate_syntax`

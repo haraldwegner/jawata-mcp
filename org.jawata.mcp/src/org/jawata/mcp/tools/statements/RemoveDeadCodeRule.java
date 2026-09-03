@@ -49,9 +49,15 @@ import java.util.Map;
  * flag only for a problem that is actually in that set. So a flag guarding a warning the
  * compiler never raises decides nothing — it reads like a refusal and is inert.</p>
  *
+ * <p>The reparse SEEDS from the project's own options and then forces two on, so the
+ * reported set is the project's plus those two — not those two alone. That distinction is
+ * the whole reason the three flags below differ from one another, and an earlier draft of
+ * this paragraph got it wrong in both directions at once.</p>
+ *
  * <p>Measured on this rule's own fixture, the parse reports exactly: unused private
  * method, unused private field, unused private type, unused local (twice), and unused
- * import. It does NOT report an unnecessary cast or an unused parameter, both of which
+ * import. The first four come from the forced options; the import comes from the
+ * project's. It does NOT report an unnecessary cast or an unused parameter, both of which
  * the fixture contains. So:</p>
  *
  * <ul>
@@ -126,10 +132,12 @@ public final class RemoveDeadCodeRule implements CleanupRule {
      * The same unit, parsed so that its unused-code problems are actually present.
      *
      * <p>Both switches are load-bearing. The options make the compiler REPORT unused
-     * private members and locals whatever the project thinks of them, and they are the
-     * whole definition of this rule's scope — no other warning is enabled, so no other
-     * removal is reachable. The forced detection makes it compute the problems rather
-     * than serve a cached AST that has none.</p>
+     * private members and locals whatever the project thinks of them, which is this rule's
+     * FLOOR — never its ceiling. The map starts as the project's own options, so a project
+     * reporting more (unused imports, here) hands those problems to the fix engine too,
+     * and the flags in {@link #edit} are what decide whether to act on them. The forced
+     * detection makes it compute the problems rather than serve a cached AST that has
+     * none.</p>
      */
     private static CompilationUnit reparseReportingUnused(ICompilationUnit unit) {
         IJavaProject project = unit.getJavaProject();

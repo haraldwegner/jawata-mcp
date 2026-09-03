@@ -133,37 +133,9 @@ public final class GuardClausesRule implements CleanupRule {
         if (!(node.getParent() instanceof Block)) {
             return false;
         }
-        return alwaysExits(node.getThenStatement());
+        return org.jawata.mcp.refactoring.Effects.alwaysExits(node.getThenStatement());
     }
 
-    /**
-     * Does every path through this statement leave the METHOD?
-     *
-     * <p>Conservative by construction: it answers true only for shapes it can see the
-     * end of. A {@code break} or {@code continue} is deliberately NOT an exit here — it
-     * leaves a loop, and the statements after the if would still run.</p>
-     */
-    private static boolean alwaysExits(Statement statement) {
-        if (statement instanceof ReturnStatement || statement instanceof ThrowStatement) {
-            return true;
-        }
-        if (statement instanceof Block block) {
-            List<?> statements = block.statements();
-            if (statements.isEmpty()) {
-                return false;
-            }
-            // The LAST statement decides: anything before it may or may not run, but if
-            // the last one always leaves then so does the block.
-            return alwaysExits((Statement) statements.get(statements.size() - 1));
-        }
-        if (statement instanceof IfStatement nested) {
-            // Both arms, or the fall-through path survives.
-            return nested.getElseStatement() != null
-                && alwaysExits(nested.getThenStatement())
-                && alwaysExits(nested.getElseStatement());
-        }
-        return false;
-    }
 
     /** Drop the else and put its statements after the if, in the enclosing block. */
     private static void unwrap(IfStatement node, ASTRewrite rewrite) {

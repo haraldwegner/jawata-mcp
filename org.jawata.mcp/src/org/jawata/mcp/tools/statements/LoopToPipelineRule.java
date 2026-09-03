@@ -147,7 +147,7 @@ public final class LoopToPipelineRule implements CleanupRule {
             filter = guard.getExpression();
             body = unwrapBlock(guard.getThenStatement());
         }
-        if (containsJump(loop.getBody())) {
+        if (org.jawata.mcp.refactoring.Effects.containsJump(loop.getBody())) {
             return null;
         }
 
@@ -215,20 +215,6 @@ public final class LoopToPipelineRule implements CleanupRule {
     }
 
     /** A pipeline has no early exit, so any jump means this is a different computation. */
-    private static boolean containsJump(Statement body) {
-        boolean[] found = {false};
-        body.accept(new ASTVisitor() {
-            @Override public boolean visit(BreakStatement node) { return mark(); }
-            @Override public boolean visit(ContinueStatement node) { return mark(); }
-            @Override public boolean visit(ReturnStatement node) { return mark(); }
-
-            private boolean mark() {
-                found[0] = true;
-                return false;
-            }
-        });
-        return found[0];
-    }
 
     /** A block holding exactly one statement is that statement. */
     private static Statement unwrapBlock(Statement statement) {

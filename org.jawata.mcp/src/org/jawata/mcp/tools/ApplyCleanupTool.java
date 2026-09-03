@@ -48,15 +48,6 @@ import java.util.function.Supplier;
  * registry below is the one producer; the schema, the dispatch and the description all
  * read from it.</p>
  *
- * <ul>
- *   <li>{@code add_final} — mark method/constructor parameters and local
- *       variable declarations {@code final} when they are never reassigned.</li>
- *   <li>{@code redundant_modifiers} — strip modifiers that are implicit on
- *       interface members ({@code public}/{@code abstract} on methods,
- *       {@code public}/{@code static}/{@code final} on fields,
- *       {@code public}/{@code static} on nested types).</li>
- * </ul>
- *
  * <p>Sprint 25 (spec D1a item 5): the per-file rewrites are computed by JDT's
  * own clean-up engines — {@link VariableDeclarationFixCore} for add_final and
  * {@link RedundantModifiersCleanUp} for redundant_modifiers, the same classes

@@ -201,7 +201,7 @@ public final class CureCatalog {
             new Cure("data", "design:private-class-data")));
         m.put("data_class", List.of(
             new Cure(null, "design:value-object")));
-        // QUALIFIED, because `apply_cleanup` publishes eight kinds and a bare front-door
+        // QUALIFIED, because `apply_cleanup` publishes many kinds and a bare front-door
         // name leaves a reader to guess which. No catalogue design: a pipeline is a
         // rewrite, not a pattern, and inventing an address for it is the failure the
         // re-resolution sweep caught on this very table one commit ago.

@@ -8,6 +8,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.ApplyCleanupTool;
 import org.jawata.mcp.tools.FindUnusedCodeTool;
+import org.jawata.mcp.tools.OrganizeImportsTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -112,6 +113,32 @@ class RemoveDeadCodeToolTest {
         assertTrue(rewritten().contains("import java.util.ArrayList;"),
             "an import vanishing from a sweep named for dead code is a change the caller"
                 + " did not ask for, and organize_imports is where it belongs");
+    }
+
+    @Test
+    @DisplayName("the import IS removable — another tool takes it, so declining it is a real refusal")
+    void theSurvivingImportIsGenuinelyUnused() throws Exception {
+        // THE CONTROL, made permanent. The case above asserts the import is still there
+        // afterwards, and on its own that passes whether the flag refused the removal or
+        // the warning was never raised at all — an audit made exactly that point, and it
+        // was right: the distinguishing run existed only as something I did by hand once.
+        //
+        // This is the other half. organize_imports, whose job imports ARE, removes the
+        // same import from the same fixture. So the import is genuinely unused and
+        // genuinely removable, and remove_dead_code leaving it is a decision rather than
+        // an absence of anything to decide.
+        assertTrue(rewritten().contains("import java.util.ArrayList;"),
+            "precondition: remove_dead_code leaves it");
+
+        ObjectNode args = mapper.createObjectNode();
+        args.put("filePath", target.toString());
+        ToolResponse r = new OrganizeImportsTool(() -> service, new RefactoringChangeCache())
+            .execute(args);
+        assertTrue(r.isSuccess(), "organize_imports must run; got: " + r.getError());
+        assertFalse(Files.readString(target, StandardCharsets.UTF_8)
+                .contains("import java.util.ArrayList;"),
+            "organize_imports owns imports and takes this one, which is what makes"
+                + " remove_dead_code declining it a refusal rather than a no-op");
     }
 
     @Test
