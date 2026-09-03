@@ -119,6 +119,15 @@ public final class CureTier {
                 "step(s) not in the operation registry: " + String.join(", ", missing));
         }
         if (runnable.size() == 1) {
+            // A route that commonly declines on its own finder's candidates must not be
+            // reported as an instruction. PERFORM reads as "run this"; a user who does,
+            // and gets an honest no-op, has been told something untrue about the product.
+            String partial = CureCatalog.partialReason(runnable.get(0));
+            if (partial != null) {
+                return new Derivation(kind, Tier.ADVISE, null,
+                    "one runnable route (" + runnable.get(0) + ") but it declines most of"
+                        + " what this finding names — " + partial);
+            }
             return new Derivation(kind, Tier.PERFORM, runnable.get(0),
                 "one runnable route, every step registered");
         }

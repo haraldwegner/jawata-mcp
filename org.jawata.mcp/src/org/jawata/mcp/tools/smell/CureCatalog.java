@@ -301,6 +301,39 @@ public final class CureCatalog {
             + " supplies three names. A fork slice for it would be a fixture with names"
             + " chosen by us — which is the very thing 'code we did not author' excludes.");
 
+    /**
+     * ROUTES THAT RUN, AND COMMONLY DECLINE — the gap between a finder and its fix.
+     *
+     * <p>{@link CureTier} derives PERFORM from route COUNT: one runnable route, run it.
+     * That reads as an instruction, and it is the right derivation when the route acts on
+     * what the finding names. It is the wrong one when the two disagree, because the user
+     * follows an instruction and gets an honest no-op — and learns to distrust the next
+     * instruction too.</p>
+     *
+     * <p>An entry here is a MEASUREMENT, not a hunch. It says the route was run against
+     * its own finder's candidate set and how much of it the route accepted. The tier then
+     * reports ADVISE and carries the number, so the reader decides.</p>
+     *
+     * <p>This is a stopgap and worth naming as one. The structural answer is for a routed
+     * cleanup kind's detector to BE the rule's own applicability scan, so finder and
+     * rewriter cannot disagree by construction — that changes what a Fowler smell reports,
+     * which belongs to the detector stage rather than here.</p>
+     */
+    private static final Map<String, String> PARTIAL_ROUTES = Map.of(
+        "apply_cleanup kind=loop_to_pipeline",
+        "measured over the whole fork corpus (1884 files): find_modernization"
+            + " (loop_to_stream), which is this smell's finder, names 33 candidates in 21"
+            + " files, and this rewriter changes 2 of them. It refuses arrays, any"
+            + " break/continue/return, a body doing more than one thing, and a list not"
+            + " declared empty directly above — all correctly, and the finder applies none"
+            + " of those tests. So run it if you like, but expect most findings to be ones"
+            + " it declines, and read the loop yourself for the rest.");
+
+    /** Why a runnable route commonly declines, or null when it acts on what it is given. */
+    public static String partialReason(String operation) {
+        return operation == null ? null : PARTIAL_ROUTES.get(operation);
+    }
+
     /** Why an operation that ships is reachable from no finding, or null if it is. */
     public static String unroutedReason(String operation) {
         return operation == null ? null : SHIPPED_BUT_UNROUTED.get(operation);
