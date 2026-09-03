@@ -172,8 +172,16 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
         // the engine dies with an IAE inside ProjectScope.getNode.
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
 
-        ExtractMethodRefactoring refactoring =
-            new ExtractMethodRefactoring(cu, startOffset, endOffset - startOffset);
+        // THE FOURTH-ARGUMENT CONSTRUCTOR, and it is the whole fix for a defect that has
+        // now appeared three times. Without formatter options this engine reads the
+        // preference store, whose default tab char is TAB, and emits tab-indented members
+        // into space-indented files — visible in the extract goldens and, through this
+        // tool, in row 8's. Two central routes were tried and measured as not reaching it
+        // (see HeadlessJdtConfig); an audit and I both read this class as taking no
+        // options at all. It takes them here.
+        ExtractMethodRefactoring refactoring = new ExtractMethodRefactoring(
+            cu, startOffset, endOffset - startOffset,
+            org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(cu, null));
         refactoring.setMethodName(methodName);
         refactoring.setVisibility(Modifier.PRIVATE);
 

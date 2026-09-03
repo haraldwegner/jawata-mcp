@@ -188,7 +188,8 @@ public class ExtractVariableTool extends AbstractApplyingRefactoringTool {
 
         HeadlessJdtConfig.ensureInitialized();
         ExtractTempRefactoring refactoring =
-            new ExtractTempRefactoring(cu, startOffset, endOffset - startOffset);
+            new ExtractTempRefactoring(cu, startOffset, endOffset - startOffset,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(cu, null));
         refactoring.setTempName(variableName);
         refactoring.setReplaceAllOccurrences(false);
         refactoring.setDeclareFinal(false);

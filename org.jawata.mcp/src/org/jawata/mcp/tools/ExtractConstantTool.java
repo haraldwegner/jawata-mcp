@@ -193,7 +193,8 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
 
         HeadlessJdtConfig.ensureInitialized();
         ExtractConstantRefactoring refactoring =
-            new ExtractConstantRefactoring(cu, startOffset, endOffset - startOffset);
+            new ExtractConstantRefactoring(cu, startOffset, endOffset - startOffset,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(cu, null));
         refactoring.setConstantName(constantName);
         // Default to replace-all (the IDE default): extracting one of several
         // identical literals and leaving the rest is the surprising outcome

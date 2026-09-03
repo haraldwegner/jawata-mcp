@@ -27,3 +27,24 @@ rewrite the use site to `DEFAULT_PREFIX`. They differ in:
 Applied result compiles and `ExtractConstantToolTest` stays green (`static final` +
 `DEFAULT_PREFIX =` on disk). JDT wins — its placement respects field-ordering rules
 the string-builder ignored.
+
+## Refreshed 2026-09-04 — the indentation is now the FILE's, not JDT's default
+
+The entry above called JDT's output "correctly indented" and its own example shows the
+replaced line starting with TABS, in a fixture that uses spaces. That was accepted at the
+time as the engine winning over a hand-rolled tool, and on the comparison being made it
+was: JDT's placement was right where the old tool's was wrong.
+
+The indentation itself was still wrong. A JDT refactoring reads the formatter preference
+store when it is given no options, and that default is tabs — so every extract emitted
+tab-indented code into space-indented files. The same defect was found in the nine
+statement rules and in Decompose Conditional, which routes through Extract Method: three
+appearances of one shape.
+
+The engines take a formatter-options map on a constructor overload nobody here was using.
+They are given one now, resolved by `FormatterOptions` — an explicit project formatter
+config wins, and a project declaring nothing gets spaces at 4. A repository that says tabs
+still gets tabs.
+
+Golden refreshed. The change is indentation only; the placement this file documents is
+unchanged.

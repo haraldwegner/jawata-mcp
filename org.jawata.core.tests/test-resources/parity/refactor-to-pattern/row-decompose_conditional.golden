@@ -31,17 +31,17 @@ public class DecomposeConditionalTargets {
         }
     }
 
-	private boolean notSummer(LocalDate date) {
-		return date.isBefore(SUMMER_START) || date.isAfter(SUMMER_END);
-	}
+    private boolean notSummer(LocalDate date) {
+        return date.isBefore(SUMMER_START) || date.isAfter(SUMMER_END);
+    }
 
-	private void applyWinterCharge() {
-		charge = quantity * winterRate + winterServiceCharge;
-	}
+    private void applyWinterCharge() {
+        charge = quantity * winterRate + winterServiceCharge;
+    }
 
-	private void applySummerCharge() {
-		charge = quantity * summerRate;
-	}
+    private void applySummerCharge() {
+        charge = quantity * summerRate;
+    }
 
     /** An else-if chain: one decision with three arms, not a two-sided conditional. */
     public String band(int n) {
