@@ -75,7 +75,42 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
     // JVMs. Worse for the guard: every check reading the enum tests `instanceof List`,
     // so this tool silently fell out of all of them — the "passes while never looking"
     // shape those guards exist to refuse, sitting inside one of them.
-    static final List<String> KINDS = List.of("add_final", "redundant_modifiers");
+    /**
+     * EVERY CLEANUP, and the single source of the kind list.
+     *
+     * <p>The kinds used to be a two-entry literal beside a ternary that chose between two
+     * private methods. This tool takes nine more rows, and that is the shape ExtractTool
+     * documents at length: the kind list, the dispatch and the published contract in
+     * three places, one of which is always the one that was forgotten.</p>
+     *
+     * <p>Derived from the registry now, so a rule that exists is dispatched, listed and
+     * described, and adding one is a class and a line.</p>
+     */
+    private static final java.util.LinkedHashMap<String,
+            org.jawata.mcp.tools.statements.CleanupRule> RULES = rules();
+
+    private static java.util.LinkedHashMap<String,
+            org.jawata.mcp.tools.statements.CleanupRule> rules() {
+        java.util.LinkedHashMap<String, org.jawata.mcp.tools.statements.CleanupRule> m =
+            new java.util.LinkedHashMap<>();
+        for (org.jawata.mcp.tools.statements.CleanupRule rule : java.util.List.of(
+                new org.jawata.mcp.tools.statements.JdtCleanupRule("add_final",
+                    "add_final           — mark parameters and local variables `final` when never\n"
+                        + "                        reassigned (binding-checked, so it never breaks\n"
+                        + "                        compilation).",
+                    ApplyCleanupTool::addFinalEdit),
+                new org.jawata.mcp.tools.statements.JdtCleanupRule("redundant_modifiers",
+                    "redundant_modifiers — remove modifiers that are implicit on interface members\n"
+                        + "                        (public/abstract methods, public/static/final\n"
+                        + "                        fields, public/static nested types).",
+                    ApplyCleanupTool::redundantModifiersEdit),
+                new org.jawata.mcp.tools.statements.GuardClausesRule())) {
+            m.put(rule.kind(), rule);
+        }
+        return m;
+    }
+
+    static final List<String> KINDS = List.copyOf(RULES.keySet());
 
     public ApplyCleanupTool(Supplier<IJdtService> serviceSupplier,
                             RefactoringChangeCache changeCache) {
@@ -87,8 +122,20 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
         return "apply_cleanup";
     }
 
+    /**
+     * DERIVED, because this is the whole documentation surface.
+     *
+     * <p>The kind list here was written by hand beside a two-entry KINDS constant. Nine
+     * rows are landing on this tool, and the front-door honesty test exists because a
+     * kind reached the enum, the dispatch and the schema of a neighbouring tool while
+     * being described nowhere. A description assembled from the rules cannot omit one.</p>
+     */
     @Override
     public String getDescription() {
+        StringBuilder kinds = new StringBuilder();
+        for (org.jawata.mcp.tools.statements.CleanupRule rule : RULES.values()) {
+            kinds.append("- ").append(rule.describe()).append('\n');
+        }
         return """
             Apply a safe, mechanical source clean-up across a file or project.
             Auto-applies by default and returns
@@ -99,13 +146,9 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                    apply_cleanup(kind="<kind>", filePath="path/to/File.java")
 
             KINDS:
-            - add_final           — mark parameters and local variables `final`
-                                    when never reassigned (binding-checked, so it
-                                    never breaks compilation).
-            - redundant_modifiers — remove modifiers that are implicit on interface
-                                    members (public/abstract methods, public/static/
-                                    final fields, public/static nested types).
-
+"""
+            + kinds
+            + """
             This catalog is intentionally non-overlapping with organize_imports,
             format, apply_quick_fix and find_modernization. Optional: projectKey
             to scope a project-wide sweep. Requires load_project first.
@@ -173,9 +216,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
             }
             scan.examined();
 
-            TextEdit edit = "add_final".equals(kind)
-                ? addFinalEdit(ast)
-                : redundantModifiersEdit(ast);
+            TextEdit edit = RULES.get(kind).edit(ast);
             if (edit == null || (!edit.hasChildren() && edit.getLength() == 0)) {
                 continue;
             }
@@ -232,7 +273,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
      * locals only (fields stay out of this kind's contract). Returns the file's
      * rewrite edit, or {@code null} when nothing changes.
      */
-    private static TextEdit addFinalEdit(CompilationUnit ast) throws CoreException {
+    static TextEdit addFinalEdit(CompilationUnit ast) throws CoreException {
         ICleanUpFix fix = VariableDeclarationFixCore.createCleanUp(
             ast, /* addFinalFields */ false, /* addFinalParameters */ true,
             /* addFinalLocals */ true);
@@ -245,7 +286,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
      * subclass below is the access path (same package-independent mechanism the
      * IDE's clean-up runner uses through its public context API).
      */
-    private static TextEdit redundantModifiersEdit(CompilationUnit ast) throws CoreException {
+    static TextEdit redundantModifiersEdit(CompilationUnit ast) throws CoreException {
         ICleanUpFix fix = REDUNDANT_MODIFIERS.fixFor(ast);
         return fix == null ? null : fix.createChange(new NullProgressMonitor()).getEdit();
     }
