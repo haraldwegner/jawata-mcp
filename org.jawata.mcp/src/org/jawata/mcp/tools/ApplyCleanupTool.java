@@ -106,7 +106,8 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                     ApplyCleanupTool::redundantModifiersEdit),
                 new org.jawata.mcp.tools.statements.GuardClausesRule(),
                 new org.jawata.mcp.tools.statements.ConsolidateConditionalRule(),
-                new org.jawata.mcp.tools.statements.ControlFlagToBreakRule())) {
+                new org.jawata.mcp.tools.statements.ControlFlagToBreakRule(),
+                new org.jawata.mcp.tools.statements.LoopToPipelineRule())) {
             m.put(rule.kind(), rule);
         }
         return m;

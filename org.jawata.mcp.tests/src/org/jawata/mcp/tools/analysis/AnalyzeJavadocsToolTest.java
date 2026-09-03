@@ -39,6 +39,12 @@ class AnalyzeJavadocsToolTest {
     private List<Map<String, Object>> ingest() {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("kind", "ingest");
+        // ASK FOR THE POPULATION. This used to take the default page of 200 and search
+        // it for one fixture's fact, which worked only while the fixture project had
+        // fewer than 200 documented members. Adding fixtures for other rows pushed the
+        // fact this test looks for off the end of the page, and the failure read as
+        // "the ingest stopped producing it" rather than "you were handed a page".
+        args.put("maxResults", 100000);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> data = (Map<String, Object>) r.getData();
@@ -208,4 +214,26 @@ class AnalyzeJavadocsToolTest {
         assertFalse(r.isSuccess());
         assertEquals("INVALID_PARAMETER", r.getError().getCode());
     }
+    @Test
+    @DisplayName("a full page says so, rather than reporting its own size as the total")
+    void aFullPageIsAnnounced() {
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "ingest");
+        args.put("maxResults", 3);
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+
+        assertEquals(3, ((Number) data.get("factCount")).intValue(),
+            "the page obeys the cap: " + data.keySet());
+        assertEquals(Boolean.TRUE, data.get("truncated"),
+            "and it must SAY it is a page. factCount used to be the stopped-at number"
+                + " presented as the total, which is the defect find_references was"
+                + " repaired for — a 28-reference symbol answering 'totalReferences: 2'"
+                + " because the caller asked for two: " + data);
+        assertNotNull(data.get("note"),
+            "with a sentence naming what to do about it: " + data);
+    }
+
 }

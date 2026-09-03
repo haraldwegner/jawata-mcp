@@ -465,10 +465,25 @@ public class AnalyzeJavadocsTool extends AbstractTool {
             data.put("kind", "ingest");
             data.put("factCount", facts.size());
             data.put("facts", facts);
+            // A FULL PAGE IS NOT A COUNT. The scan stops at maxResults, and `factCount`
+            // was the stopped-at number reported as the total — the same defect
+            // find_references was repaired for, where a 28-reference symbol answered
+            // "totalReferences: 2" because the caller had asked for two. It cannot say
+            // how many facts there ARE without finishing the scan, so it says the honest
+            // thing instead: this is a page, and it is full.
+            boolean truncated = facts.size() >= maxResults;
+            if (truncated) {
+                data.put("truncated", true);
+                data.put("factCountIsAtLeast", facts.size());
+                data.put("note", "This is a full page of " + maxResults + " facts, not a"
+                    + " total — the scan stopped there. Raise maxResults, or scope the"
+                    + " scan with filePath, before reading factCount as how many exist.");
+            }
             data.putAll(scan.describe());
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(facts.size())
                 .returnedCount(facts.size())
+                .truncated(truncated)
                 .steering(scan.steering(facts.size(), "Javadoc facts"))
                 .suggestedNextTools(List.of(
                     "analyze_type to inspect a documented type",
