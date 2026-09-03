@@ -78,8 +78,17 @@ public final class CureCatalog {
 
         // --- the five principle kinds Sprint 28d adds ------------------------
         m.put("ocp", OPEN_THE_AXIS);
+        // Row 60 is the LOCAL half of this smell and the only runnable one today:
+        // a method that builds its answer in a mutable local stops doing so. It
+        // carries the same design address the advice-only entry carried, because
+        // the address IS the entry identity here — a second entry repeating it
+        // is refused at load time, which is how this was caught. The cross-file
+        // half is row 61, splitting a method whose answer AND whose mutation both
+        // have callers; when it ships it is a DIFFERENT address, not a duplicate
+        // of this one.
         m.put("cqs", List.of(
-            new Cure(null, "design:command-query-responsibility-segregation")));
+            new Cure("apply_cleanup kind=return_modified_value",
+                "design:command-query-responsibility-segregation")));
         m.put("coupling", List.of(
             new Cure(null, "design:dependency-injection"),
             new Cure(null, "design:mediator")));

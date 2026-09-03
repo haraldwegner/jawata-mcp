@@ -94,11 +94,23 @@ class CureCatalogTest {
     @Test
     @DisplayName("a design-only cure yields no recipe but is still declared")
     void aDesignOnlyCureIsNotARecipe() {
-        assertFalse(CureCatalog.curesFor("cqs").isEmpty(),
-            "cqs is cured by a design decision and has an address a reader can open —"
+        // THE EXAMPLE MOVED, and the move is the point. This pinned `cqs`, which
+        // stopped being design-only when row 60 shipped its local cure — so the
+        // test went red for the right reason, and retargeting it is how the
+        // property survives its own example being fixed. `coupling` is
+        // design-only today for the same reason cqs was: the decision is which
+        // dependency to invert, and no tool makes it.
+        assertFalse(CureCatalog.curesFor("coupling").isEmpty(),
+            "coupling is cured by a design decision and has an address a reader can open —"
                 + " leaving it out would read as 'no cure known'");
-        assertEquals(List.of(), CureCatalog.recipesFor("cqs"),
+        assertEquals(List.of(), CureCatalog.recipesFor("coupling"),
             "but nothing automates it, so there is no plan kind to run");
+        // ...and cqs is now the other half of the same contract: a smell whose
+        // cure IS automated names the operation that runs it.
+        assertEquals(List.of("apply_cleanup kind=return_modified_value"),
+            CureCatalog.recipesFor("cqs"),
+            "row 60 is the runnable local cure for cqs; row 61 is the cross-file half"
+                + " and is not shipped");
 
         // Was `assertTrue(CureCatalog.hasRecipe("long_method"))`. hasRecipe was deleted
         // 2026-08-28: the unwired gate showed all three of its callers were this test,
