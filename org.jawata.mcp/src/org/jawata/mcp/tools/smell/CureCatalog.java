@@ -294,7 +294,12 @@ public final class CureCatalog {
             + " already has one route — compose_method — which the tier model turns to"
             + " ADVISE the moment a second is added. And this one could not be run from a"
             + " finding even if the finding existed: it needs method NAMES from the caller,"
-            + " which is the whole refactoring, and no finding carries those.");
+            + " which is the whole refactoring, and no finding carries those."
+            + " NO FORK DEMONSTRATION EITHER, and the reason is the same sentence: every"
+            + " other row is demonstrated by pointing a sweep at foreign code and reading"
+            + " what changed, and this one cannot be, because it does nothing until a human"
+            + " supplies three names. A fork slice for it would be a fixture with names"
+            + " chosen by us — which is the very thing 'code we did not author' excludes.");
 
     /** Why an operation that ships is reachable from no finding, or null if it is. */
     public static String unroutedReason(String operation) {
