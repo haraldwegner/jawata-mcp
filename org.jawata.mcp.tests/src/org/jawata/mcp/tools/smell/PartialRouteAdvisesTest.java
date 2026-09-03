@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>{@link CureTier} derives PERFORM from route COUNT alone: one runnable route, run it.
  * An architect review found the consequence. The {@code loops} smell has exactly one
- * route, so the product told users to RUN a rewrite that, measured over the whole fork,
- * accepts 2 of the 18 files its own finder names. Following an instruction and getting an
+ * route, so the product told users to RUN a rewrite that, measured over the aggregated
+ * java-design-patterns corpus, accepts 2 of the 18 files its own finder names. Following an instruction and getting an
  * honest no-op teaches a user to distrust the next instruction too.</p>
  *
  * <p>The derivation now consults whether the route acts on what the finding names. The

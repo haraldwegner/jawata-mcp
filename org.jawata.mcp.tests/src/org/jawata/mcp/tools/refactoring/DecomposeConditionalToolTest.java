@@ -115,6 +115,42 @@ class DecomposeConditionalToolTest {
     }
 
     @Test
+    @DisplayName("a SYMBOL naming a method finds that method's conditional")
+    void aSymbolNamesTheMethodsConditional() throws Exception {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "decompose_conditional");
+        // No filePath, no line: this is the form a finding carries. A symbol resolves to
+        // the method's NAME, where there is no `if` at all, so the operation has to look
+        // inside the method it names.
+        args.put("symbol", "com.example.DecomposeConditionalTargets#computeCharge");
+        args.put("conditionName", "notSummer");
+        args.put("thenName", "applyWinterCharge");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "the symbol must resolve to the conditional; got: "
+            + r.getError());
+        String after = after();
+        assertTrue(after.contains("if (notSummer(date))"),
+            "the method's own conditional was the one decomposed:\n" + after);
+        assertTrue(after.contains("applyWinterCharge()"), after);
+    }
+
+    @Test
+    @DisplayName("a symbol naming a method with several conditionals is refused, not guessed")
+    void aSymbolWithSeveralConditionalsIsRefused() throws Exception {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "decompose_conditional");
+        args.put("symbol", "com.example.DecomposeConditionalTargets#assigningCondition");
+        args.put("conditionName", "hasWork");
+
+        // assigningCondition holds one conditional and it is one this rule refuses, so the
+        // refusal must still arrive — by the write check, not by a silent miss.
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(), "the condition assigns, so it is refused either way");
+        assertEquals(before, after(), "nothing may be written on a refusal");
+    }
+
+    @Test
     @DisplayName("an else-if chain is refused — it is one decision with three arms")
     void anElseIfChainIsRefused() throws Exception {
         ObjectNode args = argsFor("if (n < 0)");

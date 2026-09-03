@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Sprint 28d-rescue — the rows whose undo handle nothing asserted.
  *
- * <p>C3's per-row contract opens with "a staged change with an undo handle". Six rows
- * assert it through their fork slices. Three — consolidate_conditional (7),
+ * <p>C3's per-row contract opens with "a staged change with an undo handle". Five rows
+ * assert it through their fork slices, and row 8 asserts it in its own tool test. Three — consolidate_conditional (7),
  * control_flag_to_break (44) and split_loop (63) — have no fork slice, because their
  * shapes occur nowhere in the corpus, and so nothing asserted their undo at all. A C3
  * audit found the gap.</p>

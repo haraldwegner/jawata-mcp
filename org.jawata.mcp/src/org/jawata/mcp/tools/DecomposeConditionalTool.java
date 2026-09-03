@@ -180,10 +180,26 @@ public class DecomposeConditionalTool extends AbstractTool {
             if (offset < 0) {
                 return ToolResponse.invalidParameter("position", "Invalid position");
             }
-            IfStatement branch = enclosingIf(new NodeFinder(ast, offset, 0).getCoveringNode());
+            ASTNode at = new NodeFinder(ast, offset, 0).getCoveringNode();
+            IfStatement branch = enclosingIf(at);
             if (branch == null) {
-                return ToolResponse.invalidParameter("position",
-                    "No if statement at this position.");
+                // A SYMBOL resolves to the member's NAME, where there is no `if` — and a
+                // finding names a method, not a line inside one. So when the position is
+                // not in a conditional, look for the method's own: exactly one is
+                // unambiguous, and anything else must be pointed at rather than guessed.
+                List<IfStatement> inMethod = topLevelIfsIn(enclosingMethod(at));
+                if (inMethod.size() == 1) {
+                    branch = inMethod.get(0);
+                } else if (inMethod.isEmpty()) {
+                    return ToolResponse.invalidParameter("position",
+                        "No if statement here, and none in the enclosing method either.");
+                } else {
+                    return ToolResponse.invalidParameter("position",
+                        "The enclosing method has " + inMethod.size() + " conditionals and"
+                            + " nothing here says which. Point at one with line/column —"
+                            + " picking for you would decompose a conditional you did not"
+                            + " name.");
+                }
             }
             if (branch.getElseStatement() instanceof IfStatement) {
                 return ToolResponse.invalidParameter("position",
@@ -331,6 +347,41 @@ public class DecomposeConditionalTool extends AbstractTool {
             }
         });
         return found[0];
+    }
+
+    /** The method the position sits in, or null. */
+    private static org.eclipse.jdt.core.dom.MethodDeclaration enclosingMethod(ASTNode node) {
+        for (ASTNode n = node; n != null; n = n.getParent()) {
+            if (n instanceof org.eclipse.jdt.core.dom.MethodDeclaration method) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The method's own conditionals, not counting the links of an else-if chain.
+     *
+     * <p>A chain is ONE decision, so counting its links would report a method holding a
+     * single {@code if/else if/else} as ambiguous — and that shape is refused anyway, with
+     * a message that names the right operation.</p>
+     */
+    private static List<IfStatement> topLevelIfsIn(org.eclipse.jdt.core.dom.MethodDeclaration method) {
+        List<IfStatement> found = new ArrayList<>();
+        if (method == null) {
+            return found;
+        }
+        method.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(IfStatement node) {
+                if (!(node.getParent() instanceof IfStatement parent)
+                        || parent.getElseStatement() != node) {
+                    found.add(node);
+                }
+                return true;
+            }
+        });
+        return found;
     }
 
     private static IfStatement enclosingIf(ASTNode node) {

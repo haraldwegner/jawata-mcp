@@ -25,9 +25,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Row 60 ON CODE WE DID NOT AUTHOR — and it is the only such code in the fork.
  *
- * <p>The shape was searched for exhaustively rather than sampled: every Lombok-free
- * module aggregated and probed (116 files, main and test), then every Lombok-using
- * module (1210 files). {@code App.createLobSerializer} is the one place it occurs.</p>
+ * <p>The shape was searched for exhaustively rather than sampled, in two passes — the
+ * Lombok-free modules first, then the Lombok-using ones — and
+ * {@code App.createLobSerializer} is the one place it occurs.</p>
+ *
+ * <p><b>That claim is NOT re-derivable from the committed census.</b>
+ * {@code ForkShapeCensusTest} aggregates the corpus and re-runs four kinds; this row's
+ * kind is not among them, so nothing here re-checks "the one place in the fork". An audit
+ * made that point and it is right: the two-pass file counts quoted in an earlier draft of
+ * this paragraph came from scratch runs and did not even sum to the census's own corpus
+ * size. The numbers are gone rather than restated, because a number nobody can re-derive
+ * is worth less than the sentence it decorates.</p>
  *
  * <p>The method declares {@code LobSerializer serializer}, assigns it in each arm of an
  * if/else, and returns it at the end. That is exactly the local whose only job is to

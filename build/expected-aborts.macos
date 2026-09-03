@@ -30,3 +30,13 @@ Gradle Tooling API tests skipped via jawata.skip.gradle=true
 # design names it as placed-not-built, and the boundary already holds its
 # seams (GdbAdapter keeps the debugger dialect, HostProcesses the spawn).
 Mach-O/lldb unimplemented
+
+# The fork census re-derives Stage 3's claims about the java-design-patterns
+# corpus — which shapes occur in it, and how far its loop finder and loop
+# rewriter disagree. The corpus is a CHECKOUT of somebody else's repository,
+# nearly two thousand files, and it is deliberately not vendored here: the fork
+# fixtures carry the slices we need, and copying the whole thing to make one
+# test runnable would be worse than the test skipping. Where the checkout is
+# absent the honest answer is "not measured", not "passed". Supplying
+# -Djawata.test.fork=<path> turns it back on.
+no fork checkout at

@@ -11,15 +11,23 @@ import org.jawata.mcp.refactoring.RefactoringEngine;
 /**
  * DELETE, as an ATOM — an internal step, not a published operation.
  *
- * <p>Three of Fowler's rows end by removing something the rest of the row has just made
- * unnecessary: row 2 (Change Reference to Value) drops the setters, row 34 (Remove Dead
- * Code) drops what the unused check found, row 37 (Remove Setting Method) drops a setter
- * nobody writes through. None of them wants a general "delete this" tool on the published
- * surface — the value is in the reasoning that decided the thing was removable, and a
- * bare delete offers that reasoning to nobody.</p>
+ * <p>Rows that end by removing something the rest of the row has just made unnecessary:
+ * row 2 (Change Reference to Value) drops the setters, row 37 (Remove Setting Method)
+ * drops a setter nobody writes through. Neither wants a general "delete this" tool on the
+ * published surface — the value is in the reasoning that decided the thing was removable,
+ * and a bare delete offers that reasoning to nobody.</p>
  *
  * <p>So this publishes NOTHING. It exists to be composed, and the operations that compose
  * it carry the judgement.</p>
+ *
+ * <p><b>IT HAS NO PRODUCTION CALLER YET, and that is worth saying rather than leaving to
+ * be discovered.</b> This javadoc previously named row 34 as a consumer. Row 34 was built
+ * the next day and deliberately did NOT use it — {@code RemoveDeadCodeRule} states the
+ * deviation and its reason — so the claim was false within a day of being written. Its
+ * remaining named consumers, rows 2 and 37, belong to a later stage. Until one of them
+ * lands, the only thing exercising this is its own test, which is speculative generality
+ * by the project's own definition; the honest options are to wire it, delete it, or say
+ * this.</p>
  *
  * <h2>Why the Eclipse engine rather than an edit of our own</h2>
  *

@@ -55,13 +55,26 @@ public final class HeadlessJdtConfig {
             new org.eclipse.jdt.internal.core.manipulation.MembersOrderPreferenceCacheCommon()
                 .install();
 
-            // NOTE (v2.14.1 #5): the formatter tab-char DEFAULT for generated
-            // code is NOT set here. A JavaCore.setOptions default did not
-            // propagate to the code-generating rewrites headless, so the
-            // load-bearing fix lives at the call site — see
-            // org.jawata.mcp.tools.shared.FormatterOptions, which resolves the
-            // tab char per rewrite (indentChar override > project config >
-            // spaces default) and is passed to ASTRewrite.rewriteAST(doc, opts).
+            // FORMATTER TAB CHAR IS NOT SET HERE, and BOTH central routes have now
+            // been tried and measured.
+            //
+            // v2.14.1 #5 tried JavaCore.setOptions — the INSTANCE scope — and it did
+            // not reach the code-generating rewrites. That is why FormatterOptions
+            // exists and is passed per rewrite to ASTRewrite.rewriteAST(doc, opts),
+            // which IS load-bearing and fixes the nine rules we own.
+            //
+            // Sprint 28d-rescue tried the remaining one: the DEFAULT scope on
+            // JavaCore.PLUGIN_ID, which a project's own setting would still override.
+            // It does not reach ExtractMethodRefactoring either. Measured by the row-8
+            // parity golden, which pins the three generated methods and did not move.
+            //
+            // So the defect is REAL and OPEN for every path routed through a JDT
+            // refactoring rather than through our own rewrite: extract emits
+            // tab-indented members into space-indented files. It is visible in
+            // parity/refactor-to-pattern/row-decompose_conditional.golden and in the
+            // pre-existing extract-variable and extract-constant goldens. Fixing it
+            // needs the engine's own formatting path, not a preference, and it changes
+            // `extract` output repo-wide — which is a scope decision, not a nicety.
 
             // Code-template store: without one, CodeGeneration.get*BodyContent
             // returns null and SelfEncapsulateFieldRefactoring's fallback path
