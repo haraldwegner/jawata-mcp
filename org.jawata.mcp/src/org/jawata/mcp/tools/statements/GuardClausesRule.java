@@ -69,8 +69,10 @@ public final class GuardClausesRule implements CleanupRule {
             + "                        continue (which leaves a loop, not the method).\n"
             + "                        ONE LEVEL PER RUN: the outermost such `if` in each\n"
             + "                        nest is unwrapped, which leaves the next one a sibling\n"
-            + "                        for the next run. Re-run until it reports no changes;\n"
-            + "                        the sweep is idempotent.";
+            + "                        for the next run. CONVERGENT, not idempotent: running it\n"
+            + "                        twice is not the same as running it once, which is the\n"
+            + "                        point. A nest of depth N takes N runs — re-run until it\n"
+            + "                        reports no changes.";
     }
 
     @Override

@@ -176,10 +176,11 @@ public final class CureCatalog {
         // FOUR of the six route to something runnable. Two do not, and that is the
         // honest state rather than an omission:
         //
-        //   loops — the cure is Replace Loop with Pipeline, which is row 50 and is built
-        //     in stage 3. Until it exists there is nothing to name, and naming
-        //     `apply_cleanup` now would promise a kind that is not published yet — the
-        //     load-time refusal would catch it, which is the check working.
+        //   loops — WAS unroutable, and is not any more. Stage 3 built row 50, so the
+        //     cure now names the operation that performs it. Leaving this unrouted after
+        //     the operation shipped is the built-but-unwired state this sprint exists to
+        //     remove: the finding would go on describing a fix the product performs and
+        //     not offering it.
         //   alternative_classes — the cure is Rename Function until the two agree, then
         //     Extract Superclass. That is a JUDGEMENT about which names win, made once
         //     per pair by a person; `extract kind=superclass` is the last step of it and
@@ -191,6 +192,12 @@ public final class CureCatalog {
             new Cure("data", "design:private-class-data")));
         m.put("data_class", List.of(
             new Cure(null, "design:value-object")));
+        // QUALIFIED, because `apply_cleanup` publishes eight kinds and a bare front-door
+        // name leaves a reader to guess which. No catalogue design: a pipeline is a
+        // rewrite, not a pattern, and inventing an address for it is the failure the
+        // re-resolution sweep caught on this very table one commit ago.
+        m.put("loops", List.of(
+            new Cure("apply_cleanup kind=loop_to_pipeline", null)));
         // commented_out_code has NO ENTRY AT ALL, and that is the honest state rather
         // than an omission. It has no runnable cure by ruling — commented-out code may
         // still carry meaning, so nothing may offer to remove it — and no catalogue
@@ -298,6 +305,20 @@ public final class CureCatalog {
                 }
             }
         }
+    }
+
+    /**
+     * EVERY KIND THIS TABLE DECLARES A CURE FOR.
+     *
+     * <p>Exposed because two tests each kept their own copy of this list and validated
+     * the table against it. Adding {@code loops} was invisible to both: the table gained
+     * a cure, the tests swept a list that did not mention it, and the check that exists
+     * to catch an unbacked step could not see the step. A list of the table's contents,
+     * kept outside the table, is the second home this product spends its audits
+     * removing.</p>
+     */
+    public static java.util.Set<String> declaredKinds() {
+        return BY_KIND.keySet();
     }
 
     /** The declared cures for a smell kind, best-first; empty when none is declared. */

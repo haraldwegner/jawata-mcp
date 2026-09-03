@@ -184,6 +184,17 @@ public final class LoopToPipelineRule implements CleanupRule {
                 || !declared.isEqualTo(list)) {
             return null;
         }
+        // AND IT MUST BE A LIST. The declared type was never checked, so
+        // `Collection<T> c = new HashSet<>(); for (..) c.add(x);` rewrote to
+        // collect(toList()) — assigned to a Collection, so it compiled, while
+        // de-duplication silently stopped happening. Nothing in the result would tell
+        // anyone.
+        ITypeBinding declaredType = declared.getType();
+        String erased = declaredType == null || declaredType.getErasure() == null
+            ? null : declaredType.getErasure().getQualifiedName();
+        if (!"java.util.List".equals(erased) && !"java.util.ArrayList".equals(erased)) {
+            return null;
+        }
         // Initialised EMPTY. Adding to a list that already holds something is not what
         // collect produces, and this is the check that says so.
         return fragment.getInitializer() instanceof ClassInstanceCreation creation

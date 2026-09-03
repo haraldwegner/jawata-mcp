@@ -96,6 +96,11 @@ public final class SplitLoopRule implements CleanupRule {
                 return true;
             }
         });
+        // THE GUARD GuardClausesRule ALREADY LEARNED. A splittable loop nested inside a
+        // splittable one would have its copy anchored on a node the outer split removes,
+        // which is the shape whose one-pass version the compile gate reverted there. It
+        // was absent here and untested, because the fixture held a single loop.
+        targets.removeIf(SplitLoopRule::hasSplittableAncestor);
         if (targets.isEmpty()) {
             return null;
         }
@@ -107,6 +112,16 @@ public final class SplitLoopRule implements CleanupRule {
         Document document =
             new Document(String.valueOf(ast.getTypeRoot().getBuffer().getContents()));
         return rewrite.rewriteAST(document, null);
+    }
+
+    /** Is an enclosing loop also being split in this pass? */
+    private static boolean hasSplittableAncestor(EnhancedForStatement loop) {
+        for (ASTNode parent = loop.getParent(); parent != null; parent = parent.getParent()) {
+            if (parent instanceof EnhancedForStatement enclosing && isSplittable(enclosing)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isSplittable(EnhancedForStatement loop) {
@@ -121,7 +136,7 @@ public final class SplitLoopRule implements CleanupRule {
         }
         Statement first = (Statement) body.statements().get(0);
         Statement second = (Statement) body.statements().get(1);
-        if (containsJump(body)) {
+        if (org.jawata.mcp.refactoring.Effects.containsJump(body)) {
             return false;
         }
         // A declaration in the first half is read by nothing else once they are apart,
@@ -133,70 +148,20 @@ public final class SplitLoopRule implements CleanupRule {
         return independent(first, second) && independent(second, first);
     }
 
-    /** Does {@code reader} read anything {@code writer} writes? */
+    /**
+     * Does {@code reader} read anything {@code writer} writes?
+     *
+     * <p>Asked of {@link org.jawata.mcp.refactoring.Effects} rather than answered here.
+     * The private version recorded a write only for an assignment or an increment whose
+     * target was a bare name, so a half mutating a collection through {@code add()}
+     * reported NO writes and this check passed on a pair that genuinely communicates.
+     * The split compiled, so nothing caught it.</p>
+     */
     private static boolean independent(Statement writer, Statement reader) {
-        Set<IVariableBinding> written = writes(writer);
-        if (written.isEmpty()) {
-            return true;
-        }
-        for (IVariableBinding read : reads(reader)) {
-            for (IVariableBinding write : written) {
-                if (read.isEqualTo(write)) {
-                    return false;
-                }
-            }
-        }
-        return true;
+        return !org.jawata.mcp.refactoring.Effects.disturbs(writer, reader);
     }
 
-    private static Set<IVariableBinding> writes(Statement statement) {
-        Set<IVariableBinding> out = new LinkedHashSet<>();
-        statement.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(Assignment node) {
-                add(node.getLeftHandSide());
-                return true;
-            }
 
-            @Override
-            public boolean visit(PostfixExpression node) {
-                add(node.getOperand());
-                return true;
-            }
-
-            @Override
-            public boolean visit(PrefixExpression node) {
-                PrefixExpression.Operator op = node.getOperator();
-                if (op == PrefixExpression.Operator.INCREMENT
-                        || op == PrefixExpression.Operator.DECREMENT) {
-                    add(node.getOperand());
-                }
-                return true;
-            }
-
-            private void add(Expression target) {
-                if (target instanceof SimpleName name
-                        && name.resolveBinding() instanceof IVariableBinding variable) {
-                    out.add(variable);
-                }
-            }
-        });
-        return out;
-    }
-
-    private static Set<IVariableBinding> reads(Statement statement) {
-        Set<IVariableBinding> out = new LinkedHashSet<>();
-        statement.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(SimpleName node) {
-                if (node.resolveBinding() instanceof IVariableBinding variable) {
-                    out.add(variable);
-                }
-                return true;
-            }
-        });
-        return out;
-    }
 
     private static boolean isCollection(ITypeBinding type) {
         String name = type.getErasure() == null ? null : type.getErasure().getQualifiedName();
@@ -212,20 +177,6 @@ public final class SplitLoopRule implements CleanupRule {
         return parent != null && isCollection(parent);
     }
 
-    private static boolean containsJump(ASTNode body) {
-        boolean[] found = {false};
-        body.accept(new ASTVisitor() {
-            @Override public boolean visit(BreakStatement node) { return mark(); }
-            @Override public boolean visit(ContinueStatement node) { return mark(); }
-            @Override public boolean visit(ReturnStatement node) { return mark(); }
-
-            private boolean mark() {
-                found[0] = true;
-                return false;
-            }
-        });
-        return found[0];
-    }
 
     /** The first half stays; a copy of the loop carrying the second half follows it. */
     private static void split(EnhancedForStatement loop, ASTRewrite rewrite) {

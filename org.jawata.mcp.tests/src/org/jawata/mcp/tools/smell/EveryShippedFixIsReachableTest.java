@@ -122,10 +122,10 @@ class EveryShippedFixIsReachableTest {
 
     private static List<String> allDeclaredRecipes() {
         List<String> all = new java.util.ArrayList<>();
-        for (String kind : List.of("ocp", "cqs", "coupling", "composition_over_inheritance",
-                "encapsulation", "divergent_change", "shotgun_surgery", "switch_statements",
-                "type_code", "singleton", "long_method", "feature_envy", "god_class",
-                "temporary_field")) {
+        // FROM THE TABLE, not a copy of it. This was a hand-written list of fourteen
+        // kinds, and a fifteenth was added without it — so the sweep below validated a
+        // table against a subset of itself and reported clean.
+        for (String kind : CureCatalog.declaredKinds()) {
             all.addAll(CureCatalog.recipesFor(kind));
         }
         return all;

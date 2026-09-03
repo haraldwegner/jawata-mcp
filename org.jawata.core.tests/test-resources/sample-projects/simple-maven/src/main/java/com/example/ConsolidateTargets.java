@@ -76,6 +76,37 @@ public class ConsolidateTargets {
         return local;
     }
 
+    /**
+     * NOT consolidated: the shared body FALLS THROUGH. Joining these collapses two
+     * appends into one whenever both conditions hold, which is a different program — and
+     * one that compiles, so nothing downstream would have caught it.
+     */
+    public String appendsTwice(boolean a, boolean b) {
+        StringBuilder out = new StringBuilder();
+        if (a) {
+            out.append('!');
+        }
+        if (b) {
+            out.append('!');
+        }
+        return out.toString();
+    }
+
+    /**
+     * NOT consolidated for the same reason, and it is the shape that looks most joinable:
+     * two counters, no exit.
+     */
+    public int counts(boolean a, boolean b) {
+        int seen = 0;
+        if (a) {
+            seen += 1;
+        }
+        if (b) {
+            seen += 1;
+        }
+        return seen;
+    }
+
     private boolean expensiveCheck(int value) {
         calls++;
         return value > 100;

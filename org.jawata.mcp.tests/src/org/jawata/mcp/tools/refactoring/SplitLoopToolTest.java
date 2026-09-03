@@ -97,6 +97,17 @@ class SplitLoopToolTest {
                 + " the method quietly returns half an answer:\n" + body);
     }
 
+    @Test
+    @DisplayName("halves that talk through a CALL are refused, which assignment-only analysis missed")
+    void halvesTalkingThroughACallAreRefused() throws Exception {
+        String body = methodBody(rewritten(), "halvesTalkThroughACall");
+        assertEquals(1, count(body, "for (Calculator person : people)"),
+            "`seen.add(person)` changes `seen` and the next statement reads it. A model"
+                + " that records a write only for `=` and `++` sees no write here at all,"
+                + " so this split, and the second loop then ran against a fully populated"
+                + " list:\n" + body);
+    }
+
     private static int count(String haystack, String needle) {
         int n = 0;
         for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {

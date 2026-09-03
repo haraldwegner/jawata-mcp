@@ -1,6 +1,5 @@
 package org.jawata.mcp.tools.statements;
 
-import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.Block;
@@ -119,58 +118,29 @@ public final class ConsolidateConditionalRule implements CleanupRule {
         }
     }
 
-    /** No else, and a condition that can be evaluated twice or not at all. */
-    private static boolean isEligible(IfStatement node) {
-        return node.getElseStatement() == null && isPure(node.getExpression());
-    }
-
     /**
-     * Can this expression be skipped without changing the program?
+     * No else, a condition that may be skipped, and a body that LEAVES the method.
      *
-     * <p>Conservative by construction: it answers true only for shapes that plainly read
-     * and compare. A method call is refused even when it is obviously a getter, because
-     * "obviously" is a reading and not a fact.</p>
+     * <p>The exit requirement was missing and it is the one that makes this a
+     * refactoring. Fowler defines the mechanic over checks with the same RESULT — the
+     * body returns or throws, so at most one can ever run. Without it:</p>
+     *
+     * <pre>
+     *   if (a) sb.append('!');        joined:  if (a || b) sb.append('!');
+     *   if (b) sb.append('!');
+     * </pre>
+     *
+     * <p>and {@code a &amp;&amp; b} appends once where it appended twice. Both conditions are
+     * plain names, the bodies normalise identically, and the result COMPILES — so neither
+     * the suite nor the apply pipeline's compile gate could see it. A whole-project sweep
+     * would have made that edit everywhere the shape occurs.</p>
      */
-    private static boolean isPure(Expression expression) {
-        boolean[] pure = {true};
-        expression.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(MethodInvocation node) {
-                return impure();
-            }
-
-            @Override
-            public boolean visit(Assignment node) {
-                return impure();
-            }
-
-            @Override
-            public boolean visit(PostfixExpression node) {
-                return impure();   // i++ / i--
-            }
-
-            @Override
-            public boolean visit(PrefixExpression node) {
-                PrefixExpression.Operator op = node.getOperator();
-                if (op == PrefixExpression.Operator.INCREMENT
-                        || op == PrefixExpression.Operator.DECREMENT) {
-                    return impure();
-                }
-                return true;       // ! and unary minus are fine
-            }
-
-            @Override
-            public boolean visit(org.eclipse.jdt.core.dom.ClassInstanceCreation node) {
-                return impure();
-            }
-
-            private boolean impure() {
-                pure[0] = false;
-                return false;
-            }
-        });
-        return pure[0];
+    private static boolean isEligible(IfStatement node) {
+        return node.getElseStatement() == null
+            && org.jawata.mcp.refactoring.Effects.isSideEffectFree(node.getExpression())
+            && org.jawata.mcp.refactoring.Effects.alwaysExits(node.getThenStatement());
     }
+
 
     /** The same body, compared as normalised source — two similar bodies are two decisions. */
     private static boolean sameBody(IfStatement a, IfStatement b) {
@@ -208,12 +178,14 @@ public final class ConsolidateConditionalRule implements CleanupRule {
      */
     private static Expression parenthesised(Expression original, ASTRewrite rewrite,
                                             org.eclipse.jdt.core.dom.AST ast) {
-        ASTNode copy = rewrite.createCopyTarget(original);
-        if (!(original instanceof InfixExpression)) {
-            return (Expression) copy;
-        }
+        // UNCONDITIONALLY. The special case for InfixExpression left every other
+        // loose-binding shape bare, and a conditional expression binds LOOSER than || —
+        // `flag ? p : q` joined with `r` reassociates to `flag ? p : (q || r)`, a
+        // different expression that compiles. The javadoc above promised the guarantee
+        // without qualification; the code kept it for one node type. Wrapping everything
+        // costs a pair of parentheses and cannot be wrong.
         ParenthesizedExpression wrapped = ast.newParenthesizedExpression();
-        wrapped.setExpression((Expression) copy);
+        wrapped.setExpression((Expression) rewrite.createCopyTarget(original));
         return wrapped;
     }
 }

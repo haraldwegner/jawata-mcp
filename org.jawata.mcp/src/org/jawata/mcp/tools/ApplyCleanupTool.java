@@ -40,8 +40,13 @@ import java.util.function.Supplier;
  * <p>Deliberately scoped to clean-ups the existing surface does NOT already
  * cover: {@code organize_imports} (imports), {@code format} (whitespace),
  * {@code apply_quick_fix} (compiler quick-fixes) and {@code find_modernization}
- * (language-idiom upgrades — find-only). The two kinds here are the canonical
- * non-overlapping ones:</p>
+ * (language-idiom upgrades — find-only).</p>
+ *
+ * <p>WHICH kinds this publishes is no longer written here. This paragraph used to say
+ * "the two kinds here", and stage 3 took it to eight — a count in a comment beside a
+ * derived list is exactly the second home this class was restructured to remove. The
+ * registry below is the one producer; the schema, the dispatch and the description all
+ * read from it.</p>
  *
  * <ul>
  *   <li>{@code add_final} — mark method/constructor parameters and local

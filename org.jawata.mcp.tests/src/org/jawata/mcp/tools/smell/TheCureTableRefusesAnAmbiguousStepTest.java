@@ -53,6 +53,9 @@ class TheCureTableRefusesAnAmbiguousStepTest {
         registry.register("inline", List.of("method", "variable"));
         registry.register("data", List.of());
         registry.register("hierarchy", List.of("up", "down"));
+        registry.register("apply_cleanup", List.of("add_final", "redundant_modifiers",
+            "guard_clauses", "consolidate_conditional", "control_flag_to_break",
+            "loop_to_pipeline", "slide_declaration", "split_loop"));
         return registry;
     }
 

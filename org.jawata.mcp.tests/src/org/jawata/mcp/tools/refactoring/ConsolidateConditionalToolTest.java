@@ -112,6 +112,25 @@ class ConsolidateConditionalToolTest {
                 + " similar they look:\n" + body);
     }
 
+    @Test
+    @DisplayName("a shared body that FALLS THROUGH is refused — joining would run it once, not twice")
+    void aFallThroughBodyIsRefused() throws Exception {
+        String body = methodBody(rewritten(), "appendsTwice");
+        assertEquals(2, count(body, "if ("),
+            "both appends run when both conditions hold. Joined with ||, one append"
+                + " happens — and the result COMPILES, so neither the suite nor the"
+                + " compile gate could have caught it:\n" + body);
+    }
+
+    @Test
+    @DisplayName("and the same refusal on the shape that looks most joinable")
+    void twoCountersAreRefused() throws Exception {
+        String body = methodBody(rewritten(), "counts");
+        assertEquals(2, count(body, "if ("),
+            "two increments with no exit is the most inviting shape for this rewrite and"
+                + " the most wrong: joining it halves the count:\n" + body);
+    }
+
     private static int count(String haystack, String needle) {
         int n = 0;
         for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {

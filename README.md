@@ -272,7 +272,7 @@ gate to check its own edits before moving on — the post-edit loop a careful de
   `refactoring(action=plan, kind=refactor_to_state | refactor_to_command_dispatcher |
   form_template_method)`.
 - *Imports & modernise* — `organize_imports` *(scope: file / project / workspace)*,
-  `find_modernization` *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers)*
+  `find_modernization` *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers / guard_clauses / consolidate_conditional / control_flag_to_break / loop_to_pipeline / slide_declaration / split_loop)*
 - *Null-safety* — `apply_null_annotations` *(add / migrate)*
 - *Format* — `format`
 - *Quick fixes* — `quick_fix` *(suggest_imports / list / apply)*, `validate_syntax`

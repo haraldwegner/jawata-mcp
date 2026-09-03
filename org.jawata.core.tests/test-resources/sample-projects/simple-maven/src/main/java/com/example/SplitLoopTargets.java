@@ -36,6 +36,21 @@ public class SplitLoopTargets {
     }
 
     /**
+     * NOT split: the halves talk THROUGH A CALL. `seen` is changed by add() and read by
+     * the second statement, and a model that sees only assignment sees no write here at
+     * all — which is how this shape passed the independence check before.
+     */
+    public int halvesTalkThroughACall(List<Calculator> people) {
+        java.util.List<Calculator> seen = new java.util.ArrayList<>();
+        java.util.List<Integer> sizes = new java.util.ArrayList<>();
+        for (Calculator person : people) {
+            seen.add(person);
+            sizes.add(seen.size());
+        }
+        return sizes.size();
+    }
+
+    /**
      * NOT split: a break. Each half would need its own copy of an exit whose meaning was
      * defined over the whole body.
      */
