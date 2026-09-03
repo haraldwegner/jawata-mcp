@@ -890,4 +890,12 @@ public class ChangeMethodSignatureTool extends AbstractApplyingRefactoringTool {
             this.defaultValue = defaultValue;
         }
     }
+    /**
+     * STRUCTURAL. Changing a signature changes every call site — structural by definition.
+     */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 }

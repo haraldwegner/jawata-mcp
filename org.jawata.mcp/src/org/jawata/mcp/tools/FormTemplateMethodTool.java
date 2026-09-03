@@ -207,7 +207,7 @@ public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool {
         }
         if (aSteps.isEmpty()) {
             return Preparation.fail(ToolResponse.invalidParameter("methods",
-                "The two methods are identical; use pull_up (move_in_hierarchy) instead."));
+                "The two methods are identical; use hierarchy(direction=up) instead."));
         }
 
         String indent = "    ";

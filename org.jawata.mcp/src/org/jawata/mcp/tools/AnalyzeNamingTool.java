@@ -400,6 +400,16 @@ public class AnalyzeNamingTool extends AbstractTool {
                 continue;
             }
             scan.examined();
+            // PACKAGES ARE THE ONE CATEGORY TEST SOURCES DO GOVERN, and this is the
+            // exception stated rather than left to be noticed. Java test classes live in
+            // the SAME package as the code they exercise — that is the convention, not
+            // an accident — so a test source is evidence about package naming in a way
+            // it is not about method or field naming. Excluding them here would shrink
+            // the sample for no gain and, on a small project, drop the category under
+            // the confidence floor for the same reason the method convention was lost.
+            //
+            // It was previously collected before the test check with nothing saying why,
+            // which is what made it look like an oversight rather than a decision.
             if (ast.getPackage() != null) {
                 packageNames.add(ast.getPackage().getName().getFullyQualifiedName());
             }

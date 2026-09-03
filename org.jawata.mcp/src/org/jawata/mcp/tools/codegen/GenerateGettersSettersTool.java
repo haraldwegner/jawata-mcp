@@ -81,7 +81,7 @@ public class GenerateGettersSettersTool extends AbstractTool {
     public String getDescription() {
         return """
             Generate JavaBean getter/setter accessors for the given fields.
-            Multi-field; complements encapsulate_field (which is single-field
+            Multi-field; complements `data` (which is single-field
             and rewrites call sites).
 
             For an IMMUTABLE data carrier, prefer a Java record over generated

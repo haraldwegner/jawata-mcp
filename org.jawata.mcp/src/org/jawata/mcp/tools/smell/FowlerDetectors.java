@@ -84,6 +84,23 @@ public final class FowlerDetectors {
             // Sprint 28d — broken encapsulation, promoted from the on-demand
             // analyze(kind="encapsulation") audit to a sweep kind. `fowler`
             // because the cures are Encapsulate Field / Remove Setting Method.
-            .register(new EncapsulationDetector(), "fowler");
+            .register(new EncapsulationDetector(), "fowler")
+            // Sprint 28d-rescue — Global Data (2nd ed. ch.3). Java has no global
+            // variables, so the smell arrives as static mutable state, including the
+            // static final collection whose reference is fixed and whose contents are
+            // not. `fowler` because the cure is Encapsulate Variable.
+            .register(new GlobalDataDetector(), "fowler")
+            // Sprint 28d-rescue — Mutable Data, in the shape that has no setter to
+            // find: an accessor that hands out a mutable field. Distinct from
+            // `encapsulation`, which SEARCHES for external writers; this reads what a
+            // class publishes, and reports the leak whether or not anyone took it.
+            .register(new MutableDataDetector(), "fowler")
+            // Sprint 28d-rescue — Loops and Data Class. Both finders already shipped
+            // behind find_modernization, keyed by a MODERNIZATION name rather than by
+            // the smell's, so a sweep looking for smells found neither. Adapted rather
+            // than re-implemented: a second Data Class detector beside class_to_record
+            // would be two answers to one question.
+            .register(org.jawata.mcp.tools.ModernizationSmells.loops(), "fowler")
+            .register(org.jawata.mcp.tools.ModernizationSmells.dataClass(), "fowler");
     }
 }

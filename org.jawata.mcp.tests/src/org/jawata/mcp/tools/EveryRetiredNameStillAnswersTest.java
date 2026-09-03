@@ -8,6 +8,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -86,6 +88,36 @@ class EveryRetiredNameStillAnswersTest {
                 folded + " folded into ONE KIND of a front door with several. Pointing at"
                     + " the front door alone leaves the caller to guess which, which is"
                     + " the work the fold was supposed to remove: " + thrown.getMessage());
+        }
+    }
+
+    @Test
+    @DisplayName("EVERY pointer resolves, not just the six this test writes out")
+    void everyPointerInTheTableResolvesToSomethingLive() {
+        ToolRegistry registry = new ToolRegistry();
+        ObjectMapper mapper = new ObjectMapper();
+
+        // The six above are the CLAIM — that each retired name points somewhere useful.
+        // This is the INVARIANT, and it covers the rows nobody is currently thinking
+        // about. `pull_up` has pointed at `move_in_hierarchy` since Sprint 19; stage 1
+        // renamed that tool, and a single-hop lookup left a caller of `pull_up` pointed
+        // at a second name that is also not found. A hand-written list of six could not
+        // see it, because `pull_up` is not one of the six.
+        for (String retired : ToolRegistry.retiredNames()) {
+            ToolRegistry.ToolNotFoundException thrown =
+                assertThrows(ToolRegistry.ToolNotFoundException.class,
+                    () -> registry.callTool(retired, mapper.createObjectNode()),
+                    retired + " is in the rename map, so it must not resolve to a tool");
+            String pointer = ToolRegistry.pointerFor(retired);
+            assertNotNull(pointer, retired + " must have a pointer");
+            String head = pointer.contains(" ") ? pointer.substring(0, pointer.indexOf(' '))
+                                                : pointer;
+            assertNull(ToolRegistry.pointerFor(head),
+                retired + " points at '" + pointer + "', whose front door '" + head
+                    + "' is ITSELF a retired name. A caller following this pointer arrives"
+                    + " at a second not-found. Resolution must land on a live tool.");
+            assertTrue(thrown.getMessage().contains(head),
+                "and the refusal must carry the resolved pointer: " + thrown.getMessage());
         }
     }
 

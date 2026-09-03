@@ -281,4 +281,12 @@ public class RefactorToPatternTool extends AbstractTool {
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
     }
+    /**
+     * STRUCTURAL. Every pattern transform reshapes types or their relationships.
+     */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 }

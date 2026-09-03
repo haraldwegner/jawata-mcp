@@ -50,7 +50,12 @@ class PrincipleDetectorKindsTest {
      * <b>Adding a detector edits THIS LIST and nothing else.</b>
      */
     static final List<String> ADDED_BY_28D = List.of(
-        "cqs", "coupling", "composition_over_inheritance", "ocp", "encapsulation");
+        "cqs", "coupling", "composition_over_inheritance", "ocp", "encapsulation",
+        // 28d-rescue stage 8 — the Fowler smells that were listed as undetected.
+        // `global_data` and `mutable_data` are new analyses; `loops` and `data_class`
+        // ADAPT scans that already shipped behind find_modernization, where a reader
+        // looking for smells never found them.
+        "global_data", "mutable_data", "loops", "data_class");
 
     private List<String> registeredKinds() {
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> null);

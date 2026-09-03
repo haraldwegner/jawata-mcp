@@ -252,10 +252,10 @@ gate to check its own edits before moving on — the post-edit loop a careful de
   dependency_graph / di_registrations)*
 
 **Change**
-- *Refactor* — `rename_symbol`, `extract` *(method / variable / constant / interface / superclass)*,
-  `inline` *(method / variable)*, `move` *(class / package)*, `move_in_hierarchy` *(pull-up /
-  push-down)*, `encapsulate_field`, `change_method_signature`, `convert_anonymous_to_lambda`,
-  `generate` *(constructor / getters_setters / equals_hashcode / tostring / test_skeleton /
+- *Refactor* — `rename_symbol`, `extract` *(method / variable / constant / interface /
+  superclass / class / replace_inline_code)*, `inline` *(method / variable)*, `move`
+  *(class / package / method)*, `hierarchy` *(pull-up / push-down)*, `data`,
+  `change_method_signature`, `generate` *(constructor / getters_setters / equals_hashcode / tostring / test_skeleton /
   override_methods / copy_class)* · `refactoring` *(single change: apply / undo / inspect ·
   multi-step, parity-gated: plan / apply_plan / inspect_plan / undo_plan)*
 - *Multi-step orchestration* — `refactoring(action=plan → apply_plan)` walks a refactoring as
@@ -265,17 +265,19 @@ gate to check its own edits before moving on — the post-edit loop a careful de
   class, then lift the shared members into a parent) — reuse instead of re-authoring.
 - *Refactor to patterns (Kerievsky)* — `refactor_to_pattern` *(inline_singleton / compose_method /
   replace_type_code_with_class / refactor_to_state / refactor_to_command_dispatcher /
-  form_template_method / refactor_to_visitor / replace_pattern_with_idiom)* — behaviour-preserving,
+  form_template_method / refactor_to_visitor / replace_pattern_with_idiom /
+  replace_constructor_with_factory / replace_conditional_with_polymorphism)* — behaviour-preserving,
   reversible, compiling; toward a pattern when complexity warrants and away from one that has
   outlived its use. OCP cure: `divergent_change` / `shotgun_surgery` point at a runnable
   `refactoring(action=plan, kind=refactor_to_state | refactor_to_command_dispatcher |
   form_template_method)`.
-- *Imports & modernise* — `organize_imports`, `optimize_imports_workspace`, `find_modernization`
-  *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers)*
+- *Imports & modernise* — `organize_imports` *(scope: file / project / workspace)*,
+  `find_modernization` *(8 idioms)*, `apply_cleanup` *(add_final / redundant_modifiers)*
 - *Null-safety* — `apply_null_annotations` *(add / migrate)*
 - *Format* — `format`
 - *Quick fixes* — `quick_fix` *(suggest_imports / list / apply)*, `validate_syntax`
-- *Duplicates* — `find_duplicate_code`, `replace_duplicates`
+- *Duplicates* — `find_duplicate_code`, then `extract(kind=replace_inline_code)` to
+  rewrite a clone group to call one canonical method
 
 **Build & verify**
 - *Dependencies (Maven)* — `dependency` *(add / update / find_unused)*

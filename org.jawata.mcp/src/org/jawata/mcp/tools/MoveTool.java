@@ -151,4 +151,17 @@ public class MoveTool extends AbstractTool {
         }
         return delegate.executeWithService(service, arguments);
     }
+    /**
+     * Moving a METHOD onto another type rewrites every call site, which is structural.
+     * Moving a class or a package relocates a type without changing any signature, and
+     * was not treated as structural before the fold; that stays true.
+     *
+     * <p>This is the declaration the architect gate lost when `move_method` folded in:
+     * its list held the retired tool name, so a method move stopped being reviewed.</p>
+     */
+    @Override
+    public java.util.Set<String> structuralKinds() {
+        return java.util.Set.of("method");
+    }
+
 }

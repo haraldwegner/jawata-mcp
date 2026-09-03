@@ -304,6 +304,51 @@ class DeclaredShapeHonestyTest {
         assertPublishesEveryDelegateParameter(new MoveTool(svc, cache), move);
     }
 
+    /**
+     * THE BOOT CHECK, ON THE REAL SURFACE, IN THE FAST SUITE.
+     *
+     * <p>Stage 1 shipped a change that made the application exit during start-up: a
+     * lifecycle front door republished six operations another tool already published,
+     * the cure table's ambiguity refusal fired, and the process was gone before it
+     * served a request. A green 2274-test run said nothing about it, because no test
+     * builds the application. The end-to-end gate caught it — ten minutes later, and
+     * only because someone ran it.</p>
+     *
+     * <p>This is the same question asked of the same front-door instances the honesty
+     * guard already constructs, using the registry's OWN harvest rather than a copy of
+     * it, so a change to what counts as an operation reaches this check automatically.
+     * It cannot replace the end-to-end gate — that boots the artifact and this does not
+     * — but the failure it guards is a table-and-registration failure, and this is where
+     * that failure can be seen in seconds.</p>
+     */
+    @Test
+    @DisplayName("the real front doors publish a set the cure table validates against")
+    void theCureTableValidatesAgainstTheRealFrontDoors() {
+        org.jawata.mcp.refactoring.OperationRegistry registry =
+            new org.jawata.mcp.refactoring.OperationRegistry();
+        java.util.Map<String, AbstractTool> tools = new LinkedHashMap<>(frontDoors());
+        // NOT ONLY THE PARAMETRIC DOORS. A cure step may name a whole tool — the
+        // encapsulation smell's cure is `data`, which publishes no kind enum and so is
+        // not a parametric front door at all. Registering only the eight would leave that
+        // step unbacked and this check would refuse a table that boots perfectly well,
+        // which is a false alarm rather than a guard.
+        RefactoringChangeCache cache = new RefactoringChangeCache();
+        Supplier<IJdtService> svc = () -> service;
+        tools.put("data", new DataTool(svc, cache));
+        tools.forEach((name, door) ->
+            registry.register(name, ToolRegistry.publishedKindsOf(door),
+                door.isMechanical(), door.isStructural(), door.structuralKinds()));
+
+        assertTrue(registry.isWired(),
+            "PROOF OF LIFE: an empty registry would make the check below pass over"
+                + " nothing, which is the shape that let the boot failure through");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+            () -> org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(registry),
+            "every cure step must name an operation these front doors publish, and name"
+                + " it unambiguously. This throwing is what took the application down"
+                + " during start-up in this stage.");
+    }
+
     // ------------------------------------------------------------------
     // run_tests: the declared action set IS the accepted action set
     // ------------------------------------------------------------------

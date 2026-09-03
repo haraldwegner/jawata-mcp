@@ -255,4 +255,15 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
             .build());
     }
 
+    /**
+     * MECHANICAL, always.
+     *
+     * <p>The same declaration as AbstractRefactoringTool, for the same reason: what makes
+     * these mechanical is the base they extend, not their names.</p>
+     */
+    @Override
+    public boolean isMechanical() {
+        return true;
+    }
+
 }

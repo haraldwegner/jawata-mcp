@@ -19,7 +19,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ArchitectGateTest {
 
-    private static final ArchitectGate GATE = new ArchitectGate(500);
+    /**
+     * The registry the gate reads, populated the way the application populates it.
+     *
+     * <p>The gate used to carry two literal sets of tool names and needed nothing to
+     * answer. It now asks the registry, because a list of names in this package went
+     * stale the moment stage 1 renamed a tool and nothing failed. A test that left the
+     * registry empty would see a gate that never fires — which is exactly the failure
+     * being repaired, reproduced in the test instead of in production.</p>
+     */
+    private static org.jawata.mcp.refactoring.OperationRegistry wiredRegistry() {
+        org.jawata.mcp.refactoring.OperationRegistry registry =
+            new org.jawata.mcp.refactoring.OperationRegistry();
+        registry.register("change_method_signature", java.util.List.of(), true, true,
+            java.util.Set.of());
+        registry.register("hierarchy", java.util.List.of("up", "down"), true, true,
+            java.util.Set.of());
+        registry.register("refactor_to_pattern", java.util.List.of(), true, true,
+            java.util.Set.of());
+        registry.register("extract",
+            java.util.List.of("method", "variable", "constant", "interface", "superclass",
+                "class", "replace_inline_code"),
+            true, false, java.util.Set.of("superclass", "interface"));
+        registry.register("move", java.util.List.of("class", "package", "method"), true,
+            false, java.util.Set.of("method"));
+        registry.register("format", java.util.List.of(), false, false, java.util.Set.of());
+        registry.register("rename_symbol", java.util.List.of(), true, false,
+            java.util.Set.of());
+        return registry;
+    }
+
+    private static final ArchitectGate GATE = new ArchitectGate(500, wiredRegistry());
     private static final ObjectMapper OM = new ObjectMapper();
 
     private static ToolResponse mutate(String diff) {
@@ -96,10 +126,10 @@ class ArchitectGateTest {
 
     @Test
     void the_threshold_is_configurable() {
-        ArchitectGate strict = new ArchitectGate(10);
+        ArchitectGate strict = new ArchitectGate(10, wiredRegistry());
         assertNotNull(strict.evaluate("format", args(), mutate(diffOf(11)), false),
             "a lower threshold flags a smaller edit — the constant is tunable in dogfood");
-        assertNull(new ArchitectGate(500).evaluate("format", args(), mutate(diffOf(11)), false),
+        assertNull(new ArchitectGate(500, wiredRegistry()).evaluate("format", args(), mutate(diffOf(11)), false),
             "the same edit is plain under the default threshold");
     }
 }

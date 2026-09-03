@@ -6,7 +6,6 @@ import org.jawata.mcp.models.ToolResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The architect-involvement gate (Sprint 26a, D3b) — the DETERMINISTIC rule that
@@ -29,21 +28,29 @@ import java.util.Set;
  */
 public final class ArchitectGate {
 
-    /** Signature/hierarchy-affecting refactorings — structural by their nature. */
-    private static final Set<String> STRUCTURAL_TOOLS = Set.of(
-        "change_method_signature", "move_in_hierarchy", "move_method",
-        "refactor_to_pattern");
-
-    /** Extract kinds that change the hierarchy (vs a local method/variable). */
-    private static final Set<String> STRUCTURAL_EXTRACT_KINDS = Set.of("superclass", "interface");
-
     /** Default changed-LoC threshold — a plan-time constant, tuned in dogfood. */
     public static final int DEFAULT_LOC_THRESHOLD = 500;
 
     private final int locThreshold;
+    private final org.jawata.mcp.refactoring.OperationRegistry registry;
 
     public ArchitectGate(int locThreshold) {
+        this(locThreshold, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+    }
+
+    /**
+     * The registry this gate asks what an operation IS.
+     *
+     * <p>Injectable because the gate now HAS a dependency, and a dependency taken from a
+     * global is one a test cannot supply. It used to answer from two literal sets in this
+     * file, which needed nothing — and which went silently stale the first time a tool
+     * was renamed. Trading "needs nothing" for "needs the registry" is the whole repair;
+     * hiding that behind a singleton would leave the gate's own tests passing over an
+     * empty registry, which is a differently-shaped version of the same blindness.</p>
+     */
+    public ArchitectGate(int locThreshold, org.jawata.mcp.refactoring.OperationRegistry registry) {
         this.locThreshold = locThreshold;
+        this.registry = registry;
     }
 
     /**
@@ -78,14 +85,28 @@ public final class ArchitectGate {
             + " a hand-edit is already on disk, so review it before you build on it.";
     }
 
-    private static boolean isStructural(String tool, JsonNode arguments) {
-        if (STRUCTURAL_TOOLS.contains(tool)) {
+    /**
+     * ASKED OF THE REGISTRY, not of a list kept here.
+     *
+     * <p>This used to be two {@code Set.of(...)} literals — four tool names and two
+     * extract kinds. Stage 1 retired two of those four names when it folded and renamed
+     * tools, and this gate went silent for pull-up, push-down and the method move with
+     * nothing failing anywhere: a list of names in this package cannot know that a name
+     * has stopped existing. The tools declare what they are now, and an operation that
+     * is retired takes its classification with it.</p>
+     *
+     * <p>The KIND is asked in its qualified spelling. A bare {@code method} is published
+     * by three front doors and means something different in each, so classifying the
+     * bare name would make an extracted local method structural because a moved instance
+     * method is.</p>
+     */
+    private boolean isStructural(String tool, JsonNode arguments) {
+        if (registry.isStructural(tool)) {
             return true;
         }
-        if ("extract".equals(tool) && arguments != null) {
-            return STRUCTURAL_EXTRACT_KINDS.contains(arguments.path("kind").asText(""));
-        }
-        return false;
+        String kind = arguments == null ? "" : arguments.path("kind").asText("");
+        return !kind.isBlank() && registry.isStructural(
+            org.jawata.mcp.refactoring.OperationRegistry.qualify(tool, kind));
     }
 
     /** Changed lines in the response's unified diff (+/− lines, excluding headers). */

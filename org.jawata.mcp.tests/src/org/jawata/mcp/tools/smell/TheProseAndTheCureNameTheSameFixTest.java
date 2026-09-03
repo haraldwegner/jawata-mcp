@@ -63,9 +63,9 @@ class TheProseAndTheCureNameTheSameFixTest {
         // and is satisfied by the same operation under the name a caller now types.
         "feature_envy", List.of("move kind=method"),
         // "Consider Extract Class"
-        "god_class", List.of("extract"),
+        "god_class", List.of("extract kind=class"),
         // "Consider Extract Class for the fields used only some of the time"
-        "temporary_field", List.of("extract"),
+        "temporary_field", List.of("extract kind=class"),
         // "the slot must own its state" — encapsulate the field
         // Stage 1 renamed encapsulate_field to `data`, for the same reason.
         "encapsulation", List.of("data"));

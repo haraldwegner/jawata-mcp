@@ -78,7 +78,7 @@ class ReadOnlyHintAnnotationTest {
             "load_project", "add_project", "remove_project", "refresh_workspace",
             // build / test / fix / dependencies
             "compile_workspace", "run_tests", "apply_quick_fix",
-            "optimize_imports_workspace", "add_dependency", "update_dependency");
+            "add_dependency", "update_dependency");
         mutating.forEach(name -> registry.register(stub(name)));
 
         for (String name : mutating) {

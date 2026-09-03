@@ -95,4 +95,15 @@ public class HierarchyTool extends AbstractTool {
                 "Unknown direction '" + direction + "'. Allowed: " + DIRECTIONS);
         };
     }
+    /**
+     * STRUCTURAL. Pulling a member up or pushing it down moves it through the hierarchy, which is
+     * what this gate means by structural. It was reached under the name
+     * `move_in_hierarchy` until stage 1 renamed the tool, and the gate's own list did
+     * not follow — which is why the declaration now lives here.
+     */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 }

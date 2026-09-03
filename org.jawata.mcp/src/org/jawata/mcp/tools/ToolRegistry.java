@@ -148,7 +148,8 @@ public class ToolRegistry {
         }
         tools.put(name, tool);
         org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
-            .register(name, publishedKindsOf(tool));
+            .register(name, publishedKindsOf(tool), tool.isMechanical(), tool.isStructural(),
+                tool.structuralKinds());
         log.debug("Registered tool: {}", name);
     }
 
@@ -159,16 +160,20 @@ public class ToolRegistry {
      * second home for one fact is a fact that goes stale. A tool with no {@code kind}
      * enum simply publishes none, which is the ordinary case.</p>
      */
-    private static List<String> publishedKindsOf(Tool tool) {
+    static List<String> publishedKindsOf(Tool tool) {
         // ONLY THE TOOLS WHOSE KINDS ARE OPERATIONS. A `kind` enum is a common shape:
         // find_quality_issue publishes `god_class` and `naming`, analyze publishes
         // `method`, inspect publishes `source`. Harvesting every one of them put
         // hundreds of non-operations into a flat namespace, so a cure step named
         // `god_class` would have validated and been called runnable — the registry's
         // own promise ("the only thing a cure step may name") reduced to a word.
-        if (!REFACTORING_FRONT_DOORS.contains(tool.getName())) {
-            // Includes LIFECYCLE_FRONT_DOOR, deliberately — see its note. It still
-            // registers its own NAME as an operation, one line up in register().
+        if (LIFECYCLE_FRONT_DOOR.equals(tool.getName())
+                || !REFACTORING_FRONT_DOORS.contains(tool.getName())) {
+            // The lifecycle door is named EXPLICITLY rather than merely left out of the
+            // set. Left out, the exclusion is invisible: re-adding the name to the set
+            // would silently republish six operations a second time, which is precisely
+            // the boot failure this exclusion exists to prevent. It still registers its
+            // own NAME as an operation, one line up in register().
             return List.of();
         }
         try {
@@ -176,21 +181,34 @@ public class ToolRegistry {
             if (!(props instanceof Map<?, ?> properties)) {
                 return List.of();
             }
-            Object kind = properties.get("kind");
-            if (!(kind instanceof Map<?, ?> kindSchema)) {
-                return List.of();
-            }
-            Object values = kindSchema.get("enum");
-            if (!(values instanceof List<?> enumeration)) {
-                return List.of();
-            }
-            List<String> kinds = new java.util.ArrayList<>();
-            for (Object value : enumeration) {
-                if (value instanceof String s) {
-                    kinds.add(s);
+            // ALL THREE SPELLINGS, and any collection. A front door's discriminator is
+            // called `kind` on most tools, `direction` on `hierarchy` and `action` on
+            // `refactoring`; reading only `kind` meant hierarchy's up and down were not
+            // operations at all, so stage 7's five rows would land on a tool whose
+            // operations a cure cannot name. The honesty guard learned to read all three
+            // in this same stage — and it also found apply_cleanup publishing its enum
+            // as a Set, which every List-typed reader skipped in silence.
+            for (String discriminator : List.of("kind", "direction")) {
+                Object schema = properties.get(discriminator);
+                if (!(schema instanceof Map<?, ?> discriminatorSchema)) {
+                    continue;
                 }
+                Object values = discriminatorSchema.get("enum");
+                if (!(values instanceof java.util.Collection<?> enumeration)) {
+                    continue;
+                }
+                List<String> kinds = new java.util.ArrayList<>();
+                for (Object value : enumeration) {
+                    if (value instanceof String s) {
+                        kinds.add(s);
+                    }
+                }
+                return List.copyOf(kinds);
             }
-            return List.copyOf(kinds);
+            // `action` is deliberately NOT read: a lifecycle verb (apply, undo, plan) is
+            // not a transformation a cure step can name, and LIFECYCLE_FRONT_DOOR below
+            // records the one tool that would otherwise have supplied them.
+            return List.of();
         } catch (RuntimeException e) {
             // A schema this malformed is a defect the schema tests catch loudly; it must
             // not take registration down with it.
@@ -331,10 +349,50 @@ public class ToolRegistry {
         Map.entry("move_in_hierarchy", "hierarchy")
     );
 
-    /** The current front door for a renamed/removed tool name, or {@code null}. */
+    /**
+     * Every retired name the map answers for — the population an invariant sweeps.
+     *
+     * <p>Exposed because a test that writes the retired names out by hand proves the
+     * pointers say the right thing and cannot prove anything about a row nobody
+     * remembered. Both are needed: the hand-written list is the claim, this is the
+     * coverage.</p>
+     */
+    static java.util.Set<String> retiredNames() {
+        return java.util.Set.copyOf(RENAMED_TOOLS.keySet());
+    }
+
+    /** The fully resolved pointer for a retired name, or null when it is not retired. */
+    static String pointerFor(String name) {
+        return aliasHint(name);
+    }
+
+    /**
+     * The current front door for a renamed/removed tool name, or {@code null}.
+     *
+     * <p>FOLLOWED TRANSITIVELY, because a rename can retire a name that is already
+     * somebody's forwarding address. {@code pull_up} has pointed at
+     * {@code move_in_hierarchy} since Sprint 19; stage 1 then renamed
+     * {@code move_in_hierarchy} to {@code hierarchy}, and a single lookup left a caller
+     * of {@code pull_up} pointed at a second tool that is also not found. One hop is not
+     * a guarantee when the map itself has a history.</p>
+     *
+     * <p>Only the HEAD is followed — the front-door name at the start of a pointer, so
+     * {@code "move kind=method"} resolves through {@code move} and keeps its kind. The
+     * hop count is bounded rather than cycle-detected: a cycle here is a table defect,
+     * and stopping is the same answer either way.</p>
+     */
     private static String aliasHint(String name) {
         String direct = RENAMED_TOOLS.get(name);
         if (direct != null) {
+            for (int hop = 0; hop < 8; hop++) {
+                int cut = direct.indexOf(' ');
+                String head = cut < 0 ? direct : direct.substring(0, cut);
+                String next = RENAMED_TOOLS.get(head);
+                if (next == null) {
+                    break;
+                }
+                direct = cut < 0 ? next : next + direct.substring(cut);
+            }
             return direct;
         }
         if (name.startsWith("analyze_")) {
@@ -426,8 +484,7 @@ public class ToolRegistry {
             // Sprint 23 (D6): remember files changed by MECHANICAL transforms —
             // the done-time coverage advisory exempts them (a rename needs no
             // new test; NEW BEHAVIOR does).
-            if (response.isSuccess() && org.jawata.mcp.coverage.MechanicalChangeJournal
-                    .EXEMPT_TOOLS.contains(name)
+            if (response.isSuccess() && org.jawata.mcp.coverage.MechanicalChangeJournal.isMechanicalTool(name)
                     && response.getData() instanceof Map<?, ?> map
                     && map.get("filesModified") instanceof List<?> files) {
                 files.forEach(f -> org.jawata.mcp.coverage.MechanicalChangeJournal

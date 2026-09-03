@@ -401,4 +401,15 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         };
     }
 
+    /**
+     * MECHANICAL, always.
+     *
+     * <p>Every subclass is a behaviour-preserving transform by construction, so this is
+     * declared once here rather than in a list somewhere else that has to be remembered.</p>
+     */
+    @Override
+    public boolean isMechanical() {
+        return true;
+    }
+
 }

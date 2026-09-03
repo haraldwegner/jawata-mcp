@@ -61,6 +61,13 @@ class EventTapTest {
 
     @Test
     void a_mechanical_touch_becomes_a_touch_event() throws Exception {
+        // WHICH tools are mechanical is no longer a constant in the coverage package —
+        // it was, and stage 1's fold retired four of the eighteen names in it without
+        // anything noticing. The tools declare it now and the registry answers, so a
+        // test that exercises the tap has to wire the tool it names, exactly as the
+        // application does at registration.
+        org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
+            .register("rename_symbol", java.util.List.of(), true, false, java.util.Set.of());
         tap.onCall("s1", "rename_symbol", mapper.readTree("{}"),
             ToolResponse.success(Map.of("filesModified", List.of("A.java", "B.java"))), 0L);
         assertTrue(events.countByKind().containsKey(LearnerEvent.KIND_MECHANICAL_TOUCH));

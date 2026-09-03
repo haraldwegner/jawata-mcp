@@ -126,7 +126,7 @@ public class EventTap {
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_UNDO, name,
                 "{\"action\":\"" + arguments.path("action").asText() + "\"}"));
         }
-        if (filesModified > 0 && MechanicalChangeJournal.EXEMPT_TOOLS.contains(name)) {
+        if (filesModified > 0 && MechanicalChangeJournal.isMechanicalTool(name)) {
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_MECHANICAL_TOUCH, name,
                 "{\"filesModified\":" + filesModified + "}"));
         }

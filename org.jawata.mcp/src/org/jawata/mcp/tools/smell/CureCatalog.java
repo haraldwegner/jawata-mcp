@@ -157,10 +157,14 @@ public final class CureCatalog {
         // and the registry refuses it. The qualified spelling is what a reader types.
         m.put("feature_envy", List.of(
             new Cure("move kind=method", null)));
+        // QUALIFIED, for the reason the fold pointers are: `extract` publishes seven
+        // kinds, and naming the bare front door leaves a reader to guess which one. The
+        // architecture says extract(class) for both of these, and the registry publishes
+        // that spelling as an unambiguous key.
         m.put("god_class", List.of(
-            new Cure("extract", null)));
+            new Cure("extract kind=class", null)));
         m.put("temporary_field", List.of(
-            new Cure("extract", null)));
+            new Cure("extract kind=class", null)));
         m.put("encapsulation", List.of(
             new Cure("data", "design:private-class-data")));
 

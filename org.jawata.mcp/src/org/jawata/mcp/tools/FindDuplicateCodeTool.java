@@ -120,7 +120,7 @@ public class FindDuplicateCodeTool extends AbstractTool {
 
             Output groups contain ≥2 method instances with identical
             normalized token sequence (similarity 1.0) plus a stable groupId
-            (hash of the clone shape) — pass it to replace_duplicates with
+            (hash of the clone shape) — pass it to extract(kind=replace_inline_code) with
             the SAME parameters to delegate same-type clones to a canonical
             method. Empty groups list means no clones above minTokens.
             """;

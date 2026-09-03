@@ -41,7 +41,7 @@ import java.util.function.Supplier;
  * sweeps cost ONE tool against the client tool-cap, not six.
  *
  * <p>Candidates are heuristic suggestions, never guarantees — the apply side is
- * the existing refactoring tools (e.g. {@code convert_anonymous_to_lambda}) or
+ * the existing refactoring tools (e.g. {@code refactor_to_pattern kind=replace_pattern_with_idiom}) or
  * a future orchestration step. Detection deliberately errs toward surfacing a
  * candidate the human/agent can judge, not toward silent certainty.</p>
  */
@@ -75,7 +75,7 @@ public class FindModernizationTool extends AbstractTool {
             KINDS:
             - anon_to_lambda   — anonymous single-method implementations of a
                                  functional interface that can become a lambda
-                                 (apply with convert_anonymous_to_lambda).
+                                 (apply with refactor_to_pattern kind=replace_pattern_with_idiom).
             - switch_to_pattern — classic `switch` statements that could become a
                                  switch expression / pattern-matching switch (Java 21).
             - loop_to_stream   — enhanced-for accumulation loops that could become a
@@ -168,7 +168,7 @@ public class FindModernizationTool extends AbstractTool {
         return ToolResponse.success(data, ResponseMeta.builder()
             .steering(scan.steering(candidates.size(), kind + " candidates"))
             .suggestedNextTools(List.of(
-                "convert_anonymous_to_lambda / the matching refactoring tool to apply a candidate",
+                "refactor_to_pattern kind=replace_pattern_with_idiom / the matching refactoring tool to apply a candidate",
                 "analyze_type to inspect a candidate's enclosing type"))
             .build());
     }
@@ -201,7 +201,7 @@ public class FindModernizationTool extends AbstractTool {
                     }
                     add(out, rel, ast.getLineNumber(node.getStartPosition()),
                         "anonymous " + node.getType().toString(),
-                        "replace with a lambda (convert_anonymous_to_lambda)");
+                        "replace with a lambda (refactor_to_pattern kind=replace_pattern_with_idiom)");
                     return true;
                 }
             });

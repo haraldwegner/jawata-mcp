@@ -28,10 +28,13 @@ public final class ToolHowTo {
             "stage it: pass auto_apply=false, review the diff, then apply (compile-verified, undoable)"),
         Map.entry("move",
             "stage it: pass auto_apply=false, review the diff, then apply (compile-verified, undoable)"),
-        Map.entry("move_in_hierarchy",
+        Map.entry("hierarchy",
             "stage it: pass auto_apply=false, review the diff, then apply (compile-verified, undoable)"),
-        Map.entry("move_method",
-            "stage it: pass auto_apply=false, review the diff, then apply (compile-verified, undoable)"),
+        // `move_method` folded into `move kind=method` in Sprint 28d-rescue, and this map
+        // is keyed by TOOL. Renaming its key produced a second `move` entry, which
+        // Map.ofEntries refuses at class load — so the class failed to initialise and
+        // every steering surface that reads it threw. One entry now covers all three
+        // move kinds, which is what a map keyed by tool should have had all along.
         Map.entry("inline",
             "stage it: pass auto_apply=false, review the diff, then apply (compile-verified, undoable)"),
         Map.entry("change_method_signature",

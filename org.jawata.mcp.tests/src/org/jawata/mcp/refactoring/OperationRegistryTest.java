@@ -90,10 +90,14 @@ class OperationRegistryTest {
     @org.junit.jupiter.api.AfterEach
     void restoreTheSingleton() {
         OperationRegistry live = OperationRegistry.theRegistry();
+        // NOT a restore, and the comment above used to claim it was. Re-registering each
+        // key as a tool named after itself puts the KEYS back and destroys the
+        // attribution: `method` goes from {extract, inline, move} to {method}, so
+        // `ambiguous("method")` is false for every later test in this JVM. The registry
+        // is repopulated from the real tools instead, which is the only thing that
+        // reproduces what was there.
         live.clear();
-        for (String operation : before) {
-            live.register(operation, List.of());
-        }
+        restoreFromRealTools(live);
     }
 
     @Test
@@ -119,4 +123,20 @@ class OperationRegistryTest {
                 + " kinds like god_class and naming; harvesting them would let a cure"
                 + " step name a smell and be called runnable");
     }
+    /**
+     * Put the singleton back the way the application leaves it.
+     *
+     * <p>A test that borrows a global has to give it back INTACT, not merely non-empty.
+     * Registering the front doors again is the only way to restore the operation→tool
+     * attribution the ambiguity check reads.</p>
+     */
+    private static void restoreFromRealTools(org.jawata.mcp.refactoring.OperationRegistry live) {
+        live.register("extract",
+            List.of("method", "variable", "constant", "interface", "superclass", "class",
+                "replace_inline_code"), true, false, java.util.Set.of("superclass", "interface"));
+        live.register("inline", List.of("method", "variable"), true, false, java.util.Set.of());
+        live.register("move", List.of("class", "package", "method"), true, false,
+            java.util.Set.of("method"));
+    }
+
 }

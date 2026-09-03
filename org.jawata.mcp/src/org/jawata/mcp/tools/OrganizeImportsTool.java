@@ -285,6 +285,14 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         counts.put("importsAdded", added);
         counts.put("importsRemoved", removed);
         counts.put("changedFiles", modified);
+        // BOTH keys, and the second is not redundant. `optimize_imports_workspace`
+        // documented its result as carrying `modifiedFiles`, and the rename map sends
+        // its callers here — where they would have found a successful call, no error,
+        // and nothing under the key they read. A caller redirected into a payload that
+        // silently answers "nothing changed" is worse served than one that was not
+        // redirected at all. Same judgement as FindNamingViolationsTool keeping
+        // `filesScanned` when it split the count in two.
+        counts.put("modifiedFiles", modified);
         counts.put("skippedFiles", skipped);
 
         if (edits.isEmpty()) {

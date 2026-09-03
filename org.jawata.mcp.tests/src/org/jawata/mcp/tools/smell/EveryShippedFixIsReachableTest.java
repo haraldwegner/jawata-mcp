@@ -27,8 +27,8 @@ class EveryShippedFixIsReachableTest {
     /** The four, and the operation each must now name. */
     private static final List<String[]> ROUTES = List.of(
         new String[] {"feature_envy", "move kind=method"},
-        new String[] {"god_class", "extract"},
-        new String[] {"temporary_field", "extract"},
+        new String[] {"god_class", "extract kind=class"},
+        new String[] {"temporary_field", "extract kind=class"},
         new String[] {"encapsulation", "data"});
 
     @Test

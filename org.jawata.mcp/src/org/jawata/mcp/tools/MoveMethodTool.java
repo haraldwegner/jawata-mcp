@@ -138,7 +138,7 @@ public class MoveMethodTool extends AbstractRefactoringTool {
             // Initial conditions parse the method and compute the possible targets.
             RefactoringStatus initial = refactoring.checkInitialConditions(new NullProgressMonitor());
             if (initial.hasFatalError()) {
-                return ToolResponse.invalidParameter("move_method", formatStatus(initial));
+                return ToolResponse.invalidParameter("move kind=method", formatStatus(initial));
             }
 
             IVariableBinding[] targets = processor.getPossibleTargets();

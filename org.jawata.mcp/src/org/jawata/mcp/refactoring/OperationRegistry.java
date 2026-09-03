@@ -81,6 +81,24 @@ public final class OperationRegistry {
     /** operation name → every tool publishing it (usually one; see the class note). */
     private final Map<String, Set<String>> publishedBy = new ConcurrentHashMap<>();
 
+    /**
+     * What each operation IS, as its own tool declares it.
+     *
+     * <p>Two controls used to answer these from {@code Set.of(...)} literals of tool
+     * NAMES, in two other packages: the coverage advisory's exemption list and the
+     * architect-involvement gate's structural list. Stage 1's fold retired six names and
+     * walked past both — the gate stopped firing for pull-up, push-down and the method
+     * move, and the advisory started asking for tests after a field encapsulation. Both
+     * went quiet with nothing failing, because a list in another package cannot know
+     * that a name it holds has stopped existing.</p>
+     *
+     * <p>Here the classification arrives WITH the registration, so an operation that
+     * exists is classified and an operation that is retired takes its classification
+     * with it. There is no list to update and nothing to forget.</p>
+     */
+    private final Set<String> mechanical = ConcurrentHashMap.newKeySet();
+    private final Set<String> structural = ConcurrentHashMap.newKeySet();
+
     /** The registry the application wires; tests may construct their own. */
     public static OperationRegistry theRegistry() {
         return DEFAULT;
@@ -100,22 +118,72 @@ public final class OperationRegistry {
      * registry over the same tools from tripping over itself.
      */
     public void register(String toolName, Collection<String> kinds) {
+        register(toolName, kinds, false, false, Set.of());
+    }
+
+    /**
+     * Record a tool, its kinds, and WHAT THEY ARE.
+     *
+     * @param isMechanical    every operation of this tool preserves behaviour
+     * @param isStructural    every operation of this tool changes a signature or hierarchy
+     * @param structuralKinds the kinds that are structural when the tool as a whole is not
+     */
+    public void register(String toolName, Collection<String> kinds, boolean isMechanical,
+                         boolean isStructural, Set<String> structuralKinds) {
         if (toolName == null || toolName.isBlank()) {
             return;
         }
         publish(toolName, toolName);
+        classify(toolName, isMechanical, isStructural);
         if (kinds == null) {
             return;
         }
+        Set<String> structuralOnes = structuralKinds == null ? Set.of() : structuralKinds;
         for (String kind : kinds) {
-            if (kind != null && !kind.isBlank()) {
-                publish(kind, toolName);
-                // The unambiguous spelling, always available even when the bare kind is
-                // shared. Registering it here rather than composing it at the point of
-                // use means a cure table can declare it and be validated against it.
-                publish(qualify(toolName, kind), toolName);
+            if (kind == null || kind.isBlank()) {
+                continue;
+            }
+            publish(kind, toolName);
+            // The unambiguous spelling, always available even when the bare kind is
+            // shared. Registering it here rather than composing it at the point of
+            // use means a cure table can declare it and be validated against it.
+            String qualified = qualify(toolName, kind);
+            publish(qualified, toolName);
+            boolean kindIsStructural = isStructural || structuralOnes.contains(kind);
+            // The QUALIFIED form only, for structural-ness. A bare `method` is published
+            // by three tools and means something different in each; classifying the bare
+            // name would make `extract kind=method` structural because `move kind=method`
+            // is, which is the ambiguity this class exists to refuse.
+            classify(qualified, isMechanical, kindIsStructural);
+            if (isMechanical) {
+                mechanical.add(kind);
             }
         }
+    }
+
+    private void classify(String operation, boolean isMechanical, boolean isStructural) {
+        if (isMechanical) {
+            mechanical.add(operation);
+        }
+        if (isStructural) {
+            structural.add(operation);
+        }
+    }
+
+    /**
+     * Is this operation behaviour-preserving — a refactoring rather than new code?
+     *
+     * <p>False for an operation nothing registered, which is the same answer as "not a
+     * refactoring" and is the safe direction: the coverage advisory then ASKS for a test
+     * rather than silently exempting something it knows nothing about.</p>
+     */
+    public boolean isMechanical(String operation) {
+        return operation != null && mechanical.contains(operation);
+    }
+
+    /** Does this operation change a signature or a hierarchy? */
+    public boolean isStructural(String operation) {
+        return operation != null && structural.contains(operation);
     }
 
     private void publish(String operation, String toolName) {
@@ -189,5 +257,7 @@ public final class OperationRegistry {
     /** Empty it. For tests that need a registry with known contents. */
     public void clear() {
         publishedBy.clear();
+        mechanical.clear();
+        structural.clear();
     }
 }

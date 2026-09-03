@@ -212,4 +212,17 @@ public class ExtractTool extends AbstractTool {
         }
         return delegate.executeWithService(service, arguments);
     }
+    /**
+     * Extracting a SUPERCLASS or an INTERFACE changes the hierarchy; extracting a
+     * method, a variable or a constant does not.
+     *
+     * <p>The architect gate carried these two names itself, in a set beside its list of
+     * tool names. Same defect one level down: a kind list in another package cannot know
+     * when this tool's kinds change.</p>
+     */
+    @Override
+    public java.util.Set<String> structuralKinds() {
+        return java.util.Set.of("superclass", "interface");
+    }
+
 }

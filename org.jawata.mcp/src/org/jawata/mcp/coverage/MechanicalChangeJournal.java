@@ -12,20 +12,30 @@ import java.util.concurrent.ConcurrentHashMap;
  * stays silent for them — a rename does not need a new test; NEW BEHAVIOR
  * does.
  *
- * <p>The exempt tool CLASS (parity-gated in the spec): rename_symbol,
- * extract, inline, move, move_in_hierarchy, move_method,
- * change_method_signature, organize_imports, format, apply_cleanup,
- * refactoring (plan/apply), refactor_to_pattern, replace_duplicates,
- * encapsulate_field, generate. Hand edits and new code are BEHAVIORAL.</p>
+ * <p>WHICH tools are exempt is no longer written here. It was — a {@code Set.of(...)}
+ * of eighteen tool names — and Sprint 28d-rescue's stage 1 folded four of those tools
+ * away and renamed two more without this list noticing. {@code hierarchy} and
+ * {@code data} were simply absent from it afterwards, so a pull-up and a field
+ * encapsulation started being asked for tests they cannot need, and nothing failed:
+ * a list of names in this package has no way to learn that a name stopped existing.</p>
+ *
+ * <p>The question is now asked of {@link org.jawata.mcp.refactoring.OperationRegistry},
+ * which is populated by the tools themselves at registration. Every refactoring
+ * declares itself mechanical by extending the refactoring base, so the set cannot drift
+ * from the tool surface and there is nothing to remember when one changes.</p>
  */
 public final class MechanicalChangeJournal {
 
-    public static final Set<String> EXEMPT_TOOLS = Set.of(
-        "rename_symbol", "extract", "inline", "move", "move_in_hierarchy",
-        "move_method", "change_method_signature", "organize_imports",
-        "optimize_imports_workspace", "format", "apply_cleanup", "refactoring",
-        "refactor_to_pattern", "replace_duplicates", "encapsulate_field",
-        "generate", "convert_anonymous_to_lambda", "apply_null_annotations");
+    /**
+     * Is a change made by this tool behaviour-preserving?
+     *
+     * <p>False for a tool nothing registered — the safe direction, because the advisory
+     * then ASKS for a test rather than exempting an operation it knows nothing about.</p>
+     */
+    public static boolean isMechanicalTool(String toolName) {
+        return org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
+            .isMechanical(toolName);
+    }
 
     /**
      * Recorded paths, normalized separators. Refactoring responses format
