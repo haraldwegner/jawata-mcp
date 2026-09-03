@@ -284,7 +284,17 @@ public final class CureCatalog {
             + " plan lists it as what makes Extract Function possible.",
         "apply_cleanup kind=split_loop",
         "no detector reports a loop doing two things. `long_method` does not, and a"
-            + " loop-level detector is not among this sprint's six.");
+            + " loop-level detector is not among this sprint's six.",
+        // NOT an apply_cleanup entry, and the first one here that is not. The gate that
+        // reads this map is scoped to apply_cleanup on purpose, so nothing checks this
+        // line — it is written because the per-row contract says routed OR unrouted with
+        // the reason, and an unexplained gap and a forgotten one read identically.
+        "refactor_to_pattern kind=decompose_conditional",
+        "no detector reports a complicated conditional. `long_method` is the nearest and"
+            + " already has one route — compose_method — which the tier model turns to"
+            + " ADVISE the moment a second is added. And this one could not be run from a"
+            + " finding even if the finding existed: it needs method NAMES from the caller,"
+            + " which is the whole refactoring, and no finding carries those.");
 
     /** Why an operation that ships is reachable from no finding, or null if it is. */
     public static String unroutedReason(String operation) {

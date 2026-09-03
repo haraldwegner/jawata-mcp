@@ -292,6 +292,7 @@ class DeclaredShapeHonestyTest {
             new ReplaceConstructorWithFactoryTool(svc, cache));
         patterns.put("replace_conditional_with_polymorphism",
             new ReplaceConditionalWithPolymorphismTool(svc, cache));
+        patterns.put("decompose_conditional", new DecomposeConditionalTool(svc, cache));
         assertPublishesEveryDelegateParameter(new RefactorToPatternTool(svc, cache), patterns);
 
         // Stage 1 folded `move_method` in and converted this tool to a delegate map, so

@@ -41,7 +41,12 @@ public class RefactorToPatternTool extends AbstractTool {
         // 28d Stage 8, rank 2 — the general dispatch-collapse the special-case
         // tools cannot reach: an ENUM discriminator, the arrow form, and a
         // selector that is a parameter rather than a private int field.
-        "replace_conditional_with_polymorphism");
+        "replace_conditional_with_polymorphism",
+        // 28d row 8. The plan assigned it to apply_cleanup and it cannot live there:
+        // that tool is a sweep and accepts no per-call input, while the whole value of
+        // Decompose Conditional is the caller's names — `notSummer`, not `condition1`.
+        // This front door already asks for names, so it is where the row belongs.
+        "decompose_conditional");
 
     /**
      * The published kind list, for callers that must check a step EXISTS —
@@ -65,6 +70,7 @@ public class RefactorToPatternTool extends AbstractTool {
     private final ReplacePatternWithIdiomTool replacePatternWithIdiom;
     private final ReplaceConstructorWithFactoryTool replaceConstructorWithFactory;
     private final ReplaceConditionalWithPolymorphismTool replaceConditionalWithPolymorphism;
+    private final DecomposeConditionalTool decomposeConditional;
 
     public RefactorToPatternTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -80,6 +86,7 @@ public class RefactorToPatternTool extends AbstractTool {
             new ReplaceConstructorWithFactoryTool(serviceSupplier, cache);
         this.replaceConditionalWithPolymorphism =
             new ReplaceConditionalWithPolymorphismTool(serviceSupplier, cache);
+        this.decomposeConditional = new DecomposeConditionalTool(serviceSupplier, cache);
     }
 
     @Override
@@ -108,6 +115,13 @@ public class RefactorToPatternTool extends AbstractTool {
                                  methodName} statement ranges to extract. Applies atomically
                                  (auto_apply=false not supported). (find_quality_issue
                                  kind=long_method locates candidates.)
+            - decompose_conditional — TOWARD: a tangled `if` becomes a named test and a named
+                                 branch on each side. Needs: line, column on the `if`, plus
+                                 conditionName / thenName / elseName — name at least one; a part
+                                 you do not name is left alone. YOU supply the names, because they
+                                 are the refactoring. Refuses an `else if` chain (that is
+                                 replace_conditional_with_polymorphism) and a condition that
+                                 assigns. Applies atomically (auto_apply=false not supported).
             - replace_type_code_with_class — TOWARD: generate a type-safe enum from a group of
                                  static-final type-code constants into a new file (same package).
                                  Needs: line, column on the class + newTypeName (optional prefix
@@ -231,7 +245,7 @@ public class RefactorToPatternTool extends AbstractTool {
         for (AbstractTool delegate : List.of(inlineSingleton, composeMethod, replaceTypeCode,
                 refactorToState, refactorToCommand, formTemplateMethod, refactorToVisitor,
                 replacePatternWithIdiom, replaceConstructorWithFactory,
-                replaceConditionalWithPolymorphism)) {
+                replaceConditionalWithPolymorphism, decomposeConditional)) {
             Object declared = delegate.getInputSchema().get("properties");
             if (declared instanceof Map<?, ?> declaredProps) {
                 declaredProps.forEach((k, v) -> {
@@ -275,6 +289,7 @@ public class RefactorToPatternTool extends AbstractTool {
             case "replace_pattern_with_idiom" -> replacePatternWithIdiom.executeWithService(service, arguments);
             case "replace_constructor_with_factory" ->
                 replaceConstructorWithFactory.executeWithService(service, arguments);
+            case "decompose_conditional" -> decomposeConditional.executeWithService(service, arguments);
             case "replace_conditional_with_polymorphism" ->
                 replaceConditionalWithPolymorphism.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
