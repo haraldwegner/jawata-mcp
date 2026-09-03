@@ -148,9 +148,10 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
             USAGE: apply_cleanup(kind="<kind>")  — whole default project
                    apply_cleanup(kind="<kind>", filePath="path/to/File.java")
                    apply_cleanup(kind="<kind>", filePath=..., line=N, column=M)
-                          — just the member at that position, which is how a finding
-                            that names ONE method is answered without rewriting the
-                            whole file around it
+                   apply_cleanup(kind="<kind>", symbol="pkg.Type#member")
+                          — just the member named, which is how a finding about ONE
+                            method is answered without rewriting the whole file around
+                            it. The symbol form resolves to the same position.
 
             KINDS:
 """
@@ -181,6 +182,9 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                 + "position — the way a finding names one method. Needs filePath."));
         properties.put("column", Map.of("type", "integer",
             "description", "Optional, ZERO-BASED column of that position (default 0)."));
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "the member to clean up — the same narrowing as line/column, addressed the way "
+                + "a finding names it"));
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
@@ -188,6 +192,17 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
 
     @Override
     protected Preparation prepareChange(IJdtService service, JsonNode arguments) throws Exception {
+        // NAME FORM FIRST. The per-row contract says every row must be callable from the
+        // finding that names it "by symbol name AND by file position", and a finding
+        // carries the symbol. This resolves `symbol=pkg.Type#member` into the filePath and
+        // position read below — the same helper refactor_to_pattern uses, so the two front
+        // doors cannot drift on what a symbol means.
+        java.util.Optional<ToolResponse> nameForm =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (nameForm.isPresent()) {
+            return Preparation.fail(nameForm.get());
+        }
+
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return Preparation.fail(ToolResponse.invalidParameter("kind",

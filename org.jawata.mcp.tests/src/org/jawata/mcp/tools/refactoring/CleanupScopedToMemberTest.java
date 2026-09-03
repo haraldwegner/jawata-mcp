@@ -121,6 +121,26 @@ class CleanupScopedToMemberTest {
     }
 
     @Test
+    @DisplayName("the same narrowing by SYMBOL, which is how a finding actually names it")
+    void aSymbolNamesTheSameMember() throws Exception {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "return_modified_value");
+        // No filePath and no line: a finding carries the symbol, and the contract asks for
+        // this form as well as the positional one. It resolves to the same member.
+        args.put("symbol", "com.example.ReturnModifiedValueTargets#describe");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "the symbol must resolve; got: " + r.getError());
+        String after = Files.readString(target, StandardCharsets.UTF_8);
+
+        assertFalse(methodBody(after, "describe").contains("String result"),
+            "the member the symbol named IS rewritten:\n" + after);
+        assertTrue(methodBody(after, "band").contains("int result"),
+            "and the member it did not name is untouched — same narrowing as the"
+                + " positional form, reached the way a finding reaches it:\n" + after);
+    }
+
+    @Test
     @DisplayName("a position pointing at a member with nothing to clean changes nothing at all")
     void aQuietMemberYieldsNoChange() throws Exception {
         ObjectNode args = args();
