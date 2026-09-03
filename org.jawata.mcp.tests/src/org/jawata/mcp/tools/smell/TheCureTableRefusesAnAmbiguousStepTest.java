@@ -53,10 +53,39 @@ class TheCureTableRefusesAnAmbiguousStepTest {
         registry.register("inline", List.of("method", "variable"));
         registry.register("data", List.of());
         registry.register("hierarchy", List.of("up", "down"));
-        registry.register("apply_cleanup", List.of("add_final", "redundant_modifiers",
-            "guard_clauses", "consolidate_conditional", "control_flag_to_break",
-            "loop_to_pipeline", "slide_declaration", "split_loop"));
+        // DERIVED, NOT LISTED — and the difference cost a red suite. This was a
+        // hand-written copy of apply_cleanup's kinds, so row 60 shipped a kind,
+        // routed it, and broke a test that had no opinion about row 60: the
+        // mirror simply had not been told. That is the same defect shape the
+        // tool's own registry comment warns about, one level up.
+        //
+        // Read from the PUBLISHED schema, which is what a client sees and what
+        // the real registry harvests — the sibling test
+        // EveryShippedKindIsRoutedOrExplainedTest reads it the same way.
+        registry.register("apply_cleanup", publishedKindsOfApplyCleanup());
         return registry;
+    }
+
+    private static List<String> publishedKindsOfApplyCleanup() {
+        org.jawata.mcp.tools.ApplyCleanupTool tool =
+            new org.jawata.mcp.tools.ApplyCleanupTool(
+                () -> null, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> properties =
+            (java.util.Map<String, Object>) tool.getInputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> kindSchema =
+            (java.util.Map<String, Object>) properties.get("kind");
+        List<String> kinds = new java.util.ArrayList<>();
+        for (Object value : (java.util.Collection<?>) kindSchema.get("enum")) {
+            kinds.add(String.valueOf(value));
+        }
+        if (kinds.size() < 8) {
+            throw new IllegalStateException(
+                "PROOF OF LIFE: apply_cleanup must publish its kinds here, or this registry"
+                    + " mirrors nothing and the validation below proves nothing. Got: " + kinds);
+        }
+        return kinds;
     }
 
     @Test
