@@ -152,6 +152,11 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                           — just the member named, which is how a finding about ONE
                             method is answered without rewriting the whole file around
                             it. The symbol form resolves to the same position.
+                            REFUSED for a rewrite that MOVES code past that member, and
+                            five kinds do: guard_clauses, consolidate_conditional,
+                            loop_to_pipeline, slide_declaration, remove_dead_code. A
+                            move is a linked pair of edits and half of one is not a
+                            smaller change, so the refusal says so instead.
 
             KINDS:
 """
@@ -255,10 +260,17 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
 
             TextEdit edit = RULES.get(kind).edit(ast);
             if (scopedToMember) {
-                // The caller pointed at one member, so answer about that member. Null here
-                // means the rewrite touched nothing inside it, which is the sweep's own
-                // word for "read it, nothing to change".
-                edit = org.jawata.mcp.tools.shared.MemberScope.restrict(edit, ast, line, column);
+                // The caller pointed at one member, so answer about that member. THREE
+                // outcomes, and the third is why this is not a null check: a rewrite that
+                // moves code across the member's boundary cannot be narrowed at all, and
+                // reporting that as "nothing to change here" would be a silent lie.
+                org.jawata.mcp.tools.shared.MemberScope.Result scoped =
+                    org.jawata.mcp.tools.shared.MemberScope.restrict(edit, ast, line, column);
+                if (scoped.refusal() != null) {
+                    return Preparation.fail(
+                        ToolResponse.invalidParameter("line/column", scoped.refusal()));
+                }
+                edit = scoped.edit();
             }
             if (edit == null || (!edit.hasChildren() && edit.getLength() == 0)) {
                 continue;
