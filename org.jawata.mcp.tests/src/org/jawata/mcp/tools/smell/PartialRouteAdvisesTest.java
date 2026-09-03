@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>{@link CureTier} derives PERFORM from route COUNT alone: one runnable route, run it.
  * An architect review found the consequence. The {@code loops} smell has exactly one
  * route, so the product told users to RUN a rewrite that, measured over the whole fork,
- * accepts 2 of the 21 files its own finder names. Following an instruction and getting an
+ * accepts 2 of the 18 files its own finder names. Following an instruction and getting an
  * honest no-op teaches a user to distrust the next instruction too.</p>
  *
  * <p>The derivation now consults whether the route acts on what the finding names. The
@@ -42,7 +42,7 @@ class PartialRouteAdvisesTest {
             "ADVISE carries no recipe — offering one is the instruction this removes: " + d);
         assertTrue(d.reason().contains("declines most of what this finding names"),
             "the reason must say what changed the tier: " + d.reason());
-        assertTrue(d.reason().contains("33 candidates") && d.reason().contains("changes 2"),
+        assertTrue(d.reason().contains("29 candidates") && d.reason().contains("changes 2"),
             "and carry the MEASUREMENT, so a reader can judge rather than take it: "
                 + d.reason());
     }

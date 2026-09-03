@@ -4,6 +4,7 @@ import org.eclipse.core.resources.ProjectScope;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.formatter.DefaultCodeFormatterConstants;
 
 import java.util.HashMap;
@@ -34,6 +35,26 @@ import java.util.Map;
 public final class FormatterOptions {
 
     private FormatterOptions() {}
+
+    /**
+     * The same options, for a rewrite that has the parsed AST rather than the element.
+     *
+     * <p>Sprint 28d-rescue: the seven statement rules all called
+     * {@code rewriteAST(document, null)}, and null means JDT falls back to its own
+     * defaults — tabs. They emitted tab-indented code into space-indented files, and one
+     * line came out with two tabs AND four spaces. This class had already been written
+     * for that exact defect on the code generators (Sprint 25, finding #5); the rules
+     * simply never called it. The second appearance of one defect shape is the alarm, so
+     * the fix is this overload rather than a second answer.</p>
+     *
+     * @return the options, or null when the AST has no compilation unit behind it — and
+     *         null is what the call sites passed before, so the fallback is unchanged
+     */
+    public static Map<String, String> forGeneratedCode(CompilationUnit ast) {
+        return ast != null && ast.getTypeRoot() instanceof ICompilationUnit cu
+            ? forGeneratedCode(cu, null)
+            : null;
+    }
 
     /**
      * A formatter options map for {@code ASTRewrite.rewriteAST(doc, options)}

@@ -321,8 +321,10 @@ public final class CureCatalog {
      */
     private static final Map<String, String> PARTIAL_ROUTES = Map.of(
         "apply_cleanup kind=loop_to_pipeline",
-        "measured over the whole fork corpus (1884 files): find_modernization"
-            + " (loop_to_stream), which is this smell's finder, names 33 candidates in 21"
+        "measured over the java-design-patterns corpus, 1884 distinct source paths"
+            + " aggregated from its modules (the fork holds more; the rest collide on path"
+            + " when the modules are flattened into one root): find_modernization"
+            + " (loop_to_stream), which is this smell's finder, names 29 candidates in 18"
             + " files, and this rewriter changes 2 of them. It refuses arrays, any"
             + " break/continue/return, a body doing more than one thing, and a list not"
             + " declared empty directly above — all correctly, and the finder applies none"

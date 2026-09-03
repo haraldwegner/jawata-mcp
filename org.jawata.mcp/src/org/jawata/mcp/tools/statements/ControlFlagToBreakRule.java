@@ -103,7 +103,8 @@ public final class ControlFlagToBreakRule implements CleanupRule {
         }
         Document document =
             new Document(String.valueOf(ast.getTypeRoot().getBuffer().getContents()));
-        return rewrite.rewriteAST(document, null);
+        return rewrite.rewriteAST(document,
+            org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(ast));
     }
 
     /** The loop, its flag's declaration, and the assignment that becomes the break. */

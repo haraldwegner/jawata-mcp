@@ -108,7 +108,8 @@ public final class SlideStatementsRule implements CleanupRule {
         }
         Document document =
             new Document(String.valueOf(ast.getTypeRoot().getBuffer().getContents()));
-        return rewrite.rewriteAST(document, null);
+        return rewrite.rewriteAST(document,
+            org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(ast));
     }
 
     /** A declaration, the block it lives in, and the statement it should sit before. */

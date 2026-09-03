@@ -7,6 +7,7 @@ import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.ApplyCleanupTool;
+import org.jawata.mcp.tools.FindModernizationTool;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,14 +36,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * never been committed — so the measurement was sound and the evidence was not
  * reproducible, which makes it a claim rather than a result.</p>
  *
- * <p>This is that instrument. It builds the aggregate from the fork checkout, runs the
- * four kinds, and asserts the census. It is also a regression detector: if the fork pin
- * moves and a shape appears, the row that was excused now has a candidate and this test
- * says so.</p>
+ * <p>This is that instrument. It builds the aggregate from the fork checkout and asserts
+ * BOTH halves of what was claimed: the rewriter census — which kinds fire, and on how many
+ * files — and the FINDER count for row 50, which is the other side of the
+ * finder-versus-rewriter gap. A first version checked only the rewriter while its own
+ * javadoc called itself the instrument behind both numbers. A second audit caught that,
+ * and it was right.</p>
+ *
+ * <p>It is also a regression detector: if the fork pin moves and a shape appears, the row
+ * that was excused now has a candidate and this test says so.</p>
  *
  * <h2>Why it ABORTS rather than fails without the fork</h2>
  *
- * <p>The corpus is a checkout, not a vendored fixture — 1884 files, which do not belong in
+ * <p>The corpus is a checkout, not a vendored fixture — nearly two thousand files, which do not belong in
  * this repository. A machine without it cannot run this, and the honest answer there is
  * "not measured", not "passed". That is the same shape as the suite's existing
  * corpus-absence aborts.</p>
@@ -80,9 +86,17 @@ class ForkShapeCensusTest {
             int files = buildAggregate(fork, aggregate);
             // PROOF OF LIFE. A census over an empty aggregate reports zero for every kind
             // and would "confirm" three of the four expectations while measuring nothing.
-            assertTrue(files > 1500,
-                "expected the whole fork (~1884 source files), aggregated " + files
-                    + " — the census would be about a different corpus");
+            // NOT "the whole fork", and that difference was an over-claim an audit caught.
+            // Flattening every module into ONE source root collides paths — several
+            // modules own a `com/iluwatar/App.java` — so the aggregate holds the DISTINCT
+            // paths, fewer than the fork's file count. Asserting the exact number keeps
+            // the claim and the corpus from drifting apart again.
+            assertEquals(1884, files,
+                "expected 1884 distinct source paths aggregated from the fork; got " + files
+                    + ". The fork holds MORE files than this — the remainder collide on"
+                    + " path when the modules are flattened, and each collision is"
+                    + " represented by one of its copies. If this number moved, the pin"
+                    + " moved, and every count below is about a different corpus.");
 
             JdtServiceImpl service = helper.loadProjectCopy("probe-fork-census");
             ObjectMapper mapper = new ObjectMapper();
@@ -102,6 +116,32 @@ class ForkShapeCensusTest {
                 "the fork census moved. If the pin changed this is news, not a defect: a row"
                     + " excused for having no candidate may now have one, and Stage 3's"
                     + " written reasons need re-reading before this expectation is updated.");
+
+            // THE OTHER HALF. "The finder names 33 candidates in 21 files and the rewriter
+            // changes 2" is a claim about TWO tools, and checking one of them re-checks
+            // nothing about the gap between them.
+            ObjectNode finderArgs = mapper.createObjectNode();
+            finderArgs.put("kind", "loop_to_stream");
+            finderArgs.put("maxResults", 500);
+            ToolResponse found = new FindModernizationTool(() -> service).execute(finderArgs);
+            assertTrue(found.isSuccess(), "the finder must run; got: " + found.getError());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> finderData = (Map<String, Object>) found.getData();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> candidates =
+                (List<Map<String, Object>>) finderData.get("candidates");
+            long candidateFiles = candidates.stream()
+                .map(c -> String.valueOf(c.get("filePath"))).distinct().count();
+
+            assertEquals(29, ((Number) finderData.get("candidateCount")).intValue(),
+                "the finder's candidate count over THIS corpus (the aggregate). An earlier"
+                    + " claim said 33, which was measured over the fork IN PLACE — a larger"
+                    + " file set. Comparing it against a rewriter count taken on the"
+                    + " aggregate mixed two corpora, which is what this assertion prevents.");
+            assertEquals(18L, candidateFiles, "in this many distinct files");
+            assertEquals(2, actual.get("loop_to_pipeline").intValue(),
+                "and the rewriter accepts this many of those files — the gap for which the"
+                    + " `loops` cure tier is demoted from PERFORM to ADVISE");
         } finally {
             deleteTree(aggregate);
         }

@@ -107,7 +107,8 @@ public final class GuardClausesRule implements CleanupRule {
             unwrap(target, rewrite);
         }
         Document document = new Document(String.valueOf(ast.getTypeRoot().getBuffer().getContents()));
-        return rewrite.rewriteAST(document, null);
+        return rewrite.rewriteAST(document,
+            org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(ast));
     }
 
     /** Is one of this statement's enclosing ifs also being unwrapped in this pass? */

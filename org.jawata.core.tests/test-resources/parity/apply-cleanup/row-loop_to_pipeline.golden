@@ -13,7 +13,7 @@ APPLIED-STAGED kind=loop_to_pipeline editCount=24 filesChanged=1
 -            }
 -        }
 +        List<String> names = people.stream().filter((person) -> person.multiply(1, 1) > 0).map((person) -> person.toString())
-+				.collect(java.util.stream.Collectors.toList());
++                .collect(java.util.stream.Collectors.toList());
          return names;
      }
  
