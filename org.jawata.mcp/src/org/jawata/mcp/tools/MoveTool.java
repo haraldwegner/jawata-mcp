@@ -11,25 +11,46 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Sprint 16b/A — parametric front door for move-class / move-package. The two
- * delegates diverge in params (class moves by caret + target package; package
- * moves by name), so this is a flat schema with per-kind params documented and
- * delegate-validated.
+ * Sprint 16b/A — parametric front door for the move family.
  *
- * <p>Replaces {@code move_class} / {@code move_package}; apply/undo contract
- * unchanged.</p>
+ * <p>Sprint 28d-rescue (stage 1) folded {@code move_method} in as {@code kind=method}
+ * and, in doing so, replaced the fields-plus-switch shape this tool used to have. That
+ * shape is the one {@link ExtractTool} carries a long note about: it keeps the kind
+ * list, the dispatch and the published parameters in three places, and stage 7 of the
+ * previous sprint proved what that costs — {@code extract kind=class} reached the enum
+ * and the switch while its five parameters never reached the schema, so the operation
+ * ran for anyone who already knew the argument names and was invisible to everyone
+ * else. Nothing went red, because nothing compared the three lists.</p>
+ *
+ * <p>This tool is about to take three more kinds (rows 23, 25, 26), so it moves to the
+ * map now rather than repeating that arithmetic four times. The kind enum is derived
+ * from the dispatch map, and every delegate's own parameters reach the published schema
+ * through the backstop below.</p>
+ *
+ * <p>Replaces {@code move_class}, {@code move_package} and {@code move_method}; the
+ * apply/undo contract is unchanged.</p>
  */
 public class MoveTool extends AbstractTool {
 
-    private static final List<String> KINDS = List.of("class", "package");
-
-    private final MoveClassTool moveClass;
-    private final MovePackageTool movePackage;
+    /** The single source of truth for which kinds exist and what runs each. */
+    private final Map<String, AbstractRefactoringTool> delegates;
 
     public MoveTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
-        this.moveClass = new MoveClassTool(serviceSupplier, cache);
-        this.movePackage = new MovePackageTool(serviceSupplier, cache);
+        Map<String, AbstractRefactoringTool> d = new LinkedHashMap<>();
+        d.put("class", new MoveClassTool(serviceSupplier, cache));
+        d.put("package", new MovePackageTool(serviceSupplier, cache));
+        // Sprint 28d-rescue: the folded `move_method`. Fowler names ONE refactoring here
+        // — Move Function — and a caller should not have to know whether the method is
+        // static before choosing a tool, so the static half (row 24) lands inside this
+        // same kind rather than beside it.
+        d.put("method", new MoveMethodTool(serviceSupplier, cache));
+        this.delegates = java.util.Collections.unmodifiableMap(d);
+    }
+
+    /** The kinds, derived from the dispatch map so the two can never disagree. */
+    private List<String> kinds() {
+        return List.copyOf(delegates.keySet());
     }
 
     @Override
@@ -40,14 +61,22 @@ public class MoveTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Move a class or a package, updating references (behaviour-preserving, reversible).
+            Move a class, a package, or a method, updating references
+            (behaviour-preserving, reversible).
 
-            USAGE: move(kind="<class|package>", ...)
+            USAGE: move(kind="<class|package|method>", ...)
 
             - class   — move the type at a caret to another package.
                         Needs: filePath, line, column, targetPackage (optional targetProjectKey).
             - package — move/rename a whole package.
                         Needs: packageName, newPackageName.
+            - method  — move an instance method onto the type of one of its parameters
+                        or fields, rewriting every call site to invoke it on the new
+                        receiver. Needs: the method's position (filePath, line, column)
+                        or its symbol, plus `target` — the parameter/field whose type
+                        receives it. `target` may be omitted when exactly one candidate
+                        exists; with several, the call is refused and lists them.
+                        Optional keepDelegate leaves a forwarder behind.
 
             Common: updateReferences (default true). IMPORTANT: ZERO-BASED coordinates.
             Applies by default; returns filesModified/diff/undoChangeId/summary.
@@ -64,13 +93,14 @@ public class MoveTool extends AbstractTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
-        kind.put("description", "Move a class (by caret) or a package (by name).");
+        kind.put("enum", kinds());
+        kind.put("description",
+            "Move a class (by caret), a package (by name), or a method onto another type.");
         properties.put("kind", kind);
 
-        properties.put("filePath", Map.of("type", "string", "description", "class: path to the source file."));
-        properties.put("line", Map.of("type", "integer", "description", "class: zero-based line of a caret in the type."));
-        properties.put("column", Map.of("type", "integer", "description", "class: zero-based column."));
+        properties.put("filePath", Map.of("type", "string", "description", "class/method: path to the source file."));
+        properties.put("line", Map.of("type", "integer", "description", "class/method: zero-based line of a caret in the type or method."));
+        properties.put("column", Map.of("type", "integer", "description", "class/method: zero-based column."));
         properties.put("targetPackage", Map.of("type", "string", "description", "class: destination package name."));
         properties.put("targetProjectKey", Map.of("type", "string", "description", "class: optional destination project (cross-project move)."));
         properties.put("packageName", Map.of("type", "string", "description", "package: the package to move/rename."));
@@ -79,6 +109,23 @@ public class MoveTool extends AbstractTool {
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "class to move (kind=class; kind=package uses packageName)"));
+
+        // THE BACKSTOP — the same one ExtractTool carries, and for the same reason: a
+        // parameter a delegate declares must reach the published contract whether or not
+        // anyone remembered to curate it above. putIfAbsent, so the curated entries keep
+        // their per-kind wording and only what is MISSING is added — today that is
+        // kind=method's `target`, `keepDelegate` and `symbol`.
+        for (AbstractRefactoringTool delegate : delegates.values()) {
+            Object declared = delegate.getInputSchema().get("properties");
+            if (declared instanceof Map<?, ?> declaredProps) {
+                declaredProps.forEach((k, v) -> {
+                    String name = String.valueOf(k);
+                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
+                        properties.putIfAbsent(name, v);
+                    }
+                });
+            }
+        }
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
@@ -95,13 +142,13 @@ public class MoveTool extends AbstractTool {
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
+            return ToolResponse.invalidParameter("kind", "kind is required; one of " + kinds());
         }
-        return switch (kind) {
-            case "class"   -> moveClass.executeWithService(service, arguments);
-            case "package" -> movePackage.executeWithService(service, arguments);
-            default -> ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS);
-        };
+        AbstractRefactoringTool delegate = delegates.get(kind);
+        if (delegate == null) {
+            return ToolResponse.invalidParameter("kind",
+                "Unknown kind '" + kind + "'. Allowed: " + kinds());
+        }
+        return delegate.executeWithService(service, arguments);
     }
 }

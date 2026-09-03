@@ -8,7 +8,7 @@ import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractTool;
-import org.jawata.mcp.tools.MoveInHierarchyTool;
+import org.jawata.mcp.tools.HierarchyTool;
 import org.jawata.mcp.tools.PullUpTool;
 import org.jawata.mcp.tools.PushDownTool;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +30,7 @@ class MoveInHierarchyToolTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
-    private MoveInHierarchyTool tool;
+    private HierarchyTool tool;
     private ObjectMapper mapper;
     private String calculatorPath;
     private Map<String, AbstractTool> narrowByDirection;
@@ -39,7 +39,7 @@ class MoveInHierarchyToolTest {
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         RefactoringChangeCache cache = new RefactoringChangeCache();
-        tool = new MoveInHierarchyTool(() -> service, cache);
+        tool = new HierarchyTool(() -> service, cache);
         mapper = new ObjectMapper();
         calculatorPath = helper.getFixturePath("simple-maven")
             .resolve("src/main/java/com/example/Calculator.java").toString();

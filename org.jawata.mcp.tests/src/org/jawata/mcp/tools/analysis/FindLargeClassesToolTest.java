@@ -52,7 +52,7 @@ class FindLargeClassesToolTest {
         // Verify violation details are present
         @SuppressWarnings("unchecked")
         Map<String, Object> firstClass = (Map<String, Object>) largeClasses.get(0);
-        assertNotNull(firstClass.get("file"), "Should include file path");
+        assertNotNull(firstClass.get("filePath"), "Should include file path");
         assertNotNull(firstClass.get("typeName"), "Should include type name");
         assertNotNull(firstClass.get("methodCount"), "Should include method count");
         assertNotNull(firstClass.get("fieldCount"), "Should include field count");

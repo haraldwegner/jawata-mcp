@@ -28,7 +28,7 @@ import org.jawata.mcp.tools.ChangeMethodSignatureTool;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.DebugTool;
 import org.jawata.mcp.tools.ConvertAnonymousToLambdaTool;
-import org.jawata.mcp.tools.EncapsulateFieldTool;
+import org.jawata.mcp.tools.DataTool;
 import org.jawata.mcp.tools.ExperienceTool;
 import org.jawata.mcp.tools.ExtractTool;
 import org.jawata.mcp.tools.FindDuplicateCodeTool;
@@ -47,7 +47,7 @@ import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.InlineTool;
 import org.jawata.mcp.tools.InspectTool;
 import org.jawata.mcp.tools.LoadProjectTool;
-import org.jawata.mcp.tools.MoveInHierarchyTool;
+import org.jawata.mcp.tools.HierarchyTool;
 import org.jawata.mcp.tools.MoveMethodTool;
 import org.jawata.mcp.tools.MoveTool;
 import org.jawata.mcp.tools.OrganizeImportsTool;
@@ -66,7 +66,6 @@ import org.jawata.mcp.tools.ValidateSyntaxTool;
 import org.jawata.mcp.tools.build.DependencyTool;
 import org.jawata.mcp.tools.codegen.GenerateTool;
 import org.jawata.mcp.tools.workflow.FormatTool;
-import org.jawata.mcp.tools.workflow.OptimizeImportsWorkspaceTool;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.StdioTransport;
 import org.jawata.mcp.transport.ResolvedToken;
@@ -1041,10 +1040,10 @@ public class JawataApplication implements IApplication {
         toolRegistry.register(new ExtractTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new InlineTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new MoveTool(() -> jdtService, refactoringChangeCache));
-        toolRegistry.register(new MoveInHierarchyTool(() -> jdtService, refactoringChangeCache));
+        toolRegistry.register(new HierarchyTool(() -> jdtService, refactoringChangeCache));
         // Sprint 22a P1-a.1: the composition-axis primitive — move an instance
         // method onto the type of one of its parameters/fields (net-new front door).
-        toolRegistry.register(new MoveMethodTool(() -> jdtService, refactoringChangeCache));
+        // Sprint 28d-rescue (stage 1): FOLDED into `move` as kind=method.
         toolRegistry.register(new GenerateTool(() -> jdtService, refactoringChangeCache));
 
         // Sprint 19 (Kerievsky): pattern-targeted refactorings behind one parametric
@@ -1076,11 +1075,12 @@ public class JawataApplication implements IApplication {
 
         // Advanced refactoring tools (extract/inline now via the `extract`/`inline` front doors above)
         toolRegistry.register(new ChangeMethodSignatureTool(() -> jdtService, refactoringChangeCache));
-        toolRegistry.register(new ConvertAnonymousToLambdaTool(() -> jdtService, refactoringChangeCache));
+        // Sprint 28d-rescue (stage 1): FOLDED into `refactor_to_pattern` as
+        // kind=replace_pattern_with_idiom, whose default idiom already IS this.
 
         // Sprint 11 Phase E (v1.5.1): JDT-LTK structural refactoring.
         // move/pull-up/push-down now via the `move`/`move_in_hierarchy` front doors above.
-        toolRegistry.register(new EncapsulateFieldTool(() -> jdtService, refactoringChangeCache));
+        toolRegistry.register(new DataTool(() -> jdtService, refactoringChangeCache));
 
         // Sprint 12 (v1.6.0): Ring 1 workspace verification tools.
         toolRegistry.register(new CompileWorkspaceTool(() -> jdtService));
@@ -1122,7 +1122,8 @@ public class JawataApplication implements IApplication {
 
         // Sprint 13 (v1.7.0): Ring 4 formatter / workflow polish.
         toolRegistry.register(new FormatTool(() -> jdtService));
-        toolRegistry.register(new OptimizeImportsWorkspaceTool(() -> jdtService));
+        // Sprint 28d-rescue (stage 1): FOLDED into `organize_imports` as scope=project
+        // | workspace, which also retires its second, weaker import engine.
 
         // Sprint 16b/A (v1.1.1): quick_fix(action) collapses suggest_imports/get_quick_fixes/apply_quick_fix.
         toolRegistry.register(new QuickFixTool(() -> jdtService));
@@ -1148,7 +1149,7 @@ public class JawataApplication implements IApplication {
         toolRegistry.register(new RefactoringTool(() -> jdtService, refactoringChangeCache,
             experienceAdvisor));
         // Sprint 14b: composite closing the find_duplicate_code loop.
-        toolRegistry.register(new ReplaceDuplicatesTool(() -> jdtService, refactoringChangeCache));
+        // Sprint 28d-rescue (stage 1): FOLDED into `extract` as kind=replace_inline_code.
 
         // Sprint 21 (v2.0): the local experience/knowledge store front door.
         // experience(kind=record|...) — writes now, recall/load/maintenance land in

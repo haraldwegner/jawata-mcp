@@ -408,13 +408,38 @@ public class AnalyzeNamingTool extends AbstractTool {
                 public void preVisit(ASTNode node) {
                     if (node instanceof AbstractTypeDeclaration t) {
                         String n = t.getName().getIdentifier();
-                        typeNames.add(n);
-                        if (inTestRoot) {
+                        if (!inTestRoot) {
+                            typeNames.add(n);
+                        } else {
                             testTypeNames.add(n);
                         }
                     } else if (node instanceof MethodDeclaration m && !m.isConstructor()) {
-                        methodNames.add(m.getName().getIdentifier());
+                        // A CONVENTION IS LEARNED FROM THE CODE IT GOVERNS, and test code
+                        // is governed by a different one — which this method already knew
+                        // for types, and only for types.
+                        //
+                        // Measured on this repository before the fix: five conventions
+                        // were inferred (type, field, constant, package, test) and
+                        // `method` was absent, with nothing saying it had been dropped.
+                        // Roughly fifteen hundred deliberate snake_case test method names
+                        // pushed camelCase conformance under the confidence floor, so
+                        // addCasing declined the category. Field held at 684/685 and
+                        // constant at 510/512, which is why the tool looked healthy: the
+                        // one category test code actually differs in is the one it lost.
+                        //
+                        // There is deliberately NO includeTests switch here, unlike the
+                        // smell checks. Theirs means "report findings in test code"; the
+                        // same word here would mean "learn the production convention FROM
+                        // test code", which is not a thing a caller wants and would be a
+                        // second meaning under one name. Test naming has its own
+                        // convention, and addTestSuffix below is where it is learned.
+                        if (!inTestRoot) {
+                            methodNames.add(m.getName().getIdentifier());
+                        }
                     } else if (node instanceof FieldDeclaration f) {
+                        if (inTestRoot) {
+                            return;
+                        }
                         boolean constant = Modifier.isStatic(f.getModifiers())
                             && Modifier.isFinal(f.getModifiers());
                         for (Object frag : f.fragments()) {

@@ -113,8 +113,25 @@ public class ToolRegistry {
      * reporting tool's kind enum is a list of questions, not of transformations.
      */
     private static final Set<String> REFACTORING_FRONT_DOORS = Set.of(
-        "extract", "inline", "move", "move_in_hierarchy", "apply_cleanup",
-        "refactor_to_pattern", "generate", "refactoring");
+        "extract", "inline", "move", "hierarchy", "data", "apply_cleanup",
+        "refactor_to_pattern", "generate");
+
+    /**
+     * NOT `refactoring`, and leaving it in cost a boot.
+     *
+     * <p>{@code refactoring} is the LIFECYCLE front door — apply, undo, inspect, and the
+     * multi-step plan. Its {@code kind} enum does not name operations it performs; it
+     * names which of {@code refactor_to_pattern}'s operations can be run as a
+     * parity-gated PLAN, and every one of its six is already published by that tool.</p>
+     *
+     * <p>Harvesting it therefore registered each of those six twice, from two tools. The
+     * first version of the registry kept one tool per operation and the second write
+     * silently won, so nothing showed; when the registry learned to REFUSE an ambiguous
+     * operation, the very next boot threw on {@code long_method}'s cure — {@code
+     * compose_method}, published by both. The refusal was right and the harvest was
+     * wrong: a view of another tool's operations is not a second publisher of them.</p>
+     */
+    private static final String LIFECYCLE_FRONT_DOOR = "refactoring";
 
     /**
      * Register a tool with the registry.
@@ -150,6 +167,8 @@ public class ToolRegistry {
         // `god_class` would have validated and been called runnable — the registry's
         // own promise ("the only thing a cure step may name") reduced to a word.
         if (!REFACTORING_FRONT_DOORS.contains(tool.getName())) {
+            // Includes LIFECYCLE_FRONT_DOOR, deliberately — see its note. It still
+            // registers its own NAME as an operation, one line up in register().
             return List.of();
         }
         try {
@@ -298,7 +317,18 @@ public class ToolRegistry {
         Map.entry("push_down", "move_in_hierarchy"),
         Map.entry("extract_method", "extract"),
         Map.entry("extract_variable", "extract"),
-        Map.entry("inline_method", "inline")
+        Map.entry("inline_method", "inline"),
+        // Sprint 28d-rescue (stage 1): the four folds and the two renames. A fold's
+        // pointer names the KIND as well as the front door — for these six the front
+        // door alone would leave a caller to guess which of its kinds replaced their
+        // tool, and that guess is the whole cost of the fold.
+        Map.entry("move_method", "move kind=method"),
+        Map.entry("convert_anonymous_to_lambda",
+            "refactor_to_pattern kind=replace_pattern_with_idiom"),
+        Map.entry("replace_duplicates", "extract kind=replace_inline_code"),
+        Map.entry("optimize_imports_workspace", "organize_imports with scope=workspace"),
+        Map.entry("encapsulate_field", "data"),
+        Map.entry("move_in_hierarchy", "hierarchy")
     );
 
     /** The current front door for a renamed/removed tool name, or {@code null}. */

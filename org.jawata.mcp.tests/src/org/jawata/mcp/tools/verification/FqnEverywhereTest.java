@@ -8,7 +8,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AnalyzeTool;
 import org.jawata.mcp.tools.ChangeMethodSignatureTool;
-import org.jawata.mcp.tools.EncapsulateFieldTool;
+import org.jawata.mcp.tools.DataTool;
 import org.jawata.mcp.tools.ExtractTool;
 import org.jawata.mcp.tools.GetCallHierarchyTool;
 import org.jawata.mcp.tools.MoveTool;
@@ -195,7 +195,7 @@ class FqnEverywhereTest {
     @Test
     @DisplayName("encapsulate_field targets the field by name alone")
     void encapsulateByName() {
-        EncapsulateFieldTool tool = new EncapsulateFieldTool(() -> service, cache);
+        DataTool tool = new DataTool(() -> service, cache);
         ObjectNode args = byName("symbol", "com.example.Calculator#lastResult");
         // Calculator already declares getLastResult() — ask for names that don't clash.
         args.put("getterName", "fetchLast");

@@ -18,14 +18,14 @@ import java.util.function.Supplier;
  * <p>Replaces {@code pull_up} / {@code push_down}; apply/undo contract
  * unchanged.</p>
  */
-public class MoveInHierarchyTool extends AbstractTool {
+public class HierarchyTool extends AbstractTool {
 
     private static final List<String> DIRECTIONS = List.of("up", "down");
 
     private final PullUpTool pullUp;
     private final PushDownTool pushDown;
 
-    public MoveInHierarchyTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
+    public HierarchyTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
         this.pullUp = new PullUpTool(serviceSupplier, cache);
         this.pushDown = new PushDownTool(serviceSupplier, cache);
@@ -33,7 +33,7 @@ public class MoveInHierarchyTool extends AbstractTool {
 
     @Override
     public String getName() {
-        return "move_in_hierarchy";
+        return "hierarchy";
     }
 
     @Override
@@ -41,7 +41,7 @@ public class MoveInHierarchyTool extends AbstractTool {
         return """
             Move a member up to a supertype or down to subtypes (behaviour-preserving, reversible).
 
-            USAGE: move_in_hierarchy(direction="<up|down>", filePath=..., line=..., column=...)
+            USAGE: hierarchy(direction="<up|down>", filePath=..., line=..., column=...)
 
             - up   — pull the member at the caret UP into its superclass/interface.
             - down — push the member at the caret DOWN into its subclasses.

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.EncapsulateFieldTool;
+import org.jawata.mcp.tools.DataTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,14 +25,14 @@ class EncapsulateFieldToolTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
-    private EncapsulateFieldTool tool;
+    private DataTool tool;
     private ObjectMapper objectMapper;
     private Path projectPath;
 
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new EncapsulateFieldTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new DataTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
         objectMapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

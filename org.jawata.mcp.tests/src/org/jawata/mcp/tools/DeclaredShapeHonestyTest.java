@@ -155,12 +155,7 @@ class DeclaredShapeHonestyTest {
      * thin description, an absent one.</p>
      */
     private static void assertDescribesEveryKindItPublishes(AbstractTool frontDoor) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> props =
-            (Map<String, Object>) frontDoor.getInputSchema().get("properties");
-        @SuppressWarnings("unchecked")
-        List<String> publishedKinds =
-            (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
+        List<String> publishedKinds = discriminatorValues(frontDoor);
         String description = frontDoor.getDescription();
 
         assertFalse(publishedKinds.isEmpty(),
@@ -175,14 +170,86 @@ class DeclaredShapeHonestyTest {
         }
     }
 
-    @Test
-    @DisplayName("every parametric front door describes every kind it publishes")
-    void everyFrontDoorDescribesItsKinds() {
+    /**
+     * A FRONT DOOR'S DISCRIMINATOR IS NOT ALWAYS CALLED "kind".
+     *
+     * <p>Three spellings are in use and all three do the same job — choose which
+     * operation runs. {@code hierarchy} calls it {@code direction} (up or down),
+     * {@code refactoring} and {@code dependency} call it {@code action}, the rest call it
+     * {@code kind}. The guard used to read {@code kind} only, so the tools using the
+     * other two words were not covered by the axis at all — and the three of them
+     * publish fifteen operations between them.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private static List<String> discriminatorValues(AbstractTool frontDoor) {
+        Map<String, Object> props =
+            (Map<String, Object>) frontDoor.getInputSchema().get("properties");
+        if (props == null) {
+            return List.of();
+        }
+        for (String name : List.of("kind", "direction", "action")) {
+            // ANY collection, not just a List. apply_cleanup published its enum as a
+            // Set and was therefore skipped by this reader entirely — silently, which
+            // is the failure mode this whole class is about. Reading the broader type
+            // means a tool cannot fall out of the guard by choosing a container.
+            if (props.get(name) instanceof Map<?, ?> schema
+                    && ((Map<String, Object>) schema).get("enum")
+                        instanceof java.util.Collection<?> values) {
+                return values.stream().map(String::valueOf).toList();
+            }
+        }
+        return List.of();
+    }
+
+    /** Every parametric front door the application registers, by its published name. */
+    private Map<String, AbstractTool> frontDoors() {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Supplier<IJdtService> svc = () -> service;
-        assertDescribesEveryKindItPublishes(new ExtractTool(svc, cache));
-        assertDescribesEveryKindItPublishes(new GenerateTool(svc, cache));
-        assertDescribesEveryKindItPublishes(new RefactorToPatternTool(svc, cache));
+        Map<String, AbstractTool> doors = new LinkedHashMap<>();
+        doors.put("extract", new ExtractTool(svc, cache));
+        doors.put("generate", new GenerateTool(svc, cache));
+        doors.put("refactor_to_pattern", new RefactorToPatternTool(svc, cache));
+        doors.put("move", new MoveTool(svc, cache));
+        doors.put("inline", new InlineTool(svc, cache));
+        doors.put("apply_cleanup", new ApplyCleanupTool(svc, cache));
+        doors.put("hierarchy", new HierarchyTool(svc, cache));
+        doors.put("refactoring", new RefactoringTool(svc, cache,
+            new org.jawata.mcp.domain.NoOpAdvisor()));
+        return doors;
+    }
+
+    @Test
+    @DisplayName("every parametric front door describes every operation it publishes")
+    void everyFrontDoorDescribesItsKinds() {
+        Map<String, AbstractTool> doors = frontDoors();
+        doors.forEach((name, door) -> {
+            assertEquals(name, door.getName(),
+                "this list is keyed by the PUBLISHED name; a rename must show up here");
+            assertDescribesEveryKindItPublishes(door);
+        });
+    }
+
+    /**
+     * The guard's own coverage, asserted rather than assumed.
+     *
+     * <p>{@link #discriminatorValues} returns an empty list for a tool that publishes no
+     * enum, and {@link #assertDescribesEveryKindItPublishes} fails on empty — so a tool
+     * losing its enum is loud. This is the other direction: a front door that is not in
+     * the list above is not guarded at all, and nothing would say so. The count is
+     * written out because a number is the one thing a drifting list cannot fake.</p>
+     */
+    @Test
+    @DisplayName("the guard covers every parametric front door, not the three it started with")
+    void theGuardsOwnCoverage() {
+        Map<String, AbstractTool> doors = frontDoors();
+        assertEquals(8, doors.size(),
+            "eight parametric front doors are guarded; if the surface changed, change this"
+                + " number deliberately rather than letting the guard quietly shrink: "
+                + doors.keySet());
+        doors.forEach((name, door) -> assertFalse(discriminatorValues(door).isEmpty(),
+            name + " publishes no kind/direction/action enum, so the description axis"
+                + " cannot be checked for it. Either it is not a parametric front door and"
+                + " does not belong in this list, or it lost its enum."));
     }
 
     @Test
@@ -198,6 +265,7 @@ class DeclaredShapeHonestyTest {
         extract.put("interface", new ExtractInterfaceTool(svc, cache));
         extract.put("superclass", new ExtractSuperclassTool(svc, cache));
         extract.put("class", new ExtractClassTool(svc, cache));
+        extract.put("replace_inline_code", new ReplaceDuplicatesTool(svc, cache));
         assertPublishesEveryDelegateParameter(new ExtractTool(svc, cache), extract);
 
         Map<String, AbstractTool> generate = new LinkedHashMap<>();
@@ -225,6 +293,15 @@ class DeclaredShapeHonestyTest {
         patterns.put("replace_conditional_with_polymorphism",
             new ReplaceConditionalWithPolymorphismTool(svc, cache));
         assertPublishesEveryDelegateParameter(new RefactorToPatternTool(svc, cache), patterns);
+
+        // Stage 1 folded `move_method` in and converted this tool to a delegate map, so
+        // it joins the parameter axis. Under the old fields-plus-switch shape its
+        // published schema was hand-written and could not have been checked this way.
+        Map<String, AbstractTool> move = new LinkedHashMap<>();
+        move.put("class", new MoveClassTool(svc, cache));
+        move.put("package", new MovePackageTool(svc, cache));
+        move.put("method", new MoveMethodTool(svc, cache));
+        assertPublishesEveryDelegateParameter(new MoveTool(svc, cache), move);
     }
 
     // ------------------------------------------------------------------

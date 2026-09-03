@@ -66,6 +66,8 @@ class ExtractToolTest {
         allDelegates = new LinkedHashMap<>(narrowByKind);
         allDelegates.put("superclass", new ExtractSuperclassTool(() -> service, cache));
         allDelegates.put("class", new ExtractClassTool(() -> service, cache));
+        allDelegates.put("replace_inline_code",
+            new org.jawata.mcp.tools.ReplaceDuplicatesTool(() -> service, cache));
     }
 
     private ObjectNode minimal(String kind) {

@@ -118,7 +118,11 @@ public class FindLargeClassesTool extends AbstractTool {
 
                         if (!violations.isEmpty()) {
                             Map<String, Object> entry = new LinkedHashMap<>();
-                            entry.put("file", service.getPathUtils().formatPath(filePath));
+                            // `filePath`, not `file` — see FindNamingViolationsTool's note.
+                            // This tool and that one were the only two producers using the
+                            // other spelling, and find_quality_issue merges every producer
+                            // into one list that four consumers read by `filePath`.
+                            entry.put("filePath", service.getPathUtils().formatPath(filePath));
                             entry.put("typeName", typeDecl.getName().getIdentifier());
                             entry.put("methodCount", methodCount);
                             entry.put("fieldCount", fieldCount);

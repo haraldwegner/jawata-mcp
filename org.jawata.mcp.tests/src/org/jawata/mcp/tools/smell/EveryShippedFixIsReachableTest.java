@@ -26,10 +26,10 @@ class EveryShippedFixIsReachableTest {
 
     /** The four, and the operation each must now name. */
     private static final List<String[]> ROUTES = List.of(
-        new String[] {"feature_envy", "move_method"},
+        new String[] {"feature_envy", "move kind=method"},
         new String[] {"god_class", "extract"},
         new String[] {"temporary_field", "extract"},
-        new String[] {"encapsulation", "encapsulate_field"});
+        new String[] {"encapsulation", "data"});
 
     @Test
     @DisplayName("each of the four smells offers its already-shipped fix by name")
@@ -93,7 +93,7 @@ class EveryShippedFixIsReachableTest {
             assertFalse(CureCatalog.recipesFor(kind).contains("change_value_to_reference"),
                 kind + " must not offer a declined refactoring as runnable");
         }
-        assertNull(CureCatalog.adviceFor("move_method"),
+        assertNull(CureCatalog.adviceFor("move kind=method"),
             "PROOF OF LIFE: an operation we DO run is not advice-only");
     }
 

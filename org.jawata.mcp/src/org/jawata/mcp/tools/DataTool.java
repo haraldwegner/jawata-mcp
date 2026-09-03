@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Sprint 11 Phase E — {@code encapsulate_field}: generate getter/setter,
+ * Sprint 11 Phase E — {@code data}: generate getter/setter,
  * replace direct accesses, optionally tighten the field's visibility.
  *
  * <p>JDT's {@code EncapsulateFieldDescriptor} has no public setters, so
@@ -25,16 +25,16 @@ import java.util.function.Supplier;
  * directly. See {@code docs/upgrade-checklist.md} for what to verify on
  * Eclipse target-platform bumps.</p>
  */
-public class EncapsulateFieldTool extends AbstractRefactoringTool {
+public class DataTool extends AbstractRefactoringTool {
 
-    public EncapsulateFieldTool(Supplier<IJdtService> serviceSupplier,
+    public DataTool(Supplier<IJdtService> serviceSupplier,
                                RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
     }
 
     @Override
     public String getName() {
-        return "encapsulate_field";
+        return "data";
     }
 
     @Override
@@ -44,7 +44,7 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool {
             the accessors, and optionally tighten the field's visibility.
 
             USAGE:
-              encapsulate_field(filePath="src/main/java/com/example/Foo.java",
+              data(filePath="src/main/java/com/example/Foo.java",
                                 line=12, column=20,
                                 newFieldVisibility="private")
 
@@ -151,11 +151,11 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool {
             refactoring.setEncapsulateDeclaringClass(true);
             refactoring.setGenerateJavadoc(generateJavadoc);
 
-            return runRefactoring(service, refactoring, "encapsulate_field", arguments);
+            return runRefactoring(service, refactoring, "data", arguments);
 
         } catch (Exception e) {
-            org.slf4j.LoggerFactory.getLogger(EncapsulateFieldTool.class)
-                .warn("encapsulate_field failed: {}", e.toString(), e);
+            org.slf4j.LoggerFactory.getLogger(DataTool.class)
+                .warn("data failed: {}", e.toString(), e);
             return ToolResponse.internalError(e);
         }
     }

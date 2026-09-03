@@ -54,6 +54,12 @@ public class ExtractTool extends AbstractTool {
         d.put("interface", new ExtractInterfaceTool(serviceSupplier, cache));
         d.put("superclass", new ExtractSuperclassTool(serviceSupplier, cache));
         d.put("class", new ExtractClassTool(serviceSupplier, cache));
+        // Sprint 28d-rescue (stage 1): the folded `replace_duplicates`. It was already
+        // Fowler's Replace Inline Code with Function Call under another name — it takes a
+        // clone group the duplicate detector found and rewrites every member of it to
+        // call one canonical method — so it lands ON that row's kind rather than beside
+        // it. Folding it anywhere else would put `extract` at twelve kinds.
+        d.put("replace_inline_code", new ReplaceDuplicatesTool(serviceSupplier, cache));
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
@@ -96,6 +102,15 @@ public class ExtractTool extends AbstractTool {
                          Move Field ships INSIDE this rather than beside it: it is the
                          constituent atom, and moving a field needs a target that already
                          owns state, so the move and the class creation must be atomic.
+            - replace_inline_code — replace a group of duplicated method bodies with calls
+                         to one canonical method (Fowler: Replace Inline Code with
+                         Function Call). Needs: cloneGroupId from find_duplicate_code,
+                         passed with the SAME minTokens/projectKey/crossProject the
+                         detection used — group ids are hashes of the clone shape, not
+                         session state. Optional canonicalMethodName picks which
+                         instance survives. Clones in OTHER types are skipped and
+                         listed with the reason: cross-type delegation is not
+                         automatically safe.
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying.

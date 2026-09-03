@@ -153,7 +153,12 @@ esac
 # said only "46" — a number, with nothing to tell you which tool it was (28b
 # closing audit, F1). The failure now NAMES every registered tool, so the next
 # addition is a one-line edit here rather than an investigation.
-EXPECTED_TOOLS=46
+# Sprint 28d-rescue stage 1: 46 -> 42, ON PURPOSE and this line is part of that
+# change, exactly as the note above prescribes. Four tools were folded into front
+# doors that already did their job — move_method, convert_anonymous_to_lambda,
+# replace_duplicates, optimize_imports_workspace — and two were renamed rather than
+# removed, so the count falls by four and not by six.
+EXPECTED_TOOLS=42
 TOOLS="$(printf '%s' "$H" | grep -oE '"toolCount"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+')"
 if [ "${TOOLS:-missing}" = "$EXPECTED_TOOLS" ]; then
     pass "tool-count-still-$EXPECTED_TOOLS health_check reports exactly $EXPECTED_TOOLS tools"

@@ -26,7 +26,7 @@ import java.util.Map;
  * sprint's five principle kinds have no such transform — {@code cqs},
  * {@code coupling} and {@code composition_over_inheritance} are cured by a design
  * decision, not by an automated rewrite. ({@code encapsulation} was the fourth until
- * Sprint 28d-rescue routed it to {@code encapsulate_field}, which had shipped for
+ * Sprint 28d-rescue routed it to {@code data}, which had shipped for
  * sprints and which this table could not name.) Their cure is still an ADDRESS a reader can open, so they belong
  * here with a null recipe rather than being left out and reading as "no cure
  * known".
@@ -133,7 +133,7 @@ public final class CureCatalog {
 
         // --- Sprint 28d-rescue, S0: the four fixes that already SHIPPED and could not
         // be offered. Not new operations — `move_method`, `extract` and
-        // `encapsulate_field` have been in the product for sprints. They were
+        // `data` (renamed from `encapsulate_field` in stage 1) have been in the product for sprints. They were
         // unreachable because this table could only name a `refactor_to_pattern` kind,
         // so the detector whose own prose says "move the method" offered nothing
         // runnable. feature_envy alone reports 713 findings on this repository.
@@ -151,14 +151,18 @@ public final class CureCatalog {
         // finding then rendered NO CATALOGUE ADDRESS, which is worse than offering the
         // runnable fix with no further reading. Encapsulation keeps the address it
         // already had, because that one exists.
+        // QUALIFIED, and it has to be. `move_method` was folded into `move kind=method`
+        // in stage 1, and the bare kind name `method` is published by `extract` and
+        // `inline` as well — so a bare mention would name three different operations
+        // and the registry refuses it. The qualified spelling is what a reader types.
         m.put("feature_envy", List.of(
-            new Cure("move_method", null)));
+            new Cure("move kind=method", null)));
         m.put("god_class", List.of(
             new Cure("extract", null)));
         m.put("temporary_field", List.of(
             new Cure("extract", null)));
         m.put("encapsulation", List.of(
-            new Cure("encapsulate_field", "design:private-class-data")));
+            new Cure("data", "design:private-class-data")));
 
         // INVARIANT 1, checkable here because it needs nothing outside the table:
         // the pair (kind, operation) is the ENTRY IDENTITY — declared at most once,
@@ -232,10 +236,28 @@ public final class CureCatalog {
     public static void validateAgainst(org.jawata.mcp.refactoring.OperationRegistry registry) {
         for (Map.Entry<String, List<Cure>> e : BY_KIND.entrySet()) {
             for (Cure c : e.getValue()) {
-                if (c.recipe() != null && !registry.has(c.recipe())) {
+                if (c.recipe() == null) {
+                    continue;
+                }
+                if (!registry.has(c.recipe())) {
                     throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
                         + "' declares step '" + c.recipe() + "' and no registered"
                         + " operation backs it. Registered: " + registry.all());
+                }
+                // AMBIGUITY IS ALSO A BROKEN STEP, and it is the quieter half. Three
+                // front doors publish a kind called `method`; two publish `class`. A
+                // bare mention of one of those names resolves to whichever tool
+                // registered last, so the cure sentence would offer a real invocation
+                // against an arbitrary tool — wrong, runnable, and green. The qualified
+                // form is always available and is what the table must declare.
+                if (registry.ambiguous(c.recipe())) {
+                    throw new IllegalStateException("CureCatalog: kind '" + e.getKey()
+                        + "' declares step '" + c.recipe() + "', which is published by"
+                        + " more than one tool: " + registry.toolsFor(c.recipe())
+                        + ". Declare the qualified form instead, e.g. '"
+                        + org.jawata.mcp.refactoring.OperationRegistry.qualify(
+                            registry.toolsFor(c.recipe()).iterator().next(), c.recipe())
+                        + "'.");
                 }
             }
         }

@@ -149,6 +149,34 @@ stage 1).
 map, and a caller outside this workspace cannot be enumerated, so the map is the only
 guarantee. Each fold ships with a test that the retired name still answers.
 
+### 5c. Where the folds land in §3's arithmetic — AMENDED 2026-09-03
+
+§3's table was written before §5b and counts only ROW absorption, so a reader adding
+four folded tools to it gets a different answer than the table gives. Three of the four
+folds add no kind at all:
+
+- `convert_anonymous_to_lambda` lands on `replace_pattern_with_idiom`, a kind
+  `refactor_to_pattern` already publishes. It stays at ten.
+- `optimize_imports_workspace` lands on a `scope` PARAMETER of `organize_imports`, not
+  on a kind. `organize_imports` publishes no kind enum and is not in §3's table.
+- `replace_duplicates` lands on ROW 49's kind, because §5b's own reason for folding it
+  is that it IS row 49 under another name. It is not a seventh kind beside row 49 — and
+  it cannot be, since `extract` reaches the eleven cap exactly with its five rows.
+
+The fourth is the one that moves a number, and it moves it in §3's table rather than
+past the cap:
+
+- `move_method` lands on `move kind=method`, and **row 24 (Move Function) is that same
+  kind's static half.** Fowler names ONE refactoring, Move Function, and a caller asking
+  to move a method should not have to know first whether it is static; the kind
+  dispatches on that itself. So `move` publishes class, package, method, and rows 23, 25,
+  26 — **six**, exactly as §3 says, with row 24 inside `method` rather than beside it.
+
+Consequence for the build order: `move kind=method` ships in stage 1 covering the
+INSTANCE case, which is the tool being folded, and stage 6 extends the same kind to the
+static case through `MoveStaticMembersProcessor`. One kind, two stages, and the second
+stage adds no kind to the surface.
+
 ---
 
 ## 6. The two seams the sprint must open first

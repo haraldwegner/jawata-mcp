@@ -70,9 +70,21 @@ public class RefactoringTool extends AbstractTool {
 
             Multi-step plan (behaviour-preserving, parity-gated orchestration):
             - plan       — decompose a kind into an ordered, inspectable step list (no changes made).
-                           Needs: kind (compose_method | replace_type_code_with_class | inline_singleton),
-                           filePath. Kind params: line/column (+ newTypeName for replace_type_code;
-                           sections[] for compose_method). Returns a planId.
+                           Needs: kind + filePath; kind params: line/column, plus newTypeName for
+                           replace_type_code_with_class and sections[] for compose_method.
+                           Returns a planId. The six plannable kinds:
+                             compose_method — a long method becomes a short sequence of
+                               intention-revealing calls.
+                             replace_type_code_with_class — a group of static-final type-code
+                               constants becomes a type-safe enum.
+                             inline_singleton — a singleton whose uniqueness no longer matters
+                               loses its static holder; call sites construct it directly.
+                             refactor_to_state — a method switching on an int state field becomes
+                               delegation to per-state classes.
+                             refactor_to_command_dispatcher — a switch over command codes becomes
+                               a dispatch table of command objects.
+                             form_template_method — sibling methods differing only in steps become
+                               one template with the steps overridden.
             - apply_plan — run a planId step by step, parity-gated (compile 0/0 + a purity check)
                            after each; rolls the whole plan back atomically on failure. Needs: planId.
                            Returns the composed undoChangeId + any purity findings.

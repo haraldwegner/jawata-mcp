@@ -91,6 +91,21 @@ public final class CureLookup {
          * invoked by its own name.</p>
          */
         private static String invocationOf(String operation) {
+            // THE REGISTRY ANSWERS THIS NOW, not a hardcoded front door. Stage 1 folded
+            // `move_method` into `move kind=method`, so the set of operations reached
+            // through a front door is no longer "the pattern kinds" — and a rendering
+            // that knows only one front door would have printed a bare `method`, which
+            // names nothing a reader can call.
+            String rendered =
+                org.jawata.mcp.refactoring.OperationRegistry.theRegistry().invocationOf(operation);
+            if (rendered != null && !rendered.equals(operation)) {
+                return rendered;
+            }
+            // The registry did not resolve it: either the operation IS a tool name, or
+            // nothing has registered yet. The second case is real — a unit test that
+            // never built the application still renders these sentences — so the pattern
+            // front door's own list stays as the standing fallback, exactly as CureTier
+            // reads the union rather than the registry alone.
             return org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds().contains(operation)
                 ? "refactor_to_pattern kind=" + operation
                 : operation;

@@ -120,6 +120,15 @@ public class FindNamingViolationsTool extends AbstractTool {
             }
 
             List<Map<String, Object>> violations = new ArrayList<>();
+            // TWO counts, because the skip below makes one count a lie. `files` is
+            // everything the project offers; a test-source skip and an unreadable
+            // compilation unit both leave it untouched while examining nothing. On this
+            // repository that is the difference between 813 and roughly half of it, and
+            // a single conflated number would report the larger one — the exact shape
+            // AbstractAstDetector reports filesListed and filesExamined separately to
+            // refuse: a scan that looked at nothing and a scan that found nothing must
+            // not produce the same answer.
+            int filesExamined = 0;
 
             for (Path file : files) {
                 if (!includeTests
@@ -128,6 +137,7 @@ public class FindNamingViolationsTool extends AbstractTool {
                 }
                 ICompilationUnit cu = service.getCompilationUnit(file);
                 if (cu == null) continue;
+                filesExamined++;
 
                 ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
                 parser.setSource(cu);
@@ -190,7 +200,12 @@ public class FindNamingViolationsTool extends AbstractTool {
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("filesScanned", files.size());
+            data.put("filesListed", files.size());
+            data.put("filesExamined", filesExamined);
+            // KEPT, and equal to filesExamined rather than to filesListed. Callers read
+            // this key; dropping it would break them silently, and pointing it at the
+            // larger number is the claim this repair exists to remove.
+            data.put("filesScanned", filesExamined);
             data.put("totalViolations", violations.size());
             data.put("violations", violations);
 
@@ -211,7 +226,15 @@ public class FindNamingViolationsTool extends AbstractTool {
                           int line, String filePath, List<Map<String, Object>> violations) {
         if (!convention.matcher(name).matches()) {
             Map<String, Object> violation = new LinkedHashMap<>();
-            violation.put("file", filePath);
+            // `filePath`, not `file`. Eleven consumer sites across the product read
+            // `filePath` and NONE reads `file`; this tool and find_large_classes were
+            // the two producers spelling it the other way. find_quality_issue merges
+            // every producer's rows into one list, so under the old spelling four
+            // consumers silently saw null here: excludePaths excluded nothing from
+            // naming rows, conflict arbitration skipped them, multi-project sweeps left
+            // them without a project, and the baseline keyed them as "naming|null|<line>"
+            // so rows on the same line in different files collapsed into one entry.
+            violation.put("filePath", filePath);
             violation.put("line", line);
             violation.put("elementType", elementType);
             violation.put("name", name);

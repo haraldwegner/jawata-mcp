@@ -60,10 +60,11 @@ class NamingSkipsTestSourcesTest {
 
     private static boolean anyFromTestSource(List<Map<String, Object>> violations) {
         return violations.stream().anyMatch(v -> {
-            // The record's key is `file`. Reading `filePath` yielded the string "null"
-            // for every row, so the exclusion assertion passed while looking at nothing
-            // — which is why the proof-of-life assertion below is not optional.
-            String path = String.valueOf(v.get("file")).replace('\\', '/');
+            // `filePath`. This test originally read it and got "null" for every row,
+            // because the tool spelled the key `file` — which turned out to be a
+            // PRODUCTION defect rather than a test one, and is now fixed at the two
+            // producers that had it. See EveryMergedFindingNamesItsFileTest.
+            String path = String.valueOf(v.get("filePath")).replace('\\', '/');
             return path.contains("/test/") || path.contains("test/java/");
         });
     }

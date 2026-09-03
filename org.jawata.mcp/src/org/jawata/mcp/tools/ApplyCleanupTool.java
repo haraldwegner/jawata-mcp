@@ -69,7 +69,13 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
 
     private static final Logger log = LoggerFactory.getLogger(ApplyCleanupTool.class);
 
-    static final Set<String> KINDS = Set.of("add_final", "redundant_modifiers");
+    // A LIST, not a Set, and the widened honesty guard is what found it. A JSON
+    // schema's `enum` is an ordered array; publishing a Set gave it whatever order
+    // Set.of chose that run, so the tool's published contract was not stable between
+    // JVMs. Worse for the guard: every check reading the enum tests `instanceof List`,
+    // so this tool silently fell out of all of them — the "passes while never looking"
+    // shape those guards exist to refuse, sitting inside one of them.
+    static final List<String> KINDS = List.of("add_final", "redundant_modifiers");
 
     public ApplyCleanupTool(Supplier<IJdtService> serviceSupplier,
                             RefactoringChangeCache changeCache) {

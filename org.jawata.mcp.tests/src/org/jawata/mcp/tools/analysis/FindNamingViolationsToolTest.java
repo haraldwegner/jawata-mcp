@@ -55,7 +55,7 @@ class FindNamingViolationsToolTest {
 
         // Verify violation structure
         Map<String, Object> firstViolation = violations.get(0);
-        assertNotNull(firstViolation.get("file"), "Should include file path");
+        assertNotNull(firstViolation.get("filePath"), "Should include file path");
         assertNotNull(firstViolation.get("line"), "Should include line number");
         assertNotNull(firstViolation.get("elementType"), "Should include element type");
         assertNotNull(firstViolation.get("name"), "Should include the name");

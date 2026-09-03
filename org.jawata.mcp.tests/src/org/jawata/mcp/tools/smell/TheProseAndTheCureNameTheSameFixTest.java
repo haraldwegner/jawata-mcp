@@ -59,13 +59,16 @@ class TheProseAndTheCureNameTheSameFixTest {
         // Sprint 28d-rescue: the four whose prose named a fix the table could not
         // offer. This check exists for exactly that disagreement and had none of them.
         // "Consider moving the method to the data it envies"
-        "feature_envy", List.of("move_method"),
+        // Stage 1 folded move_method into the move front door; the prose is unchanged
+        // and is satisfied by the same operation under the name a caller now types.
+        "feature_envy", List.of("move kind=method"),
         // "Consider Extract Class"
         "god_class", List.of("extract"),
         // "Consider Extract Class for the fields used only some of the time"
         "temporary_field", List.of("extract"),
         // "the slot must own its state" — encapsulate the field
-        "encapsulation", List.of("encapsulate_field"));
+        // Stage 1 renamed encapsulate_field to `data`, for the same reason.
+        "encapsulation", List.of("data"));
 
     @Test
     @DisplayName("the FIRST runnable cure is the one the detector's own prose names")
