@@ -136,17 +136,38 @@ class DecomposeConditionalToolTest {
     }
 
     @Test
-    @DisplayName("a symbol naming a method with several conditionals is refused, not guessed")
+    @DisplayName("a symbol naming a method with SEVERAL conditionals is refused, not guessed")
     void aSymbolWithSeveralConditionalsIsRefused() throws Exception {
+        // An earlier version of this test pointed at a method holding ONE conditional and
+        // passed on the write check instead — it would have passed with the whole symbol
+        // fallback deleted, which an audit said plainly. This method has two.
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "decompose_conditional");
-        args.put("symbol", "com.example.DecomposeConditionalTargets#assigningCondition");
-        args.put("conditionName", "hasWork");
+        args.put("symbol", "com.example.DecomposeConditionalTargets#twoDecisions");
+        args.put("conditionName", "isPositive");
 
-        // assigningCondition holds one conditional and it is one this rule refuses, so the
-        // refusal must still arrive — by the write check, not by a silent miss.
         ToolResponse r = tool.execute(args);
-        assertFalse(r.isSuccess(), "the condition assigns, so it is refused either way");
+        assertFalse(r.isSuccess(), "nothing in the symbol says which conditional was meant");
+        assertTrue(String.valueOf(r.getError()).contains("2 conditionals"),
+            "and the refusal must COUNT them, so the caller knows what to point at: "
+                + r.getError());
+        assertEquals(before, after(), "nothing may be written on a refusal");
+    }
+
+    @Test
+    @DisplayName("a symbol naming a method with NO conditional says so")
+    void aSymbolWithNoConditionalIsRefused() throws Exception {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "decompose_conditional");
+        args.put("symbol", "com.example.DecomposeConditionalTargets#flatRate");
+        args.put("conditionName", "whatever");
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(), "there is nothing to decompose here");
+        assertTrue(String.valueOf(r.getError()).contains("none in the enclosing method"),
+            "the two empty-handed cases must read differently — 'none here' and 'none"
+                + " anywhere in this method' send the caller to different places: "
+                + r.getError());
         assertEquals(before, after(), "nothing may be written on a refusal");
     }
 

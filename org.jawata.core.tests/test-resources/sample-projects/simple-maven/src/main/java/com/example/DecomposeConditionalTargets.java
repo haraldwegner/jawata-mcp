@@ -52,6 +52,29 @@ public class DecomposeConditionalTargets {
         return cached > 0;
     }
 
+    /**
+     * TWO top-level conditionals. A symbol names a method, not a line, so nothing in
+     * `symbol=...#twoDecisions` says which of these was meant — and picking would
+     * decompose a conditional the caller did not name.
+     */
+    public void twoDecisions(int n) {
+        if (n > 0) {
+            charge = 10;
+        } else {
+            charge = 20;
+        }
+        if (n > 100) {
+            cached = 1;
+        } else {
+            cached = 2;
+        }
+    }
+
+    /** No conditional at all — a symbol naming this has nothing to find. */
+    public double flatRate() {
+        return quantity * summerRate;
+    }
+
     /** No else branch at all, so naming one is asking for something that is not there. */
     public void noElse(boolean flag) {
         if (flag) {

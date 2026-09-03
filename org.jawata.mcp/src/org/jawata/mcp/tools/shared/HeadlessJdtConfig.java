@@ -68,15 +68,25 @@ public final class HeadlessJdtConfig {
             // It does not reach ExtractMethodRefactoring either. Measured by the row-8
             // parity golden, which pins the three generated methods and did not move.
             //
-            // So the defect is REAL and OPEN for every path routed through a JDT
-            // refactoring rather than through our own rewrite: extract emits
-            // tab-indented members into space-indented files. It is visible in
-            // parity/refactor-to-pattern/row-decompose_conditional.golden and in the
-            // pre-existing extract-variable and extract-constant goldens. Fixing it
-            // needs the engine's own formatting path, not a preference, and it changes
-            // `extract` output repo-wide — which is a scope decision, not a nicety.
-
-            // Code-template store: without one, CodeGeneration.get*BodyContent
+            // AND THE ANSWER WAS A CONSTRUCTOR ARGUMENT, not a preference. The JDT
+            // refactorings take a formatter-options map on an overload nobody here was
+            // calling: ExtractMethodRefactoring, ExtractTempRefactoring and
+            // ExtractConstantRefactoring all have one. They are given
+            // FormatterOptions.forGeneratedCode now, and every golden in the tree is
+            // free of tabs.
+            //
+            // The two failed attempts are kept above because they are what makes the
+            // third one obvious: the setting is not global, it is per call, and the
+            // engine that emits the code is the thing that must be told.
+            //
+            // STILL OPEN, and named so the count does not restart: two sites use
+            // ASTRewrite's NO-ARGUMENT rewriteAST(), which reads the type root's own
+            // options and hits the same default —
+            // ExtractSuperclassTool.java:530 and ApplyNullAnnotationsTool.java:273,432.
+            // Fixing them means giving each a Document and an options map, as the
+            // statement rules have, and both tools carry parity goldens that would need
+            // re-recording with a divergence entry. They are outside Stage 3 and were
+            // left rather than swept in at the end of it.
             // returns null and SelfEncapsulateFieldRefactoring's fallback path
             // hits an upstream bug (a bare Assignment added where a Statement
             // is required). Registering the IDE-default stub bodies makes the

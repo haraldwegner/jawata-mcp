@@ -192,7 +192,10 @@ public class InlineSingletonTool extends AbstractApplyingRefactoringTool {
         Map<IFile, List<TextEdit>> editsByFile = new LinkedHashMap<>();
         for (FileRewrite fr : byFile.values()) {
             IDocument doc = new Document(fr.cu.getSource());
-            editsByFile.put(fr.file, List.of(fr.rewrite.rewriteAST(doc, null)));
+            // Same null-options defect the statement rules and the extract engines
+            // carried: null means JDT's own default, which is tabs.
+            editsByFile.put(fr.file, List.of(fr.rewrite.rewriteAST(doc,
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(fr.ast))));
         }
 
         Change change = ChangeEngine.fromFileEdits("inline singleton " + typeName, editsByFile);
