@@ -1,0 +1,35 @@
+APPLIED-STAGED kind=guard_clauses editCount=6 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/GuardClauseTargets.java
++++ b/src/main/java/com/example/GuardClauseTargets.java
+@@ -14,13 +14,12 @@
+     public int nestedReturns(boolean dead, boolean separated) {
+         if (dead) {
+             return 1;
+-        } else {
+-            if (separated) {
+-                return 2;
+-            } else {
+-                return 3;
+-            }
+         }
++		if (separated) {
++		    return 2;
++		} else {
++		    return 3;
++		}
+     }
+ 
+     /** REWRITTEN: a throw leaves the method just as a return does. */
+@@ -27,9 +26,8 @@
+     public int throwsThenElse(boolean broken, int value) {
+         if (broken) {
+             throw new IllegalStateException("cannot go on");
+-        } else {
+-            return value * 2;
+         }
++		return value * 2;
+     }
+ 
+     /**
+

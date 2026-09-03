@@ -73,6 +73,29 @@ final class ParitySupport {
                 + "refresh the golden with -Djawata.test.parity.record=true when JDT legitimately wins.");
     }
 
+    /**
+     * Pin a rewrite by its RESULTING SOURCE rather than by a planned diff.
+     *
+     * <p>For an operation that cannot be staged — a multi-step recipe has no half-applied
+     * state — there is no planned change to compare. What the caller is left holding is
+     * the file, so that is what gets pinned.</p>
+     */
+    static void assertSourceParity(String tool, String id, String source) throws IOException {
+        Path golden = goldenDir(tool).resolve(id + ".golden");
+        if (RECORD) {
+            Files.createDirectories(golden.getParent());
+            Files.writeString(golden, source);
+            return;
+        }
+        assertTrue(Files.exists(golden), () ->
+            "missing golden " + golden + " — run with -Djawata.test.parity.record=true to create it, "
+                + "then commit. Actual source was:\n" + source);
+        assertEquals(Files.readString(golden), source, () ->
+            "PARITY DIVERGENCE for '" + tool + "/" + id + "': the rewrite produces different "
+                + "source than the archived golden. Read the difference before refreshing it — "
+                + "a regression lock is only worth the reading it forces.");
+    }
+
     @SuppressWarnings("unchecked")
     static String render(ToolResponse response, Path projectPath, Path tempDir, List<String> headerKeys) {
         if (!response.isSuccess()) {

@@ -1,0 +1,31 @@
+APPLIED-STAGED kind=slide_declaration editCount=12 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/SlideTargets.java
++++ b/src/main/java/com/example/SlideTargets.java
+@@ -13,10 +13,10 @@
+ 
+     /** SLIDES: the initializer reads only parameters, and nothing in between touches them. */
+     public int slidesDown(int width, int height) {
+-        int area = width * height;
+-        int label = width + 1;
+         int spacing = height + 2;
+-        return area + label + spacing;
++        int area = width * height;
++		int label = width + 1;
++		return area + label + spacing;
+     }
+ 
+     /**
+@@ -47,9 +47,9 @@
+      */
+     public int callsSomething(int width) {
+         int computed = compute(width);
+-        int other = width + 1;
+         int third = width + 2;
+-        return computed + other + third;
++        int other = width + 1;
++		return computed + other + third;
+     }
+ 
+     private void bumpScale() {
+

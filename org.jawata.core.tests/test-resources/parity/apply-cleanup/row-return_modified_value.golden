@@ -1,0 +1,39 @@
+APPLIED-STAGED kind=return_modified_value editCount=18 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/ReturnModifiedValueTargets.java
++++ b/src/main/java/com/example/ReturnModifiedValueTargets.java
+@@ -13,28 +13,24 @@
+ 
+     /** CONVERTED: the variable exists only to carry the answer. */
+     public String describe(int n) {
+-        String result;
+         if (n < 0) {
+-            result = "negative";
++            return "negative";
+         } else {
+-            result = "positive";
++            return "positive";
+         }
+-        return result;
+     }
+ 
+     /** CONVERTED: nested branches, every path assigns, every assignment is last. */
+     public int band(int n) {
+-        int result;
+         if (n < 10) {
+-            result = 1;
++            return 1;
+         } else {
+             if (n < 100) {
+-                result = 2;
++                return 2;
+             } else {
+-                result = 3;
++                return 3;
+             }
+         }
+-        return result;
+     }
+ 
+     /**
+

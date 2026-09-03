@@ -1,0 +1,40 @@
+APPLIED-STAGED kind=loop_to_pipeline editCount=24 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/PipelineTargets.java
++++ b/src/main/java/com/example/PipelineTargets.java
+@@ -14,30 +14,20 @@
+ 
+     /** REWRITTEN: filter and map, the full shape. */
+     public List<String> activeNames(List<Calculator> people) {
+-        List<String> names = new ArrayList<>();
+-        for (Calculator person : people) {
+-            if (person.multiply(1, 1) > 0) {
+-                names.add(person.toString());
+-            }
+-        }
++        List<String> names = people.stream().filter((person) -> person.multiply(1, 1) > 0).map((person) -> person.toString())
++				.collect(java.util.stream.Collectors.toList());
+         return names;
+     }
+ 
+     /** REWRITTEN: no filter, so the pipeline is a map alone. */
+     public List<String> allNames(List<Calculator> people) {
+-        List<String> names = new ArrayList<>();
+-        for (Calculator person : people) {
+-            names.add(person.toString());
+-        }
++        List<String> names = people.stream().map((person) -> person.toString()).collect(java.util.stream.Collectors.toList());
+         return names;
+     }
+ 
+     /** REWRITTEN: adding the element itself needs no map stage at all. */
+     public List<Calculator> copyOf(List<Calculator> people) {
+-        List<Calculator> copy = new ArrayList<>();
+-        for (Calculator person : people) {
+-            copy.add(person);
+-        }
++        List<Calculator> copy = people.stream().collect(java.util.stream.Collectors.toList());
+         return copy;
+     }
+ 
+

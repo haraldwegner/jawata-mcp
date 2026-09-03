@@ -1,0 +1,32 @@
+APPLIED-STAGED kind=consolidate_conditional editCount=20 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/ConsolidateTargets.java
++++ b/src/main/java/com/example/ConsolidateTargets.java
+@@ -13,13 +13,7 @@
+ 
+     /** CONSOLIDATED: three checks, one outcome, all conditions plain reads. */
+     public int disabilityAmount(int seniority, int monthsDisabled, boolean partTime) {
+-        if (seniority < 2) {
+-            return 0;
+-        }
+-        if (monthsDisabled > 12) {
+-            return 0;
+-        }
+-        if (partTime) {
++        if ((seniority < 2) || (monthsDisabled > 12) || (partTime)) {
+             return 0;
+         }
+         return 100;
+@@ -27,10 +21,7 @@
+ 
+     /** CONSOLIDATED: two checks whose bodies are the same throw. */
+     public int refuse(int a, int b) {
+-        if (a < 0) {
+-            throw new IllegalArgumentException("negative");
+-        }
+-        if (b < 0) {
++        if ((a < 0) || (b < 0)) {
+             throw new IllegalArgumentException("negative");
+         }
+         return a + b;
+

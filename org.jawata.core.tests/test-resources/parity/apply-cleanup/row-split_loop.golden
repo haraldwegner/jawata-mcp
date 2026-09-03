@@ -1,0 +1,17 @@
+APPLIED-STAGED kind=split_loop editCount=4 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/SplitLoopTargets.java
++++ b/src/main/java/com/example/SplitLoopTargets.java
+@@ -16,8 +16,10 @@
+         int count = 0;
+         for (Calculator person : people) {
+             total += person.multiply(2, 3);
+-            count++;
+         }
++		for (Calculator person : people) {
++			count++;
++		}
+         return total + count;
+     }
+ 
+

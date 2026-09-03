@@ -1,0 +1,42 @@
+APPLIED-STAGED kind=remove_dead_code editCount=11 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/DeadCodeTargets.java
++++ b/src/main/java/com/example/DeadCodeTargets.java
+@@ -13,9 +13,6 @@
+  */
+ public class DeadCodeTargets {
+ 
+-    /** Unused private field — removed. */
+-    private int neverRead;
+-
+     /** Read by note() — survives. */
+     private String kept = "kept";
+ 
+@@ -22,16 +19,6 @@
+     /** Counts calls; read below, so it survives. */
+     private int calls;
+ 
+-    /** Unused private type — removed. */
+-    private static final class NeverUsed {
+-        int x;
+-    }
+-
+-    /** Unused private method — removed. */
+-    private String obsolete() {
+-        return "gone";
+-    }
+-
+     /**
+      * Called from note(), so the method survives — and {@code ignored} is read nowhere,
+      * which is the unused-parameter case the rule must NOT act on.
+@@ -49,8 +36,7 @@
+      * {@code fromCall} initialises from a call, so the call must survive as a statement.
+      */
+     public int locals() {
+-        int plain = 3;
+-        int fromCall = compute();
++        compute();
+         return 7;
+     }
+ 
+

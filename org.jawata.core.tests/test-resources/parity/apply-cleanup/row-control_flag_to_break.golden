@@ -1,0 +1,19 @@
+APPLIED-STAGED kind=control_flag_to_break editCount=6 filesChanged=1
+---DIFF---
+--- a/src/main/java/com/example/ControlFlagTargets.java
++++ b/src/main/java/com/example/ControlFlagTargets.java
+@@ -15,11 +15,10 @@
+     public int pureExit(int[] values) {
+         int total = 0;
+         int index = 0;
+-        boolean done = false;
+-        while (!done) {
++        while (true) {
+             total += values[index];
+             index++;
+-            done = true;
++            break;
+         }
+         return total;
+     }
+
