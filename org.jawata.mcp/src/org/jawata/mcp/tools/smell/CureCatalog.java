@@ -168,6 +168,39 @@ public final class CureCatalog {
         m.put("encapsulation", List.of(
             new Cure("data", "design:private-class-data")));
 
+        // --- Sprint 28d-rescue, S8: the six kinds stage 8 adds. Batched here rather
+        // than written as each detector landed, because this table has one owner and a
+        // lane that edits it while another lane is also editing it is how two routes
+        // for one kind get merged into a file nobody reviewed as a whole.
+        //
+        // FOUR of the six route to something runnable. Two do not, and that is the
+        // honest state rather than an omission:
+        //
+        //   loops — the cure is Replace Loop with Pipeline, which is row 50 and is built
+        //     in stage 3. Until it exists there is nothing to name, and naming
+        //     `apply_cleanup` now would promise a kind that is not published yet — the
+        //     load-time refusal would catch it, which is the check working.
+        //   alternative_classes — the cure is Rename Function until the two agree, then
+        //     Extract Superclass. That is a JUDGEMENT about which names win, made once
+        //     per pair by a person; `extract kind=superclass` is the last step of it and
+        //     not the cure, and offering it as the cure would skip the renaming that
+        //     makes the two substitutable in the first place.
+        m.put("global_data", List.of(
+            new Cure("data", "design:private-class-data")));
+        m.put("mutable_data", List.of(
+            new Cure("data", "design:private-class-data")));
+        m.put("data_class", List.of(
+            new Cure(null, "design:value-object")));
+        // commented_out_code has NO ENTRY AT ALL, and that is the honest state rather
+        // than an omission. It has no runnable cure by ruling — commented-out code may
+        // still carry meaning, so nothing may offer to remove it — and no catalogue
+        // design either: reading the block and deciding is not a pattern, and
+        // `design:comment` is not a row that exists. Writing it anyway is the invented
+        // address this table already carries a warning about, and the re-resolution
+        // sweep caught it within one run. The cure a reader needs is in the finding's
+        // own message, which says to read it and then delete it or write down why it
+        // stays.
+
         // INVARIANT 1, checkable here because it needs nothing outside the table:
         // the pair (kind, operation) is the ENTRY IDENTITY — declared at most once,
         // or two rows claim one route set.

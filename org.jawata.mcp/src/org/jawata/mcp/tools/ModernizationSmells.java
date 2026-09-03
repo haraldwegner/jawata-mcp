@@ -44,6 +44,9 @@ public final class ModernizationSmells {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** The sweep's own default page size — the number a full page is measured against. */
+    private static final int DEFAULT_MAX_RESULTS = 200;
+
     private ModernizationSmells() {
     }
 
@@ -103,7 +106,7 @@ public final class ModernizationSmells {
                 if (!raw.isSuccess() || !(raw.getData() instanceof Map<?, ?> data)) {
                     return raw;
                 }
-                return ToolResponse.success(asFindings(data), ResponseMeta.builder()
+                return ToolResponse.success(asFindings(data, arguments), ResponseMeta.builder()
                     .totalCount(countOf(data))
                     .returnedCount(countOf(data))
                     .build());
@@ -132,7 +135,7 @@ public final class ModernizationSmells {
             }
 
             @SuppressWarnings("unchecked")
-            private Map<String, Object> asFindings(Map<?, ?> data) {
+            private Map<String, Object> asFindings(Map<?, ?> data, JsonNode arguments) {
                 List<Map<String, Object>> findings = new ArrayList<>();
                 if (data.get("candidates") instanceof List<?> candidates) {
                     for (Object o : candidates) {
@@ -145,6 +148,21 @@ public final class ModernizationSmells {
                 out.put("operation", "find_quality_issue");
                 out.put("kind", kind);
                 out.put("count", findings.size());
+                // A CAP IS NOT A COUNT, and this one bites at 200 by default. Measured on
+                // this repository: `loops` answered 200 — exactly the sweep's own limit —
+                // and reporting that as the count would state a number the scan never
+                // established. When the page is full, the page size is a floor and the
+                // response says so rather than letting a reader read a total.
+                int limit = arguments != null && arguments.has("maxResults")
+                    ? arguments.get("maxResults").asInt(DEFAULT_MAX_RESULTS)
+                    : DEFAULT_MAX_RESULTS;
+                if (findings.size() >= limit) {
+                    out.put("truncated", true);
+                    out.put("countIsAtLeast", findings.size());
+                    out.put("note", "This is a full page of " + limit + " and not a total:"
+                        + " the underlying sweep stops there. Raise maxResults, or scope"
+                        + " the scan, before reading `count` as how many there are.");
+                }
                 out.put("findings", findings);
                 return out;
             }

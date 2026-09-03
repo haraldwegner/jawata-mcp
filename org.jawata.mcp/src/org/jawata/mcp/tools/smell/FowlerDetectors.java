@@ -101,6 +101,15 @@ public final class FowlerDetectors {
             // than re-implemented: a second Data Class detector beside class_to_record
             // would be two answers to one question.
             .register(org.jawata.mcp.tools.ModernizationSmells.loops(), "fowler")
-            .register(org.jawata.mcp.tools.ModernizationSmells.dataClass(), "fowler");
+            .register(org.jawata.mcp.tools.ModernizationSmells.dataClass(), "fowler")
+            // Sprint 28d-rescue — commented-out code, on Harald's ruling of 2026-09-02.
+            // It reports a CANDIDATE and never dead code: commented-out code can still
+            // carry meaning, and nothing removes it without a human yes.
+            .register(new CommentedOutCodeDetector(), "fowler")
+            // Sprint 28d-rescue — Alternative Classes with Different Interfaces. Nothing
+            // else in the catalogue looks for it: a duplicate-code check compares BODIES,
+            // and these two classes may share no code at all. Four conditions hold
+            // together to keep it from reporting most of a codebase; see the class.
+            .register(new AlternativeClassesDetector(), "fowler");
     }
 }

@@ -55,7 +55,8 @@ class PrincipleDetectorKindsTest {
         // `global_data` and `mutable_data` are new analyses; `loops` and `data_class`
         // ADAPT scans that already shipped behind find_modernization, where a reader
         // looking for smells never found them.
-        "global_data", "mutable_data", "loops", "data_class");
+        "global_data", "mutable_data", "loops", "data_class", "commented_out_code",
+        "alternative_classes");
 
     private List<String> registeredKinds() {
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> null);

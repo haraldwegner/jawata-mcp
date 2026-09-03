@@ -52,7 +52,9 @@ class CureLookupTest {
      * from the thing under test agrees with it by construction and would still
      * agree after a cure was accidentally dropped.</p>
      */
-    private static final int DECLARED_CURE_KEYS = 12;
+    private static final int DECLARED_CURE_KEYS = 13;   // +1 in 28d-rescue stage 8: data_class routes to design:value-object.
+    // The four other new kinds add no key — two route to `data`, which was
+    // already declared, and two have no catalogue design at all.
 
     /** The five principle kinds Sprint 28d adds — C5's per-kind clause. */
     private static final List<String> NEW_KINDS = List.of(
