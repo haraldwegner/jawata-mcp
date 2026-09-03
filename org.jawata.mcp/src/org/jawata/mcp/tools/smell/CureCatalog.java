@@ -207,6 +207,13 @@ public final class CureCatalog {
         // re-resolution sweep caught on this very table one commit ago.
         m.put("loops", List.of(
             new Cure("apply_cleanup kind=loop_to_pipeline", null)));
+        // The clearest route in this table: the finding says a private member is never
+        // used, and the cure removes exactly that member. Qualified for the same reason
+        // as the pipeline above, and with no catalogue design for the same reason too —
+        // deleting unreachable code is a removal, not a pattern, and `design:dead-code`
+        // is not a row that exists.
+        m.put("unused", List.of(
+            new Cure("apply_cleanup kind=remove_dead_code", null)));
         // commented_out_code has NO ENTRY AT ALL, and that is the honest state rather
         // than an omission. It has no runnable cure by ruling — commented-out code may
         // still carry meaning, so nothing may offer to remove it — and no catalogue
