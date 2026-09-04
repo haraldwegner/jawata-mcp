@@ -148,12 +148,33 @@ front door actually needs:
 
 ```java
 public interface KindDelegate {
-    String kindName();          // the value of the discriminator that selects it
-    String kindSummary();       // what it does, what it refuses, and WHY
-    JsonNode parameterSchema(); // the properties this kind adds to the envelope
-    boolean isStructural();     // changes a signature or a hierarchy
+    String kindName();                 // the value of the discriminator that selects it
+    String kindSummary();              // what it does, what it refuses, and WHY
+    JsonNode parameterSchema();        // the properties this kind adds to the envelope
+    default boolean isStructural() {   // changes a signature or a hierarchy
+        return false;                  // see below — the DEFAULT is the design decision
+    }
 }
 ```
+
+**The fourth method is a `default false`, and the census is why.** Measured across the ten
+doors (`ARCHITECTURE-front-door-census.md`): **three** override `structuralKinds()` — a
+PER-KIND fact — **two** override `isStructural()` — a WHOLE-TOOL fact — and **four override
+neither**. An earlier draft made it an abstract method on the role, which assumed one shape
+and was wrong for six doors out of ten.
+
+With the default, each case falls out correctly and one of them is the design's best single
+win:
+
+- `extract`, `inline`, `move` — their structural delegates override it to `true`, and
+  `structuralKinds()` becomes `delegates().values().filter(KindDelegate::isStructural)`.
+  **That deletes the three hand-written `Set.of(...)` of kind names** — including the one
+  `ExtractTool:307` records listing two while five had been added under it.
+- `hierarchy`, `refactor_to_pattern` — whole-tool `true` today, so every delegate returns
+  `true`. The per-tool override is then derived rather than declared. Redundant per delegate,
+  correct, and it removes a hand-written answer.
+- `apply_cleanup`, `generate`, `data`, `refactoring` — no override today, and the default
+  reproduces exactly that. Nothing is invented for a door that never had the fact.
 
 Every existing delegate `Tool` implements it with four one-line methods over what it already
 holds. `PullUpTool` and `PushDownTool` implement it directly, which turns `hierarchy`'s two
