@@ -49,6 +49,13 @@ public class MoveTool extends AbstractTool {
         // same reason: state in the wrong class is the same defect as behaviour in the
         // wrong class, and `shotgun_surgery` reports both.
         d.put("field", new MoveFieldTool(serviceSupplier, cache));
+        // Rows 25 and 26: exact inverses, so they ship together. Each is the other read
+        // backwards, and the pair is only safe because both enumerate every call site
+        // rather than trusting that the statement "always" runs with the call.
+        d.put("statements_into_function",
+            new MoveStatementsIntoFunctionTool(serviceSupplier, cache));
+        d.put("statements_to_callers",
+            new MoveStatementsToCallersTool(serviceSupplier, cache));
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
@@ -65,10 +72,11 @@ public class MoveTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Move a class, a package, or a method, updating references
-            (behaviour-preserving, reversible).
+            Move a class, a package, a method, a field, or statements across a call,
+            updating references (behaviour-preserving, reversible).
 
-            USAGE: move(kind="<class|package|method>", ...)
+            USAGE: move(kind="<class|package|method|field|statements_into_function
+                                |statements_to_callers>", ...)
 
             - class   — move the type at a caret to another package.
                         Needs: filePath, line, column, targetPackage (optional targetProjectKey).
@@ -100,6 +108,27 @@ public class MoveTool extends AbstractTool {
                         one is refused, since each outside reader needs its own receiver
                         derived there (encapsulate it first). To move fields into a NEW
                         class, use extract kind=class, which needs no receiver.
+
+            - statements_into_function
+                      — move a statement that sits beside a call INTO the function being
+                        called. Needs: filePath, line, column on the statement; the call
+                        is its neighbour, and which side it is on decides whether the
+                        statement lands at the top or the bottom of the callee.
+                        EVERY call site is checked for the same statement first: with
+                        three of four, moving it in would ADD behaviour at the fourth, so
+                        the call is refused and says how many matched. The statement may
+                        mention only static bindings and literals — a caller's local is
+                        not in scope inside the callee and differs per call anyway.
+
+            - statements_to_callers
+                      — the inverse: move a function's FIRST or LAST statement out to
+                        every call site. Needs: filePath, line, column on the statement.
+                        Refuses a statement in the middle (no call-site position
+                        reproduces running after part of the body), one mentioning the
+                        method's own parameters or locals, a method that is overridden or
+                        overrides (dispatch makes "the callers" unanswerable), a call
+                        buried in a larger expression, and a method with no callers at
+                        all — moving something to nobody is a deletion.
 
             Common: updateReferences (default true). IMPORTANT: ZERO-BASED coordinates.
             Applies by default; returns filesModified/diff/undoChangeId/summary.
