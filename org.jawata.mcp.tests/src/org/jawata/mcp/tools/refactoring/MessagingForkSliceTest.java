@@ -73,6 +73,20 @@ class MessagingForkSliceTest {
         return args;
     }
 
+    /**
+     * A caret ON the statement, at a column read off the line rather than assumed.
+     *
+     * <p>The pair below moves one statement between two nesting depths — a method body and
+     * an {@code if} branch — so a column that is right before the move is wrong after it.
+     * That is upstream's shape, not a difficulty anybody introduced.</p>
+     */
+    private ObjectNode atStatement(String kind, String statement) throws Exception {
+        String[] lines = slice.read("InventoryService.java").split("\n", -1);
+        int line = slice.lineOf("InventoryService.java", statement);
+        return slice.at(kind, "InventoryService.java", statement,
+            lines[line].indexOf(statement));
+    }
+
     private static int countOf(String haystack, String needle) {
         int count = 0;
         for (int at = haystack.indexOf(needle); at >= 0;
@@ -108,6 +122,45 @@ class MessagingForkSliceTest {
         Map<String, Object> data = (Map<String, Object>) r.getData();
         assertEquals(1, ((Number) data.get("otherOccurrences")).intValue(),
             "with the count that tells a caller the flag was worth setting: " + data);
+    }
+
+    @Test
+    @DisplayName("rows 26 and 25 on fork code: a statement moves out to the caller, and back")
+    void moveStatementsOutAndBackOnForkCode() throws Exception {
+        String upstream = slice.read("InventoryService.java");
+        String logLine = "LOGGER.info(\"Updating inventory for message: {}\", message.getId());";
+        assertTrue(upstream.contains(logLine),
+            "PROOF OF LIFE: the statement this pair moves must be upstream's own:\n" + upstream);
+
+        // ROW 26 — Move Statements to Callers. The statement is updateInventory's FIRST, and
+        // its one call site is a statement of its own inside handleMessage's if/else. Both
+        // are the tool's stated preconditions, and upstream satisfies them without being
+        // arranged to.
+        ToolResponse out = slice.door("move").execute(
+            atStatement("statements_to_callers", logLine));
+        assertTrue(out.isSuccess(), () -> "row 26 refused real upstream code: "
+            + out.getError());
+
+        String moved = slice.read("InventoryService.java");
+        assertEquals(1, countOf(moved, logLine),
+            "the statement exists once — moved, not copied:\n" + moved);
+        assertTrue(moved.indexOf(logLine) < moved.indexOf("private void updateInventory"),
+            "and it now sits in the CALLER, which upstream declares first:\n" + moved);
+
+        // ROW 25 — Move Statements into Function. The inverse, on what row 26 just produced.
+        // Running the pair as a round trip is the assertion a fixture cannot make: each row
+        // alone can only be checked against an expected output somebody wrote, while the two
+        // together are checked against UPSTREAM'S OWN FILE, which nobody here chose.
+        ToolResponse back = slice.door("move").execute(
+            atStatement("statements_into_function", logLine));
+        assertTrue(back.isSuccess(), () -> "row 25 refused what row 26 produced — the two are"
+            + " inverses, so this is the sharper failure of the pair: " + back.getError());
+
+        String after = slice.read("InventoryService.java");
+        assertTrue(after.indexOf(logLine) > after.indexOf("private void updateInventory"),
+            "the statement is back inside the method it came from:\n" + after);
+        assertEquals(1, countOf(after, logLine),
+            "still exactly once — a round trip that duplicates is not a round trip:\n" + after);
     }
 
     @Test

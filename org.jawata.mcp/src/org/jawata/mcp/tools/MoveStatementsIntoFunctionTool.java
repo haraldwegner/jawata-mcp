@@ -173,7 +173,7 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
                 binding.getName() + " has no source here, so nothing can be moved into it.");
         }
 
-        String free = freeCallerName(statement);
+        String free = freeCallerName(statement, call);
         if (free != null) {
             return ToolResponse.invalidParameter("position",
                 "the statement uses '" + free + "', which is local to the caller and is not"
@@ -182,7 +182,11 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
                     + " change_method_signature's, and a different decision.");
         }
 
-        String movedSource = sourceOf(unit.getSource(), statement);
+        // RENAMED ON THE WAY IN — the caller's argument name becomes the callee's
+        // parameter name, which is the mirror of the qualification row 26 does on the
+        // way out. Both directions rewrite what the name MEANS on the other side.
+        String movedSource = renameArgumentsToParameters(
+            sourceOf(unit.getSource(), statement), call, binding);
         String wanted = normalize(movedSource);
         List<Site> sites = callSites(service, target, wanted, toTop);
         long matching = sites.stream().filter(s -> s.matches).count();
@@ -342,7 +346,27 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
      * parameter — or null when everything it mentions is static and would resolve the same
      * way anywhere.
      */
-    private static String freeCallerName(Statement statement) {
+    /**
+     * A name the statement uses that the callee cannot see — or null when it can see all.
+     *
+     * <p>A name the call PASSES AS AN ARGUMENT is not such a name. Inside the callee it is
+     * simply that parameter, under whatever name the callee gave it, and
+     * {@link #renameArgumentsToParameters} does the substitution. This is the exact mirror
+     * of the parameter exemption in {@code MoveStatementsToCallersTool}, and it has to be:
+     * the two rows are inverses, so a statement one of them can move out is a statement the
+     * other must be able to move back. Without it the pair was not an inverse pair at all,
+     * which is what running them as a round trip on upstream's code showed.</p>
+     *
+     * <p>Anything else local to the caller is still refused: the callee has no name for it,
+     * and its value would differ per call site besides.</p>
+     */
+    private static String freeCallerName(Statement statement, MethodInvocation call) {
+        Set<String> passed = new LinkedHashSet<>();
+        for (Object argument : call.arguments()) {
+            if (argument instanceof SimpleName name) {
+                passed.add(name.getIdentifier());
+            }
+        }
         String[] offending = { null };
         statement.accept(new ASTVisitor() {
             @Override
@@ -352,13 +376,51 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
                 }
                 IBinding binding = node.resolveBinding();
                 if (binding instanceof IVariableBinding variable
-                        && !Modifier.isStatic(variable.getModifiers())) {
+                        && !Modifier.isStatic(variable.getModifiers())
+                        && !passed.contains(node.getIdentifier())) {
                     offending[0] = node.getIdentifier();
                 }
                 return true;
             }
         });
         return offending[0];
+    }
+
+    /**
+     * The moved text with each passed argument renamed to the parameter it becomes.
+     *
+     * <p>Upstream's caller and callee happen to use the same word for both, so this is a
+     * no-op there — which is precisely why it is written rather than assumed. A caller
+     * naming its local {@code msg} where the callee's parameter is {@code message} is the
+     * ordinary case, and moving the text unchanged would produce a reference to a name the
+     * callee does not have.</p>
+     */
+    private static String renameArgumentsToParameters(String moved, MethodInvocation call,
+                                                      IMethodBinding binding) {
+        String out = moved;
+        List<?> arguments = call.arguments();
+        String[] parameters = parameterNames(binding);
+        for (int i = 0; i < arguments.size() && i < parameters.length; i++) {
+            if (arguments.get(i) instanceof SimpleName name
+                    && !name.getIdentifier().equals(parameters[i])) {
+                out = out.replaceAll(
+                    "\\b" + java.util.regex.Pattern.quote(name.getIdentifier()) + "\\b",
+                    java.util.regex.Matcher.quoteReplacement(parameters[i]));
+            }
+        }
+        return out;
+    }
+
+    /** The callee's parameter names, read off the declaration the binding points at. */
+    private static String[] parameterNames(IMethodBinding binding) {
+        if (binding.getJavaElement() instanceof IMethod method) {
+            try {
+                return method.getParameterNames();
+            } catch (Exception e) {
+                return new String[0];
+            }
+        }
+        return new String[0];
     }
 
     /**

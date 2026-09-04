@@ -13,6 +13,9 @@ import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.FieldAccess;
+import org.eclipse.jdt.core.dom.Expression;
+import org.eclipse.jdt.core.dom.ExpressionStatement;
+import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
@@ -65,8 +68,11 @@ import java.util.function.Supplier;
  *       deciding what happens to everything that extends it — a different refactoring.</li>
  *   <li><b>The user holds exactly one field of its type.</b> That field is what every
  *       access is rewritten through, and with two the rewrite would have to pick.</li>
- *   <li><b>That field is written nowhere but its own initializer.</b> A holder assigned
- *       in a constructor or a setter has a lifecycle, and folding the class away silently
+ *   <li><b>That field has no lifecycle.</b> Its own initializer is fine, and so is a
+ *       {@code final} field assigned in a constructor — that is how Java spells an
+ *       initializer needing a constructor argument, and the compiler already guarantees
+ *       one assignment per path. A non-final field assigned after construction, or any
+ *       field with a setter, has a lifecycle, and folding the class away silently
  *       discards it.</li>
  *   <li><b>The class declares no constructor with a body.</b> Construction logic has
  *       nowhere to go once there is no construction.</li>
@@ -194,11 +200,14 @@ public class InlineClassTool extends AbstractRefactoringTool {
         }
 
         List<VariableDeclarationFragment> holders = new ArrayList<>();
+        boolean holderIsFinal = false;
         for (Object member : absorber.bodyDeclarations()) {
             if (member instanceof FieldDeclaration field
                     && source.getElementName().equals(field.getType().toString())) {
                 for (Object fragment : field.fragments()) {
                     holders.add((VariableDeclarationFragment) fragment);
+                    holderIsFinal =
+                        org.eclipse.jdt.core.dom.Modifier.isFinal(field.getModifiers());
                 }
             }
         }
@@ -215,13 +224,23 @@ public class InlineClassTool extends AbstractRefactoringTool {
         VariableDeclarationFragment holder = holders.get(0);
         String holderName = holder.getName().getIdentifier();
 
-        if (writtenOutsideItsInitializer(absorberAst, holderName)) {
+        if (writtenOutsideItsInitializer(absorberAst, holderName, holderIsFinal)) {
             return ToolResponse.invalidParameter("position",
                 "'" + holderName + "' is assigned somewhere other than its own initializer,"
                     + " so it has a lifecycle; folding the class away would discard it.");
         }
 
         Set<String> existing = memberNames(absorber);
+        // A FORWARDER OF THE SAME NAME IS NOT A COLLISION — it is the thing being inlined.
+        // When the absorber's member does nothing but call the holder's member of that
+        // name, the two are one operation written twice, and Fowler's Inline Class replaces
+        // the forwarder with the body it forwards to. Upstream's FilterManager forwards
+        // BOTH of its methods to FilterChain under the same two names, which is what the
+        // pattern's public face normally looks like; refusing it refused the row's own
+        // canonical shape. Anything else of a shared name is still a merge, and still
+        // refused, because then two DIFFERENT operations claim one name.
+        Set<String> forwarders = forwardersTo(absorber, holderName, sourceType);
+        existing.removeAll(forwarders);
         List<BodyDeclaration> moving = new ArrayList<>();
         for (Object member : sourceType.bodyDeclarations()) {
             if (member instanceof MethodDeclaration method && method.isConstructor()) {
@@ -239,10 +258,31 @@ public class InlineClassTool extends AbstractRefactoringTool {
         }
 
         ASTRewrite rewrite = ASTRewrite.create(absorberAst.getAST());
-        int rewritten = dropHolderQualifier(absorberAst, holderName, rewrite);
+        int rewritten = dropHolderQualifier(absorberAst, holderName, rewrite, forwarders);
+        unlinkDeletedType(absorberAst, source.getElementName(), rewrite);
         rewrite.remove(holder.getParent(), null);
+        // AND WHATEVER ASSIGNED IT. A final field built in a constructor — `filterChain =
+        // new FilterChain();` — is now a write to a field that no longer exists, and the
+        // compile gate is what said so: this path could not be reached until a constructor
+        // assignment stopped being a refusal one edit ago. Dropping the statement loses
+        // nothing, because a class with a constructor BODY is refused earlier, so the
+        // right-hand side can only be the implicit no-argument construction.
+        for (org.eclipse.jdt.core.dom.Assignment write
+                : assignmentsTo(absorberAst, holderName)) {
+            rewrite.remove(write.getParent() instanceof ExpressionStatement statement
+                ? statement : write, null);
+        }
         ListRewrite members = rewrite.getListRewrite(absorber,
             absorber.getBodyDeclarationsProperty());
+        // The superseded forwarders go. Each one's arriving replacement carries the body it
+        // was calling, so keeping it would leave two methods of one signature — and once
+        // the receiver is stripped, one of them calling itself.
+        for (Object member : absorber.bodyDeclarations()) {
+            if (member instanceof MethodDeclaration method
+                    && forwarders.contains(method.getName().getIdentifier())) {
+                rewrite.remove(method, null);
+            }
+        }
         for (BodyDeclaration declaration : moving) {
             members.insertLast((BodyDeclaration) ASTNode.copySubtree(
                 absorberAst.getAST(), declaration), null);
@@ -273,11 +313,68 @@ public class InlineClassTool extends AbstractRefactoringTool {
             new PreparedRefactoring(composite, label), "inline_class", arguments);
     }
 
+    /**
+     * The absorber's methods that do nothing but call the holder's method of the SAME name.
+     *
+     * <p>These are superseded rather than collided with. The body arriving from the
+     * absorbed class IS what the forwarder was reaching for, so the forwarder is removed
+     * and the body takes its place — which is Fowler's Inline Class in its plainest form.
+     * Leaving the forwarder would be worse than a collision: {@code dropHolderQualifier}
+     * strips the receiver from {@code holder.addFilter(f)}, so the method would end up
+     * calling itself.</p>
+     *
+     * <p>Only a PUBLIC absorbed member supersedes a forwarder. A private one would take a
+     * public method's place and quietly narrow the absorber's API, and that is a decision
+     * rather than a rewrite — such a name stays a collision and is still refused.</p>
+     */
+    private static Set<String> forwardersTo(AbstractTypeDeclaration absorber,
+                                            String holderName,
+                                            AbstractTypeDeclaration sourceType) {
+        Set<String> publicInSource = new LinkedHashSet<>();
+        for (Object member : sourceType.bodyDeclarations()) {
+            if (member instanceof MethodDeclaration method && !method.isConstructor()
+                    && org.eclipse.jdt.core.dom.Modifier.isPublic(method.getModifiers())) {
+                publicInSource.add(method.getName().getIdentifier());
+            }
+        }
+        Set<String> forwarders = new LinkedHashSet<>();
+        for (Object member : absorber.bodyDeclarations()) {
+            if (!(member instanceof MethodDeclaration method) || method.getBody() == null
+                    || !publicInSource.contains(method.getName().getIdentifier())) {
+                continue;
+            }
+            List<?> body = method.getBody().statements();
+            if (body.size() != 1) {
+                continue;
+            }
+            Expression only = body.get(0) instanceof ExpressionStatement expression
+                ? expression.getExpression()
+                : body.get(0) instanceof ReturnStatement returned
+                    ? returned.getExpression() : null;
+            if (only instanceof MethodInvocation call
+                    && call.getExpression() instanceof SimpleName receiver
+                    && holderName.equals(receiver.getIdentifier())
+                    && call.getName().getIdentifier()
+                        .equals(method.getName().getIdentifier())) {
+                forwarders.add(method.getName().getIdentifier());
+            }
+        }
+        return forwarders;
+    }
+
     /** Every `holder.x` becomes `x`, since x now lives here. */
     private static int dropHolderQualifier(CompilationUnit ast, String holderName,
-                                           ASTRewrite rewrite) {
+                                           ASTRewrite rewrite, Set<String> forwarders) {
         List<ASTNode> sites = new ArrayList<>();
         ast.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(MethodDeclaration node) {
+                // A superseded forwarder is being REMOVED whole, so there is nothing inside
+                // it worth rewriting — and editing within a node that is also being deleted
+                // is the kind of overlapping edit an ASTRewrite is entitled to reject.
+                return !forwarders.contains(node.getName().getIdentifier());
+            }
+
             @Override
             public boolean visit(MethodInvocation node) {
                 if (node.getExpression() instanceof SimpleName name
@@ -307,7 +404,22 @@ public class InlineClassTool extends AbstractRefactoringTool {
         return sites.size();
     }
 
-    private static boolean writtenOutsideItsInitializer(CompilationUnit ast, String holderName) {
+    /**
+     * Whether the holder has a LIFECYCLE — a value that changes after construction.
+     *
+     * <p>A {@code final} field assigned in a constructor does NOT. That is how Java spells
+     * an initializer that needs a constructor argument, and the compiler already guarantees
+     * such a field is assigned exactly once on every path. Refusing it would refuse the
+     * commonest way the shape this row exists for is actually written: upstream's
+     * {@code FilterManager} holds {@code private final FilterChain filterChain} and builds
+     * it in its constructor, which is a holder with no lifecycle at all.</p>
+     *
+     * <p>Everything else still counts. A non-final field assigned in a constructor may be
+     * re-assigned later, and a setter is a lifecycle whatever the field's modifiers say —
+     * so the constructor exemption is granted only together with {@code final}.</p>
+     */
+    private static boolean writtenOutsideItsInitializer(CompilationUnit ast, String holderName,
+                                                        boolean holderIsFinal) {
         boolean[] written = { false };
         ast.accept(new ASTVisitor() {
             @Override
@@ -316,13 +428,82 @@ public class InlineClassTool extends AbstractRefactoringTool {
                     ? name.getIdentifier()
                     : node.getLeftHandSide() instanceof FieldAccess access
                         ? access.getName().getIdentifier() : null;
-                if (holderName.equals(target)) {
+                if (holderName.equals(target) && !(holderIsFinal && insideAConstructor(node))) {
                     written[0] = true;
                 }
                 return true;
             }
         });
         return written[0];
+    }
+
+    /**
+     * Unwrap every {@code @link} to the class being deleted, leaving its name as prose.
+     *
+     * <p>A link to a type that no longer exists is a dangling reference the COMPILE GATE
+     * CANNOT SEE — javadoc is a comment, so the rewrite passes every check and ships a
+     * broken cross-reference anyway; {@code -Xdoclint} is where it eventually surfaces.
+     * Upstream's {@code FilterManager} is documented as managing "the filters and
+     * {@link FilterChain}", and inlining FilterChain made that link point at nothing.</p>
+     *
+     * <p>The tag becomes the bare type name rather than being deleted. The sentence stays
+     * true — the class did exist and its behaviour is now here — and rewriting somebody's
+     * prose is not this operation's business.</p>
+     */
+    private static int unlinkDeletedType(CompilationUnit ast, String typeName,
+                                         ASTRewrite rewrite) {
+        List<org.eclipse.jdt.core.dom.TagElement> tags = new ArrayList<>();
+        // ASTVisitor(true) — the no-argument constructor does NOT enter doc comments, so a
+        // visitor written the usual way walks straight past every javadoc tag in the file
+        // and reports, truthfully, that it found none.
+        ast.accept(new ASTVisitor(true) {
+            @Override
+            public boolean visit(org.eclipse.jdt.core.dom.TagElement node) {
+                if ("@link".equals(node.getTagName()) && node.fragments().size() == 1
+                        && node.fragments().get(0) instanceof org.eclipse.jdt.core.dom.Name name
+                        && typeName.equals(name.getFullyQualifiedName())) {
+                    tags.add(node);
+                }
+                return true;
+            }
+        });
+        for (org.eclipse.jdt.core.dom.TagElement tag : tags) {
+            org.eclipse.jdt.core.dom.TextElement plain =
+                ast.getAST().newTextElement();
+            plain.setText(typeName);
+            rewrite.replace(tag, plain, null);
+        }
+        return tags.size();
+    }
+
+    /** Every assignment to the named field, so the rewrite can drop them with the field. */
+    private static List<org.eclipse.jdt.core.dom.Assignment> assignmentsTo(
+            CompilationUnit ast, String holderName) {
+        List<org.eclipse.jdt.core.dom.Assignment> writes = new ArrayList<>();
+        ast.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(org.eclipse.jdt.core.dom.Assignment node) {
+                String target = node.getLeftHandSide() instanceof SimpleName name
+                    ? name.getIdentifier()
+                    : node.getLeftHandSide() instanceof FieldAccess access
+                        ? access.getName().getIdentifier() : null;
+                if (holderName.equals(target)) {
+                    writes.add(node);
+                }
+                return true;
+            }
+        });
+        return writes;
+    }
+
+    /** Whether the node sits inside a constructor body, walking out to the declaration. */
+    private static boolean insideAConstructor(ASTNode node) {
+        for (ASTNode at = node; at != null; at = at.getParent()) {
+            if (at instanceof MethodDeclaration method) {
+                return method.isConstructor();
+            }
+        }
+        return false;
     }
 
     private static Set<String> memberNames(AbstractTypeDeclaration type) {

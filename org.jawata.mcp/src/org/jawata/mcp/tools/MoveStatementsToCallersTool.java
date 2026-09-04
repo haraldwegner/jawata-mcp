@@ -54,10 +54,15 @@ import java.util.function.Supplier;
  *   <li><b>The statement must be the method's first or last.</b> One in the middle runs
  *       after some of the body and before the rest, and there is no position at a call site
  *       that reproduces that.</li>
- *   <li><b>It may mention only static bindings and literals.</b> A statement reading a
- *       parameter or a local cannot be evaluated at a call site — the name is not there.
- *       Fowler's own answer is to pass the value out, which is a signature change and a
- *       different decision.</li>
+ *   <li><b>It may mention statics, literals, and the method's OWN PARAMETERS.</b> A
+ *       parameter is not a problem, it is the point: the caller already supplies one, by
+ *       argument, and the moved statement reads that argument instead. A LOCAL variable is
+ *       still refused — it exists only while the body runs — and so is a non-static FIELD,
+ *       since the caller may be a different object or none.</li>
+ *   <li><b>Each such argument must be a bare name or a literal.</b> The copy placed beside
+ *       the call evaluates it a second time, so an argument that could DO something when
+ *       evaluated is refused with the advice to name it first. The operation must not be
+ *       the reason a side effect happened twice.</li>
  *   <li><b>The method must not be overridden or override anything.</b> With dynamic
  *       dispatch, "the callers" of this body is not a set the compiler can hand over: a
  *       call site may reach a different implementation entirely.</li>
@@ -156,7 +161,7 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
                     + " reproduces that.");
         }
 
-        String free = freeName(statement);
+        String free = freeName(statement, owner);
         if (free != null) {
             return ToolResponse.invalidParameter("position",
                 "the statement uses '" + free + "', which belongs to " + owner.getName()
@@ -183,12 +188,29 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
                 owner.getName() + " has no callers, so moving the statement out would simply"
                     + " delete it. Deleting is a different request.");
         }
+        List<String> used = parametersUsedBy(statement, owner);
         for (Site site : sites) {
             if (site.callStatement == null) {
                 return ToolResponse.invalidParameter("position",
                     "a call to " + owner.getName() + " in " + site.unit.getElementName()
                         + " is part of a larger expression, so there is no statement position"
                         + " beside it that would not change evaluation order.");
+            }
+            // The moved statement will read this call's ARGUMENT wherever it read the
+            // parameter. A copy placed beside the call evaluates that argument a second
+            // time, so anything that could DO something when evaluated is refused here
+            // rather than rewritten — the operation must not be the reason a side effect
+            // happened twice.
+            List<?> passed = site.invocation.arguments();
+            for (int i = 0; i < used.size() && i < passed.size(); i++) {
+                if (used.get(i) != null && !isRepeatable(passed.get(i))) {
+                    return ToolResponse.invalidParameter("position",
+                        "the statement reads '" + used.get(i) + "', and the call in "
+                            + site.unit.getElementName() + " passes '" + passed.get(i)
+                            + "' for it — an expression that would be evaluated a second"
+                            + " time by the copy placed beside the call. Give it a local"
+                            + " variable first, and the move becomes safe.");
+                }
             }
         }
 
@@ -214,12 +236,19 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
             CompilationUnit callerAst = sameFile ? ast : parse(callerCu);
             ASTRewrite rewrite = sameFile ? ownerRewrite : ASTRewrite.create(callerAst.getAST());
             for (Site site : entry.getValue()) {
-                Statement callStatement = sameFile
-                    ? site.callStatement : reboundIn(callerAst, site.callStatement);
+                // REBOUND EVEN WHEN IT IS THE SAME FILE. callSites() parses its own
+                // CompilationUnit, so site.callStatement belongs to THAT tree and not to
+                // `ast` — using it directly asks an ASTRewrite built over `ast` to edit a
+                // node it has never seen, which JDT rejects with "Node is not inside the
+                // AST". The same-file branch had simply never run: a caller in the file
+                // being edited is the one arrangement no fixture here happened to have,
+                // and upstream's handleMessage calls updateInventory two methods above it.
+                Statement callStatement = reboundIn(callerAst, site.callStatement);
                 ListRewrite block = rewrite.getListRewrite(callStatement.getParent(),
                     Block.STATEMENTS_PROPERTY);
                 Statement arriving = (Statement) rewrite.createStringPlaceholder(
-                    moved, ASTNode.EXPRESSION_STATEMENT);
+                    substituteArguments(moved, used, site.invocation),
+                    ASTNode.EXPRESSION_STATEMENT);
                 if (first) {
                     block.insertBefore(arriving, callStatement, null);
                 } else {
@@ -243,8 +272,13 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
             "move_statements_to_callers", arguments);
     }
 
-    /** One call site: its file, and the statement the call is, or null when it is not one. */
-    private record Site(ICompilationUnit unit, Statement callStatement) {}
+    /**
+     * One call site: its file, the statement the call is (null when it is not one), and the
+     * invocation itself — whose ARGUMENTS are what the moved statement's references to the
+     * method's parameters become.
+     */
+    private record Site(ICompilationUnit unit, Statement callStatement,
+                        MethodInvocation invocation) {}
 
     private static List<Site> callSites(IJdtService service, IMethod target) throws Exception {
         Set<ICompilationUnit> units = new LinkedHashSet<>();
@@ -270,7 +304,7 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
                     }
                     sites.add(node.getParent() instanceof Statement callStatement
                             && callStatement.getParent() instanceof Block
-                        ? new Site(unit, callStatement) : new Site(unit, null));
+                        ? new Site(unit, callStatement, node) : new Site(unit, null, node));
                     return true;
                 }
             });
@@ -327,7 +361,26 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
         return found[0] != null ? found[0] : original;
     }
 
-    private static String freeName(Statement statement) {
+    /**
+     * A name the statement uses that no call site can supply — or null when every one can.
+     *
+     * <p>The method's OWN PARAMETERS are not such names, and that exemption is the row
+     * rather than a loosening of it: Fowler moves a statement to its callers precisely so
+     * the caller supplies what varies, and a caller already supplies every parameter, by
+     * argument, at the position the call names. Refusing them refused nearly every real
+     * statement — upstream's {@code updateInventory} begins by logging its own
+     * {@code message} parameter, which is what a first statement usually does.</p>
+     *
+     * <p>A LOCAL variable is still refused: it exists only while the body runs. So is a
+     * non-static FIELD: the caller may be a different object, or none. Both were already
+     * refused here and stay refused; only the parameter case changes.</p>
+     */
+    private static String freeName(Statement statement, MethodDeclaration owner) {
+        Set<String> parameters = new LinkedHashSet<>();
+        for (Object each : owner.parameters()) {
+            parameters.add(((org.eclipse.jdt.core.dom.SingleVariableDeclaration) each)
+                .getName().getIdentifier());
+        }
         String[] offending = { null };
         statement.accept(new ASTVisitor() {
             @Override
@@ -337,13 +390,72 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
                 }
                 IBinding binding = node.resolveBinding();
                 if (binding instanceof IVariableBinding variable
-                        && !Modifier.isStatic(variable.getModifiers())) {
+                        && !Modifier.isStatic(variable.getModifiers())
+                        && !(variable.isParameter()
+                            && parameters.contains(node.getIdentifier()))) {
                     offending[0] = node.getIdentifier();
                 }
                 return true;
             }
         });
         return offending[0];
+    }
+
+    /** The owner's parameter names the statement actually reads, in declaration order. */
+    private static List<String> parametersUsedBy(Statement statement, MethodDeclaration owner) {
+        List<String> used = new ArrayList<>();
+        for (Object each : owner.parameters()) {
+            String name = ((org.eclipse.jdt.core.dom.SingleVariableDeclaration) each)
+                .getName().getIdentifier();
+            boolean[] reads = { false };
+            statement.accept(new ASTVisitor() {
+                @Override
+                public boolean visit(SimpleName node) {
+                    if (node.getIdentifier().equals(name)
+                            && node.resolveBinding() instanceof IVariableBinding variable
+                            && variable.isParameter()) {
+                        reads[0] = true;
+                    }
+                    return true;
+                }
+            });
+            used.add(reads[0] ? name : null);
+        }
+        return used;
+    }
+
+    /**
+     * The moved statement with each used parameter replaced by THIS call's argument.
+     *
+     * <p>Only a bare name or a literal is substituted. Anything else — a method call, a
+     * {@code new}, an assignment — would be EVALUATED A SECOND TIME by the copy this
+     * places beside the call, and a second evaluation is a behaviour change however
+     * innocent the expression looks. Those sites are refused by the caller of this method
+     * rather than rewritten, so the operation is never the reason a side effect doubled.</p>
+     */
+    private static String substituteArguments(String moved, List<String> used,
+                                              MethodInvocation invocation) {
+        String out = moved;
+        List<?> arguments = invocation.arguments();
+        for (int i = 0; i < used.size() && i < arguments.size(); i++) {
+            if (used.get(i) == null) {
+                continue;
+            }
+            out = out.replaceAll("\\b" + java.util.regex.Pattern.quote(used.get(i)) + "\\b",
+                java.util.regex.Matcher.quoteReplacement(arguments.get(i).toString()));
+        }
+        return out;
+    }
+
+    /** Whether an argument can be copied to a second place without evaluating twice. */
+    private static boolean isRepeatable(Object argument) {
+        return argument instanceof SimpleName
+            || argument instanceof org.eclipse.jdt.core.dom.StringLiteral
+            || argument instanceof org.eclipse.jdt.core.dom.NumberLiteral
+            || argument instanceof org.eclipse.jdt.core.dom.BooleanLiteral
+            || argument instanceof org.eclipse.jdt.core.dom.CharacterLiteral
+            || argument instanceof org.eclipse.jdt.core.dom.NullLiteral
+            || argument instanceof org.eclipse.jdt.core.dom.ThisExpression;
     }
 
     /**
