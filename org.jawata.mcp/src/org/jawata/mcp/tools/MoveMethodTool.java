@@ -2,11 +2,15 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.core.IMember;
 import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.internal.corext.codemanipulation.CodeGenerationSettings;
 import org.eclipse.jdt.internal.corext.refactoring.structure.MoveInstanceMethodProcessor;
+import org.eclipse.jdt.internal.corext.refactoring.structure.MoveStaticMembersProcessor;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
 import org.jawata.core.IJdtService;
@@ -25,6 +29,22 @@ import java.util.stream.Collectors;
  * Sprint 22a P1-a.1 — {@code move_method}: move an instance method onto the
  * type of one of its parameters or fields (JDT "Move Instance Method"),
  * rewriting every call site to invoke it on the new receiver.
+ *
+ * <h2>Two engines, because a static method and an instance method are not one problem</h2>
+ *
+ * <p>Sprint 28d-rescue row 23 found the same split in {@link MoveFieldTool} and this is the
+ * same answer. An INSTANCE method moves onto a RECEIVER — some parameter or field whose type
+ * takes it on — and the call sites are rewritten to invoke it there. A STATIC method has no
+ * receiver at all: its call sites name the owning TYPE, so moving it is
+ * {@link MoveStaticMembersProcessor}'s job, the IDE's own Move Static Members, and what it
+ * needs is a destination type rather than a receiver.</p>
+ *
+ * <p>Which one runs is read off the method's own modifiers, not asked of the caller. A
+ * caller moving a method should not have to know which engine the language implies, and
+ * {@code targetType} is required only on the path that has no receiver to infer.</p>
+ *
+ * <p>Fowler files this as <b>Move Function</b> (row 38 in his numbering; row 24 here); the
+ * static half is the one his own example uses.</p>
  *
  * <p>The composition-axis primitive: a method that lives on an owner class but
  * really operates on a collaborator ({@code Owner.reset(Cell c) { c.set(0); }})
@@ -92,6 +112,10 @@ public class MoveMethodTool extends AbstractRefactoringTool {
                 + "(optional when there is exactly one possible target)."));
         properties.put("keepDelegate", Map.of("type", "boolean",
             "description", "Leave a forwarding method on the original type (default false)."));
+        properties.put("targetType", Map.of("type", "string",
+            "description", "For a STATIC method: fully-qualified name of the existing class "
+                + "it moves to. A static method has no receiver, so `target` does not apply "
+                + "to it and this does."));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "method to move"));
         schema.put("properties", properties);
@@ -129,6 +153,11 @@ public class MoveMethodTool extends AbstractRefactoringTool {
                 return ToolResponse.invalidParameter("position",
                     "Position does not resolve to a method; got "
                         + (element == null ? "null" : element.getClass().getSimpleName()));
+            }
+
+            if (Flags.isStatic(method.getFlags())) {
+                return moveStaticMethod(service, method,
+                    getStringParam(arguments, "targetType"), keepDelegate, arguments);
             }
 
             CodeGenerationSettings settings = new CodeGenerationSettings();
@@ -188,4 +217,42 @@ public class MoveMethodTool extends AbstractRefactoringTool {
         }
         return targets.length == 1 ? targets[0] : null;
     }
+
+    /**
+     * Row 24's half. A static method's call sites name its owning TYPE, so the move is the
+     * IDE's Move Static Members: the declaration relocates and every qualified reference
+     * across the workspace is repointed. There is no receiver to choose, which is why this
+     * path wants a destination type instead and refuses without one.
+     */
+    private ToolResponse moveStaticMethod(IJdtService service, IMethod method,
+                                          String targetType, boolean keepDelegate,
+                                          JsonNode arguments) throws Exception {
+        if (targetType == null || targetType.isBlank()) {
+            return ToolResponse.invalidParameter("targetType",
+                method.getElementName() + " is static, so it has no receiver to move onto and"
+                    + " `target` does not apply to it. Name the class it moves to in"
+                    + " `targetType`, fully qualified.");
+        }
+        IType declaring = method.getDeclaringType();
+        if (declaring != null && targetType.equals(declaring.getFullyQualifiedName())) {
+            return ToolResponse.invalidParameter("targetType",
+                "The method already lives in " + targetType + "; nothing to move.");
+        }
+
+        MoveStaticMembersProcessor processor =
+            new MoveStaticMembersProcessor(new IMember[] { method }, new CodeGenerationSettings());
+        processor.setDestinationTypeFullyQualifiedName(targetType);
+        // Unlike a moved FIELD, a forwarder here is a legitimate choice: it keeps an old
+        // published entry point compiling while callers migrate. Off by default, because
+        // leaving one silently is how a move stops being a move.
+        processor.setDelegateUpdating(keepDelegate);
+        ProcessorBasedRefactoring refactoring = new ProcessorBasedRefactoring(processor);
+
+        RefactoringStatus initial = refactoring.checkInitialConditions(new NullProgressMonitor());
+        if (initial.hasFatalError()) {
+            return ToolResponse.invalidParameter("move kind=method", formatStatus(initial));
+        }
+        return runPreCheckedRefactoring(service, refactoring, "move_method", arguments);
+    }
+
 }

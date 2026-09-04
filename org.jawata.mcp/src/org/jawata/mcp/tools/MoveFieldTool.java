@@ -90,7 +90,9 @@ public class MoveFieldTool extends AbstractRefactoringTool {
     @Override
     public String getDescription() {
         return "Move Field — move a field to an existing class, updating every reference. "
-            + "STATIC fields only for now; an instance field is refused with the reason. "
+            + "A static field moves through the IDE's Move Static Members engine; a "
+            + "PRIVATE instance field moves through the receiver named in `target`, and "
+            + "a non-private one is refused, pointing at encapsulate_field. "
             + "Delegate of move.";
     }
 

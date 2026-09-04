@@ -74,13 +74,19 @@ public class MoveTool extends AbstractTool {
                         Needs: filePath, line, column, targetPackage (optional targetProjectKey).
             - package — move/rename a whole package.
                         Needs: packageName, newPackageName.
-            - method  — move an instance method onto the type of one of its parameters
-                        or fields, rewriting every call site to invoke it on the new
-                        receiver. Needs: the method's position (filePath, line, column)
-                        or its symbol, plus `target` — the parameter/field whose type
-                        receives it. `target` may be omitted when exactly one candidate
-                        exists; with several, the call is refused and lists them.
-                        Optional keepDelegate leaves a forwarder behind.
+            - method  — move a method to another type. Which engine runs is read off the
+                        method's own modifiers, not asked of you.
+                        An INSTANCE method moves onto a RECEIVER — one of its parameters
+                        or fields — and every call site is rewritten to invoke it there.
+                        Needs: the method's position (filePath, line, column) or its
+                        symbol, plus `target`, the parameter/field whose type receives it.
+                        `target` may be omitted when exactly one candidate exists; with
+                        several, the call is refused and lists them.
+                        A STATIC method has no receiver — its call sites name the owning
+                        TYPE — so it needs `targetType` instead, the destination's
+                        fully-qualified name, and JDT's Move Static Members repoints every
+                        qualified reference across the workspace.
+                        Optional keepDelegate leaves a forwarder behind on either path.
 
             - field   — move a field to an EXISTING class, updating every reference.
                         Needs: filePath, line, column on the declaration, plus targetType
