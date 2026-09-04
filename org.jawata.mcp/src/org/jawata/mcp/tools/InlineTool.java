@@ -51,9 +51,6 @@ public class InlineTool extends AbstractTool implements KindedTool {
     }
 
 
-    private static final List<String> KINDS =
-        List.of("method", "variable", "class", "subclass", "middle_man");
-
     private final InlineMethodTool method;
     private final InlineVariableTool variable;
     private final InlineClassTool clazz;
@@ -143,49 +140,17 @@ public class InlineTool extends AbstractTool implements KindedTool {
         return ", filePath=..., line=..., column=...";
     }
 
-    /**
-     * NOT OVERRIDDEN ANY MORE (Stage 6a, M5) — the block is projected from the delegates.
+    /*
+     * WHAT STOOD HERE (Stage 6a, M5): five bullets this door wrote about classes that each
+     * already knew their own story, plus a LEGACY_KIND_BLOCK holding that text as the golden
+     * for the equivalence test. The bullets now live on the delegates and the assembler
+     * iterates the routing table to build the list, so a kind cannot be added to the dispatch
+     * and left out of the description — the defect this stage was opened for.
      *
-     * <p>What stood here was five bullets the door wrote about classes that each already knew
-     * their own story. They now live on those classes, and the assembler iterates the routing
-     * table to build the list — so a kind cannot be added to the dispatch and left out of the
-     * description, which is the defect this stage was opened for.</p>
-     *
-     * <p>The block below is the text as it stood, kept only until the projection is proven
-     * equivalent in meaning; the layout differs by design (see FrontDoorDescription).</p>
+     * The golden went when the equivalence it guarded became structural rather than textual:
+     * it had ZERO references, measured, and thirty-two lines of published prose that nothing
+     * read is a second copy waiting to disagree with the first.
      */
-    static final String LEGACY_KIND_BLOCK = """
-            - method   — inline all call sites of the method at the position.
-            - variable — replace uses of the local variable at the position with its initializer.
-            - class    — fold a class into the SINGLE class that uses it, then delete it.
-                         Refuses when more than one class references it, when it has
-                         subtypes, when the user holds none or several fields of its
-                         type, when that field is assigned outside its own initializer,
-                         when it has a constructor with a body, or when a member name
-                         would collide. Each refusal names which. (find_quality_issue
-                         kind=lazy_class locates candidates.)
-            - subclass — fold a subclass that carries NO DISTINCTION into its parent:
-                         its members move up, every reference to it becomes a reference
-                         to the parent, and it is deleted. Refuses when the subclass
-                         actually distinguishes something — it overrides a parent
-                         method, an instanceof or a cast names its type, or its
-                         constructor fixes an argument instead of forwarding — because
-                         replacing a distinction with a field is a design decision.
-                         Also refuses a subclass with subtypes (that is Collapse
-                         Hierarchy), an abstract parent, a parent outside this
-                         workspace, and a colliding member name.
-            - middle_man — stop a class forwarding: every method whose whole body is
-                         one call on one of its own fields, passing its parameters
-                         through unchanged, is deleted and its call sites become
-                         `middleMan.<accessor>().method(args)`. The accessor is
-                         generated if the class has none — that exposure IS the
-                         refactoring, and the summary says it happened. Refuses a class
-                         with no forwarder at all. A class forwarding to SEVERAL
-                         fields is NOT refused — name the one to remove with
-                         `delegateField` and repeat; the fork's own GiantController is
-                         why the old blanket refusal was wrong. A method that
-                         transforms the result is left alone: that is behaviour, not
-                         forwarding. (find_quality_issue kind=middle_man finds them.)""";
 
     @Override
     public String footer() {
@@ -196,68 +161,6 @@ public class InlineTool extends AbstractTool implements KindedTool {
             Requires load_project to be called first.
             """;
     }
-
-    /**
-     * THE TEXT AS IT STOOD BEFORE M4 — a golden.
-     *
-     * <p>Its only reader is the test asserting that the assembled description reproduces it.
-     * That is what makes these steps a MOVE of the algorithm and of the prose rather than a
-     * rewrite of the published contract: without it, "the assembler produces a description"
-     * would be true of any description at all.</p>
-     *
-     * <p><b>It SURVIVED M5, and an earlier version of this note said it would be deleted
-     * there.</b> That was written when M5 was expected to be a pure relocation; it is not.
-     * M5 replaces per-door hand-alignment with one uniform bullet rule, so the comparison
-     * became whitespace-insensitive rather than byte-identical — and a golden is exactly what
-     * that weaker comparison needs, because without it nothing at all would pin the prose.
-     * It is the only door whose golden is the WHOLE description rather than the kind block,
-     * which is why the {@code USAGE:} line inside it is the one such line left in these seven
-     * files. It is not on any published path: {@link #getDescription()} asks the
-     * assembler.</p>
-     */
-    static final String LEGACY_DESCRIPTION = """
-            Inline a method, a local variable, a whole class, a subclass into its
-            parent, or a middle man's forwarding (behaviour-preserving, reversible).
-
-            USAGE: inline(kind="<method|variable|class|subclass|middle_man>", filePath=..., line=..., column=...)
-
-            - method   — inline all call sites of the method at the position.
-            - variable — replace uses of the local variable at the position with its initializer.
-            - class    — fold a class into the SINGLE class that uses it, then delete it.
-                         Refuses when more than one class references it, when it has
-                         subtypes, when the user holds none or several fields of its
-                         type, when that field is assigned outside its own initializer,
-                         when it has a constructor with a body, or when a member name
-                         would collide. Each refusal names which. (find_quality_issue
-                         kind=lazy_class locates candidates.)
-            - subclass — fold a subclass that carries NO DISTINCTION into its parent:
-                         its members move up, every reference to it becomes a reference
-                         to the parent, and it is deleted. Refuses when the subclass
-                         actually distinguishes something — it overrides a parent
-                         method, an instanceof or a cast names its type, or its
-                         constructor fixes an argument instead of forwarding — because
-                         replacing a distinction with a field is a design decision.
-                         Also refuses a subclass with subtypes (that is Collapse
-                         Hierarchy), an abstract parent, a parent outside this
-                         workspace, and a colliding member name.
-            - middle_man — stop a class forwarding: every method whose whole body is
-                         one call on one of its own fields, passing its parameters
-                         through unchanged, is deleted and its call sites become
-                         `middleMan.<accessor>().method(args)`. The accessor is
-                         generated if the class has none — that exposure IS the
-                         refactoring, and the summary says it happened. Refuses a class
-                         with no forwarder at all. A class forwarding to SEVERAL
-                         fields is NOT refused — name the one to remove with
-                         `delegateField` and repeat; the fork's own GiantController is
-                         why the old blanket refusal was wrong. A method that
-                         transforms the result is left alone: that is behaviour, not
-                         forwarding. (find_quality_issue kind=middle_man finds them.)
-
-            IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
-            filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
-
-            Requires load_project to be called first.
-            """;
 
     @Override
     public Map<String, Object> getInputSchema() {
@@ -313,7 +216,8 @@ public class InlineTool extends AbstractTool implements KindedTool {
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
+            return ToolResponse.invalidParameter("kind",
+                "kind is required; one of " + publishedKinds());
         }
         return switch (kind) {
             case "method"   -> method.executeWithService(service, arguments);
@@ -322,7 +226,7 @@ public class InlineTool extends AbstractTool implements KindedTool {
             case "subclass" -> subclass.executeWithService(service, arguments);
             case "middle_man" -> middleMan.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS);
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         };
     }
 }

@@ -93,8 +93,8 @@ class ServerInstructionsCatalogTest {
                 + " which is exactly the drift this checks for: " + stale);
         // PROOF OF LIFE: an empty retired set makes the loop vacuous, and that set is read
         // from production, so it can shrink without this file being touched.
-        assertTrue(retired.size() >= 18,
-            "the retired-name map is the population this sweeps — eighteen or more today."
+        assertTrue(retired.size() >= 20,
+            "the retired-name map is the population this sweeps — twenty entries today."
                 + " A sudden shrink means the sweep looks at less than it thinks. Found: "
                 + retired.size());
     }

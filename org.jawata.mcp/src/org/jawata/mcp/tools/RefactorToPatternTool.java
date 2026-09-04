@@ -261,8 +261,11 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         // DERIVED from the routing table (M6), so the published enum and the dispatch are
-        // the same iteration. KINDS survives below because patternKinds() has four callers
-        // and is STATIC, so it cannot read an instance's delegates — see its own note.
+        // the same iteration. KINDS survives below because patternKinds() is STATIC and so
+        // cannot read an instance's delegates, while six places across five classes read it —
+        // CureLookup and CureTier in production, three test classes besides. (This sentence
+        // said "four callers" until C6a measured it with find_references; the same wrong
+        // number was in TheRoutingTableIsTheKindListTest and in commit 10082733.)
         kind.put("enum", publishedKinds());
         kind.put("description", "Which pattern transform to apply. See the tool description for per-kind params.");
         properties.put("kind", kind);

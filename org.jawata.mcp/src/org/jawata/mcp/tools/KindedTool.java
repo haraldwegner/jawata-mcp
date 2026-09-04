@@ -46,12 +46,17 @@ public interface KindedTool extends FrontDoor {
     /**
      * The published kinds — a VIEW of {@link #delegates()}, never a second list.
      *
-     * <p>This overrides {@link Tool#publishedKinds()}, which reads the schema. For a door the
-     * two must agree, and after the description seam lands the schema is itself assembled from
-     * the delegates, so they agree by construction rather than by care. Until then, a
-     * temporary test asserts the old schema walk and this key set are equal per door — the
-     * step's own discriminating gate, and it is deleted once the assembly makes it a
-     * tautology.</p>
+     * <p>This overrides {@link Tool#publishedKinds()}, which reads the schema. The two must
+     * agree, and now do by construction: every routing door puts this method's result INTO its
+     * schema enum, so the schema walk and the key set are two readings of one list. The
+     * temporary test that asserted their equality per door was deleted for that reason.</p>
+     *
+     * <p><b>One door is still compared, and it is not a leftover.</b>
+     * {@code refactor_to_pattern} keeps a hand-written constant because its {@code
+     * patternKinds()} is {@code static} — the cure table reads it to decide which steps name a
+     * real operation, and a static method cannot reach an instance's delegates. So there the
+     * two lists are genuinely independent and {@code TheRoutingTableIsTheKindListTest} still
+     * compares them.</p>
      */
     @Override
     default List<String> publishedKinds() {

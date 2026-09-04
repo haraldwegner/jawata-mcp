@@ -17,15 +17,37 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * at M6 "once the assembly makes it a tautology".</p>
  *
  * <p><b>M6 made five of the six a tautology and left one alone, so the class shrank instead of
- * going.</b> Every converted door's schema now reads {@code publishedKinds()}, which
+ * going.</b> Each of those five reads its published enum from {@code publishedKinds()}, which
  * {@link KindedTool} defines AS the key set — so comparing the two compares a value with
- * itself. Deleting those assertions is the whole point: an assertion that cannot fail reads as
- * coverage while covering nothing.</p>
+ * itself. Deleting those assertions is the whole point.</p>
+ *
+ * <p><b>The test is DEFINITIONAL identity, not a green result</b>, and the distinction is load
+ * bearing: a later audit read it the loose way and called a live regression lock vacuous on
+ * the strength of this paragraph. What made those five assertions worthless is that the two
+ * sides were ONE expression a definitional step apart, in an interface that tells implementors
+ * never to override the method joining them — no edit separates them. An assertion that
+ * merely happens to be green today, over a property one plausible edit would break, is a
+ * regression lock; it is kept, labelled as one, and proved by making that edit. See the
+ * per-door assertion in {@code FrontDoorDescriptionTest#noDoorWritesItsOwnUsageLine}, which
+ * was mutation-proved for exactly this reason.</p>
+ *
+ * <p><b>It was six, briefly, and only because a claim was false.</b> {@code generate} was
+ * reported converted in the same change and was not: its schema still read a hand-written
+ * constant, so the deleted comparison had been LIVE for that door — two independent structures,
+ * a literal list against the delegates' own {@code kindName()}s. A C6a audit found it. The
+ * cause was mechanical rather than a misreading: a mutation harness reverted that file with
+ * {@code git checkout --} while the change was still uncommitted, and the commit message was
+ * written from what had been done rather than from what survived. Both halves are restored,
+ * and this paragraph stays because the deletion was only honest once they were.</p>
  *
  * <p>{@code refactor_to_pattern} is the exception, and the reason is measured rather than
  * stylistic. Its {@code KINDS} constant survives because {@code patternKinds()} is
- * {@code static} and has four callers — {@code CureLookup} and {@code CureTier} in production,
- * two in tests — and a static method cannot read an instance's delegates. So the constant is
+ * {@code static} and is read from SIX places in FIVE classes — {@code CureLookup} and
+ * {@code CureTier} in production, then this class twice, {@code CureTierTest} and
+ * {@code EveryShippedFixIsReachableTest} — and a static method cannot read an instance's
+ * delegates. (An earlier version of this sentence said "four callers", from memory rather
+ * than from {@code find_references}; the same wrong number is in commit 10082733.) So the
+ * constant is
  * still a SECOND home for the kind list, read by the code that decides which cure steps exist.
  * Nothing else compares it to the routing table. That is what this class now does, and it is
  * why deleting the class outright would have dropped a live guard rather than a dead one.</p>

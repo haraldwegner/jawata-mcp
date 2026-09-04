@@ -49,11 +49,6 @@ public class GenerateTool extends AbstractTool
         return java.util.Collections.unmodifiableMap(published);
     }
 
-
-    private static final List<String> KINDS = List.of(
-        "constructor", "getters_setters", "equals_hashcode",
-        "tostring", "test_skeleton", "override_methods", "copy_class");
-
     private final GenerateConstructorTool constructor;
     private final GenerateGettersSettersTool gettersSetters;
     private final GenerateEqualsHashCodeTool equalsHashCode;
@@ -143,7 +138,14 @@ public class GenerateTool extends AbstractTool
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
+        // DERIVED from the routing table (M6). The hand-written KINDS constant is gone:
+        // unlike refactor_to_pattern's, it had no reader outside this class, so nothing
+        // needed it kept. Until this line changed, the published enum and the delegates
+        // were two independent structures — a literal list against the delegates' own
+        // kindName()s — and an eighth kind added to the fields, the map and the switch but
+        // not to the constant would have been routed, described in the projected bullet
+        // list, and MISSING from the enum a client reads in tools/list.
+        kind.put("enum", publishedKinds());
         kind.put("description", "Which generator to run. See the tool description for per-kind params.");
         properties.put("kind", kind);
 
@@ -170,37 +172,20 @@ public class GenerateTool extends AbstractTool
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "type to generate into"));
 
-        // THE BACKSTOP — every parameter any delegate declares reaches the published
-        // contract, whether or not someone curated it above.
+        // THE BACKSTOP now lives on KindedTool — every parameter any delegate declares
+        // reaches the published contract, whether or not someone curated it above.
         //
-        // This tool shipped the defect that motivated the guard, and shipped it in the
-        // WORSE form: the prose description above advertises getterStyle, setterStyle
-        // and generateJavadoc, while the schema declared none of them. So the two
-        // halves of the published contract contradicted each other — a client reading
-        // the description sends a parameter the schema omits, and a client trusting
-        // the schema never learns the option exists. Caught by
-        // DeclaredShapeHonestyTest#everyFrontDoorPublishesItsDelegateParameters, which
-        // went red on `getterStyle` before this loop existed.
+        // This tool shipped the defect that motivated it, and in the WORSE form: the prose
+        // description advertised getterStyle, setterStyle and generateJavadoc while the
+        // schema declared none of them, so the two halves of the published contract
+        // contradicted each other — a client reading the description sends a parameter the
+        // schema omits, and a client trusting the schema never learns the option exists.
         //
-        // putIfAbsent, and in this order: the curated entries above win and keep their
-        // positions, because they carry what a delegate's own schema cannot — which
-        // KIND each parameter belongs to. The two wrapper params are skipped because
-        // withProjectKey/withAutoApply below add them once, in this tool's own terms;
-        // taking them from a delegate would publish one delegate's wording for a
-        // parameter that belongs to the front door.
-        for (AbstractTool delegate : List.of(constructor, gettersSetters, equalsHashCode,
-                toStringTool, testSkeleton, overrideMethods, copyClass)) {
-            Object declared = delegate.getInputSchema().get("properties");
-            if (declared instanceof Map<?, ?> declaredProps) {
-                declaredProps.forEach((k, v) -> {
-                    String name = String.valueOf(k);
-                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
-                        properties.putIfAbsent(name, v);
-                    }
-                });
-            }
-        }
-        schema.put("properties", properties);
+        // The loop that fixed it lived here, and carried a second defect the shared one
+        // cannot: it iterated a hand-written List.of(...) of the seven delegate FIELDS
+        // rather than the routing table, so an eighth delegate would have been dispatched,
+        // published, and left out of the very loop that publishes its parameters.
+        schema.put("properties", withDelegateParameters(properties));
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
@@ -217,7 +202,7 @@ public class GenerateTool extends AbstractTool
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
+            return ToolResponse.invalidParameter("kind", "kind is required; one of " + publishedKinds());
         }
         return switch (kind) {
             case "constructor"      -> constructor.executeWithService(service, arguments);
@@ -228,7 +213,7 @@ public class GenerateTool extends AbstractTool
             case "override_methods" -> overrideMethods.executeWithService(service, arguments);
             case "copy_class"       -> copyClass.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS);
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         };
     }
 

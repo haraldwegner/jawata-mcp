@@ -27,6 +27,67 @@ class FrontDoorDescriptionTest {
         return new InlineTool(() -> null, new RefactoringChangeCache());
     }
 
+    /**
+     * INLINE'S PUBLISHED DESCRIPTION AS IT STOOD BEFORE THE SEAM — the golden.
+     *
+     * <p>It pins the prose across a comparison that is deliberately weak. M5 replaced
+     * per-door hand-alignment with one uniform bullet rule, so byte-identity became the
+     * wrong question — it would pin text the door no longer publishes — and what is left is
+     * a whitespace-insensitive comparison. Without a golden, "the assembler produces a
+     * description" would be true of any description at all.</p>
+     *
+     * <p><b>It lives here rather than on the door, and that is C6a's doing.</b> It sat as a
+     * constant on {@code InlineTool} until the checkpoint's clause was read literally: no
+     * door may retain a literal {@code USAGE:} line in its own source. This golden is the
+     * whole OLD description, usage line included, so it was the last one left in those seven
+     * files — and it was test data in a shipped class, read from exactly one place. Moving
+     * it satisfies the clause as written and takes the constant out of production at the
+     * same time.</p>
+     */
+    private static final String INLINE_LEGACY_DESCRIPTION = """
+            Inline a method, a local variable, a whole class, a subclass into its
+            parent, or a middle man's forwarding (behaviour-preserving, reversible).
+
+            USAGE: inline(kind="<method|variable|class|subclass|middle_man>", filePath=..., line=..., column=...)
+
+            - method   — inline all call sites of the method at the position.
+            - variable — replace uses of the local variable at the position with its initializer.
+            - class    — fold a class into the SINGLE class that uses it, then delete it.
+                         Refuses when more than one class references it, when it has
+                         subtypes, when the user holds none or several fields of its
+                         type, when that field is assigned outside its own initializer,
+                         when it has a constructor with a body, or when a member name
+                         would collide. Each refusal names which. (find_quality_issue
+                         kind=lazy_class locates candidates.)
+            - subclass — fold a subclass that carries NO DISTINCTION into its parent:
+                         its members move up, every reference to it becomes a reference
+                         to the parent, and it is deleted. Refuses when the subclass
+                         actually distinguishes something — it overrides a parent
+                         method, an instanceof or a cast names its type, or its
+                         constructor fixes an argument instead of forwarding — because
+                         replacing a distinction with a field is a design decision.
+                         Also refuses a subclass with subtypes (that is Collapse
+                         Hierarchy), an abstract parent, a parent outside this
+                         workspace, and a colliding member name.
+            - middle_man — stop a class forwarding: every method whose whole body is
+                         one call on one of its own fields, passing its parameters
+                         through unchanged, is deleted and its call sites become
+                         `middleMan.<accessor>().method(args)`. The accessor is
+                         generated if the class has none — that exposure IS the
+                         refactoring, and the summary says it happened. Refuses a class
+                         with no forwarder at all. A class forwarding to SEVERAL
+                         fields is NOT refused — name the one to remove with
+                         `delegateField` and repeat; the fork's own GiantController is
+                         why the old blanket refusal was wrong. A method that
+                         transforms the result is left alone: that is behaviour, not
+                         forwarding. (find_quality_issue kind=middle_man finds them.)
+
+            IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
+            filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
+
+            Requires load_project to be called first.
+            """;
+
     /** Every character that is not whitespace, in order — layout removed, content kept. */
     private static String content(String text) {
         return text.replaceAll("\\s+", "");
@@ -42,7 +103,7 @@ class FrontDoorDescriptionTest {
         // What must NOT change is the prose, and this compares every non-whitespace
         // character in order: a dropped sentence, a mangled refusal, a bullet that lost its
         // tail all fail here, while the alignment is free to differ.
-        assertEquals(content(InlineTool.LEGACY_DESCRIPTION),
+        assertEquals(content(INLINE_LEGACY_DESCRIPTION),
             content(FrontDoorDescription.ASSEMBLER.describe(inline())),
             "the per-kind prose moved from the door onto its delegates; if a character of it"
                 + " went missing on the way, the move lost documentation rather than"
@@ -280,23 +341,58 @@ class FrontDoorDescriptionTest {
     void noDoorWritesItsOwnUsageLine() {
         // THE CHECK THAT CANNOT PASS ON A NO-OP, and it took two tries to find one.
         //
-        // The plan's wording is "no literal USAGE: line remains in the door's SOURCE TEXT",
-        // read from the file rather than through find_string_literals — which walks
-        // StringLiteral nodes and cannot see a text block, so it returns nothing for every
-        // door before the work and after it. Run over these seven files, that check finds one
-        // real hit: InlineTool.LEGACY_DESCRIPTION, a retained golden of the OLD description,
-        // whose subject is history and which no published path reads. A file-text check
-        // cannot tell that from a door that still writes its own line.
+        // C6a asks for a FILE-TEXT check — "no literal USAGE: line remains in the door's
+        // SOURCE TEXT" — read from the file rather than through find_string_literals, which
+        // walks StringLiteral nodes and cannot see a text block, so it returns nothing for
+        // every door before the work and after it. That check now passes over the seven door
+        // sources; the last literal in them was the golden of inline's OLD description, which
+        // C6a moved into this file, where its only reader always was.
         //
-        // So the subject is the PUBLISHED text instead, which is what the clause is actually
-        // about. Before M5 three of these doors published a hand-written line that differed
-        // from the generated one — extract's and generate's said kind="<kind>", refactoring's
-        // said action="<action>", move's was wrapped across two lines — so this failed. A
-        // door that writes one back publishes two, and fails again.
+        // THIS TEST IS THE OTHER HALF, and it is the stronger one. A file-text check reads
+        // source; this reads what a CLIENT receives. Before M5 three of these doors published
+        // a hand-written line differing from the generated one — extract's and generate's
+        // said kind="<kind>", refactoring's said action="<action>", move's was wrapped across
+        // two lines — so this failed then. A door that writes one back publishes two, and
+        // fails again. Neither check subsumes the other: source could be clean while the
+        // published text was assembled wrongly, and vice versa.
         for (FrontDoor door : sevenDoors()) {
             String described = door.getDescription();
             String generated =
                 FrontDoorDescription.ASSEMBLER.usageLine(door) + door.usageNote();
+
+            // THE WHOLE DESCRIPTION, not just its usage line — added at C6a because an audit
+            // read the exit clause ("its description is assembled by the shared
+            // FrontDoorDescription — asserted per door") against what was actually asserted
+            // and found the strict form on two doors of seven. The usage-line checks below
+            // are what M5(b) needs and they are kept, but a door could satisfy them while
+            // writing the rest of its description itself.
+            //
+            // A REGRESSION LOCK, LABELLED ONE, because a second audit refused the checkpoint
+            // over it and the refusal was half right. It cannot fail against today's code:
+            // all seven getDescription() bodies are the single expression
+            // `return FrontDoorDescription.ASSEMBLER.describe(this);`, so both sides of this
+            // equality evaluate the same call. The auditor read that as the vacuous shape M6
+            // deletes elsewhere.
+            //
+            // IT IS NOT THAT SHAPE, and the difference is what makes one deletable and this
+            // one worth keeping. M6's enum assertion compared the schema's enum with
+            // delegates().keySet() — but the schema PUTS publishedKinds() there and KindedTool
+            // DEFINES publishedKinds() AS that key set, so the two sides are one expression a
+            // definitional step apart, inside one interface whose javadoc tells implementors
+            // never to override it. Nothing a door can do separates them. Here the subject is
+            // getDescription(), which is Tool's own method and the place every tool in the
+            // codebase writes its own text; these seven forwarding to the assembler is the
+            // exception this stage created, not a definition, and it is one edit from being
+            // undone.
+            //
+            // PROVED BY MUTATION rather than argued (C6a): inline's getDescription() made to
+            // return a literal of its own fails THIS assertion first, and theDoorActuallyUsesIt
+            // with it — 18 of 20 green, those two red. That is the state all seven doors were
+            // in before M5, which is why the lock is worth its line.
+            assertEquals(FrontDoorDescription.ASSEMBLER.describe(door), described,
+                door.getName() + " must ROUTE its whole description through the shared"
+                    + " assembler, not merely happen to carry the usage line the assembler"
+                    + " would have produced");
 
             assertEquals(1, occurrences(described, "USAGE:"),
                 door.getName() + " must publish exactly ONE usage line, and it must be the"
@@ -439,8 +535,14 @@ class FrontDoorDescriptionTest {
     @Test
     @DisplayName("a door with an EMPTY routing table still assembles, and says nothing about kinds")
     void anEmptyRoutingTableIsNotACrash() {
-        // `data`'s literal state until Stage 5 grows it from one kind to ten. A door mid-lane
-        // must not throw here, and must not invent a bullet either.
+        // NO SHIPPED DOOR IS IN THIS STATE, and the earlier version of this comment said one
+        // was — it called this "`data`'s literal state until Stage 5". Measured: DataTool
+        // extends AbstractRefactoringTool and implements neither seam interface, so it is not
+        // a FrontDoor at all and has no routing table to be empty. What the case actually
+        // pins is the assembler's own boundary: asked to describe a door that routes nothing,
+        // it must not throw and must not invent a bullet. That boundary is reached the moment
+        // a door implements KindedTool before its delegates exist, which is how each of the
+        // three remaining lanes starts.
         FakeDoor empty = fakeDoorWith();
 
         assertEquals(List.of(), empty.publishedKinds());

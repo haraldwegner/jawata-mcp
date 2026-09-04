@@ -306,6 +306,20 @@ class DeclaredShapeHonestyTest {
      * <p>What survives is the guard's coverage question in its own test below, and the
      * three-line mutation that proves the backstop live: add a parameter to any delegate's
      * schema and it appears in its door's published schema without the door being touched.</p>
+     *
+     * <p><b>A REGRESSION LOCK from C6a onward, and labelled one rather than left to look
+     * stronger than it is.</b> All six routing doors now build their properties map through
+     * {@code KindedTool#withDelegateParameters}, which iterates the same {@code delegates()}
+     * this loop iterates — so as the code stands the assertion cannot fail, and {@code
+     * generate} was the last door for which it could. An audit found that and was right to.
+     * It is kept because the property it pins is one edit from being broken: a door that
+     * curates its own properties and forgets the backstop call is exactly what {@code inline}
+     * did, and what {@code data} and {@code hierarchy} still do until their lanes convert
+     * them. The rule this file applies, stated once in
+     * {@code TheRoutingTableIsTheKindListTest}: an assertion whose two sides are ONE
+     * expression a definitional step apart is deleted; one that is merely green today over a
+     * property a plausible edit would break is kept, labelled, and proved by making that
+     * edit.</p>
      */
     @Test
     @DisplayName("a parameter a delegate declares is published by its door, with no curation")

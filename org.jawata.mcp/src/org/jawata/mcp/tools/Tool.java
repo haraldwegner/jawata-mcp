@@ -86,12 +86,17 @@ public interface Tool {
      * A {@code kind} enum is a common shape — {@code find_quality_issue} publishes
      * {@code god_class}, {@code analyze} publishes {@code method} — and harvesting every
      * one of them into the operation namespace would let a cure step name a smell and be
-     * called runnable. That judgement is the REGISTRY'S policy, not a fact about the tool,
-     * and it stays there: see {@code ToolRegistry.publishedKindsOf}. This method answers
-     * "what do you dispatch on", never "may a cure name it".</p>
+     * called runnable. That judgement is a POLICY about the published surface, not a fact
+     * about the tool, and it lives on {@code OperationSurface.operationKindsOf} — moved
+     * there by Stage 6a's M8, out of a private method on {@code ToolRegistry} that a test
+     * had to build a whole registry to reach. This method answers "what do you dispatch
+     * on", never "may a cure name it".</p>
      *
-     * <p>{@code action} is not read. A lifecycle verb — apply, undo, plan — is not a
-     * transformation, and the one tool that publishes them is excluded by name upstream.</p>
+     * <p>{@code action} is not read here. A lifecycle verb — apply, undo, plan — is not a
+     * transformation. {@code refactoring} is the one tool that publishes them, and it
+     * OVERRIDES this method to return its own seven, because its schema also declares a
+     * {@code kind} enum belonging to one of those actions and the reader below would
+     * otherwise answer with another door's operations.</p>
      */
     default java.util.List<String> publishedKinds() {
         try {

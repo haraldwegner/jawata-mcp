@@ -64,14 +64,24 @@ class GenerateToolTest {
     }
 
     @Test
-    @DisplayName("schema lists all six kinds + accessorKind alias; requires kind")
+    @DisplayName("schema publishes every routed kind + the accessorKind alias; requires kind")
     @SuppressWarnings("unchecked")
     void schema_lists_kinds() {
         Map<String, Object> schema = tool.getInputSchema();
         Map<String, Object> props = (Map<String, Object>) schema.get("properties");
         List<String> kinds = (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
-        assertTrue(kinds.containsAll(List.of("constructor", "getters_setters", "equals_hashcode",
-            "tostring", "test_skeleton", "override_methods")));
+        // NO NAME LIST HERE ANY MORE (Stage 6a). The enum is publishedKinds(), which IS
+        // delegates().keySet(), so spelling the names out would put a second copy of the
+        // routing table in a test — the very thing the seam removes — and comparing the enum
+        // against a derived set would be comparing a value with itself.
+        //
+        // What is left that a derivation cannot fake is the COUNT. The name list this replaced
+        // held six of the seven: copy_class was added under it and never reached it, and
+        // because the assertion was containsAll it stayed green through the omission and would
+        // have stayed green at eight.
+        assertEquals(7, kinds.size(),
+            "seven kinds ship on generate; a change in the routing table must be a deliberate"
+                + " edit here rather than a silent one: " + kinds);
         assertTrue(props.containsKey("accessorKind"), "getters_setters accessor exposed as accessorKind");
         assertTrue(((List<String>) schema.get("required")).contains("kind"));
     }
