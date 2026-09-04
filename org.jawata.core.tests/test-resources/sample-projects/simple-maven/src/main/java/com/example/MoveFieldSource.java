@@ -13,8 +13,14 @@ public class MoveFieldSource {
     /** Static, and used from MoveFieldUser — the reference must travel with it. */
     public static final int SHARED_LIMIT = 42;
 
-    /** Instance state; moving this needs a receiver nobody has named. */
+    /** The receiver an instance move is rewritten through — named by the caller. */
+    private final MoveFieldTarget target = new MoveFieldTarget();
+
+    /** Instance state, private, so every access to it lives in this file. */
     private int instanceCount;
+
+    /** Not private, so its readers are outside this file's reach — the refused case. */
+    public int exposed;
 
     public int bump() {
         instanceCount++;

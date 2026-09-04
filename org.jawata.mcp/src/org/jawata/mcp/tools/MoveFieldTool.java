@@ -7,6 +7,27 @@ import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMember;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.Flags;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.dom.AST;
+import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
+import org.eclipse.jdt.core.dom.BodyDeclaration;
+import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.FieldAccess;
+import org.eclipse.jdt.core.dom.FieldDeclaration;
+import org.eclipse.jdt.core.dom.IVariableBinding;
+import org.eclipse.jdt.core.dom.Modifier;
+import org.eclipse.jdt.core.dom.SimpleName;
+import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
+import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
+import org.eclipse.jface.text.Document;
+import org.eclipse.text.edits.TextEdit;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.ltk.core.refactoring.Change;
+import org.jawata.mcp.refactoring.ChangeEngine;
+import java.util.ArrayList;
 import org.eclipse.jdt.internal.corext.codemanipulation.CodeGenerationSettings;
 import org.eclipse.jdt.internal.corext.refactoring.structure.MoveStaticMembersProcessor;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
@@ -28,25 +49,32 @@ import java.util.function.Supplier;
  * Routed from {@code shotgun_surgery} and {@code inappropriate_intimacy}, which are the
  * smells that say state is living in the wrong class.</p>
  *
- * <h2>THIS SHIPS THE STATIC HALF ONLY, and says so rather than pretending otherwise</h2>
+ * <h2>Two engines, because a static field and an instance field are not one problem</h2>
  *
  * <p>A STATIC field has a JDT engine behind it — {@link MoveStaticMembersProcessor}, the
  * IDE's own Move Static Members — which relocates the declaration and rewrites every
- * qualified reference across the workspace. That is the whole refactoring for a static
- * field, and it is what this does.</p>
+ * qualified reference across the workspace. No receiver is involved: the references name
+ * the owning type, and the engine renames it.</p>
  *
- * <p>An INSTANCE field has no engine, and it is not the same operation wearing a different
- * modifier. Moving {@code a.f} to another class means every read and write becomes
- * {@code a.<something>.f}, and NOTHING IN THE CODE SAYS WHAT {@code <something>} IS: the
- * source class may hold several fields of the destination's type, one, or none — and where
- * it holds none, the refactoring is impossible until somebody adds one. That choice is the
- * caller's, exactly as {@code move kind=method} takes a {@code target} naming the receiver.
- * Until this tool takes that parameter and rewrites the accesses, an instance field is
- * REFUSED with a message saying which part is missing.</p>
+ * <p>An INSTANCE field has no engine, because the operation needs something the code does
+ * not contain. Every access becomes {@code receiver.name}, and which field of the source
+ * class is that receiver is not derivable — there may be several of the destination's
+ * type, one, or none, and with none the refactoring is impossible until somebody adds one.
+ * So it is a PARAMETER, {@code target}, exactly as {@code move kind=method} takes one for
+ * the same reason, and as row 64 takes its boundary line. Guessing would produce code that
+ * compiles and is wrong, which is the only failure this operation can have.</p>
  *
- * <p>The refusal is deliberate and is not a silent gap: a tool that moved the declaration
- * and left the accesses would produce code that does not compile, and one that guessed the
- * receiver would produce code that compiles and is wrong.</p>
+ * <h2>The instance path is scoped to a PRIVATE field, and the boundary is real</h2>
+ *
+ * <p>A private field's accesses all live in its own file, so the move is one file's
+ * rewrite plus the declaration's arrival in another. A non-private field is read from
+ * places this call cannot see, and every one of those sites needs its own receiver derived
+ * there — a different operation. It is refused, pointing at {@code data
+ * kind=encapsulate_field} as the step that makes it movable.</p>
+ *
+ * <p>Where the destination is in another package the moved field is widened to public,
+ * because the source could not otherwise read it. That is a real consequence of the move
+ * and it is reported in the summary rather than done quietly.</p>
  */
 public class MoveFieldTool extends AbstractRefactoringTool {
 
@@ -77,6 +105,10 @@ public class MoveFieldTool extends AbstractRefactoringTool {
             "description", "Zero-based line of the field declaration."));
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of the field declaration."));
+        properties.put("target", Map.of("type", "string",
+            "description", "move kind=field: for an INSTANCE field, the name of the field "
+                + "in the source class that holds the destination instance — the receiver "
+                + "every access is rewritten through. Not needed for a static field."));
         properties.put("targetType", Map.of("type", "string",
             "description", "move kind=field: fully-qualified name of the EXISTING class "
                 + "the field moves to."));
@@ -115,19 +147,12 @@ public class MoveFieldTool extends AbstractRefactoringTool {
                         + (element == null ? "null" : element.getClass().getSimpleName()));
             }
 
+            IType declaring = field.getDeclaringType();
             if (!Flags.isStatic(field.getFlags())) {
-                return ToolResponse.invalidParameter("position",
-                    "'" + field.getElementName() + "' is an INSTANCE field, and moving one "
-                        + "needs something this call does not carry: every access becomes "
-                        + "`owner.<receiver>." + field.getElementName() + "`, and nothing in "
-                        + "the code says which field of the source class is that receiver — "
-                        + "there may be several, or none at all. Naming it is the caller's "
-                        + "choice, as `move kind=method` takes `target`. Static fields move "
-                        + "today; this half is not built. Moving fields into a NEW class is "
-                        + "extract kind=class, which does not need a receiver.");
+                return moveInstanceField(service, field, declaring,
+                    getStringParam(arguments, "target"), targetType, arguments);
             }
 
-            IType declaring = field.getDeclaringType();
             if (declaring != null && targetType.equals(declaring.getFullyQualifiedName())) {
                 return ToolResponse.invalidParameter("targetType",
                     "The field already lives in " + targetType + "; nothing to move.");
@@ -149,6 +174,219 @@ public class MoveFieldTool extends AbstractRefactoringTool {
             return runPreCheckedRefactoring(service, refactoring, "move_field", arguments);
         } catch (Exception e) {
             return ToolResponse.internalError(e);
+        }
+    }
+
+    /**
+     * Move an INSTANCE field through a receiver the caller names.
+     *
+     * <p>Every access becomes {@code receiver.name}, and nothing in the code says which
+     * field is the receiver — the source class may hold several of the destination's type,
+     * one, or none. So it is a parameter, exactly as {@code move kind=method} takes
+     * {@code target} and as row 64 takes its boundary line. Guessing would produce code
+     * that compiles and is wrong.</p>
+     *
+     * <p>SCOPED TO A PRIVATE FIELD, and the boundary is real rather than convenient. A
+     * private field's accesses all live in its own file, so this is one file's rewrite
+     * plus the declaration's arrival in another. A non-private field is read from places
+     * this call cannot see, and each of those needs its OWN receiver derived at its own
+     * site — a different operation, refused here rather than half-done.</p>
+     */
+    private ToolResponse moveInstanceField(IJdtService service, IField field, IType declaring,
+                                           String receiverName, String targetType,
+                                           JsonNode arguments) throws Exception {
+        if (!Flags.isPrivate(field.getFlags())) {
+            return ToolResponse.invalidParameter("position",
+                "'" + field.getElementName() + "' is not private, so it is read from places"
+                    + " this call cannot see, and each of those sites needs its own receiver"
+                    + " derived there. Encapsulate it first (data kind=encapsulate_field),"
+                    + " then move it.");
+        }
+        if (receiverName == null || receiverName.isBlank()) {
+            return ToolResponse.invalidParameter("target",
+                "moving an instance field rewrites every access to `<receiver>."
+                    + field.getElementName() + "`, and nothing in the code says which field"
+                    + " of " + (declaring == null ? "the class" : declaring.getElementName())
+                    + " is that receiver. Name it in `target`.");
+        }
+        IType destination = service.findType(targetType);
+        if (destination == null || destination.getCompilationUnit() == null) {
+            return ToolResponse.symbolNotFound(
+                "targetType '" + targetType + "' is not a source type in this workspace");
+        }
+
+        ICompilationUnit sourceCu = field.getCompilationUnit();
+        CompilationUnit sourceAst = parse(sourceCu);
+        FieldDeclaration declaration = declarationOf(sourceAst, field.getElementName());
+        if (declaration == null) {
+            return ToolResponse.symbolNotFound(
+                "could not locate the declaration of '" + field.getElementName() + "'");
+        }
+        IField receiver = declaring == null ? null : declaring.getField(receiverName);
+        if (receiver == null || !receiver.exists()) {
+            return ToolResponse.invalidParameter("target",
+                "'" + receiverName + "' is not a field of "
+                    + (declaring == null ? "the source class" : declaring.getElementName()));
+        }
+
+        // The moved field must be reachable from the source. Same package: package-private
+        // is enough. Different package: it has to be public, and that WIDENING is reported
+        // rather than done quietly — it is a real consequence of the move.
+        boolean samePackage = sourceCu.getParent().getElementName()
+            .equals(destination.getCompilationUnit().getParent().getElementName());
+
+        ASTRewrite sourceRewrite = ASTRewrite.create(sourceAst.getAST());
+        int rewritten = rewriteAccesses(sourceAst, field.getElementName(), receiverName,
+            sourceRewrite);
+        sourceRewrite.remove(declaration, null);
+
+        ICompilationUnit destinationCu = destination.getCompilationUnit();
+        CompilationUnit destinationAst = parse(destinationCu);
+        AbstractTypeDeclaration destinationType = typeNamed(destinationAst,
+            destination.getElementName());
+        if (destinationType == null) {
+            return ToolResponse.symbolNotFound(
+                "could not locate the body of " + targetType);
+        }
+        ASTRewrite destinationRewrite = ASTRewrite.create(destinationAst.getAST());
+        FieldDeclaration moved = (FieldDeclaration) ASTNode.copySubtree(
+            destinationAst.getAST(), declaration);
+        moved.modifiers().removeIf(m -> m instanceof Modifier mod
+            && (mod.isPrivate() || mod.isPublic() || mod.isProtected()));
+        if (!samePackage) {
+            moved.modifiers().add(0, destinationAst.getAST()
+                .newModifier(Modifier.ModifierKeyword.PUBLIC_KEYWORD));
+        }
+        ListRewrite members = destinationRewrite.getListRewrite(destinationType,
+            destinationType.getBodyDeclarationsProperty());
+        members.insertFirst(moved, null);
+
+        Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
+        edits.put((IFile) sourceCu.getResource(),
+            List.of(sourceRewrite.rewriteAST(
+                new Document(sourceCu.getSource()),
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(sourceAst))));
+        edits.put((IFile) destinationCu.getResource(),
+            List.of(destinationRewrite.rewriteAST(
+                new Document(destinationCu.getSource()),
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(destinationAst))));
+
+        String label = "move field " + field.getElementName() + " to " + targetType
+            + " through " + receiverName + " (" + rewritten + " access(es) rewritten"
+            + (samePackage ? "" : "; visibility widened to public — the destination is in"
+                + " another package, so the source could not otherwise read it") + ")";
+        Change change = ChangeEngine.fromFileEdits(label, edits);
+        // Wrapped so it goes through the SAME pipeline every other refactoring uses: the
+        // compile gate, the undo handle, the staged/applied contract. A cross-file edit
+        // that bypassed that would be the one place in the product where a rewrite is
+        // applied unverified.
+        return runPreCheckedRefactoring(service, new PreparedRefactoring(change, label),
+            "move_field", arguments);
+    }
+
+    /** Every read and write of the field becomes `receiver.field`. */
+    private static int rewriteAccesses(CompilationUnit ast, String fieldName,
+                                       String receiverName, ASTRewrite rewrite) {
+        List<ASTNode> sites = new ArrayList<>();
+        ast.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(SimpleName node) {
+                if (!fieldName.equals(node.getIdentifier())) {
+                    return true;
+                }
+                if (!(node.resolveBinding() instanceof IVariableBinding variable)
+                        || !variable.isField()) {
+                    return true;
+                }
+                if (node.getParent() instanceof org.eclipse.jdt.core.dom.VariableDeclarationFragment) {
+                    return true;   // the declaration itself, which is removed separately
+                }
+                // `this.f` is a FieldAccess; replace the whole access, not the name inside
+                // it, or the result reads `this.receiver.f` with the wrong receiver.
+                sites.add(node.getParent() instanceof FieldAccess access
+                    && access.getName() == node ? access : node);
+                return true;
+            }
+        });
+        AST factory = ast.getAST();
+        for (ASTNode site : sites) {
+            FieldAccess replacement = factory.newFieldAccess();
+            replacement.setExpression(factory.newSimpleName(receiverName));
+            replacement.setName(factory.newSimpleName(fieldName));
+            rewrite.replace(site, replacement, null);
+        }
+        return sites.size();
+    }
+
+    private static FieldDeclaration declarationOf(CompilationUnit ast, String name) {
+        List<FieldDeclaration> found = new ArrayList<>();
+        ast.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(FieldDeclaration node) {
+                for (Object fragment : node.fragments()) {
+                    if (fragment instanceof org.eclipse.jdt.core.dom.VariableDeclarationFragment f
+                            && name.equals(f.getName().getIdentifier())) {
+                        found.add(node);
+                    }
+                }
+                return true;
+            }
+        });
+        // One fragment only: `int a, b;` shares a declaration, and moving one of them means
+        // splitting it, which is a different edit than moving the whole line.
+        return found.size() == 1 && found.get(0).fragments().size() == 1 ? found.get(0) : null;
+    }
+
+    private static AbstractTypeDeclaration typeNamed(CompilationUnit ast, String name) {
+        for (Object type : ast.types()) {
+            if (type instanceof AbstractTypeDeclaration declaration
+                    && name.equals(declaration.getName().getIdentifier())) {
+                return declaration;
+            }
+        }
+        return null;
+    }
+
+    private static CompilationUnit parse(ICompilationUnit unit) {
+        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+        parser.setSource(unit);
+        parser.setResolveBindings(true);
+        parser.setBindingsRecovery(true);
+        return (CompilationUnit) parser.createAST(null);
+    }
+
+    /** A prepared change, presented as a refactoring so it uses the standard pipeline. */
+    private static final class PreparedRefactoring
+            extends org.eclipse.ltk.core.refactoring.Refactoring {
+
+        private final Change change;
+        private final String label;
+
+        PreparedRefactoring(Change change, String label) {
+            this.change = change;
+            this.label = label;
+        }
+
+        @Override
+        public String getName() {
+            return label;
+        }
+
+        @Override
+        public RefactoringStatus checkInitialConditions(
+                org.eclipse.core.runtime.IProgressMonitor pm) {
+            return new RefactoringStatus();
+        }
+
+        @Override
+        public RefactoringStatus checkFinalConditions(
+                org.eclipse.core.runtime.IProgressMonitor pm) {
+            return new RefactoringStatus();
+        }
+
+        @Override
+        public Change createChange(org.eclipse.core.runtime.IProgressMonitor pm) {
+            return change;
         }
     }
 }

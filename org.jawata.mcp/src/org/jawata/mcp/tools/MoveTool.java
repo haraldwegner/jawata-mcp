@@ -85,11 +85,15 @@ public class MoveTool extends AbstractTool {
             - field   — move a field to an EXISTING class, updating every reference.
                         Needs: filePath, line, column on the declaration, plus targetType
                         (the destination's fully-qualified name).
-                        STATIC fields only. An instance field is REFUSED, because moving
-                        one rewrites each access to `owner.<receiver>.name` and nothing in
-                        the code says which field is the receiver — that is the caller's
-                        choice and this kind does not yet take it. To move fields into a
-                        NEW class, use extract kind=class, which needs no receiver.
+                        A STATIC field needs no receiver: JDT's engine rewrites the
+                        qualified references. An INSTANCE field needs `target` — the
+                        field of the source class holding the destination instance —
+                        because every access becomes `receiver.name` and nothing in the
+                        code says which field that is. Instance moves are scoped to a
+                        PRIVATE field, whose accesses all live in one file; a non-private
+                        one is refused, since each outside reader needs its own receiver
+                        derived there (encapsulate it first). To move fields into a NEW
+                        class, use extract kind=class, which needs no receiver.
 
             Common: updateReferences (default true). IMPORTANT: ZERO-BASED coordinates.
             Applies by default; returns filesModified/diff/undoChangeId/summary.

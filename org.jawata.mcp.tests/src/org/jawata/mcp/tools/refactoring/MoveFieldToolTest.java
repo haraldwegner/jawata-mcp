@@ -104,15 +104,51 @@ class MoveFieldToolTest {
     }
 
     @Test
-    @DisplayName("an instance field is refused, and the refusal says what is missing")
-    void anInstanceFieldIsRefused() throws Exception {
+    @DisplayName("an instance field moves through the receiver the caller names")
+    void anInstanceFieldMovesThroughItsReceiver() throws Exception {
+        ObjectNode args = argsAt(lineOf("private int instanceCount"), 16);
+        args.put("target", "target");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "the move must run; got: " + r.getError());
+
+        String after = read(source);
+        assertFalse(after.contains("private int instanceCount"),
+            "the declaration left the source:\n" + after);
+        assertTrue(read(target).contains("instanceCount"),
+            "and arrived in the destination:\n" + read(target));
+        // EVERY access, not just the readable one: the increment is a write, and a rewrite
+        // that moved the field while leaving `instanceCount++` behind would not compile.
+        assertTrue(after.contains("target.instanceCount++"),
+            "the write is rewritten through the receiver:\n" + after);
+        assertTrue(after.contains("return target.instanceCount"),
+            "and so is the read:\n" + after);
+    }
+
+    @Test
+    @DisplayName("an instance field with no receiver named is refused, and says what is missing")
+    void anInstanceFieldWithoutAReceiverIsRefused() throws Exception {
         String before = read(source);
         ToolResponse r = tool.execute(argsAt(lineOf("private int instanceCount"), 16));
 
-        assertFalse(r.isSuccess(), "moving instance state needs a receiver nobody named");
+        assertFalse(r.isSuccess(), "nothing in the code says which field is the receiver");
         assertTrue(String.valueOf(r.getError()).contains("receiver"),
             "and the refusal must name the missing part rather than just decline: "
                 + r.getError());
+        assertEquals(before, read(source), "nothing may be written on a refusal");
+    }
+
+    @Test
+    @DisplayName("a non-private instance field is refused — its readers are out of reach")
+    void aNonPrivateInstanceFieldIsRefused() throws Exception {
+        String before = read(source);
+        ObjectNode args = argsAt(lineOf("public int exposed"), 15);
+        args.put("target", "target");
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(),
+            "a non-private field is read from places this call cannot see, and each site"
+                + " needs its own receiver derived there");
         assertEquals(before, read(source), "nothing may be written on a refusal");
     }
 
