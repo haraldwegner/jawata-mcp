@@ -57,7 +57,7 @@ class Stage6ForkDemonstrationStatusTest {
         Map.entry("24 Move Function (static)", "MapReduceForkSliceTest.java"),
         Map.entry("25 Move Statements into Function", ""),
         Map.entry("26 Move Statements to Callers", ""),
-        Map.entry("49 Replace Inline Code", ""),
+        Map.entry("49 Replace Inline Code", "MessagingForkSliceTest.java"),
         Map.entry("5 Combine Functions into Class", ""),
         Map.entry("48 Replace Function with Command", "MapReduceForkSliceTest.java"),
         Map.entry("64 Split Phase", "MapReduceForkSliceTest.java"),
@@ -89,8 +89,8 @@ class Stage6ForkDemonstrationStatusTest {
         }
         assertTrue(wrong.isEmpty(), String.join("\n  ", wrong));
 
-        assertEquals(5, claimed,
-            "FIVE rows of twelve are demonstrated on code we did not author. If that number"
+        assertEquals(6, claimed,
+            "SIX rows of twelve are demonstrated on code we did not author. If that number"
                 + " moved, this list is what says so — update it in the same commit as the"
                 + " slice, or the count and the reality drift apart, which is the state a"
                 + " C6 audit found and named.");
