@@ -20,15 +20,20 @@ import java.util.function.Supplier;
  */
 public class InlineTool extends AbstractTool {
 
-    private static final List<String> KINDS = List.of("method", "variable");
+    private static final List<String> KINDS = List.of("method", "variable", "class");
 
     private final InlineMethodTool method;
     private final InlineVariableTool variable;
+    private final InlineClassTool clazz;
 
     public InlineTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
         this.method = new InlineMethodTool(serviceSupplier, cache);
         this.variable = new InlineVariableTool(serviceSupplier, cache);
+        // Sprint 28d-rescue row 17. Fowler files Inline Class beside Inline Function:
+        // both fold something back into its only user when it stopped earning its own
+        // name.
+        this.clazz = new InlineClassTool(serviceSupplier, cache);
     }
 
     @Override
@@ -39,12 +44,20 @@ public class InlineTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Inline a method or a local variable at a caret (behaviour-preserving, reversible).
+            Inline a method, a local variable, or a whole class at a caret
+            (behaviour-preserving, reversible).
 
-            USAGE: inline(kind="<method|variable>", filePath=..., line=..., column=...)
+            USAGE: inline(kind="<method|variable|class>", filePath=..., line=..., column=...)
 
             - method   — inline all call sites of the method at the position.
             - variable — replace uses of the local variable at the position with its initializer.
+            - class    — fold a class into the SINGLE class that uses it, then delete it.
+                         Refuses when more than one class references it, when it has
+                         subtypes, when the user holds none or several fields of its
+                         type, when that field is assigned outside its own initializer,
+                         when it has a constructor with a body, or when a member name
+                         would collide. Each refusal names which. (find_quality_issue
+                         kind=lazy_class locates candidates.)
 
             IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
             filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
@@ -62,7 +75,7 @@ public class InlineTool extends AbstractTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", KINDS);
-        kind.put("description", "Inline a method or a local variable.");
+        kind.put("description", "Inline a method, a local variable, or a whole class.");
         properties.put("kind", kind);
         properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
@@ -92,6 +105,7 @@ public class InlineTool extends AbstractTool {
         return switch (kind) {
             case "method"   -> method.executeWithService(service, arguments);
             case "variable" -> variable.executeWithService(service, arguments);
+            case "class"    -> clazz.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
