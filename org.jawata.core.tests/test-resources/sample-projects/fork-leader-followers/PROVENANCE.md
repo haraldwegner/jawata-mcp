@@ -1,5 +1,13 @@
 # fork-leader-followers — a verbatim slice, not a fixture
 
+| Module | Path in the fork |
+|---|---|
+| `leader-followers` | `leader-followers/src/main/java` |
+
+The directory name here matches the module's, which is a coincidence rather than a rule —
+`fork-rate-limiting` comes from `rate-limiting-pattern`, and a review that guessed from the
+directory once reported every file as missing upstream. The table above is the answer.
+
 Copied byte-for-byte from `leader-followers/src/main/java` of
 https://github.com/iluwatar/java-design-patterns at pin `22a34127d0b08449c24cf7e230c04a097deca2f3`.
 MIT licensed (Copyright © 2014-2022 Ilkka Seppälä); the headers are retained.

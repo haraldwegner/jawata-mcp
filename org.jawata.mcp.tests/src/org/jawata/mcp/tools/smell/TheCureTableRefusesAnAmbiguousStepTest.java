@@ -41,49 +41,47 @@ class TheCureTableRefusesAnAmbiguousStepTest {
      */
     private static OperationRegistry theRealFrontDoors() {
         OperationRegistry registry = new OperationRegistry();
-        registry.register("refactor_to_pattern", List.of(
-            "inline_singleton", "compose_method", "replace_type_code_with_class",
-            "refactor_to_state", "refactor_to_command_dispatcher", "form_template_method",
-            "refactor_to_visitor", "replace_pattern_with_idiom",
-            "replace_constructor_with_factory", "replace_conditional_with_polymorphism"));
-        registry.register("extract", List.of(
-            "method", "variable", "constant", "interface", "superclass", "class",
-            "replace_inline_code"));
-        registry.register("move", List.of("class", "package", "method"));
-        registry.register("inline", List.of("method", "variable"));
+        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
+            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        java.util.function.Supplier<org.jawata.core.IJdtService> none = () -> null;
+        // EVERY door DERIVED, not five of six hand-listed. The apply_cleanup entry was
+        // already derived, with a comment saying a hand-written copy "cost a red suite"
+        // when row 60 shipped a kind the mirror had not been told about. Stage 6 then
+        // shipped ELEVEN kinds across extract, inline and move — and the mirror had not
+        // been told about any of them, so the same defect fired again on the same file,
+        // one tool over. A list that is right by construction cannot go stale; the
+        // comment beside the one derived entry was the whole fix and it was not applied
+        // to its neighbours.
+        for (org.jawata.mcp.tools.AbstractTool door : List.of(
+                new org.jawata.mcp.tools.RefactorToPatternTool(none, cache),
+                new org.jawata.mcp.tools.ExtractTool(none, cache),
+                new org.jawata.mcp.tools.MoveTool(none, cache),
+                new org.jawata.mcp.tools.InlineTool(none, cache),
+                new org.jawata.mcp.tools.HierarchyTool(none, cache),
+                new org.jawata.mcp.tools.ApplyCleanupTool(none, cache))) {
+            registry.register(door.getName(), publishedKindsOf(door));
+        }
         registry.register("data", List.of());
-        registry.register("hierarchy", List.of("up", "down"));
-        // DERIVED, NOT LISTED — and the difference cost a red suite. This was a
-        // hand-written copy of apply_cleanup's kinds, so row 60 shipped a kind,
-        // routed it, and broke a test that had no opinion about row 60: the
-        // mirror simply had not been told. That is the same defect shape the
-        // tool's own registry comment warns about, one level up.
-        //
-        // Read from the PUBLISHED schema, which is what a client sees and what
-        // the real registry harvests — the sibling test
-        // EveryShippedKindIsRoutedOrExplainedTest reads it the same way.
-        registry.register("apply_cleanup", publishedKindsOfApplyCleanup());
         return registry;
     }
 
-    private static List<String> publishedKindsOfApplyCleanup() {
-        org.jawata.mcp.tools.ApplyCleanupTool tool =
-            new org.jawata.mcp.tools.ApplyCleanupTool(
-                () -> null, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+    /** A door's kind enum, read from the schema a client would read. */
+    private static List<String> publishedKindsOf(org.jawata.mcp.tools.AbstractTool tool) {
         @SuppressWarnings("unchecked")
         java.util.Map<String, Object> properties =
             (java.util.Map<String, Object>) tool.getInputSchema().get("properties");
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> kindSchema =
-            (java.util.Map<String, Object>) properties.get("kind");
         List<String> kinds = new java.util.ArrayList<>();
-        for (Object value : (java.util.Collection<?>) kindSchema.get("enum")) {
-            kinds.add(String.valueOf(value));
+        for (String discriminator : List.of("kind", "direction", "action")) {
+            Object schema = properties.get(discriminator);
+            if (schema instanceof java.util.Map<?, ?> map
+                    && map.get("enum") instanceof java.util.Collection<?> values) {
+                values.forEach(v -> kinds.add(String.valueOf(v)));
+            }
         }
-        if (kinds.size() < 8) {
+        if (kinds.isEmpty()) {
             throw new IllegalStateException(
-                "PROOF OF LIFE: apply_cleanup must publish its kinds here, or this registry"
-                    + " mirrors nothing and the validation below proves nothing. Got: " + kinds);
+                "PROOF OF LIFE: " + tool.getName() + " publishes no kind enum, so this"
+                    + " registry mirrors nothing for it and the validation proves nothing");
         }
         return kinds;
     }

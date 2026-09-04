@@ -123,6 +123,10 @@ public class InlineTool extends AbstractTool {
         properties.put("accessorName", Map.of("type", "string",
             "description", "kind=middle_man: name for the accessor that exposes the delegate "
                 + "(default: the field's own name). Every rewritten call site reads it."));
+        properties.put("delegateField", Map.of("type", "string",
+            "description", "kind=middle_man: which field to stop forwarding to, when the "
+                + "class forwards to more than one. Required only then, and the refusal "
+                + "lists the candidates."));
         schema.put("properties", properties);
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of("kind"));
