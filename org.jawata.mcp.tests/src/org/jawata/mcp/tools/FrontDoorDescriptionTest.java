@@ -351,7 +351,7 @@ class FrontDoorDescriptionTest {
     }
 
     @Test
-    @DisplayName("M5's discriminator: none of the seven doors publishes a usage line of its own")
+    @DisplayName("M5's discriminator: no door that has adopted the seam publishes a usage line of its own")
     void noDoorWritesItsOwnUsageLine() {
         // THE CHECK THAT CANNOT PASS ON A NO-OP, and it took two tries to find one.
         //
@@ -363,9 +363,10 @@ class FrontDoorDescriptionTest {
         // C6a moved into this file, where its only reader always was.
         //
         // THIS TEST IS THE OTHER HALF, and it is the stronger one. A file-text check reads
-        // source; this reads what a CLIENT receives. Before M5, SIX of these seven doors
-        // published a hand-written usage line differing from the generated one, so this
-        // failed then. A door that writes one back publishes two, and fails again. Neither
+        // source; this reads what a CLIENT receives. Before M5, SIX of the SEVEN doors M5
+        // converted published a hand-written usage line differing from the generated one, so
+        // this failed then. (The loop now runs over eight: `data` adopted inside Stage 5 and
+        // is not part of that historical measurement.) A door that writes one back publishes two, and fails again. Neither
         // check subsumes the other: source could be clean while the published text was
         // assembled wrongly, and vice versa.
         //
@@ -383,7 +384,7 @@ class FrontDoorDescriptionTest {
         // population, which left refactor_to_pattern and apply_cleanup unnamed and the
         // count still wrong. A historical count nothing derives is a fact about a tree no
         // reader has; naming the revision is what makes this one checkable.
-        for (FrontDoor door : sevenDoors()) {
+        for (FrontDoor door : adoptedDoors()) {
             String described = door.getDescription();
             String generated =
                 FrontDoorDescription.ASSEMBLER.usageLine(door) + door.usageNote();
@@ -438,13 +439,24 @@ class FrontDoorDescriptionTest {
                     + generated + "\n  in: " + described);
         }
         // PROOF OF LIFE: an empty list would satisfy the loop.
-        assertEquals(7, sevenDoors().size(),
-            "M5 converts seven doors — the six that take both seams plus refactoring, which"
-                + " takes the description seam only");
+        assertEquals(8, adoptedDoors().size(),
+            "eight doors have adopted the description seam — the six Stage 6a converted,"
+                + " refactoring, which takes the description half only, and data, which"
+                + " adopted inside Stage 5 as it grew past its single operation. hierarchy"
+                + " becomes the ninth inside Stage 7 and change_method_signature the tenth"
+                + " inside Stage 4; each must be ADDED here deliberately, because a door"
+                + " that adopts the seam and never reaches this loop is asserted by nothing");
     }
 
-    /** The seven doors M5 converts, in the order the plan's step table names them. */
-    private static List<FrontDoor> sevenDoors() {
+    /**
+     * Every door that has adopted the description seam, in the order it adopted.
+     *
+     * <p>It was {@code sevenDoors()} — a name that dated the moment Stage 5 converted the
+     * eighth. The list is hand-written and stays so until Stage 9's M6c derives the door
+     * population; what this method must not become is a list that quietly lags the doors,
+     * which is why the count below is written out rather than taken from the list itself.</p>
+     */
+    private static List<FrontDoor> adoptedDoors() {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         return List.of(
             new ExtractTool(() -> null, cache),
@@ -453,7 +465,8 @@ class FrontDoorDescriptionTest {
             new RefactorToPatternTool(() -> null, cache),
             new org.jawata.mcp.tools.codegen.GenerateTool(() -> null, cache),
             new ApplyCleanupTool(() -> null, cache),
-            new RefactoringTool(() -> null, cache));
+            new RefactoringTool(() -> null, cache),
+            new DataTool(() -> null, cache));
     }
 
     private static int occurrences(String text, String needle) {
