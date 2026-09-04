@@ -5,6 +5,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.data.EncapsulateFieldTool;
+import org.jawata.mcp.tools.data.HideDelegateTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,10 +41,15 @@ import java.util.function.Supplier;
 public class DataTool extends AbstractRefactoringTool implements KindedTool {
 
     private final EncapsulateFieldTool encapsulateField;
+    private final HideDelegateTool hideDelegate;
 
     public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
         this.encapsulateField = new EncapsulateFieldTool(serviceSupplier, changeCache);
+        // Row 16. The largest population any Stage 5 row answers: message_chains reports 273
+        // findings on this repository, measured, and its own message already names this
+        // refactoring as the cure.
+        this.hideDelegate = new HideDelegateTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -66,7 +72,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     @Override
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
-        for (KindDelegate delegate : List.of(encapsulateField)) {
+        for (KindDelegate delegate : List.of(encapsulateField, hideDelegate)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -140,6 +146,14 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
             return ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
-        return ((EncapsulateFieldTool) delegate).executeWithService(service, arguments);
+        return switch (kind) {
+            case "encapsulate_field" -> encapsulateField.executeWithService(service, arguments);
+            case "hide_delegate" -> hideDelegate.executeWithService(service, arguments);
+            // Unreachable: the lookup above already refused an unrouted kind. It is here so
+            // that a delegate added to the routing table and forgotten HERE fails loudly at
+            // the call rather than being dispatched to whichever branch happened to be last.
+            default -> ToolResponse.invalidParameter("kind",
+                "'" + kind + "' is in the routing table and has no dispatch branch");
+        };
     }
 }
