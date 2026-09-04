@@ -66,4 +66,41 @@ public interface KindedTool extends Tool {
     default List<String> publishedKinds() {
         return List.copyOf(delegates().keySet());
     }
+
+    /**
+     * The opening paragraph — what this door is for, before any kind is named.
+     *
+     * <p>Defaulted empty so that a door adopts the description seam when its own step
+     * converts it, rather than every door having to move at once. A door that has not
+     * adopted keeps its own {@code getDescription()} and never asks the assembler.</p>
+     */
+    default String preamble() {
+        return "";
+    }
+
+    /**
+     * What follows the discriminator in the generated {@code USAGE:} line — the common
+     * parameters, as a leading-comma fragment such as {@code ", filePath=..., line=..."}.
+     */
+    default String usageTail() {
+        return "";
+    }
+
+    /**
+     * The per-kind block, as the door writes it today.
+     *
+     * <p><b>TEMPORARY.</b> This is the one region still hand-written, and it exists so that
+     * the algorithm can move without the published text moving in the same step. When each
+     * delegate's {@code kindSummary()} carries its own bullet, this is deleted and the block
+     * is projected from {@code delegates()} — at which point a kind cannot ship undescribed,
+     * which is the defect the whole seam is aimed at.</p>
+     */
+    default String kindBlock() {
+        return "";
+    }
+
+    /** The closing paragraphs — the contract notes every door repeats in its own words. */
+    default String footer() {
+        return "";
+    }
 }

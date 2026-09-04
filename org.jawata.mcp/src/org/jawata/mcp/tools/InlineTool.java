@@ -112,9 +112,94 @@ public class InlineTool extends AbstractTool implements KindedTool {
         return java.util.Set.copyOf(structural);
     }
 
+    /**
+     * ASSEMBLED, not written (Stage 6a, M4).
+     *
+     * <p>The door supplies its four regions and the shared assembler joins them, generating
+     * the {@code USAGE:} line from the discriminator and the routing table. What that closes
+     * is the line's two failure modes: a kind that ships without reaching it, and a door
+     * naming {@code kind} when it dispatches on something else.</p>
+     *
+     * <p>{@link #LEGACY_DESCRIPTION} below is the text as it stood before this step, kept
+     * ONLY so a test can assert the assembly reproduces it byte for byte. It is deleted with
+     * the per-kind block at M5 — the step that also makes the bullets a projection of the
+     * delegates instead of prose the door repeats.</p>
+     */
     @Override
     public String getDescription() {
+        return FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
         return """
+            Inline a method, a local variable, a whole class, a subclass into its
+            parent, or a middle man's forwarding (behaviour-preserving, reversible).""";
+    }
+
+    @Override
+    public String usageTail() {
+        return ", filePath=..., line=..., column=...";
+    }
+
+    @Override
+    public String kindBlock() {
+        return """
+            - method   — inline all call sites of the method at the position.
+            - variable — replace uses of the local variable at the position with its initializer.
+            - class    — fold a class into the SINGLE class that uses it, then delete it.
+                         Refuses when more than one class references it, when it has
+                         subtypes, when the user holds none or several fields of its
+                         type, when that field is assigned outside its own initializer,
+                         when it has a constructor with a body, or when a member name
+                         would collide. Each refusal names which. (find_quality_issue
+                         kind=lazy_class locates candidates.)
+            - subclass — fold a subclass that carries NO DISTINCTION into its parent:
+                         its members move up, every reference to it becomes a reference
+                         to the parent, and it is deleted. Refuses when the subclass
+                         actually distinguishes something — it overrides a parent
+                         method, an instanceof or a cast names its type, or its
+                         constructor fixes an argument instead of forwarding — because
+                         replacing a distinction with a field is a design decision.
+                         Also refuses a subclass with subtypes (that is Collapse
+                         Hierarchy), an abstract parent, a parent outside this
+                         workspace, and a colliding member name.
+            - middle_man — stop a class forwarding: every method whose whole body is
+                         one call on one of its own fields, passing its parameters
+                         through unchanged, is deleted and its call sites become
+                         `middleMan.<accessor>().method(args)`. The accessor is
+                         generated if the class has none — that exposure IS the
+                         refactoring, and the summary says it happened. Refuses a class
+                         with no forwarder at all. A class forwarding to SEVERAL
+                         fields is NOT refused — name the one to remove with
+                         `delegateField` and repeat; the fork's own GiantController is
+                         why the old blanket refusal was wrong. A method that
+                         transforms the result is left alone: that is behaviour, not
+                         forwarding. (find_quality_issue kind=middle_man finds them.)""";
+    }
+
+    @Override
+    public String footer() {
+        return """
+            IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
+            filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
+
+            Requires load_project to be called first.
+            """;
+    }
+
+    /**
+     * THE TEXT AS IT STOOD BEFORE M4 — a golden, and temporary.
+     *
+     * <p>Its only reader is the test asserting that the assembled description equals it byte
+     * for byte. That is what makes this step a MOVE of the algorithm rather than a rewrite of
+     * the published contract: without it, "the assembler produces a description" would be
+     * true of any description at all.</p>
+     *
+     * <p>Deleted at M5 together with {@link #kindBlock()}, when the bullets stop being prose
+     * the door repeats and become a projection of its delegates.</p>
+     */
+    static final String LEGACY_DESCRIPTION = """
             Inline a method, a local variable, a whole class, a subclass into its
             parent, or a middle man's forwarding (behaviour-preserving, reversible).
 
@@ -157,7 +242,6 @@ public class InlineTool extends AbstractTool implements KindedTool {
 
             Requires load_project to be called first.
             """;
-    }
 
     @Override
     public Map<String, Object> getInputSchema() {
