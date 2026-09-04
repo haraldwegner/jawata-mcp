@@ -66,6 +66,22 @@ class Stage6PerRowContractTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // DISPOSE THE PREVIOUS COPY BEFORE TAKING ANOTHER. Both loops below call this method
+        // once per row, and the helper REPLACES its service without disposing the old one —
+        // it disposes only the last, in afterEach. So twelve rows left eleven live projects in
+        // the JVM-shared Eclipse workspace, every one of them linked to the SAME directory the
+        // next iteration copies over. A name form resolves at WORKSPACE scope, so it can be
+        // answered by one of those stale handles; the positional path never can, because it is
+        // handed the file. Seen once, in the C6 gate run: row 5 failed with "No compilation
+        // unit at .../ReadingFunctions.java" under four concurrent shards, while the same
+        // commit ran green on that shard alone and green on a second full run. The helper's
+        // own javadoc names this class — "leaking them ... the substrate of the
+        // load-dependent lookup-failure flakes" — and closed it for the single-load case only.
+        // This is the per-iteration half, fixed here rather than in the shared helper because
+        // that file is read by every test in the suite.
+        if (service != null) {
+            service.dispose();
+        }
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
         mapper = new ObjectMapper();
@@ -100,6 +116,33 @@ class Stage6PerRowContractTest {
 
     /** One row: which door, the arguments that drive it, and the files it should touch. */
     private record Row(String label, String door, ObjectNode args, List<String> touches) {}
+
+    /** One row addressed by NAME instead of by coordinates. */
+    private record Named(String label, String door, String kind, String symbol, String extra,
+                         String extraValue, String gone) {}
+
+    /**
+     * The five rows whose target HAS no name — a statement range (49, 64's boundary), a
+     * statement (25, 26), a local (58). Declared here rather than left implicit, because
+     * {@link #theTwoTablesAccountForEveryRow()} subtracts this list from the row table, and a
+     * membership it cannot see is a row it would report as uncovered.
+     *
+     * <p><b>THIS LIST IS HAND-WRITTEN AND HAS AN EXPIRY.</b> Name-addressability is a fact
+     * about each KIND, and today no door publishes it: it lives as prose in three schema
+     * strings ({@code ExtractTool}, {@code InlineTool}, {@code MoveTool}) and
+     * {@code FqnTarget.materializePosition} never reads {@code kind} at all. When the seam
+     * stage gives {@code KindDelegate} a name-addressability method beside
+     * {@code isStructural()}, this list becomes derivable — the named half is
+     * {@code rows()} filtered by it and this one is the complement — and it should be
+     * DELETED rather than kept in step by hand. Until then it is a fourth copy of a fact
+     * nothing owns, and that is the reason it carries this paragraph.</p>
+     */
+    private static final List<String> NO_NAME_FORM = List.of("25", "26", "49", "58", "64");
+
+    /** A row's identity is its Fowler number; the prose after it differs between the tables. */
+    private static String rowNumber(String label) {
+        return label.substring(0, label.indexOf(' '));
+    }
 
     private AbstractTool doorOf(String name) {
         return switch (name) {
@@ -200,6 +243,38 @@ class Stage6PerRowContractTest {
             List.of("TempHolder.java")));
 
         return rows;
+    }
+
+    /**
+     * The rows that publish a name form. SEVEN of the twelve — a C6 audit found the comment
+     * here claiming seven over a list of six, which is the arithmetic nobody checks because
+     * both halves read plausibly. The other FIVE are {@link #NO_NAME_FORM}, whose targets have
+     * no name at all; the contract's "every other value one the finding already carries" is
+     * what covers them. This list is exhaustive rather than convenient, and 7 + 5 = 12 is
+     * checked by {@link #theTwoTablesAccountForEveryRow()} rather than asserted in prose.
+     */
+    private List<Named> namedRows() {
+        return List.of(
+            new Named("17 Inline Class", "inline", "class", "com.example.InlineMe",
+                null, null, "InlineMe.java"),
+            new Named("38 Remove Subclass", "inline", "subclass", "com.example.PlainCharge",
+                null, null, "PlainCharge.java"),
+            new Named("36 Remove Middle Man", "inline", "middle_man",
+                "com.example.MiddleManPerson", null, null, null),
+            new Named("23 Move Field", "move", "field",
+                "com.example.MoveFieldSource#SHARED_LIMIT",
+                "targetType", "com.example.MoveFieldTarget", null),
+            new Named("24 Move Function", "move", "method",
+                "com.example.StaticHome#roundUp",
+                "targetType", "com.example.StaticDestination", null),
+            new Named("48 Function to Command", "extract", "function_to_command",
+                "com.example.Scoring#score", "newTypeName", "ScoreCommand", null),
+            // ROW 5 WAS MISSING FROM THIS LIST while the comment above said seven — a C6
+            // audit did the arithmetic nobody else had. It belongs here: combine_functions
+            // needs only a filePath, and a typeName materialises one, so an agent holding
+            // the class's name can reach it without opening the file to count lines.
+            new Named("5 Combine Functions", "extract", "combine_functions",
+                "com.example.ReadingFunctions", "newTypeName", "ReadingQueries", null));
     }
 
     @Test
@@ -331,35 +406,7 @@ class Stage6PerRowContractTest {
     @Test
     @DisplayName("every row with a NAMED target runs from its name, with no coordinates")
     void everyNamedRowRunsFromItsName() throws Exception {
-        // SEVEN of the twelve, and the list below has seven rows — a C6 audit found this
-        // comment claiming seven over a list of six, which is the arithmetic nobody checks
-        // because both halves read plausibly. The other FIVE (25, 26, 49, 58, 64) target a
-        // statement range, a statement or a local, none of which HAS a name; the contract's
-        // "every other value one the finding already carries" is what covers them. This list
-        // is exhaustive rather than convenient, and 7 + 5 = 12 is the check.
-        record Named(String label, String door, String kind, String symbol, String extra,
-                     String extraValue, String gone) {}
-        List<Named> named = List.of(
-            new Named("17 Inline Class", "inline", "class", "com.example.InlineMe",
-                null, null, "InlineMe.java"),
-            new Named("38 Remove Subclass", "inline", "subclass", "com.example.PlainCharge",
-                null, null, "PlainCharge.java"),
-            new Named("36 Remove Middle Man", "inline", "middle_man",
-                "com.example.MiddleManPerson", null, null, null),
-            new Named("23 Move Field", "move", "field",
-                "com.example.MoveFieldSource#SHARED_LIMIT",
-                "targetType", "com.example.MoveFieldTarget", null),
-            new Named("24 Move Function", "move", "method",
-                "com.example.StaticHome#roundUp",
-                "targetType", "com.example.StaticDestination", null),
-            new Named("48 Function to Command", "extract", "function_to_command",
-                "com.example.Scoring#score", "newTypeName", "ScoreCommand", null),
-            // ROW 5 WAS MISSING FROM THIS LIST while the comment above said seven — a C6
-            // audit did the arithmetic nobody else had. It belongs here: combine_functions
-            // needs only a filePath, and a typeName materialises one, so an agent holding
-            // the class's name can reach it without opening the file to count lines.
-            new Named("5 Combine Functions", "extract", "combine_functions",
-                "com.example.ReadingFunctions", "newTypeName", "ReadingQueries", null));
+        List<Named> named = namedRows();
 
         List<String> problems = new ArrayList<>();
         for (Named row : named) {
@@ -391,5 +438,44 @@ class Stage6PerRowContractTest {
             "these rows publish a name form and must accept one; an agent that knows a"
                 + " symbol's name should go straight to it:\n  "
                 + String.join("\n  ", problems));
+    }
+
+    @Test
+    @DisplayName("both tables assert their own size, and together they account for all twelve rows")
+    void theTwoTablesAccountForEveryRow() throws Exception {
+        // THE CHECK THAT WAS A COMMENT. Both tables in this file are hand-written, and until
+        // this test existed neither said how long it was — every other test loops over
+        // whatever it is handed, so a row deleted from either one left the suite green over a
+        // shorter list. The comment read "7 + 5 = 12 is the check" and no code performed it.
+        List<String> all = rows().stream().map(r -> rowNumber(r.label())).toList();
+        List<String> byName = namedRows().stream().map(n -> rowNumber(n.label())).toList();
+
+        assertEquals(12, all.size(),
+            "Stage 6 shipped twelve rows and this table drives all of them: " + all);
+        assertEquals(7, byName.size(),
+            "seven rows can be run by naming the symbol, with no line and column: " + byName);
+        assertEquals(5, NO_NAME_FORM.size(),
+            "five rows target something with no name: " + NO_NAME_FORM);
+        assertEquals(all.size(), byName.size() + NO_NAME_FORM.size(),
+            "7 + 5 = 12 — the arithmetic the file's own comment claimed and never ran");
+
+        // AND THE PARTITION, which no size assertion can see: three lists can have the right
+        // lengths while naming different rows. A row is in exactly one of the two halves, and
+        // between them they cover the table with nothing left over and nothing invented.
+        assertEquals(List.of(), all.stream().filter(n -> java.util.Collections.frequency(all, n) > 1).distinct().toList(),
+            "a row number appears once; a duplicate would let one row stand in for a missing one");
+        assertEquals(List.of(), byName.stream().filter(NO_NAME_FORM::contains).toList(),
+            "a row cannot both publish a name form and have no name");
+        // ONE set equality, not two filters. The earlier form asserted the two directions
+        // separately — nothing left over, then nothing invented — and the second of those was
+        // DEAD: JUnit stops at the first failure, so it was only ever reached once the
+        // preceding assertions had passed, and those entail it. Twelve distinct rows, two
+        // disjoint halves summing to twelve, every row covered: the halves cannot then name
+        // anything the table does not. It read as a distinct check and could never report one.
+        assertEquals(new java.util.TreeSet<>(all),
+            new java.util.TreeSet<>(java.util.stream.Stream
+                .concat(byName.stream(), NO_NAME_FORM.stream()).toList()),
+            "the two halves must name exactly the rows this file drives — nothing left over,"
+                + " nothing invented");
     }
 }
