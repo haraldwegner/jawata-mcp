@@ -11,9 +11,16 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Sprint 16b/A — parametric front door for inline-method / inline-variable.
- * Both delegates take the identical {@code {filePath, line, column}} input, so
- * this is a clean uniform collapse selected by {@code kind}.
+ * Parametric front door for the FIVE inline refactorings: {@code method},
+ * {@code variable}, {@code class} (row 17), {@code subclass} (row 38) and
+ * {@code middle_man} (row 36).
+ *
+ * <p>It began as a uniform collapse over two delegates that took the identical
+ * {@code {filePath, line, column}} input. That is no longer true and saying so was
+ * misleading: {@code middle_man} takes {@code delegateField} and {@code accessorName},
+ * and those parameters exist precisely BECAUSE the inputs are not identical — a class
+ * forwarding to several fields needs the caller to name which one. The kind still
+ * selects the delegate; the input shape is per-kind and documented per-kind below.</p>
  *
  * <p>Replaces {@code inline_method} / {@code inline_variable}; apply/undo
  * contract unchanged.</p>
@@ -51,13 +58,31 @@ public class InlineTool extends AbstractTool {
         return "inline";
     }
 
+    /**
+     * Three of the five kinds DELETE A TYPE or change what a hierarchy contains.
+     *
+     * <p>{@code class} folds a class away, {@code subclass} removes one from a hierarchy
+     * and reparents every reference, {@code middle_man} changes what a class exposes to
+     * every caller it had. {@code method} and {@code variable} rewrite inside one body.</p>
+     *
+     * <p>THIS DOOR HAD NO DECLARATION AT ALL until a C6 audit looked, so the
+     * architect-involvement gate had been silent on every one of them — including
+     * {@code subclass}, whose entire job is to remove a class from a hierarchy. An absent
+     * override is indistinguishable from a considered "nothing here is structural", which
+     * is why it went unnoticed through the stage that added all three.</p>
+     */
+    @Override
+    public java.util.Set<String> structuralKinds() {
+        return java.util.Set.of("class", "subclass", "middle_man");
+    }
+
     @Override
     public String getDescription() {
         return """
-            Inline a method, a local variable, or a whole class at a caret
-            (behaviour-preserving, reversible).
+            Inline a method, a local variable, a whole class, a subclass into its
+            parent, or a middle man's forwarding (behaviour-preserving, reversible).
 
-            USAGE: inline(kind="<method|variable|class>", filePath=..., line=..., column=...)
+            USAGE: inline(kind="<method|variable|class|subclass|middle_man>", filePath=..., line=..., column=...)
 
             - method   — inline all call sites of the method at the position.
             - variable — replace uses of the local variable at the position with its initializer.
@@ -85,10 +110,9 @@ public class InlineTool extends AbstractTool {
                          generated if the class has none — that exposure IS the
                          refactoring, and the summary says it happened. Refuses a class
                          with no forwarder at all. A class forwarding to SEVERAL
-                         fields is handled ONE FIELD AT A TIME — name it with
-                         `delegateField`; the refusal that used to meet this shape
-                         was wrong, and the fork's own GiantController is what
-                         showed it. A method that
+                         fields is NOT refused — name the one to remove with
+                         `delegateField` and repeat; the fork's own GiantController is
+                         why the old blanket refusal was wrong. A method that
                          transforms the result is left alone: that is behaviour, not
                          forwarding. (find_quality_issue kind=middle_man finds them.)
 

@@ -92,6 +92,12 @@ class RemoveSubclassToolTest {
         Path user = pkg.resolve("PlainChargeUser.java");
         assertTrue(read(user).contains("new PlainCharge("),
             "PROOF OF LIFE: the user must construct the subclass before this runs");
+        // AND the parent must carry the dangling link before the run, or the assertion that
+        // it is gone afterwards passes over a fixture that never had one. A C6 audit named
+        // this: a negative with no proof of life is satisfied by absence.
+        assertTrue(read(parent).contains("{@link PlainCharge}"),
+            "PROOF OF LIFE: the parent's javadoc must link the subclass this row deletes:\n"
+                + read(parent));
 
         ToolResponse r = removeSubclass(subclass, "public class PlainCharge", 13);
         assertTrue(r.isSuccess(), "the fold must run; got: " + r.getError());
@@ -110,8 +116,16 @@ class RemoveSubclassToolTest {
         assertFalse(afterParent.contains("{@link PlainCharge}"),
             "the parent's dangling link to the deleted subclass is unwrapped:\n"
                 + afterParent);
-        assertTrue(afterParent.contains("links PlainCharge,"),
-            "and its name survives as prose, so the sentence still reads:\n" + afterParent);
+        // AN INDEPENDENT PROSE MENTION, not the unwrap's own output. A C6 audit found this
+        // pair asserting a distinction the fixture could not make: `PlainCharge` appeared
+        // exactly once, inside the link, so "its name survives as prose" was matching the
+        // text the unwrap had just written. The fixture now says PlainCharge a second time
+        // in an ordinary sentence, and THAT is what must be left alone.
+        assertTrue(afterParent.contains("names\n * PlainCharge again as ORDINARY PROSE")
+                || afterParent.contains("PlainCharge again as ORDINARY PROSE"),
+            "prose naming the same type is NOT rewritten — a rewriter that edited comments"
+                + " would be guessing which mentions meant the type, and guessing wrong"
+                + " inside a comment is invisible to every later gate:\n" + afterParent);
 
         String afterUser = read(user);
         // The declared type AND the constructor call. A rewrite that repointed one and not

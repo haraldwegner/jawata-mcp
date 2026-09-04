@@ -149,7 +149,8 @@ public class MoveTool extends AbstractTool {
         kind.put("type", "string");
         kind.put("enum", kinds());
         kind.put("description",
-            "Move a class (by caret), a package (by name), or a method onto another type.");
+            "Move a class or a method (by caret or by name), a package (by name), a FIELD onto another type, or STATEMENTS across a call boundary in either direction "
+                + "(statements_into_function / statements_to_callers).");
         properties.put("kind", kind);
 
         properties.put("filePath", Map.of("type", "string", "description", "class/method: path to the source file."));
@@ -233,7 +234,12 @@ public class MoveTool extends AbstractTool {
      */
     @Override
     public java.util.Set<String> structuralKinds() {
-        return java.util.Set.of("method");
+        // A member or a type changing owner is a hierarchy change; a class or package move
+        // rewrites every import that named it. Moving STATEMENTS is not on this list: it
+        // rewrites call SITES but changes no signature and no hierarchy, which is the
+        // criterion. A C6 audit asked why the two were treated alike, and this is the
+        // answer written down rather than left to be re-derived.
+        return java.util.Set.of("method", "field", "class", "package");
     }
 
 }

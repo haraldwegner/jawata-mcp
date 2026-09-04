@@ -11,7 +11,11 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Sprint 16b/A — parametric front door for the four LTK extract refactorings.
+ * Parametric front door for ELEVEN extract refactorings. Four wrap an LTK engine
+ * (method, variable, constant, interface); the rest are Sprint 28d-rescue rows built
+ * here — superclass, class, and the Fowler rows 5, 48, 58, 64 and the replace-inline-code
+ * path on {@code method}.
+ *
  * Each delegate self-validates its required params in {@code executeWithService},
  * so a flat schema (only {@code kind} + {@code filePath} required) is safe; the
  * per-kind params are documented and validated by the delegate.
@@ -108,7 +112,9 @@ public class ExtractTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Extract a method, variable, constant, or interface (behaviour-preserving, reversible).
+            Extract a method, variable, constant, interface, superclass or class; combine functions
+            into a class; split a function into phases; turn a function into a command;
+            replace a temp with a query (behaviour-preserving, reversible).
 
             USAGE: extract(kind="<kind>", filePath=..., ...)
 
@@ -300,16 +306,28 @@ public class ExtractTool extends AbstractTool {
         return delegate.executeWithService(service, arguments);
     }
     /**
-     * Extracting a SUPERCLASS or an INTERFACE changes the hierarchy; extracting a
-     * method, a variable or a constant does not.
+     * The criterion is {@link Tool#structuralKinds()}'s own: does the kind change a
+     * SIGNATURE or a HIERARCHY?
      *
-     * <p>The architect gate carried these two names itself, in a set beside its list of
-     * tool names. Same defect one level down: a kind list in another package cannot know
-     * when this tool's kinds change.</p>
+     * <p>{@code superclass} and {@code interface} change the hierarchy. {@code class},
+     * {@code combine_functions} and {@code function_to_command} all introduce a TYPE and
+     * rewrite call sites into it — {@code new ScoreCommand(x).execute()} is not the
+     * signature {@code score(x)} was. {@code split_phase} generates a carrier record and
+     * two methods where one stood.</p>
+     *
+     * <p>{@code method}, {@code variable}, {@code constant} and {@code temp_to_query} add
+     * a private member and change no caller's contract.</p>
+     *
+     * <p>This listed TWO until a C6 audit checked it against the criterion. Five Stage 6
+     * kinds had been added under it without anyone re-reading the sentence, and the
+     * architect gate was silent on every one — the same defect the javadoc below already
+     * described one level up, repeated one level down: a kind list cannot know when the
+     * kinds change.</p>
      */
     @Override
     public java.util.Set<String> structuralKinds() {
-        return java.util.Set.of("superclass", "interface");
+        return java.util.Set.of("superclass", "interface", "class",
+            "combine_functions", "function_to_command", "split_phase");
     }
 
 }

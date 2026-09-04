@@ -57,9 +57,17 @@ final class RowParity {
      * left holding.
      *
      * <p>The source rather than a staged diff, and for the reason {@link #recipeRow} gives:
-     * two of the twelve are recipes with no half-applied state to preview, and pinning ten
-     * rows one way and two another would make the batteries incomparable. What is pinned is
-     * therefore the OUTCOME — which is also the thing a caller actually receives.</p>
+     * ONE of the twelve is a recipe with no half-applied state to preview, and pinning
+     * eleven rows one way and one another would make the batteries incomparable. What is
+     * pinned is therefore the OUTCOME — which is also the thing a caller actually
+     * receives.</p>
+     *
+     * <p>This said TWO until a C6 audit counted them. Row 36 was PLANNED as a recipe —
+     * inline each forwarder, then expose the delegate — and shipped as a single prepared
+     * change instead, because the exposure has to be decided before any forwarder goes
+     * rather than after. Nothing recorded the change of shape, and the sentence went on
+     * describing the plan. Row 58 is the only recipe, and it is the only row that refuses
+     * {@code auto_apply:false}.</p>
      *
      * <p>Files are pinned in the order given, each behind a header naming it, so a row that
      * edits three files fails on the one that moved rather than on "something differs". A

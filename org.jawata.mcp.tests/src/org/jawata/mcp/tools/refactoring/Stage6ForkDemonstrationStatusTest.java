@@ -100,8 +100,26 @@ class Stage6ForkDemonstrationStatusTest {
                 continue;
             }
             claimed++;
-            if (!Files.isRegularFile(root.resolve(row.getValue()))) {
+            Path slice = root.resolve(row.getValue());
+            if (!Files.isRegularFile(slice)) {
                 wrong.add(row.getKey() + " claims " + row.getValue() + ", which is not there");
+                continue;
+            }
+            // AND THAT THE FILE ACTUALLY CARRIES THIS ROW. Existence alone was all this
+            // checked until a C6 audit named it: six of the slices are shared by two to
+            // four rows each, so MapReduceForkSliceTest could lose its row-58 method and
+            // this would stay green while claiming the row is demonstrated. The row number
+            // is what a shared file must mention — every slice's @DisplayName opens with
+            // it — so the check is cheap and the convention is already kept.
+            String number = row.getKey().split(" ")[0];
+            try {
+                if (!Files.readString(slice).contains("row " + number)) {
+                    wrong.add(row.getKey() + " claims " + row.getValue() + ", which exists"
+                        + " but mentions no \"row " + number + "\" — a shared slice that"
+                        + " lost this row's test would read exactly like this");
+                }
+            } catch (java.io.IOException e) {
+                wrong.add(row.getKey() + ": could not read " + row.getValue() + " — " + e);
             }
         }
         assertTrue(wrong.isEmpty(), String.join("\n  ", wrong));
