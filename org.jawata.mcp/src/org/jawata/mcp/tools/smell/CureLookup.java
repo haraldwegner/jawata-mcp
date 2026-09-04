@@ -106,7 +106,7 @@ public final class CureLookup {
             // never built the application still renders these sentences — so the pattern
             // front door's own list stays as the standing fallback, exactly as CureTier
             // reads the union rather than the registry alone.
-            return org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds().contains(operation)
+            return org.jawata.mcp.tools.RefactorToPatternTool.patternKinds().contains(operation)
                 ? "refactor_to_pattern kind=" + operation
                 : operation;
         }

@@ -154,11 +154,19 @@ public class ToolRegistry {
     }
 
     /**
-     * The kinds a parametric front door publishes, read off its own schema.
+     * The kinds a parametric front door publishes AND that are operations a cure may name.
      *
-     * <p>Read rather than copied, for the reason the front-door honesty test exists: a
-     * second home for one fact is a fact that goes stale. A tool with no {@code kind}
-     * enum simply publishes none, which is the ordinary case.</p>
+     * <p><b>This is now a POLICY, not a reader.</b> Stage 6a (M1) moved the schema walk onto
+     * {@link Tool#publishedKinds()}, where the object answers for itself; what stays here is
+     * the half that was never a fact about the tool — the registry's judgement about WHICH
+     * tools' kinds are operations. A reporting tool knows its own kinds perfectly well and
+     * has no opinion about whether a cure step may name them, because that is not its
+     * question.</p>
+     *
+     * <p>The two were one method, and the copies that grew beside it copied both halves.
+     * They are separable because they answer different questions, and separating them is
+     * what lets the filter be replaced later — see {@code REFACTORING_FRONT_DOORS} — without
+     * touching how a tool reports its own dispatch.</p>
      */
     static List<String> publishedKindsOf(Tool tool) {
         // ONLY THE TOOLS WHOSE KINDS ARE OPERATIONS. A `kind` enum is a common shape:
@@ -176,46 +184,12 @@ public class ToolRegistry {
             // own NAME as an operation, one line up in register().
             return List.of();
         }
-        try {
-            Object props = tool.getInputSchema().get("properties");
-            if (!(props instanceof Map<?, ?> properties)) {
-                return List.of();
-            }
-            // ALL THREE SPELLINGS, and any collection. A front door's discriminator is
-            // called `kind` on most tools, `direction` on `hierarchy` and `action` on
-            // `refactoring`; reading only `kind` meant hierarchy's up and down were not
-            // operations at all, so stage 7's five rows would land on a tool whose
-            // operations a cure cannot name. The honesty guard learned to read all three
-            // in this same stage — and it also found apply_cleanup publishing its enum
-            // as a Set, which every List-typed reader skipped in silence.
-            for (String discriminator : List.of("kind", "direction")) {
-                Object schema = properties.get(discriminator);
-                if (!(schema instanceof Map<?, ?> discriminatorSchema)) {
-                    continue;
-                }
-                Object values = discriminatorSchema.get("enum");
-                if (!(values instanceof java.util.Collection<?> enumeration)) {
-                    continue;
-                }
-                List<String> kinds = new java.util.ArrayList<>();
-                for (Object value : enumeration) {
-                    if (value instanceof String s) {
-                        kinds.add(s);
-                    }
-                }
-                return List.copyOf(kinds);
-            }
-            // `action` is deliberately NOT read: a lifecycle verb (apply, undo, plan) is
-            // not a transformation a cure step can name, and LIFECYCLE_FRONT_DOOR below
-            // records the one tool that would otherwise have supplied them.
-            return List.of();
-        } catch (RuntimeException e) {
-            // A schema this malformed is a defect the schema tests catch loudly; it must
-            // not take registration down with it.
-            log.warn("could not read published kinds of {}: {}", tool.getName(), e.toString());
-            return List.of();
-        }
+        // AND THE TOOL ANSWERS THE REST. Everything below this line used to walk the
+        // tool's schema from out here; it is now Tool.publishedKinds(), so a tool that
+        // changes how it declares its dispatch changes one place.
+        return tool.publishedKinds();
     }
+
 
     /**
      * Register multiple tools.

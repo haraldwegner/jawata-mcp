@@ -87,7 +87,7 @@ public final class CureTier {
         // still refuses a step nothing anywhere publishes — which is the only thing
         // this derivation is entitled to conclude.
         java.util.Set<String> published = new java.util.LinkedHashSet<>(
-            org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds());
+            org.jawata.mcp.tools.RefactorToPatternTool.patternKinds());
         published.addAll(org.jawata.mcp.refactoring.OperationRegistry.theRegistry().all());
         return derive(kind, List.copyOf(published));
     }

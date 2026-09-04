@@ -100,7 +100,7 @@ class CureTierTest {
         // answer was no.
 
         // (1) BROKEN FIRST — the registry loses the one step switch_statements needs.
-        List<String> without = new ArrayList<>(RefactorToPatternTool.publishedKinds());
+        List<String> without = new ArrayList<>(RefactorToPatternTool.patternKinds());
         assertTrue(without.remove("replace_conditional_with_polymorphism"),
             "the registry must actually contain the step this test removes, or the"
                 + " 'broken' run is broken for a different reason than intended");

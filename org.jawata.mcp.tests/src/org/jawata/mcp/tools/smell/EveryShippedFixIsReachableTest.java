@@ -50,7 +50,7 @@ class EveryShippedFixIsReachableTest {
         // because none is a refactor_to_pattern kind.
         for (String[] route : ROUTES) {
             assertFalse(
-                org.jawata.mcp.tools.RefactorToPatternTool.publishedKinds().contains(route[1]),
+                org.jawata.mcp.tools.RefactorToPatternTool.patternKinds().contains(route[1]),
                 "PROOF OF LIFE: '" + route[1] + "' is deliberately NOT a pattern kind —"
                     + " if it were, this test would prove nothing about the widening");
         }

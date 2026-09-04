@@ -56,7 +56,7 @@ public class RefactorToPatternTool extends AbstractTool {
      * own source, and a second spelling of it elsewhere would be the copy that
      * goes stale when a kind ships.</p>
      */
-    public static List<String> publishedKinds() {
+    public static List<String> patternKinds() {
         return KINDS;
     }
 
