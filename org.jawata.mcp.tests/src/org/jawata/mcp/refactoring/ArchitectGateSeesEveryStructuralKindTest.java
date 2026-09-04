@@ -48,22 +48,10 @@ class ArchitectGateSeesEveryStructuralKindTest {
                 new ExtractTool(() -> null, new RefactoringChangeCache()),
                 new InlineTool(() -> null, new RefactoringChangeCache()),
                 new MoveTool(() -> null, new RefactoringChangeCache()))) {
-            registry.register(tool.getName(), publishedKinds(tool), tool.isMechanical(),
+            registry.register(tool.getName(), tool.publishedKinds(), tool.isMechanical(),
                 tool.isStructural(), tool.structuralKinds());
         }
         return registry;
-    }
-
-    /** The kinds the tool's own schema publishes — the same list production harvests. */
-    @SuppressWarnings("unchecked")
-    private static List<String> publishedKinds(Tool tool) {
-        Object properties = tool.getInputSchema().get("properties");
-        if (properties instanceof java.util.Map<?, ?> map
-                && map.get("kind") instanceof java.util.Map<?, ?> kind
-                && kind.get("enum") instanceof java.util.Collection<?> kinds) {
-            return new ArrayList<>((java.util.Collection<String>) kinds);
-        }
-        return List.of();
     }
 
     @Test

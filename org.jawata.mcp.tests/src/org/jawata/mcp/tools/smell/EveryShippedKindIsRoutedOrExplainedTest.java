@@ -58,20 +58,6 @@ class EveryShippedKindIsRoutedOrExplainedTest {
     // shipped would have shielded exactly the kind the sprint touched. A C6 audit found
     // that, and it was right: an exemption list has to be about what was NOT worked on.
 
-    private static List<String> publishedKindsOf(org.jawata.mcp.tools.AbstractTool tool) {
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> properties =
-            (java.util.Map<String, Object>) tool.getInputSchema().get("properties");
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> kindSchema =
-            (java.util.Map<String, Object>) properties.get("kind");
-        List<String> kinds = new ArrayList<>();
-        for (Object value : (java.util.Collection<?>) kindSchema.get("enum")) {
-            kinds.add(String.valueOf(value));
-        }
-        return kinds;
-    }
-
     @Test
     @DisplayName("each kind on the four reached front doors is named by a cure, or carries a reason")
     void everyCleanupKindIsRoutedOrExplained() {
@@ -94,7 +80,7 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         int examined = 0;
         List<String> silent = new ArrayList<>();
         for (org.jawata.mcp.tools.AbstractTool tool : doors) {
-            for (String kind : publishedKindsOf(tool)) {
+            for (String kind : tool.publishedKinds()) {
                 String qualified = OperationRegistry.qualify(tool.getName(), kind);
                 examined++;
                 if (PRE_EXISTING.contains(qualified)

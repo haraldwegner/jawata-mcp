@@ -59,25 +59,27 @@ class TheCureTableRefusesAnAmbiguousStepTest {
                 new org.jawata.mcp.tools.InlineTool(none, cache),
                 new org.jawata.mcp.tools.HierarchyTool(none, cache),
                 new org.jawata.mcp.tools.ApplyCleanupTool(none, cache))) {
-            registry.register(door.getName(), publishedKindsOf(door));
+            registry.register(door.getName(), kindsOrFail(door));
         }
         registry.register("data", List.of());
         return registry;
     }
 
-    /** A door's kind enum, read from the schema a client would read. */
-    private static List<String> publishedKindsOf(org.jawata.mcp.tools.AbstractTool tool) {
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> properties =
-            (java.util.Map<String, Object>) tool.getInputSchema().get("properties");
-        List<String> kinds = new java.util.ArrayList<>();
-        for (String discriminator : List.of("kind", "direction", "action")) {
-            Object schema = properties.get(discriminator);
-            if (schema instanceof java.util.Map<?, ?> map
-                    && map.get("enum") instanceof java.util.Collection<?> values) {
-                values.forEach(v -> kinds.add(String.valueOf(v)));
-            }
-        }
+    /**
+     * A door's kind enum — ASKED OF THE DOOR (Stage 6a, M2).
+     *
+     * <p>This copy read {@code action} as well as {@code kind} and {@code direction}, which
+     * none of the six doors below publishes — only the lifecycle door does, and it is not in
+     * the list — so that third spelling never fired. It also ACCUMULATED across
+     * discriminators where the door returns at the first one present; no door here declares
+     * two, so the two agree. Both differences were latent, and both are gone with the copy.</p>
+     *
+     * <p>The emptiness guard below is NOT part of the copy and stays: it is this test's own
+     * proof of life, and it is the reason a door that silently stopped publishing would fail
+     * here rather than quietly mirror nothing.</p>
+     */
+    private static List<String> kindsOrFail(org.jawata.mcp.tools.AbstractTool tool) {
+        List<String> kinds = tool.publishedKinds();
         if (kinds.isEmpty()) {
             throw new IllegalStateException(
                 "PROOF OF LIFE: " + tool.getName() + " publishes no kind enum, so this"

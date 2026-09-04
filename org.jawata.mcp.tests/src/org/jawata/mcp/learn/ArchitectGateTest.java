@@ -51,25 +51,13 @@ class ArchitectGateTest {
                     new org.jawata.mcp.refactoring.RefactoringChangeCache()),
                 new org.jawata.mcp.tools.MoveTool(() -> null,
                     new org.jawata.mcp.refactoring.RefactoringChangeCache()))) {
-            registry.register(tool.getName(), publishedKindsOf(tool), tool.isMechanical(),
+            registry.register(tool.getName(), tool.publishedKinds(), tool.isMechanical(),
                 tool.isStructural(), tool.structuralKinds());
         }
         registry.register("format", java.util.List.of(), false, false, java.util.Set.of());
         registry.register("rename_symbol", java.util.List.of(), true, false,
             java.util.Set.of());
         return registry;
-    }
-
-    /** The kinds a tool's own schema publishes. */
-    @SuppressWarnings("unchecked")
-    private static java.util.List<String> publishedKindsOf(org.jawata.mcp.tools.Tool tool) {
-        Object properties = tool.getInputSchema().get("properties");
-        if (properties instanceof java.util.Map<?, ?> map
-                && map.get("kind") instanceof java.util.Map<?, ?> kind
-                && kind.get("enum") instanceof java.util.Collection<?> kinds) {
-            return new java.util.ArrayList<>((java.util.Collection<String>) kinds);
-        }
-        return java.util.List.of();
     }
 
     private static final ArchitectGate GATE = new ArchitectGate(500, wiredRegistry());

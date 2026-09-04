@@ -1,5 +1,10 @@
 package org.jawata.mcp.tools.refactoring;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
@@ -11,14 +16,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * THE C9 PER-TOOL CONTRACT, checked against what the tools actually publish.
@@ -54,19 +51,6 @@ class Stage6ShippedCountTest {
         service = helper.loadProjectCopy("simple-maven");
     }
 
-    /** A door's kind enum, read from the schema a client reads. */
-    private static List<String> publishedKindsOf(AbstractTool tool) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> properties =
-            (Map<String, Object>) tool.getInputSchema().get("properties");
-        List<String> kinds = new ArrayList<>();
-        Object kind = properties.get("kind");
-        if (kind instanceof Map<?, ?> map && map.get("enum") instanceof Collection<?> values) {
-            values.forEach(v -> kinds.add(String.valueOf(v)));
-        }
-        return kinds;
-    }
-
     @Test
     @DisplayName("the three Stage 6 doors publish exactly the kind counts C9 contracts for")
     void theKindCountsAreWhatThePlanAssigns() {
@@ -77,7 +61,7 @@ class Stage6ShippedCountTest {
         doors.put("move", new MoveTool(() -> service, cache));
 
         Map<String, Integer> counted = new LinkedHashMap<>();
-        doors.forEach((name, door) -> counted.put(name, publishedKindsOf(door).size()));
+        doors.forEach((name, door) -> counted.put(name, door.publishedKinds().size()));
 
         assertEquals(Map.of("extract", 11, "inline", 5, "move", 6), counted,
             "the plan's C9 clause names a count per tool and says why a ceiling would not"
@@ -86,6 +70,6 @@ class Stage6ShippedCountTest {
                 + " without reaching a delegate still counts, and a kind that reaches a"
                 + " delegate without reaching the enum does not. Counted: " + counted
                 + ", kinds: " + doors.entrySet().stream()
-                    .map(e -> e.getKey() + "=" + publishedKindsOf(e.getValue())).toList());
+                    .map(e -> e.getKey() + "=" + e.getValue().publishedKinds()).toList());
     }
 }
