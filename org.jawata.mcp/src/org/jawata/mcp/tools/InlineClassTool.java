@@ -24,7 +24,6 @@ import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
 import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jface.text.Document;
-import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.CompositeChange;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
@@ -32,6 +31,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.CheckedChange;
 import org.jawata.mcp.refactoring.JdtRefactoringEngine;
+import org.jawata.mcp.refactoring.PreparedRefactoring;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.refactoring.atoms.DeleteAtom;
 
@@ -370,40 +370,5 @@ public class InlineClassTool extends AbstractRefactoringTool {
         parser.setResolveBindings(true);
         parser.setBindingsRecovery(true);
         return (CompilationUnit) parser.createAST(null);
-    }
-
-    /** A prepared change, presented as a refactoring so it uses the standard pipeline. */
-    private static final class PreparedRefactoring
-            extends org.eclipse.ltk.core.refactoring.Refactoring {
-
-        private final Change change;
-        private final String label;
-
-        PreparedRefactoring(Change change, String label) {
-            this.change = change;
-            this.label = label;
-        }
-
-        @Override
-        public String getName() {
-            return label;
-        }
-
-        @Override
-        public org.eclipse.ltk.core.refactoring.RefactoringStatus checkInitialConditions(
-                org.eclipse.core.runtime.IProgressMonitor pm) {
-            return new org.eclipse.ltk.core.refactoring.RefactoringStatus();
-        }
-
-        @Override
-        public org.eclipse.ltk.core.refactoring.RefactoringStatus checkFinalConditions(
-                org.eclipse.core.runtime.IProgressMonitor pm) {
-            return new org.eclipse.ltk.core.refactoring.RefactoringStatus();
-        }
-
-        @Override
-        public Change createChange(org.eclipse.core.runtime.IProgressMonitor pm) {
-            return change;
-        }
     }
 }

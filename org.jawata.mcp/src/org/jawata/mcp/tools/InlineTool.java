@@ -20,11 +20,13 @@ import java.util.function.Supplier;
  */
 public class InlineTool extends AbstractTool {
 
-    private static final List<String> KINDS = List.of("method", "variable", "class");
+    private static final List<String> KINDS =
+        List.of("method", "variable", "class", "subclass");
 
     private final InlineMethodTool method;
     private final InlineVariableTool variable;
     private final InlineClassTool clazz;
+    private final RemoveSubclassTool subclass;
 
     public InlineTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -34,6 +36,9 @@ public class InlineTool extends AbstractTool {
         // both fold something back into its only user when it stopped earning its own
         // name.
         this.clazz = new InlineClassTool(serviceSupplier, cache);
+        // Row 38. Remove Subclass is the same fold one level down: a class that is
+        // not earning its name, except that its name is a place in a hierarchy.
+        this.subclass = new RemoveSubclassTool(serviceSupplier, cache);
     }
 
     @Override
@@ -58,6 +63,16 @@ public class InlineTool extends AbstractTool {
                          when it has a constructor with a body, or when a member name
                          would collide. Each refusal names which. (find_quality_issue
                          kind=lazy_class locates candidates.)
+            - subclass — fold a subclass that carries NO DISTINCTION into its parent:
+                         its members move up, every reference to it becomes a reference
+                         to the parent, and it is deleted. Refuses when the subclass
+                         actually distinguishes something — it overrides a parent
+                         method, an instanceof or a cast names its type, or its
+                         constructor fixes an argument instead of forwarding — because
+                         replacing a distinction with a field is a design decision.
+                         Also refuses a subclass with subtypes (that is Collapse
+                         Hierarchy), an abstract parent, a parent outside this
+                         workspace, and a colliding member name.
 
             IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
             filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
@@ -75,7 +90,8 @@ public class InlineTool extends AbstractTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", KINDS);
-        kind.put("description", "Inline a method, a local variable, or a whole class.");
+        kind.put("description", "Inline a method, a local variable, a whole class, or a"
+            + " subclass into its parent.");
         properties.put("kind", kind);
         properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
@@ -106,6 +122,7 @@ public class InlineTool extends AbstractTool {
             case "method"   -> method.executeWithService(service, arguments);
             case "variable" -> variable.executeWithService(service, arguments);
             case "class"    -> clazz.executeWithService(service, arguments);
+            case "subclass" -> subclass.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
