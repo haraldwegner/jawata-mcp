@@ -101,7 +101,12 @@ public final class MemberScope {
         // inside the member, hand back the ORIGINAL tree untouched; if any lies outside,
         // this rewrite genuinely reaches past the member the caller named, and the honest
         // answer is to refuse rather than to break it or to widen silently.
-        if (movesCode(inside) || movesCode(outside)) {
+        // ONLY what lies INSIDE decides. The first version also refused when a move sat
+        // wholly outside the named member, which is over-broad — nothing outside is
+        // copied, so an outside pair cannot be split by anything done here — and it made
+        // the refusal message wrong, since that move crosses no boundary. A move whose
+        // source IS inside lands in `inside`, so the straddling case is still caught.
+        if (movesCode(inside)) {
             return outside.isEmpty()
                 ? Result.of(edit)
                 : Result.cannotConfine(

@@ -129,6 +129,22 @@ class EveryRowIsCallableFromItsFindingTest {
     }
 
     @Test
+    @DisplayName("the published list of kinds that refuse a position matches what they DO")
+    void thePublishedListMatchesBehaviour() {
+        // The list in apply_cleanup's description cannot be derived — whether a rewrite
+        // emits a move is a property of the edit tree, not of the kind. So it is bound to
+        // behaviour here: the rows this class measures as REFUSES must be exactly the
+        // kinds the tool tells callers will refuse.
+        assertEquals(new java.util.TreeSet<>(org.jawata.mcp.tools.ApplyCleanupTool
+                .POSITION_REFUSING_KINDS),
+            new java.util.TreeSet<>(java.util.List.of(
+                "guard_clauses", "consolidate_conditional", "loop_to_pipeline",
+                "slide_declaration")),
+            "the published list and the per-row expectations below have drifted apart;"
+                + " one of them is now lying to a caller");
+    }
+
+    @Test
     @DisplayName("row 52 guard_clauses")
     void guardClauses() throws Exception {
         assertPositionConfines("guard_clauses", "GuardClauseTargets.java",
@@ -181,6 +197,6 @@ class EveryRowIsCallableFromItsFindingTest {
     @DisplayName("row 34 remove_dead_code")
     void removeDeadCode() throws Exception {
         assertPositionConfines("remove_dead_code", "DeadCodeTargets.java",
-            "used", "obsolete", Narrowing.REFUSES);
+            "used", "obsolete", Narrowing.CONFINES);
     }
 }

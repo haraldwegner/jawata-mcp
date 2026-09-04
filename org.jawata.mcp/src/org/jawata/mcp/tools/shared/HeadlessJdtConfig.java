@@ -87,6 +87,7 @@ public final class HeadlessJdtConfig {
             // statement rules have, and both tools carry parity goldens that would need
             // re-recording with a divergence entry. They are outside Stage 3 and were
             // left rather than swept in at the end of it.
+            // Code-template store: without one, CodeGeneration.get*BodyContent
             // returns null and SelfEncapsulateFieldRefactoring's fallback path
             // hits an upstream bug (a bare Assignment added where a Statement
             // is required). Registering the IDE-default stub bodies makes the

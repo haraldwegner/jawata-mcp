@@ -115,6 +115,21 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
 
     static final List<String> KINDS = List.copyOf(RULES.keySet());
 
+    /**
+     * Kinds whose rewrite MOVES code, so a caller's position cannot narrow it to one
+     * member — {@code MemberScope} refuses those with a reason rather than splitting a
+     * linked pair of edits.
+     *
+     * <p>Hand-written, because whether a rewrite emits a move is a property of the EDIT
+     * TREE it produces on a given file, not of the kind — nothing static derives it. So it
+     * is bound to behaviour the only way it can be: {@code
+     * EveryRowIsCallableFromItsFindingTest} measures every row and asserts that the set
+     * which refuses equals this list. A kind that starts or stops moving code turns that
+     * test red instead of leaving this sentence quietly wrong.</p>
+     */
+    public static final List<String> POSITION_REFUSING_KINDS = List.of(
+        "guard_clauses", "consolidate_conditional", "loop_to_pipeline", "slide_declaration");
+
     public ApplyCleanupTool(Supplier<IJdtService> serviceSupplier,
                             RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
@@ -152,11 +167,13 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
                           — just the member named, which is how a finding about ONE
                             method is answered without rewriting the whole file around
                             it. The symbol form resolves to the same position.
-                            REFUSED for a rewrite that MOVES code past that member, and
-                            five kinds do: guard_clauses, consolidate_conditional,
-                            loop_to_pipeline, slide_declaration, remove_dead_code. A
-                            move is a linked pair of edits and half of one is not a
-                            smaller change, so the refusal says so instead.
+                            REFUSED for a rewrite that MOVES code past that member —
+                            a move is a linked pair of edits and half of one is not a
+                            smaller change, so the refusal says so instead. The kinds
+                            that do: """
+            + String.join(", ", POSITION_REFUSING_KINDS)
+            + """
+.
 
             KINDS:
 """
