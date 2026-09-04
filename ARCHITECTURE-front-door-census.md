@@ -53,9 +53,16 @@ in the architecture's prose were wrong, in opposite directions.
 4. **`change_method_signature` holds no delegates and publishes no kind list.** It is not a
    front door; Stage 4 creates one.
 5. **Structural declaration is not uniform, and the role's fourth method must account for
-   it.** Three doors override `structuralKinds()` (per kind), two override `isStructural()`
-   (per tool), and **four override neither** — `apply_cleanup`, `generate`, `data`,
-   `refactoring`.
+   it.** Over all TEN rows above: **three** override `structuralKinds()` (per kind) —
+   `extract`, `move`, `inline`; **three** override `isStructural()` (per tool) —
+   `refactor_to_pattern`, `hierarchy`, **`change_method_signature`**; and **four override
+   neither** — `apply_cleanup`, `generate`, `data`, `refactoring`. 3 + 3 + 4 = 10.
+
+   *An earlier version of this line read "three / two / four", which sums to nine over a
+   population of ten: it silently dropped `change_method_signature`, whose own row in the
+   table above records `isStructural()` at :892. The table was right and the summary of it
+   was wrong — which is the very defect this file exists to stop, committed in the file that
+   stops it. Both other documents then hardened the omission into an explicit "ten".*
 6. **`refactor_to_pattern` carries a second reader**, `public static publishedKinds()`, which
    migration step M1 must retire or rename in the same step: a static method cannot coexist
    with an inherited instance method of the same erasure.

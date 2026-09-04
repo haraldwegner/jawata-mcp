@@ -157,11 +157,13 @@ public interface KindDelegate {
 }
 ```
 
-**The fourth method is a `default false`, and the census is why.** Measured across the ten
-doors (`ARCHITECTURE-front-door-census.md`): **three** override `structuralKinds()` — a
-PER-KIND fact — **two** override `isStructural()` — a WHOLE-TOOL fact — and **four override
-neither**. An earlier draft made it an abstract method on the role, which assumed one shape
-and was wrong for six doors out of ten.
+**The fourth method is a `default false`, and the census is why.** Structural-ness is
+declared three different ways across the doors — per KIND on some, per TOOL on others, and
+**nowhere at all on several**. The per-door split is in
+`ARCHITECTURE-front-door-census.md` and is deliberately not restated here; an earlier draft
+did restate it, got the partition wrong by dropping a door, and hardened the error into two
+documents. An abstract fourth method on the role assumes ONE shape and is wrong for every
+door that declares it another way, which is most of them.
 
 With the default, each case falls out correctly and one of them is the design's best single
 win:
