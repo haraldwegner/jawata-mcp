@@ -115,6 +115,14 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
             "methodName", Map.of(
                 "type", "string",
                 "description", "Name for the new method"
+            ),
+            "replaceDuplicates", Map.of(
+                "type", "boolean",
+                "description", "Also rewrite every OTHER occurrence of the selected "
+                    + "statements in the same type to call the new method (default TRUE — "
+                    + "Fowler's Replace Inline Code with Function Call). The engine matches "
+                    + "on structure AND resolved bindings, so it never rewrites code that "
+                    + "merely looks alike. Set false to extract only the selection."
             )
         ));
         schema.put("required", List.of("filePath", "startLine", "startColumn", "endLine", "endColumn", "methodName"));
@@ -184,6 +192,22 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
             org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(cu, null));
         refactoring.setMethodName(methodName);
         refactoring.setVisibility(Modifier.PRIVATE);
+        // Sprint 28d-rescue row 49 — Replace Inline Code with Function Call, and the plan
+        // was right that it might be a setter on an engine already wrapped here. It was:
+        // this asks the engine to find every OTHER occurrence of the selected statements in
+        // the same type and rewrite it to call the new method too.
+        //
+        // ON BY DEFAULT, and that is the decision worth stating. The alternative is an
+        // opt-in, and a diligence option costs the caller a decision they have no
+        // information to make: they cannot see the other occurrences, which is precisely
+        // why they are worth finding. An extract that leaves three copies of the code it
+        // just named has not done the refactoring, it has done a third of it.
+        //
+        // It is safe to default because the engine's own matcher decides: it replaces only
+        // occurrences whose statements are structurally identical AND whose names resolve
+        // to the same bindings, and it refuses the whole extraction rather than guessing.
+        // Set replaceDuplicates=false to extract exactly the selection and nothing else.
+        boolean replaceDuplicates = getBooleanParam(arguments, "replaceDuplicates", true);
 
         RefactoringStatus status = refactoring.checkAllConditions(new NullProgressMonitor());
         if (status.hasError()) {
@@ -197,12 +221,24 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
                     + "JDT's Extract Method rules apply) and retry. No files were modified."));
         }
 
+        // AFTER the conditions, and that ordering is not a style choice. The engine finds
+        // the duplicates while checking final conditions and resets this flag as it goes, so
+        // a value set beforehand is overwritten and the engine's own default governs. Set
+        // it earlier and BOTH settings produce the same output — which is what the control
+        // test caught: the parameter was published, accepted, echoed back, and inert.
+        refactoring.setReplaceDuplicates(replaceDuplicates);
+
         Change change = refactoring.createChange(new NullProgressMonitor());
 
         Map<String, Object> extras = new LinkedHashMap<>();
         extras.put("filePath", service.getPathUtils().formatPath(path));
         extras.put("methodName", methodName);
         extras.put("signature", refactoring.getSignature());
+        // The number the caller could not have counted for themselves, and the reason
+        // replaceDuplicates defaults on: seeing "3 other occurrences" is how they learn the
+        // code they selected was not one place.
+        extras.put("otherOccurrences", refactoring.getNumberOfDuplicates());
+        extras.put("replaceDuplicates", replaceDuplicates);
         if (status.hasWarning()) {
             extras.put("warnings", statusMessages(status));
         }
