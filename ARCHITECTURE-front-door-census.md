@@ -1,7 +1,7 @@
 # Front-door census — measured, not asserted
 
 **Produced 2026-09-04 by migration prerequisite M0**, against the workspace at
-`d8320848`. Every row was read with `inspect(kind=type_members, typeName=…)` through
+HEAD, and re-derived independently by two fresh-context audits since. Every row was read with `inspect(kind=type_members, typeName=…)` through
 JAWATA; nothing here is inferred, recalled or copied from another document.
 
 **This file is the single source for per-door shape.** `ARCHITECTURE-front-door-kinds.md`
