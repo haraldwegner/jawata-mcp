@@ -56,7 +56,21 @@ import java.util.stream.Collectors;
  * to the initial-conditions parse), so this uses
  * {@link AbstractRefactoringTool#runPreCheckedRefactoring}.</p>
  */
-public class MoveMethodTool extends AbstractRefactoringTool {
+public class MoveMethodTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code move kind=method} — the static half included, by design. */
+    @Override
+    public String kindName() {
+        return "method";
+    }
+
+    /** Structural: the method's receiver changes, so every call site's shape changes. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public MoveMethodTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);

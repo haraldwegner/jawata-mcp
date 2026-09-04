@@ -77,7 +77,21 @@ import java.util.function.Supplier;
  * because the source could not otherwise read it. That is a real consequence of the move
  * and it is reported in the summary rather than done quietly.</p>
  */
-public class MoveFieldTool extends AbstractRefactoringTool {
+public class MoveFieldTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code move kind=field}. */
+    @Override
+    public String kindName() {
+        return "field";
+    }
+
+    /** Structural: the field's owner changes, and every access is rewritten through it. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public MoveFieldTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

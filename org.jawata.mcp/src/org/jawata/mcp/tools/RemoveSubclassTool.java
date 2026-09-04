@@ -90,7 +90,25 @@ import java.util.function.Supplier;
  * The parent's API grows by exactly the members that moved, and the response says so —
  * that widening is the price of the fold, and it should be visible rather than discovered.</p>
  */
-public class RemoveSubclassTool extends AbstractRefactoringTool {
+public class RemoveSubclassTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code inline kind=subclass}. */
+    @Override
+    public String kindName() {
+        return "subclass";
+    }
+
+    /**
+     * Structural: removing a class from a hierarchy and reparenting every reference is the
+     * definition of the case. This door declared NOTHING structural until a C6 audit looked,
+     * so the gate was silent here — on the one kind whose entire job is a hierarchy change.
+     */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public RemoveSubclassTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

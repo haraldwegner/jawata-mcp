@@ -239,7 +239,17 @@ public class MoveTool extends AbstractTool {
         // rewrites call SITES but changes no signature and no hierarchy, which is the
         // criterion. A C6 audit asked why the two were treated alike, and this is the
         // answer written down rather than left to be re-derived.
-        return java.util.Set.of("method", "field", "class", "package");
+        //
+        // Stage 6a (M3a): DERIVED from the delegates, which each declare it. The reasoning
+        // above stays because it is the CRITERION, and the criterion is what a delegate
+        // answers against; what is gone is the second list of names beside the routing map.
+        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
+        delegates.forEach((kind, delegate) -> {
+            if (delegate instanceof KindDelegate d && d.isStructural()) {
+                structural.add(kind);
+            }
+        });
+        return java.util.Set.copyOf(structural);
     }
 
 }

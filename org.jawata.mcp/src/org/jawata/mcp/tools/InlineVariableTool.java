@@ -48,7 +48,15 @@ import java.util.function.Supplier;
  * fragment, qualifies clashing names, and refuses what it cannot inline safely.
  * The v2.12.1 compile-verify gate stays wrapped around the applied change.</p>
  */
-public class InlineVariableTool extends AbstractApplyingRefactoringTool {
+public class InlineVariableTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code inline kind=variable}. */
+    @Override
+    public String kindName() {
+        return "variable";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(InlineVariableTool.class);
 

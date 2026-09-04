@@ -75,7 +75,21 @@ import java.util.function.Supplier;
  *       it would change what callers get.</li>
  * </ul>
  */
-public class RemoveMiddleManTool extends AbstractRefactoringTool {
+public class RemoveMiddleManTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code inline kind=middle_man}. */
+    @Override
+    public String kindName() {
+        return "middle_man";
+    }
+
+    /** Structural: it changes what the class exposes to every caller it had. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public RemoveMiddleManTool(Supplier<IJdtService> serviceSupplier,
                                RefactoringChangeCache cache) {

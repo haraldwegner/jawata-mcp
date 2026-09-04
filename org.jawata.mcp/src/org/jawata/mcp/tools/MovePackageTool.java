@@ -25,7 +25,21 @@ import java.util.function.Supplier;
  * exists. We use {@link RenameJavaElementDescriptor} with type
  * {@link IJavaRefactorings#RENAME_PACKAGE}.</p>
  */
-public class MovePackageTool extends AbstractRefactoringTool {
+public class MovePackageTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code move kind=package}. */
+    @Override
+    public String kindName() {
+        return "package";
+    }
+
+    /** Structural: every type in the package is renamed, and every reference rewritten. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public MovePackageTool(Supplier<IJdtService> serviceSupplier,
                           RefactoringChangeCache changeCache) {

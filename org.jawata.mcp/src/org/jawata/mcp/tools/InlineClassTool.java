@@ -84,7 +84,21 @@ import java.util.function.Supplier;
  * no production caller until now: it answers NO to every offer the Eclipse engine makes to
  * widen a deletion, so the file that goes is the file that was named.</p>
  */
-public class InlineClassTool extends AbstractRefactoringTool {
+public class InlineClassTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code inline kind=class}. */
+    @Override
+    public String kindName() {
+        return "class";
+    }
+
+    /** Structural: it folds a class away entirely. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public InlineClassTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

@@ -68,7 +68,15 @@ import java.util.function.Supplier;
  * it is {@code change_method_signature}'s answer and a different decision, so this refuses
  * and names it.</p>
  */
-public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
+public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code move kind=statements_into_function}. */
+    @Override
+    public String kindName() {
+        return "statements_into_function";
+    }
+
 
     public MoveStatementsIntoFunctionTool(Supplier<IJdtService> serviceSupplier,
                                           RefactoringChangeCache cache) {

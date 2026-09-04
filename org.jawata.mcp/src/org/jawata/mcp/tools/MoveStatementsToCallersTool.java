@@ -74,7 +74,19 @@ import java.util.function.Supplier;
  * <p>When the method has no callers the operation refuses rather than quietly deleting the
  * statement. Moving something to nobody is a deletion, and a deletion should be asked for.</p>
  */
-public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
+public class MoveStatementsToCallersTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /**
+     * Reached as {@code move kind=statements_to_callers}. Deliberately NOT structural: it
+     * rewrites call SITES but changes no signature and no hierarchy — a decision the door's
+     * own test asserts, so that it reads as a ruling rather than an omission.
+     */
+    @Override
+    public String kindName() {
+        return "statements_to_callers";
+    }
+
 
     public MoveStatementsToCallersTool(Supplier<IJdtService> serviceSupplier,
                                        RefactoringChangeCache cache) {

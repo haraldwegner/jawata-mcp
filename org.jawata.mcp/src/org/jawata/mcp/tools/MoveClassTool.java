@@ -33,7 +33,21 @@ import java.util.function.Supplier;
  * target package is given by FQN; if it doesn't yet exist in the same
  * source folder as the type, it's created before the move.</p>
  */
-public class MoveClassTool extends AbstractRefactoringTool {
+public class MoveClassTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code move kind=class}. */
+    @Override
+    public String kindName() {
+        return "class";
+    }
+
+    /** Structural: the type's fully-qualified name changes, and every reference with it. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public MoveClassTool(Supplier<IJdtService> serviceSupplier,
                         RefactoringChangeCache changeCache) {

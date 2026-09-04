@@ -41,7 +41,15 @@ import java.util.function.Supplier;
  * its reasons in the response. The v2.12.1 compile-verify gate in the contract
  * base stays wrapped around the applied change.</p>
  */
-public class InlineMethodTool extends AbstractApplyingRefactoringTool {
+public class InlineMethodTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code inline kind=method}. */
+    @Override
+    public String kindName() {
+        return "method";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(InlineMethodTool.class);
 

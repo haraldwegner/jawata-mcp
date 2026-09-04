@@ -70,10 +70,22 @@ public class InlineTool extends AbstractTool {
      * {@code subclass}, whose entire job is to remove a class from a hierarchy. An absent
      * override is indistinguishable from a considered "nothing here is structural", which
      * is why it went unnoticed through the stage that added all three.</p>
+     *
+     * <p><b>Stage 6a (M3a): DERIVED.</b> Each delegate declares it, and this asks them. On a
+     * door whose failure was an ABSENT declaration, that is the whole point: a delegate that
+     * exists but says nothing is now the same as a kind that is not structural, and the only
+     * way to be structural is to say so on the class that does the work.</p>
      */
     @Override
     public java.util.Set<String> structuralKinds() {
-        return java.util.Set.of("class", "subclass", "middle_man");
+        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
+        for (KindDelegate delegate
+                : java.util.List.of(method, variable, clazz, subclass, middleMan)) {
+            if (delegate.isStructural()) {
+                structural.add(delegate.kindName());
+            }
+        }
+        return java.util.Set.copyOf(structural);
     }
 
     @Override
