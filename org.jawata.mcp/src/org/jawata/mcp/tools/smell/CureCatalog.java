@@ -284,7 +284,7 @@ public final class CureCatalog {
      * for them. That is a gap in the DETECTOR side, recorded here so it is visible from
      * the table a reader already opens.</p>
      */
-    private static final Map<String, String> SHIPPED_BUT_UNROUTED = Map.of(
+    private static final Map<String, String> SHIPPED_BUT_UNROUTED = mapOf(
         // The two OLDER than stage 3, found by the guard rather than by the review that
         // prompted it. They have shipped unrouted since Sprint 15 and nobody had said why.
         "apply_cleanup kind=add_final",
@@ -326,7 +326,56 @@ public final class CureCatalog {
             + " other row is demonstrated by pointing a sweep at foreign code and reading"
             + " what changed, and this one cannot be, because it does nothing until a human"
             + " supplies three names. A fork slice for it would be a fixture with names"
-            + " chosen by us — which is the very thing 'code we did not author' excludes.");
+            + " chosen by us — which is the very thing 'code we did not author' excludes.",
+
+        // --- Sprint 28d-rescue Stage 6. Four of its twelve rows route (lazy_class takes
+        // two, middle_man and inappropriate_intimacy one each); these six do not, and a
+        // C6 audit was right that neither routed nor written down reads as an oversight.
+        //
+        // FIVE OF THE SIX SHARE ONE REASON and it is worth stating once: they need a NAME
+        // from the caller — the new class, the command, the query, the phase boundary —
+        // and a finding carries no names. That is the same reason row 8 is here, and it is
+        // not a gap in the detector side that a detector would close.
+        "extract kind=combine_functions",
+        "no detector reports functions that should be a class, and one could not route here"
+            + " anyway: WHICH functions belong together is the decision this carries out,"
+            + " and a finding that already knew would have done the refactoring.",
+        "extract kind=function_to_command",
+        "no detector reports a function that wants to be an object. `long_method` is the"
+            + " nearest — a long function whose locals thread through every extraction is"
+            + " exactly the case — but it already has one route, compose_method, which the"
+            + " tier model turns to ADVISE the moment a second is added. And the command's"
+            + " NAME is the caller's; every call site reads it.",
+        "extract kind=split_phase",
+        "no detector reports a function doing two jobs in sequence, and the operation's"
+            + " whole input is the BOUNDARY between them — a judgement about meaning that"
+            + " nothing in the syntax marks. A finding could say `long_method` and could"
+            + " not say where the seam is.",
+        "extract kind=temp_to_query",
+        "no detector reports a temp that should be a query. It is a step INSIDE a"
+            + " long-method cure rather than a finding of its own, in the same way"
+            + " slide_declaration is.",
+        "move kind=statements_into_function",
+        "no detector reports a statement that always accompanies a call. Finding one means"
+            + " comparing every call site of every method against its neighbours, which is"
+            + " the operation's own precondition check run over the whole workspace — a"
+            + " real detector, and not one of this sprint's six.",
+        "move kind=statements_to_callers",
+        "the inverse, and unroutable for the inverse reason: nothing reports a method whose"
+            + " first or last statement has stopped being every caller's business. That is"
+            + " a judgement about what the method is FOR, which no count reaches.");
+
+    /** Map.of caps at ten pairs; this table passed it at Stage 6. */
+    private static Map<String, String> mapOf(String... pairs) {
+        Map<String, String> m = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            if (m.put(pairs[i], pairs[i + 1]) != null) {
+                throw new IllegalStateException(
+                    "CureCatalog: '" + pairs[i] + "' is listed unrouted twice");
+            }
+        }
+        return Map.copyOf(m);
+    }
 
     /**
      * ROUTES THAT RUN, AND COMMONLY DECLINE — the gap between a finder and its fix.
