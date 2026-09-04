@@ -132,8 +132,9 @@ class Stage6PerRowContractTest {
     /**
      * The five rows whose target HAS no name — a statement range (49, 64's boundary), a
      * statement (25, 26), a local (58). Declared here rather than left implicit, because
-     * {@link #theTwoTablesAccountForEveryRow()} subtracts this list from the row table, and a
-     * membership it cannot see is a row it would report as uncovered.
+     * {@link #theTwoTablesAccountForEveryRow()} compares the UNION of this list and the named
+     * half against the row table, and separately checks that the two halves share no row. A
+     * membership missing from here is therefore a row the union fails to cover.
      *
      * <p><b>THIS LIST IS HAND-WRITTEN AND HAS AN EXPIRY.</b> Name-addressability is a fact
      * about each KIND, and today no door publishes it: it lives as prose in three schema
@@ -259,9 +260,7 @@ class Stage6PerRowContractTest {
      * both halves read plausibly. The other FIVE are {@link #NO_NAME_FORM}, whose targets have
      * no name at all; the contract's "every other value one the finding already carries" is
      * what covers them. This list is exhaustive rather than convenient, and 7 + 5 = 12 is
-     * checked by {@link #theTwoTablesAccountForEveryRow()} rather than asserted in prose —
-     * which compares the UNION of this list and the named half against the row table, and
-     * separately checks the two halves share no row.
+     * checked by {@link #theTwoTablesAccountForEveryRow()} rather than asserted in prose.
      */
     private List<Named> namedRows() {
         return List.of(
