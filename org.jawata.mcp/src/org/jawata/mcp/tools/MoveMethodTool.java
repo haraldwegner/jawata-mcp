@@ -65,6 +65,25 @@ public class MoveMethodTool extends AbstractRefactoringTool
         return "method";
     }
 
+    /** The bullet a client reads under {@code move} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            move a method to another type. Which engine runs is read off the
+            method's own modifiers, not asked of you.
+            An INSTANCE method moves onto a RECEIVER — one of its parameters
+            or fields — and every call site is rewritten to invoke it there.
+            Needs: the method's position (filePath, line, column) or its
+            symbol, plus `target`, the parameter/field whose type receives it.
+            `target` may be omitted when exactly one candidate exists; with
+            several, the call is refused and lists them.
+            A STATIC method has no receiver — its call sites name the owning
+            TYPE — so it needs `targetType` instead, the destination's
+            fully-qualified name, and JDT's Move Static Members repoints every
+            qualified reference across the workspace.
+            Optional keepDelegate leaves a forwarder behind on either path.""";
+    }
+
     /** Structural: the method's receiver changes, so every call site's shape changes. */
     @Override
     public boolean isStructural() {

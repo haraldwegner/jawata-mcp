@@ -48,6 +48,20 @@ class FrontDoorDescriptionTest {
     }
 
     @Test
+    @DisplayName("move's projected block loses no prose either, though its bullets were laid out differently")
+    void moveProjectionLosesNoProse() {
+        // A SECOND door, and deliberately one whose hand-alignment differed: two of move's
+        // six bullets carried the kind name on a line of its own because the name is long.
+        // If the projection quietly dropped or duplicated text when a bullet's first line was
+        // empty, inline alone would not have shown it.
+        MoveTool door = new MoveTool(() -> null, new RefactoringChangeCache());
+        assertEquals(content(MoveTool.LEGACY_KIND_BLOCK),
+            content(FrontDoorDescription.ASSEMBLER.kindBlockOf(door)),
+            "every non-whitespace character of move's six bullets must survive the move onto"
+                + " its delegates");
+    }
+
+    @Test
     @DisplayName("the projected block is built from the delegates, so each carries its own bullet")
     void theBlockComesFromTheDelegates() {
         InlineTool door = inline();

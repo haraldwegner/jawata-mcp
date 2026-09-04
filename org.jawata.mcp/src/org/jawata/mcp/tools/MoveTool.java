@@ -114,9 +114,14 @@ public class MoveTool extends AbstractTool implements KindedTool {
         return ", ...";
     }
 
-    @Override
-    public String kindBlock() {
-        return """
+    /**
+     * PROJECTED from the delegates now (Stage 6a, M5) — this door no longer writes bullets.
+     *
+     * <p>Kept as the golden for the equivalence test: the layout changes by design, the prose
+     * must not. Two of these six bullets carried their name on a line of its own because the
+     * kind is long, which is the hand-alignment the projection replaces.</p>
+     */
+    static final String LEGACY_KIND_BLOCK = """
             - class   — move the type at a caret to another package.
                         Needs: filePath, line, column, targetPackage (optional targetProjectKey).
             - package — move/rename a whole package.
@@ -168,7 +173,6 @@ public class MoveTool extends AbstractTool implements KindedTool {
                         overrides (dispatch makes "the callers" unanswerable), a call
                         buried in a larger expression, and a method with no callers at
                         all — moving something to nobody is a deletion.""";
-    }
 
     @Override
     public String footer() {
