@@ -1,0 +1,27 @@
+=== InlineMe.java ===
+(deleted by this row)
+=== InlineAbsorber.java ===
+package com.example;
+
+/** The single user of InlineMe, which absorbs it (Sprint 28d-rescue, row 17). */
+public class InlineAbsorber {
+
+    public int useOnce() {
+        return record();
+    }
+
+    public int total() {
+        return seen();
+    }
+
+    private int calls;
+
+    public int record() {
+        calls++;
+        return calls;
+    }
+
+    public int seen() {
+        return calls;
+    }
+}

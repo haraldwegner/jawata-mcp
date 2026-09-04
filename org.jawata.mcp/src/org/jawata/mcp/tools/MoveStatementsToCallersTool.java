@@ -195,7 +195,14 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
         Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
         ASTRewrite ownerRewrite = ASTRewrite.create(ast.getAST());
         ownerRewrite.remove(statement, null);
-        String moved = sourceOf(unit.getSource(), statement);
+        // QUALIFIED ON THE WAY OUT. A static field of the method's own class resolves bare
+        // INSIDE that class and nowhere else, so `exits = exits + 1;` compiles here and not
+        // at a call site in another file. The first version of this moved the text as
+        // written; the compile gate added at C6 caught it on the very first parity run,
+        // which is what a gate is for. Qualifying is the right answer rather than refusing
+        // — the statement is unchanged in meaning and a reader at the call site now sees
+        // which class's state it touches.
+        String moved = qualifyOwnStatics(sourceOf(unit.getSource(), statement), statement);
 
         Map<ICompilationUnit, List<Site>> byUnit = new LinkedHashMap<>();
         for (Site site : sites) {
@@ -337,6 +344,48 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
             }
         });
         return offending[0];
+    }
+
+    /**
+     * The statement's text with every BARE reference to a static field of its own class
+     * qualified by that class's name.
+     *
+     * <p>Inside the class, {@code exits} resolves. At a call site in another file it does
+     * not, and the statement is being moved to call sites. Rewriting the text by name is
+     * sound here because the names are resolved against the ORIGINAL tree first — only a
+     * {@code SimpleName} whose binding is a static field, and which is not already the
+     * qualified half of something, is touched.</p>
+     */
+    private static String qualifyOwnStatics(String source, Statement statement) {
+        java.util.Set<String> bare = new LinkedHashSet<>();
+        java.util.Map<String, String> owner = new java.util.LinkedHashMap<>();
+        statement.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(SimpleName node) {
+                if (node.getParent() instanceof org.eclipse.jdt.core.dom.QualifiedName qualified
+                        && qualified.getName() == node) {
+                    return true;
+                }
+                if (node.getParent() instanceof org.eclipse.jdt.core.dom.FieldAccess access
+                        && access.getName() == node) {
+                    return true;
+                }
+                IBinding binding = node.resolveBinding();
+                if (binding instanceof IVariableBinding variable && variable.isField()
+                        && Modifier.isStatic(variable.getModifiers())
+                        && variable.getDeclaringClass() != null) {
+                    bare.add(node.getIdentifier());
+                    owner.put(node.getIdentifier(), variable.getDeclaringClass().getName());
+                }
+                return true;
+            }
+        });
+        String out = source;
+        for (String name : bare) {
+            out = out.replaceAll("(?<![.\\w])" + java.util.regex.Pattern.quote(name) + "\\b",
+                java.util.regex.Matcher.quoteReplacement(owner.get(name) + "." + name));
+        }
+        return out;
     }
 
     /**

@@ -1,0 +1,38 @@
+=== StaticHome.java ===
+package com.example;
+
+/** Declares the static helper row 24 moves away (Sprint 28d-rescue). */
+public class StaticHome {
+
+    public int instanceOnly(int cents) {
+        return cents;
+    }
+}
+=== StaticDestination.java ===
+package com.example;
+
+/** The class the static helper belongs in. */
+public class StaticDestination {
+
+    public static int floorDown(int cents) {
+        return (cents / 100) * 100;
+    }
+
+	public static int roundUp(int cents) {
+	        return ((cents + 99) / 100) * 100;
+	    }
+}
+=== StaticCaller.java ===
+package com.example;
+
+/** Two qualified call sites, so the move has references to repoint. */
+public class StaticCaller {
+
+    public int once(int cents) {
+        return StaticDestination.roundUp(cents);
+    }
+
+    public int twice(int cents) {
+        return StaticDestination.roundUp(cents) + StaticDestination.roundUp(cents + 1);
+    }
+}

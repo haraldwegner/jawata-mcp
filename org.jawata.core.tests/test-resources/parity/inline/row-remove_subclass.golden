@@ -1,0 +1,33 @@
+=== PlainCharge.java ===
+(deleted by this row)
+=== Charge.java ===
+package com.example;
+
+/** The parent in the Remove Subclass fixture (Sprint 28d-rescue, row 38). Concrete. */
+public class Charge {
+
+    private final int amount;
+
+    public Charge(int amount) {
+        this.amount = amount;
+    }
+
+    public int amount() {
+        return amount;
+    }
+
+    public int doubled() {
+        return amount() * 2;
+    }
+}
+=== PlainChargeUser.java ===
+package com.example;
+
+/** Uses PlainCharge by its type, so the fold has references to repoint. */
+public class PlainChargeUser {
+
+    public int twice(int amount) {
+        Charge charge = new Charge(amount);
+        return charge.doubled();
+    }
+}

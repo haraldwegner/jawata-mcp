@@ -52,6 +52,59 @@ final class RowParity {
     private RowParity() {
     }
 
+    /**
+     * A STAGE 6 row: apply it through its own front door, then pin every file the caller is
+     * left holding.
+     *
+     * <p>The source rather than a staged diff, and for the reason {@link #recipeRow} gives:
+     * two of the twelve are recipes with no half-applied state to preview, and pinning ten
+     * rows one way and two another would make the batteries incomparable. What is pinned is
+     * therefore the OUTCOME — which is also the thing a caller actually receives.</p>
+     *
+     * <p>Files are pinned in the order given, each behind a header naming it, so a row that
+     * edits three files fails on the one that moved rather than on "something differs". A
+     * fixture the row DELETES is pinned as a line saying so: its absence is part of the
+     * result, and a golden that simply omitted it could not tell deletion from an edit that
+     * happened to leave the file alone.</p>
+     */
+    static void appliedRow(TestProjectHelper helper, String family, String rowName,
+                           java.util.function.BiFunction<JdtServiceImpl,
+                               RefactoringChangeCache, org.jawata.mcp.tools.AbstractTool> door,
+                           java.util.function.Function<Path, ObjectNode> arguments,
+                           List<String> pinned) throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path pkg = helper.getTempDirectory()
+            .resolve("simple-maven/src/main/java/com/example");
+        java.util.Map<String, String> before = new java.util.LinkedHashMap<>();
+        for (String fixture : pinned) {
+            Path file = pkg.resolve(fixture);
+            before.put(fixture, Files.exists(file)
+                ? Files.readString(file, StandardCharsets.UTF_8) : null);
+        }
+
+        ToolResponse response = door.apply(service, new RefactoringChangeCache())
+            .execute(arguments.apply(pkg));
+        assertTrue(response.isSuccess(),
+            rowName + " must apply; got: " + response.getError());
+
+        StringBuilder after = new StringBuilder();
+        boolean anythingMoved = false;
+        for (String fixture : pinned) {
+            Path file = pkg.resolve(fixture);
+            String now = Files.exists(file)
+                ? Files.readString(file, StandardCharsets.UTF_8) : null;
+            anythingMoved |= !java.util.Objects.equals(before.get(fixture), now);
+            after.append("=== ").append(fixture).append(" ===\n");
+            after.append(now != null ? now : "(deleted by this row)\n");
+        }
+        // PROOF OF LIFE, compared per FILE. A row that silently became a no-op would
+        // otherwise record a golden of its own INPUT and pass forever after — the exact
+        // failure a regression lock is supposed to be immune to.
+        assertTrue(anythingMoved,
+            rowName + " changed none of " + pinned + ", so this golden would pin the INPUT");
+        ParitySupport.assertSourceParity(family, "row-" + rowName, after.toString());
+    }
+
     /** A sweep row: stage the change and pin the planned diff. */
     static void sweepRow(TestProjectHelper helper, String kind, String fixture) throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
