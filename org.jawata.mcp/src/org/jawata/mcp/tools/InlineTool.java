@@ -21,12 +21,13 @@ import java.util.function.Supplier;
 public class InlineTool extends AbstractTool {
 
     private static final List<String> KINDS =
-        List.of("method", "variable", "class", "subclass");
+        List.of("method", "variable", "class", "subclass", "middle_man");
 
     private final InlineMethodTool method;
     private final InlineVariableTool variable;
     private final InlineClassTool clazz;
     private final RemoveSubclassTool subclass;
+    private final RemoveMiddleManTool middleMan;
 
     public InlineTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -39,6 +40,10 @@ public class InlineTool extends AbstractTool {
         // Row 38. Remove Subclass is the same fold one level down: a class that is
         // not earning its name, except that its name is a place in a hierarchy.
         this.subclass = new RemoveSubclassTool(serviceSupplier, cache);
+        // Row 36. The third fold on this door, and the one that folds a class's
+        // METHODS away rather than the class: a middle man keeps its name and loses
+        // the forwarding that was all it did.
+        this.middleMan = new RemoveMiddleManTool(serviceSupplier, cache);
     }
 
     @Override
@@ -73,6 +78,16 @@ public class InlineTool extends AbstractTool {
                          Also refuses a subclass with subtypes (that is Collapse
                          Hierarchy), an abstract parent, a parent outside this
                          workspace, and a colliding member name.
+            - middle_man — stop a class forwarding: every method whose whole body is
+                         one call on one of its own fields, passing its parameters
+                         through unchanged, is deleted and its call sites become
+                         `middleMan.<accessor>().method(args)`. The accessor is
+                         generated if the class has none — that exposure IS the
+                         refactoring, and the summary says it happened. Refuses a class
+                         with no forwarder at all, and one forwarding to SEVERAL
+                         fields, which is two middle men rather than one. A method that
+                         transforms the result is left alone: that is behaviour, not
+                         forwarding. (find_quality_issue kind=middle_man finds them.)
 
             IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
             filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
@@ -90,8 +105,8 @@ public class InlineTool extends AbstractTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", KINDS);
-        kind.put("description", "Inline a method, a local variable, a whole class, or a"
-            + " subclass into its parent.");
+        kind.put("description", "Inline a method, a local variable, a whole class, a"
+            + " subclass into its parent, or a middle man's forwarding.");
         properties.put("kind", kind);
         properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
@@ -123,6 +138,7 @@ public class InlineTool extends AbstractTool {
             case "variable" -> variable.executeWithService(service, arguments);
             case "class"    -> clazz.executeWithService(service, arguments);
             case "subclass" -> subclass.executeWithService(service, arguments);
+            case "middle_man" -> middleMan.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
