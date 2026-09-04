@@ -62,13 +62,34 @@ class FrontDoorDescriptionTest {
     }
 
     @Test
+    @DisplayName("move's usage line is now ONE line — the step's single declared text change")
+    void moveUsageLineIsNoLongerHandWrapped() {
+        MoveTool door = new MoveTool(() -> null, new RefactoringChangeCache());
+        String usage = FrontDoorDescription.ASSEMBLER.usageLine(door);
+
+        // The published text for this door changed in exactly one way, and it is asserted
+        // here rather than left in a commit message. The old line was wrapped across two
+        // source lines because six kind names are long; a generated line is not wrapped,
+        // and teaching the assembler to wrap would make a column width a constant somebody
+        // maintains. The wrap was presentation; the kinds are the contract.
+        assertEquals(-1, usage.indexOf('\n'), "a generated usage line is one line: " + usage);
+        assertTrue(usage.contains("statements_into_function|statements_to_callers"),
+            "and the two long kinds are now adjacent where the hand-wrap used to break: "
+                + usage);
+        assertEquals(door.publishedKinds().size(), usage.split("\\|").length,
+            "every routed kind appears exactly once, separated by pipes: " + usage);
+    }
+
+    @Test
     @DisplayName("a door that has not adopted the seam is untouched by it")
     void anUnadoptedDoorKeepsItsOwnText() {
         // The seam is opt-in per door, by design: each converts in the step that owns it.
         // Without this, "every door is assembled" could be believed of doors that are not.
-        ExtractTool notYet = new ExtractTool(() -> null, new RefactoringChangeCache());
+        // M4 wires three — extract, inline, move — and apply_cleanup is deliberately not
+        // among them; it adopts at M5 with the rest.
+        ApplyCleanupTool notYet = new ApplyCleanupTool(() -> null, new RefactoringChangeCache());
         assertTrue(notYet.preamble().isEmpty(),
-            "extract has not adopted the description seam yet, so its regions are empty");
+            "apply_cleanup has not adopted the description seam yet, so its regions are empty");
         assertTrue(notYet.getDescription().contains("USAGE:"),
             "and it still publishes its own hand-written description");
     }

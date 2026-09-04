@@ -129,15 +129,40 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         return "extract";
     }
 
+    /**
+     * ASSEMBLED, not written (Stage 6a, M4).
+     *
+     * <p><b>A DECLARED CHANGE TO THE PUBLISHED TEXT, and the more substantive of the two this
+     * step makes.</b> This door's {@code USAGE:} line read {@code extract(kind="<kind>", ...)}
+     * — a PLACEHOLDER where the other doors list their kinds. A generated line lists them, so
+     * a reader of the usage line now sees all eleven.</p>
+     *
+     * <p>The placeholder is worth naming as a symptom rather than a style: a hand-written
+     * usage line degenerates to {@code <kind>} exactly when there are too many kinds to keep
+     * listing by hand, which is the same pressure that let this door's structural set name two
+     * while five had been added. A derived line has no such pressure.</p>
+     */
     @Override
     public String getDescription() {
+        return FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
         return """
             Extract a method, variable, constant, interface, superclass or class; combine functions
             into a class; split a function into phases; turn a function into a command;
-            replace a temp with a query (behaviour-preserving, reversible).
+            replace a temp with a query (behaviour-preserving, reversible).""";
+    }
 
-            USAGE: extract(kind="<kind>", filePath=..., ...)
+    @Override
+    public String usageTail() {
+        return ", filePath=..., ...";
+    }
 
+    @Override
+    public String kindBlock() {
+        return """
             Kinds and their params (all ZERO-BASED coordinates):
             - method   — extract a statement range into a new method.
                          Needs: startLine, startColumn, endLine, endColumn, methodName.
@@ -215,8 +240,12 @@ public class ExtractTool extends AbstractTool implements KindedTool {
                          from two operations that already ship, so it adds one undo handle
                          for the pair and rolls the first back if the second declines.
                          Refuses a temp that is assigned more than once — it is then not a
-                         name for one value, and Split Variable comes first.
+                         name for one value, and Split Variable comes first.""";
+    }
 
+    @Override
+    public String footer() {
+        return """
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying.
 

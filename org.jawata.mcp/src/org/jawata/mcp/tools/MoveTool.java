@@ -83,15 +83,40 @@ public class MoveTool extends AbstractTool implements KindedTool {
         return "move";
     }
 
+    /**
+     * ASSEMBLED, not written (Stage 6a, M4).
+     *
+     * <p><b>ONE DECLARED CHANGE TO THE PUBLISHED TEXT, and it is the reason this is written
+     * down rather than absorbed.</b> This door's {@code USAGE:} line was hand-wrapped across
+     * two source lines because its six kind names are long. A GENERATED line is not wrapped,
+     * so the published text now carries it on one line. Nothing else differs; the wrap was
+     * presentation, and a generated line cannot inherit a hand's choice about where to break
+     * it without the width becoming a constant somebody has to maintain.</p>
+     *
+     * <p>The alternative was to keep the line hand-written, which is exactly the copy the
+     * seam removes: this door has gained kinds three times and the line has to be edited by
+     * hand each time or silently stop naming them.</p>
+     */
     @Override
     public String getDescription() {
+        return FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
         return """
             Move a class, a package, a method, a field, or statements across a call,
-            updating references (behaviour-preserving, reversible).
+            updating references (behaviour-preserving, reversible).""";
+    }
 
-            USAGE: move(kind="<class|package|method|field|statements_into_function
-                                |statements_to_callers>", ...)
+    @Override
+    public String usageTail() {
+        return ", ...";
+    }
 
+    @Override
+    public String kindBlock() {
+        return """
             - class   — move the type at a caret to another package.
                         Needs: filePath, line, column, targetPackage (optional targetProjectKey).
             - package — move/rename a whole package.
@@ -142,8 +167,12 @@ public class MoveTool extends AbstractTool implements KindedTool {
                         method's own parameters or locals, a method that is overridden or
                         overrides (dispatch makes "the callers" unanswerable), a call
                         buried in a larger expression, and a method with no callers at
-                        all — moving something to nobody is a deletion.
+                        all — moving something to nobody is a deletion.""";
+    }
 
+    @Override
+    public String footer() {
+        return """
             updateReferences (default true) applies to kind=class and kind=package ONLY.
             For the other four, repointing the references IS the refactoring.
             IMPORTANT: ZERO-BASED coordinates.
