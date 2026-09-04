@@ -62,6 +62,12 @@ public class GenerateConstructorTool extends AbstractTool
         return "constructor";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "a constructor. Needs: fields[]. Optional: visibility, callSuper.";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateConstructorTool.class);
 

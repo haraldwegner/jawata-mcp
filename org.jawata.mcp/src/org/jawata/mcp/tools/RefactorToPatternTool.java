@@ -114,15 +114,51 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         return "refactor_to_pattern";
     }
 
+    /**
+     * ASSEMBLED, not written (Stage 6a, M5).
+     *
+     * <p><b>TWO declared changes to the published text, and the second is the interesting
+     * one.</b> The {@code USAGE:} line said {@code kind="<kind>"} — a placeholder, the same
+     * degeneration {@code extract} showed, and for the same reason: eleven names are too many
+     * to keep listing by hand. A generated line lists them.</p>
+     *
+     * <p>And the BULLET ORDER changes. {@code decompose_conditional} was written third,
+     * beside {@code compose_method}, because that reads well; it is eleventh in the routing
+     * table and eleventh in the published {@code kind} enum. Projecting the block makes all
+     * three agree — so a reader comparing the enum against the bullets now finds the same
+     * sequence, which they did not before.</p>
+     */
     @Override
     public String getDescription() {
+        return FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
         return """
             Apply a pattern-targeted refactoring (Kerievsky "Refactoring to Patterns"),
             behaviour-preserving and reversible. Runs BOTH directions — toward a pattern
-            when complexity warrants, and AWAY from a pattern that has outlived its use.
+            when complexity warrants, and AWAY from a pattern that has outlived its use.""";
+    }
 
-            USAGE: refactor_to_pattern(kind="<kind>", filePath=..., line=..., column=...)
+    @Override
+    public String usageTail() {
+        return ", filePath=..., line=..., column=...";
+    }
 
+    @Override
+    public String kindBlockLeadIn() {
+        return "Kinds (ZERO-BASED coordinates; find candidates with find_quality_issue):";
+    }
+
+    /**
+     * PROJECTED from the delegates now — the golden for the equivalence test.
+     *
+     * <p>Compared PER KIND rather than in order, because this door's one text change is a
+     * reorder: see {@link #getDescription()}. An ordered comparison would fail on that and say
+     * nothing about whether any bullet's prose survived, which is the thing worth checking.</p>
+     */
+    static final String LEGACY_KIND_BLOCK = """
             Kinds (ZERO-BASED coordinates; find candidates with find_quality_issue):
             - inline_singleton — AWAY: a GoF singleton whose uniqueness no longer matters →
                                  rewrite Type.getInstance() call sites to `new Type()`, make the
@@ -203,8 +239,11 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
                                  field, and an arm that returns or breaks/continues to a label
                                  outside itself. (find_quality_issue kind=switch_statements
                                  locates candidates — but read them: most are parsers, where
-                                 the operation is the wrong answer.)
+                                 the operation is the wrong answer.)""";
 
+    @Override
+    public String footer() {
+        return """
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying. Verify with compile_workspace;
             revert with undo_refactoring(undoChangeId).

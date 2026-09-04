@@ -59,6 +59,14 @@ public class ExtractInterfaceTool extends AbstractApplyingRefactoringTool
         return "interface";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            extract an interface from the type at a caret.
+            Needs: line, column, interfaceName (optional methodNames[] to pull up).""";
+    }
+
     /** Structural: it changes the type's HIERARCHY, which is what makes the gate fire. */
     @Override
     public boolean isStructural() {

@@ -78,13 +78,41 @@ public class GenerateTool extends AbstractTool
         return "generate";
     }
 
+    /**
+     * ASSEMBLED, not written (Stage 6a, M5).
+     *
+     * <p>One declared change to the published text, the same one {@code extract} and
+     * {@code refactor_to_pattern} make: the {@code USAGE:} line said {@code kind="<kind>"} and
+     * now names all seven.</p>
+     */
     @Override
     public String getDescription() {
-        return """
-            Generate boilerplate into the type at a caret (reversible).
+        return org.jawata.mcp.tools.FrontDoorDescription.ASSEMBLER.describe(this);
+    }
 
-            USAGE: generate(kind="<kind>", filePath=..., line=..., column=...)
+    @Override
+    public String preamble() {
+        return "Generate boilerplate into the type at a caret (reversible).";
+    }
 
+    @Override
+    public String usageTail() {
+        return ", filePath=..., line=..., column=...";
+    }
+
+    @Override
+    public String kindBlockLeadIn() {
+        return "Kinds (all ZERO-BASED coordinates on a caret in the target type):";
+    }
+
+    /**
+     * PROJECTED from the delegates now — the golden for the equivalence test.
+     *
+     * <p>{@code public} where the other doors' goldens are package-private, for one reason
+     * that is about packages rather than about API: this is the only front door outside
+     * {@code org.jawata.mcp.tools}, and the seam's test lives with the seam.</p>
+     */
+    public static final String LEGACY_KIND_BLOCK = """
             Kinds (all ZERO-BASED coordinates on a caret in the target type):
             - constructor      — a constructor. Needs: fields[]. Optional: visibility, callSuper.
             - getters_setters  — accessors. Needs: fields[]. Optional: accessorKind (getters|setters|both, default both), visibility, getterStyle (classic|record), setterStyle (classic|fluent), generateJavadoc.
@@ -95,8 +123,11 @@ public class GenerateTool extends AbstractTool
             - copy_class       — clone the top-level class at the caret into a new same-package file.
                                  Needs: newTypeName. The compiler-cheap way to derive a sibling class
                                  (e.g. PizzaSalami -> PizzaFungi) before Extract Superclass, instead
-                                 of re-authoring a near-duplicate.
+                                 of re-authoring a near-duplicate.""";
 
+    @Override
+    public String footer() {
+        return """
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage only.
 

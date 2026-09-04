@@ -80,16 +80,17 @@ public final class LoopToPipelineRule implements CleanupRule {
     }
 
     @Override
-    public String describe() {
-        return "loop_to_pipeline    — Replace Loop with Pipeline: `List<T> out = new\n"
-            + "                        ArrayList<>(); for (T x : xs) { if (p) out.add(f(x)); }`\n"
-            + "                        becomes a stream with .filter/.map and\n"
-            + "                        collect(Collectors.toList()), written fully qualified\n"
-            + "                        because the import engine cannot add an import. Refuses a\n"
-            + "                        body that does anything else, any break/continue/return, a\n"
-            + "                        list not declared empty directly above, and arrays (no\n"
-            + "                        stream() method). collect(toList()) and not .toList(): the\n"
-            + "                        latter is unmodifiable and the original is not.";
+    public String kindSummary() {
+        return """
+            Replace Loop with Pipeline: `List<T> out = new
+            ArrayList<>(); for (T x : xs) { if (p) out.add(f(x)); }`
+            becomes a stream with .filter/.map and
+            collect(Collectors.toList()), written fully qualified
+            because the import engine cannot add an import. Refuses a
+            body that does anything else, any break/continue/return, a
+            list not declared empty directly above, and arrays (no
+            stream() method). collect(toList()) and not .toList(): the
+            latter is unmodifiable and the original is not.""";
     }
 
     @Override

@@ -63,6 +63,17 @@ public class InlineSingletonTool extends AbstractApplyingRefactoringTool
         return "inline_singleton";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            AWAY: a GoF singleton whose uniqueness no longer matters →
+            rewrite Type.getInstance() call sites to `new Type()`, make the
+            constructor public, and strip the static holder + accessor.
+            Needs: line, column on the singleton type. (find_quality_issue
+            kind=singleton locates candidates.)""";
+    }
+
 
     public InlineSingletonTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

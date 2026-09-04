@@ -63,6 +63,12 @@ public class GenerateToStringTool extends AbstractTool
         return "tostring";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "toString(). Needs: fields[]. Optional: style.";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateToStringTool.class);
 

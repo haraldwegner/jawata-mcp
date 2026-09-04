@@ -68,6 +68,17 @@ public class RefactorToStateTool extends AbstractApplyingRefactoringTool
         return "refactor_to_state";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: a method switching on an int state field becomes
+            delegation to nested State classes (a <Context>State interface +
+            one inner class per case). Needs: line, column on/inside the
+            switch. Conservative — refuses unsafe shapes (see errors).
+            (find_quality_issue kind=switch_statements locates candidates.)""";
+    }
+
 
     public RefactorToStateTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

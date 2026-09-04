@@ -51,6 +51,18 @@ public class ReplaceTypeCodeWithClassTool extends AbstractApplyingRefactoringToo
         return "replace_type_code_with_class";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: generate a type-safe enum from a group of
+            static-final type-code constants into a new file (same package).
+            Needs: line, column on the class + newTypeName (optional prefix
+            to pick the constant group). Conservative: introduces the enum +
+            reports the mapping; does NOT auto-migrate usages.
+            (find_quality_issue kind=type_code locates candidates.)""";
+    }
+
 
     public ReplaceTypeCodeWithClassTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

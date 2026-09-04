@@ -61,14 +61,15 @@ public final class ConsolidateConditionalRule implements CleanupRule {
     }
 
     @Override
-    public String describe() {
-        return "consolidate_conditional — Consolidate Conditional Expression: adjacent `if`s\n"
-            + "                        with no `else` and the SAME body become one `if` joined\n"
-            + "                        by ||, each condition parenthesised so precedence cannot\n"
-            + "                        shift. Refuses any condition containing a method call, an\n"
-            + "                        assignment or an increment: || short-circuits, so a later\n"
-            + "                        condition stops being evaluated and its side effect stops\n"
-            + "                        happening.";
+    public String kindSummary() {
+        return """
+            Consolidate Conditional Expression: adjacent `if`s
+            with no `else` and the SAME body become one `if` joined
+            by ||, each condition parenthesised so precedence cannot
+            shift. Refuses any condition containing a method call, an
+            assignment or an increment: || short-circuits, so a later
+            condition stops being evaluated and its side effect stops
+            happening.""";
     }
 
     @Override

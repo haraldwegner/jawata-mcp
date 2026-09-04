@@ -135,6 +135,31 @@ public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefa
         return "replace_conditional_with_polymorphism";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: a switch on an ENUM becomes one
+            virtual call — an interface, one implementation per arm, and
+            a dispatch table keyed by the discriminator, all nested in
+            the context. Distinct from refactor_to_state, which requires
+            a private int FIELD, the old labelled switch form, and the
+            switch as the method's only statement; this handles the
+            general shape (enum discriminator, arrow form, selector a
+            parameter or local). Variables the arms read from the
+            enclosing method travel as parameters on the generated
+            method; the response reports them as threadedParameters.
+            Needs: line, column on or inside the switch (optional
+            interfaceName, default <Method>Behaviour).
+            REFUSES: a non-enum discriminator, fall-through, fewer than
+            two non-default arms, an arm that ASSIGNS a method-scope
+            variable, an arm using `this` for anything but a context
+            field, and an arm that returns or breaks/continues to a label
+            outside itself. (find_quality_issue kind=switch_statements
+            locates candidates — but read them: most are parsers, where
+            the operation is the wrong answer.)""";
+    }
+
 
     public ReplaceConditionalWithPolymorphismTool(
         Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {

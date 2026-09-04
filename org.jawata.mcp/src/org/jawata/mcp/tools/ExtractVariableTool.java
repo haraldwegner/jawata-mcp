@@ -54,6 +54,14 @@ public class ExtractVariableTool extends AbstractApplyingRefactoringTool
         return "variable";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            extract an expression range into a local variable.
+            Needs: startLine, startColumn, endLine, endColumn (optional variableName).""";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ExtractVariableTool.class);
 

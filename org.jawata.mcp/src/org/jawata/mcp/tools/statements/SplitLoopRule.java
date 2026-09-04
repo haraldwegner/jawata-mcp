@@ -73,15 +73,16 @@ public final class SplitLoopRule implements CleanupRule {
     }
 
     @Override
-    public String describe() {
-        return "split_loop          — Split Loop: a loop whose body does exactly TWO independent\n"
-            + "                        things becomes two loops over the same collection, so each\n"
-            + "                        can be named and moved. Requires a Collection (a bare\n"
-            + "                        Iterable may be one-shot and would walk empty the second\n"
-            + "                        time), two halves that neither read what the other writes,\n"
-            + "                        and no break/continue/return. Only two statements: a longer\n"
-            + "                        body has several ways to be grouped, and choosing is a\n"
-            + "                        judgement rather than a rule.";
+    public String kindSummary() {
+        return """
+            Split Loop: a loop whose body does exactly TWO independent
+            things becomes two loops over the same collection, so each
+            can be named and moved. Requires a Collection (a bare
+            Iterable may be one-shot and would walk empty the second
+            time), two halves that neither read what the other writes,
+            and no break/continue/return. Only two statements: a longer
+            body has several ways to be grouped, and choosing is a
+            judgement rather than a rule.""";
     }
 
     @Override

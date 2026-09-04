@@ -71,6 +71,12 @@ public class OverrideMethodsTool extends AbstractTool
         return "override_methods";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "override/implement methods. Optional: methods[] (else all overridable).";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(OverrideMethodsTool.class);
 

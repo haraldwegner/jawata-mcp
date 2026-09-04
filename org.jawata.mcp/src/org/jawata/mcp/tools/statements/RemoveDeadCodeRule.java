@@ -96,15 +96,16 @@ public final class RemoveDeadCodeRule implements CleanupRule {
     }
 
     @Override
-    public String describe() {
-        return "remove_dead_code    — Remove Dead Code: delete private members and local variables\n"
-            + "                        the compiler proves are never used — methods, constructors,\n"
-            + "                        fields and nested types. An unused local whose initializer has\n"
-            + "                        a side effect KEEPS the side effect as a statement. Unused\n"
-            + "                        imports are deliberately left alone: organize_imports owns\n"
-            + "                        them. Casts and parameters are out of scope — an unnecessary\n"
-            + "                        cast is not unreachable code, and dropping a parameter can\n"
-            + "                        rename the method, which is change_method_signature's job.";
+    public String kindSummary() {
+        return """
+            Remove Dead Code: delete private members and local variables
+            the compiler proves are never used — methods, constructors,
+            fields and nested types. An unused local whose initializer has
+            a side effect KEEPS the side effect as a statement. Unused
+            imports are deliberately left alone: organize_imports owns
+            them. Casts and parameters are out of scope — an unnecessary
+            cast is not unreachable code, and dropping a parameter can
+            rename the method, which is change_method_signature's job.""";
     }
 
     @Override

@@ -81,6 +81,25 @@ public class SplitPhaseTool extends AbstractApplyingRefactoringTool
         return "split_phase";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            split a function that does two jobs in sequence into two
+            functions joined by a generated record (Fowler: Split Phase).
+            Needs: filePath, line, column on the function, boundaryLine —
+            the line of the SECOND phase's first statement. boundaryLine has
+            no default because where one job ends is a judgement about
+            meaning that nothing in the syntax marks. What the record carries
+            IS derived: every local declared before the boundary and read
+            after it, which is usually few — the rest stay in phase one, and
+            that shrinkage is the readability this buys. Optional firstName,
+            secondName, intermediateName. Refuses a return before the
+            boundary (an early exit, not a phase) and a second phase that
+            ASSIGNS to a first-phase local (the carrier's components are
+            final; a mutable carrier is a design decision).""";
+    }
+
     /** Structural: it generates a carrier record and leaves two methods where one stood. */
     @Override
     public boolean isStructural() {

@@ -198,15 +198,22 @@ public class InlineTool extends AbstractTool implements KindedTool {
     }
 
     /**
-     * THE TEXT AS IT STOOD BEFORE M4 — a golden, and temporary.
+     * THE TEXT AS IT STOOD BEFORE M4 — a golden.
      *
-     * <p>Its only reader is the test asserting that the assembled description equals it byte
-     * for byte. That is what makes this step a MOVE of the algorithm rather than a rewrite of
-     * the published contract: without it, "the assembler produces a description" would be
-     * true of any description at all.</p>
+     * <p>Its only reader is the test asserting that the assembled description reproduces it.
+     * That is what makes these steps a MOVE of the algorithm and of the prose rather than a
+     * rewrite of the published contract: without it, "the assembler produces a description"
+     * would be true of any description at all.</p>
      *
-     * <p>Deleted at M5 together with {@link #kindBlock()}, when the bullets stop being prose
-     * the door repeats and become a projection of its delegates.</p>
+     * <p><b>It SURVIVED M5, and an earlier version of this note said it would be deleted
+     * there.</b> That was written when M5 was expected to be a pure relocation; it is not.
+     * M5 replaces per-door hand-alignment with one uniform bullet rule, so the comparison
+     * became whitespace-insensitive rather than byte-identical — and a golden is exactly what
+     * that weaker comparison needs, because without it nothing at all would pin the prose.
+     * It is the only door whose golden is the WHOLE description rather than the kind block,
+     * which is why the {@code USAGE:} line inside it is the one such line left in these seven
+     * files. It is not on any published path: {@link #getDescription()} asks the
+     * assembler.</p>
      */
     static final String LEGACY_DESCRIPTION = """
             Inline a method, a local variable, a whole class, a subclass into its

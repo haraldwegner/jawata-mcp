@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  * apply_refactoring / undo_refactoring / inspect_refactoring by {@code action}.
  * Not marked read-only (apply/undo mutate; inspect reads).
  */
-public class RefactoringTool extends AbstractTool {
+public class RefactoringTool extends AbstractTool implements FrontDoor {
 
     // Sprint 18: the single-change lifecycle (apply/undo/inspect on a changeId) plus
     // the multi-step plan lifecycle. Actions are advertised as they land (C4: plan;
@@ -56,13 +56,70 @@ public class RefactoringTool extends AbstractTool {
         return "refactoring";
     }
 
+    /**
+     * The DISCRIMINATOR, which for this door is {@code action} and for every other is
+     * {@code kind}.
+     *
+     * <p>Taking it from the door rather than assuming is what lets one assembler serve all
+     * ten: the generated line reads {@code action=} here, {@code direction=} on
+     * {@code hierarchy}, {@code kind=} elsewhere.</p>
+     */
+    @Override
+    public String discriminator() {
+        return "action";
+    }
+
+    /**
+     * The seven ACTIONS — overridden because the inherited reader would name the wrong list.
+     *
+     * <p>{@link Tool#publishedKinds()} walks the schema for {@code kind} or {@code direction}
+     * and stops at the first it finds. This tool's schema declares BOTH: {@code action}, its
+     * real discriminator, and {@code kind}, which is a PARAMETER OF ONE ACTION — the six
+     * plannable refactorings {@code plan} accepts. So the inherited reader would answer with
+     * the plan kinds, which are published by {@code refactor_to_pattern} and belong to it.
+     * That is the boot failure {@code ToolRegistry} records in its own comments, and here it
+     * would have put six other doors' operations into this door's usage line.</p>
+     *
+     * <p>It does NOT put these verbs into the operation namespace, and nothing here could:
+     * that is the registry's policy, and it reads {@code instanceof KindedTool} — which this
+     * door deliberately is not.</p>
+     */
+    @Override
+    public List<String> publishedKinds() {
+        return ACTIONS;
+    }
+
+    /**
+     * ASSEMBLED, not written (Stage 6a, M5) — the DESCRIPTION seam only.
+     *
+     * <p>One declared change to the published text: the {@code USAGE:} line said
+     * {@code action="<action>"}, a placeholder, and now names all seven verbs.</p>
+     *
+     * <p>The per-kind block stays this door's own prose, and that is not a deferral. Seven
+     * actions dispatch to four delegates — {@code plan}, {@code apply_plan},
+     * {@code inspect_plan} and {@code undo_plan} all reach {@code PlanRefactoringTool} — so
+     * there is no one delegate per action to ask for a bullet. That arity is the same fact
+     * that keeps this door out of {@link KindedTool}.</p>
+     */
     @Override
     public String getDescription() {
+        return FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
+        return "Manage a refactoring: the single-change lifecycle and the multi-step plan"
+            + " lifecycle.";
+    }
+
+    @Override
+    public String usageTail() {
+        return ", ...";
+    }
+
+    @Override
+    public String kindBlock() {
         return """
-            Manage a refactoring: the single-change lifecycle and the multi-step plan lifecycle.
-
-            USAGE: refactoring(action="<action>", ...)
-
             Single change (staged/auto_apply=false flows):
             - apply   — perform a staged change. Needs: changeId.
             - undo    — revert an applied change. Needs: undoChangeId.
@@ -89,8 +146,12 @@ public class RefactoringTool extends AbstractTool {
                            after each; rolls the whole plan back atomically on failure. Needs: planId.
                            Returns the composed undoChangeId + any purity findings.
             - inspect_plan — review a planId: its steps, which are applied vs pending. Needs: planId.
-            - undo_plan  — revert a fully-applied plan via its composed undo. Needs: planId.
+            - undo_plan  — revert a fully-applied plan via its composed undo. Needs: planId.""";
+    }
 
+    @Override
+    public String footer() {
+        return """
             Requires load_project to be called first.
             """;
     }

@@ -108,6 +108,19 @@ public class DecomposeConditionalTool extends AbstractTool
         return "decompose_conditional";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: a tangled `if` becomes a named test and a named
+            branch on each side. Needs: line, column on the `if`, plus
+            conditionName / thenName / elseName — name at least one; a part
+            you do not name is left alone. YOU supply the names, because they
+            are the refactoring. Refuses an `else if` chain (that is
+            replace_conditional_with_polymorphism) and a condition that
+            assigns. Applies atomically (auto_apply=false not supported).""";
+    }
+
 
     private final RefactoringChangeCache cache;
     private final ExtractMethodTool extract;

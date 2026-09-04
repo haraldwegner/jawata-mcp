@@ -160,9 +160,27 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         return ", filePath=..., ...";
     }
 
+    /**
+     * The one line of this block that is NOT a bullet, and it stays with the door.
+     *
+     * <p>It is a fact about every kind at once — the coordinates are the door's convention,
+     * not any delegate's story — so a pure projection over {@code delegates()} would drop it
+     * silently. Most doors have no such line and inherit the empty default.</p>
+     */
     @Override
-    public String kindBlock() {
-        return """
+    public String kindBlockLeadIn() {
+        return "Kinds and their params (all ZERO-BASED coordinates):";
+    }
+
+    /**
+     * PROJECTED from the delegates now (Stage 6a, M5) — this door no longer writes bullets.
+     *
+     * <p>Kept as the golden for the equivalence test: the layout changes by design, the prose
+     * must not. This was the door whose hand-alignment had already broken down — {@code
+     * interface} and {@code superclass} are longer than the eight-column padding the first six
+     * bullets use, so two of eleven were already out of line before anything was moved.</p>
+     */
+    static final String LEGACY_KIND_BLOCK = """
             Kinds and their params (all ZERO-BASED coordinates):
             - method   — extract a statement range into a new method.
                          Needs: startLine, startColumn, endLine, endColumn, methodName.
@@ -241,7 +259,6 @@ public class ExtractTool extends AbstractTool implements KindedTool {
                          for the pair and rolls the first back if the second declines.
                          Refuses a temp that is assigned more than once — it is then not a
                          name for one value, and Split Variable comes first.""";
-    }
 
     @Override
     public String footer() {

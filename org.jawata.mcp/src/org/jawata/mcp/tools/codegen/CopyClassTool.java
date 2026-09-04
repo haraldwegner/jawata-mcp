@@ -68,6 +68,16 @@ public class CopyClassTool extends AbstractTool
         return "copy_class";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            clone the top-level class at the caret into a new same-package file.
+            Needs: newTypeName. The compiler-cheap way to derive a sibling class
+            (e.g. PizzaSalami -> PizzaFungi) before Extract Superclass, instead
+            of re-authoring a near-duplicate.""";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(CopyClassTool.class);
 

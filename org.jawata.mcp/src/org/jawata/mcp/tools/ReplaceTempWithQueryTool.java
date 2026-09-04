@@ -74,6 +74,20 @@ public class ReplaceTempWithQueryTool extends AbstractRefactoringTool
         return "temp_to_query";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            extract a temp's initializer into a method, then inline the
+            temp, so every use reads the query instead (Fowler: Replace Temp
+            with Query). Needs: filePath, line, column on the declaration
+            (optional methodName, default the variable's own name). COMPOSED
+            from two operations that already ship, so it adds one undo handle
+            for the pair and rolls the first back if the second declines.
+            Refuses a temp that is assigned more than once — it is then not a
+            name for one value, and Split Variable comes first.""";
+    }
+
 
     private final ExtractMethodTool extractMethod;
     private final InlineVariableTool inlineVariable;

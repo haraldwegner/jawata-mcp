@@ -50,9 +50,9 @@ public final class FrontDoorDescription {
      * whichever door was written last, which is how four descriptions come to be spaced three
      * different ways.</p>
      */
-    public String describe(KindedTool door) {
+    public String describe(FrontDoor door) {
         return door.preamble()
-            + "\n\n" + usageLine(door)
+            + "\n\n" + usageLine(door) + door.usageNote()
             + "\n\n" + kindBlockFor(door)
             + "\n\n" + door.footer();
     }
@@ -67,8 +67,20 @@ public final class FrontDoorDescription {
      * delegates all still answer with their own tool description has not moved its prose yet,
      * and keeps publishing what it publishes today.</p>
      */
-    private String kindBlockFor(KindedTool door) {
-        return door.kindBlock().isEmpty() ? kindBlockOf(door) : door.kindBlock();
+    private String kindBlockFor(FrontDoor door) {
+        if (!door.kindBlock().isEmpty()) {
+            return door.kindBlock();
+        }
+        if (door instanceof KindedTool routing) {
+            return kindBlockOf(routing);
+        }
+        // A door that ROUTES has a table to project from; one that does not must write its
+        // own block, and there is no third state to invent. `refactoring` is the only such
+        // door and it writes one — an empty return here would publish a description with a
+        // hole where its actions belong, which is the failure the projection exists to stop.
+        throw new IllegalStateException(door.getName()
+            + " is a FrontDoor that neither routes kinds nor writes its own kindBlock(),"
+            + " so there is nothing to describe its actions with");
     }
 
     /**
@@ -79,7 +91,7 @@ public final class FrontDoorDescription {
      * the line, and a line naming {@code kind} on the one door that dispatches on
      * {@code direction}.</p>
      */
-    public String usageLine(KindedTool door) {
+    public String usageLine(FrontDoor door) {
         return "USAGE: " + door.getName() + "(" + door.discriminator() + "=\"<"
             + String.join("|", door.publishedKinds()) + ">\"" + door.usageTail() + ")";
     }
@@ -103,6 +115,10 @@ public final class FrontDoorDescription {
      */
     public String kindBlockOf(KindedTool door) {
         StringBuilder block = new StringBuilder();
+        // No trailing newline: the loop below separates entries, so adding one here would put
+        // a blank line between the lead-in and the first bullet that the hand-written blocks
+        // do not have.
+        block.append(door.kindBlockLeadIn());
         door.delegates().forEach((kind, delegate) -> {
             if (block.length() > 0) {
                 block.append('\n');

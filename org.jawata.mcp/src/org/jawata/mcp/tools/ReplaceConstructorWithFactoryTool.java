@@ -66,6 +66,22 @@ public class ReplaceConstructorWithFactoryTool extends AbstractApplyingRefactori
         return "replace_constructor_with_factory";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: a constructor becomes a static
+            factory method and every `new X(...)` call site is rewritten
+            to call it, ACROSS FILES. protectConstructor defaults TRUE,
+            which makes the constructor private so the old path is
+            impossible rather than merely unused. Needs: line, column on
+            the class (optional factoryMethodName, default `create`;
+            factoryClass to put the factory on another type;
+            protectConstructor). Works on an implicit default
+            constructor too. Unblocks abstract-factory, factory-method,
+            builder and null-object.""";
+    }
+
 
     private final RefactoringEngine engine = new JdtRefactoringEngine();
 

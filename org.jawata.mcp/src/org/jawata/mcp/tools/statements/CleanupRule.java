@@ -53,12 +53,6 @@ public interface CleanupRule extends org.jawata.mcp.tools.KindDelegate {
         return kind();
     }
 
-    /** The rule's own one-line description, which is the door's whole documentation surface. */
-    @Override
-    default String kindSummary() {
-        return describe();
-    }
-
     /**
      * EMPTY, and truthfully so: {@code apply_cleanup} is a sweep. It takes a kind and an
      * optional file path, and no rule adds a parameter of its own — which is exactly why row
@@ -69,11 +63,16 @@ public interface CleanupRule extends org.jawata.mcp.tools.KindDelegate {
         return java.util.Map.of();
     }
 
-    /**
-     * One line for the tool's description, which is the whole documentation surface a
-     * client can reach: the delegates are not registered standalone.
-     */
-    String describe();
+    // The rule's own prose is `kindSummary()`, inherited from the role — it used to be a
+    // SECOND declaration here called `describe()`, forwarded to by a default. Two names for
+    // one fact is what this stage removes, and this one had the extra defect that the prose
+    // it returned OPENED WITH THE KIND NAME: every rule hand-wrote `guard_clauses      — ` in
+    // front of its sentence, padded by eye to a column, while the routing key said the same
+    // name one field away. The projection supplies the name, so the rule says only what it
+    // does. (`rename_symbol` refused the merge: the target name already existed as a default
+    // in this hierarchy, and removing that default first is what leaves the workspace red,
+    // which its precondition then refuses. The compiler is a complete oracle for it anyway —
+    // an implementor missed by the edit fails to compile.)
 
     /**
      * The edit for this file, or null when there is nothing to change here.

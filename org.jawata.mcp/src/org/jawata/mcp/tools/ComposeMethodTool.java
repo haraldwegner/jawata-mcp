@@ -43,6 +43,18 @@ public class ComposeMethodTool extends AbstractTool
         return "compose_method";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: reshape a long method into a short sequence of
+            intention-revealing calls. Needs: `sections` = an array of
+            >= 2 disjoint {startLine, startColumn, endLine, endColumn,
+            methodName} statement ranges to extract. Applies atomically
+            (auto_apply=false not supported). (find_quality_issue
+            kind=long_method locates candidates.)""";
+    }
+
 
     private final RefactoringChangeCache cache;
     private final ExtractMethodTool extract;

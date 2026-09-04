@@ -74,15 +74,16 @@ public final class SlideStatementsRule implements CleanupRule {
     }
 
     @Override
-    public String describe() {
-        return "slide_declaration   — Slide Statements: a local declared well above its first\n"
-            + "                        use moves down to sit directly before it, which is what\n"
-            + "                        lets Extract Function act on the range afterwards.\n"
-            + "                        Requires an initializer that reads only locals and\n"
-            + "                        parameters — no field, this, array element, call or\n"
-            + "                        construction — and no statement in between that assigns\n"
-            + "                        to or increments any local it reads. Never moves into a\n"
-            + "                        nested block: scope only shrinks.";
+    public String kindSummary() {
+        return """
+            Slide Statements: a local declared well above its first
+            use moves down to sit directly before it, which is what
+            lets Extract Function act on the range afterwards.
+            Requires an initializer that reads only locals and
+            parameters — no field, this, array element, call or
+            construction — and no statement in between that assigns
+            to or increments any local it reads. Never moves into a
+            nested block: scope only shrinks.""";
     }
 
     @Override

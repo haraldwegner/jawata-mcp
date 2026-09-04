@@ -53,6 +53,26 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool
         return "replace_inline_code";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            replace a group of duplicated method bodies with calls
+            to one canonical method (Fowler: Replace Inline Code with
+            Function Call). Needs: cloneGroupId from find_duplicate_code,
+            passed with the SAME minTokens/projectKey/crossProject the
+            detection used — group ids are hashes of the clone shape, not
+            session state. Optional canonicalMethodName picks which
+            instance survives. Clones in OTHER types are skipped and
+            listed with the reason: cross-type delegation is not
+            automatically safe.
+            The same behaviour reaches extract kind=method as
+            replaceDuplicates, DEFAULT FALSE — that operation predates the
+            parameter and its shipped behaviour is to extract the selection
+            only. Every extract reports otherOccurrences whether or not the
+            flag is set, so a non-zero count is the signal to re-run with it.""";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ReplaceDuplicatesTool.class);
 

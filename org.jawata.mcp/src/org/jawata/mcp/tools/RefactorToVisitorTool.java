@@ -49,6 +49,18 @@ public class RefactorToVisitorTool extends AbstractApplyingRefactoringTool
         return "refactor_to_visitor";
     }
 
+    /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            TOWARD: generate a <Base>Visitor interface + accept()
+            double-dispatch across an abstract hierarchy (the invasive
+            boilerplate; migrate the instanceof-chain accumulator after).
+            Needs: line, column on the abstract base type. Base abstract +
+            >= 2 subtypes in the same file. (find_quality_issue
+            kind=switch_statements locates instanceof/type-code chains.)""";
+    }
+
 
     public RefactorToVisitorTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

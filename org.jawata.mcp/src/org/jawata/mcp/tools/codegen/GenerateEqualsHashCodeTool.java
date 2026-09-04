@@ -65,6 +65,12 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
         return "equals_hashcode";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "equals() + hashCode(). Needs: fields[].";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateEqualsHashCodeTool.class);
 

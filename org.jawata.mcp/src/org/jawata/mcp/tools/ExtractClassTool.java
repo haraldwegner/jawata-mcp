@@ -70,6 +70,20 @@ public class ExtractClassTool extends AbstractApplyingRefactoringTool
         return "class";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            extract a group of FIELDS into a new class; the original keeps a
+            reference and every access is rewritten through it. Needs: line,
+            column, newTypeName, fields[] (optional fieldName, createTopLevel,
+            createGetterSetter). fields[] has no default on purpose — WHICH
+            state travels together is the design decision this carries out.
+            Move Field ships INSIDE this rather than beside it: it is the
+            constituent atom, and moving a field needs a target that already
+            owns state, so the move and the class creation must be atomic.""";
+    }
+
     /** Structural: it introduces a TYPE and rewrites every access through it. */
     @Override
     public boolean isStructural() {

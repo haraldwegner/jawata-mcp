@@ -24,12 +24,12 @@ public final class JdtCleanupRule implements CleanupRule {
     }
 
     private final String kind;
-    private final String describe;
+    private final String summary;
     private final Fix fix;
 
-    public JdtCleanupRule(String kind, String describe, Fix fix) {
+    public JdtCleanupRule(String kind, String summary, Fix fix) {
         this.kind = kind;
-        this.describe = describe;
+        this.summary = summary;
         this.fix = fix;
     }
 
@@ -39,8 +39,8 @@ public final class JdtCleanupRule implements CleanupRule {
     }
 
     @Override
-    public String describe() {
-        return describe;
+    public String kindSummary() {
+        return summary;
     }
 
     @Override

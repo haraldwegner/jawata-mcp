@@ -48,6 +48,12 @@ public class GenerateTestSkeletonTool extends AbstractTool
         return "test_skeleton";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "a test class for the type. Optional: framework, includePrivateMethods.";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateTestSkeletonTool.class);
 

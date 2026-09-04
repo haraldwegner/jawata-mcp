@@ -51,6 +51,14 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         return "method";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            extract a statement range into a new method.
+            Needs: startLine, startColumn, endLine, endColumn, methodName.""";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ExtractMethodTool.class);
 

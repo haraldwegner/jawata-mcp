@@ -69,6 +69,14 @@ public class GenerateGettersSettersTool extends AbstractTool
         return "getters_setters";
     }
 
+    /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "accessors. Needs: fields[]. Optional: accessorKind (getters|setters|both,"
+            + " default both), visibility, getterStyle (classic|record), setterStyle"
+            + " (classic|fluent), generateJavadoc.";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateGettersSettersTool.class);
 

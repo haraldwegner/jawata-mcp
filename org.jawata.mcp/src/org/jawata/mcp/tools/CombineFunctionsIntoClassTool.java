@@ -70,6 +70,23 @@ public class CombineFunctionsIntoClassTool extends AbstractApplyingRefactoringTo
         return "combine_functions";
     }
 
+    /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            gather loose STATIC functions that all take the same type
+            as their FIRST parameter into a new class holding it; each becomes
+            an instance method taking whatever came after, and every call site
+            becomes `new Type(data).fn(rest)` (Fowler: Combine Functions into
+            Class). Needs: filePath, functions[], newTypeName (optional
+            fieldName). functions[] has no default for the same reason
+            kind=class's fields[] does not — WHICH functions belong together is
+            the decision this carries out. Refuses a non-static function
+            (it already has a receiver — that is move kind=method) and a
+            function whose first parameter is a different type, naming both
+            sides, since a guess at "the data" produces code that compiles.""";
+    }
+
     /** Structural: it introduces a TYPE and every call site becomes a call through it. */
     @Override
     public boolean isStructural() {

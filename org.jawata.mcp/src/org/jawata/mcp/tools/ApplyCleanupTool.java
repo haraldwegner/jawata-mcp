@@ -111,14 +111,16 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
             new java.util.LinkedHashMap<>();
         for (org.jawata.mcp.tools.statements.CleanupRule rule : java.util.List.of(
                 new org.jawata.mcp.tools.statements.JdtCleanupRule("add_final",
-                    "add_final           — mark parameters and local variables `final` when never\n"
-                        + "                        reassigned (binding-checked, so it never breaks\n"
-                        + "                        compilation).",
+                    """
+                    mark parameters and local variables `final` when never
+                    reassigned (binding-checked, so it never breaks
+                    compilation).""",
                     ApplyCleanupTool::addFinalEdit),
                 new org.jawata.mcp.tools.statements.JdtCleanupRule("redundant_modifiers",
-                    "redundant_modifiers — remove modifiers that are implicit on interface members\n"
-                        + "                        (public/abstract methods, public/static/final\n"
-                        + "                        fields, public/static nested types).",
+                    """
+                    remove modifiers that are implicit on interface members
+                    (public/abstract methods, public/static/final
+                    fields, public/static nested types).""",
                     ApplyCleanupTool::redundantModifiersEdit),
                 new org.jawata.mcp.tools.statements.GuardClausesRule(),
                 new org.jawata.mcp.tools.statements.ConsolidateConditionalRule(),
@@ -170,35 +172,53 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
      */
     @Override
     public String getDescription() {
-        StringBuilder kinds = new StringBuilder();
-        for (org.jawata.mcp.tools.statements.CleanupRule rule : RULES.values()) {
-            kinds.append("- ").append(rule.describe()).append('\n');
-        }
+        return org.jawata.mcp.tools.FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
         return """
             Apply a safe, mechanical source clean-up across a file or project.
             Auto-applies by default and returns
             { filesModified, diff, undoChangeId, summary }; pass auto_apply:false
-            to stage instead. A no-op returns hasChanges:false.
+            to stage instead. A no-op returns hasChanges:false.""";
+    }
 
-            USAGE: apply_cleanup(kind="<kind>")  — whole default project
-                   apply_cleanup(kind="<kind>", filePath="path/to/File.java")
-                   apply_cleanup(kind="<kind>", filePath=..., line=N, column=M)
-                   apply_cleanup(kind="<kind>", symbol="pkg.Type#member")
-                          — just the member named, which is how a finding about ONE
-                            method is answered without rewriting the whole file around
-                            it. The symbol form resolves to the same position.
-                            REFUSED for a rewrite that MOVES code past that member —
-                            a move is a linked pair of edits and half of one is not a
-                            smaller change, so the refusal says so instead. The kinds
-                            that do: """
-            + String.join(", ", POSITION_REFUSING_KINDS)
-            + """
-.
+    /**
+     * THE ONE DOOR WHOSE USAGE IS A SECTION, NOT A LINE.
+     *
+     * <p>Four call shapes and a paragraph about which narrowings a moving rewrite refuses.
+     * The generated line above is the first shape — whole default project — and this
+     * continues it, which is why it opens mid-line with that shape's own annotation.</p>
+     */
+    @Override
+    public String usageNote() {
+        // CONCATENATION, not a text block, and deliberately: every line here is aligned
+        // against the generated `USAGE: ` prefix that precedes it, and a text block strips
+        // the smallest indent its lines share — which would take the two spaces off the
+        // first line and five off the rest, silently re-aligning a published block against
+        // nothing.
+        return "  — whole default project\n"
+            + "       apply_cleanup(kind=\"<kind>\", filePath=\"path/to/File.java\")\n"
+            + "       apply_cleanup(kind=\"<kind>\", filePath=..., line=N, column=M)\n"
+            + "       apply_cleanup(kind=\"<kind>\", symbol=\"pkg.Type#member\")\n"
+            + "              — just the member named, which is how a finding about ONE\n"
+            + "                method is answered without rewriting the whole file around\n"
+            + "                it. The symbol form resolves to the same position.\n"
+            + "                REFUSED for a rewrite that MOVES code past that member —\n"
+            + "                a move is a linked pair of edits and half of one is not a\n"
+            + "                smaller change, so the refusal says so instead. The kinds\n"
+            + "                that do: " + String.join(", ", POSITION_REFUSING_KINDS) + ".";
+    }
 
-            KINDS:
-"""
-            + kinds
-            + """
+    @Override
+    public String kindBlockLeadIn() {
+        return "KINDS:";
+    }
+
+    @Override
+    public String footer() {
+        return """
             This catalog is intentionally non-overlapping with organize_imports,
             format, apply_quick_fix and find_modernization. Optional: projectKey
             to scope a project-wide sweep. Requires load_project first.
