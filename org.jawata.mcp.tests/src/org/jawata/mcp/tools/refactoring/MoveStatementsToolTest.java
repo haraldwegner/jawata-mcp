@@ -136,17 +136,43 @@ class MoveStatementsToolTest {
     }
 
     @Test
-    @DisplayName("a statement in the middle of a method cannot move to callers")
+    @DisplayName("a statement in the MIDDLE of a method cannot move to callers")
     void aMiddleStatementIsRefused() throws Exception {
         Path callee = pkg.resolve("Audited.java");
         String before = read(callee);
-        int line = lineOf(callee, "audits = 0", 0);
+        // The middle statement of `threeSteps`, which exists in the fixture for this test
+        // alone. An earlier version of this pointed at a FIELD declaration and rationalised
+        // it as "the same refusal read from the other end" — it is not: a field is rejected
+        // before the middle-statement check is ever reached, so the headline safety
+        // property this method's name claims had no test at all. A C6 audit caught it.
+        int line = lineOf(callee, "exits = exits + 1; // the middle", 0);
 
-        // A field declaration, not a statement of a method body: there is no call-site
-        // position for it at all, which is the same refusal read from the other end.
         ToolResponse r = move("statements_to_callers", callee, line, 8);
 
-        assertFalse(r.isSuccess(), "a field is not a movable statement");
+        assertFalse(r.isSuccess(), "no call-site position runs after part of a body");
+        assertTrue(String.valueOf(r.getError()).contains("neither the method's first nor its last"),
+            "and the refusal must be THAT one, not a different rejection that happens to"
+                + " fire first: " + r.getError());
+        assertEquals(before, read(callee), "nothing may change on a refusal");
+    }
+
+    @Test
+    @DisplayName("a field declaration is refused too, and for its own reason")
+    void aFieldIsRefused() throws Exception {
+        Path callee = pkg.resolve("Audited.java");
+        String before = read(callee);
+        int line = lineOf(callee, "static int audits = 0", 0);
+
+        ToolResponse r = move("statements_to_callers", callee, line, 8);
+
+        assertFalse(r.isSuccess(), "a field is not a statement of a method body");
+        // "No statement at" — a field declaration is not a Statement node at all, so it is
+        // rejected before ANY of the operation's own checks run. That is exactly why the
+        // earlier version of the test above proved nothing about the middle-statement
+        // refusal: the two are rejected at opposite ends of the method.
+        assertTrue(String.valueOf(r.getError()).contains("No statement at"),
+            "with the reason a field earns, which is a different one and arrives earlier: "
+                + r.getError());
         assertEquals(before, read(callee), "nothing may change on a refusal");
     }
 }

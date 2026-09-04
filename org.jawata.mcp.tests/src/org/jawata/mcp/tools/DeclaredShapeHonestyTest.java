@@ -310,6 +310,39 @@ class DeclaredShapeHonestyTest {
         move.put("statements_into_function", new MoveStatementsIntoFunctionTool(svc, cache));
         move.put("statements_to_callers", new MoveStatementsToCallersTool(svc, cache));
         assertPublishesEveryDelegateParameter(new MoveTool(svc, cache), move);
+
+        // `inline` joins the parameter axis at C6, and it should have been here from the
+        // moment it stopped being a two-kind door. A C6 audit found the cost: row 36's
+        // `accessorName` reached the delegate's schema and never the front door's, so it
+        // ran for anyone who knew the argument name and was invisible to everyone reading
+        // tools/list. That is the SAME defect this whole test exists for — Stage 7 of the
+        // previous sprint, `extract kind=class`, five parameters, identical shape — and it
+        // recurred because the guard's own coverage list was a THIRD hand-written list.
+        Map<String, AbstractTool> inline = new LinkedHashMap<>();
+        inline.put("method", new InlineMethodTool(svc, cache));
+        inline.put("variable", new InlineVariableTool(svc, cache));
+        inline.put("class", new InlineClassTool(svc, cache));
+        inline.put("subclass", new RemoveSubclassTool(svc, cache));
+        inline.put("middle_man", new RemoveMiddleManTool(svc, cache));
+        assertPublishesEveryDelegateParameter(new InlineTool(svc, cache), inline);
+
+        // THE COVERAGE ASSERTION, so the next door added is not silently unchecked on this
+        // axis. `frontDoors()` is the list the DESCRIPTION axis uses; this names, per door,
+        // whether the parameter axis reaches it — and a door that is genuinely out of scope
+        // has to be written into the exclusion below with its reason, not just left out.
+        java.util.Set<String> onTheParameterAxis =
+            java.util.Set.of("extract", "generate", "refactor_to_pattern", "move", "inline");
+        java.util.Set<String> excluded = java.util.Set.of(
+            // Not delegate maps: their kinds are switch arms over one implementation, so
+            // there is no per-delegate schema for a front door's copy to drift from.
+            "apply_cleanup", "hierarchy", "refactoring");
+        java.util.Set<String>doors = new java.util.LinkedHashSet<>(frontDoors().keySet());
+        doors.removeAll(onTheParameterAxis);
+        assertEquals(excluded, doors,
+            "a parametric front door is either checked on the parameter axis above or"
+                + " written into the exclusion with its reason. One that is neither is"
+                + " unguarded, and nothing else would say so — which is exactly how row"
+                + " 36's accessorName reached production unpublished.");
     }
 
     /**

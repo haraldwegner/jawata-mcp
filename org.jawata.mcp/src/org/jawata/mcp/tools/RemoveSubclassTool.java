@@ -307,7 +307,7 @@ public class RemoveSubclassTool extends AbstractRefactoringTool {
                                                           ICompilationUnit parentCu)
             throws Exception {
         Set<ICompilationUnit> units = new LinkedHashSet<>();
-        for (SearchMatch match : service.getSearchService().findAllReferences(subclass, 500)) {
+        for (SearchMatch match : org.jawata.mcp.refactoring.CompleteReferences.of(service, subclass)) {
             if (match.getElement() instanceof IJavaElement element) {
                 ICompilationUnit unit = (ICompilationUnit) element
                     .getAncestor(IJavaElement.COMPILATION_UNIT);
@@ -396,7 +396,7 @@ public class RemoveSubclassTool extends AbstractRefactoringTool {
         String name = subclass.getElementName();
         Set<ICompilationUnit> units = new LinkedHashSet<>();
         units.add(subclass.getCompilationUnit());
-        for (SearchMatch match : service.getSearchService().findAllReferences(subclass, 500)) {
+        for (SearchMatch match : org.jawata.mcp.refactoring.CompleteReferences.of(service, subclass)) {
             if (match.getElement() instanceof IJavaElement element) {
                 ICompilationUnit unit = (ICompilationUnit) element
                     .getAncestor(IJavaElement.COMPILATION_UNIT);

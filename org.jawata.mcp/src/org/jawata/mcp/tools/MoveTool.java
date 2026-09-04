@@ -161,6 +161,14 @@ public class MoveTool extends AbstractTool {
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "class to move (kind=class; kind=package uses packageName)"));
+        // `symbol` was ACCEPTED here and not PUBLISHED. The front door's name-form
+        // materializer reads either key, so a member FQN has always worked for kind=method;
+        // only typeName was declared, so a client reading tools/list could not know. A C6
+        // audit found the same shape on kind=middle_man's accessorName, which is why both
+        // are written out now rather than left to the backstop below.
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "member to move: pkg.Type#method for kind=method, pkg.Type#field for kind=field."
+                + " The statement kinds are POSITIONAL — a statement has no name"));
 
         // THE BACKSTOP — the same one ExtractTool carries, and for the same reason: a
         // parameter a delegate declares must reach the published contract whether or not

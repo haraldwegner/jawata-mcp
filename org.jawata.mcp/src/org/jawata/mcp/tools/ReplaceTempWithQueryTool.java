@@ -147,6 +147,24 @@ public class ReplaceTempWithQueryTool extends AbstractRefactoringTool {
                         + " kind=split_variable) is the step before this one.");
             }
 
+            // A RECIPE CANNOT STAGE, and saying so is the only honest answer. Its second
+            // step is built against the workspace the first step produced, so there is no
+            // change to show a caller until the first one has already been applied — the
+            // preview they asked for does not exist yet. This shipped publishing
+            // auto_apply (the wrapper adds it to every refactoring schema) and silently
+            // ignoring it, so a caller who asked to preview got their workspace mutated.
+            // An architect watch found it. Both composed operations that predate this one
+            // refuse the same way for the same reason.
+            if (!getBooleanParam(arguments, "auto_apply", true)) {
+                return ToolResponse.invalidParameter("auto_apply",
+                    "replace_temp_with_query is COMPOSED — it extracts the initializer, then"
+                        + " inlines the temp, and the second step cannot be built until the"
+                        + " first has been applied. So there is no single staged change to"
+                        + " preview. Run it (it reverts through one undo handle), or stage"
+                        + " the halves yourself: extract kind=method on the initializer,"
+                        + " then inline kind=variable on the temp.");
+            }
+
             String methodName = getStringParam(arguments, "methodName");
             if (methodName == null || methodName.isBlank()) {
                 methodName = name;

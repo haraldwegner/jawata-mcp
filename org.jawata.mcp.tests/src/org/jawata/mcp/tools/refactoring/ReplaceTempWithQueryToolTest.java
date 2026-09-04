@@ -104,6 +104,34 @@ class ReplaceTempWithQueryToolTest {
     }
 
     @Test
+    @DisplayName("auto_apply=false is REFUSED — a recipe has no single change to stage")
+    void stagingIsRefused() throws Exception {
+        String before = read();
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "temp_to_query");
+        args.put("filePath", fixture.toString());
+        args.put("line", lineOf("int basePrice = quantity * 7;"));
+        args.put("column", 12);
+        args.put("auto_apply", false);
+
+        ToolResponse r = tool.execute(args);
+
+        // This shipped PUBLISHING auto_apply — the schema wrapper adds it to every
+        // refactoring — and silently ignoring it, so a caller who asked to preview got
+        // their workspace rewritten. An architect watch at C6 found it. Both composed
+        // operations that predate this one refuse the same way for the same reason: the
+        // second step is built against the workspace the first produced, so the change to
+        // preview does not exist until the first has already been applied.
+        assertFalse(r.isSuccess(), "a preview that mutates is worse than no preview");
+        String error = String.valueOf(r.getError());
+        assertTrue(error.contains("COMPOSED"),
+            "and the refusal must say why, not merely decline: " + error);
+        assertTrue(error.contains("extract kind=method") && error.contains("inline kind=variable"),
+            "naming the two halves a caller can stage themselves: " + error);
+        assertEquals(before, read(), "and nothing may have been written");
+    }
+
+    @Test
     @DisplayName("a temp that is assigned twice is refused, pointing at Split Variable")
     void aReassignedTempIsRefused() throws Exception {
         String before = read();

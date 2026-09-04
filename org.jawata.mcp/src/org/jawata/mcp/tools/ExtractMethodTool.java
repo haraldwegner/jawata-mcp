@@ -119,10 +119,13 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
             "replaceDuplicates", Map.of(
                 "type", "boolean",
                 "description", "Also rewrite every OTHER occurrence of the selected "
-                    + "statements in the same type to call the new method (default TRUE — "
-                    + "Fowler's Replace Inline Code with Function Call). The engine matches "
-                    + "on structure AND resolved bindings, so it never rewrites code that "
-                    + "merely looks alike. Set false to extract only the selection."
+                    + "statements in the same type to call the new method (Fowler's Replace "
+                    + "Inline Code with Function Call). DEFAULT FALSE, because this "
+                    + "operation predates the parameter and its shipped behaviour is to "
+                    + "extract only the selection. The response reports otherOccurrences "
+                    + "either way, so a non-zero count is the signal to re-run with this "
+                    + "set. The engine matches on structure AND resolved bindings, so it "
+                    + "never rewrites code that merely looks alike."
             )
         ));
         schema.put("required", List.of("filePath", "startLine", "startColumn", "endLine", "endColumn", "methodName"));
@@ -197,17 +200,21 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
         // this asks the engine to find every OTHER occurrence of the selected statements in
         // the same type and rewrite it to call the new method too.
         //
-        // ON BY DEFAULT, and that is the decision worth stating. The alternative is an
-        // opt-in, and a diligence option costs the caller a decision they have no
-        // information to make: they cannot see the other occurrences, which is precisely
-        // why they are worth finding. An extract that leaves three copies of the code it
-        // just named has not done the refactoring, it has done a third of it.
+        // OFF BY DEFAULT, and that is a REVERSAL made at C6 on the architect seat's
+        // finding. It shipped ON for a day, with the argument that an opt-in nobody chooses
+        // is a row that never fires. The argument was right about opt-ins and wrong about
+        // this one: `extract kind=method` has shipped since Sprint 16b, and
+        // ARCHITECTURE-fowler-full.md §8 lists "the behaviour of the 17 shipped
+        // refactorings" under Do not touch. Defaulting it on silently widened an operation
+        // every existing caller already relies on — and this sprint's own recipe had
+        // already turned it off for exactly that reason (ReplaceTempWithQueryTool), so the
+        // hazard was seen for the internal caller and left on for every external one.
         //
-        // It is safe to default because the engine's own matcher decides: it replaces only
-        // occurrences whose statements are structurally identical AND whose names resolve
-        // to the same bindings, and it refuses the whole extraction rather than guessing.
-        // Set replaceDuplicates=false to extract exactly the selection and nothing else.
-        boolean replaceDuplicates = getBooleanParam(arguments, "replaceDuplicates", true);
+        // What keeps the row from being an unchosen flag is the COUNT, which is reported
+        // whether or not the flag is set: a caller who extracts and reads
+        // "otherOccurrences: 3" learns the thing they could not have counted, and asks for
+        // it deliberately on the next call. That is discovery without a behaviour change.
+        boolean replaceDuplicates = getBooleanParam(arguments, "replaceDuplicates", false);
 
         RefactoringStatus status = refactoring.checkAllConditions(new NullProgressMonitor());
         if (status.hasError()) {

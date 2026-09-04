@@ -143,9 +143,11 @@ public class ExtractTool extends AbstractTool {
                          instance survives. Clones in OTHER types are skipped and
                          listed with the reason: cross-type delegation is not
                          automatically safe.
-                         The same behaviour reaches extract kind=method, where it is ON by
-                         default: extracting a range also rewrites every other occurrence
-                         of it in the type. Set replaceDuplicates=false to opt out.
+                         The same behaviour reaches extract kind=method as
+                         replaceDuplicates, DEFAULT FALSE — that operation predates the
+                         parameter and its shipped behaviour is to extract the selection
+                         only. Every extract reports otherOccurrences whether or not the
+                         flag is set, so a non-zero count is the signal to re-run with it.
             - combine_functions — gather loose STATIC functions that all take the same type
                          as their FIRST parameter into a new class holding it; each becomes
                          an instance method taking whatever came after, and every call site
@@ -230,8 +232,16 @@ public class ExtractTool extends AbstractTool {
             "description", "superclass: jdt (default) = the general JDT engine; identical = the conservative byte-identical + self-contained contract."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
-            "type to extract from (kinds interface/superclass; the range kinds "
+            "type to extract from (kinds interface/superclass/class; the range kinds "
                 + "method/variable/constant need their coordinates)"));
+        // ACCEPTED and not PUBLISHED until C6 — the front door's materializer reads either
+        // key, so a member FQN has always worked; only typeName was declared. Stage 6 added
+        // a kind whose target is a METHOD (function_to_command), which is what made the
+        // omission reach a client rather than merely being untidy.
+        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
+            "member to extract from: pkg.Type#method for kind=function_to_command. The RANGE"
+                + " kinds (method, variable, constant, split_phase, temp_to_query) are"
+                + " positional — a statement range and a local have no name"));
 
         // THE BACKSTOP: every parameter any delegate declares reaches the published
         // contract, whether or not someone remembered to curate it above.

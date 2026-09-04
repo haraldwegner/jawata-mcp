@@ -34,6 +34,7 @@ import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.refactoring.PreparedRefactoring;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;
@@ -357,38 +358,4 @@ public class MoveFieldTool extends AbstractRefactoringTool {
         return (CompilationUnit) parser.createAST(null);
     }
 
-    /** A prepared change, presented as a refactoring so it uses the standard pipeline. */
-    private static final class PreparedRefactoring
-            extends org.eclipse.ltk.core.refactoring.Refactoring {
-
-        private final Change change;
-        private final String label;
-
-        PreparedRefactoring(Change change, String label) {
-            this.change = change;
-            this.label = label;
-        }
-
-        @Override
-        public String getName() {
-            return label;
-        }
-
-        @Override
-        public RefactoringStatus checkInitialConditions(
-                org.eclipse.core.runtime.IProgressMonitor pm) {
-            return new RefactoringStatus();
-        }
-
-        @Override
-        public RefactoringStatus checkFinalConditions(
-                org.eclipse.core.runtime.IProgressMonitor pm) {
-            return new RefactoringStatus();
-        }
-
-        @Override
-        public Change createChange(org.eclipse.core.runtime.IProgressMonitor pm) {
-            return change;
-        }
-    }
 }

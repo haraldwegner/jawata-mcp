@@ -96,12 +96,39 @@ class ReplaceInlineCodeWithFunctionCallTest {
     }
 
     @Test
-    @DisplayName("by default the other occurrence becomes a call too, and the count is reported")
-    void theDuplicateIsReplaced() throws Exception {
+    @DisplayName("THE DEFAULT is unchanged: an extract touches only the selection, and says how many others there are")
+    void theDefaultLeavesTheOtherOccurrenceAlone() throws Exception {
         assertEquals(2, countOf(read(), "int scaled = base * 3;"),
             "PROOF OF LIFE: the fixture must hold the pair twice before this runs");
 
         ToolResponse r = extractFirstPair(null);
+        assertTrue(r.isSuccess(), "the extraction must run; got: " + r.getError());
+
+        // `extract kind=method` has shipped since Sprint 16b and
+        // ARCHITECTURE-fowler-full.md §8 lists the behaviour of the shipped refactorings
+        // under Do not touch. Row 49 shipped with the flag ON for one day; an architect
+        // watch at C6 named the clause and it was right. This test is the guard that the
+        // reversal stays reversed.
+        assertEquals(2, countOf(read(), "int scaled = base * 3;"),
+            "the second occurrence is untouched by an extract that did not ask:\n" + read());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> byDefault = (Map<String, Object>) r.getData();
+        // AND THE COUNT IS STILL REPORTED, which is what keeps row 49 from being a flag
+        // nobody chooses: the caller could not have counted the other occurrences, and now
+        // they have the number that tells them to ask.
+        assertEquals(1, ((Number) byDefault.get("otherOccurrences")).intValue(),
+            "the count is reported even when nothing was done about it: " + byDefault);
+        assertEquals(false, byDefault.get("replaceDuplicates"), byDefault.toString());
+    }
+
+    @Test
+    @DisplayName("replaceDuplicates=true makes the other occurrence a call too")
+    void theDuplicateIsReplaced() throws Exception {
+        assertEquals(2, countOf(read(), "int scaled = base * 3;"),
+            "PROOF OF LIFE: the fixture must hold the pair twice before this runs");
+
+        ToolResponse r = extractFirstPair(true);
         assertTrue(r.isSuccess(), "the extraction must run; got: " + r.getError());
 
         String after = read();
@@ -125,7 +152,7 @@ class ReplaceInlineCodeWithFunctionCallTest {
     }
 
     @Test
-    @DisplayName("replaceDuplicates=false extracts only the selection — the control")
+    @DisplayName("replaceDuplicates=false is the same as omitting it — the control on the flag")
     void theFlagCanBeTurnedOff() throws Exception {
         ToolResponse r = extractFirstPair(false);
         assertTrue(r.isSuccess(), "the extraction must run; got: " + r.getError());

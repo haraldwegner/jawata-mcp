@@ -112,8 +112,17 @@ public class InlineTool extends AbstractTool {
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
 
+        // The name form reaches every kind whose target HAS a name, and after Stage 6 that
+        // is four of the five. The old text said "kind=method only", which was true when
+        // this door had two kinds and became false the moment it took three type-targeted
+        // ones — a published sentence telling clients a form does not apply where it does.
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "method to inline (kind=method only — a local variable has no name form)"));
+            "target to inline: pkg.Type#method for kind=method, pkg.Type for kind=class, "
+                + "subclass and middle_man. kind=variable is POSITIONAL only — a local has "
+                + "no name to address it by"));
+        properties.put("accessorName", Map.of("type", "string",
+            "description", "kind=middle_man: name for the accessor that exposes the delegate "
+                + "(default: the field's own name). Every rewritten call site reads it."));
         schema.put("properties", properties);
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of("kind"));

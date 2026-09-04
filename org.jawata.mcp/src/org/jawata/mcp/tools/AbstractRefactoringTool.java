@@ -322,15 +322,40 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
                 .build());
         }
 
-        // Perform via the shared engine: resource-listener file capture (some
-        // LTK ProcessorChanges expose no children) + undo capture.
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
+        // THROUGH THE GATE, since C6. This base used to call ChangeEngine.perform directly
+        // and return — no compile verification at all — which was defensible while it only
+        // ever drove real LTK refactorings, whose own checkFinalConditions is the net.
+        // Stage 6 removed that net and kept the base: six operations hand-assemble
+        // multi-file composite changes and wrap them in PreparedRefactoring, which answers
+        // OK to both LTK checks on purpose. They were applied UNVERIFIED and reported
+        // applied:true, while MoveFieldTool's own javadoc said a cross-file edit that
+        // bypassed the gate "would be the one place in the product where a rewrite is
+        // applied unverified". An architect watch found it; the fix is that the gate now
+        // hangs off the APPLY STEP rather than off whichever base an author happened to
+        // extend.
+        org.jawata.mcp.refactoring.GatedApply.Result gated =
+            org.jawata.mcp.refactoring.GatedApply.perform(change, service,
+                org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+        ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",
                 operationLabel + " failed: " + outcome.validationError(),
                 "Inspect the conflict description and either adjust the input or fix "
                     + "the workspace state. No files were modified.");
+        }
+        if (gated.refused()) {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("introducedErrors", gated.introduced());
+            detail.put("undone", gated.undone());
+            detail.put("diff", diff);
+            return ToolResponse.error(
+                "REFACTORING_BROKE_COMPILE",
+                operationLabel + " " + gated.failure(),
+                "The refactoring's transformation is wrong for this code shape. Do not "
+                    + "retry the identical call; report it. The workspace was "
+                    + (gated.undone() ? "left as it was." : "NOT restored — check git status."),
+                detail);
         }
 
         String undoChangeId = null;

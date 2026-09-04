@@ -176,46 +176,34 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         // success). Errors present BEFORE the change don't count against it; only
         // messages the change INTRODUCED do — and then the change is UNDONE, not left
         // for the caller to clean up.
-        Map<String, java.util.Set<String>> errorsBefore =
-            org.jawata.mcp.refactoring.CompileVerify.errorMessagesByFile(
-                service, ChangeEngine.affectedFilePaths(change, service));
-
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
+        // Since C6 this is ONE shared step rather than a block that lived only here. It
+        // had exactly one call site, so which guarantees an operation got were decided by
+        // which base its author extended — and Stage 6 put six multi-file operations on
+        // the other one. See GatedApply.
+        org.jawata.mcp.refactoring.GatedApply.Result gated =
+            org.jawata.mcp.refactoring.GatedApply.perform(change, service,
+                compileGateMode() == GateMode.REPORT
+                    ? org.jawata.mcp.refactoring.GatedApply.Mode.REPORT
+                    : org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+        ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",
                 getName() + " failed: " + outcome.validationError(),
                 "No files were modified. Adjust the input or fix the workspace state and retry.");
         }
-
-        List<String> introduced = org.jawata.mcp.refactoring.CompileVerify.introducedErrors(
-            errorsBefore,
-            org.jawata.mcp.refactoring.CompileVerify.errorMessagesByFile(
-                service, outcome.modifiedFilePaths()));
-        boolean anySyntax = introduced.stream().anyMatch(
-            m -> m.contains(org.jawata.mcp.refactoring.CompileVerify.SYNTAX_PREFIX));
-        boolean reportOnly = compileGateMode() == GateMode.REPORT && !anySyntax;
-        if (!introduced.isEmpty() && !reportOnly) {
-            boolean undone = false;
-            if (outcome.undoChange() != null) {
-                ChangeEngine.ApplyOutcome undoOutcome =
-                    ChangeEngine.perform(outcome.undoChange(), service);
-                undone = undoOutcome.validationError() == null;
-            }
+        List<String> introduced = gated.introduced();
+        if (gated.refused()) {
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("introducedErrors", introduced);
-            detail.put("undone", undone);
+            detail.put("undone", gated.undone());
             detail.put("diff", diff);
             return ToolResponse.error(
                 "REFACTORING_BROKE_COMPILE",
-                getName() + " produced code that does not compile ("
-                    + introduced.size() + " new error(s), e.g. " + introduced.get(0) + "). "
-                    + (undone
-                        ? "The change was UNDONE — no files remain modified."
-                        : "UNDO FAILED — the broken change IS on disk; restore from VCS."),
+                getName() + " " + gated.failure(),
                 "The refactoring's transformation is wrong for this code shape. Do not retry "
                     + "the identical call; report it. The workspace was "
-                    + (undone ? "left as it was." : "NOT restored — check git status."),
+                    + (gated.undone() ? "left as it was." : "NOT restored — check git status."),
                 detail);
         }
 

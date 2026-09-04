@@ -177,6 +177,33 @@ public final class CureCatalog {
         m.put("encapsulation", List.of(
             new Cure("data", "design:private-class-data")));
 
+        // --- Sprint 28d-rescue, S6: the four rows whose detector already exists. Stage 6
+        // BUILT cures for smells this table had no row for at all, and leaving them out is
+        // the built-but-unwired state the sprint exists to remove — the finding would go on
+        // describing a fix the product performs and not offering it. A C6 audit found
+        // exactly that and was right.
+        //
+        // lazy_class gets TWO routes and therefore ADVISE, which is the honest tier. A class
+        // that has stopped earning its name is folded into its only user when it stands
+        // beside one and into its parent when it stands under one, and which of those it is
+        // is a fact about the hierarchy that the finding does not carry. Offering one as an
+        // instruction would send half the readers at the wrong operation.
+        m.put("lazy_class", List.of(
+            new Cure("inline kind=class", null),
+            new Cure("inline kind=subclass", null)));
+        // ONE route, so PERFORM, and it is the clearest instruction in this table after
+        // remove_dead_code: the finding says a class does nothing but forward, and the cure
+        // removes exactly the forwarding it counted. No catalogue design — Remove Middle Man
+        // is a refactoring, and `design:middle-man` is not a row that exists.
+        m.put("middle_man", List.of(
+            new Cure("inline kind=middle_man", null)));
+        // Move Field, on the smell that reports two classes reaching into each other's
+        // state. NOT on shotgun_surgery, though the plan names both: shotgun surgery is
+        // "one change touches many classes", and moving a single field almost never settles
+        // it — routing it there would turn a design finding into a one-field instruction.
+        m.put("inappropriate_intimacy", List.of(
+            new Cure("move kind=field", null)));
+
         // --- Sprint 28d-rescue, S8: the six kinds stage 8 adds. Batched here rather
         // than written as each detector landed, because this table has one owner and a
         // lane that edits it while another lane is also editing it is how two routes

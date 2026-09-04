@@ -143,7 +143,7 @@ public class InlineClassTool extends AbstractRefactoringTool {
             // WHO USES IT. One user is the whole premise: Inline Class folds a class INTO
             // something, and with two there is no single destination.
             List<SearchMatch> references =
-                service.getSearchService().findAllReferences(source, 500);
+                org.jawata.mcp.refactoring.CompleteReferences.of(service, source);
             Set<ICompilationUnit> users = new LinkedHashSet<>();
             for (SearchMatch match : references) {
                 if (match.getElement() instanceof IJavaElement element) {

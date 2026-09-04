@@ -242,7 +242,7 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
     private static List<Site> callSites(IJdtService service, IMethod target) throws Exception {
         Set<ICompilationUnit> units = new LinkedHashSet<>();
         for (org.eclipse.jdt.core.search.SearchMatch match
-                : service.getSearchService().findAllReferences(target, 500)) {
+                : org.jawata.mcp.refactoring.CompleteReferences.of(service, target)) {
             if (match.getElement() instanceof IJavaElement element) {
                 ICompilationUnit unit = (ICompilationUnit) element
                     .getAncestor(IJavaElement.COMPILATION_UNIT);
