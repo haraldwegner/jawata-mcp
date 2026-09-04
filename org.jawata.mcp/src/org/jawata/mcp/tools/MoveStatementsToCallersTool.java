@@ -224,7 +224,7 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
         // which is what a gate is for. Qualifying is the right answer rather than refusing
         // — the statement is unchanged in meaning and a reader at the call site now sees
         // which class's state it touches.
-        String moved = qualifyOwnStatics(sourceOf(unit.getSource(), statement), statement);
+        Map<String, String> ownStatics = ownStaticQualifications(statement);
 
         Map<ICompilationUnit, List<Site>> byUnit = new LinkedHashMap<>();
         for (Site site : sites) {
@@ -247,7 +247,8 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
                 ListRewrite block = rewrite.getListRewrite(callStatement.getParent(),
                     Block.STATEMENTS_PROPERTY);
                 Statement arriving = (Statement) rewrite.createStringPlaceholder(
-                    substituteArguments(moved, used, site.invocation),
+                    substituteArguments(unit.getSource(), statement, ownStatics, used,
+                        site.invocation),
                     ASTNode.EXPRESSION_STATEMENT);
                 if (first) {
                     block.insertBefore(arriving, callStatement, null);
@@ -433,18 +434,19 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
      * innocent the expression looks. Those sites are refused by the caller of this method
      * rather than rewritten, so the operation is never the reason a side effect doubled.</p>
      */
-    private static String substituteArguments(String moved, List<String> used,
+    private static String substituteArguments(String fileSource, Statement statement,
+                                              Map<String, String> ownStatics,
+                                              List<String> used,
                                               MethodInvocation invocation) {
-        String out = moved;
+        Map<String, String> replacements = new LinkedHashMap<>(ownStatics);
         List<?> arguments = invocation.arguments();
         for (int i = 0; i < used.size() && i < arguments.size(); i++) {
-            if (used.get(i) == null) {
-                continue;
+            if (used.get(i) != null) {
+                replacements.put(used.get(i), arguments.get(i).toString());
             }
-            out = out.replaceAll("\\b" + java.util.regex.Pattern.quote(used.get(i)) + "\\b",
-                java.util.regex.Matcher.quoteReplacement(arguments.get(i).toString()));
         }
-        return out;
+        return org.jawata.mcp.refactoring.MovedStatement.withVariablesRenamed(
+            fileSource, statement, replacements);
     }
 
     /** Whether an argument can be copied to a second place without evaluating twice. */
@@ -468,9 +470,23 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
      * {@code SimpleName} whose binding is a static field, and which is not already the
      * qualified half of something, is touched.</p>
      */
-    private static String qualifyOwnStatics(String source, Statement statement) {
-        java.util.Set<String> bare = new LinkedHashSet<>();
-        java.util.Map<String, String> owner = new java.util.LinkedHashMap<>();
+    /**
+     * Bare references to the OWNER'S OWN static fields, mapped to their qualified form.
+     *
+     * <p>A static field of the method's own class resolves bare INSIDE that class and
+     * nowhere else, so `exits = exits + 1;` compiles here and not at a call site in another
+     * file. The compile gate caught that on this row's first parity run. Qualifying is the
+     * right answer rather than refusing — the statement is unchanged in meaning and a reader
+     * at the call site now sees which class's state it touches.</p>
+     *
+     * <p>This returns a MAP rather than rewritten text, so the qualification and the
+     * argument substitution are spliced together in one AST-driven pass. Both were once
+     * regular-expression replaces over the source, and both would therefore rewrite a
+     * matching word inside a STRING LITERAL — see {@link org.jawata.mcp.refactoring.MovedStatement}
+     * for the upstream statement that proves it.</p>
+     */
+    private static Map<String, String> ownStaticQualifications(Statement statement) {
+        Map<String, String> owner = new LinkedHashMap<>();
         statement.accept(new ASTVisitor() {
             @Override
             public boolean visit(SimpleName node) {
@@ -486,18 +502,13 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
                 if (binding instanceof IVariableBinding variable && variable.isField()
                         && Modifier.isStatic(variable.getModifiers())
                         && variable.getDeclaringClass() != null) {
-                    bare.add(node.getIdentifier());
-                    owner.put(node.getIdentifier(), variable.getDeclaringClass().getName());
+                    owner.put(node.getIdentifier(),
+                        variable.getDeclaringClass().getName() + "." + node.getIdentifier());
                 }
                 return true;
             }
         });
-        String out = source;
-        for (String name : bare) {
-            out = out.replaceAll("(?<![.\\w])" + java.util.regex.Pattern.quote(name) + "\\b",
-                java.util.regex.Matcher.quoteReplacement(owner.get(name) + "." + name));
-        }
-        return out;
+        return owner;
     }
 
     /**
@@ -505,10 +516,6 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool {
      * of this method gives: JDT re-renders from structure and drops the author's spacing,
      * so a move built on it reformats the line it was asked only to relocate.
      */
-    private static String sourceOf(String fileSource, Statement statement) {
-        return fileSource.substring(statement.getStartPosition(),
-            statement.getStartPosition() + statement.getLength()).trim();
-    }
 
     private static MethodDeclaration enclosingMethod(ASTNode node) {
         for (ASTNode at = node; at != null; at = at.getParent()) {

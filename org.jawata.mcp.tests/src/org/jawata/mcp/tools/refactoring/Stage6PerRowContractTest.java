@@ -268,10 +268,12 @@ class Stage6PerRowContractTest {
     @Test
     @DisplayName("every row with a NAMED target runs from its name, with no coordinates")
     void everyNamedRowRunsFromItsName() throws Exception {
-        // Seven of the twelve. The other five target a statement range, a statement or a
-        // local, none of which HAS a name — the contract's "every other value one the
-        // finding already carries" is what covers them, and this list is exhaustive rather
-        // than convenient.
+        // SEVEN of the twelve, and the list below has seven rows — a C6 audit found this
+        // comment claiming seven over a list of six, which is the arithmetic nobody checks
+        // because both halves read plausibly. The other FIVE (25, 26, 49, 58, 64) target a
+        // statement range, a statement or a local, none of which HAS a name; the contract's
+        // "every other value one the finding already carries" is what covers them. This list
+        // is exhaustive rather than convenient, and 7 + 5 = 12 is the check.
         record Named(String label, String door, String kind, String symbol, String extra,
                      String extraValue, String gone) {}
         List<Named> named = List.of(
@@ -288,7 +290,13 @@ class Stage6PerRowContractTest {
                 "com.example.StaticHome#roundUp",
                 "targetType", "com.example.StaticDestination", null),
             new Named("48 Function to Command", "extract", "function_to_command",
-                "com.example.Scoring#score", "newTypeName", "ScoreCommand", null));
+                "com.example.Scoring#score", "newTypeName", "ScoreCommand", null),
+            // ROW 5 WAS MISSING FROM THIS LIST while the comment above said seven — a C6
+            // audit did the arithmetic nobody else had. It belongs here: combine_functions
+            // needs only a filePath, and a typeName materialises one, so an agent holding
+            // the class's name can reach it without opening the file to count lines.
+            new Named("5 Combine Functions", "extract", "combine_functions",
+                "com.example.ReadingFunctions", "newTypeName", "ReadingQueries", null));
 
         List<String> problems = new ArrayList<>();
         for (Named row : named) {
@@ -299,6 +307,12 @@ class Stage6PerRowContractTest {
             args.put("symbol", row.symbol());
             if (row.extra() != null) {
                 args.put(row.extra(), row.extraValue());
+            }
+            // Row 5 also names WHICH functions belong together — the one design decision it
+            // refuses to guess. A finding carries that set, so supplying it here is the
+            // clause, not an exception to it.
+            if ("combine_functions".equals(row.kind())) {
+                args.putArray("functions").add("baseCharge").add("taxThreshold");
             }
             ToolResponse r = doorOf(row.door()).execute(args);
             if (!r.isSuccess()) {

@@ -105,13 +105,15 @@ class NotificationForkSliceTest {
     @DisplayName("row 38 has no usable candidate in this corpus, and this is the closest one")
     void removeSubclassHasNoCandidateAndThisIsWhy() throws Exception {
         // THE CORPUS WAS MEASURED, NOT SAMPLED. find_quality_issue(kind=
-        // composition_over_inheritance) over all 1336 main files returns nine findings; six
-        // name a subclass overriding NONE of its inherited members, which is row 38's
-        // precondition. Five of those six are disqualified by a DIFFERENT precondition each
+        // composition_over_inheritance) over all 1336 main files returns NINE findings;
+        // SEVEN name a subclass overriding NONE of its inherited members, which is row 38's
+        // precondition. SIX of those seven are disqualified by a DIFFERENT precondition each
         // — CustomerRole is abstract with subtypes, SimpleProbableThreat does override,
         // UserConverter and the three Mma*Fighters extend generic parents and pass method
         // references rather than forwarding their own parameters. RegisterWorker is the
-        // sixth and the only structural fit. PROVENANCE.md carries that table.
+        // seventh and the only structural fit. PROVENANCE.md carries that table. (The
+        // remaining two findings — FlamingAsteroid and SpaceStationIss — are flagged on the
+        // touch-ratio clause, not on overriding nothing, so they were never candidates.)
         String before = slice.read("RegisterWorkerService.java");
         ToolResponse r = slice.door("inline").execute(slice.at("subclass",
             "RegisterWorker.java", "public class RegisterWorker extends ServerCommand", 13));

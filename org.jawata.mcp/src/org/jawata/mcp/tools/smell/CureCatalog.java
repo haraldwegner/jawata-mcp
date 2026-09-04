@@ -313,9 +313,11 @@ public final class CureCatalog {
         "no detector reports a loop doing two things. `long_method` does not, and a"
             + " loop-level detector is not among this sprint's six.",
         // NOT an apply_cleanup entry, and the first one here that is not. The gate that
-        // reads this map is scoped to apply_cleanup on purpose, so nothing checks this
-        // line — it is written because the per-row contract says routed OR unrouted with
-        // the reason, and an unexplained gap and a forgotten one read identically.
+        // reads this map covered only apply_cleanup when this was written; C6 widened it to
+        // four doors, and refactor_to_pattern is the one still outside — so this line is
+        // still unchecked, but for a narrower reason than it used to claim. It is written
+        // because the per-row contract says routed OR unrouted with the reason, and an
+        // unexplained gap and a forgotten one read identically.
         "refactor_to_pattern kind=decompose_conditional",
         "no detector reports a complicated conditional. `long_method` is the nearest and"
             + " already has one route — compose_method — which the tier model turns to"
@@ -328,8 +330,10 @@ public final class CureCatalog {
             + " supplies three names. A fork slice for it would be a fixture with names"
             + " chosen by us — which is the very thing 'code we did not author' excludes.",
 
-        // --- Sprint 28d-rescue Stage 6. Four of its twelve rows route (lazy_class takes
-        // two, middle_man and inappropriate_intimacy one each); these six do not, and a
+        // --- Sprint 28d-rescue Stage 6. FIVE of its twelve rows route: lazy_class takes
+        // two (17, 38), middle_man and inappropriate_intimacy one each (36, 23), and row 24
+        // reaches move kind=method through the pre-existing feature_envy route — which a C6
+        // audit counted and this comment had missed. These six do not, and a
         // C6 audit was right that neither routed nor written down reads as an oversight.
         //
         // FIVE OF THE SIX SHARE ONE REASON and it is worth stating once: they need a NAME

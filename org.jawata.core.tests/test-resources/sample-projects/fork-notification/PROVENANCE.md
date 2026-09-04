@@ -15,10 +15,11 @@ nothing — the case where the subclass carries no distinction and folding it aw
 simplification. In a corpus of design-pattern demonstrations that shape is rare, because
 subclasses there mostly exist in order to override.
 
-`find_quality_issue(kind=composition_over_inheritance)` over all 1336 files returns nine
-findings; six name a subclass that overrides NONE of its inherited members. Of those six,
-five are unusable for this row and each for its own reason, which is worth writing down
-because it is the measurement, not a guess:
+`find_quality_issue(kind=composition_over_inheritance)` over all 1336 files returns NINE
+findings; SEVEN name a subclass that overrides NONE of its inherited members. (The other
+two, `FlamingAsteroid` and `SpaceStationIss`, are flagged on the touch-ratio clause instead
+and were never candidates.) Of those seven, SIX are unusable for this row and each for its
+own reason, which is worth writing down because it is the measurement, not a guess:
 
 | candidate | why not |
 |---|---|

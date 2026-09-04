@@ -259,7 +259,8 @@ public class InlineClassTool extends AbstractRefactoringTool {
 
         ASTRewrite rewrite = ASTRewrite.create(absorberAst.getAST());
         int rewritten = dropHolderQualifier(absorberAst, holderName, rewrite, forwarders);
-        unlinkDeletedType(absorberAst, source.getElementName(), rewrite);
+        org.jawata.mcp.refactoring.DeletedTypeLinks.unwrapIn(
+            absorberAst, source.getElementName(), rewrite);
         rewrite.remove(holder.getParent(), null);
         // AND WHATEVER ASSIGNED IT. A final field built in a constructor — `filterChain =
         // new FilterChain();` — is now a write to a field that no longer exists, and the
@@ -437,44 +438,6 @@ public class InlineClassTool extends AbstractRefactoringTool {
         return written[0];
     }
 
-    /**
-     * Unwrap every {@code @link} to the class being deleted, leaving its name as prose.
-     *
-     * <p>A link to a type that no longer exists is a dangling reference the COMPILE GATE
-     * CANNOT SEE — javadoc is a comment, so the rewrite passes every check and ships a
-     * broken cross-reference anyway; {@code -Xdoclint} is where it eventually surfaces.
-     * Upstream's {@code FilterManager} is documented as managing "the filters and
-     * {@link FilterChain}", and inlining FilterChain made that link point at nothing.</p>
-     *
-     * <p>The tag becomes the bare type name rather than being deleted. The sentence stays
-     * true — the class did exist and its behaviour is now here — and rewriting somebody's
-     * prose is not this operation's business.</p>
-     */
-    private static int unlinkDeletedType(CompilationUnit ast, String typeName,
-                                         ASTRewrite rewrite) {
-        List<org.eclipse.jdt.core.dom.TagElement> tags = new ArrayList<>();
-        // ASTVisitor(true) — the no-argument constructor does NOT enter doc comments, so a
-        // visitor written the usual way walks straight past every javadoc tag in the file
-        // and reports, truthfully, that it found none.
-        ast.accept(new ASTVisitor(true) {
-            @Override
-            public boolean visit(org.eclipse.jdt.core.dom.TagElement node) {
-                if ("@link".equals(node.getTagName()) && node.fragments().size() == 1
-                        && node.fragments().get(0) instanceof org.eclipse.jdt.core.dom.Name name
-                        && typeName.equals(name.getFullyQualifiedName())) {
-                    tags.add(node);
-                }
-                return true;
-            }
-        });
-        for (org.eclipse.jdt.core.dom.TagElement tag : tags) {
-            org.eclipse.jdt.core.dom.TextElement plain =
-                ast.getAST().newTextElement();
-            plain.setText(typeName);
-            rewrite.replace(tag, plain, null);
-        }
-        return tags.size();
-    }
 
     /** Every assignment to the named field, so the rewrite can drop them with the field. */
     private static List<org.eclipse.jdt.core.dom.Assignment> assignmentsTo(

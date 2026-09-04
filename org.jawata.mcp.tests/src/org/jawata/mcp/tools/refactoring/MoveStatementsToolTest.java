@@ -89,6 +89,37 @@ class MoveStatementsToolTest {
     }
 
     @Test
+    @DisplayName("the moved statement's STRING LITERAL survives a rename of a same-named parameter")
+    void renamingAParameterDoesNotRewriteTheLiteralThatSharesItsWord() throws Exception {
+        Path callee = pkg.resolve("Audited.java");
+        Path caller = pkg.resolve("AuditedCaller.java");
+        assertTrue(read(callee).contains("trail = trail + \"label=\" + label;"),
+            "PROOF OF LIFE: the statement must carry the word `label` BOTH as a parameter"
+                + " reference and inside its string literal, or this discriminates nothing:\n"
+                + read(callee));
+
+        // Row 26 moves describe()'s only statement out to its one caller, where the argument
+        // is a local named `tag`. The NAME must become `tag`; the LITERAL must not.
+        int line = lineOf(callee, "trail = trail + \"label=\" + label;", 0);
+        ToolResponse out = move("statements_to_callers", callee, line, 8);
+        assertTrue(out.isSuccess(), "the move out must run; got: " + out.getError());
+
+        String moved = read(caller);
+        // ASSERTED ON THE CODE, NOT ON THE WORD. The fixture's own javadoc contains the
+        // word `label` and the text "label=" as well, so a bare contains() passes whatever
+        // the rewrite did to the statement — which is the same mistake the defect is made
+        // of, and it hid this control's first version.
+        assertTrue(moved.contains("Audited.trail = Audited.trail + \"label=\" + tag;"),
+            "THE STRING LITERAL IS UNTOUCHED AND THE NAME IS NOT. A word-boundary regular"
+                + " expression over the moved source produces `\"tag=\" + tag` — it compiles,"
+                + " it passes the parity golden and every other gate here, and it silently"
+                + " changes what the message says. Only an AST-driven splice can tell a name"
+                + " from the same word inside a literal:\n" + moved);
+        assertFalse(moved.contains("+ label;"),
+            "and no reference to the callee's parameter survives at the call site:\n" + moved);
+    }
+
+    @Test
     @DisplayName("a statement beside EVERY call moves into the function, and comes back out")
     void theStatementMovesInAndBackOut() throws Exception {
         Path caller = pkg.resolve("AuditedCaller.java");

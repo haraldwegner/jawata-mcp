@@ -84,8 +84,11 @@ public class InlineTool extends AbstractTool {
                          `middleMan.<accessor>().method(args)`. The accessor is
                          generated if the class has none — that exposure IS the
                          refactoring, and the summary says it happened. Refuses a class
-                         with no forwarder at all, and one forwarding to SEVERAL
-                         fields, which is two middle men rather than one. A method that
+                         with no forwarder at all. A class forwarding to SEVERAL
+                         fields is handled ONE FIELD AT A TIME — name it with
+                         `delegateField`; the refusal that used to meet this shape
+                         was wrong, and the fork's own GiantController is what
+                         showed it. A method that
                          transforms the result is left alone: that is behaviour, not
                          forwarding. (find_quality_issue kind=middle_man finds them.)
 

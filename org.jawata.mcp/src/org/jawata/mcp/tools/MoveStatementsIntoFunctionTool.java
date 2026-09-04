@@ -186,7 +186,7 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
         // parameter name, which is the mirror of the qualification row 26 does on the
         // way out. Both directions rewrite what the name MEANS on the other side.
         String movedSource = renameArgumentsToParameters(
-            sourceOf(unit.getSource(), statement), call, binding);
+            unit.getSource(), statement, call, binding);
         String wanted = normalize(movedSource);
         List<Site> sites = callSites(service, target, wanted, toTop);
         long matching = sites.stream().filter(s -> s.matches).count();
@@ -395,20 +395,20 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
      * ordinary case, and moving the text unchanged would produce a reference to a name the
      * callee does not have.</p>
      */
-    private static String renameArgumentsToParameters(String moved, MethodInvocation call,
+    private static String renameArgumentsToParameters(String fileSource, Statement statement,
+                                                      MethodInvocation call,
                                                       IMethodBinding binding) {
-        String out = moved;
+        Map<String, String> replacements = new LinkedHashMap<>();
         List<?> arguments = call.arguments();
         String[] parameters = parameterNames(binding);
         for (int i = 0; i < arguments.size() && i < parameters.length; i++) {
             if (arguments.get(i) instanceof SimpleName name
                     && !name.getIdentifier().equals(parameters[i])) {
-                out = out.replaceAll(
-                    "\\b" + java.util.regex.Pattern.quote(name.getIdentifier()) + "\\b",
-                    java.util.regex.Matcher.quoteReplacement(parameters[i]));
+                replacements.put(name.getIdentifier(), parameters[i]);
             }
         }
-        return out;
+        return org.jawata.mcp.refactoring.MovedStatement.withVariablesRenamed(
+            fileSource, statement, replacements);
     }
 
     /** The callee's parameter names, read off the declaration the binding points at. */
@@ -430,8 +430,7 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool {
      * asked only to relocate.
      */
     private static String sourceOf(String fileSource, Statement statement) {
-        return fileSource.substring(statement.getStartPosition(),
-            statement.getStartPosition() + statement.getLength()).trim();
+        return org.jawata.mcp.refactoring.MovedStatement.sourceOf(fileSource, statement);
     }
 
     /** Source text with runs of whitespace collapsed, so layout is not a difference. */

@@ -99,6 +99,19 @@ class RemoveSubclassToolTest {
         String afterParent = read(parent);
         assertTrue(afterParent.contains("doubled()"),
             "the subclass's own member moved up:\n" + afterParent);
+        // THE JAVADOC LINK TO THE DELETED TYPE IS UNWRAPPED. A {@link PlainCharge} in the
+        // parent's own doc comment points at nothing once the fold runs, and no compile
+        // gate can see it — javadoc is a comment. This was fixed once in InlineClassTool
+        // and stayed broken here until DeleteAtom's callers were ENUMERATED: there are two,
+        // and one of them had the answer. Note the distinction the assertion below it
+        // preserves — a @link is a machine-checkable reference and is repaired, while
+        // PROSE naming the same word is left alone, because guessing which mentions meant
+        // the type is exactly what a rewriter must not do.
+        assertFalse(afterParent.contains("{@link PlainCharge}"),
+            "the parent's dangling link to the deleted subclass is unwrapped:\n"
+                + afterParent);
+        assertTrue(afterParent.contains("links PlainCharge,"),
+            "and its name survives as prose, so the sentence still reads:\n" + afterParent);
 
         String afterUser = read(user);
         // The declared type AND the constructor call. A rewrite that repointed one and not

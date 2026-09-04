@@ -11,6 +11,7 @@ public class Audited {
 
     static int audits = 0;
     static int exits = 0;
+    static String trail = "";
 
     public void note() {
         exits = exits + 1;
@@ -18,6 +19,10 @@ public class Audited {
 
     public void partial() {
         exits = exits + 1;
+    }
+
+    public void describe(String label) {
+        trail = trail + "label=" + label;
     }
 
     public void threeSteps() {

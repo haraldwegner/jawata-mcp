@@ -1,7 +1,14 @@
 === AuditedCaller.java ===
 package com.example;
 
-/** Both calls to note() carry the audit line; only one call to partial() does. */
+/**
+ * Both calls to note() carry the audit line; only one call to partial() does.
+ *
+ * <p>describeIt() calls describe() with a local named `tag`, not `label`. Row 26 moving
+ * describe()'s statement out must rewrite the NAME `label` to `tag` and leave the string
+ * literal "label=" alone — the two are the same word, and only the AST can tell them
+ * apart.</p>
+ */
 public class AuditedCaller {
 
     public void first(Audited audited) {
@@ -15,6 +22,10 @@ public class AuditedCaller {
     public void withAudit(Audited audited) {
         Audited.audits = Audited.audits + 1;
         audited.partial();
+    }
+
+    public void describeIt(Audited audited, String tag) {
+        audited.describe(tag);
     }
 
     public void withoutAudit(Audited audited) {
@@ -35,6 +46,7 @@ public class Audited {
 
     static int audits = 0;
     static int exits = 0;
+    static String trail = "";
 
     public void note() {
         Audited.audits = Audited.audits + 1;
@@ -43,6 +55,10 @@ public class Audited {
 
     public void partial() {
         exits = exits + 1;
+    }
+
+    public void describe(String label) {
+        trail = trail + "label=" + label;
     }
 
     public void threeSteps() {

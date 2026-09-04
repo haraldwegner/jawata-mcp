@@ -76,6 +76,44 @@ class RemoveMiddleManToolTest {
     }
 
     @Test
+    @DisplayName("a `this.`-qualified forwarder to ONE of two delegate fields is removed by name")
+    void theThisQualifiedForwarderToANamedFieldIsRemoved() throws Exception {
+        // TWO FIXES THIS ROW IS CREDITED WITH, AND NOTHING EXERCISED EITHER — a C6 audit
+        // checked and was right: reverting them both left the suite green. Both came from
+        // the fork, and both are here now as a fixture the corpus cannot supply on demand.
+        Path middleMan = pkg.resolve("TwoDelegateMiddleMan.java");
+        Path user = pkg.resolve("TwoDelegateUser.java");
+        assertTrue(read(middleMan).contains("return this.department.manager();"),
+            "PROOF OF LIFE: the forwarder must be written with an explicit `this.`, which is"
+                + " a FieldAccess over a ThisExpression and not the SimpleName receiver the"
+                + " other fixture has:\n" + read(middleMan));
+
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "middle_man");
+        args.put("filePath", middleMan.toString());
+        args.put("line", lineOf(middleMan, "public class TwoDelegateMiddleMan"));
+        args.put("column", 13);
+        // NAMING ONE OF TWO. Refusing a two-delegate class outright was the first version's
+        // rule, and it was wrong: removing one middle man at a time is what Fowler does.
+        args.put("delegateField", "department");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "a two-delegate class with the field named must run; got: "
+            + r.getError());
+
+        String after = read(middleMan);
+        assertFalse(after.contains("public String manager()"),
+            "the named field's forwarder is gone — so the `this.` receiver WAS recognised;"
+                + " a version that only matched a bare name would have found no forwarder"
+                + " here and removed nothing while reporting success:\n" + after);
+        assertTrue(after.contains("public int balance()"),
+            "and the OTHER field's forwarder stays, because it was not the one named:\n"
+                + after);
+        assertTrue(read(user).contains(".manager()"),
+            "the caller still reaches the delegate's method:\n" + read(user));
+    }
+
+    @Test
     @DisplayName("the forwarders go, callers reach the delegate, and the transformer survives")
     void theForwardingStops() throws Exception {
         Path middleMan = pkg.resolve("MiddleManPerson.java");

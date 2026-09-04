@@ -260,6 +260,12 @@ public class RemoveSubclassTool extends AbstractRefactoringTool {
             members.insertLast((BodyDeclaration) ASTNode.copySubtree(
                 parentAst.getAST(), declaration), null);
         }
+        // THE PARENT'S OWN JAVADOC may link the subclass about to be deleted, and so may
+        // every file below. A dangling @link is invisible to the compile gate, which is
+        // why it was fixed once in InlineClassTool and stayed broken here until the
+        // population of DeleteAtom's callers was enumerated rather than assumed.
+        org.jawata.mcp.refactoring.DeletedTypeLinks.unwrapIn(
+            parentAst, subclass.getElementName(), parentRewrite);
         edits.put((IFile) parentCu.getResource(),
             List.of(parentRewrite.rewriteAST(new Document(parentCu.getSource()),
                 FormatterOptions.forGeneratedCode(parentAst))));
@@ -274,6 +280,8 @@ public class RemoveSubclassTool extends AbstractRefactoringTool {
                 continue;
             }
             repointed += here;
+            org.jawata.mcp.refactoring.DeletedTypeLinks.unwrapIn(
+                ast, subclass.getElementName(), rewrite);
             edits.put((IFile) user.getResource(),
                 List.of(rewrite.rewriteAST(new Document(user.getSource()),
                     FormatterOptions.forGeneratedCode(ast))));

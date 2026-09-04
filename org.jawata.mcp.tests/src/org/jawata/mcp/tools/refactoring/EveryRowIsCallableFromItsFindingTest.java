@@ -42,19 +42,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * stops step 1 from passing because the rule was simply inert. Run in that order on one
  * copy, since step 1 leaves the file pristine for step 2.</p>
  *
- * <h2>Five of the eight REFUSE, and that is the finding</h2>
+ * <h2>Four of the eight REFUSE, and that is the finding</h2>
  *
  * <p>Writing this test is what found it. A rewrite that MOVES code emits a linked pair of
  * edits, and a pair cannot be narrowed: keeping one half breaks it, and copying both
  * halves out of the tree breaks the link that joins them. So for guard_clauses,
- * consolidate_conditional, loop_to_pipeline, slide_declaration and remove_dead_code, a
+ * consolidate_conditional, loop_to_pipeline and slide_declaration, a
  * position is refused with a reason rather than answered — the caller is told the rewrite
  * reaches past the member they named, which is true and useful, instead of being handed a
  * silently widened change or a silently empty one.</p>
  *
  * <p>The expectation is encoded PER ROW, from measurement. A row that starts confining, or
  * stops, changes this file — which is the point of asserting it here rather than once for
- * the shared mechanism.</p>
+ * the shared mechanism. The heading above said FIVE and named remove_dead_code among them
+ * until a C6 audit read it against the file's own expectations, which have said four since
+ * commit 42044351 narrowed that row.</p>
  */
 class EveryRowIsCallableFromItsFindingTest {
 
