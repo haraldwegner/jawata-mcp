@@ -1,35 +1,49 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.jdt.core.Flags;
-import org.eclipse.jdt.core.IField;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.internal.corext.refactoring.sef.SelfEncapsulateFieldRefactoring;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.tools.data.EncapsulateFieldTool;
 
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Sprint 11 Phase E — {@code data}: generate getter/setter,
- * replace direct accesses, optionally tighten the field's visibility.
+ * {@code data} — the front door for operations that change the SHAPE OF STATE: how a field
+ * is reached, what a collection hands out, where a derived value comes from.
  *
- * <p>JDT's {@code EncapsulateFieldDescriptor} has no public setters, so
- * this tool drives the internal {@link SelfEncapsulateFieldRefactoring}
- * directly. See {@code docs/upgrade-checklist.md} for what to verify on
- * Eclipse target-platform bumps.</p>
+ * <p>Sprint 11 Phase E shipped it as one operation, {@code encapsulate_field}, and Stage 1
+ * of sprint 28d-rescue renamed the tool to {@code data} in anticipation of the nine more
+ * Fowler rows that belong beside it. Stage 5 is where those arrive, and this class is now
+ * what it was renamed for: a router, not an operation.</p>
+ *
+ * <h2>It adopts the seam AS it grows, and that ordering was a decision</h2>
+ *
+ * <p>Stage 6a converted six front doors to {@link KindedTool} and {@link FrontDoor}. This one
+ * was deliberately left out, because converting a one-kind door and then growing it to ten
+ * does the work twice — and growing it by hand first, for a later stage to migrate, does it
+ * twice AND lets the two drift in between. So the conversion happens here, in the change that
+ * gives it its second kind.</p>
+ *
+ * <p><b>A published contract changes with it, and it is stated rather than discovered.</b>
+ * {@code data} took no discriminator; it now requires {@code kind}, like every other routing
+ * door. A caller who was passing {@code data(filePath=…, line=…, column=…)} must pass
+ * {@code kind="encapsulate_field"} as well. The consumers are MCP CLIENTS rather than callers
+ * of a symbol, so no search in this repository can enumerate them — the population is outside
+ * it by construction, and that is a fact about the change rather than a gap in the checking.
+ * Stage 1's {@code RENAMED_TOOLS} pointer already answers the older {@code encapsulate_field}
+ * tool name; this is the second half of the same move.</p>
  */
-public class DataTool extends AbstractRefactoringTool {
+public class DataTool extends AbstractRefactoringTool implements KindedTool {
 
-    public DataTool(Supplier<IJdtService> serviceSupplier,
-                               RefactoringChangeCache changeCache) {
+    private final EncapsulateFieldTool encapsulateField;
+
+    public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
+        this.encapsulateField = new EncapsulateFieldTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -38,29 +52,55 @@ public class DataTool extends AbstractRefactoringTool {
     }
 
     @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /**
+     * Built from the typed fields, keyed by what each delegate calls itself.
+     *
+     * <p>One entry today. The list is a {@code List.of(...)} of fields for the same reason
+     * {@code inline} and {@code generate} hold theirs that way — the delegates are typed
+     * fields rather than a map — and it grows a line per Stage 5 row.</p>
+     */
+    @Override
+    public Map<String, KindDelegate> delegates() {
+        Map<String, KindDelegate> published = new LinkedHashMap<>();
+        for (KindDelegate delegate : List.of(encapsulateField)) {
+            published.put(delegate.kindName(), delegate);
+        }
+        return java.util.Collections.unmodifiableMap(published);
+    }
+
+    /** ASSEMBLED, not written — the seam's description algorithm, held not inherited. */
+    @Override
     public String getDescription() {
+        return FrontDoorDescription.ASSEMBLER.describe(this);
+    }
+
+    @Override
+    public String preamble() {
         return """
-            Generate getter/setter for a field, replace direct accesses with
-            the accessors, and optionally tighten the field's visibility.
+            Change the SHAPE OF STATE: how a field is reached, what a collection hands
+            out, and where a derived value comes from (behaviour-preserving, reversible).""";
+    }
 
-            USAGE:
-              data(filePath="src/main/java/com/example/Foo.java",
-                                line=12, column=20,
-                                newFieldVisibility="private")
+    @Override
+    public String usageTail() {
+        return ", filePath=..., line=..., column=...";
+    }
 
-            Inputs:
-            - filePath / line / column — position on the field declaration
-              or any of its references (zero-based line/column).
-            - getterName  — defaults to 'get' + Capitalized(name); use 'is'
-                            for boolean fields.
-            - setterName  — defaults to 'set' + Capitalized(name).
-            - newFieldVisibility — public | protected | private | package
-                                   (default 'private').
-            - generateJavadoc (default false) — emit Javadoc stubs on the
-              generated accessors.
+    @Override
+    public String kindBlockLeadIn() {
+        return "Kinds (ZERO-BASED coordinates; a field may also be named as symbol=pkg.Type#field):";
+    }
 
-            Conflict (e.g. an accessor name already exists) →
-            REFACTORING_FAILED with no files modified.
+    @Override
+    public String footer() {
+        return """
+            Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
+            auto_apply=false to stage only. A conflict — an accessor name that already
+            exists, say — REFUSES and modifies nothing.
 
             Requires load_project to be called first.
             """;
@@ -70,119 +110,36 @@ public class DataTool extends AbstractRefactoringTool {
     public Map<String, Object> getInputSchema() {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
+
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("filePath", Map.of("type", "string",
-            "description", "Source file containing the field."));
-        properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line number on the field."));
-        properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column number on the line."));
-        properties.put("getterName", Map.of("type", "string",
-            "description", "Optional. Default: 'get' + Capitalized name; 'is' for boolean."));
-        properties.put("setterName", Map.of("type", "string",
-            "description", "Optional. Default: 'set' + Capitalized name."));
-        properties.put("newFieldVisibility", Map.of("type", "string",
-            "enum", List.of("public", "protected", "private", "package"),
-            "description", "Visibility for the field after encapsulation (default 'private')."));
-        properties.put("generateJavadoc", Map.of("type", "boolean",
-            "description", "Emit Javadoc stubs on the generated accessors (default false)."));
-        properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "field to encapsulate"));
-        schema.put("properties", properties);
-        // Sprint 24 (D1): position OR name form.
-        schema.put("required", List.of());
+        Map<String, Object> kind = new LinkedHashMap<>();
+        kind.put("type", "string");
+        // DERIVED from the routing table, like every other converted door: publishedKinds()
+        // IS delegates().keySet(), so a kind cannot be dispatched and left out of the enum a
+        // client reads in tools/list.
+        kind.put("enum", publishedKinds());
+        kind.put("description", "Which state-shape change to apply. See the tool description.");
+        properties.put("kind", kind);
+
+        // THE BACKSTOP, inherited rather than written out here: every parameter any delegate
+        // declares reaches the published contract whether or not someone curated it above.
+        schema.put("properties", withDelegateParameters(properties));
+        schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }
 
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
-        // Sprint 24 (D1): accept the name form — symbol=pkg.Type#field.
-        java.util.Optional<ToolResponse> nameForm =
-            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
-        if (nameForm.isPresent()) {
-            return nameForm.get();
+        String kind = getStringParam(arguments, "kind");
+        if (kind == null || kind.isBlank()) {
+            return ToolResponse.invalidParameter("kind",
+                "kind is required; one of " + publishedKinds());
         }
-        String filePathStr = getStringParam(arguments, "filePath");
-        int line = getIntParam(arguments, "line", -1);
-        int column = getIntParam(arguments, "column", -1);
-        String getterName = getStringParam(arguments, "getterName");
-        String setterName = getStringParam(arguments, "setterName");
-        String visibilityStr = getStringParam(arguments, "newFieldVisibility", "private");
-        boolean generateJavadoc = arguments != null && arguments.has("generateJavadoc")
-            ? arguments.get("generateJavadoc").asBoolean(false)
-            : false;
-
-        if (filePathStr == null || filePathStr.isBlank()) {
-            return ToolResponse.invalidParameter("filePath", "filePath is required");
+        KindDelegate delegate = delegates().get(kind);
+        if (delegate == null) {
+            return ToolResponse.invalidParameter("kind",
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
-        if (line < 0 || column < 0) {
-            return ToolResponse.invalidCoordinates(line, column,
-                "line and column are required and must be zero-based non-negative integers");
-        }
-        int visibilityFlag;
-        try {
-            visibilityFlag = parseVisibility(visibilityStr);
-        } catch (IllegalArgumentException e) {
-            return ToolResponse.invalidParameter("newFieldVisibility", e.getMessage());
-        }
-
-        try {
-            Path filePath = service.getPathUtils().resolve(filePathStr);
-            IJavaElement element = service.getElementAtPosition(filePath, line, column);
-            if (!(element instanceof IField field)) {
-                return ToolResponse.invalidParameter("position",
-                    "Position does not resolve to a field; got "
-                        + (element == null ? "null" : element.getClass().getSimpleName()));
-            }
-
-            String fieldName = field.getElementName();
-            String resolvedGetter = getterName != null && !getterName.isBlank()
-                ? getterName
-                : defaultGetterName(field, fieldName);
-            String resolvedSetter = setterName != null && !setterName.isBlank()
-                ? setterName
-                : defaultSetterName(fieldName);
-
-            org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
-            SelfEncapsulateFieldRefactoring refactoring = new SelfEncapsulateFieldRefactoring(field);
-            refactoring.setGetterName(resolvedGetter);
-            refactoring.setSetterName(resolvedSetter);
-            refactoring.setVisibility(visibilityFlag);
-            refactoring.setEncapsulateDeclaringClass(true);
-            refactoring.setGenerateJavadoc(generateJavadoc);
-
-            return runRefactoring(service, refactoring, "data", arguments);
-
-        } catch (Exception e) {
-            org.slf4j.LoggerFactory.getLogger(DataTool.class)
-                .warn("data failed: {}", e.toString(), e);
-            return ToolResponse.internalError(e);
-        }
-    }
-
-    private static int parseVisibility(String s) {
-        if (s == null) return Flags.AccPrivate;
-        return switch (s.toLowerCase(Locale.ROOT)) {
-            case "public"    -> Flags.AccPublic;
-            case "protected" -> Flags.AccProtected;
-            case "private"   -> Flags.AccPrivate;
-            case "package"   -> Flags.AccDefault;
-            default -> throw new IllegalArgumentException(
-                "Unknown visibility '" + s + "'; expected public|protected|private|package");
-        };
-    }
-
-    private static String defaultGetterName(IField field, String fieldName) throws Exception {
-        String prefix = "Z".equals(field.getTypeSignature()) ? "is" : "get";
-        return prefix + capitalize(fieldName);
-    }
-
-    private static String defaultSetterName(String fieldName) {
-        return "set" + capitalize(fieldName);
-    }
-
-    private static String capitalize(String s) {
-        if (s == null || s.isEmpty()) return s;
-        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+        return ((EncapsulateFieldTool) delegate).executeWithService(service, arguments);
     }
 }

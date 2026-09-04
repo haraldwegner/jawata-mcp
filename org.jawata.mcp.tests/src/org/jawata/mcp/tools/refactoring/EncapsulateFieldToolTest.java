@@ -44,6 +44,11 @@ class EncapsulateFieldToolTest {
         assertTrue(Files.exists(file));
 
         ObjectNode args = objectMapper.createObjectNode();
+        // kind IS REQUIRED from Stage 5 on. `data` was one operation and is now a routing
+        // front door; this test is the one that would have shipped the contract change
+        // silently, because it was the only caller in the tree still addressing the door
+        // the old way.
+        args.put("kind", "encapsulate_field");
         args.put("filePath", file.toString());
         // 'public int fieldToEncapsulate;' is on line index 24.
         args.put("line", 24);

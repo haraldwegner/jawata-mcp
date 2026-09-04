@@ -197,6 +197,8 @@ class FqnEverywhereTest {
     void encapsulateByName() {
         DataTool tool = new DataTool(() -> service, cache);
         ObjectNode args = byName("symbol", "com.example.Calculator#lastResult");
+        // kind IS REQUIRED from Stage 5 on — `data` became a routing front door.
+        args.put("kind", "encapsulate_field");
         // Calculator already declares getLastResult() — ask for names that don't clash.
         args.put("getterName", "fetchLast");
         args.put("setterName", "storeLast");

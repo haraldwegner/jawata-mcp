@@ -329,11 +329,25 @@ class FrontDoorDescriptionTest {
     void anUnadoptedDoorKeepsItsOwnText() {
         // The seam is opt-in per door, by design: each converts in the step that owns it.
         // Without this, "every door is assembled" could be believed of doors that are not.
-        // M5 converts seven; `data` adopts inside Stage 5 as it grows from one kind to ten,
-        // because converting a door and then growing it does the work twice.
-        DataTool notYet = new DataTool(() -> null, new RefactoringChangeCache());
+        //
+        // THIS TEST WATCHED `data` UNTIL STAGE 5 CONVERTED IT, AND STAYED GREEN THROUGH THE
+        // CONVERSION — which is worth recording rather than quietly re-pointing. It asserted
+        // that data's description contained "USAGE:", meaning "still hand-written". The
+        // assembler GENERATES a usage line, so the moment data adopted the seam the premise
+        // became false and the assertion went on passing. An assertion that survives the
+        // falsification of its own premise is the defect class this whole sprint is about,
+        // found here in the suite that polices it.
+        //
+        // The subject is now `hierarchy`, the last door that has not adopted — it converts
+        // inside Stage 7 as it grows from two kinds to seven — and the assertion is on what
+        // actually distinguishes an unadopted door: it does NOT route through the assembler.
+        HierarchyTool notYet = new HierarchyTool(() -> null, new RefactoringChangeCache());
+        assertFalse(notYet instanceof FrontDoor,
+            "hierarchy has not adopted the description seam yet; when Stage 7 converts it,"
+                + " this test loses its last subject and should be DELETED rather than"
+                + " re-pointed at a door that has adopted");
         assertTrue(notYet.getDescription().contains("USAGE:"),
-            "data still publishes its own hand-written description");
+            "and it still publishes a hand-written usage line of its own");
     }
 
     @Test

@@ -402,11 +402,12 @@ class DeclaredShapeHonestyTest {
         org.jawata.mcp.refactoring.OperationRegistry registry =
             new org.jawata.mcp.refactoring.OperationRegistry();
         java.util.Map<String, AbstractTool> tools = new LinkedHashMap<>(frontDoors());
-        // NOT ONLY THE PARAMETRIC DOORS. A cure step may name a whole tool — the
-        // encapsulation smell's cure is `data`, which publishes no kind enum and so is
-        // not a parametric front door at all. Registering only the eight would leave that
-        // step unbacked and this check would refuse a table that boots perfectly well,
-        // which is a false alarm rather than a guard.
+        // `data` IS ADDED BY HAND because frontDoors() above does not carry it, and the
+        // reason has changed under this line. It used to be that data published no kind
+        // enum and so was not a parametric front door at all; Stage 5 made it one, with a
+        // kind enum and a routing table, when it grew past its single operation. What is
+        // left is only that frontDoors() is a hand-written list this stage did not extend
+        // — which Stage 9's M6c removes by deriving that list rather than writing it.
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Supplier<IJdtService> svc = () -> service;
         tools.put("data", new DataTool(svc, cache));
