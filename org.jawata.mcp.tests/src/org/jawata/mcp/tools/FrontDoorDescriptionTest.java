@@ -332,6 +332,158 @@ class FrontDoorDescriptionTest {
         return count;
     }
 
+    // ------------------------------------------------------------------
+    // THE ASSEMBLY ITSELF, on a fake door — slot order, separators, the empty
+    // routing table, and idempotence
+    // ------------------------------------------------------------------
+    //
+    // Every test above asks a REAL door whether its text survived the move, which is the
+    // question that mattered while the doors were converting. None of them pins the
+    // ASSEMBLY: what order the regions come in, what separates them, and what happens at
+    // the edges. A real door cannot answer those cleanly — its regions are long prose, and
+    // `data`'s empty routing table is a state that disappears in Stage 5. So the four below
+    // use a door built for the purpose, with parts short enough that the layout is the only
+    // thing the assertion can be about.
+
+    /** A door whose every region is a short marker, so only the assembly can fail a test. */
+    private record FakeDelegate(String kindName, String kindSummary) implements KindDelegate {
+        @Override
+        public Map<String, Object> parameterSchema() {
+            return Map.of();
+        }
+    }
+
+    private static final class FakeDoor implements KindedTool {
+        private final Map<String, KindDelegate> routed;
+
+        FakeDoor(Map<String, KindDelegate> routed) {
+            this.routed = routed;
+        }
+
+        @Override
+        public String getName() {
+            return "fake";
+        }
+
+        @Override
+        public String discriminator() {
+            return "flavour";
+        }
+
+        @Override
+        public Map<String, KindDelegate> delegates() {
+            return routed;
+        }
+
+        @Override
+        public String preamble() {
+            return "PREAMBLE";
+        }
+
+        @Override
+        public String usageTail() {
+            return ", TAIL";
+        }
+
+        @Override
+        public String footer() {
+            return "FOOTER";
+        }
+
+        @Override
+        public String getDescription() {
+            return FrontDoorDescription.ASSEMBLER.describe(this);
+        }
+
+        @Override
+        public Map<String, Object> getInputSchema() {
+            return Map.of();
+        }
+
+        @Override
+        public org.jawata.mcp.models.ToolResponse execute(
+                com.fasterxml.jackson.databind.JsonNode arguments) {
+            throw new UnsupportedOperationException("a fake door is never executed");
+        }
+    }
+
+    private static FakeDoor fakeDoorWith(KindDelegate... delegates) {
+        Map<String, KindDelegate> routed = new LinkedHashMap<>();
+        for (KindDelegate delegate : delegates) {
+            routed.put(delegate.kindName(), delegate);
+        }
+        return new FakeDoor(routed);
+    }
+
+    @Test
+    @DisplayName("the four regions come in order, separated by exactly one blank line each")
+    void theSlotOrderAndSeparatorsBelongToTheAssembler() {
+        String described = FrontDoorDescription.ASSEMBLER.describe(fakeDoorWith(
+            new FakeDelegate("first", "ONE"), new FakeDelegate("second", "TWO")));
+
+        assertEquals("""
+            PREAMBLE
+
+            USAGE: fake(flavour="<first|second>", TAIL)
+
+            - first — ONE
+            - second — TWO
+
+            FOOTER""", described,
+            "the separation is the ASSEMBLER's and not each part's. A part carrying its own"
+                + " leading or trailing blank line would make the spacing a property of"
+                + " whichever door was written last, which is how four descriptions came to"
+                + " be spaced three different ways");
+    }
+
+    @Test
+    @DisplayName("a door with an EMPTY routing table still assembles, and says nothing about kinds")
+    void anEmptyRoutingTableIsNotACrash() {
+        // `data`'s literal state until Stage 5 grows it from one kind to ten. A door mid-lane
+        // must not throw here, and must not invent a bullet either.
+        FakeDoor empty = fakeDoorWith();
+
+        assertEquals(List.of(), empty.publishedKinds());
+        assertEquals("", FrontDoorDescription.ASSEMBLER.kindBlockOf(empty),
+            "no delegates means no bullets — not a placeholder, and not an exception");
+        assertTrue(FrontDoorDescription.ASSEMBLER.describe(empty).contains("flavour=\"<>\""),
+            "the usage line degenerates honestly rather than pretending to a kind list: "
+                + FrontDoorDescription.ASSEMBLER.describe(empty));
+    }
+
+    @Test
+    @DisplayName("a multi-line summary keeps its continuation lines attached to its bullet")
+    void aMultiLineSummaryIsIndentedUnderItsBullet() {
+        String block = FrontDoorDescription.ASSEMBLER.kindBlockOf(fakeDoorWith(
+            new FakeDelegate("wordy", "LINE ONE\nLINE TWO"),
+            new FakeDelegate("terse", "ONLY")));
+
+        assertEquals("""
+            - wordy — LINE ONE
+              LINE TWO
+            - terse — ONLY""", block,
+            "a continuation line is indented so it reads as part of its bullet rather than"
+                + " as a new one; the next bullet still starts at column zero");
+    }
+
+    @Test
+    @DisplayName("assembling twice gives the same text — the assembler holds no state")
+    void assemblyIsIdempotent() {
+        // It is a single shared instance every door calls, so state on it would leak from
+        // one door's description into the next one's.
+        FakeDoor door = fakeDoorWith(
+            new FakeDelegate("first", "ONE"), new FakeDelegate("second", "TWO"));
+
+        assertEquals(FrontDoorDescription.ASSEMBLER.describe(door),
+            FrontDoorDescription.ASSEMBLER.describe(door));
+        // AND ACROSS DOORS, which is the leak that would actually happen: describe a
+        // different door in between and the first one's text must be unchanged.
+        String before = FrontDoorDescription.ASSEMBLER.describe(door);
+        FrontDoorDescription.ASSEMBLER.describe(new InlineTool(() -> null, new RefactoringChangeCache()));
+        assertEquals(before, FrontDoorDescription.ASSEMBLER.describe(door),
+            "one door's assembly must not change another's");
+    }
+
     /**
      * The block's bullets, keyed by kind, each with its whitespace removed.
      *
