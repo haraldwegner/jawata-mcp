@@ -68,6 +68,15 @@ class ExtractToolTest {
         allDelegates.put("class", new ExtractClassTool(() -> service, cache));
         allDelegates.put("replace_inline_code",
             new org.jawata.mcp.tools.ReplaceDuplicatesTool(() -> service, cache));
+        // Sprint 28d-rescue Stage 6 — rows 5, 48, 64 and 58.
+        allDelegates.put("combine_functions",
+            new org.jawata.mcp.tools.CombineFunctionsIntoClassTool(() -> service, cache));
+        allDelegates.put("function_to_command",
+            new org.jawata.mcp.tools.ReplaceFunctionWithCommandTool(() -> service, cache));
+        allDelegates.put("split_phase",
+            new org.jawata.mcp.tools.SplitPhaseTool(() -> service, cache));
+        allDelegates.put("temp_to_query",
+            new org.jawata.mcp.tools.ReplaceTempWithQueryTool(() -> service, cache));
     }
 
     private ObjectNode minimal(String kind) {
