@@ -61,7 +61,27 @@ import java.util.function.Supplier;
  * A no-op (nothing to clean) returns {@code hasChanges: false} without touching
  * anything.</p>
  */
-public class ApplyCleanupTool extends AbstractApplyingRefactoringTool {
+public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
+        implements KindedTool {
+
+    @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /**
+     * The rule registry IS the kind list (Stage 6a, M3b).
+     *
+     * <p>This door's delegates are {@code CleanupRule}s rather than tools, which is why the
+     * role is not typed to {@code Tool} — and the map needs no adaptation, because a rule was
+     * always required to say its own kind and the registry is already keyed by it.</p>
+     */
+    @Override
+    public java.util.Map<String, KindDelegate> delegates() {
+        java.util.Map<String, KindDelegate> published = new java.util.LinkedHashMap<>();
+        RULES.forEach((kind, rule) -> published.put(kind, rule));
+        return java.util.Collections.unmodifiableMap(published);
+    }
 
     private static final Logger log = LoggerFactory.getLogger(ApplyCleanupTool.class);
 

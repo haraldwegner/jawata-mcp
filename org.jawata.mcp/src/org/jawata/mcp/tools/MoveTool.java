@@ -30,7 +30,21 @@ import java.util.function.Supplier;
  * <p>Replaces {@code move_class}, {@code move_package} and {@code move_method}; the
  * apply/undo contract is unchanged.</p>
  */
-public class MoveTool extends AbstractTool {
+public class MoveTool extends AbstractTool implements KindedTool {
+
+    @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /** The routing map IS the kind list (Stage 6a, M3b). */
+    @Override
+    public java.util.Map<String, KindDelegate> delegates() {
+        java.util.Map<String, KindDelegate> published = new LinkedHashMap<>();
+        delegates.forEach((kind, delegate) -> published.put(kind, (KindDelegate) delegate));
+        return java.util.Collections.unmodifiableMap(published);
+    }
+
 
     /** The single source of truth for which kinds exist and what runs each. */
     private final Map<String, AbstractRefactoringTool> delegates;

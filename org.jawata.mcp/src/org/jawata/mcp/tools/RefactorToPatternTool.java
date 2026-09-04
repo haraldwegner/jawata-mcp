@@ -22,7 +22,27 @@ import java.util.function.Supplier;
  * {@code find_quality_issue} kinds (family {@code kerievsky} + reused Fowler kinds);
  * this tool applies the chosen transform at a caller-supplied target.</p>
  */
-public class RefactorToPatternTool extends AbstractTool {
+public class RefactorToPatternTool extends AbstractTool implements KindedTool {
+
+    @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /** Built from the typed fields, keyed by what each delegate calls itself (Stage 6a, M3b). */
+    @Override
+    public java.util.Map<String, KindDelegate> delegates() {
+        java.util.Map<String, KindDelegate> published = new java.util.LinkedHashMap<>();
+        for (KindDelegate delegate : List.of(
+                inlineSingleton, composeMethod, replaceTypeCode, refactorToState,
+                refactorToCommand, formTemplateMethod, refactorToVisitor,
+                replacePatternWithIdiom, replaceConstructorWithFactory,
+                replaceConditionalWithPolymorphism, decomposeConditional)) {
+            published.put(delegate.kindName(), delegate);
+        }
+        return java.util.Collections.unmodifiableMap(published);
+    }
+
 
     /** All kinds in the catalogue; delegates are wired in as each ships. */
     private static final List<String> KINDS = List.of(

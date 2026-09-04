@@ -25,7 +25,31 @@ import java.util.function.Supplier;
  * <p>Replaces {@code inline_method} / {@code inline_variable}; apply/undo
  * contract unchanged.</p>
  */
-public class InlineTool extends AbstractTool {
+public class InlineTool extends AbstractTool implements KindedTool {
+
+    @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /**
+     * Built from the typed fields, keyed by what each delegate calls itself (Stage 6a, M3b).
+     *
+     * <p>This door holds FIELDS rather than a map, so unlike {@code extract} and {@code move}
+     * there is no existing key to read — which is where {@link KindDelegate#kindName()} earns
+     * its place. On a map-holding door it looks like a second spelling of the key; here it is
+     * the only spelling there is, and it lets one derivation serve both shapes.</p>
+     */
+    @Override
+    public java.util.Map<String, KindDelegate> delegates() {
+        java.util.Map<String, KindDelegate> published = new java.util.LinkedHashMap<>();
+        for (KindDelegate delegate
+                : List.of(method, variable, clazz, subclass, middleMan)) {
+            published.put(delegate.kindName(), delegate);
+        }
+        return java.util.Collections.unmodifiableMap(published);
+    }
+
 
     private static final List<String> KINDS =
         List.of("method", "variable", "class", "subclass", "middle_man");

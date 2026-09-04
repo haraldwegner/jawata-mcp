@@ -24,7 +24,27 @@ import java.util.function.Supplier;
  * {@code extract_constant} / {@code extract_interface}. Carries the apply/undo
  * contract unchanged (returns filesModified/diff/undoChangeId/summary).</p>
  */
-public class ExtractTool extends AbstractTool {
+public class ExtractTool extends AbstractTool implements KindedTool {
+
+    @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /**
+     * The routing map IS the kind list (Stage 6a, M3b).
+     *
+     * <p>Nothing is built here: the map below already keys every delegate by the kind that
+     * reaches it, and every delegate now fills the role, so this is a re-typing of what the
+     * door already held rather than a second structure.</p>
+     */
+    @Override
+    public java.util.Map<String, KindDelegate> delegates() {
+        java.util.Map<String, KindDelegate> published = new LinkedHashMap<>();
+        delegates.forEach((kind, delegate) -> published.put(kind, (KindDelegate) delegate));
+        return java.util.Collections.unmodifiableMap(published);
+    }
+
 
     /**
      * ONE map, and it is the single source of truth for three things that used to be

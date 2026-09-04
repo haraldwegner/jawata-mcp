@@ -28,7 +28,27 @@ import java.util.function.Supplier;
  * publicly as {@code accessorKind} and remapped onto the delegate's {@code kind}
  * on dispatch (mirrors {@code find_quality_issue}'s query→exceptionType alias).</p>
  */
-public class GenerateTool extends AbstractTool {
+public class GenerateTool extends AbstractTool
+        implements org.jawata.mcp.tools.KindedTool {
+
+    @Override
+    public String discriminator() {
+        return "kind";
+    }
+
+    /** Built from the typed fields, keyed by what each delegate calls itself (Stage 6a, M3b). */
+    @Override
+    public java.util.Map<String, org.jawata.mcp.tools.KindDelegate> delegates() {
+        java.util.Map<String, org.jawata.mcp.tools.KindDelegate> published =
+            new java.util.LinkedHashMap<>();
+        for (org.jawata.mcp.tools.KindDelegate delegate : List.of(
+                constructor, gettersSetters, equalsHashCode, toStringTool,
+                testSkeleton, overrideMethods, copyClass)) {
+            published.put(delegate.kindName(), delegate);
+        }
+        return java.util.Collections.unmodifiableMap(published);
+    }
+
 
     private static final List<String> KINDS = List.of(
         "constructor", "getters_setters", "equals_hashcode",
