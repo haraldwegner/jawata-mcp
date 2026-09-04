@@ -66,19 +66,27 @@ class Stage6PerRowContractTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // DISPOSE THE PREVIOUS COPY BEFORE TAKING ANOTHER. Both loops below call this method
-        // once per row, and the helper REPLACES its service without disposing the old one —
-        // it disposes only the last, in afterEach. So twelve rows left eleven live projects in
-        // the JVM-shared Eclipse workspace, every one of them linked to the SAME directory the
-        // next iteration copies over. A name form resolves at WORKSPACE scope, so it can be
-        // answered by one of those stale handles; the positional path never can, because it is
-        // handed the file. Seen once, in the C6 gate run: row 5 failed with "No compilation
-        // unit at .../ReadingFunctions.java" under four concurrent shards, while the same
-        // commit ran green on that shard alone and green on a second full run. The helper's
-        // own javadoc names this class — "leaking them ... the substrate of the
-        // load-dependent lookup-failure flakes" — and closed it for the single-load case only.
-        // This is the per-iteration half, fixed here rather than in the shared helper because
-        // that file is read by every test in the suite.
+        // DISPOSE THE PREVIOUS COPY BEFORE TAKING ANOTHER. The helper REPLACES its service on
+        // every load without disposing the old one — it disposes only the last, in afterEach —
+        // and every copy lands on the SAME directory, which the next one overwrites.
+        //
+        // COUNTED, not estimated, because the first version of this comment guessed and was
+        // wrong by more than half. The twelve-row loop calls this method TWICE per row, before
+        // staging and again before the apply, so it loads 1 + 24 = 25 projects and leaves 24
+        // live. The name-form loop calls it once per row: 1 + 7 = 8, leaving 7. Across the
+        // class's four test methods that is 25 + 1 + 8 + 1 = 35, and a class run logs exactly
+        // 35 "Loading project:" lines.
+        //
+        // Why it matters: those stale projects live in the JVM-shared Eclipse workspace. A
+        // name form resolves at WORKSPACE scope, so it can be answered by one of them; the
+        // positional path never can, because it is handed the file. Seen once, in the C6 gate
+        // run: row 5 failed with "No compilation unit at .../ReadingFunctions.java" under four
+        // concurrent shards, while the same commit ran green on that shard alone and green on
+        // a second full run. TestProjectHelper.afterEach carries a comment naming the same
+        // problem — "leaking them ... the substrate of the load-dependent lookup-failure
+        // flakes" — and closed it for the single-load case only. This is the per-iteration
+        // half, fixed here rather than in the shared helper because that file is read by every
+        // test in the suite.
         if (service != null) {
             service.dispose();
         }
@@ -251,7 +259,9 @@ class Stage6PerRowContractTest {
      * both halves read plausibly. The other FIVE are {@link #NO_NAME_FORM}, whose targets have
      * no name at all; the contract's "every other value one the finding already carries" is
      * what covers them. This list is exhaustive rather than convenient, and 7 + 5 = 12 is
-     * checked by {@link #theTwoTablesAccountForEveryRow()} rather than asserted in prose.
+     * checked by {@link #theTwoTablesAccountForEveryRow()} rather than asserted in prose —
+     * which compares the UNION of this list and the named half against the row table, and
+     * separately checks the two halves share no row.
      */
     private List<Named> namedRows() {
         return List.of(
