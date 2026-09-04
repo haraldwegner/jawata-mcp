@@ -315,7 +315,19 @@ class DeclaredShapeHonestyTest {
      * It is kept because the property it pins is one edit from being broken: a door that
      * curates its own properties and forgets the backstop call is exactly what {@code inline}
      * did, and what {@code data} and {@code hierarchy} still do until their lanes convert
-     * them. The rule this file applies, stated once in
+     * them.</p>
+     *
+     * <p><b>PROVED BY THAT EDIT, not merely by naming it.</b> A third audit pointed out that
+     * the rule's third obligation had been stated here and skipped — the only mutation cited
+     * nearby ("add a parameter to any delegate's schema") makes this assertion PASS, which
+     * shows nothing. So the breaking edit was made: {@code generate}'s
+     * {@code schema.put("properties", withDelegateParameters(properties))} replaced by
+     * {@code properties}. The run was 12 total, 11 succeeded, 1 failed —
+     * <em>"generate kind=getters_setters accepts 'getterStyle' and the door does not publish
+     * it"</em> — which is the parameter this backstop exists to carry. File restored
+     * byte-for-byte (md5 67e61a45f2c087ed92e493b11aa6d551).</p>
+     *
+     * <p>The rule this file applies, stated once in
      * {@code TheRoutingTableIsTheKindListTest}: an assertion whose two sides are ONE
      * expression a definitional step apart is deleted; one that is merely green today over a
      * property a plausible edit would break is kept, labelled, and proved by making that

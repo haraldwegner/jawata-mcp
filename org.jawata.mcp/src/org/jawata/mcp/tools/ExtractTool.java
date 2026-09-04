@@ -119,10 +119,20 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
-    /** The kinds, derived from the dispatch map so the two can never disagree. */
-    private List<String> kinds() {
-        return List.copyOf(delegates.keySet());
-    }
+    /*
+     * kinds() WAS HERE, and it was `List.copyOf(delegates.keySet())` — the same derivation
+     * KindedTool#publishedKinds() performs, written a second time inside this door. Its two
+     * callers now ask the interface instead (C6a).
+     *
+     * It was deleted because a C6a audit measured what the seam's own documentation claimed.
+     * Three texts said every routing door puts publishedKinds() into its schema enum; three
+     * of six did. This door and `move` read a private kinds(), and `apply_cleanup` a private
+     * constant. All three happened to derive, so nothing was wrong with the published output
+     * — but the sentence justifying the deletion of the enum guard was true only of the
+     * three doors that called the shared method, and a private method a door's author can
+     * freely change is exactly where `generate`'s hand-written list had been hiding.
+     * Repointing all six makes the claim true rather than smaller.
+     */
 
     @Override
     public String getName() {
@@ -278,7 +288,7 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", kinds());
+        kind.put("enum", publishedKinds());
         kind.put("description", "Which extract refactoring to run. See the tool description for per-kind params.");
         properties.put("kind", kind);
 
@@ -336,12 +346,13 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + kinds());
+            return ToolResponse.invalidParameter("kind",
+                "kind is required; one of " + publishedKinds());
         }
         AbstractTool delegate = delegates.get(kind);
         if (delegate == null) {
             return ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + kinds());
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
         return delegate.executeWithService(service, arguments);
     }

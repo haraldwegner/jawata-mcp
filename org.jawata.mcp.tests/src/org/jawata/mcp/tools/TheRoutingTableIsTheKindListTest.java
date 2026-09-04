@@ -23,9 +23,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * <p><b>The test is DEFINITIONAL identity, not a green result</b>, and the distinction is load
  * bearing: a later audit read it the loose way and called a live regression lock vacuous on
- * the strength of this paragraph. What made those five assertions worthless is that the two
- * sides were ONE expression a definitional step apart, in an interface that tells implementors
- * never to override the method joining them — no edit separates them. An assertion that
+ * the strength of this paragraph. What makes those five assertions worthless is that the two
+ * sides are ONE expression a definitional step apart, in an interface that tells implementors
+ * never to override the method joining them — no edit separates them.</p>
+ *
+ * <p><b>And that was only true of three doors until C6a made it true of six.</b> A third audit
+ * measured the claim: {@code extract} and {@code move} read a private {@code kinds()},
+ * {@code apply_cleanup} a private {@code KINDS} constant, each performing
+ * {@code delegates().keySet()} a second time inside the door rather than asking
+ * {@link KindedTool}. All three derived, so the deleted assertions could not in fact have
+ * failed — but the REASON given for deleting them held only where the joining method was the
+ * interface's. The three private readers were deleted rather than the paragraph weakened,
+ * which is the same move this whole stage is: the door asks, instead of keeping its own copy
+ * of the answer.</p>
+ *
+ * <p>An assertion that
  * merely happens to be green today, over a property one plausible edit would break, is a
  * regression lock; it is kept, labelled as one, and proved by making that edit. See the
  * per-door assertion in {@code FrontDoorDescriptionTest#noDoorWritesItsOwnUsageLine}, which

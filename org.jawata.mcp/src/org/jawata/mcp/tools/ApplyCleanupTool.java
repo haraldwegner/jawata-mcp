@@ -135,7 +135,14 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         return m;
     }
 
-    static final List<String> KINDS = List.copyOf(RULES.keySet());
+    /*
+     * KINDS WAS HERE — `List.copyOf(RULES.keySet())`, and RULES is the same map delegates()
+     * wraps, so it derived correctly. It went at C6a anyway, with extract's and move's
+     * private kinds(), because the seam's own documentation claimed all six routing doors
+     * put publishedKinds() into their schema enum and only three did. A private reader that
+     * happens to derive today is one edit from being the hand-written list `generate` was
+     * caught carrying; asking the interface removes the question.
+     */
 
     /**
      * Kinds whose rewrite MOVES code, so a caller's position cannot narrow it to one
@@ -232,7 +239,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
+        kind.put("enum", publishedKinds());
         kind.put("description", "Which clean-up to apply. See the tool description.");
         properties.put("kind", kind);
         Map<String, Object> filePath = new LinkedHashMap<>();
@@ -273,11 +280,11 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
             return Preparation.fail(ToolResponse.invalidParameter("kind",
-                "kind is required; one of " + KINDS));
+                "kind is required; one of " + publishedKinds()));
         }
-        if (!KINDS.contains(kind)) {
+        if (!delegates().containsKey(kind)) {
             return Preparation.fail(ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS));
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds()));
         }
 
         int line = getIntParam(arguments, "line", -1);

@@ -51,6 +51,16 @@ public interface KindedTool extends FrontDoor {
      * schema enum, so the schema walk and the key set are two readings of one list. The
      * temporary test that asserted their equality per door was deleted for that reason.</p>
      *
+     * <p><b>That sentence was FALSE when first written, and was made true rather than
+     * softened.</b> Three of the six routing doors called this method; {@code extract} and
+     * {@code move} each had a private {@code kinds()} and {@code apply_cleanup} a private
+     * {@code KINDS} constant, all three performing this same derivation a second time inside
+     * the door. They derived correctly, so nothing published was wrong — but a private reader
+     * that happens to derive is one edit away from being the hand-written list {@code
+     * generate} was caught carrying, and the deletion above was justified on the claim that
+     * no such edit is possible. All three now ask this method and their own readers are
+     * gone.</p>
+     *
      * <p><b>One door is still compared, and it is not a leftover.</b>
      * {@code refactor_to_pattern} keeps a hand-written constant because its {@code
      * patternKinds()} is {@code static} — the cure table reads it to decide which steps name a

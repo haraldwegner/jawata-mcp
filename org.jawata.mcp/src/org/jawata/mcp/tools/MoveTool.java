@@ -73,10 +73,12 @@ public class MoveTool extends AbstractTool implements KindedTool {
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
-    /** The kinds, derived from the dispatch map so the two can never disagree. */
-    private List<String> kinds() {
-        return List.copyOf(delegates.keySet());
-    }
+    /*
+     * kinds() WAS HERE — `List.copyOf(delegates.keySet())`, the same derivation
+     * KindedTool#publishedKinds() performs, written a second time inside this door. Its two
+     * callers now ask the interface instead (C6a); see ExtractTool for the measurement that
+     * found all three private readers.
+     */
 
     @Override
     public String getName() {
@@ -194,7 +196,7 @@ public class MoveTool extends AbstractTool implements KindedTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", kinds());
+        kind.put("enum", publishedKinds());
         kind.put("description",
             "Move a class or a method (by caret or by name), a package (by name), a FIELD onto another type, or STATEMENTS across a call boundary in either direction "
                 + "(statements_into_function / statements_to_callers).");
@@ -248,12 +250,13 @@ public class MoveTool extends AbstractTool implements KindedTool {
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + kinds());
+            return ToolResponse.invalidParameter("kind",
+                "kind is required; one of " + publishedKinds());
         }
         AbstractRefactoringTool delegate = delegates.get(kind);
         if (delegate == null) {
             return ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + kinds());
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
         return delegate.executeWithService(service, arguments);
     }

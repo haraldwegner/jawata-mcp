@@ -349,12 +349,13 @@ class FrontDoorDescriptionTest {
         // C6a moved into this file, where its only reader always was.
         //
         // THIS TEST IS THE OTHER HALF, and it is the stronger one. A file-text check reads
-        // source; this reads what a CLIENT receives. Before M5 three of these doors published
+        // source; this reads what a CLIENT receives. Before M5 FOUR of these doors published
         // a hand-written line differing from the generated one — extract's and generate's
         // said kind="<kind>", refactoring's said action="<action>", move's was wrapped across
-        // two lines — so this failed then. A door that writes one back publishes two, and
-        // fails again. Neither check subsumes the other: source could be clean while the
-        // published text was assembled wrongly, and vice versa.
+        // two lines — so this failed then. (The sentence said "three" and then listed four; a
+        // C6a audit counted them.) A door that writes one back publishes two, and fails
+        // again. Neither check subsumes the other: source could be clean while the published
+        // text was assembled wrongly, and vice versa.
         for (FrontDoor door : sevenDoors()) {
             String described = door.getDescription();
             String generated =
@@ -369,17 +370,23 @@ class FrontDoorDescriptionTest {
             //
             // A REGRESSION LOCK, LABELLED ONE, because a second audit refused the checkpoint
             // over it and the refusal was half right. It cannot fail against today's code:
-            // all seven getDescription() bodies are the single expression
-            // `return FrontDoorDescription.ASSEMBLER.describe(this);`, so both sides of this
-            // equality evaluate the same call. The auditor read that as the vacuous shape M6
-            // deletes elsewhere.
+            // all seven getDescription() bodies are one call to ASSEMBLER.describe(this) and
+            // nothing else — five spell it `FrontDoorDescription.ASSEMBLER`, and the two
+            // doors outside this package fully qualify it — so both sides of this equality
+            // evaluate the same call. The auditor read that as the vacuous shape M6 deletes
+            // elsewhere.
             //
             // IT IS NOT THAT SHAPE, and the difference is what makes one deletable and this
             // one worth keeping. M6's enum assertion compared the schema's enum with
-            // delegates().keySet() — but the schema PUTS publishedKinds() there and KindedTool
-            // DEFINES publishedKinds() AS that key set, so the two sides are one expression a
-            // definitional step apart, inside one interface whose javadoc tells implementors
-            // never to override it. Nothing a door can do separates them. Here the subject is
+            // delegates().keySet() — and every routing door now PUTS publishedKinds() there,
+            // while KindedTool DEFINES publishedKinds() AS that key set, so the two sides are
+            // one expression a definitional step apart, inside one interface whose javadoc
+            // tells implementors never to override it. Nothing a door can do separates them.
+            //
+            // "Every routing door" is true because C6a made it true, not because it was
+            // found so: three of the six read a private kinds() or KINDS of their own until a
+            // third audit measured this sentence. Those three readers were deleted rather
+            // than this claim weakened. Here the subject is
             // getDescription(), which is Tool's own method and the place every tool in the
             // codebase writes its own text; these seven forwarding to the assembler is the
             // exception this stage created, not a definition, and it is one edit from being
