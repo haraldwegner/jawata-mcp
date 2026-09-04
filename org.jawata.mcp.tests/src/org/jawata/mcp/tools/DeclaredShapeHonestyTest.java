@@ -302,6 +302,7 @@ class DeclaredShapeHonestyTest {
         move.put("class", new MoveClassTool(svc, cache));
         move.put("package", new MovePackageTool(svc, cache));
         move.put("method", new MoveMethodTool(svc, cache));
+        move.put("field", new MoveFieldTool(svc, cache));
         assertPublishesEveryDelegateParameter(new MoveTool(svc, cache), move);
     }
 

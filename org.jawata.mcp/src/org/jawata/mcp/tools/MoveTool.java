@@ -45,6 +45,10 @@ public class MoveTool extends AbstractTool {
         // static before choosing a tool, so the static half (row 24) lands inside this
         // same kind rather than beside it.
         d.put("method", new MoveMethodTool(serviceSupplier, cache));
+        // Sprint 28d-rescue row 23. Fowler names Move Field beside Move Function for the
+        // same reason: state in the wrong class is the same defect as behaviour in the
+        // wrong class, and `shotgun_surgery` reports both.
+        d.put("field", new MoveFieldTool(serviceSupplier, cache));
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
@@ -77,6 +81,15 @@ public class MoveTool extends AbstractTool {
                         receives it. `target` may be omitted when exactly one candidate
                         exists; with several, the call is refused and lists them.
                         Optional keepDelegate leaves a forwarder behind.
+
+            - field   — move a field to an EXISTING class, updating every reference.
+                        Needs: filePath, line, column on the declaration, plus targetType
+                        (the destination's fully-qualified name).
+                        STATIC fields only. An instance field is REFUSED, because moving
+                        one rewrites each access to `owner.<receiver>.name` and nothing in
+                        the code says which field is the receiver — that is the caller's
+                        choice and this kind does not yet take it. To move fields into a
+                        NEW class, use extract kind=class, which needs no receiver.
 
             Common: updateReferences (default true). IMPORTANT: ZERO-BASED coordinates.
             Applies by default; returns filesModified/diff/undoChangeId/summary.
