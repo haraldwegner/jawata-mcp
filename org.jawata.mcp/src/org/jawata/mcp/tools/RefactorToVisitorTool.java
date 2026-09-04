@@ -40,7 +40,15 @@ import java.util.function.Supplier;
  * {@code abstract} with &ge; 2 subtypes in the same file. Find candidates via
  * {@code find_quality_issue(kind=switch_statements)} (an instanceof/type-code chain).</p>
  */
-public class RefactorToVisitorTool extends AbstractApplyingRefactoringTool {
+public class RefactorToVisitorTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=refactor_to_visitor}. */
+    @Override
+    public String kindName() {
+        return "refactor_to_visitor";
+    }
+
 
     public RefactorToVisitorTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

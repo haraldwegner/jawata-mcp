@@ -23,7 +23,15 @@ import java.util.function.Supplier;
  * Find candidates via {@code find_quality_issue(kind=speculative_generality)} or
  * {@code find_modernization(kind=anon_to_lambda)}.</p>
  */
-public class ReplacePatternWithIdiomTool extends AbstractTool {
+public class ReplacePatternWithIdiomTool extends AbstractTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=replace_pattern_with_idiom}. */
+    @Override
+    public String kindName() {
+        return "replace_pattern_with_idiom";
+    }
+
 
     private static final List<String> IDIOMS = List.of("anonymous_to_lambda");
 

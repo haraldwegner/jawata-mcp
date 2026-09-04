@@ -95,7 +95,19 @@ import java.util.function.Supplier;
  * <p>A delegate of {@link RefactorToPatternTool} (kind {@code decompose_conditional});
  * not registered as a standalone tool.</p>
  */
-public class DecomposeConditionalTool extends AbstractTool {
+public class DecomposeConditionalTool extends AbstractTool
+        implements ToolKindDelegate {
+
+    /**
+     * Reached as {@code refactor_to_pattern kind=decompose_conditional}. The plan had assigned
+     * row 8 to {@code apply_cleanup} and it could not live there — that door is a sweep and
+     * takes no per-call input, while this row's whole value is the caller's names.
+     */
+    @Override
+    public String kindName() {
+        return "decompose_conditional";
+    }
+
 
     private final RefactoringChangeCache cache;
     private final ExtractMethodTool extract;

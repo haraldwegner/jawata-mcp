@@ -54,7 +54,15 @@ import java.util.function.Supplier;
  * v1.8.x follow-ups; the tool rejects them with {@code INVALID_PARAMETER}
  * pointing at the upgrade-checklist for now.</p>
  */
-public class GenerateToStringTool extends AbstractTool {
+public class GenerateToStringTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=tostring}. */
+    @Override
+    public String kindName() {
+        return "tostring";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateToStringTool.class);
 

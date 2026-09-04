@@ -48,7 +48,15 @@ import java.util.function.Supplier;
  * reference method locals. The superclass must be {@code abstract} and in the same
  * file. Applies as one {@link ChangeEngine#fromFileEdits} change (one undo).</p>
  */
-public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool {
+public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=form_template_method}. */
+    @Override
+    public String kindName() {
+        return "form_template_method";
+    }
+
 
     public FormTemplateMethodTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

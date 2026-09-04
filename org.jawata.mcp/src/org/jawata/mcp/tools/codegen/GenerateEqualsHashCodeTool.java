@@ -56,7 +56,15 @@ import java.util.function.Supplier;
  * {@code Objects.hash(...)} for the hash. Inserts the
  * {@code java.util.Objects} import when missing.</p>
  */
-public class GenerateEqualsHashCodeTool extends AbstractTool {
+public class GenerateEqualsHashCodeTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=equals_hashcode}. */
+    @Override
+    public String kindName() {
+        return "equals_hashcode";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateEqualsHashCodeTool.class);
 

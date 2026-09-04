@@ -34,7 +34,15 @@ import java.util.function.Supplier;
  * not registered as a standalone tool. Find candidates via
  * {@code find_quality_issue(kind=long_method)}.</p>
  */
-public class ComposeMethodTool extends AbstractTool {
+public class ComposeMethodTool extends AbstractTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=compose_method}. */
+    @Override
+    public String kindName() {
+        return "compose_method";
+    }
+
 
     private final RefactoringChangeCache cache;
     private final ExtractMethodTool extract;

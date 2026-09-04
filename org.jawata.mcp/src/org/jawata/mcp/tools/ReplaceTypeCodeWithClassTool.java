@@ -42,7 +42,15 @@ import java.util.function.Supplier;
  * {@code replace_type_code_with_class}). Find candidates via
  * {@code find_quality_issue(kind=type_code)}.</p>
  */
-public class ReplaceTypeCodeWithClassTool extends AbstractApplyingRefactoringTool {
+public class ReplaceTypeCodeWithClassTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=replace_type_code_with_class}. */
+    @Override
+    public String kindName() {
+        return "replace_type_code_with_class";
+    }
+
 
     public ReplaceTypeCodeWithClassTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

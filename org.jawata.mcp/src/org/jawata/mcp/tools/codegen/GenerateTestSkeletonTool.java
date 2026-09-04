@@ -39,7 +39,15 @@ import java.util.function.Supplier;
  * ({@link FrameworkDetection#detect}): explicit {@code framework} arg wins;
  * otherwise auto-detect from the project classpath.</p>
  */
-public class GenerateTestSkeletonTool extends AbstractTool {
+public class GenerateTestSkeletonTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=test_skeleton}. */
+    @Override
+    public String kindName() {
+        return "test_skeleton";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateTestSkeletonTool.class);
 

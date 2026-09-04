@@ -57,7 +57,15 @@ import java.util.function.Supplier;
  * constructor's own compilation unit in a way JDT will not narrow. When that
  * happens this tool reports it rather than silently shipping the weaker outcome.</p>
  */
-public class ReplaceConstructorWithFactoryTool extends AbstractApplyingRefactoringTool {
+public class ReplaceConstructorWithFactoryTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=replace_constructor_with_factory}. */
+    @Override
+    public String kindName() {
+        return "replace_constructor_with_factory";
+    }
+
 
     private final RefactoringEngine engine = new JdtRefactoringEngine();
 

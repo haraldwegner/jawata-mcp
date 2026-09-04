@@ -126,7 +126,15 @@ import java.util.function.Supplier;
  * compile gate catches it and undoes the change. A refusal is reserved for what
  * compiles — a gate that already fires needs no second one in front of it.</p>
  */
-public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefactoringTool {
+public class ReplaceConditionalWithPolymorphismTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=replace_conditional_with_polymorphism}. */
+    @Override
+    public String kindName() {
+        return "replace_conditional_with_polymorphism";
+    }
+
 
     public ReplaceConditionalWithPolymorphismTool(
         Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {

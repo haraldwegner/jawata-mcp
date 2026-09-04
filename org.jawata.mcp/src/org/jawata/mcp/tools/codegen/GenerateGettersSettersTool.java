@@ -60,7 +60,15 @@ import java.util.function.Supplier;
  * the target class (conflict reported in {@code warnings[]}); doesn't
  * try to be clever about overloads.</p>
  */
-public class GenerateGettersSettersTool extends AbstractTool {
+public class GenerateGettersSettersTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=getters_setters}. */
+    @Override
+    public String kindName() {
+        return "getters_setters";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateGettersSettersTool.class);
 

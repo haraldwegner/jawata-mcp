@@ -62,7 +62,15 @@ import java.util.function.Supplier;
  * etc.) from the candidate list unless the user asks for them by name —
  * keeps the default listing focused on the user's domain types.</p>
  */
-public class OverrideMethodsTool extends AbstractTool {
+public class OverrideMethodsTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=override_methods}. */
+    @Override
+    public String kindName() {
+        return "override_methods";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(OverrideMethodsTool.class);
 

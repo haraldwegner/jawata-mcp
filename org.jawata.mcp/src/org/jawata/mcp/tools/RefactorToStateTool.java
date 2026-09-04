@@ -59,7 +59,15 @@ import java.util.function.Supplier;
  * statement. Applies as one {@link ChangeEngine#fromFileEdits} change (single file,
  * one undo). Find candidates via {@code find_quality_issue(kind=switch_statements)}.</p>
  */
-public class RefactorToStateTool extends AbstractApplyingRefactoringTool {
+public class RefactorToStateTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=refactor_to_state}. */
+    @Override
+    public String kindName() {
+        return "refactor_to_state";
+    }
+
 
     public RefactorToStateTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

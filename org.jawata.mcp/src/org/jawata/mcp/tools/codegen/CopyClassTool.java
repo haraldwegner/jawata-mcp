@@ -59,7 +59,15 @@ import java.util.function.Supplier;
  * replacing one, so it drives {@link ChangeEngine} + the change cache directly
  * (the {@code SourceCommit} full-replace helper does not fit a create).</p>
  */
-public class CopyClassTool extends AbstractTool {
+public class CopyClassTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=copy_class}. */
+    @Override
+    public String kindName() {
+        return "copy_class";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(CopyClassTool.class);
 

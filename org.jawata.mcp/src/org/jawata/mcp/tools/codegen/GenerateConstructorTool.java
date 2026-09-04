@@ -53,7 +53,15 @@ import java.util.function.Supplier;
  * JDT-UI's {@code GenerateConstructorOperation} (the latter lives in
  * {@code org.eclipse.jdt.ui}, which is not on our target platform).</p>
  */
-public class GenerateConstructorTool extends AbstractTool {
+public class GenerateConstructorTool extends AbstractTool
+        implements org.jawata.mcp.tools.ToolKindDelegate {
+
+    /** Reached as {@code generate kind=constructor}. */
+    @Override
+    public String kindName() {
+        return "constructor";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(GenerateConstructorTool.class);
 

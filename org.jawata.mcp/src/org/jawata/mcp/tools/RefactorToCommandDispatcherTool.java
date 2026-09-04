@@ -48,7 +48,15 @@ import java.util.function.Supplier;
  * a default gets a synthesized no-op. Reuses
  * {@code find_quality_issue(kind=switch_statements)} as the trigger.</p>
  */
-public class RefactorToCommandDispatcherTool extends AbstractApplyingRefactoringTool {
+public class RefactorToCommandDispatcherTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=refactor_to_command_dispatcher}. */
+    @Override
+    public String kindName() {
+        return "refactor_to_command_dispatcher";
+    }
+
 
     public RefactorToCommandDispatcherTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

@@ -54,7 +54,15 @@ import java.util.function.Supplier;
  * <p>A delegate of {@link RefactorToPatternTool} (kind {@code inline_singleton});
  * not registered as a standalone tool.</p>
  */
-public class InlineSingletonTool extends AbstractApplyingRefactoringTool {
+public class InlineSingletonTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code refactor_to_pattern kind=inline_singleton}. */
+    @Override
+    public String kindName() {
+        return "inline_singleton";
+    }
+
 
     public InlineSingletonTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);
