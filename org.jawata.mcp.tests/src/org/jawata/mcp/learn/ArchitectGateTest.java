@@ -22,8 +22,9 @@ class ArchitectGateTest {
     /**
      * The registry the gate reads, populated the way the application populates it.
      *
-     * <p>The gate used to carry two literal sets of tool names and needed nothing to
-     * answer. It now asks the registry, because a list of names in this package went
+     * <p>The three refactoring front doors are registered FROM THE TOOLS; only the tools
+     * this test does not construct remain literal. The gate used to carry two literal sets
+     * of tool names and needed nothing to answer. It now asks the registry, because a list of names in this package went
      * stale the moment stage 1 renamed a tool and nothing failed. A test that left the
      * registry empty would see a gate that never fires — which is exactly the failure
      * being repaired, reproduced in the test instead of in production.</p>
@@ -37,16 +38,38 @@ class ArchitectGateTest {
             java.util.Set.of());
         registry.register("refactor_to_pattern", java.util.List.of(), true, true,
             java.util.Set.of());
-        registry.register("extract",
-            java.util.List.of("method", "variable", "constant", "interface", "superclass",
-                "class", "replace_inline_code"),
-            true, false, java.util.Set.of("superclass", "interface"));
-        registry.register("move", java.util.List.of("class", "package", "method"), true,
-            false, java.util.Set.of("method"));
+        // THE THREE REFACTORING DOORS COME FROM THE TOOLS, not from literals. They were
+        // literals until a C6 audit read them: `extract` was registered with seven kinds and
+        // two structural ones, `move` with three and one, and `inline` NOT AT ALL — the
+        // pre-Stage-6 world, under a javadoc claiming this is populated the way the
+        // application populates it. The gate's own test was therefore blind to exactly the
+        // kinds the gate had gone silent on.
+        for (org.jawata.mcp.tools.Tool tool : java.util.List.<org.jawata.mcp.tools.Tool>of(
+                new org.jawata.mcp.tools.ExtractTool(() -> null,
+                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                new org.jawata.mcp.tools.InlineTool(() -> null,
+                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                new org.jawata.mcp.tools.MoveTool(() -> null,
+                    new org.jawata.mcp.refactoring.RefactoringChangeCache()))) {
+            registry.register(tool.getName(), publishedKindsOf(tool), tool.isMechanical(),
+                tool.isStructural(), tool.structuralKinds());
+        }
         registry.register("format", java.util.List.of(), false, false, java.util.Set.of());
         registry.register("rename_symbol", java.util.List.of(), true, false,
             java.util.Set.of());
         return registry;
+    }
+
+    /** The kinds a tool's own schema publishes. */
+    @SuppressWarnings("unchecked")
+    private static java.util.List<String> publishedKindsOf(org.jawata.mcp.tools.Tool tool) {
+        Object properties = tool.getInputSchema().get("properties");
+        if (properties instanceof java.util.Map<?, ?> map
+                && map.get("kind") instanceof java.util.Map<?, ?> kind
+                && kind.get("enum") instanceof java.util.Collection<?> kinds) {
+            return new java.util.ArrayList<>((java.util.Collection<String>) kinds);
+        }
+        return java.util.List.of();
     }
 
     private static final ArchitectGate GATE = new ArchitectGate(500, wiredRegistry());

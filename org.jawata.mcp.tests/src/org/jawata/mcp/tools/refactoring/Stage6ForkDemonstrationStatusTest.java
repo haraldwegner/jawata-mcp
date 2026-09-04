@@ -80,6 +80,29 @@ class Stage6ForkDemonstrationStatusTest {
         Map.entry("64 Split Phase", "MapReduceForkSliceTest.java"),
         Map.entry("58 Replace Temp with Query", "MapReduceForkSliceTest.java")));
 
+    /**
+     * Whether some {@code @DisplayName} in this source names the given row NUMBER.
+     *
+     * <p>An {@code @DisplayName} belongs to a test method and disappears with it, which a
+     * class javadoc does not — that difference is the whole point of looking here.</p>
+     *
+     * <p>Both {@code "row 26"} and {@code "rows 26 and 25"} count: rows 25 and 26 are
+     * inverses and their one test runs them as a round trip, so its name says so. The check
+     * is therefore for the word row (or rows) and the number as its own token, not for a
+     * fixed phrase — a convention nobody has to remember is worth more than a tidier
+     * regular expression that quietly excludes the honest case.</p>
+     */
+    private static boolean namesRowInADisplayName(String source, String number) {
+        for (String line : source.split("\n", -1)) {
+            if (line.contains("@DisplayName")
+                    && line.matches(".*\\brows?\\b.*")
+                    && line.matches(".*\\b" + number + "\\b.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Test
     @DisplayName("this says exactly which of Stage 6's twelve rows are demonstrated on the fork")
     void theForkDemonstrationCountIsWhatIsWrittenDown() {
@@ -105,18 +128,22 @@ class Stage6ForkDemonstrationStatusTest {
                 wrong.add(row.getKey() + " claims " + row.getValue() + ", which is not there");
                 continue;
             }
-            // AND THAT THE FILE ACTUALLY CARRIES THIS ROW. Existence alone was all this
-            // checked until a C6 audit named it: six of the slices are shared by two to
-            // four rows each, so MapReduceForkSliceTest could lose its row-58 method and
-            // this would stay green while claiming the row is demonstrated. The row number
-            // is what a shared file must mention — every slice's @DisplayName opens with
-            // it — so the check is cheap and the convention is already kept.
+            // AND THAT A TEST IN IT IS ABOUT THIS ROW. Existence alone was all this checked
+            // until a C6 audit named it: six slices are shared by two to four rows each, so
+            // one could lose a row's method and stay green while claiming it demonstrated.
+            //
+            // THE FIRST FIX WAS VACUOUS and the next audit caught that too — it searched the
+            // WHOLE FILE, and every slice names its rows in the class javadoc as well, so
+            // deleting the test method still left a hit. Exactly the row it was added to
+            // protect, 36, was the one it could not protect. The needle must therefore sit
+            // where only a TEST can put it: an @DisplayName line.
             String number = row.getKey().split(" ")[0];
             try {
-                if (!Files.readString(slice).contains("row " + number)) {
+                if (!namesRowInADisplayName(Files.readString(slice), number)) {
                     wrong.add(row.getKey() + " claims " + row.getValue() + ", which exists"
-                        + " but mentions no \"row " + number + "\" — a shared slice that"
-                        + " lost this row's test would read exactly like this");
+                        + " but has no @DisplayName naming row " + number + " — a shared"
+                        + " slice that lost this row's test reads exactly like this, and a"
+                        + " class javadoc mentioning the row does not make it demonstrated");
                 }
             } catch (java.io.IOException e) {
                 wrong.add(row.getKey() + ": could not read " + row.getValue() + " — " + e);

@@ -87,6 +87,17 @@ class Stage6PerRowContractTest {
         throw new AssertionError("PROOF OF LIFE: " + file.getFileName() + " lost " + marker);
     }
 
+    /** Every .java file in the fixture package, by name, with its content. */
+    private Map<String, String> snapshotOfPackage() throws Exception {
+        Map<String, String> all = new LinkedHashMap<>();
+        try (java.util.stream.Stream<Path> files = Files.list(pkg)) {
+            for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
+                all.put(file.getFileName().toString(), read(file));
+            }
+        }
+        return all;
+    }
+
     /** One row: which door, the arguments that drive it, and the files it should touch. */
     private record Row(String label, String door, ObjectNode args, List<String> touches) {}
 
@@ -159,14 +170,17 @@ class Stage6PerRowContractTest {
         combine.put("filePath", pkg.resolve("ReadingFunctions.java").toString());
         combine.put("newTypeName", "ReadingCharge");
         combine.putArray("functions").add("baseCharge").add("taxThreshold");
+        // ReadingCharge.java is the class this row CREATES. It was missing from this list
+        // until the blast-radius check started reading the applied state — a row's output
+        // file is part of what it touches, and leaving it out made the list a reading list.
         rows.add(new Row("5 Combine Functions", "extract", combine,
-            List.of("ReadingFunctions.java", "ReadingCaller.java")));
+            List.of("ReadingFunctions.java", "ReadingCaller.java", "ReadingCharge.java")));
 
         ObjectNode command = at("function_to_command", "Scoring.java",
             "public static int score", 25);
         command.put("newTypeName", "ScoreCommand");
         rows.add(new Row("48 Replace Function with Command", "extract", command,
-            List.of("Scoring.java", "ScoringCaller.java")));
+            List.of("Scoring.java", "ScoringCaller.java", "ScoreCommand.java")));
 
         Path twoPhase = pkg.resolve("TwoPhase.java");
         ObjectNode split = at("split_phase", "TwoPhase.java", "public int priceOrder", 16);
@@ -191,6 +205,12 @@ class Stage6PerRowContractTest {
             for (String file : row.touches()) {
                 before.put(file, read(pkg.resolve(file)));
             }
+            // THE WHOLE PACKAGE, so "nothing outside the target touched" can be ASKED. That
+            // clause of the per-row contract was asserted for no row until a C6 audit
+            // counted: every check here read only each row's own touches list, so a row that
+            // also rewrote an unrelated fixture passed. Snapshotting everything makes the
+            // touches list a CLAIM about the blast radius rather than a reading list.
+            Map<String, String> wholePackage = snapshotOfPackage();
 
             ObjectNode staged = rows().stream()
                 .filter(r -> r.label().equals(row.label())).findFirst().orElseThrow()
@@ -219,6 +239,34 @@ class Stage6PerRowContractTest {
                 problems.add(row.label() + ": apply refused — " + applied.getError());
                 continue;
             }
+            // NOTHING OUTSIDE THE TARGET — measured on the APPLIED state, which is the
+            // only moment it means anything. Written first after the undo, where it compared
+            // a restored tree against itself and passed for every row: a check that runs
+            // when the thing it inspects has been put back is not a weak check, it is no
+            // check. Asked of the whole package rather than of the row's own list, so the
+            // list cannot make itself right by being short; a file the row CREATES counts as
+            // touched and must be named.
+            Map<String, String> after = snapshotOfPackage();
+            for (Map.Entry<String, String> file : after.entrySet()) {
+                if (row.touches().contains(file.getKey())) {
+                    continue;
+                }
+                String was = wholePackage.get(file.getKey());
+                if (was == null) {
+                    problems.add(row.label() + ": CREATED " + file.getKey()
+                        + ", which is not in its touches list — a row's blast radius has to"
+                        + " be declared, not discovered");
+                } else if (!was.equals(file.getValue())) {
+                    problems.add(row.label() + ": REWROTE " + file.getKey()
+                        + ", which is outside its target");
+                }
+            }
+            for (String gone : wholePackage.keySet()) {
+                if (!after.containsKey(gone) && !row.touches().contains(gone)) {
+                    problems.add(row.label() + ": DELETED " + gone + ", outside its target");
+                }
+            }
+
             @SuppressWarnings("unchecked")
             Map<String, Object> data = (Map<String, Object>) applied.getData();
             Object undoId = data.get("undoChangeId");

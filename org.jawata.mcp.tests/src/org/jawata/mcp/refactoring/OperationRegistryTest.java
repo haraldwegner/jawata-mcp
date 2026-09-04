@@ -124,19 +124,41 @@ class OperationRegistryTest {
                 + " step name a smell and be called runnable");
     }
     /**
-     * Put the singleton back the way the application leaves it.
+     * Put the singleton back the way the application leaves it — FROM THE TOOLS.
      *
      * <p>A test that borrows a global has to give it back INTACT, not merely non-empty.
-     * Registering the front doors again is the only way to restore the operation→tool
-     * attribution the ambiguity check reads.</p>
+     * This used to register three literal kind lists, and a C6 audit found what that costs:
+     * they were the pre-Stage-6 lists, `inline` was restored as {@code {method, variable}}
+     * with an EMPTY structural set, and the javadoc above claimed it was restoring what the
+     * application leaves. Every reader of the live registry — CureLookup, CureTier,
+     * ArchitectGate — got that version after this test ran.</p>
+     *
+     * <p>Registering the real tools removes the copy rather than correcting it. A kind added
+     * to a front door now arrives here without anybody remembering to come and add it.</p>
      */
     private static void restoreFromRealTools(org.jawata.mcp.refactoring.OperationRegistry live) {
-        live.register("extract",
-            List.of("method", "variable", "constant", "interface", "superclass", "class",
-                "replace_inline_code"), true, false, java.util.Set.of("superclass", "interface"));
-        live.register("inline", List.of("method", "variable"), true, false, java.util.Set.of());
-        live.register("move", List.of("class", "package", "method"), true, false,
-            java.util.Set.of("method"));
+        for (org.jawata.mcp.tools.Tool tool : java.util.List.<org.jawata.mcp.tools.Tool>of(
+                new org.jawata.mcp.tools.ExtractTool(() -> null,
+                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                new org.jawata.mcp.tools.InlineTool(() -> null,
+                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                new org.jawata.mcp.tools.MoveTool(() -> null,
+                    new org.jawata.mcp.refactoring.RefactoringChangeCache()))) {
+            live.register(tool.getName(), publishedKindsOf(tool), tool.isMechanical(),
+                tool.isStructural(), tool.structuralKinds());
+        }
+    }
+
+    /** The kinds a tool's own schema publishes. */
+    @SuppressWarnings("unchecked")
+    private static java.util.List<String> publishedKindsOf(org.jawata.mcp.tools.Tool tool) {
+        Object properties = tool.getInputSchema().get("properties");
+        if (properties instanceof java.util.Map<?, ?> map
+                && map.get("kind") instanceof java.util.Map<?, ?> kind
+                && kind.get("enum") instanceof java.util.Collection<?> kinds) {
+            return new java.util.ArrayList<>((java.util.Collection<String>) kinds);
+        }
+        return java.util.List.of();
     }
 
 }

@@ -22,9 +22,11 @@ mechanism behind it.
 
 ## Which files, and which are missing
 
-Ten of the module's thirteen main files. `Client` and `Target` extend `JFrame` and
-`TargetListener` is nested inside `Target`; the Swing dependency is not on this test
-project's classpath and none of these rows touches those files. Their absence changes
+Ten of the module's thirteen main files. The three omitted are `Client`, `Target` and
+`App`. `Client` and `Target` extend `JFrame` (and `TargetListener` is nested inside
+`Target`), so they need Swing, which is not on this test project's classpath; `App`
+constructs both of them and cannot compile without them. None of these rows touches any of
+the three. Their absence changes
 nothing about `FilterChain`'s reference count, which was measured over the fork in place
 rather than over this slice.
 

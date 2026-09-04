@@ -45,7 +45,7 @@ class ExtractToolTest {
     private ObjectMapper mapper;
     private String calculatorPath;
     private Map<String, AbstractTool> narrowByKind;
-    /** All SIX, for the schema-completeness guard. Kept apart from {@link #narrowByKind},
+    /** All ELEVEN, for the schema-completeness guard — this said SIX until a C6 audit counted. Kept apart from {@link #narrowByKind},
      *  which drives failure-parity routing and covers only the four range/interface kinds. */
     private Map<String, AbstractTool> allDelegates;
 

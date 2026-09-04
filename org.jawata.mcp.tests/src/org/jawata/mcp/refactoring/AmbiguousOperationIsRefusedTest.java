@@ -110,8 +110,15 @@ class AmbiguousOperationIsRefusedTest {
         assertTrue(registry.isStructural("move kind=method"),
             "moving a method rewrites its call sites — the declaration the architect"
                 + " gate reads");
-        assertFalse(registry.isStructural("move kind=package"),
-            "relocating a package changes no signature");
+        // A KIND THIS REGISTRY DOES NOT DECLARE, which is what this line is testing — that
+        // an unlisted kind answers no. It used to name `package` with the reason "relocating
+        // a package changes no signature", and that reason now CONTRADICTS the real
+        // MoveTool, which declares package structural because moving one changes the
+        // fully-qualified name of every type in it and therefore every client's import. The
+        // registry here is synthetic, so the assertion passed either way and the two written
+        // claims simply disagreed — a C6 audit read both.
+        assertFalse(registry.isStructural("move kind=class"),
+            "a kind this synthetic registry did not declare structural answers no");
         assertFalse(registry.isStructural("method"),
             "and the BARE kind is never classified: three tools publish `method`, so"
                 + " classifying it would make an extracted local method structural"
