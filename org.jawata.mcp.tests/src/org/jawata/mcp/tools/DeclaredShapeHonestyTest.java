@@ -266,6 +266,9 @@ class DeclaredShapeHonestyTest {
         extract.put("superclass", new ExtractSuperclassTool(svc, cache));
         extract.put("class", new ExtractClassTool(svc, cache));
         extract.put("replace_inline_code", new ReplaceDuplicatesTool(svc, cache));
+        extract.put("combine_functions", new CombineFunctionsIntoClassTool(svc, cache));
+        extract.put("function_to_command", new ReplaceFunctionWithCommandTool(svc, cache));
+        extract.put("split_phase", new SplitPhaseTool(svc, cache));
         assertPublishesEveryDelegateParameter(new ExtractTool(svc, cache), extract);
 
         Map<String, AbstractTool> generate = new LinkedHashMap<>();

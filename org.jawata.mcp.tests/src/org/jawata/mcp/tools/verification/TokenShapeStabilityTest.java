@@ -71,6 +71,12 @@ class TokenShapeStabilityTest {
     void theGroupIdOfAKnownCloneShapeIsStable() {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("minTokens", 5);
+        // THE WHOLE RESULT, not its first page. The default cap of 20 groups is a
+        // display convenience; simple-maven is a SHARED and growing corpus, and
+        // Sprint 28d-rescue's row fixtures pushed the group this asserts about off
+        // page one. A test that depends on where its subject lands in a paged list
+        // is measuring the corpus, not the detector.
+        args.put("limit", 1000);
         ToolResponse r = tool.execute(args);
 
         assertTrue(r.isSuccess(), "find_duplicate_code must succeed; got: " + r.getError());

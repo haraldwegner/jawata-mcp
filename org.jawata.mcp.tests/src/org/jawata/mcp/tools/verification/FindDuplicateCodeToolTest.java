@@ -49,6 +49,12 @@ class FindDuplicateCodeToolTest {
         ObjectNode args = objectMapper.createObjectNode();
         // Use low minTokens so the short Animal.java methods qualify.
         args.put("minTokens", 5);
+        // THE WHOLE RESULT, not its first page. The default cap of 20 groups is a
+        // display convenience; simple-maven is a SHARED and growing corpus, and
+        // Sprint 28d-rescue's row fixtures pushed the group this asserts about off
+        // page one. A test that depends on where its subject lands in a paged list
+        // is measuring the corpus, not the detector.
+        args.put("limit", 1000);
         ToolResponse r = tool.execute(args);
 
         assertTrue(r.isSuccess(), "find_duplicate_code must succeed; got: " + r.getError());
@@ -97,6 +103,12 @@ class FindDuplicateCodeToolTest {
     void dissimilar_methods_not_grouped() {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("minTokens", 5);
+        // THE WHOLE RESULT, not its first page. The default cap of 20 groups is a
+        // display convenience; simple-maven is a SHARED and growing corpus, and
+        // Sprint 28d-rescue's row fixtures pushed the group this asserts about off
+        // page one. A test that depends on where its subject lands in a paged list
+        // is measuring the corpus, not the detector.
+        args.put("limit", 1000);
         ToolResponse r = tool.execute(args);
 
         assertTrue(r.isSuccess(), "got: " + r.getError());
@@ -124,6 +136,12 @@ class FindDuplicateCodeToolTest {
     void instanceShape_carriesContractFields() {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("minTokens", 5);
+        // THE WHOLE RESULT, not its first page. The default cap of 20 groups is a
+        // display convenience; simple-maven is a SHARED and growing corpus, and
+        // Sprint 28d-rescue's row fixtures pushed the group this asserts about off
+        // page one. A test that depends on where its subject lands in a paged list
+        // is measuring the corpus, not the detector.
+        args.put("limit", 1000);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
 
@@ -178,6 +196,12 @@ class FindDuplicateCodeToolTest {
 
         ObjectNode args = objectMapper.createObjectNode();
         args.put("minTokens", 5);
+        // THE WHOLE RESULT, not its first page. The default cap of 20 groups is a
+        // display convenience; simple-maven is a SHARED and growing corpus, and
+        // Sprint 28d-rescue's row fixtures pushed the group this asserts about off
+        // page one. A test that depends on where its subject lands in a paged list
+        // is measuring the corpus, not the detector.
+        args.put("limit", 1000);
         ToolResponse r = giantTool.execute(args);
 
         assertTrue(r.isSuccess(),
@@ -229,6 +253,12 @@ class FindDuplicateCodeToolTest {
     void summary_returnsCountsOnly() {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("minTokens", 5);
+        // THE WHOLE RESULT, not its first page. The default cap of 20 groups is a
+        // display convenience; simple-maven is a SHARED and growing corpus, and
+        // Sprint 28d-rescue's row fixtures pushed the group this asserts about off
+        // page one. A test that depends on where its subject lands in a paged list
+        // is measuring the corpus, not the detector.
+        args.put("limit", 1000);
         args.put("summary", true);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "got: " + r.getError());

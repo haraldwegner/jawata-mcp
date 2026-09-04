@@ -60,6 +60,21 @@ public class ExtractTool extends AbstractTool {
         // call one canonical method — so it lands ON that row's kind rather than beside
         // it. Folding it anywhere else would put `extract` at twelve kinds.
         d.put("replace_inline_code", new ReplaceDuplicatesTool(serviceSupplier, cache));
+        // Row 5. The mirror of `class`: that one pulls FIELDS out of a type carrying too
+        // much state, this gathers FUNCTIONS around state they were all passing to each
+        // other. Same decision in both — WHICH members travel together — and the same
+        // answer: the caller names them, because no detector can.
+        d.put("combine_functions", new CombineFunctionsIntoClassTool(serviceSupplier, cache));
+        // Row 48. It belongs here rather than on refactor_to_pattern because what it
+        // actually does is EXTRACT a function into a type — the Command shape is the
+        // consequence, and the reason to want it is that the parameters become fields the
+        // body's steps can share.
+        d.put("function_to_command",
+            new ReplaceFunctionWithCommandTool(serviceSupplier, cache));
+        // Row 64. Two extractions with a generated carrier between them, which is why it
+        // lives here rather than beside compose_method: compose_method names sections of
+        // one method, this splits one method into two that no longer share a scope.
+        d.put("split_phase", new SplitPhaseTool(serviceSupplier, cache));
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
@@ -111,6 +126,43 @@ public class ExtractTool extends AbstractTool {
                          instance survives. Clones in OTHER types are skipped and
                          listed with the reason: cross-type delegation is not
                          automatically safe.
+                         The same behaviour reaches extract kind=method, where it is ON by
+                         default: extracting a range also rewrites every other occurrence
+                         of it in the type. Set replaceDuplicates=false to opt out.
+            - combine_functions — gather loose STATIC functions that all take the same type
+                         as their FIRST parameter into a new class holding it; each becomes
+                         an instance method taking whatever came after, and every call site
+                         becomes `new Type(data).fn(rest)` (Fowler: Combine Functions into
+                         Class). Needs: filePath, functions[], newTypeName (optional
+                         fieldName). functions[] has no default for the same reason
+                         kind=class's fields[] does not — WHICH functions belong together is
+                         the decision this carries out. Refuses a non-static function
+                         (it already has a receiver — that is move kind=method) and a
+                         function whose first parameter is a different type, naming both
+                         sides, since a guess at "the data" produces code that compiles.
+            - function_to_command — turn a STATIC function into an object: its parameters
+                         become final fields set by a constructor, its body becomes
+                         execute(), and every call site becomes `new Type(args).execute()`
+                         (Fowler: Replace Function with Command). Needs: filePath, line,
+                         column on the function, newTypeName. The reason to want it is that
+                         the parameters are FIELDS afterwards, so the body can be broken
+                         into named steps that share them — which compose_method cannot do
+                         while they are parameters. Refuses an instance method (its receiver
+                         would be a field nobody named) and a function something else
+                         redeclares (a command has no dispatch).
+            - split_phase — split a function that does two jobs in sequence into two
+                         functions joined by a generated record (Fowler: Split Phase).
+                         Needs: filePath, line, column on the function, boundaryLine —
+                         the line of the SECOND phase's first statement. boundaryLine has
+                         no default because where one job ends is a judgement about
+                         meaning that nothing in the syntax marks. What the record carries
+                         IS derived: every local declared before the boundary and read
+                         after it, which is usually few — the rest stay in phase one, and
+                         that shrinkage is the readability this buys. Optional firstName,
+                         secondName, intermediateName. Refuses a return before the
+                         boundary (an early exit, not a phase) and a second phase that
+                         ASSIGNS to a first-phase local (the carrier's components are
+                         final; a mutable carrier is a design decision).
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying.
