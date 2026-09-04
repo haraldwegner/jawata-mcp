@@ -26,7 +26,7 @@ tool getting it subtly wrong.
   after every edit.
 - **Reversible** — every mutating tool returns an `undoChangeId`; one call rolls the change back.
 
-**43 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
+**42 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
 (Fowler / SOLID / Kerievsky), apply pattern-targeted refactorings, modernise, generate, manage
 dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
 
@@ -230,7 +230,33 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 
 > Front doors consolidate many operations behind a `kind` parameter — e.g. `extract(kind)`,
 > `inline(kind)`, `find_quality_issue(kind)`, `refactor_to_pattern(kind)` — so the loaded surface
-> stays small (41) while the capability behind it keeps growing by registration.
+> stays small (42) while the capability behind it keeps growing by registration.
+
+### Every tool, in one list
+
+The inventory below is **checked against the running product** on every end-to-end run: the gate
+boots the artifact, reads `tools/list`, and refuses if this list and the live one differ — in
+either direction. A tool added without a row here, or a row here naming a tool that no longer
+ships, fails the build. The prose that follows groups the same names by what they are for.
+
+<!-- TOOLS:BEGIN — reconciled with tools/list by build/end-to-end-test.sh; do not hand-sort -->
+| | | |
+|---|---|---|
+| `analyze` | `apply_cleanup` | `apply_null_annotations` |
+| `change_method_signature` | `compile_workspace` | `data` |
+| `debug` | `dependency` | `experience` |
+| `extract` | `field` | `find_duplicate_code` |
+| `find_field_writes` | `find_modernization` | `find_pattern_usages` |
+| `find_quality_issue` | `find_references` | `find_string_literals` |
+| `find_tests` | `format` | `generate` |
+| `get_at_position` | `get_call_hierarchy` | `get_diagnostics` |
+| `go_to_definition` | `health_check` | `hierarchy` |
+| `inline` | `inspect` | `load_project` |
+| `move` | `organize_imports` | `profile` |
+| `project` | `quick_fix` | `refactoring` |
+| `refactor_to_pattern` | `refresh_workspace` | `rename_symbol` |
+| `run_tests` | `search_symbols` | `validate_syntax` |
+<!-- TOOLS:END -->
 
 
 **Workspace & navigation**

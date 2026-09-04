@@ -275,8 +275,13 @@ public class ToolRegistry {
      * pointers say the right thing and cannot prove anything about a row nobody
      * remembered. Both are needed: the hand-written list is the claim, this is the
      * coverage.</p>
+     *
+     * <p><b>public</b> since Stage 6a's M9, for a reader in another package: the catalog
+     * every client is sent at connect time lives in {@code org.jawata.mcp.protocol}, and
+     * the check that it names no retired tool has to read this population rather than a
+     * copy of it — a copy being the thing that whole stage removes.</p>
      */
-    static java.util.Set<String> retiredNames() {
+    public static java.util.Set<String> retiredNames() {
         return java.util.Set.copyOf(RENAMED_TOOLS.keySet());
     }
 

@@ -169,6 +169,43 @@ else
           script (and the release note's sentence) in that same change."
 fi
 
+# --- readme-lists-every-tool: the front page against the RUNNING product ------
+# Stage 6a (M9). The count above catches a tool appearing or vanishing; it says
+# nothing about the README, which is where a person looks first and which had
+# drifted twice over — line 29 claimed 43 tools and the tools section claimed a
+# loaded surface of 41, against a live 42.
+#
+# Prose could not be checked: the tools section groups names in sentences, mixed
+# with kind names, parameters and examples in the same backticks. So the README
+# now carries a DELIMITED inventory, and this compares it to tools/list in BOTH
+# directions — a tool with no row, and a row naming a tool that no longer ships,
+# each fail here.
+#
+# Against the running product on purpose. The registration list is unreachable
+# from a unit test: JawataApplication.registerTools() is private and its only
+# caller is the application's own start(), so the artifact is the sole honest
+# source for "which tools ship".
+# Set here because the script's other two REPO_ROOT assignments are both further
+# down, so at this point the name is unset — and under `set -u` that is an error,
+# while without it the sed would read /README.md and this check would compare the
+# live list against nothing.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+README_TOOLS="$(sed -n '/<!-- TOOLS:BEGIN/,/<!-- TOOLS:END/p' "$REPO_ROOT/README.md" \
+    | grep -oE '`[a-z_]+`' | tr -d '`' | sort -u | tr '\n' ' ')"
+LIVE_TOOLS="$(tool_names)"
+if [ -z "$README_TOOLS" ]; then
+    fail "readme-lists-every-tool the README's TOOLS:BEGIN/END block is missing or empty,
+          so this check would compare the live list against nothing and pass."
+elif [ "$README_TOOLS" = "$LIVE_TOOLS" ]; then
+    pass "readme-lists-every-tool the README names exactly the tools the product publishes"
+else
+    fail "readme-lists-every-tool the README and the running product disagree.
+          only in the README: $(comm -23 <(printf '%s\n' $README_TOOLS) <(printf '%s\n' $LIVE_TOOLS) | tr '\n' ' ')
+          only in the product: $(comm -13 <(printf '%s\n' $README_TOOLS) <(printf '%s\n' $LIVE_TOOLS) | tr '\n' ' ')
+          Update the TOOLS:BEGIN/END block in README.md in the same change that
+          added or removed the tool."
+fi
+
 # --- recall-by-meaning: recall by MEANING, the release's central claim ---------------------
 call experience '{"kind":"record","type":"lesson",
   "summary":"the roof leaked because nobody swept the gutters in autumn",

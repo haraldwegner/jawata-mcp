@@ -58,4 +58,44 @@ class ServerInstructionsCatalogTest {
         has("grep is a FALLBACK ONLY", "grep stays a fallback — the guard's stance is unchanged");
         has("fully-qualified name", "the FQN how-to for addressing symbols");
     }
+
+    /**
+     * Stage 6a (M9): the catalog must not name a tool that no longer ships.
+     *
+     * <p><b>One direction, and the other one is not available.</b> M9 asks that this text be
+     * reconciled with the published tools "by equality". It cannot be, and a check written
+     * that way could never fail: the catalog opens by saying it explains how to drive each
+     * FAMILY, and names roughly sixteen tools of forty-two on purpose. Requiring it to name
+     * all of them would demand a different document; requiring every name in it to be live is
+     * satisfied by whatever it happens to contain, because those names were chosen from the
+     * live set to begin with.</p>
+     *
+     * <p>What CAN drift — and did twice on the front page in this same sprint — is a document
+     * still naming a tool that was folded away. So the subject is the RETIRED names, the
+     * population {@code ToolRegistry} already keeps for its did-you-mean pointers, read from
+     * that map rather than written out here. Stage 1 retired six in one change and this text
+     * was not part of that change.</p>
+     */
+    @Test
+    void the_catalog_names_no_tool_that_has_been_retired() {
+        java.util.Set<String> retired = org.jawata.mcp.tools.ToolRegistry.retiredNames();
+        java.util.List<String> stale = new java.util.ArrayList<>();
+        for (String name : retired) {
+            // Whole-word, because several retired names share a head with a live one —
+            // `extract_method` with `extract`, `move_class` with `move`.
+            if (CAT.matches("(?s).*\\b" + java.util.regex.Pattern.quote(name) + "\\b.*")) {
+                stale.add(name);
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(), stale,
+            "the catalog every client reads at connect time names a tool that no longer"
+                + " ships. A client told to call it gets a not-found and a did-you-mean,"
+                + " which is exactly the drift this checks for: " + stale);
+        // PROOF OF LIFE: an empty retired set makes the loop vacuous, and that set is read
+        // from production, so it can shrink without this file being touched.
+        assertTrue(retired.size() >= 18,
+            "the retired-name map is the population this sweeps — eighteen or more today."
+                + " A sudden shrink means the sweep looks at less than it thinks. Found: "
+                + retired.size());
+    }
 }
