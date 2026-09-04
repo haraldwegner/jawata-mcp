@@ -359,7 +359,9 @@ class FrontDoorDescriptionTest {
         // the USAGE: line out of each of the seven sources at that revision. Five said
         // kind="<kind>" or action="<action>" — a PLACEHOLDER, where usageLine() joins the
         // real kinds with "|" — and move's was hand-wrapped across two lines. Only inline
-        // matched, because it alone spelled its five kinds out.
+        // matched, because it alone published its kinds joined by "|" ON ONE LINE, which is
+        // what the generator emits. move spelled its kinds out too and still differed: the
+        // wrap alone was enough.
         //
         // THE NUMBER HAS BEEN WRONG TWICE AND IS WRITTEN WITH ITS REVISION FOR THAT REASON.
         // It said "three" and then listed four; a C6a audit caught the mismatch and the
