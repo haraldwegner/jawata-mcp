@@ -28,10 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * never to override the method joining them — no edit separates them.</p>
  *
  * <p><b>And that was only true of three doors until C6a made it true of six.</b> A third audit
- * measured the claim: {@code extract} and {@code move} read a private {@code kinds()},
- * {@code apply_cleanup} a private {@code KINDS} constant, each performing
- * {@code delegates().keySet()} a second time inside the door rather than asking
- * {@link KindedTool}. All three derived, so the deleted assertions could not in fact have
+ * measured the claim: {@code extract} and {@code move} read a private {@code kinds()} over
+ * their {@code delegates} FIELD, and {@code apply_cleanup} a private {@code KINDS} constant
+ * over its {@code RULES} map — three second derivations of the same key set, each over the
+ * structure {@code delegates()} wraps rather than over that method. All three derived, so the deleted assertions could not in fact have
  * failed — but the REASON given for deleting them held only where the joining method was the
  * interface's. The three private readers were deleted rather than the paragraph weakened,
  * which is the same move this whole stage is: the door asks, instead of keeping its own copy

@@ -53,9 +53,10 @@ public interface KindedTool extends FrontDoor {
      *
      * <p><b>That sentence was FALSE when first written, and was made true rather than
      * softened.</b> Three of the six routing doors called this method; {@code extract} and
-     * {@code move} each had a private {@code kinds()} and {@code apply_cleanup} a private
-     * {@code KINDS} constant, all three performing this same derivation a second time inside
-     * the door. They derived correctly, so nothing published was wrong — but a private reader
+     * {@code move} each had a private {@code kinds()} reading their {@code delegates} FIELD,
+     * and {@code apply_cleanup} a private {@code KINDS} constant reading its {@code RULES}
+     * map — three second derivations of the same key set, each over the structure
+     * {@link #delegates()} wraps rather than over that method. They derived correctly, so nothing published was wrong — but a private reader
      * that happens to derive is one edit away from being the hand-written list {@code
      * generate} was caught carrying, and the deletion above was justified on the claim that
      * no such edit is possible. All three now ask this method and their own readers are

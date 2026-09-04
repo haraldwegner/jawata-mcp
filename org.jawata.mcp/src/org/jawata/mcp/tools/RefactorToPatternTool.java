@@ -327,7 +327,14 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         }
         String kind = getStringParam(arguments, "kind");
         if (kind == null || kind.isBlank()) {
-            return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
+            // publishedKinds(), not KINDS, even though this door's KINDS legitimately
+            // survives: it is kept for the STATIC patternKinds() the cure table reads, and
+            // a client-facing message has no reason to prefer the constant to the routing
+            // table. Leaving it on KINDS made this the one door of six still answering a
+            // caller from its own copy — noticed by a C6a audit as an unevenness rather
+            // than a defect, which is exactly when it is cheap to remove.
+            return ToolResponse.invalidParameter("kind",
+                "kind is required; one of " + publishedKinds());
         }
         return switch (kind) {
             case "inline_singleton" -> inlineSingleton.executeWithService(service, arguments);
@@ -344,7 +351,7 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
             case "replace_conditional_with_polymorphism" ->
                 replaceConditionalWithPolymorphism.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
-                "Unknown kind '" + kind + "'. Allowed: " + KINDS);
+                "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         };
     }
     /**

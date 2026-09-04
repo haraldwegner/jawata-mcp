@@ -349,13 +349,24 @@ class FrontDoorDescriptionTest {
         // C6a moved into this file, where its only reader always was.
         //
         // THIS TEST IS THE OTHER HALF, and it is the stronger one. A file-text check reads
-        // source; this reads what a CLIENT receives. Before M5 FOUR of these doors published
-        // a hand-written line differing from the generated one — extract's and generate's
-        // said kind="<kind>", refactoring's said action="<action>", move's was wrapped across
-        // two lines — so this failed then. (The sentence said "three" and then listed four; a
-        // C6a audit counted them.) A door that writes one back publishes two, and fails
-        // again. Neither check subsumes the other: source could be clean while the published
-        // text was assembled wrongly, and vice versa.
+        // source; this reads what a CLIENT receives. Before M5, SIX of these seven doors
+        // published a hand-written usage line differing from the generated one, so this
+        // failed then. A door that writes one back publishes two, and fails again. Neither
+        // check subsumes the other: source could be clean while the published text was
+        // assembled wrongly, and vice versa.
+        //
+        // MEASURED at b97d4d41, the last commit before M4 wired the first door, by reading
+        // the USAGE: line out of each of the seven sources at that revision. Five said
+        // kind="<kind>" or action="<action>" — a PLACEHOLDER, where usageLine() joins the
+        // real kinds with "|" — and move's was hand-wrapped across two lines. Only inline
+        // matched, because it alone spelled its five kinds out.
+        //
+        // THE NUMBER HAS BEEN WRONG TWICE AND IS WRITTEN WITH ITS REVISION FOR THAT REASON.
+        // It said "three" and then listed four; a C6a audit caught the mismatch and the
+        // repair raised it to four by COUNTING THE LIST rather than re-measuring the
+        // population, which left refactor_to_pattern and apply_cleanup unnamed and the
+        // count still wrong. A historical count nothing derives is a fact about a tree no
+        // reader has; naming the revision is what makes this one checkable.
         for (FrontDoor door : sevenDoors()) {
             String described = door.getDescription();
             String generated =
@@ -371,10 +382,12 @@ class FrontDoorDescriptionTest {
             // A REGRESSION LOCK, LABELLED ONE, because a second audit refused the checkpoint
             // over it and the refusal was half right. It cannot fail against today's code:
             // all seven getDescription() bodies are one call to ASSEMBLER.describe(this) and
-            // nothing else — five spell it `FrontDoorDescription.ASSEMBLER`, and the two
-            // doors outside this package fully qualify it — so both sides of this equality
-            // evaluate the same call. The auditor read that as the vacuous shape M6 deletes
-            // elsewhere.
+            // nothing else — five spell it `FrontDoorDescription.ASSEMBLER` and two fully
+            // qualify it — so both sides of this equality evaluate the same call. The
+            // auditor read that as the vacuous shape M6 deletes elsewhere. (Only ONE of the
+            // two, generate, is outside this package; apply_cleanup fully qualifies from
+            // inside it. An earlier version of this sentence explained the split by package
+            // and was wrong about half of it.)
             //
             // IT IS NOT THAT SHAPE, and the difference is what makes one deletable and this
             // one worth keeping. M6's enum assertion compared the schema's enum with
