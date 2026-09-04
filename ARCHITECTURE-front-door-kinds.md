@@ -8,7 +8,7 @@ implement, `ToolRegistry.register`, and the tests that reconcile against them.
 
 ---
 
-## SCOPE — ALL EIGHT doors, and a ninth as it is created
+## SCOPE — ALL EIGHT doors, a ninth as it is created, and a tenth on one seam only
 
 **A door either satisfies the law or it does not.** Covering six would make it a convention
 with two named exceptions, and the next door added has a precedent to point at. Covering all
@@ -26,11 +26,11 @@ door and which therefore joins as a ninth.
 | Door | State | Adopts the seam |
 |---|---|---|
 | `extract` | grew 6→11 in Stage 6, drifted to 4 of 11 in its USAGE line | the seam stage |
-| `inline` | grew 2→5, published 3 of 5. **Measured: five typed fields, no map** | the seam stage |
+| `inline` | grew, and published fewer kinds than it has | the seam stage |
 | `move` | grew 2→6, published 3 of 6 | the seam stage |
 | `apply_cleanup` | Stage 3 CLOSED, no active lane. Already derives `KINDS` from `RULES.keySet()` and its bullets from `describe()` — it is the door nearest the target already | the seam stage; the conversion is small there and that is the point, not a reason to skip it |
-| `refactor_to_pattern` | Stage 3 closed. Eleven typed fields plus its own `public static publishedKinds()` — the largest hand-written surface of the eight | the seam stage |
-| `generate` | in no lane. Seven typed fields | the seam stage |
+| `refactor_to_pattern` | Stage 3 closed. Typed fields plus its own `public static publishedKinds()` | the seam stage |
+| `generate` | in no lane. Typed fields | the seam stage |
 | `data` | **grows 1→10 in Stage 5** | inside Stage 5, as it grows |
 | `hierarchy` | **grows 2→7 in Stage 7**. Discriminator is `direction`, not `kind` | inside Stage 7, as it grows |
 | `change_method_signature` | **becomes a door in Stage 4**, 1→11 | inside Stage 4, as it becomes one |
@@ -41,6 +41,50 @@ does it twice and drifts in between. Building the new kinds directly on the seam
 once. This is also what makes the growth safe — the three lanes are exactly where the
 measured defect came from, since `extract`, `inline` and `move` broke *because Stage 6 grew
 them*.
+
+### `refactoring` — the tenth door, and the reason the two seams are separable
+
+`refactoring` is a kind-dispatching tool by every structural test here: a published
+discriminator (`action`, seven values), four typed delegate fields, a hand-written
+description, a hand-written `ACTIONS` literal. `DeclaredShapeHonestyTest.frontDoors()`
+already treats it as a door. Earlier drafts of this document needed it in three separate
+clauses — the `action=` rendering, the boundary test's non-`kind` case, and C-THREE's list
+derivation — and left it out of scope, which is an unnamed exception in the section whose
+job is to forbid them.
+
+**It is not a peer of the other nine, and the design says so rather than exempting it.**
+Their kinds are TRANSFORMATIONS OF CODE. Its actions are LIFECYCLE VERBS over a change the
+others produced — apply, undo, inspect, plan. That is a different level, and it is exactly
+why `ToolRegistry` excludes it by name today: *"a reporting tool's kind enum is a list of
+questions, not of transformations."*
+
+**The arity is the tell, not an obstacle.** Seven actions dispatch to FOUR delegates
+(`RefactoringTool:131` — `planTool` serves `plan`, `apply_plan`, `inspect_plan`,
+`undo_plan`). A `Map<String, KindDelegate>` with a single-valued `kindName()` cannot express
+that, and it should not have to: actions that group over a delegate are not per-delegate
+kinds. A door whose kinds map one-to-one onto delegates and a façade whose verbs group over
+them are two different things.
+
+**So `refactoring` takes the DESCRIPTION seam and not the DELEGATE seam.** It holds a
+`FrontDoorDescription`, so its description is assembled and its `USAGE:` line renders
+`action="<apply|undo|…>"` from its own discriminator. It does **not** implement `KindedTool`,
+so its verbs never enter the operation namespace.
+
+**This is what C-TWO's composition buys, and it is the reason the choice was not a
+coin-flip.** Had the algorithm stayed a shared superclass, a door could not take one half
+without the other, and `refactoring` would have had to be either wrongly admitted or
+explicitly exempted. Held rather than inherited, the two seams separate cleanly:
+
+| | delegate seam (`KindedTool`) | description seam (`FrontDoorDescription`) |
+|---|---|---|
+| the nine transformation doors | yes | yes |
+| `refactoring` | **no** — verbs group over delegates, and they are not operations | **yes** |
+
+**And this removes the policy problem rather than relocating it.** After the migration
+`instanceof KindedTool` means exactly what `REFACTORING_FRONT_DOORS` plus the
+`LIFECYCLE_FRONT_DOOR` exclusion mean today — because the structural fact now matches the
+policy instead of approximating it. That is why M10 can retire the constant at all; see M10
+for what still cannot be derived and stays written down.
 
 **The sequencing this yields, and it is an INPUT dependency rather than a file collision.**
 The seam stage touches six doors, none of which any open lane owns — Stage 3 is closed, and
@@ -68,13 +112,19 @@ of eight objects, each corrected by reading some of them, is the exact defect th
 is about — so the fourth version is not a table, it is a **measurement step**, M0 below, run
 before any door is converted and its result carried into M3b's sizing.
 
-What IS established, and is all the design needs:
+**AND THIS DOCUMENT NO LONGER STATES A COUNT.** A fourth hand-written census would be the
+fourth face of the same thing. What the design needs is three QUALITATIVE facts, each of
+which is true whatever the numbers turn out to be:
 
-| Fact | Evidence | Consequence for revision 1 |
-|---|---|---|
-| At least one door holds delegates that are **not `Tool`s** — `apply_cleanup`'s `RULES : LinkedHashMap<String, CleanupRule>` | `ApplyCleanupTool:85` | `Map<String, Tool>` cannot type the map |
-| At least three doors hold **typed fields, not a map** — `inline` (5, measured), `hierarchy` (2), `generate` (7), `refactor_to_pattern` (11) | field lists | "each door declares its map" is a conversion, not a rename |
-| `apply_cleanup` extends `AbstractApplyingRefactoringTool`; `data` extends `AbstractRefactoringTool` | type hierarchy | a shared superclass is impossible — Java has one |
+| Fact | Consequence for revision 1 |
+|---|---|
+| Some door holds delegates that are **not `Tool`s** (`apply_cleanup` holds `CleanupRule`s) | `Map<String, Tool>` cannot type the map — hence `KindDelegate` |
+| Some doors hold **typed fields rather than a map** | "each door declares its map" is a CONVERSION, not a rename — hence M3b is per-door work |
+| Some doors **already have a superclass** (`apply_cleanup`, `data`) | a shared base is impossible in Java — hence composition |
+
+**Every number lives in one place: `ARCHITECTURE-front-door-census.md`,** produced by M0 and
+checked in. Any step whose per-door work disagrees with that file is refused. If you find a
+count in the prose of this document, it is a defect — delete it and point here.
 
 **And a correction inside the correction:** an earlier draft called `PullUpTool` and
 `PushDownTool` *"plain classes"*, distinct from delegate `Tool`s. They both extend
@@ -261,12 +311,14 @@ the four symptoms are four faces of one missing forward.
       │    kindName() · kindSummary() · parameterSchema() · isStructural()│
       │                                                                   │
       │  implemented by:                                                  │
-      │    delegate Tools   ExtractMethodTool, InlineVariableTool, …      │
-      │    plain classes    PullUpTool, PushDownTool  (hierarchy)         │
+      │    delegate Tools   ExtractMethodTool, InlineVariableTool,        │
+      │                     PullUpTool, PushDownTool, …                   │
+      │                     — held in a map by some doors, in typed       │
+      │                       fields by others; see the census file       │
       │    non-Tools        each CleanupRule          (apply_cleanup)     │
-      │                     ── which is how the two doors that have NO    │
-      │                        delegate Tool join the design instead of   │
-      │                        being exempted from it                     │
+      │                     ── the ONE door whose delegates are not       │
+      │                        Tools, which is why the role is not        │
+      │                        typed Map<String, Tool>                    │
       │  ─────────  a delegate does NOT know its front door  ─────────    │
       └───────────────────────────────────────────────────────────────────┘
 
@@ -589,19 +641,35 @@ named single refactoring with its `undoChangeId`. **Common gate for every step:*
 
 | # | Step | Refactoring kind + target | Discriminating gate | Revert |
 |---|---|---|---|---|
-| **M0** | **(REV 3) MEASURE THE DELEGATE SHAPES.** Per door, derive how it holds its delegates — a map, typed fields, or none — and the declared type of each. `inspect(kind=type_members)` per door, plus `find_references(kind=implementations)` over `AbstractRefactoringTool` and `AbstractApplyingRefactoringTool`. Record the output beside the call that produced it. This exists because the census was hand-written three times and was wrong three times. | **NONE, and that is stated rather than faked.** M0 changes no code, so no mutation can prove it. Its honesty condition is different: every later step's per-door work is sized from M0's recorded output, and any step whose door count disagrees with it is refused. | n/a — read-only |
+**M0 IS NOT A MIGRATION STEP — it is a PREREQUISITE of the stage, and the move matters.**
+As a row in this table it stood as a written exception to the stop rule below it, in the
+stop rule's own first row. As a prerequisite it holds nothing open, and its output gets the
+durable home it needs.
+
+> **M0 — measure the delegate shapes, before any door is converted.** Per door: a map, typed
+> fields, or none, and the declared type of each. `inspect(kind=type_members)` per door plus
+> `find_references(kind=implementations)` over `AbstractRefactoringTool` and
+> `AbstractApplyingRefactoringTool`. **The output is CHECKED IN as
+> `ARCHITECTURE-front-door-census.md`**, each row carrying the call that produced it.
+>
+> It has no mutation gate and does not pretend to: it changes no code. What replaces the
+> gate is a mechanism rather than a memory — **every later step's per-door list is read from
+> that file, and a step whose list disagrees with it is refused.** An earlier draft said the
+> same sentence with no file behind it, which left the refusal to a reviewer's recollection —
+> exactly what a fresh-context reviewer does not have.
 | **M1** | Give `Tool` the reader. Move `ToolRegistry.publishedKindsOf(Tool)` onto its own parameter's type; body unchanged (still walks the schema Map). **AND a second reader exists that this step must own:** `RefactorToPatternTool.publishedKinds()` is `public static` with four live callers (`CureLookup`, `CureTier`, and two tests) and returns its own `KINDS` literal. A `static` method cannot coexist with an inherited instance method of the same erasure, so M1 breaks the build in that class unless it retires or renames that accessor in the same step. | `change_method_signature(visibility=public)` then `move_method(symbol="…ToolRegistry#publishedKindsOf", target="tool")` | `find_references(symbol="…Tool#publishedKinds")` returns the production call site; `ToolRegistry` no longer declares the method. | `undo_refactoring` |
 | | **MEASURED, not a risk: it IS `static`** — `ToolRegistry.java:163`, package-private, so `move_method` will refuse and the two-hop route is the plan of record, not a contingency: make it an instance method first, or place the `default` on `Tool` by `extract(kind=interface)` and `inline` the old body. **And its body cannot move unchanged** — it reads `ToolRegistry`'s private `LIFECYCLE_FRONT_DOOR` and `REFACTORING_FRONT_DOORS`, which is the registry's own POLICY about which tools' kinds are operations. That filter does NOT travel to `Tool`: after M10 the question is `tool instanceof KindedTool`, so M1 moves the reader and M10 replaces the filter. Until M10 lands, `Tool.publishedKinds()` returns the door's own kinds and `OperationSurface` applies the filter — never the other way round, because dropping it put hundreds of non-operations into the operation namespace once already (`ToolRegistry.java:164`). | | | |
 | **M2** | Kill the copies. **(REV 2) The population is ENUMERATED AT THE STEP, never carried as a count** — revision 1 said "three test copies plus a fourth variant" and two independent reviews returned different sets. Run `search_symbols(query="publishedKinds*", kind=Method)`, and treat every hit that walks the schema itself as a copy; a hit that CALLS the production reader is not one. Retarget each to `tool.publishedKinds()`. | `change_method_signature(retargetCallsTo=…)` per copy, then delete on evidence | Per named copy, `find_references` returns ZERO after retargeting — a per-copy check that cannot be satisfied by the population being smaller than assumed. (Revision 1's `find_duplicate_code` gate is DROPPED: the copies are not token-identical, so it reports zero both before and after, which is a gate that cannot fail.) | per-copy undo |
-| **M3a** | **(REV 2)** Introduce `KindDelegate` — the four-method role. Every existing delegate `Tool` implements it over what it already holds; `PullUpTool`/`PushDownTool` implement it directly; **each `CleanupRule` implements it**, which is where `apply_cleanup`'s kinds gain an owner. | `extract(kind=interface)` on one delegate, then implement per class | `find_references(symbol="…KindDelegate")` names an implementor in ALL EIGHT doors' delegate sets — including `hierarchy` and `apply_cleanup`, which had none. Zero for either is the step not done. | per-class undo |
-| **M3b** | Introduce `KindedTool` with `discriminator()` + `delegates() : Map<String, KindDelegate>`; each door declares its map. `publishedKinds()` = `delegates().keySet()`. | `extract(kind=interface)`, then `move_in_hierarchy(direction=up)` per door | For each of the 8 doors, the **old** Map-walking result equals the **new** `delegates().keySet()` — a temporary test, deleted at M6. Plus: `hierarchy.discriminator()` returns `"direction"`, not `"kind"`. | per-door undo |
+| **M3a** | **(REV 2)** Introduce `KindDelegate` — the four-method role. Every existing delegate `Tool` implements it over what it already holds; `PullUpTool`/`PushDownTool` implement it directly; **each `CleanupRule` implements it**, which is where `apply_cleanup`'s kinds gain an owner. | `extract(kind=interface)` on one delegate, then implement per class | `find_references(symbol="…KindDelegate")` names an implementor in each of the SIX doors this stage converts (the other three adopt in their own lanes; see SCOPE). Zero for either is the step not done. | per-class undo |
+| **M3b** | Introduce `KindedTool` with `discriminator()` + `delegates() : Map<String, KindDelegate>`; each door declares its map. `publishedKinds()` = `delegates().keySet()`. | `extract(kind=interface)`, then `move_in_hierarchy(direction=up)` per door | For each of the SIX doors this stage converts, the **old** Map-walking result equals the **new** `delegates().keySet()` — a temporary test, deleted at M6. Plus: `hierarchy.discriminator()` returns `"direction"`, not `"kind"`. | per-door undo |
 | **M4** | **(REV 2 — composition, not a superclass)** Introduce `FrontDoorDescription` as a held collaborator; wire `extract`, `inline`, `move` first. Generated regions initially reproduce the *current* description text. NO reparenting: `apply_cleanup` and `data` keep their existing bases. | `extract(kind=class)` for the algorithm, then one forwarding pair per door | Golden-file: the assembled description for a door with a *complete* hand list is byte-identical to today's. AND `inspect(kind=type_hierarchy)` shows no door changed superclass. | `undo_plan` |
-| **M5** | Per door (8 reversible steps), delete the hand-written `USAGE:` line and bullets, keep `preamble()`/`footer()`; delegates gain `kindSummary()` carrying the moved refusal prose. | `extract(kind=method)` for `preamble`/`footer`; `move` the bullet text to the delegate | **Two checks, because the first cannot fail on a no-op.** (a) PARITY HARNESS — Entry 1's crude gate: every published kind name must still appear in the assembled description, which fails loudly if a bullet was dropped rather than moved. (b) **THE DISCRIMINATOR (REV 2)** — no front-door source file retains a literal `USAGE:` line, and each door's published description equals what the shared `FrontDoorDescription` assembles for it. Check (a) passes unchanged if M5 does nothing, so on its own it is a harness and not a gate; (b) is what fails. A human still reads the first door's before/after. | per-door undo |
+| **M5** | Per door (SIX reversible steps here; the other three inside their own lanes), delete the hand-written `USAGE:` line and bullets, keep `preamble()`/`footer()`; delegates gain `kindSummary()` carrying the moved refusal prose. | `extract(kind=method)` for `preamble`/`footer`; `move` the bullet text to the delegate | **Two checks, because the first cannot fail on a no-op.** (a) PARITY HARNESS — Entry 1's crude gate: every published kind name must still appear in the assembled description, which fails loudly if a bullet was dropped rather than moved. (b) **THE DISCRIMINATOR (REV 2)** — no front-door source file retains a literal `USAGE:` line, and each door's published description equals what the shared `FrontDoorDescription` assembles for it. Check (a) passes unchanged if M5 does nothing, so on its own it is a harness and not a gate; (b) is what fails. A human still reads the first door's before/after. | per-door undo |
 | **M6** | Retire the tautologies. Delete the enum axis and parameter axis from `DeclaredShapeHonestyTest`; delete Entry 1's prose assertion; add the **preamble containment rule**. Delete M3's temporary parity test. | hand-authored test edit | Mutation check: hand-insert a kind name into one `preamble()` — containment must fail. Then revert the mutation. | git |
 | **M7** | Reconcile the hand tables. Both test tables assert **equality** against the registry-derived set; the "7 + 5 = 12" comment becomes an assertion over registry-read operands. | hand-authored test edit | Mutation check: delete one row — the test must fail (today it does not). Restore. | git |
-| **M8** | Extract `OperationSurface.publish(Tool)` from `ToolRegistry.register`; point the tests at it. | `extract(kind=method)` then `move_method` to the new type | `find_references(symbol="…OperationRegistry")` names `OperationSurface` as the sole caller; `find_quality_issue(kind=forbidden_edge)` on delegates→front-doors is empty. | `undo_refactoring` |
+| **M8** | Extract `OperationSurface.publish(Tool)` from `ToolRegistry.register`; point the tests at it. | `extract(kind=method)` then `move_method` to the new type | `find_references(symbol="…OperationRegistry")` names `OperationSurface` as the sole caller; **and the direction rule is checked per delegate, NOT by `forbidden_edge`** — that detector takes package prefixes, and delegates share a package with their doors (`InlineTool` and `InlineMethodTool` are both in `…mcp/tools/`), so the query returns every intra-package reference and an empty result would mean the query was mis-scoped rather than the rule holding. Instead: `find_references` per delegate type, asserting zero references to any front-door type. | `undo_refactoring` |
 | **M9** | Entry 2's cure, one level up: a test reconciling the README tool table and the in-app help against `OperationSurface` by equality. **Name the file and section at the step** — the README carries a prose count (`README.md:29`, "43 MCP tools") against a live `toolCount` of 46, and a per-tool table may have to be introduced before it can be reconciled. | new test | Mutation check: remove one tool row from the README — the test must fail. Restore. | git |
-| **M10** | **(REV 2) Retire `ToolRegistry.REFACTORING_FRONT_DOORS`** — a hand-written `Set.of(...)` of the eight door names, which is the same defect one level up and which revision 1 left standing. After M3b the question is `tool instanceof KindedTool`. Move the operation filter here from M1's old body. | `find_references(symbol="…ToolRegistry#REFACTORING_FRONT_DOORS")`, retarget each, then delete | The constant no longer exists, AND the operation namespace is unchanged: `OperationRegistry.all()` before equals after. That second half is the guard against re-opening the 2026 defect where dropping the filter admitted hundreds of non-operations. | `undo_refactoring` |
+| **M10** | **(REV 3) Retire `ToolRegistry.REFACTORING_FRONT_DOORS` — AND IT CANNOT RUN IN THE SEAM STAGE.** A review measured why: the seam stage converts six doors, so `instanceof KindedTool` yields six there, and swapping an eight-name allowlist for it would DROP `hierarchy`'s registered `up`/`down` operations. The predicate equals the allowlist only once `data`, `hierarchy` and `change_method_signature` have converted — i.e. after Stages 5, 7 and 4. **M10 therefore belongs in Stage 9**, and the seam stage must not carry "the constant no longer exists" as an exit clause. | `find_references(symbol="…ToolRegistry#REFACTORING_FRONT_DOORS")`, retarget each, then delete | The constant no longer exists, AND `OperationRegistry.all()` before equals after — the second half is what catches the premature run, and it is the one gate in this migration that already did. | `undo_refactoring` |
+| **M10b** | **(REV 3) What CANNOT be derived, and stays written down on `OperationSurface`.** Two things in `publishedKindsOf` are policy, not shape: (a) `LIFECYCLE_FRONT_DOOR` — now redundant, because `refactoring` is deliberately not a `KindedTool` (see SCOPE), so the structural test finally means what the name-exclusion meant; delete it and say so. (b) the reader iterates `List.of("kind", "direction")` and **deliberately does not read `action`** — that survives as a written policy on `OperationSurface`, because "which discriminators name operations" is a product decision no `instanceof` carries. | hand-authored, on the type M8 creates | mutation: add `"action"` to the read list — `OperationRegistry.ambiguous()` must become non-empty, since the pattern operations are published by two tools. Then revert. That is the boot failure `ToolRegistry:119-133` records, made into a test instead of a comment. | git |
 
 **Order matters in exactly two places.** M1 must precede M2 (the call shape must exist before
 the copies can be retargeted). M5 must precede M6 (Entry 1's gate is the harness for M5 and
