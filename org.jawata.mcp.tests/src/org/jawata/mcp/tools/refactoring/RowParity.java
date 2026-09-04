@@ -72,6 +72,30 @@ final class RowParity {
                                RefactoringChangeCache, org.jawata.mcp.tools.AbstractTool> door,
                            java.util.function.Function<Path, ObjectNode> arguments,
                            List<String> pinned) throws Exception {
+        appliedRow(helper, family, rowName, door, arguments, pinned, java.util.Set.of());
+    }
+
+    /**
+     * The same, with files whose MEMBER ORDER the engine does not promise.
+     *
+     * <p>Row 23's static path is JDT's own Move Static Members, and it does not guarantee
+     * where in the destination type the moved member lands: a full-suite run under four
+     * parallel shards put {@code SHARED_LIMIT} above {@code describe()} where an isolated
+     * run put it below. Both are correct. Pinning the exact source therefore pins something
+     * the engine never promised, and the lock fires on load rather than on a regression —
+     * which is worse than no lock, because a flake teaches everyone to re-record without
+     * reading.</p>
+     *
+     * <p>A file named here is pinned by its SORTED non-blank lines instead. That keeps every
+     * piece of content evidence — the member arrived, with its modifiers and its
+     * initializer — and drops only the ordering nobody guaranteed.</p>
+     */
+    static void appliedRow(TestProjectHelper helper, String family, String rowName,
+                           java.util.function.BiFunction<JdtServiceImpl,
+                               RefactoringChangeCache, org.jawata.mcp.tools.AbstractTool> door,
+                           java.util.function.Function<Path, ObjectNode> arguments,
+                           List<String> pinned, java.util.Set<String> unordered)
+            throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
         Path pkg = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example");
@@ -94,8 +118,16 @@ final class RowParity {
             String now = Files.exists(file)
                 ? Files.readString(file, StandardCharsets.UTF_8) : null;
             anythingMoved |= !java.util.Objects.equals(before.get(fixture), now);
-            after.append("=== ").append(fixture).append(" ===\n");
-            after.append(now != null ? now : "(deleted by this row)\n");
+            after.append("=== ").append(fixture)
+                .append(unordered.contains(fixture) ? " (sorted lines) ===\n" : " ===\n");
+            if (now == null) {
+                after.append("(deleted by this row)\n");
+            } else if (unordered.contains(fixture)) {
+                now.lines().map(String::strip).filter(line -> !line.isEmpty()).sorted()
+                    .forEach(line -> after.append(line).append('\n'));
+            } else {
+                after.append(now);
+            }
         }
         // PROOF OF LIFE, compared per FILE. A row that silently became a no-op would
         // otherwise record a golden of its own INPUT and pass forever after — the exact

@@ -40,11 +40,17 @@ class ReplaceTempWithQueryToolTest {
     private ExtractTool tool;
     private ObjectMapper mapper;
     private Path fixture;
+    private JdtServiceImpl service;
+    private RefactoringChangeCache cache;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new ExtractTool(() -> service, new RefactoringChangeCache());
+        service = helper.loadProjectCopy("simple-maven");
+        // The SAME cache the tool writes its undo handle into — a second one would hold no
+        // handle and the undo below would fail for a reason that has nothing to do with
+        // the recipe.
+        cache = new RefactoringChangeCache();
+        tool = new ExtractTool(() -> service, cache);
         mapper = new ObjectMapper();
         fixture = service.allProjects().iterator().next().projectRoot()
             .resolve("src/main/java/com/example/TempHolder.java");
@@ -81,6 +87,7 @@ class ReplaceTempWithQueryToolTest {
     void theTempBecomesAQuery() throws Exception {
         assertTrue(read().contains("int basePrice = quantity * 7;"),
             "PROOF OF LIFE: the temp must exist before this runs");
+        String original = read();
 
         ToolResponse r = replace("int basePrice = quantity * 7;", "basePrice");
         assertTrue(r.isSuccess(), "the recipe must run; got: " + r.getError());
@@ -99,8 +106,26 @@ class ReplaceTempWithQueryToolTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) r.getData();
+        String undoId = String.valueOf(data.get("undoChangeId"));
         assertNotNull(data.get("undoChangeId"),
             "one handle for the pair is what composing them buys: " + data);
+
+        // AND IT REVERTS. This row moved out of Stage 2 into Stage 6, and Stage 2's exit
+        // says in terms that "each recipe reverts through its single undo handle" — a
+        // clause Stage 6's weaker gate does not carry, so a C6 audit found the row judged
+        // against the wrong bar. A non-null handle is not the claim; restoring is.
+        String before = read();
+        ObjectNode undo = mapper.createObjectNode();
+        undo.put("action", "undo");
+        undo.put("undoChangeId", undoId);
+        ToolResponse reverted = new org.jawata.mcp.tools.RefactoringTool(
+            () -> service, cache, new org.jawata.mcp.domain.NoOpAdvisor()).execute(undo);
+        assertTrue(reverted.isSuccess(), "the undo must run; got: " + reverted.getError());
+        assertEquals(original, read(),
+            "BOTH steps came back — the extraction and the inline — so the file is what it"
+                + " was before the pair ran. Reverting one half would leave a query nothing"
+                + " calls or a temp with no initializer, and either compiles:\n" + read()
+                + "\n(was, mid-run:\n" + before + ")");
     }
 
     @Test

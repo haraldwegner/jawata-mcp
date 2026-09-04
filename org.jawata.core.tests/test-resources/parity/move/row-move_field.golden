@@ -29,18 +29,15 @@ public class MoveFieldSource {
         return MoveFieldTarget.SHARED_LIMIT;
     }
 }
-=== MoveFieldTarget.java ===
-package com.example;
-
+=== MoveFieldTarget.java (sorted lines) ===
+/** Static, and used from MoveFieldUser — the reference must travel with it. */
 /** The EXISTING class Move Field moves into (Sprint 28d-rescue, row 23). */
+package com.example;
 public class MoveFieldTarget {
-
-    public int describe() {
-        return 1;
-    }
-
-	/** Static, and used from MoveFieldUser — the reference must travel with it. */
-	    public static final int SHARED_LIMIT = 42;
+public int describe() {
+public static final int SHARED_LIMIT = 42;
+return 1;
+}
 }
 === MoveFieldUser.java ===
 package com.example;

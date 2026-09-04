@@ -61,6 +61,14 @@ class MoveFieldParityTest {
 
                 return args;
             },
-            List.of("MoveFieldSource.java", "MoveFieldTarget.java", "MoveFieldUser.java"));
+            List.of("MoveFieldSource.java", "MoveFieldTarget.java", "MoveFieldUser.java"),
+            // The DESTINATION only. JDT's Move Static Members does not promise where in the
+            // type the moved member lands, and a full-suite run under four parallel shards
+            // put it above `describe()` where an isolated run put it below — both correct.
+            // Pinning that position made the lock fire on load rather than on a regression,
+            // which is worse than no lock: a flake teaches everyone to re-record without
+            // reading. The source file and the referring file stay pinned exactly, because
+            // the engine DOES promise those.
+            java.util.Set.of("MoveFieldTarget.java"));
     }
 }

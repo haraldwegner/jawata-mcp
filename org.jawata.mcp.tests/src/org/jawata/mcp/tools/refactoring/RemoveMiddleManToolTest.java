@@ -37,11 +37,15 @@ class RemoveMiddleManToolTest {
     private InlineTool tool;
     private ObjectMapper mapper;
     private Path pkg;
+    private JdtServiceImpl service;
+    private RefactoringChangeCache cache;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new InlineTool(() -> service, new RefactoringChangeCache());
+        service = helper.loadProjectCopy("simple-maven");
+        // The SAME cache the tool writes its undo handle into.
+        cache = new RefactoringChangeCache();
+        tool = new InlineTool(() -> service, cache);
         mapper = new ObjectMapper();
         pkg = service.allProjects().iterator().next().projectRoot()
             .resolve("src/main/java/com/example");
@@ -78,6 +82,8 @@ class RemoveMiddleManToolTest {
         Path caller = pkg.resolve("MiddleManCaller.java");
         assertTrue(read(caller).contains("person.manager()"),
             "PROOF OF LIFE: the caller must go through the middle man before this runs");
+        String before = read(middleMan);
+        String beforeCaller = read(caller);
 
         ToolResponse r = removeMiddleMan(middleMan, "public class MiddleManPerson");
         assertTrue(r.isSuccess(), "the removal must run; got: " + r.getError());
@@ -99,6 +105,23 @@ class RemoveMiddleManToolTest {
         assertTrue(afterCaller.contains("person.department().manager()")
                 && afterCaller.contains("person.department().headcount()"),
             "and every call site now reaches the delegate directly:\n" + afterCaller);
+
+        // AND IT REVERTS, ACROSS BOTH FILES. This row moved out of Stage 2 into Stage 6,
+        // and Stage 2's exit says "each recipe reverts through its single undo handle" —
+        // a clause Stage 6's gate does not carry, so a C6 audit found the row judged
+        // against the wrong bar. One handle must take back the middle man's deletions AND
+        // the caller's rewrites; taking back half would leave callers reaching for methods
+        // that no longer exist.
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> data = (java.util.Map<String, Object>) r.getData();
+        ObjectNode undo = mapper.createObjectNode();
+        undo.put("action", "undo");
+        undo.put("undoChangeId", String.valueOf(data.get("undoChangeId")));
+        ToolResponse reverted = new org.jawata.mcp.tools.RefactoringTool(
+            () -> service, cache, new org.jawata.mcp.domain.NoOpAdvisor()).execute(undo);
+        assertTrue(reverted.isSuccess(), "the undo must run; got: " + reverted.getError());
+        assertEquals(before, read(middleMan), "the middle man is back:\n" + read(middleMan));
+        assertEquals(beforeCaller, read(caller), "and so is its caller:\n" + read(caller));
     }
 
     @Test
