@@ -255,6 +255,42 @@ public final class OperationRegistry {
     }
 
     /** Empty it. For tests that need a registry with known contents. */
+    /**
+     * Everything this registry holds, as a value that can be handed back to
+     * {@link #restore(Snapshot)}.
+     *
+     * <p>This exists because the default registry is a GLOBAL and tests write to it. Every
+     * previous attempt to put it back was a hand-written copy of what the application
+     * registers, and each drifted: one restored the KEYS and destroyed the attribution, its
+     * replacement restored three front doors out of the thirty-nine the application
+     * registers — each under a comment claiming the singleton was left as found. A borrow
+     * is only safe when the thing borrowed can be returned exactly, so the registry hands
+     * out its own state rather than asking a caller to reconstruct it.</p>
+     */
+    public record Snapshot(Map<String, Set<String>> publishedBy, Set<String> mechanical,
+                           Set<String> structural) {
+    }
+
+    /** Capture the whole state, deeply enough that later writes cannot reach it. */
+    public Snapshot snapshot() {
+        Map<String, Set<String>> published = new java.util.LinkedHashMap<>();
+        publishedBy.forEach((key, value) -> published.put(key, new java.util.LinkedHashSet<>(value)));
+        return new Snapshot(published, new java.util.LinkedHashSet<>(mechanical),
+            new java.util.LinkedHashSet<>(structural));
+    }
+
+    /** Put a captured state back, discarding whatever is there now. */
+    public void restore(Snapshot snapshot) {
+        clear();
+        snapshot.publishedBy().forEach((key, value) -> {
+            Set<String> tools = ConcurrentHashMap.newKeySet();
+            tools.addAll(value);
+            publishedBy.put(key, tools);
+        });
+        mechanical.addAll(snapshot.mechanical());
+        structural.addAll(snapshot.structural());
+    }
+
     public void clear() {
         publishedBy.clear();
         mechanical.clear();

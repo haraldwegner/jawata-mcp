@@ -74,30 +74,65 @@ class OperationRegistryTest {
     }
 
     /**
-     * The singleton is global and this test writes to it, so it must be left exactly as
-     * it was found. CLEARING is not restoring: it replaces one kind of pollution with
-     * another, and a later test class deriving a cure tier would see an empty registry
-     * rather than whatever the run had built up. The contents are captured before and
-     * put back after.
+     * The singleton is global and this test writes to it, so it is RETURNED EXACTLY.
+     *
+     * <p>Three attempts preceded this one and each was a hand-written copy of what the
+     * application registers. The first put the KEYS back and destroyed the attribution.
+     * The second registered three real front doors — out of the thirty-nine
+     * {@code JawataApplication} registers — under a comment saying the singleton was left
+     * as found, so every other tool's operations were gone for the rest of the JVM and
+     * {@code CureLookup}, {@code CureTier} and {@code ArchitectGate} read the remains.
+     * A C6 audit found each in turn.</p>
+     *
+     * <p>A borrow is only safe when the thing borrowed can be returned exactly, so the
+     * registry now hands out its own state ({@link OperationRegistry#snapshot()}) and takes
+     * it back. There is no copy left to drift.</p>
      */
-    private java.util.Set<String> before;
+    private OperationRegistry.Snapshot borrowed;
+
+    @Test
+    @DisplayName("a borrowed registry comes back EXACTLY — the claim three restores made falsely")
+    void theBorrowIsExact() {
+        OperationRegistry registry = new OperationRegistry();
+        registry.register("alpha_door", java.util.List.of("one", "two"), true, false,
+            java.util.Set.of("one"));
+        registry.register("beta_door", java.util.List.of("three"), false, true,
+            java.util.Set.of());
+        OperationRegistry.Snapshot taken = registry.snapshot();
+
+        // PROOF OF LIFE, and then some damage worth undoing.
+        assertTrue(registry.has("alpha_door"), "the fixture must be registered to begin with");
+        registry.clear();
+        registry.register("gamma_door", java.util.List.of("four"), false, false,
+            java.util.Set.of("four"));
+        assertFalse(registry.has("alpha_door"), "and the damage must be real");
+
+        registry.restore(taken);
+
+        assertEquals(taken.publishedBy().keySet(), registry.all(),
+            "every operation is back, and no extra: this is what 'restored' has to mean, and"
+                + " what three hand-written restores in this file claimed while putting back"
+                + " the keys only, then three front doors of the thirty-nine the application"
+                + " registers");
+        assertEquals(java.util.Set.of("alpha_door"), registry.toolsFor("one"),
+            "AND THE ATTRIBUTION, which is the half a key-only restore silently destroyed —"
+                + " an operation has to remember which tool publishes it or the ambiguity"
+                + " check reads a different registry than the one it was written for");
+        assertTrue(registry.isMechanical("alpha_door"), "mechanical classification is back");
+        assertTrue(registry.isStructural(OperationRegistry.qualify("alpha_door", "one")),
+            "and so is the structural set the architect gate reads");
+        assertFalse(registry.has("gamma_door"),
+            "and what was written while the registry was borrowed is gone");
+    }
 
     @org.junit.jupiter.api.BeforeEach
     void captureTheSingleton() {
-        before = OperationRegistry.theRegistry().all();
+        borrowed = OperationRegistry.theRegistry().snapshot();
     }
 
     @org.junit.jupiter.api.AfterEach
     void restoreTheSingleton() {
-        OperationRegistry live = OperationRegistry.theRegistry();
-        // NOT a restore, and the comment above used to claim it was. Re-registering each
-        // key as a tool named after itself puts the KEYS back and destroys the
-        // attribution: `method` goes from {extract, inline, move} to {method}, so
-        // `ambiguous("method")` is false for every later test in this JVM. The registry
-        // is repopulated from the real tools instead, which is the only thing that
-        // reproduces what was there.
-        live.clear();
-        restoreFromRealTools(live);
+        OperationRegistry.theRegistry().restore(borrowed);
     }
 
     @Test
@@ -123,42 +158,6 @@ class OperationRegistryTest {
                 + " kinds like god_class and naming; harvesting them would let a cure"
                 + " step name a smell and be called runnable");
     }
-    /**
-     * Put the singleton back the way the application leaves it — FROM THE TOOLS.
-     *
-     * <p>A test that borrows a global has to give it back INTACT, not merely non-empty.
-     * This used to register three literal kind lists, and a C6 audit found what that costs:
-     * they were the pre-Stage-6 lists, `inline` was restored as {@code {method, variable}}
-     * with an EMPTY structural set, and the javadoc above claimed it was restoring what the
-     * application leaves. Every reader of the live registry — CureLookup, CureTier,
-     * ArchitectGate — got that version after this test ran.</p>
-     *
-     * <p>Registering the real tools removes the copy rather than correcting it. A kind added
-     * to a front door now arrives here without anybody remembering to come and add it.</p>
-     */
-    private static void restoreFromRealTools(org.jawata.mcp.refactoring.OperationRegistry live) {
-        for (org.jawata.mcp.tools.Tool tool : java.util.List.<org.jawata.mcp.tools.Tool>of(
-                new org.jawata.mcp.tools.ExtractTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
-                new org.jawata.mcp.tools.InlineTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
-                new org.jawata.mcp.tools.MoveTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()))) {
-            live.register(tool.getName(), publishedKindsOf(tool), tool.isMechanical(),
-                tool.isStructural(), tool.structuralKinds());
-        }
-    }
 
-    /** The kinds a tool's own schema publishes. */
-    @SuppressWarnings("unchecked")
-    private static java.util.List<String> publishedKindsOf(org.jawata.mcp.tools.Tool tool) {
-        Object properties = tool.getInputSchema().get("properties");
-        if (properties instanceof java.util.Map<?, ?> map
-                && map.get("kind") instanceof java.util.Map<?, ?> kind
-                && kind.get("enum") instanceof java.util.Collection<?> kinds) {
-            return new java.util.ArrayList<>((java.util.Collection<String>) kinds);
-        }
-        return java.util.List.of();
-    }
 
 }

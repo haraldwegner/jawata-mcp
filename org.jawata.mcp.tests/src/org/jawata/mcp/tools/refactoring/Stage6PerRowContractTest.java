@@ -190,6 +190,15 @@ class Stage6PerRowContractTest {
         rows.add(new Row("36 Remove Middle Man", "inline",
             at("middle_man", "MiddleManPerson.java", "public class MiddleManPerson", 13),
             List.of("MiddleManPerson.java", "MiddleManCaller.java")));
+        // ROW 58 IS HERE TOO, and its exception is only to STAGING. A C6 audit found it
+        // absent from this table altogether, so "nothing outside the target touched" — the
+        // clause promoted from a deviation to an assertion one round earlier — covered
+        // eleven of twelve without anything saying so. The staging loop below skips it by
+        // name and asserts its refusal separately; every other clause applies unchanged.
+        rows.add(new Row("58 Replace Temp with Query", "extract",
+            at("temp_to_query", "TempHolder.java", "int basePrice = quantity * 7;", 12),
+            List.of("TempHolder.java")));
+
         return rows;
     }
 
@@ -216,8 +225,14 @@ class Stage6PerRowContractTest {
                 .filter(r -> r.label().equals(row.label())).findFirst().orElseThrow()
                 .args().deepCopy();
             staged.put("auto_apply", false);
-            ToolResponse stagedResponse = doorOf(row.door()).execute(staged);
-            if (!stagedResponse.isSuccess()) {
+            // Row 58 is composed: its second step is built against the workspace the first
+            // produced, so there is no single change to preview. Its REFUSAL is asserted in
+            // its own test below; skipping it here is the declared exception, not silence.
+            ToolResponse stagedResponse = row.label().startsWith("58 ")
+                ? null : doorOf(row.door()).execute(staged);
+            if (stagedResponse == null) {
+                // no staging clause for this row; every other clause still applies
+            } else if (!stagedResponse.isSuccess()) {
                 problems.add(row.label() + ": staging refused — " + stagedResponse.getError());
             } else {
                 @SuppressWarnings("unchecked")

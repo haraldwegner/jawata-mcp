@@ -96,11 +96,27 @@ class Stage6ForkDemonstrationStatusTest {
         for (String line : source.split("\n", -1)) {
             if (line.contains("@DisplayName")
                     && line.matches(".*\\brows?\\b.*")
-                    && line.matches(".*\\b" + number + "\\b.*")) {
+                    && line.matches(".*\\b" + number + "\\b.*")
+                    && !isARefusal(line)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Whether this test name describes a REFUSAL rather than a demonstration.
+     *
+     * <p>A refusal on foreign code is real evidence — it says the operation recognises what
+     * it is pointed at — but it is not a demonstration that the row WORKS, and this file's
+     * whole subject is which rows are demonstrated. A C6 audit proved the difference matters
+     * by deleting row 5's positive test: {@code CollectionPipelineForkSliceTest} has a second
+     * name saying "row 5 REFUSES…", so the check stayed green over a slice that no longer
+     * demonstrated anything.</p>
+     */
+    private static boolean isARefusal(String displayName) {
+        String lower = displayName.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("refuse") || lower.contains("no usable candidate");
     }
 
     @Test
