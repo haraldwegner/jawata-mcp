@@ -84,6 +84,24 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool
         return "middle_man";
     }
 
+    /** The bullet a client reads under {@code inline} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            stop a class forwarding: every method whose whole body is
+            one call on one of its own fields, passing its parameters
+            through unchanged, is deleted and its call sites become
+            `middleMan.<accessor>().method(args)`. The accessor is
+            generated if the class has none — that exposure IS the
+            refactoring, and the summary says it happened. Refuses a class
+            with no forwarder at all. A class forwarding to SEVERAL
+            fields is NOT refused — name the one to remove with
+            `delegateField` and repeat; the fork's own GiantController is
+            why the old blanket refusal was wrong. A method that
+            transforms the result is left alone: that is behaviour, not
+            forwarding. (find_quality_issue kind=middle_man finds them.)""";
+    }
+
     /** Structural: it changes what the class exposes to every caller it had. */
     @Override
     public boolean isStructural() {

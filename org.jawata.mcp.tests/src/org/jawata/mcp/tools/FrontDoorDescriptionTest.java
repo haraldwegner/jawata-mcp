@@ -25,13 +25,42 @@ class FrontDoorDescriptionTest {
         return new InlineTool(() -> null, new RefactoringChangeCache());
     }
 
+    /** Every character that is not whitespace, in order — layout removed, content kept. */
+    private static String content(String text) {
+        return text.replaceAll("\\s+", "");
+    }
+
     @Test
-    @DisplayName("the assembled description reproduces the door's previous text, byte for byte")
-    void theAssemblyIsFaithful() {
-        assertEquals(InlineTool.LEGACY_DESCRIPTION,
-            FrontDoorDescription.ASSEMBLER.describe(inline()),
-            "M4 MOVES the description algorithm; it does not rewrite the published contract."
-                + " A difference here is a change to what every client reads.");
+    @DisplayName("M5 changed the LAYOUT of inline's description and not one character of its prose")
+    void theProjectionLosesNoProse() {
+        // The strongest claim available once the bullets are projected, and the honest one.
+        // M4 could assert byte-identity because it only moved the algorithm. M5 deliberately
+        // replaces hand-alignment with one uniform rule, so byte-identity is the wrong
+        // question — asserting it would mean pinning text the door no longer publishes.
+        // What must NOT change is the prose, and this compares every non-whitespace
+        // character in order: a dropped sentence, a mangled refusal, a bullet that lost its
+        // tail all fail here, while the alignment is free to differ.
+        assertEquals(content(InlineTool.LEGACY_DESCRIPTION),
+            content(FrontDoorDescription.ASSEMBLER.describe(inline())),
+            "the per-kind prose moved from the door onto its delegates; if a character of it"
+                + " went missing on the way, the move lost documentation rather than"
+                + " relocating it");
+    }
+
+    @Test
+    @DisplayName("the projected block is built from the delegates, so each carries its own bullet")
+    void theBlockComesFromTheDelegates() {
+        InlineTool door = inline();
+        String block = FrontDoorDescription.ASSEMBLER.kindBlockOf(door);
+
+        door.delegates().forEach((kind, delegate) -> {
+            assertTrue(block.contains("- " + kind + " — "),
+                kind + " must appear as its own bullet: " + block);
+            assertTrue(content(block).contains(content(delegate.kindSummary())),
+                kind + "'s bullet must be what the DELEGATE says, not what the door said");
+        });
+        // PROOF OF LIFE: a door with no delegates would satisfy both loops vacuously.
+        assertTrue(door.delegates().size() == 5, "inline routes five kinds");
     }
 
     @Test

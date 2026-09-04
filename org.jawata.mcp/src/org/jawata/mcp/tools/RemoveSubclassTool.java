@@ -99,6 +99,22 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
         return "subclass";
     }
 
+    /** The bullet a client reads under {@code inline} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            fold a subclass that carries NO DISTINCTION into its parent:
+            its members move up, every reference to it becomes a reference
+            to the parent, and it is deleted. Refuses when the subclass
+            actually distinguishes something — it overrides a parent
+            method, an instanceof or a cast names its type, or its
+            constructor fixes an argument instead of forwarding — because
+            replacing a distinction with a field is a design decision.
+            Also refuses a subclass with subtypes (that is Collapse
+            Hierarchy), an abstract parent, a parent outside this
+            workspace, and a colliding member name.""";
+    }
+
     /**
      * Structural: removing a class from a hierarchy and reparenting every reference is the
      * definition of the case. This door declared NOTHING structural until a C6 audit looked,

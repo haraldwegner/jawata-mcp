@@ -93,6 +93,19 @@ public class InlineClassTool extends AbstractRefactoringTool
         return "class";
     }
 
+    /** The bullet a client reads under {@code inline} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return """
+            fold a class into the SINGLE class that uses it, then delete it.
+            Refuses when more than one class references it, when it has
+            subtypes, when the user holds none or several fields of its
+            type, when that field is assigned outside its own initializer,
+            when it has a constructor with a body, or when a member name
+            would collide. Each refusal names which. (find_quality_issue
+            kind=lazy_class locates candidates.)""";
+    }
+
     /** Structural: it folds a class away entirely. */
     @Override
     public boolean isStructural() {

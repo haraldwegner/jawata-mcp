@@ -57,6 +57,12 @@ public class InlineVariableTool extends AbstractApplyingRefactoringTool
         return "variable";
     }
 
+    /** The bullet a client reads under {@code inline} — moved here from the door (M5). */
+    @Override
+    public String kindSummary() {
+        return "replace uses of the local variable at the position with its initializer.";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(InlineVariableTool.class);
 

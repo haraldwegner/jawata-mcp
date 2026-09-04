@@ -53,8 +53,22 @@ public final class FrontDoorDescription {
     public String describe(KindedTool door) {
         return door.preamble()
             + "\n\n" + usageLine(door)
-            + "\n\n" + door.kindBlock()
+            + "\n\n" + kindBlockFor(door)
             + "\n\n" + door.footer();
+    }
+
+    /**
+     * The per-kind block: PROJECTED where the delegates carry their own summaries, and the
+     * door's own text where they do not yet.
+     *
+     * <p>The fallback is what lets doors convert one at a time instead of all at once, and it
+     * is decided by asking the delegates rather than by a list of converted door names — a
+     * list would be one more hand-kept fact of exactly the kind being removed. A door whose
+     * delegates all still answer with their own tool description has not moved its prose yet,
+     * and keeps publishing what it publishes today.</p>
+     */
+    private String kindBlockFor(KindedTool door) {
+        return door.kindBlock().isEmpty() ? kindBlockOf(door) : door.kindBlock();
     }
 
     /**
@@ -68,5 +82,34 @@ public final class FrontDoorDescription {
     public String usageLine(KindedTool door) {
         return "USAGE: " + door.getName() + "(" + door.discriminator() + "=\"<"
             + String.join("|", door.publishedKinds()) + ">\"" + door.usageTail() + ")";
+    }
+
+    /**
+     * The per-kind block, PROJECTED from the routing table — one bullet per delegate, in the
+     * order the door publishes them, each carrying what that delegate says about itself.
+     *
+     * <p>This is what makes a kind impossible to ship undescribed: the bullet list and the
+     * dispatch table become the same iteration. A kind added to the table appears here, a kind
+     * removed disappears, and neither is something anyone can forget — because there is no
+     * longer a separate place to forget it in.</p>
+     *
+     * <p><b>ONE layout rule for every door.</b> The hand-written blocks aligned their bullets
+     * by eye and disagreed: {@code inline} padded its kind names to eight columns and then
+     * broke its own alignment on {@code middle_man}, which is longer than the padding. Keeping
+     * per-door alignment would put a column width in this class for somebody to maintain,
+     * which is the kind of hand-kept constant the seam exists to remove. So the rule is: the
+     * kind, an em dash, the summary, with continuation lines indented so a multi-line summary
+     * stays visibly attached to its bullet.</p>
+     */
+    public String kindBlockOf(KindedTool door) {
+        StringBuilder block = new StringBuilder();
+        door.delegates().forEach((kind, delegate) -> {
+            if (block.length() > 0) {
+                block.append('\n');
+            }
+            block.append("- ").append(kind).append(" — ")
+                .append(delegate.kindSummary().strip().replace("\n", "\n  "));
+        });
+        return block.toString();
     }
 }

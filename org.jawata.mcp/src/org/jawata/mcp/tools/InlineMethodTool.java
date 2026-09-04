@@ -50,6 +50,15 @@ public class InlineMethodTool extends AbstractApplyingRefactoringTool
         return "method";
     }
 
+    /**
+     * The bullet a client reads under {@code inline} — MOVED HERE from the door (Stage 6a,
+     * M5), because the door was repeating what this class already knows.
+     */
+    @Override
+    public String kindSummary() {
+        return "inline all call sites of the method at the position.";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(InlineMethodTool.class);
 

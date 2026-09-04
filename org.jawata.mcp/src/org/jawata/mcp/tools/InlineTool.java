@@ -120,10 +120,11 @@ public class InlineTool extends AbstractTool implements KindedTool {
      * is the line's two failure modes: a kind that ships without reaching it, and a door
      * naming {@code kind} when it dispatches on something else.</p>
      *
-     * <p>{@link #LEGACY_DESCRIPTION} below is the text as it stood before this step, kept
-     * ONLY so a test can assert the assembly reproduces it byte for byte. It is deleted with
-     * the per-kind block at M5 — the step that also makes the bullets a projection of the
-     * delegates instead of prose the door repeats.</p>
+     * <p><b>M5: the per-kind block is now PROJECTED from the delegates</b>, each of which
+     * carries its own bullet. This door no longer writes one, and the byte-golden that
+     * guarded M4's move is gone with it — it could not survive a step that deliberately
+     * changes the layout, and keeping it would have meant asserting the old text while
+     * publishing the new.</p>
      */
     @Override
     public String getDescription() {
@@ -142,9 +143,18 @@ public class InlineTool extends AbstractTool implements KindedTool {
         return ", filePath=..., line=..., column=...";
     }
 
-    @Override
-    public String kindBlock() {
-        return """
+    /**
+     * NOT OVERRIDDEN ANY MORE (Stage 6a, M5) — the block is projected from the delegates.
+     *
+     * <p>What stood here was five bullets the door wrote about classes that each already knew
+     * their own story. They now live on those classes, and the assembler iterates the routing
+     * table to build the list — so a kind cannot be added to the dispatch and left out of the
+     * description, which is the defect this stage was opened for.</p>
+     *
+     * <p>The block below is the text as it stood, kept only until the projection is proven
+     * equivalent in meaning; the layout differs by design (see FrontDoorDescription).</p>
+     */
+    static final String LEGACY_KIND_BLOCK = """
             - method   — inline all call sites of the method at the position.
             - variable — replace uses of the local variable at the position with its initializer.
             - class    — fold a class into the SINGLE class that uses it, then delete it.
@@ -176,7 +186,6 @@ public class InlineTool extends AbstractTool implements KindedTool {
                          why the old blanket refusal was wrong. A method that
                          transforms the result is left alone: that is behaviour, not
                          forwarding. (find_quality_issue kind=middle_man finds them.)""";
-    }
 
     @Override
     public String footer() {
