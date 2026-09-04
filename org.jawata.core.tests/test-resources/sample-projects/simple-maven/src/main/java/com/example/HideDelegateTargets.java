@@ -42,6 +42,11 @@ public class HideDelegateTargets {
         public int budgetFor(int months) {
             return headcount * months * 1000;
         }
+
+        /** Returns a type from ANOTHER package — see leadOf below. */
+        public com.example.service.Lead getLead() {
+            return new com.example.service.Lead(manager);
+        }
     }
 
     /** THE CANONICAL CASE: two calls deep, no arguments, both types editable here. */
@@ -75,5 +80,15 @@ public class HideDelegateTargets {
     /** NOT A CHAIN — one call deep. There is no delegate to hide. */
     public Department departmentOf(Person john) {
         return john.getDepartment();
+    }
+
+    /**
+     * CROSS-PACKAGE: the hidden call returns {@code com.example.service.Lead}, which the server's
+     * file does not import. The forwarder generated on Person needs that import, and the
+     * first version of this row wrote a bare simple name instead — so the pipeline's compile
+     * gate refused the change and the operation declined on a whole class of correct input.
+     */
+    public com.example.service.Lead leadOf(Person john) {
+        return john.getDepartment().getLead();
     }
 }

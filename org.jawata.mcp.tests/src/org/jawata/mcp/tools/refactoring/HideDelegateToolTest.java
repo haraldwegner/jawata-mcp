@@ -104,6 +104,29 @@ class HideDelegateToolTest {
     }
 
     @Test
+    @DisplayName("a return type from another package is IMPORTED, not written as a bare name")
+    void importsACrossPackageReturnType() throws Exception {
+        // THE CASE THAT USED TO DECLINE. The forwarder returns com.example.service.Lead,
+        // which Person's file does not import. Writing the simple name produced source that
+        // does not compile, so the pipeline's compile gate refused the whole change — safe,
+        // and useless. Measured by reverting the fix: REFACTORING_BROKE_COMPILE, "Lead
+        // cannot be resolved to a type", the change UNDONE. This asserts it now handles the
+        // case rather than declining.
+        int line = lineOf("return john.getDepartment().getLead();");
+        ToolResponse r = tool.execute(at(line, 20));
+        assertTrue(r.isSuccess(),
+            "a cross-package return type must be imported, not refused: " + r.getError());
+
+        String after = Files.readString(targets);
+        assertTrue(after.contains("import com.example.service.Lead;"),
+            "the import must be added to the server's file:\n" + after);
+        assertTrue(after.contains("public Lead getLead()"),
+            "and the forwarder then uses the simple name it just imported:\n" + after);
+        assertTrue(after.contains("return john.getLead();"),
+            "the call site loses the hop, as in every other case:\n" + after);
+    }
+
+    @Test
     @DisplayName("REFUSES a server type this workspace cannot edit, and says which")
     void refusesAServerItCannotEdit() throws Exception {
         // getClass() is declared on java.lang.Object. The SHAPE is a perfect match — two

@@ -20,6 +20,7 @@ import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
+import org.eclipse.jdt.core.dom.rewrite.ImportRewrite;
 import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
 import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.TextEdit;
@@ -240,8 +241,17 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
         ASTRewrite serverRewrite = sameFile ? ASTRewrite.create(ast.getAST())
             : ASTRewrite.create(serverAst.getAST());
 
-        String returns = outerBinding.getReturnType().getName();
-        String params = signatureOf(outerBinding);
+        // THE IMPORTS ARE REWRITTEN, not assumed. The first version wrote the return and
+        // parameter types as SIMPLE names, which compiles only when every one of them is
+        // already visible in the server's file — so the operation declined, via the
+        // pipeline's compile gate, on every cross-package case. Nothing broken shipped,
+        // because the gate refused; but "declines on a whole class of correct input" is a
+        // defect rather than a safe default. addImport returns the name to USE and records
+        // the import to add, falling back to the qualified name when a simple one would
+        // clash with something already imported.
+        ImportRewrite imports = ImportRewrite.create(serverAst, true);
+        String returns = imports.addImport(outerBinding.getReturnType());
+        String params = signatureOf(outerBinding, imports);
         String passed = argumentNamesOf(outerBinding);
         ListRewrite members = serverRewrite.getListRewrite(serverType,
             serverType.getBodyDeclarationsProperty());
@@ -266,14 +276,26 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
             receiver + "." + forwarder + "(" + argumentTextOf(source, outer) + ")",
             ASTNode.METHOD_INVOCATION), null);
 
+        // The import edit lands on the SERVER's file, which is the caller's own when the
+        // chain is in it — and the two edits must then travel in ONE list, or the second
+        // apply overwrites the first.
+        TextEdit importEdit = imports.hasRecordedChanges() ? imports.rewriteImports(null) : null;
         if (!sameFile) {
-            edits.put((IFile) serverUnit.getResource(),
-                List.of(serverRewrite.rewriteAST(new Document(serverUnit.getSource()),
-                    FormatterOptions.forGeneratedCode(serverAst))));
+            List<TextEdit> serverEdits = new java.util.ArrayList<>();
+            serverEdits.add(serverRewrite.rewriteAST(new Document(serverUnit.getSource()),
+                FormatterOptions.forGeneratedCode(serverAst)));
+            if (importEdit != null) {
+                serverEdits.add(importEdit);
+            }
+            edits.put((IFile) serverUnit.getResource(), serverEdits);
         }
-        edits.put((IFile) unit.getResource(),
-            List.of(callerRewrite.rewriteAST(new Document(source),
-                FormatterOptions.forGeneratedCode(ast))));
+        List<TextEdit> callerEdits = new java.util.ArrayList<>();
+        callerEdits.add(callerRewrite.rewriteAST(new Document(source),
+            FormatterOptions.forGeneratedCode(ast)));
+        if (sameFile && importEdit != null) {
+            callerEdits.add(importEdit);
+        }
+        edits.put((IFile) unit.getResource(), callerEdits);
 
         String label = "hide delegate " + innerBinding.getReturnType().getName() + " behind "
             + server.getElementName() + "." + forwarder + "() (one hop of the chain at "
@@ -309,12 +331,19 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
         return found[0];
     }
 
-    /** {@code int a, String b} for the forwarder's parameter list. */
-    private static String signatureOf(IMethodBinding binding) {
+    /**
+     * {@code int a0, String a1} for the forwarder's parameter list.
+     *
+     * <p>Each type goes through the same {@link ImportRewrite} as the return type, so a
+     * parameter from another package is imported rather than written as a bare simple name
+     * the server's file cannot resolve.</p>
+     */
+    private static String signatureOf(IMethodBinding binding, ImportRewrite imports) {
         StringBuilder out = new StringBuilder();
         ITypeBinding[] types = binding.getParameterTypes();
         for (int i = 0; i < types.length; i++) {
-            out.append(i == 0 ? "" : ", ").append(types[i].getName()).append(" a").append(i);
+            out.append(i == 0 ? "" : ", ")
+                .append(imports.addImport(types[i])).append(" a").append(i);
         }
         return out.toString();
     }
