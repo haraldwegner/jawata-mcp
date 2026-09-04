@@ -276,12 +276,22 @@ public class SplitPhaseTool extends AbstractApplyingRefactoringTool {
                 .getBodyDeclarationsProperty());
         members.insertLast(rewrite.createStringPlaceholder(
             buildRecord(intermediateName, carried), ASTNode.TYPE_DECLARATION), null);
+        // STATIC IF THE ORIGINAL IS. The phases are called from the original method's own
+        // body, so a static method calling instance phases does not compile. Every fixture
+        // written for this row used an instance method, so nothing showed it until a fork
+        // slice pointed at MapReduce.mapReduce — which is static, as a utility class's
+        // method usually is.
+        String modifiers =
+            org.eclipse.jdt.core.dom.Modifier.isStatic(method.getModifiers())
+                ? "private static " : "private ";
         members.insertLast(rewrite.createStringPlaceholder(
-            buildFirstPhase(firstName, intermediateName, parameters, first, carried, source),
+            buildFirstPhase(modifiers, firstName, intermediateName, parameters, first,
+                carried, source),
             ASTNode.METHOD_DECLARATION), null);
         members.insertLast(rewrite.createStringPlaceholder(
-            buildSecondPhase(secondName, intermediateName, method.getReturnType2().toString(),
-                secondPhaseParameters, second, carried, source),
+            buildSecondPhase(modifiers, secondName, intermediateName,
+                method.getReturnType2().toString(), secondPhaseParameters, second, carried,
+                source),
             ASTNode.METHOD_DECLARATION), null);
 
         Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
@@ -317,12 +327,13 @@ public class SplitPhaseTool extends AbstractApplyingRefactoringTool {
         return out.toString();
     }
 
-    private static String buildFirstPhase(String name, String intermediateName,
+    private static String buildFirstPhase(String modifiers, String name,
+                                          String intermediateName,
                                           List<SingleVariableDeclaration> parameters,
                                           List<Statement> statements,
                                           Map<String, String> carried, String source) {
         StringBuilder out = new StringBuilder();
-        out.append("private ").append(intermediateName).append(' ').append(name).append('(');
+        out.append(modifiers).append(intermediateName).append(' ').append(name).append('(');
         for (int i = 0; i < parameters.size(); i++) {
             if (i > 0) {
                 out.append(", ");
@@ -338,13 +349,13 @@ public class SplitPhaseTool extends AbstractApplyingRefactoringTool {
         return out.toString();
     }
 
-    private static String buildSecondPhase(String name, String intermediateName,
-                                           String returnType,
+    private static String buildSecondPhase(String modifiers, String name,
+                                           String intermediateName, String returnType,
                                            List<SingleVariableDeclaration> parameters,
                                            List<Statement> statements,
                                            Map<String, String> carried, String source) {
         StringBuilder out = new StringBuilder();
-        out.append("private ").append(returnType).append(' ').append(name).append('(')
+        out.append(modifiers).append(returnType).append(' ').append(name).append('(')
             .append(intermediateName).append(" intermediate");
         for (SingleVariableDeclaration parameter : parameters) {
             out.append(", ").append(parameter);

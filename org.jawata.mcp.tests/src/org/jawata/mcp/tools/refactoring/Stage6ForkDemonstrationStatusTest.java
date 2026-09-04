@@ -54,17 +54,17 @@ class Stage6ForkDemonstrationStatusTest {
         Map.entry("23 Move Field", ""),
         Map.entry("17 Inline Class", ""),
         Map.entry("38 Remove Subclass", ""),
-        Map.entry("24 Move Function (static)", ""),
+        Map.entry("24 Move Function (static)", "MapReduceForkSliceTest.java"),
         Map.entry("25 Move Statements into Function", ""),
         Map.entry("26 Move Statements to Callers", ""),
         Map.entry("49 Replace Inline Code", ""),
         Map.entry("5 Combine Functions into Class", ""),
-        Map.entry("48 Replace Function with Command", ""),
-        Map.entry("64 Split Phase", ""),
-        Map.entry("58 Replace Temp with Query", "")));
+        Map.entry("48 Replace Function with Command", "MapReduceForkSliceTest.java"),
+        Map.entry("64 Split Phase", "MapReduceForkSliceTest.java"),
+        Map.entry("58 Replace Temp with Query", "MapReduceForkSliceTest.java")));
 
     @Test
-    @DisplayName("exactly one of Stage 6's twelve rows is demonstrated on the fork, and this says which")
+    @DisplayName("this says exactly which of Stage 6's twelve rows are demonstrated on the fork")
     void theForkDemonstrationCountIsWhatIsWrittenDown() {
         Path root = Path.of(System.getProperty("user.dir")).resolve(TESTS);
         // Walk up: the runner's working directory is the dist, not the repository.
@@ -89,8 +89,8 @@ class Stage6ForkDemonstrationStatusTest {
         }
         assertTrue(wrong.isEmpty(), String.join("\n  ", wrong));
 
-        assertEquals(1, claimed,
-            "ONE row of twelve is demonstrated on code we did not author. If that number"
+        assertEquals(5, claimed,
+            "FIVE rows of twelve are demonstrated on code we did not author. If that number"
                 + " moved, this list is what says so — update it in the same commit as the"
                 + " slice, or the count and the reality drift apart, which is the state a"
                 + " C6 audit found and named.");
