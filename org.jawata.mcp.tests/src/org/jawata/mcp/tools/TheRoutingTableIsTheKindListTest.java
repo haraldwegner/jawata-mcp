@@ -4,107 +4,86 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * THE TWO ANSWERS AGREE — the migration gate for Stage 6a's M3b, and TEMPORARY BY DESIGN.
+ * WHAT IS LEFT OF M3B'S TEMPORARY TEST — one door, one surviving second list.
  *
- * <p>Before this step a front door answered "which kinds do you publish?" by walking its own
- * JSON schema, and answered "where does this kind go?" from a routing table. Two structures,
- * one fact. {@link KindedTool} makes the second the source of the first, and this asserts the
- * swap changed no answer: for every converted door, the enum a client reads out of the
- * published schema equals the key set of the routing table, in the same order.</p>
+ * <p>M3b introduced this class to assert, per converted door, that the published {@code kind}
+ * enum equalled {@code delegates().keySet()}. That was a real check while the enum was a
+ * hand-written constant beside the routing table, and M3b's own step note says it is deleted
+ * at M6 "once the assembly makes it a tautology".</p>
  *
- * <h2>Why it is written to be deleted</h2>
+ * <p><b>M6 made five of the six a tautology and left one alone, so the class shrank instead of
+ * going.</b> Every converted door's schema now reads {@code publishedKinds()}, which
+ * {@link KindedTool} defines AS the key set — so comparing the two compares a value with
+ * itself. Deleting those assertions is the whole point: an assertion that cannot fail reads as
+ * coverage while covering nothing.</p>
  *
- * <p>It compares two independent derivations, which is only meaningful while they ARE
- * independent. Once the description seam assembles the schema FROM the delegates, both sides
- * come from one place and this becomes a tautology — a test that reads as coverage while
- * checking that a thing equals itself. The migration step that lands the assembly deletes it,
- * and that deletion is part of the step rather than a tidy-up afterwards.</p>
+ * <p>{@code refactor_to_pattern} is the exception, and the reason is measured rather than
+ * stylistic. Its {@code KINDS} constant survives because {@code patternKinds()} is
+ * {@code static} and has four callers — {@code CureLookup} and {@code CureTier} in production,
+ * two in tests — and a static method cannot read an instance's delegates. So the constant is
+ * still a SECOND home for the kind list, read by the code that decides which cure steps exist.
+ * Nothing else compares it to the routing table. That is what this class now does, and it is
+ * why deleting the class outright would have dropped a live guard rather than a dead one.</p>
  *
- * <p><b>Six doors, not nine.</b> {@code hierarchy}, {@code data} and
- * {@code change_method_signature} adopt the seam inside the lanes that grow them, so they are
- * deliberately absent — a gate demanding all nine here would fail for work that has not
- * started, and a test that fails for unstarted work teaches a reader to ignore it.</p>
+ * <p>It goes when {@code patternKinds()} does — when its callers read
+ * {@code OperationRegistry} instead, which is where the operation namespace already lives.</p>
  */
 class TheRoutingTableIsTheKindListTest {
 
-    /** The kinds a client reads — walked out of the published schema, the pre-M3b way. */
-    private static List<String> schemaEnumOf(KindedTool door) {
-        Object properties = door.getInputSchema().get("properties");
-        assertTrue(properties instanceof Map, door.getName() + " publishes no properties");
-        Object schema = ((Map<?, ?>) properties).get(door.discriminator());
-        assertTrue(schema instanceof Map,
-            door.getName() + " publishes no '" + door.discriminator() + "' property");
-        Object values = ((Map<?, ?>) schema).get("enum");
-        assertTrue(values instanceof java.util.Collection,
-            door.getName() + " publishes no enum for its discriminator");
-        List<String> kinds = new ArrayList<>();
-        for (Object value : (java.util.Collection<?>) values) {
-            kinds.add(String.valueOf(value));
-        }
-        return kinds;
+    @Test
+    @DisplayName("refactor_to_pattern's static kind list still equals the table it dispatches on")
+    void theStaticKindListAgreesWithTheRoutingTable() {
+        RefactorToPatternTool door =
+            new RefactorToPatternTool(() -> null, new RefactoringChangeCache());
+
+        assertEquals(List.copyOf(door.delegates().keySet()), RefactorToPatternTool.patternKinds(),
+            "patternKinds() is what CureLookup and CureTier read to decide whether a cure step"
+                + " names a real operation. It is a hand-written constant and the routing table"
+                + " is the truth; a kind added to one and not the other makes the cure table"
+                + " validate against a list of operations that is not the one the door runs");
+        // PROOF OF LIFE: two empty lists are equal.
+        assertEquals(11, RefactorToPatternTool.patternKinds().size(),
+            "eleven pattern kinds ship; a shrinking list must be a deliberate edit here");
     }
 
     @Test
-    @DisplayName("every converted door's published enum equals its routing table's key set")
-    void theSchemaAndTheRoutingTableAgree() {
+    @DisplayName("and each delegate agrees with the key it is routed under")
+    void everyDelegateAgreesWithItsRoutingKey() {
+        // The key and kindName() are two spellings of one fact — unavoidably so, because a
+        // field-holding door has no key and a map-holding one has no need of the method.
+        // Asserting they match is what keeps the duplication from being able to drift, and it
+        // is NOT a tautology: the map is built by asking each delegate its name on some doors
+        // and by literal keys on others.
         RefactoringChangeCache cache = new RefactoringChangeCache();
         java.util.function.Supplier<org.jawata.core.IJdtService> none = () -> null;
+        List<KindedTool> doors = List.of(
+            new ExtractTool(none, cache),
+            new InlineTool(none, cache),
+            new MoveTool(none, cache),
+            new RefactorToPatternTool(none, cache),
+            new org.jawata.mcp.tools.codegen.GenerateTool(none, cache),
+            new ApplyCleanupTool(none, cache));
 
-        Map<String, KindedTool> doors = new LinkedHashMap<>();
-        doors.put("extract", new ExtractTool(none, cache));
-        doors.put("inline", new InlineTool(none, cache));
-        doors.put("move", new MoveTool(none, cache));
-        doors.put("refactor_to_pattern", new RefactorToPatternTool(none, cache));
-        doors.put("generate", new org.jawata.mcp.tools.codegen.GenerateTool(none, cache));
-        doors.put("apply_cleanup", new ApplyCleanupTool(none, cache));
-
-        List<String> problems = new ArrayList<>();
         int compared = 0;
-        for (Map.Entry<String, KindedTool> entry : doors.entrySet()) {
-            KindedTool door = entry.getValue();
-            List<String> fromSchema = schemaEnumOf(door);
-            List<String> fromTable = List.copyOf(door.delegates().keySet());
-            compared += fromSchema.size();
-            if (!fromSchema.equals(fromTable)) {
-                problems.add(entry.getKey() + ": schema " + fromSchema + " != table " + fromTable);
-            }
-            // AND EACH DELEGATE AGREES WITH ITS OWN KEY. The key and kindName() are two
-            // spellings of one fact — unavoidably so, because a field-holding door has no key
-            // and a map-holding one has no need of the method. Asserting they match is what
-            // keeps the duplication from being able to drift.
-            door.delegates().forEach((kind, delegate) -> {
-                if (!kind.equals(delegate.kindName())) {
-                    problems.add(entry.getKey() + ": routed as '" + kind
-                        + "' but calls itself '" + delegate.kindName() + "'");
+        List<String> problems = new java.util.ArrayList<>();
+        for (KindedTool door : doors) {
+            for (java.util.Map.Entry<String, KindDelegate> routed : door.delegates().entrySet()) {
+                compared++;
+                if (!routed.getKey().equals(routed.getValue().kindName())) {
+                    problems.add(door.getName() + ": routed as '" + routed.getKey()
+                        + "' but calls itself '" + routed.getValue().kindName() + "'");
                 }
-            });
+            }
         }
-
-        // PROOF OF LIFE: six doors publishing nothing would satisfy every equality above.
-        assertTrue(compared >= 40,
-            "the six doors must publish their kinds here, or this compares empty lists and"
-                + " passes. Compared: " + compared);
-        assertTrue(problems.isEmpty(),
-            "a door's published enum and its routing table are the same fact, and after M3b"
-                + " the second is the source of the first:\n  " + String.join("\n  ", problems));
-    }
-
-    @Test
-    @DisplayName("publishedKinds is the routing table's key set, not a stored list")
-    void publishedKindsIsAView() {
-        // The control for the assertion above: it compares the SCHEMA to the table, so it
-        // would still pass if publishedKinds() had quietly stayed a third, stored copy.
-        KindedTool extract = new ExtractTool(() -> null, new RefactoringChangeCache());
-        assertEquals(List.copyOf(extract.delegates().keySet()), extract.publishedKinds(),
-            "publishedKinds() is a view of the delegates, so it cannot disagree with them");
+        assertEquals(List.of(), problems, String.join("\n  ", problems));
+        // PROOF OF LIFE: six doors routing nothing would satisfy the loop.
+        assertEquals(50, compared,
+            "the six converted doors route fifty kinds between them — extract 11, inline 5,"
+                + " move 6, refactor_to_pattern 11, generate 7, apply_cleanup 10");
     }
 }

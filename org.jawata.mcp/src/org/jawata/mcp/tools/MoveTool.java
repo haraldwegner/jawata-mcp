@@ -230,23 +230,9 @@ public class MoveTool extends AbstractTool implements KindedTool {
             "member to move: pkg.Type#method for kind=method, pkg.Type#field for kind=field."
                 + " The statement kinds are POSITIONAL — a statement has no name"));
 
-        // THE BACKSTOP — the same one ExtractTool carries, and for the same reason: a
-        // parameter a delegate declares must reach the published contract whether or not
-        // anyone remembered to curate it above. putIfAbsent, so the curated entries keep
-        // their per-kind wording and only what is MISSING is added — today that is
-        // kind=method's `target`, `keepDelegate` and `symbol`.
-        for (AbstractRefactoringTool delegate : delegates.values()) {
-            Object declared = delegate.getInputSchema().get("properties");
-            if (declared instanceof Map<?, ?> declaredProps) {
-                declaredProps.forEach((k, v) -> {
-                    String name = String.valueOf(k);
-                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
-                        properties.putIfAbsent(name, v);
-                    }
-                });
-            }
-        }
-        schema.put("properties", properties);
+        // THE BACKSTOP now lives on KindedTool. This door and three others each wrote it
+        // out; `inline` did not, which is how row 36's accessorName shipped unpublished.
+        schema.put("properties", withDelegateParameters(properties));
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }

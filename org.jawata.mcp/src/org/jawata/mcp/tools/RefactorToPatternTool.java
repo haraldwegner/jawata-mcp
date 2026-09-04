@@ -260,7 +260,10 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
+        // DERIVED from the routing table (M6), so the published enum and the dispatch are
+        // the same iteration. KINDS survives below because patternKinds() has four callers
+        // and is STATIC, so it cannot read an instance's delegates — see its own note.
+        kind.put("enum", publishedKinds());
         kind.put("description", "Which pattern transform to apply. See the tool description for per-kind params.");
         properties.put("kind", kind);
 
@@ -297,25 +300,11 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         // afterwards. Being complete today is not a property that survives the next
         // addition unless something derives it.
         //
-        // putIfAbsent: the curated entries above win and keep their positions, because
-        // they carry which KIND each parameter belongs to — a delegate's own schema
-        // cannot say that. The two wrapper params are skipped so withProjectKey and
-        // withAutoApply below supply them once in this tool's own terms.
-        for (AbstractTool delegate : List.of(inlineSingleton, composeMethod, replaceTypeCode,
-                refactorToState, refactorToCommand, formTemplateMethod, refactorToVisitor,
-                replacePatternWithIdiom, replaceConstructorWithFactory,
-                replaceConditionalWithPolymorphism, decomposeConditional)) {
-            Object declared = delegate.getInputSchema().get("properties");
-            if (declared instanceof Map<?, ?> declaredProps) {
-                declaredProps.forEach((k, v) -> {
-                    String name = String.valueOf(k);
-                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
-                        properties.putIfAbsent(name, v);
-                    }
-                });
-            }
-        }
-        schema.put("properties", properties);
+        // THE BACKSTOP now lives on KindedTool, and this copy carried a second defect the
+        // shared one cannot have: it iterated a hand-written List.of(...) of the eleven
+        // fields rather than the routing table, so a twelfth delegate would have been
+        // dispatched, published and left out of the loop that publishes its parameters.
+        schema.put("properties", withDelegateParameters(properties));
         // Sprint 24 (D1): filePath OR the name form (the symbol-targeted kinds).
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));

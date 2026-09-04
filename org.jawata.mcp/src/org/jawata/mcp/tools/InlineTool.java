@@ -267,7 +267,7 @@ public class InlineTool extends AbstractTool implements KindedTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
-        kind.put("enum", KINDS);
+        kind.put("enum", publishedKinds());
         kind.put("description", "Inline a method, a local variable, a whole class, a"
             + " subclass into its parent, or a middle man's forwarding.");
         properties.put("kind", kind);
@@ -290,7 +290,13 @@ public class InlineTool extends AbstractTool implements KindedTool {
             "description", "kind=middle_man: which field to stop forwarding to, when the "
                 + "class forwards to more than one. Required only then, and the refusal "
                 + "lists the candidates."));
-        schema.put("properties", properties);
+        // THE BACKSTOP, which this door did NOT have. Four others each wrote the loop out
+        // and this one did not, and the cost is on the record: row 36's accessorName above
+        // reached the delegate's schema and never this one, so it ran for anyone who knew
+        // the argument name and was invisible to everyone reading tools/list. It was
+        // curated by hand afterwards; the backstop is what makes the next one not need to
+        // be. See KindedTool#withDelegateParameters.
+        schema.put("properties", withDelegateParameters(properties));
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));

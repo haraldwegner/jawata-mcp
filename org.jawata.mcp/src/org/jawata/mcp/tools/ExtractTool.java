@@ -315,36 +315,10 @@ public class ExtractTool extends AbstractTool implements KindedTool {
                 + " kinds (method, variable, constant, split_phase, temp_to_query) are"
                 + " positional — a statement range and a local have no name"));
 
-        // THE BACKSTOP: every parameter any delegate declares reaches the published
-        // contract, whether or not someone remembered to curate it above.
-        //
-        // putIfAbsent, deliberately, and in this order. The curated entries above win
-        // and keep their positions, because they carry something a delegate's own
-        // schema cannot: which KIND each parameter belongs to. The front door says
-        // "method/variable/constant: zero-based start line"; ExtractMethodTool says
-        // "Path to source file." Overlaying the delegates on top would publish the
-        // poorer description for five kinds in order to fix the sixth.
-        //
-        // So this loop adds only what is MISSING — which today is exactly the five
-        // parameters of kind=class, and tomorrow is whatever the next kind brings.
-        // Curating an entry above is now an improvement to the wording, never the
-        // difference between a documented parameter and an invisible one.
-        // The two WRAPPER params are skipped: every delegate's schema carries them too,
-        // and taking them from a delegate would publish one delegate's wording for a
-        // parameter that belongs to the front door. withProjectKey/withAutoApply below
-        // add them once, in this tool's own terms.
-        for (AbstractTool delegate : delegates.values()) {
-            Object declared = delegate.getInputSchema().get("properties");
-            if (declared instanceof Map<?, ?> declaredProps) {
-                declaredProps.forEach((k, v) -> {
-                    String name = String.valueOf(k);
-                    if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
-                        properties.putIfAbsent(name, v);
-                    }
-                });
-            }
-        }
-        schema.put("properties", properties);
+        // THE BACKSTOP now lives on KindedTool — this door wrote it out, three others wrote
+        // it out again, and `inline` did not write it at all, which is how row 36's
+        // accessorName shipped unpublished. See KindedTool#withDelegateParameters.
+        schema.put("properties", withDelegateParameters(properties));
         // Sprint 24 (D1): filePath OR typeName (the type-targeted kinds).
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));

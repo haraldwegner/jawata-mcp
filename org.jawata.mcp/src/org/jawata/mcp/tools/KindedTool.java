@@ -57,4 +57,44 @@ public interface KindedTool extends FrontDoor {
     default List<String> publishedKinds() {
         return List.copyOf(delegates().keySet());
     }
+
+    /**
+     * THE BACKSTOP: every parameter any delegate declares reaches the published contract,
+     * whether or not someone remembered to curate it on the door.
+     *
+     * <p>Call it on the properties map a door has finished curating, just before publishing:
+     * {@code schema.put("properties", withDelegateParameters(properties))}.</p>
+     *
+     * <p><b>{@code putIfAbsent}, deliberately, and in that order.</b> The door's own entries
+     * win and keep their positions, because they carry something a delegate's schema cannot:
+     * which KIND each parameter belongs to. {@code extract} says "method/variable/constant:
+     * zero-based start line"; {@code ExtractMethodTool} says "Path to source file." Overlaying
+     * the delegates on top would publish the poorer description for five kinds in order to fix
+     * the sixth. So this adds only what is MISSING, and curating an entry becomes an
+     * improvement to the wording rather than the difference between a documented parameter and
+     * an invisible one.</p>
+     *
+     * <p><b>Two parameters are skipped</b>, and they are the ones every delegate also carries:
+     * {@code projectKey} and {@code auto_apply} belong to the front door, and taking them from
+     * a delegate would publish one delegate's wording for a parameter that is not its own. The
+     * door adds them once, in its own terms, through its wrapper helpers.</p>
+     *
+     * <p><b>It lives here because four doors had written it out and a fifth had not.</b>
+     * {@code inline} was the fifth, and the cost is on the record: row 36's
+     * {@code accessorName} reached the delegate's schema and never the door's, so it ran for
+     * anyone who knew the argument name and was invisible to everyone reading
+     * {@code tools/list} — the same defect, in the same shape, as {@code extract kind=class}'s
+     * five parameters one sprint earlier. A backstop that each door opts into by remembering
+     * is not a backstop.</p>
+     */
+    default Map<String, Object> withDelegateParameters(Map<String, Object> properties) {
+        for (KindDelegate delegate : delegates().values()) {
+            delegate.parameterSchema().forEach((name, declared) -> {
+                if (!"projectKey".equals(name) && !"auto_apply".equals(name)) {
+                    properties.putIfAbsent(name, declared);
+                }
+            });
+        }
+        return properties;
+    }
 }

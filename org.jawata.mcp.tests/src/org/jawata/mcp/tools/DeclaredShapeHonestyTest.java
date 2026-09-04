@@ -71,68 +71,21 @@ class DeclaredShapeHonestyTest {
         Map<String, Object> props = (Map<String, Object>) tool.getInputSchema().get("properties");
         return (List<String>) ((Map<String, Object>) props.get("action")).get("enum");
     }
-
     // ------------------------------------------------------------------
-    // THE PARAMETER AXIS — the half this class did not guard
+    // THE PARAMETER AXIS — retired at Stage 6a's M6
     // ------------------------------------------------------------------
-
-    /**
-     * Every instrument above guards the ACTION/KIND axis: the declared action set
-     * must equal the routed action set. <b>Both defects found in Stage 7 and 8
-     * landed on the other axis</b> — the kind was declared correctly and its
-     * PARAMETERS were not.
-     *
-     * <p>Measured: {@code extract} gained {@code kind=class} in the enum and in
-     * dispatch while all five of its parameters — including {@code fields}, which
-     * the delegate marks REQUIRED — never reached the published schema. The
-     * operation ran correctly for anyone who already knew the argument names and
-     * was undiscoverable to a client reading {@code tools/list}. Nothing went red:
-     * the schema sets no {@code additionalProperties: false}, so undeclared
-     * parameters still execute, and every test of the operation supplies the
-     * arguments itself.</p>
-     *
-     * <p><b>The cause is not forgetfulness.</b> A hand-written schema beside a
-     * dispatch switch is a COPY of the delegates' contracts, and a copy of a
-     * changing surface is wrong from the first unmirrored change with no moment at
-     * which it announces itself. So this guard is written once and applied to every
-     * parametric front door, rather than per tool.</p>
-     */
-    private void assertPublishesEveryDelegateParameter(
-        AbstractTool frontDoor, Map<String, AbstractTool> delegatesByKind) {
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> props =
-            (Map<String, Object>) frontDoor.getInputSchema().get("properties");
-        @SuppressWarnings("unchecked")
-        List<String> publishedKinds =
-            (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
-
-        // FIRST, so this guard cannot silently under-cover: a SECOND LIST is what
-        // caused the defect, and this test holds one. Ship a new kind without
-        // adding it here and the assertion below goes red instead of the guard
-        // quietly checking n-1 of n.
-        assertEquals(publishedKinds.size(), delegatesByKind.size(),
-            frontDoor.getName() + ": this guard's delegate list has drifted from the kinds"
-                + " the tool advertises — published " + publishedKinds + " vs guarded "
-                + delegatesByKind.keySet() + ". Add the new kind here, or the guard passes"
-                + " while never looking at it");
-        assertTrue(delegatesByKind.keySet().containsAll(publishedKinds),
-            frontDoor.getName() + ": every advertised kind must be represented: " + publishedKinds);
-
-        for (Map.Entry<String, AbstractTool> e : delegatesByKind.entrySet()) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> declared =
-                (Map<String, Object>) e.getValue().getInputSchema().get("properties");
-            for (String param : declared.keySet()) {
-                assertTrue(props.containsKey(param),
-                    frontDoor.getName() + " kind=" + e.getKey() + " accepts '" + param
-                        + "' and the front door does not declare it. A parameter absent from"
-                        + " the published schema is invisible to every client reading"
-                        + " tools/list, however well the operation runs for someone who"
-                        + " already knows the name");
-            }
-        }
-    }
+    //
+    // Its guard, assertPublishesEveryDelegateParameter, compared a front door's
+    // published schema against a HAND-WRITTEN map of that door's delegates, kept here.
+    // It found two real defects and both repairs were the same: curate the missing
+    // parameters onto the door, then add the door to the list in this file. The list was
+    // the third hand-kept copy of a routing table, and `inline` sat outside it for as
+    // long as it took row 36's accessorName to ship unpublished.
+    //
+    // KindedTool#withDelegateParameters now overlays every delegate's parameters onto
+    // every routing door's schema, so the axis holds by construction. What replaces the
+    // guard is theBackstopPublishesEveryDelegateParameter below: same question, asked of
+    // each door's OWN delegates() rather than of a list somebody maintains.
 
     /**
      * THE THIRD AXIS, and the C8 auditor found both Stage 8 kinds sitting in the gap.
@@ -219,14 +172,91 @@ class DeclaredShapeHonestyTest {
     }
 
     @Test
-    @DisplayName("every parametric front door describes every operation it publishes")
-    void everyFrontDoorDescribesItsKinds() {
-        Map<String, AbstractTool> doors = frontDoors();
-        doors.forEach((name, door) -> {
+    @DisplayName("a door that WRITES its own kind block must still name every kind in it")
+    void everyHandWrittenBlockDescribesItsKinds() {
+        // SCOPED at Stage 6a's M6, and the scope is DERIVED rather than listed.
+        //
+        // Where the block is projected from delegates() the bullet IS the kind name, so
+        // this assertion cannot fail — and an assertion that cannot fail reads as coverage
+        // while covering nothing, which is the defect class this whole file is about. It
+        // would have been the second one in here.
+        //
+        // Where the door still writes its own prose it CAN fail, and did: refactor_to_pattern
+        // documented eight of its ten kinds while both missing ones were in the enum, in the
+        // schema, routed and tested. So the guard follows the hand-written text rather than
+        // a list of door names, and a door drops out of it the moment its own lane converts
+        // it — which is what keeps this from becoming the next thing that goes stale.
+        Map<String, AbstractTool> handWritten = new LinkedHashMap<>();
+        frontDoors().forEach((name, door) -> {
             assertEquals(name, door.getName(),
                 "this list is keyed by the PUBLISHED name; a rename must show up here");
-            assertDescribesEveryKindItPublishes(door);
+            boolean projected = door instanceof FrontDoor front && front.kindBlock().isEmpty();
+            if (!projected) {
+                handWritten.put(name, door);
+            }
         });
+
+        // PROOF OF LIFE, and a ratchet: today two doors write their own block. `hierarchy`
+        // adopts the seam inside Stage 7 and will drop to one; `refactoring` stays forever,
+        // because its seven actions reach four delegates and there is no per-action delegate
+        // to project a bullet from. A count that fell to zero unnoticed would leave this
+        // method looping over nothing.
+        assertEquals(java.util.Set.of("hierarchy", "refactoring"), handWritten.keySet(),
+            "these are the doors whose kind block is still their own prose. When one adopts"
+                + " the seam, remove it here deliberately rather than letting the guard"
+                + " quietly shrink: " + handWritten.keySet());
+        handWritten.forEach((name, door) -> assertDescribesEveryKindItPublishes(door));
+    }
+
+    /**
+     * THE PREAMBLE MUST NOT NAME A KIND, and that is the rule the projection earns.
+     *
+     * <p>A door's preamble is its door-level text: what the tool is for, before any kind is
+     * named. The bullets below it are now a projection of {@code delegates()}, so a kind
+     * cannot be missing from them. What CAN happen is the old shape coming back by the front
+     * door — someone helpfully listing the kinds in the opening paragraph, where nothing
+     * derives them and nothing notices when one is added or removed.</p>
+     *
+     * <p><b>Scoped to kinds spelled as identifiers</b>, which operationally means the ones
+     * containing an underscore. {@code extract}'s preamble legitimately says "Extract a
+     * method, variable, constant, interface, superclass or class" — those are ordinary
+     * English words that happen to also be kind names, and forbidding them would forbid
+     * describing the tool. {@code split_phase} and {@code temp_to_query} are not English;
+     * they are the string a caller passes, and a preamble containing one is a copy of the
+     * routing table however it got there.</p>
+     */
+    @Test
+    @DisplayName("no door names one of its kinds in its PREAMBLE — that is the copy returning")
+    void noPreambleNamesAKindByItsPublishedSpelling() {
+        int checked = 0;
+        for (Map.Entry<String, AbstractTool> entry : frontDoors().entrySet()) {
+            if (!(entry.getValue() instanceof FrontDoor door) || door.preamble().isEmpty()) {
+                continue;
+            }
+            checked++;
+            String preamble = door.preamble();
+            for (String kind : door.publishedKinds()) {
+                if (!kind.contains("_")) {
+                    continue;
+                }
+                assertFalse(preamble.contains(kind),
+                    entry.getKey() + "'s preamble names the kind '" + kind + "' by the exact"
+                        + " string a caller passes. The bullet list below it is projected from"
+                        + " the routing table and cannot omit a kind; a list in the preamble"
+                        + " is hand-kept and will: " + preamble);
+            }
+        }
+        // PROOF OF LIFE: doors that have not adopted the seam return an empty preamble and
+        // are skipped, so a zero here would mean the loop looked at nothing.
+        //
+        // SEVEN, and the first version of this line said six — a number recalled rather than
+        // counted, which the gate caught on its first run. This list holds eight doors;
+        // `hierarchy` is the only one that is not a FrontDoor yet, and `refactoring` IS one,
+        // because it took the description seam without the routing seam.
+        assertEquals(7, checked,
+            "the seven doors in this list that have adopted the description seam must be"
+                + " checked. hierarchy adopts inside Stage 7 and data inside Stage 5, and"
+                + " each becomes an eighth and ninth here when it does");
     }
 
     /**
@@ -252,97 +282,75 @@ class DeclaredShapeHonestyTest {
                 + " does not belong in this list, or it lost its enum."));
     }
 
+    /**
+     * THE PARAMETER AXIS, RETIRED AT M6 — and replaced by the thing it was compensating for.
+     *
+     * <p>It read: every parameter a delegate declares must appear in the front door's
+     * published schema. It found real defects twice — {@code extract kind=class}'s five
+     * parameters, then row 36's {@code accessorName} on {@code inline} — and both times the
+     * repair was to curate the missing entries by hand and add the door to a list here.</p>
+     *
+     * <p>Four doors then wrote out a BACKSTOP loop that overlays every delegate's parameters
+     * onto the published properties. {@code inline} did not, which is exactly why the second
+     * defect happened on that door. M6 moves the loop onto {@link KindedTool}, so every
+     * routing door gets it by construction rather than by remembering — and with that, this
+     * assertion cannot fail. It is deleted rather than kept, because an assertion that cannot
+     * fail is the defect class this file exists to remove, not evidence against it.</p>
+     *
+     * <p><b>Two copies of the loop carried a defect of their own, and the shared one cannot.</b>
+     * {@code refactor_to_pattern} and {@code generate} iterated a hand-written
+     * {@code List.of(...)} of their delegate FIELDS rather than the routing table — so a kind
+     * added to the map and dispatched would have been left out of the very loop that
+     * publishes its parameters. Neither had drifted yet; the shape is what mattered.</p>
+     *
+     * <p>What survives is the guard's coverage question in its own test below, and the
+     * three-line mutation that proves the backstop live: add a parameter to any delegate's
+     * schema and it appears in its door's published schema without the door being touched.</p>
+     */
     @Test
-    @DisplayName("every parametric front door publishes every parameter its kinds accept")
-    void everyFrontDoorPublishesItsDelegateParameters() {
+    @DisplayName("a parameter a delegate declares is published by its door, with no curation")
+    void theBackstopPublishesEveryDelegateParameter() {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Supplier<IJdtService> svc = () -> service;
 
-        Map<String, AbstractTool> extract = new LinkedHashMap<>();
-        extract.put("method", new ExtractMethodTool(svc, cache));
-        extract.put("variable", new ExtractVariableTool(svc, cache));
-        extract.put("constant", new ExtractConstantTool(svc, cache));
-        extract.put("interface", new ExtractInterfaceTool(svc, cache));
-        extract.put("superclass", new ExtractSuperclassTool(svc, cache));
-        extract.put("class", new ExtractClassTool(svc, cache));
-        extract.put("replace_inline_code", new ReplaceDuplicatesTool(svc, cache));
-        extract.put("combine_functions", new CombineFunctionsIntoClassTool(svc, cache));
-        extract.put("function_to_command", new ReplaceFunctionWithCommandTool(svc, cache));
-        extract.put("split_phase", new SplitPhaseTool(svc, cache));
-        extract.put("temp_to_query", new ReplaceTempWithQueryTool(svc, cache));
-        assertPublishesEveryDelegateParameter(new ExtractTool(svc, cache), extract);
+        // The claim is about the SEAM, so it is asked of every routing door at once rather
+        // than of a hand-listed five — which is what the retired assertion needed and what
+        // let `inline` sit outside it. Each door's own delegates are the population; nothing
+        // here names a kind.
+        List<KindedTool> routingDoors = List.of(
+            new ExtractTool(svc, cache),
+            new InlineTool(svc, cache),
+            new MoveTool(svc, cache),
+            new RefactorToPatternTool(svc, cache),
+            new GenerateTool(svc, cache),
+            new ApplyCleanupTool(svc, cache));
 
-        Map<String, AbstractTool> generate = new LinkedHashMap<>();
-        generate.put("constructor", new GenerateConstructorTool(svc, cache));
-        generate.put("getters_setters", new GenerateGettersSettersTool(svc, cache));
-        generate.put("equals_hashcode", new GenerateEqualsHashCodeTool(svc, cache));
-        generate.put("tostring", new GenerateToStringTool(svc, cache));
-        generate.put("test_skeleton", new GenerateTestSkeletonTool(svc, cache));
-        generate.put("override_methods", new OverrideMethodsTool(svc, cache));
-        generate.put("copy_class", new CopyClassTool(svc, cache));
-        assertPublishesEveryDelegateParameter(new GenerateTool(svc, cache), generate);
-
-        Map<String, AbstractTool> patterns = new LinkedHashMap<>();
-        patterns.put("inline_singleton", new InlineSingletonTool(svc, cache));
-        patterns.put("compose_method", new ComposeMethodTool(svc, cache));
-        patterns.put("replace_type_code_with_class", new ReplaceTypeCodeWithClassTool(svc, cache));
-        patterns.put("refactor_to_state", new RefactorToStateTool(svc, cache));
-        patterns.put("refactor_to_command_dispatcher",
-            new RefactorToCommandDispatcherTool(svc, cache));
-        patterns.put("form_template_method", new FormTemplateMethodTool(svc, cache));
-        patterns.put("refactor_to_visitor", new RefactorToVisitorTool(svc, cache));
-        patterns.put("replace_pattern_with_idiom", new ReplacePatternWithIdiomTool(svc, cache));
-        patterns.put("replace_constructor_with_factory",
-            new ReplaceConstructorWithFactoryTool(svc, cache));
-        patterns.put("replace_conditional_with_polymorphism",
-            new ReplaceConditionalWithPolymorphismTool(svc, cache));
-        patterns.put("decompose_conditional", new DecomposeConditionalTool(svc, cache));
-        assertPublishesEveryDelegateParameter(new RefactorToPatternTool(svc, cache), patterns);
-
-        // Stage 1 folded `move_method` in and converted this tool to a delegate map, so
-        // it joins the parameter axis. Under the old fields-plus-switch shape its
-        // published schema was hand-written and could not have been checked this way.
-        Map<String, AbstractTool> move = new LinkedHashMap<>();
-        move.put("class", new MoveClassTool(svc, cache));
-        move.put("package", new MovePackageTool(svc, cache));
-        move.put("method", new MoveMethodTool(svc, cache));
-        move.put("field", new MoveFieldTool(svc, cache));
-        move.put("statements_into_function", new MoveStatementsIntoFunctionTool(svc, cache));
-        move.put("statements_to_callers", new MoveStatementsToCallersTool(svc, cache));
-        assertPublishesEveryDelegateParameter(new MoveTool(svc, cache), move);
-
-        // `inline` joins the parameter axis at C6, and it should have been here from the
-        // moment it stopped being a two-kind door. A C6 audit found the cost: row 36's
-        // `accessorName` reached the delegate's schema and never the front door's, so it
-        // ran for anyone who knew the argument name and was invisible to everyone reading
-        // tools/list. That is the SAME defect this whole test exists for — Stage 7 of the
-        // previous sprint, `extract kind=class`, five parameters, identical shape — and it
-        // recurred because the guard's own coverage list was a THIRD hand-written list.
-        Map<String, AbstractTool> inline = new LinkedHashMap<>();
-        inline.put("method", new InlineMethodTool(svc, cache));
-        inline.put("variable", new InlineVariableTool(svc, cache));
-        inline.put("class", new InlineClassTool(svc, cache));
-        inline.put("subclass", new RemoveSubclassTool(svc, cache));
-        inline.put("middle_man", new RemoveMiddleManTool(svc, cache));
-        assertPublishesEveryDelegateParameter(new InlineTool(svc, cache), inline);
-
-        // THE COVERAGE ASSERTION, so the next door added is not silently unchecked on this
-        // axis. `frontDoors()` is the list the DESCRIPTION axis uses; this names, per door,
-        // whether the parameter axis reaches it — and a door that is genuinely out of scope
-        // has to be written into the exclusion below with its reason, not just left out.
-        java.util.Set<String> onTheParameterAxis =
-            java.util.Set.of("extract", "generate", "refactor_to_pattern", "move", "inline");
-        java.util.Set<String> excluded = java.util.Set.of(
-            // Not delegate maps: their kinds are switch arms over one implementation, so
-            // there is no per-delegate schema for a front door's copy to drift from.
-            "apply_cleanup", "hierarchy", "refactoring");
-        java.util.Set<String>doors = new java.util.LinkedHashSet<>(frontDoors().keySet());
-        doors.removeAll(onTheParameterAxis);
-        assertEquals(excluded, doors,
-            "a parametric front door is either checked on the parameter axis above or"
-                + " written into the exclusion with its reason. One that is neither is"
-                + " unguarded, and nothing else would say so — which is exactly how row"
-                + " 36's accessorName reached production unpublished.");
+        int compared = 0;
+        for (KindedTool door : routingDoors) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> published =
+                (Map<String, Object>) door.getInputSchema().get("properties");
+            for (Map.Entry<String, KindDelegate> routed : door.delegates().entrySet()) {
+                for (String param : routed.getValue().parameterSchema().keySet()) {
+                    if ("projectKey".equals(param) || "auto_apply".equals(param)) {
+                        continue;
+                    }
+                    compared++;
+                    assertTrue(published.containsKey(param),
+                        door.getName() + " kind=" + routed.getKey() + " accepts '" + param
+                            + "' and the door does not publish it. A parameter absent from the"
+                            + " published schema is invisible to every client reading"
+                            + " tools/list, however well the operation runs for someone who"
+                            + " already knows the name");
+                }
+            }
+        }
+        // PROOF OF LIFE: apply_cleanup's rules declare no parameters at all, so a bug that
+        // emptied every delegate's schema would satisfy the loop above in silence.
+        assertTrue(compared >= 100,
+            "the six routing doors declare well over a hundred delegate parameters between"
+                + " them; a low count means the loop is looking at nothing. Compared: "
+                + compared);
     }
 
     /**
@@ -376,8 +384,12 @@ class DeclaredShapeHonestyTest {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Supplier<IJdtService> svc = () -> service;
         tools.put("data", new DataTool(svc, cache));
+        // THE POLICY IS ASKED OF OperationSurface (Stage 6a, M8), which is where it lives
+        // now. It used to be a package-private reader on ToolRegistry, and this line is the
+        // reason the extraction was worth doing: the check wants "what does this tool publish
+        // as an operation?" and had to reach into the registry's internals to ask.
         tools.forEach((name, door) ->
-            registry.register(name, ToolRegistry.publishedKindsOf(door),
+            registry.register(name, OperationSurface.operationKindsOf(door),
                 door.isMechanical(), door.isStructural(), door.structuralKinds()));
 
         assertTrue(registry.isWired(),

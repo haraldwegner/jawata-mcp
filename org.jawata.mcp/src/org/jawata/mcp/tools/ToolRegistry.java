@@ -107,31 +107,13 @@ public class ToolRegistry {
         return "add".equals(action) || "remove".equals(action);
     }
 
-    /**
-     * The tools whose published kinds ARE operations a cure step may name. Everything
-     * else registers its own name and no kinds — a tool is an operation, but a
-     * reporting tool's kind enum is a list of questions, not of transformations.
-     */
-    private static final Set<String> REFACTORING_FRONT_DOORS = Set.of(
-        "extract", "inline", "move", "hierarchy", "data", "apply_cleanup",
-        "refactor_to_pattern", "generate");
-
-    /**
-     * NOT `refactoring`, and leaving it in cost a boot.
-     *
-     * <p>{@code refactoring} is the LIFECYCLE front door — apply, undo, inspect, and the
-     * multi-step plan. Its {@code kind} enum does not name operations it performs; it
-     * names which of {@code refactor_to_pattern}'s operations can be run as a
-     * parity-gated PLAN, and every one of its six is already published by that tool.</p>
-     *
-     * <p>Harvesting it therefore registered each of those six twice, from two tools. The
-     * first version of the registry kept one tool per operation and the second write
-     * silently won, so nothing showed; when the registry learned to REFUSE an ambiguous
-     * operation, the very next boot threw on {@code long_method}'s cure — {@code
-     * compose_method}, published by both. The refusal was right and the harvest was
-     * wrong: a view of another tool's operations is not a second publisher of them.</p>
-     */
-    private static final String LIFECYCLE_FRONT_DOOR = "refactoring";
+    // THE OPERATION-PUBLISHING POLICY LIVES ON OperationSurface (Stage 6a, M8).
+    //
+    // It was two private constants and a private method here: which tools' kinds are
+    // operations a cure step may name, and the reader that applied that filter. Both are
+    // now public on OperationSurface, because they answer a question about the SURFACE
+    // rather than about this map — and every test that wanted the answer had to build a
+    // registry to reach it, or re-derive it, and several did the latter.
 
     /**
      * Register a tool with the registry.
@@ -147,49 +129,12 @@ public class ToolRegistry {
             log.warn("Overwriting existing tool: {}", name);
         }
         tools.put(name, tool);
-        org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
-            .register(name, publishedKindsOf(tool), tool.isMechanical(), tool.isStructural(),
-                tool.structuralKinds());
+        // Stage 6a (M8): the publishing half moved to OperationSurface. Registering a tool
+        // and deciding which of its kinds are OPERATIONS are two jobs that shared a method,
+        // and a test that wanted the second had to build a whole registry to reach it.
+        OperationSurface.publish(tool);
         log.debug("Registered tool: {}", name);
     }
-
-    /**
-     * The kinds a parametric front door publishes AND that are operations a cure may name.
-     *
-     * <p><b>This is now a POLICY, not a reader.</b> Stage 6a (M1) moved the schema walk onto
-     * {@link Tool#publishedKinds()}, where the object answers for itself; what stays here is
-     * the half that was never a fact about the tool — the registry's judgement about WHICH
-     * tools' kinds are operations. A reporting tool knows its own kinds perfectly well and
-     * has no opinion about whether a cure step may name them, because that is not its
-     * question.</p>
-     *
-     * <p>The two were one method, and the copies that grew beside it copied both halves.
-     * They are separable because they answer different questions, and separating them is
-     * what lets the filter be replaced later — see {@code REFACTORING_FRONT_DOORS} — without
-     * touching how a tool reports its own dispatch.</p>
-     */
-    static List<String> publishedKindsOf(Tool tool) {
-        // ONLY THE TOOLS WHOSE KINDS ARE OPERATIONS. A `kind` enum is a common shape:
-        // find_quality_issue publishes `god_class` and `naming`, analyze publishes
-        // `method`, inspect publishes `source`. Harvesting every one of them put
-        // hundreds of non-operations into a flat namespace, so a cure step named
-        // `god_class` would have validated and been called runnable — the registry's
-        // own promise ("the only thing a cure step may name") reduced to a word.
-        if (LIFECYCLE_FRONT_DOOR.equals(tool.getName())
-                || !REFACTORING_FRONT_DOORS.contains(tool.getName())) {
-            // The lifecycle door is named EXPLICITLY rather than merely left out of the
-            // set. Left out, the exclusion is invisible: re-adding the name to the set
-            // would silently republish six operations a second time, which is precisely
-            // the boot failure this exclusion exists to prevent. It still registers its
-            // own NAME as an operation, one line up in register().
-            return List.of();
-        }
-        // AND THE TOOL ANSWERS THE REST. Everything below this line used to walk the
-        // tool's schema from out here; it is now Tool.publishedKinds(), so a tool that
-        // changes how it declares its dispatch changes one place.
-        return tool.publishedKinds();
-    }
-
 
     /**
      * Register multiple tools.

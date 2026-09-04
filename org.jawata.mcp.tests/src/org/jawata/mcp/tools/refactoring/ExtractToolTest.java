@@ -110,37 +110,41 @@ class ExtractToolTest {
      *
      * <p><b>Why this test cannot quietly under-cover.</b> It holds its own list of
      * delegates, and a second list is what caused the original defect — so the first
-     * assertion is that this list matches the PUBLISHED enum exactly. Ship a seventh
-     * kind without updating this test and it goes RED, rather than passing while
-     * silently checking six of seven.</p>
+     * assertion is that this list matches the door's kinds exactly. Ship a twelfth kind
+     * without updating this test and it goes RED, rather than passing while silently
+     * checking eleven of twelve.</p>
+     *
+     * <h2>M6b: the ORACLE moved, and the parameter loop went</h2>
+     *
+     * <p>The derived side used to be read by walking the published schema's {@code kind}
+     * enum out of a Map — the very reader Stage 6a removes everywhere else. It now asks the
+     * door for {@code delegates()}. What the assertion CLAIMS is unchanged: this file's
+     * hand-written list of eleven delegate instances must be the eleven kinds the door
+     * routes.</p>
+     *
+     * <p><b>The parameter loop is gone, and M6b's own prescribed mutation is dead.</b> M6
+     * moved the delegate-parameter backstop onto {@code KindedTool}, so a door's schema now
+     * contains every delegate parameter by construction and the loop could not fail —
+     * {@code DeclaredShapeHonestyTest} asks the same question of all six routing doors at
+     * once. M6b's mutation was "read the enum from {@code getInputSchema()} again", and after
+     * M6 that enum IS {@code publishedKinds()}, which IS the key set: both readers return the
+     * same list, so swapping them changes nothing and proves nothing. What is still live is
+     * dropping an entry from {@code allDelegates}, which is the drift this assertion was
+     * always for.</p>
      */
     @Test
-    @DisplayName("every parameter a delegate declares is published in the front door's schema")
-    @SuppressWarnings("unchecked")
-    void schema_publishes_every_delegate_parameter() {
-        Map<String, Object> schema = tool.getInputSchema();
-        Map<String, Object> props = (Map<String, Object>) schema.get("properties");
-        List<String> publishedKinds =
-            (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
+    @DisplayName("this file's delegate list is the door's routing table, asked of the door")
+    void delegate_list_matches_the_routing_table() {
+        List<String> routed = List.copyOf(tool.delegates().keySet());
 
-        assertEquals(publishedKinds.size(), allDelegates.size(),
-            "this test's delegate list has drifted from the kinds the tool advertises: "
-                + publishedKinds + " vs " + allDelegates.keySet() + ". Add the new kind here"
+        assertEquals(routed.size(), allDelegates.size(),
+            "this test's delegate list has drifted from the kinds the tool ROUTES: "
+                + routed + " vs " + allDelegates.keySet() + ". Add the new kind here"
                 + " — otherwise this guard passes while never looking at it");
-        assertTrue(allDelegates.keySet().containsAll(publishedKinds),
-            "every advertised kind must be represented here: " + publishedKinds);
-
-        for (Map.Entry<String, AbstractTool> e : allDelegates.entrySet()) {
-            Map<String, Object> declared =
-                (Map<String, Object>) e.getValue().getInputSchema().get("properties");
-            for (String param : declared.keySet()) {
-                assertTrue(props.containsKey(param),
-                    "kind=" + e.getKey() + " accepts '" + param + "' but the front door does"
-                        + " not declare it. A parameter absent from the schema is invisible to"
-                        + " every client reading tools/list, and the operation is undiscoverable"
-                        + " however well it runs for someone who already knows the name");
-            }
-        }
+        assertTrue(allDelegates.keySet().containsAll(routed),
+            "every routed kind must be represented here: " + routed);
+        // PROOF OF LIFE: two empty lists have equal sizes and vacuous containment.
+        assertEquals(11, routed.size(), "extract routes eleven kinds");
     }
 
     @Test

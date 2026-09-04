@@ -487,4 +487,55 @@ class Stage6PerRowContractTest {
             "the two halves must name exactly the rows this file drives — nothing left over,"
                 + " nothing invented");
     }
+
+    /**
+     * M7 (Stage 6a): the tables RECONCILED against the doors, now that a door answers for its
+     * own routing table.
+     *
+     * <p>C6 closed with both tables asserting their own SIZE and their sum, and those stay —
+     * they are what catches a row going missing. This is the other direction, which no size
+     * assertion can see: a row naming a kind no door routes. The count would still be right,
+     * the partition would still hold, and the row would silently stop exercising anything.
+     * That is not hypothetical for this file: every row's kind is a bare string, in an
+     * {@code ObjectNode} for the positional half and a record field for the named half, and
+     * nothing until now compared either against what the door dispatches on.</p>
+     *
+     * <p><b>Containment, not equality, and the reason is measured rather than preferred.</b>
+     * The tables hold twelve Stage-6 rows against twenty-two published kinds — {@code extract}
+     * eleven, {@code inline} five, {@code move} six — so equality is false in both directions:
+     * most kinds are not Stage-6 rows at all. The rows are a declared SUBSET, which is exactly
+     * what this asserts.</p>
+     */
+    @Test
+    @DisplayName("every kind either table names is one its own door actually routes")
+    void everyRowNamesAKindItsDoorPublishes() throws Exception {
+        java.util.Set<String> routed = new java.util.LinkedHashSet<>();
+        for (String door : List.of("extract", "inline", "move")) {
+            ((org.jawata.mcp.tools.KindedTool) doorOf(door)).delegates().keySet()
+                .forEach(kind -> routed.add(door + " kind=" + kind));
+        }
+        assertEquals(22, routed.size(),
+            "the three doors route twenty-two kinds between them — extract 11, inline 5,"
+                + " move 6. A change to that number is a change to what Stage 6 shipped and"
+                + " belongs in C9's arithmetic, not here: " + routed);
+
+        List<String> named = new ArrayList<>();
+        for (Row row : rows()) {
+            com.fasterxml.jackson.databind.JsonNode kind = row.args().get("kind");
+            assertNotNull(kind, row.label() + " drives its door with no kind argument at all");
+            named.add(row.door() + " kind=" + kind.asText());
+        }
+        for (Named row : namedRows()) {
+            named.add(row.door() + " kind=" + row.kind());
+        }
+
+        assertEquals(List.of(),
+            named.stream().filter(k -> !routed.contains(k)).distinct().toList(),
+            "a row naming a kind its door does not route exercises nothing, and every other"
+                + " assertion in this file would still pass. Routed: " + routed);
+        // PROOF OF LIFE: an empty list satisfies the filter above vacuously, and this method
+        // reads both tables, so a bug that emptied either one has to show up here.
+        assertEquals(19, named.size(),
+            "twelve positionally-driven rows and seven addressed by name: " + named);
+    }
 }

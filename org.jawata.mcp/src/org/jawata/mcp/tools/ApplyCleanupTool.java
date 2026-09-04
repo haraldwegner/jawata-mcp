@@ -247,7 +247,12 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "the member to clean up — the same narrowing as line/column, addressed the way "
                 + "a finding names it"));
-        schema.put("properties", properties);
+        // The backstop, for uniformity rather than for an outstanding gap: a CleanupRule's
+        // parameterSchema() is empty and truthfully so — apply_cleanup is a sweep and no
+        // rule adds a parameter of its own, which is exactly why row 8 could not live here.
+        // Calling it anyway means the next rule that DOES declare one is published without
+        // anyone noticing it needed to be.
+        schema.put("properties", withDelegateParameters(properties));
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));
     }
