@@ -43,11 +43,24 @@ public class ExtractTool extends AbstractTool {
      * five by hand would have fixed this instance and left the seventh kind to repeat
      * it. Deriving from the map means a kind cannot be half-added.</p>
      */
-    private final Map<String, AbstractApplyingRefactoringTool> delegates;
+    /**
+     * THE ELEMENT TYPE IS {@code AbstractTool}, not {@code AbstractApplyingRefactoringTool},
+     * and row 58 is why. jawata has TWO refactoring bases and they are SIBLINGS under this
+     * one: {@code AbstractApplyingRefactoringTool} for an operation that prepares a single
+     * change, {@code AbstractRefactoringTool} for one that drives a refactoring or a recipe
+     * itself. Replace Temp with Query is the second kind — its second step cannot be built
+     * until the first has been applied — so a map typed to either base excludes half the
+     * operations a front door has to be able to dispatch.
+     *
+     * <p>What every delegate does share is exactly what this map uses: a published schema
+     * and an {@code executeWithService}. Typing it to the common supertype says that, rather
+     * than saying something narrower that is not true of the set.</p>
+     */
+    private final Map<String, AbstractTool> delegates;
 
     public ExtractTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
-        Map<String, AbstractApplyingRefactoringTool> d = new LinkedHashMap<>();
+        Map<String, AbstractTool> d = new LinkedHashMap<>();
         d.put("method", new ExtractMethodTool(serviceSupplier, cache));
         d.put("variable", new ExtractVariableTool(serviceSupplier, cache));
         d.put("constant", new ExtractConstantTool(serviceSupplier, cache));
@@ -75,6 +88,10 @@ public class ExtractTool extends AbstractTool {
         // lives here rather than beside compose_method: compose_method names sections of
         // one method, this splits one method into two that no longer share a scope.
         d.put("split_phase", new SplitPhaseTool(serviceSupplier, cache));
+        // Row 58, the one COMPOSED kind here: extract the temp's initializer, then inline
+        // the temp. Both halves already ship, so what this adds is one undo handle for the
+        // pair and a rollback when the second declines after the first has run.
+        d.put("temp_to_query", new ReplaceTempWithQueryTool(serviceSupplier, cache));
         this.delegates = java.util.Collections.unmodifiableMap(d);
     }
 
@@ -163,6 +180,14 @@ public class ExtractTool extends AbstractTool {
                          boundary (an early exit, not a phase) and a second phase that
                          ASSIGNS to a first-phase local (the carrier's components are
                          final; a mutable carrier is a design decision).
+            - temp_to_query — extract a temp's initializer into a method, then inline the
+                         temp, so every use reads the query instead (Fowler: Replace Temp
+                         with Query). Needs: filePath, line, column on the declaration
+                         (optional methodName, default the variable's own name). COMPOSED
+                         from two operations that already ship, so it adds one undo handle
+                         for the pair and rolls the first back if the second declines.
+                         Refuses a temp that is assigned more than once — it is then not a
+                         name for one value, and Split Variable comes first.
 
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying.
@@ -226,7 +251,7 @@ public class ExtractTool extends AbstractTool {
         // and taking them from a delegate would publish one delegate's wording for a
         // parameter that belongs to the front door. withProjectKey/withAutoApply below
         // add them once, in this tool's own terms.
-        for (AbstractApplyingRefactoringTool delegate : delegates.values()) {
+        for (AbstractTool delegate : delegates.values()) {
             Object declared = delegate.getInputSchema().get("properties");
             if (declared instanceof Map<?, ?> declaredProps) {
                 declaredProps.forEach((k, v) -> {
@@ -257,7 +282,7 @@ public class ExtractTool extends AbstractTool {
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + kinds());
         }
-        AbstractApplyingRefactoringTool delegate = delegates.get(kind);
+        AbstractTool delegate = delegates.get(kind);
         if (delegate == null) {
             return ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + kinds());
