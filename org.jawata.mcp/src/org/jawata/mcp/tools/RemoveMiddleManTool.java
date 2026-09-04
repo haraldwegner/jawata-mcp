@@ -108,6 +108,9 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
             "description", "Name for the accessor that exposes the delegate (default: the "
                 + "field's own name). Every rewritten call site reads it, so it is worth "
                 + "choosing."));
+        properties.put("delegateField", Map.of("type", "string",
+            "description", "Which field to stop forwarding to, when the class forwards to "
+                + "more than one. Required only then, and the refusal lists the candidates."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));
@@ -159,30 +162,43 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
             }
         }
 
-        List<MethodDeclaration> forwarders = new ArrayList<>();
-        Set<String> targets = new LinkedHashSet<>();
+        Map<String, List<MethodDeclaration>> byTarget = new LinkedHashMap<>();
         for (Object member : type.bodyDeclarations()) {
             if (member instanceof MethodDeclaration method && !method.isConstructor()) {
                 String target = forwardedField(method, fields);
                 if (target != null) {
-                    forwarders.add(method);
-                    targets.add(target);
+                    byTarget.computeIfAbsent(target, t -> new ArrayList<>()).add(method);
                 }
             }
         }
-        if (forwarders.isEmpty()) {
+        if (byTarget.isEmpty()) {
             return ToolResponse.invalidParameter("position",
                 middleMan.getElementName() + " has no method whose whole body is one call on"
                     + " one of its own fields, passing the same arguments through. There is"
                     + " no middle man here to remove.");
         }
-        if (targets.size() > 1) {
-            return ToolResponse.invalidParameter("position",
-                middleMan.getElementName() + " forwards to " + targets.size()
-                    + " different fields " + targets + ", which is two middle men rather than"
-                    + " one. Removing both at once would be two decisions taken as one.");
+        // SEVERAL DELEGATES IS ONE-AT-A-TIME, not a dead end. The first version refused
+        // outright, and the fork's GiantController is why that was wrong: it forwards six
+        // methods to `giant` and one to `view`, which makes it a middle man for `giant`
+        // with an unrelated method beside — not "two middle men" in any sense a caller
+        // would recognise. Removing both at once WOULD be two decisions taken as one, so
+        // the caller names which, and only that field's forwarders go.
+        String delegateField = getStringParam(arguments, "delegateField");
+        if (delegateField == null || delegateField.isBlank()) {
+            if (byTarget.size() > 1) {
+                return ToolResponse.invalidParameter("delegateField",
+                    middleMan.getElementName() + " forwards to " + byTarget.size()
+                        + " different fields " + byTarget.keySet() + ". Removing them all at"
+                        + " once would be that many decisions taken as one, so name the one"
+                        + " to stop forwarding to in `delegateField`.");
+            }
+            delegateField = byTarget.keySet().iterator().next();
+        } else if (!byTarget.containsKey(delegateField)) {
+            return ToolResponse.invalidParameter("delegateField",
+                "no method forwards to '" + delegateField + "'. The fields that are forwarded"
+                    + " to are " + byTarget.keySet() + ".");
         }
-        String delegateField = targets.iterator().next();
+        List<MethodDeclaration> forwarders = byTarget.get(delegateField);
         String accessor = accessorName != null && !accessorName.isBlank()
             ? accessorName : delegateField;
 
@@ -207,8 +223,14 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
                 return ToolResponse.symbolNotFound(
                     "could not resolve " + forwarder.getName() + " to a method element.");
             }
-            calls.addAll(callsTo(service, method));
-            removed.put(forwarder.getName().getIdentifier(), delegateField);
+            // THE DELEGATE'S NAME, not the forwarder's. `TaskSet.addTask(t)` forwards to
+            // `queue.put(t)`, and the rewritten call must read `taskSet.queue().put(t)` —
+            // the first version emitted `.addTask(t)` on the queue, which does not exist.
+            // Both names were the same in the hand-written fixture, so nothing showed it;
+            // the fork slice found it on the first run, which is what that clause is for.
+            calls.addAll(callsTo(service, method, delegateMethodName(forwarder)));
+            removed.put(forwarder.getName().getIdentifier(),
+                delegateField + "." + delegateMethodName(forwarder));
             ownerRewrite.remove(forwarder, null);
         }
         if (!accessorExists) {
@@ -238,14 +260,14 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
                     // An unqualified call inside the middle man itself has no receiver to
                     // insert the accessor after; it is rewritten to reach the field directly.
                     rewrite.replace(node, rewrite.createStringPlaceholder(
-                        delegateField + "." + node.getName().getIdentifier() + "("
+                        delegateField + "." + call.delegateMethod() + "("
                             + argumentsOf(callerSource, node) + ")",
                         ASTNode.METHOD_INVOCATION), null);
                     continue;
                 }
                 rewrite.replace(node, rewrite.createStringPlaceholder(
                     textOf(callerSource, node.getExpression()) + "." + accessor + "()."
-                        + node.getName().getIdentifier() + "("
+                        + call.delegateMethod() + "("
                         + argumentsOf(callerSource, node) + ")",
                     ASTNode.METHOD_INVOCATION), null);
             }
@@ -268,7 +290,19 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
             "remove_middle_man", arguments);
     }
 
-    private record Call(ICompilationUnit unit, MethodInvocation node) {}
+    /** One call to a forwarder, and the delegate method it must become. */
+    private record Call(ICompilationUnit unit, MethodInvocation node, String delegateMethod) {}
+
+    /** The method a forwarder's single statement actually calls. */
+    private static String delegateMethodName(MethodDeclaration forwarder) {
+        Statement only = (Statement) forwarder.getBody().statements().get(0);
+        MethodInvocation call = only instanceof ReturnStatement r
+                && r.getExpression() instanceof MethodInvocation invocation ? invocation
+            : ((ExpressionStatement) only).getExpression() instanceof MethodInvocation e
+                ? e : null;
+        return call == null ? forwarder.getName().getIdentifier()
+            : call.getName().getIdentifier();
+    }
 
     /**
      * The field this method forwards to, or null when it is not a forwarder. A forwarder's
@@ -286,8 +320,20 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
             : only instanceof ExpressionStatement e
                 && e.getExpression() instanceof MethodInvocation invocation ? invocation
             : null;
-        if (call == null || !(call.getExpression() instanceof SimpleName receiver)
-                || !fields.contains(receiver.getIdentifier())) {
+        if (call == null) {
+            return null;
+        }
+        // `giant.getHealth()` AND `this.giant.setHealth(h)` are the same receiver, and the
+        // first version of this recognised only the first. The fork's own GiantController
+        // writes its getters one way and its setters the other — so half its forwarders
+        // were invisible and the class read as a partial middle man. Real code mixes the
+        // two forms; a tool that treats them differently is wrong rather than careful.
+        String receiverName = call.getExpression() instanceof SimpleName simple
+            ? simple.getIdentifier()
+            : call.getExpression() instanceof org.eclipse.jdt.core.dom.FieldAccess access
+                && access.getExpression() instanceof org.eclipse.jdt.core.dom.ThisExpression
+                    ? access.getName().getIdentifier() : null;
+        if (receiverName == null || !fields.contains(receiverName)) {
             return null;
         }
         List<?> parameters = method.parameters();
@@ -303,7 +349,7 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
                 return null;
             }
         }
-        return receiver.getIdentifier();
+        return receiverName;
     }
 
     private static String delegateTypeOf(TypeDeclaration type, String fieldName) {
@@ -337,7 +383,8 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
             node.getStartPosition() + node.getLength()).trim();
     }
 
-    private static List<Call> callsTo(IJdtService service, IMethod target) throws Exception {
+    private static List<Call> callsTo(IJdtService service, IMethod target,
+                                      String delegateMethod) throws Exception {
         Set<ICompilationUnit> units = new LinkedHashSet<>();
         for (org.eclipse.jdt.core.search.SearchMatch match
                 : org.jawata.mcp.refactoring.CompleteReferences.of(service, target)) {
@@ -357,7 +404,7 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool {
                 public boolean visit(MethodInvocation node) {
                     IMethodBinding binding = node.resolveMethodBinding();
                     if (binding != null && target.equals(binding.getJavaElement())) {
-                        calls.add(new Call(unit, node));
+                        calls.add(new Call(unit, node, delegateMethod));
                     }
                     return true;
                 }
