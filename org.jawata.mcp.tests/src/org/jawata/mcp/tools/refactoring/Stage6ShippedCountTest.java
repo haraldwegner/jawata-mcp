@@ -21,22 +21,26 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * THE COUNT, COMPUTED FROM THE SHIPPED SCHEMAS — the C3-to-C7 exit clause says
- * "recomputed from the shipped tool list, not asserted", and the difference is the whole
- * point: a number written into a test is a second copy of a fact, and the copy is what
- * goes stale.
+ * THE C9 PER-TOOL CONTRACT, checked against what the tools actually publish.
  *
- * <p>What is asserted here is the plan's own per-tool contract for the three doors Stage 6
- * touched — {@code extract} 11, {@code inline} 5, {@code move} 6. The C9 clause spells out
- * why a ceiling alone is not enough: it "would pass a tool that finished two kinds short".
- * So these are equalities, and each side of them is read from the tool.</p>
+ * <p>The plan's C9 clause names a kind count per tool and says why a ceiling would not do:
+ * it "would pass a tool that finished two kinds short". So the three numbers below are the
+ * CONTRACT, written into the plan before the work started, and this compares them against
+ * the schemas a client reads. The left side is computed; the right side is quoted.</p>
  *
- * <p><b>What this does NOT compute, said rather than left to assumption:</b> the sprint's
- * headline figure — 62 of Fowler's 66 — cannot be derived from the shipped list, because
- * nothing in the code maps a Fowler row to the kind that performs it. That mapping lives in
- * the spec's 90-row inventory, which is a document. Deriving the headline needs the table
- * to exist IN CODE, and building it is Stage 9's clause, not this one's. Reporting 62 from
- * here would be asserting a number twice, which is exactly what the clause forbids.</p>
+ * <h2>This is NOT the recomputation clause, and saying so is the point</h2>
+ *
+ * <p>The C3-to-C7 exit also asks for "the performed-refactoring count recomputed from the
+ * shipped tool list, not asserted" — the sprint's headline figure, 62 of Fowler's 66. A C6
+ * audit read this test's earlier javadoc as claiming to satisfy that, and the claim was too
+ * broad: three hand-written per-tool integers are a contract check, not a recomputation.</p>
+ *
+ * <p><b>The recomputation clause is UNMET, and the reason is structural rather than an
+ * omission.</b> Nothing in the code maps a Fowler row to the kind that performs it — that
+ * mapping lives in the spec's 90-row inventory, which is a document. Deriving 62 needs the
+ * table to exist IN CODE, and building it is Stage 9's clause. Until it does, any figure
+ * this test printed would be a second hand-written copy of the document, which is exactly
+ * what "not asserted" forbids.</p>
  */
 class Stage6ShippedCountTest {
 
@@ -64,7 +68,7 @@ class Stage6ShippedCountTest {
     }
 
     @Test
-    @DisplayName("the three Stage 6 doors publish exactly the kind counts the plan assigns")
+    @DisplayName("the three Stage 6 doors publish exactly the kind counts C9 contracts for")
     void theKindCountsAreWhatThePlanAssigns() {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Map<String, AbstractTool> doors = new LinkedHashMap<>();

@@ -363,7 +363,25 @@ public final class CureCatalog {
         "move kind=statements_to_callers",
         "the inverse, and unroutable for the inverse reason: nothing reports a method whose"
             + " first or last statement has stopped being every caller's business. That is"
-            + " a judgement about what the method is FOR, which no count reaches.");
+            + " a judgement about what the method is FOR, which no count reaches.",
+
+        // ROW 49's TWO KINDS. Both predate this sprint and both were CHANGED by it — the
+        // row landed as `replaceDuplicates` on kind=method and as the fold of
+        // `replace_duplicates` onto kind=replace_inline_code — so "it shipped earlier" is
+        // no longer a reason to leave them unexamined. A C6 audit found them shielded by
+        // an exemption keyed on first-shipped date, which is the wrong key.
+        "extract kind=method",
+        "no detector reports a statement range that should be a method. `long_method` names"
+            + " the enclosing method and routes to compose_method, which is this operation"
+            + " driven by a recipe — so the fix IS reachable from a finding, one level up."
+            + " What no finding can supply is the name and the RANGE, which are the whole"
+            + " input here.",
+        "extract kind=replace_inline_code",
+        "reachable from find_duplicate_code, which is a VERIFICATION tool rather than a"
+            + " smell detector — it takes a cloneGroupId that only that tool produces, and"
+            + " the cure table keys on smell kinds. So it is routed in practice and"
+            + " unroutable in this table's terms, which is worth stating rather than"
+            + " leaving as a blank that reads like an oversight.");
 
     /** Map.of caps at ten pairs; this table passed it at Stage 6. */
     private static Map<String, String> mapOf(String... pairs) {

@@ -130,7 +130,9 @@ public class MoveTool extends AbstractTool {
                         buried in a larger expression, and a method with no callers at
                         all — moving something to nobody is a deletion.
 
-            Common: updateReferences (default true). IMPORTANT: ZERO-BASED coordinates.
+            updateReferences (default true) applies to kind=class and kind=package ONLY.
+            For the other four, repointing the references IS the refactoring.
+            IMPORTANT: ZERO-BASED coordinates.
             Applies by default; returns filesModified/diff/undoChangeId/summary.
 
             Requires load_project to be called first.
@@ -157,7 +159,17 @@ public class MoveTool extends AbstractTool {
         properties.put("targetProjectKey", Map.of("type", "string", "description", "class: optional destination project (cross-project move)."));
         properties.put("packageName", Map.of("type", "string", "description", "package: the package to move/rename."));
         properties.put("newPackageName", Map.of("type", "string", "description", "package: the new package name."));
-        properties.put("updateReferences", Map.of("type", "boolean", "description", "Update all references (default true)."));
+        // NAMED PER KIND, because it is not common and calling it common was a lie a C6
+        // audit caught. Only class and package read it; the other four rewrite references
+        // as the whole point of what they do — a moved field whose readers are not
+        // repointed does not compile, so there is no meaningful `false` for them. The old
+        // text said "Common: updateReferences (default true)" at the front door and four
+        // kinds ignored it silently, which is worse than not offering it.
+        properties.put("updateReferences", Map.of("type", "boolean",
+            "description", "kind=class and kind=package ONLY: update all references "
+                + "(default true). The other kinds do not accept it — for them repointing "
+                + "the references IS the refactoring, and leaving them behind produces code "
+                + "that does not compile."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
             "class to move (kind=class; kind=package uses packageName)"));

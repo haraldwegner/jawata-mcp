@@ -30,6 +30,21 @@ import java.util.Set;
  * {@code CompileVerify} call in the other base; this is the design fix, because the gate
  * now hangs off the APPLY STEP rather than off a class hierarchy, and a new operation
  * cannot pick a base and thereby pick a weaker contract.</p>
+ *
+ * <h2>Where it is called, and where it deliberately is not</h2>
+ *
+ * <p>The heading above said "the one way to apply a change" when this class landed, and a
+ * C6 audit was right that the sentence was FALSE: two apply paths still called
+ * {@link ChangeEngine#perform} directly — the staged front door
+ * ({@code apply_refactoring}), which made staging the way around the gate, and
+ * {@link RecipeEngine}, so every composed operation applied unverified. Both were routed
+ * through here rather than the claim being softened; a claim about a single way in is
+ * worth nothing unless it is true, and the check for it is a reference count.</p>
+ *
+ * <p>{@code CopyClassTool} still calls the engine directly. That is deliberate and it is
+ * not a mutation of existing code: it writes ONE new compilation unit and changes nothing
+ * that anybody already compiles, so there is no before-state for introduced errors to be
+ * measured against. Every path that REWRITES existing source goes through here.</p>
  */
 public final class GatedApply {
 

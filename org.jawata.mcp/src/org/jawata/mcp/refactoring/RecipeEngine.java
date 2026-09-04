@@ -61,10 +61,33 @@ public final class RecipeEngine {
                 rollback(undos, service);
                 return new Result(false, List.of(), null, "step " + (i + 1) + ": could not build change");
             }
-            ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
+            // THROUGH THE GATE, PER STEP, since C6. This was a bare ChangeEngine.perform,
+            // so a recipe was the way around the compile verification every direct
+            // refactoring performs — and the recipe path is where it matters MOST, because
+            // an intermediate step's output is the next step's input. A step that produced
+            // code the next step then reparsed wrongly would compound silently. A C6 audit
+            // found this one round after the gate reached both refactoring bases, and it
+            // was right that GatedApply's "one way to apply a change" javadoc was false
+            // while this stood.
+            //
+            // MODE.REPORT, and the choice matters. A recipe's INTERMEDIATE state is often
+            // legitimately red — Replace Temp with Query extracts a method that nothing
+            // calls yet, and the temp it will replace is still there — so undoing on any
+            // introduced error would refuse every correct recipe. REPORT still undoes a
+            // SYNTAX error, which is the step writing something that is not Java, and no
+            // intermediate state excuses that. The FINAL state is verified by the whole
+            // composite the caller applies, and by each row's parity golden.
+            GatedApply.Result gated =
+                GatedApply.perform(change, service, GatedApply.Mode.REPORT);
+            ChangeEngine.ApplyOutcome outcome = gated.outcome();
             if (outcome.validationError() != null) {
                 rollback(undos, service);
                 return new Result(false, List.of(), null, "step " + (i + 1) + ": " + outcome.validationError());
+            }
+            if (gated.refused()) {
+                rollback(undos, service);
+                return new Result(false, List.of(), null, "step " + (i + 1)
+                    + " wrote code that does not parse: " + gated.failure());
             }
             if (outcome.undoChange() != null) {
                 undos.add(outcome.undoChange());

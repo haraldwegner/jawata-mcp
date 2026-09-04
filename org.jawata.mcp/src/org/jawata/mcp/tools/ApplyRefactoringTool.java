@@ -75,13 +75,36 @@ public class ApplyRefactoringTool extends AbstractTool {
                     + "Re-run the originating refactor tool with auto_apply: false to re-stage.");
         }
 
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), service);
+        // THROUGH THE GATE. This was a bare ChangeEngine.perform, which made the staged
+        // path the way around the compile verification the direct path performs — stage
+        // with auto_apply:false, commit here, and nothing checked the result. A C6 audit
+        // found it one round after the gate was added to both refactoring bases, and it
+        // was right that the gate's own "one way to apply a change" javadoc was false
+        // while this stood. The operations that hand-assemble composite changes are the
+        // ones it mattered most for: they wrap them in PreparedRefactoring, which answers
+        // OK to both LTK condition checks on purpose.
+        org.jawata.mcp.refactoring.GatedApply.Result gated =
+            org.jawata.mcp.refactoring.GatedApply.perform(entry.get().change(), service,
+                org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+        ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",
                 "apply_refactoring failed: " + outcome.validationError(),
                 "No files were modified. The staged change has been consumed — re-run the "
                     + "originating refactor tool to rebuild it.");
+        }
+        if (gated.refused()) {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("introducedErrors", gated.introduced());
+            detail.put("undone", gated.undone());
+            return ToolResponse.error(
+                "REFACTORING_BROKE_COMPILE",
+                "apply_refactoring " + gated.failure(),
+                "The staged change is wrong for this code shape. It has been consumed; do "
+                    + "not re-stage the identical call. The workspace was "
+                    + (gated.undone() ? "left as it was." : "NOT restored — check git status."),
+                detail);
         }
 
         String undoChangeId = null;

@@ -47,11 +47,16 @@ class EveryShippedKindIsRoutedOrExplainedTest {
      * those doors is guarded from the day it lands.
      */
     private static final List<String> PRE_EXISTING = List.of(
-        "extract kind=method", "extract kind=variable", "extract kind=constant",
+        "extract kind=variable", "extract kind=constant",
         "extract kind=interface", "extract kind=superclass",
-        "extract kind=replace_inline_code",
         "inline kind=method", "inline kind=variable",
         "move kind=class", "move kind=package");
+    // NOT EXEMPT, though both shipped before this sprint: Stage 6 CHANGED them, so
+    // "pre-existing" stops being true of them. Row 49 landed as the `replaceDuplicates`
+    // parameter on `extract kind=method` and folded `replace_duplicates` onto
+    // `extract kind=replace_inline_code`, and an exemption keyed on when a kind first
+    // shipped would have shielded exactly the kind the sprint touched. A C6 audit found
+    // that, and it was right: an exemption list has to be about what was NOT worked on.
 
     private static List<String> publishedKindsOf(org.jawata.mcp.tools.AbstractTool tool) {
         @SuppressWarnings("unchecked")
