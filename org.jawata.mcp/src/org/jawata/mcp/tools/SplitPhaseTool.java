@@ -72,7 +72,21 @@ import java.util.function.Supplier;
  *   <li><b>A boundary that is not between two top-level statements</b> of the method.</li>
  * </ul>
  */
-public class SplitPhaseTool extends AbstractApplyingRefactoringTool {
+public class SplitPhaseTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=split_phase}. */
+    @Override
+    public String kindName() {
+        return "split_phase";
+    }
+
+    /** Structural: it generates a carrier record and leaves two methods where one stood. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public SplitPhaseTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier, cache);

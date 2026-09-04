@@ -323,11 +323,22 @@ public class ExtractTool extends AbstractTool {
      * architect gate was silent on every one — the same defect the javadoc below already
      * described one level up, repeated one level down: a kind list cannot know when the
      * kinds change.</p>
+     *
+     * <p><b>Stage 6a (M3a): DERIVED, and the paragraph above is why.</b> Each delegate now declares
+     * for itself whether it is structural, and this asks them. The six names that used to be
+     * written here are gone — not because a hand-written list is inelegant, but because this
+     * one was measurably wrong: it named two while five had been added under it, and no
+     * amount of care at the door can notice a kind arriving in the map beside it.</p>
      */
     @Override
     public java.util.Set<String> structuralKinds() {
-        return java.util.Set.of("superclass", "interface", "class",
-            "combine_functions", "function_to_command", "split_phase");
+        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
+        delegates.forEach((kind, delegate) -> {
+            if (delegate instanceof KindDelegate d && d.isStructural()) {
+                structural.add(kind);
+            }
+        });
+        return java.util.Set.copyOf(structural);
     }
 
 }

@@ -61,7 +61,19 @@ import java.util.function.Supplier;
  * cannot turn into a method and says why, and that refusal reaches the caller through the
  * recipe's own error — a second, vaguer refusal invented here would be worse than none.</p>
  */
-public class ReplaceTempWithQueryTool extends AbstractRefactoringTool {
+public class ReplaceTempWithQueryTool extends AbstractRefactoringTool
+        implements ToolKindDelegate {
+
+    /**
+     * Reached as {@code extract kind=temp_to_query}. Note the base: this is the door's one
+     * COMPOSED kind, and it extends the sibling refactoring base rather than the applying one
+     * — which is why the door's map is typed to their common supertype.
+     */
+    @Override
+    public String kindName() {
+        return "temp_to_query";
+    }
+
 
     private final ExtractMethodTool extractMethod;
     private final InlineVariableTool inlineVariable;

@@ -45,7 +45,15 @@ import java.util.function.Supplier;
  * selected occurrence, and REFUSES a selection it cannot extract. The v2.12.1
  * compile-verify gate stays wrapped around the applied change.</p>
  */
-public class ExtractVariableTool extends AbstractApplyingRefactoringTool {
+public class ExtractVariableTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=variable}. */
+    @Override
+    public String kindName() {
+        return "variable";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ExtractVariableTool.class);
 

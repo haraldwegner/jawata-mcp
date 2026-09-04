@@ -42,7 +42,15 @@ import java.util.function.Supplier;
  * JDT engine analyzes exhaustively and REFUSES what it cannot transform,
  * with its reasons in the response.</p>
  */
-public class ExtractMethodTool extends AbstractApplyingRefactoringTool {
+public class ExtractMethodTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=method}; the tool's own name is not the kind. */
+    @Override
+    public String kindName() {
+        return "method";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ExtractMethodTool.class);
 

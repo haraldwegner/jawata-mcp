@@ -66,7 +66,24 @@ import java.util.function.Supplier;
  *       see is one left calling a function that no longer exists.</li>
  * </ul>
  */
-public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringTool {
+public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=function_to_command}. */
+    @Override
+    public String kindName() {
+        return "function_to_command";
+    }
+
+    /**
+     * Structural: {@code new ScoreCommand(x).execute()} is not the signature {@code score(x)}
+     * was, and every call site is rewritten into the new type.
+     */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public ReplaceFunctionWithCommandTool(Supplier<IJdtService> serviceSupplier,
                                           RefactoringChangeCache cache) {

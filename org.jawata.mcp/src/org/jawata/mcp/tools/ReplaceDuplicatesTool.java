@@ -38,7 +38,21 @@ import java.util.function.Supplier;
  * <p>All rewrites land in ONE Change performed atomically through the
  * Sprint 14b apply contract — one diff, one undo handle.</p>
  */
-public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool {
+public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /**
+     * Reached as {@code extract kind=replace_inline_code} — the clearest case for why a kind
+     * cannot be derived from a delegate's own name. Stage 1 folded the retired
+     * {@code replace_duplicates} tool onto Fowler's Replace Inline Code with Function Call,
+     * so the class name and the kind now record two different things: what it was, and what
+     * it is reached as.
+     */
+    @Override
+    public String kindName() {
+        return "replace_inline_code";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ReplaceDuplicatesTool.class);
 

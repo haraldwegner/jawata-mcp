@@ -61,7 +61,21 @@ import java.util.function.Supplier;
  * {@code createChange} <b>after both precondition checks return clean</b>. Every
  * precondition green and nothing to apply.</p>
  */
-public class ExtractClassTool extends AbstractApplyingRefactoringTool {
+public class ExtractClassTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=class}. */
+    @Override
+    public String kindName() {
+        return "class";
+    }
+
+    /** Structural: it introduces a TYPE and rewrites every access through it. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     private final RefactoringEngine engine = new JdtRefactoringEngine();
 

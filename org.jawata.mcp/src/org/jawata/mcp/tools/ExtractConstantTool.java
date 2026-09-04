@@ -45,7 +45,15 @@ import java.util.function.Supplier;
  * expression). The v2.12.1 compile-verify gate stays wrapped around the applied
  * change.</p>
  */
-public class ExtractConstantTool extends AbstractApplyingRefactoringTool {
+public class ExtractConstantTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=constant}. */
+    @Override
+    public String kindName() {
+        return "constant";
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ExtractConstantTool.class);
 

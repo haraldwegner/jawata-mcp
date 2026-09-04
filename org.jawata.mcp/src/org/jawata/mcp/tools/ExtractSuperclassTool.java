@@ -76,7 +76,21 @@ import java.util.function.Supplier;
  * <p>Both modes compose a single undo; the v2.12.1 compile-verify gate stays
  * wrapped around the applied change.</p>
  */
-public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool {
+public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=superclass}. */
+    @Override
+    public String kindName() {
+        return "superclass";
+    }
+
+    /** Structural: it reparents the class, which is a HIERARCHY change. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     private final RefactoringEngine engine = new JdtRefactoringEngine();
 

@@ -50,7 +50,21 @@ import java.util.function.Supplier;
  * decides). The v2.12.1 compile-verify gate stays wrapped around the applied
  * change.</p>
  */
-public class ExtractInterfaceTool extends AbstractApplyingRefactoringTool {
+public class ExtractInterfaceTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=interface}. */
+    @Override
+    public String kindName() {
+        return "interface";
+    }
+
+    /** Structural: it changes the type's HIERARCHY, which is what makes the gate fire. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(ExtractInterfaceTool.class);
 

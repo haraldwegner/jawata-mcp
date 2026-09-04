@@ -61,7 +61,21 @@ import java.util.function.Supplier;
  * {@code new Type(data).fn(rest)}. A call this tool cannot see is a call left broken, so
  * it refuses when a named function has references it cannot resolve to a plain invocation.</p>
  */
-public class CombineFunctionsIntoClassTool extends AbstractApplyingRefactoringTool {
+public class CombineFunctionsIntoClassTool extends AbstractApplyingRefactoringTool
+        implements ToolKindDelegate {
+
+    /** Reached as {@code extract kind=combine_functions}. */
+    @Override
+    public String kindName() {
+        return "combine_functions";
+    }
+
+    /** Structural: it introduces a TYPE and every call site becomes a call through it. */
+    @Override
+    public boolean isStructural() {
+        return true;
+    }
+
 
     public CombineFunctionsIntoClassTool(Supplier<IJdtService> serviceSupplier,
                                          RefactoringChangeCache cache) {
