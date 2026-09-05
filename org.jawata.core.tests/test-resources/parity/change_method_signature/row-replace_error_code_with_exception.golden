@@ -1,0 +1,52 @@
+=== ErrorCodeTargets.java ===
+package com.example;
+
+/**
+ * Fixtures for Fowler row 46, Replace Error Code with Exception, as
+ * {@code change_method_signature kind=replace_error_code_with_exception}.
+ *
+ * <p>The shape is a method that answers a sentinel for failure and whose callers do NOT test it —
+ * which is the bug the refactoring is for. The refusals are a caller that DOES test it, a method
+ * whose every return is the sentinel, and a value the method never returns.</p>
+ *
+ * <p>These names are deliberately unlike anything else in {@code simple-maven}: this project is
+ * shared and monotonically growing, and one row of this sprint broke a search-ranking test by
+ * choosing a name that sorted ahead of another test's subject, and another test by choosing a file
+ * name that already existed.</p>
+ */
+public class ErrorCodeTargets {
+
+    private final int[] readings = { 5, 9, 14 };
+
+    /** Answers a sentinel for failure, and its callers just carry on with it. */
+    public int readingAt(int slot) throws IllegalStateException {
+        if (slot < 0 || slot >= readings.length) {
+            throw new IllegalStateException("no reading at that slot");
+        }
+        return readings[slot];
+    }
+
+    /** Its caller COMPARES the result to the sentinel, so it is handling the failure today. */
+    public int checkedReadingAt(int slot) {
+        if (slot < 0 || slot >= readings.length) {
+            return -1;
+        }
+        return readings[slot];
+    }
+
+    /** Its caller holds the result in a local and compares THAT — the commoner shape. */
+    public int heldReadingAt(int slot) {
+        if (slot < 0 || slot >= readings.length) {
+            return -1;
+        }
+        return readings[slot];
+    }
+
+    /** EVERY return is the sentinel, so there is no success to distinguish a failure from. */
+    public int alwaysFails(int slot) {
+        if (slot < 0) {
+            return -1;
+        }
+        return -1;
+    }
+}
