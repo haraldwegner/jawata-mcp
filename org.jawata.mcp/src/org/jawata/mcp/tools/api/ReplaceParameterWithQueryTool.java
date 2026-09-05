@@ -14,10 +14,8 @@ import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.dom.ASTNode;
-import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.Expression;
-import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.NodeFinder;
@@ -218,8 +216,9 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
         // something no caller asked for — and it COMPILES, so no gate below this one can see it.
         // Purity is not decidable here, exactly as row 45 states for its own impurity rule, so
         // the check is the read count and the read's context rather than an analysis of the query.
-        List<SimpleName> reads = readsOf(decl, parameters.get(index).resolveBinding());
-        String repeated = whyReadingIsRepeated(reads, decl);
+        List<SimpleName> reads = ParameterSubstitution.readsOf(decl,
+            parameters.get(index).resolveBinding());
+        String repeated = ParameterSubstitution.whyReadingIsRepeated(reads, decl);
         if (repeated != null) {
             return Preparation.fail(ToolResponse.invalidParameter("parameter",
                 "'" + parameter + "' " + repeated + ", so the query would be evaluated more often"
@@ -353,65 +352,6 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
         return Preparation.of(ChangeEngine.fromFileEdits(label, byFile),
             label + " (" + rewritten + " read(s) in the body, " + calls.size()
                 + " call site(s) shortened)", extras);
-    }
-
-    /**
-     * WHY the substitution would evaluate the query more than once, or {@code null} if it would
-     * not. The answer is a phrase completing "'{@code x}' …", so the refusal names what was seen
-     * rather than restating the rule.
-     *
-     * <p>Two shapes are refused and they are the same defect counted differently. SEVERAL reads
-     * become several evaluations outright. ONE read inside a loop, a lambda or an anonymous class
-     * is evaluated once per iteration or per invocation, which the read count alone cannot see —
-     * and that second shape is not hypothetical: upstream's own instance of this refactoring's
-     * trigger has both at once.</p>
-     *
-     * <p>What it deliberately does NOT do is decide whether the query is pure. That is not
-     * decidable here, which is the same reasoning row 45 gives for refusing any call in a derived
-     * expression rather than trying to classify it. The cost is that a genuinely pure query read
-     * twice is refused too, and the refusal says which shape it saw so a reader can judge that.</p>
-     */
-    private static String whyReadingIsRepeated(List<SimpleName> reads, MethodDeclaration decl) {
-        if (reads.size() > 1) {
-            return "is read " + reads.size() + " times in the body";
-        }
-        if (reads.size() == 1) {
-            for (ASTNode n = reads.get(0); n != null && n != decl; n = n.getParent()) {
-                String shape = switch (n) {
-                    case org.eclipse.jdt.core.dom.WhileStatement ignored -> "a while loop";
-                    case org.eclipse.jdt.core.dom.ForStatement ignored -> "a for loop";
-                    case org.eclipse.jdt.core.dom.EnhancedForStatement ignored -> "a for-each loop";
-                    case org.eclipse.jdt.core.dom.DoStatement ignored -> "a do-while loop";
-                    case org.eclipse.jdt.core.dom.LambdaExpression ignored -> "a lambda";
-                    case org.eclipse.jdt.core.dom.AnonymousClassDeclaration ignored ->
-                        "an anonymous class";
-                    case null, default -> null;
-                };
-                if (shape != null) {
-                    return "is read inside " + shape + ", so its one read runs many times";
-                }
-            }
-        }
-        return null;
-    }
-
-    /** Every READ of that parameter in the body — its own declaration is not one. */
-    private static List<SimpleName> readsOf(MethodDeclaration decl, IVariableBinding parameter) {
-        List<SimpleName> found = new ArrayList<>();
-        if (parameter == null) {
-            return found;
-        }
-        decl.getBody().accept(new ASTVisitor() {
-            @Override
-            public boolean visit(SimpleName node) {
-                if (node.resolveBinding() instanceof IVariableBinding v
-                    && v.isEqualTo(parameter)) {
-                    found.add(node);
-                }
-                return true;
-            }
-        });
-        return found;
     }
 
     private static MethodInvocation invocationAt(CompilationUnit ast, int offset) {
