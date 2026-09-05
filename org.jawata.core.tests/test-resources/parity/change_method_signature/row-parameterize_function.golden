@@ -1,0 +1,62 @@
+=== ParameterizeTargets.java ===
+package com.example;
+
+/**
+ * Fixtures for Fowler row 27, Parameterize Function, as
+ * {@code change_method_signature kind=parameterize_function}.
+ *
+ * <p>The canonical shape is Fowler's own: two methods with the same body and different
+ * constants, which are one method nobody has written yet. The refusals are a constant that
+ * occurs nowhere, and one that occurs twice.</p>
+ *
+ * <p>A LITERAL needs no import wherever it is copied, which is what makes this row reach cases
+ * its neighbour row 55 cannot — there the copied expression names a type the caller may not
+ * have imported, and upstream's own candidate is refused for exactly that.</p>
+ *
+ * <p>No comment here quotes what the operation emits, and none of them spells a declaration a
+ * test anchors on — a fixture that contains the string its own test searches for makes the test
+ * pass on the comment, which two earlier stages of this sprint learned the hard way.</p>
+ */
+public class ParameterizeTargets {
+
+    /**
+     * One of the pair. Its caller lives in another file on purpose: the engine rewrites call
+     * sites across files, and a fixture whose only caller sits beside it would pass whether or
+     * not that happened.
+     * @param factor TODO
+     */
+    public double tenPercentRaise(double salary, double factor) {
+        return salary * factor;
+    }
+
+    /** The sibling this row exists to make redundant, differing only by the constant. */
+    public double fivePercentRaise(double salary) {
+        return salary * 1.05;
+    }
+
+    /** Writes the same constant twice, which is the ambiguity refusal rather than a target. */
+    public double doubleBump(double salary) {
+        return salary * 1.1 + 1.1;
+    }
+
+    /** Writes no constant at all, and is where the not-found refusal is exercised. */
+    public double unchanged(double salary) {
+        return salary;
+    }
+}
+=== ParameterizeDesk.java ===
+package com.example;
+
+/**
+ * A caller of {@link ParameterizeTargets} in ANOTHER FILE — the half of row 27 that a
+ * single-file fixture cannot show. The engine must rewrite this call to pass the constant the
+ * method stopped holding, and nothing here is pointed at by the test.
+ */
+public class ParameterizeDesk {
+
+    private final ParameterizeTargets targets = new ParameterizeTargets();
+
+    public double annualReview(double salary) {
+        return targets.tenPercentRaise(salary, 1.1);
+    }
+}
