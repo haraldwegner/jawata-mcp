@@ -8,6 +8,7 @@ import org.jawata.mcp.tools.api.ChangeSignatureTool;
 import org.jawata.mcp.tools.api.IntroduceParameterObjectTool;
 import org.jawata.mcp.tools.api.ParameterizeFunctionTool;
 import org.jawata.mcp.tools.api.PreserveWholeObjectTool;
+import org.jawata.mcp.tools.api.RemoveFlagArgumentTool;
 import org.jawata.mcp.tools.api.ReplaceExceptionWithPrecheckTool;
 import org.jawata.mcp.tools.api.ReplaceParameterWithQueryTool;
 import org.jawata.mcp.tools.api.ReplaceQueryWithParameterTool;
@@ -55,6 +56,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     private final ReplaceParameterWithQueryTool replaceParameterWithQuery;
     private final ReplaceExceptionWithPrecheckTool replaceExceptionWithPrecheck;
     private final PreserveWholeObjectTool preserveWholeObject;
+    private final RemoveFlagArgumentTool removeFlagArgument;
 
     public ChangeMethodSignatureTool(Supplier<IJdtService> serviceSupplier,
                                      RefactoringChangeCache changeCache) {
@@ -72,6 +74,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
         this.replaceExceptionWithPrecheck =
             new ReplaceExceptionWithPrecheckTool(serviceSupplier, changeCache);
         this.preserveWholeObject = new PreserveWholeObjectTool(serviceSupplier, changeCache);
+        this.removeFlagArgument = new RemoveFlagArgumentTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -99,7 +102,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
         for (KindDelegate delegate : List.of(changeSignature, introduceParameterObject,
             replaceQueryWithParameter, parameterizeFunction, separateQueryFromModifier,
             replaceParameterWithQuery, replaceExceptionWithPrecheck,
-            preserveWholeObject)) {
+            preserveWholeObject, removeFlagArgument)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -195,6 +198,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
                 replaceExceptionWithPrecheck.executeWithService(service, arguments);
             case "preserve_whole_object" ->
                 preserveWholeObject.executeWithService(service, arguments);
+            case "remove_flag_argument" ->
+                removeFlagArgument.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
