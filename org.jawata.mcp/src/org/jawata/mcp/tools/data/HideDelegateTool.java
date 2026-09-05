@@ -220,6 +220,19 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
         if (serverBinding == null) {
             return ToolResponse.symbolNotFound("could not resolve the server type.");
         }
+        // AN INTERFACE IS NOT A SERVER WE CAN QUIETLY ADD TO. Generating a concrete body
+        // there is invalid Java, and generating a `default` method instead would change the
+        // contract of every implementor — a design decision the caller has not been asked to
+        // make. Found on the fork corpus, not on a fixture: upstream's step-builder chains
+        // dispatch through step INTERFACES, so pointing at one produced "Abstract methods do
+        // not specify a body" and the pipeline undid it. A fixture would have had a class.
+        if (serverBinding.isInterface()) {
+            return ToolResponse.invalidParameter("position",
+                "the server " + serverBinding.getName() + " is an INTERFACE. A forwarder there"
+                    + " would have to be a default method, which changes the contract of every"
+                    + " implementor — a design decision this tool will not take for you.");
+        }
+
         IType server = serverType(service, serverBinding);
         if (server == null || server.getCompilationUnit() == null) {
             return ToolResponse.invalidParameter("position",
