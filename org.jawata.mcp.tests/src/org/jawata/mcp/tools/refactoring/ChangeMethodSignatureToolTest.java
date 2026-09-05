@@ -53,6 +53,10 @@ class ChangeMethodSignatureToolTest {
 
     private ObjectNode baseArgs() {
         ObjectNode args = objectMapper.createObjectNode();
+        // Stage 4 made this tool a routing door, so the operation it always performed is now
+        // reached as a KIND. The break is announced by the schema (kind is required) and is
+        // the same one `data` made one stage earlier.
+        args.put("kind", "change_signature");
         args.put("filePath", refactoringTargetFile.toString());
         args.put("line", 71);  // formatMessage method
         args.put("column", 18);
@@ -193,6 +197,7 @@ class ChangeMethodSignatureToolTest {
     @DisplayName("requires filePath parameter")
     void requiresFilePath() {
         ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "change_signature");
         args.put("line", 71);
         args.put("column", 18);
         args.put("newName", "renamed");
@@ -242,6 +247,7 @@ class ChangeMethodSignatureToolTest {
 
     private ObjectNode ctorArgs() {
         ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "change_signature");
         args.put("filePath", ctorFile().toString());
         args.put("line", 16);    // public InterfaceExtractTarget(String name)
         args.put("column", 20);  // inside the constructor name

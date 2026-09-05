@@ -170,6 +170,10 @@ class DeclaredShapeHonestyTest {
         // excluded while it published a single operation and no kind enum, and it now
         // publishes ten kinds through a routing table like any other door.
         doors.put("data", new DataTool(svc, cache));
+        // `change_method_signature` JOINS HERE AT STAGE 4, for the reason `data` joined at
+        // Stage 5: it was excluded while it published a single operation and no kind enum, and
+        // it now routes on `kind` like every other door.
+        doors.put("change_method_signature", new ChangeMethodSignatureTool(svc, cache));
         doors.put("refactoring", new RefactoringTool(svc, cache,
             new org.jawata.mcp.domain.NoOpAdvisor()));
         return doors;
@@ -253,7 +257,7 @@ class DeclaredShapeHonestyTest {
         // PROOF OF LIFE: doors that have not adopted the seam return an empty preamble and
         // are skipped, so a zero here would mean the loop looked at nothing.
         //
-        // EIGHT of the NINE doors this list holds. `hierarchy` is the only one that is not a
+        // NINE of the TEN doors this list holds. `hierarchy` is the only one that is not a
         // FrontDoor yet; `refactoring` IS one, because it took the description seam without
         // the routing seam.
         //
@@ -262,10 +266,10 @@ class DeclaredShapeHonestyTest {
         // still said seven, and "eight doors", after Stage 5 added `data` and moved both — so
         // a comment corrected once went stale the very next time its subject changed. The
         // assertion below is the only copy that anything checks.
-        assertEquals(8, checked,
-            "the eight doors in this list that have adopted the description seam must be"
-                + " checked. data adopted inside Stage 5 and is the eighth; hierarchy adopts"
-                + " inside Stage 7 and becomes a ninth when it does");
+        assertEquals(9, checked,
+            "the nine doors in this list that have adopted the description seam must be"
+                + " checked. data adopted inside Stage 5 and change_method_signature inside"
+                + " Stage 4; hierarchy adopts inside Stage 7 and becomes a tenth when it does");
     }
 
     /**
@@ -281,8 +285,8 @@ class DeclaredShapeHonestyTest {
     @DisplayName("the guard covers every parametric front door, not the three it started with")
     void theGuardsOwnCoverage() {
         Map<String, AbstractTool> doors = frontDoors();
-        assertEquals(9, doors.size(),
-            "nine parametric front doors are guarded; if the surface changed, change this"
+        assertEquals(10, doors.size(),
+            "ten parametric front doors are guarded; if the surface changed, change this"
                 + " number deliberately rather than letting the guard quietly shrink: "
                 + doors.keySet());
         doors.forEach((name, door) -> assertFalse(discriminatorValues(door).isEmpty(),
