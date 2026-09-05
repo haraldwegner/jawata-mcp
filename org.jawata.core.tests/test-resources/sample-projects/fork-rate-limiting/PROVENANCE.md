@@ -9,7 +9,7 @@ upstream fork. Nothing here was written, shaped, simplified or annotated by us.
 | Pinned commit | `22a34127d0b08449c24cf7e230c04a097deca2f3` |
 | Module | `rate-limiting-pattern` |
 | Path in the fork | `rate-limiting-pattern/src/main/java/com/iluwatar/rate/limiting/pattern/` |
-| Licence | MIT — the per-file headers are retained verbatim, as it requires |
+| Licence | MIT (the repository's) — **these files carry no per-file header, because upstream's do not** |
 | Copied | 2026-09-03, Sprint 28d-rescue Stage 3 |
 
 **The module is `rate-limiting-pattern`, not `rate-limiting`.** The fixture name drops the
