@@ -111,55 +111,80 @@ class IntroduceParameterObjectForkSliceTest {
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "the row must run on foreign code; got: " + r.getError());
 
-        String klass = read(NEW_CLASS + ".java");
-        assertTrue(klass.contains("String serviceName") && klass.contains("String operationName"),
-            "the created class carries a field per parameter of upstream's group:\n" + klass);
+        // EVERY assertion below runs, even after one fails, and that is deliberate rather than
+        // stylistic. JUnit stops a test at its first failure, so a mutation aimed at the last
+        // claim here is silently caught by the first one and reads as verified when nothing
+        // exercised it. Measured on this very file: mutation N (the class created nested) and
+        // mutation O (the group narrowed to one parameter) both stopped at the created-class
+        // assertion, and the call-site assertions they were aimed at were never reached until
+        // the earlier ones were neutralised by hand. Under assertAll a mutation names every
+        // claim it breaks in one run.
+        org.junit.jupiter.api.Assertions.assertAll(
 
-        String after = read("RateLimiter.java");
-        assertFalse(after.contains(UPSTREAM_DECL),
-            "upstream's two-parameter declaration must be gone:\n" + after);
-        assertTrue(after.contains(NEW_CLASS),
-            "and the interface method must now take the class:\n" + after);
+            () -> {
+                String klass = read(NEW_CLASS + ".java");
+                assertTrue(klass.contains("String serviceName")
+                        && klass.contains("String operationName"),
+                    "the created class carries a field per parameter of upstream's group:\n"
+                        + klass);
+            },
 
-        // THE THREE IMPLEMENTATIONS. Nothing pointed the tool at any of them; an engine that
-        // rewrote only the interface would leave three classes failing to implement it, and the
-        // compile gate would have refused the whole change — so each is asserted by what it
-        // BECAME rather than merely that it changed.
-        for (String impl : new String[] {
-            "FixedWindowRateLimiter.java", "TokenBucketRateLimiter.java",
-            "AdaptiveRateLimiter.java"}) {
-            String source = read(impl);
-            assertFalse(source.contains(UPSTREAM_DECL),
-                impl + " must no longer declare the two-parameter override:\n" + source);
-            assertTrue(source.contains("check(" + NEW_CLASS + " "),
-                impl + "'s override must DECLARE the new class as its parameter. Searching for"
-                    + " the bare name would pass on an import line, or on a nested class"
-                    + " reached through its outer type:\n" + source);
-        }
+            () -> {
+                String after = read("RateLimiter.java");
+                assertFalse(after.contains(UPSTREAM_DECL),
+                    "upstream's two-parameter declaration must be gone:\n" + after);
+                assertTrue(after.contains(NEW_CLASS),
+                    "and the interface method must now take the class:\n" + after);
+            },
 
-        // THE THREE CALL SITES, in three separate files, pinned as WHOLE EXPRESSIONS.
-        //
-        // `contains("new ServiceCall(")` was the first version and it is too weak to be worth
-        // keeping: MEASURED, it survives the class being created nested instead of top-level,
-        // so it says the object is constructed somewhere without saying WITH WHAT. Each
-        // expression below names both arguments in order, which is the claim that actually
-        // distinguishes a completed grouping from a half-done one.
-        assertTrue(read("FindCustomerRequest.java").contains(
-                "rateLimiter.check(new ServiceCall(getServiceName(), getOperationName()));"),
-            "the call in FindCustomerRequest must pass both of upstream's arguments through the"
-                + " new class:\n" + read("FindCustomerRequest.java"));
-        assertTrue(read("App.java").contains(
-                "limiter.check(new ServiceCall(service, operation));"),
-            "and so must App's, whose arguments are locals rather than calls:\n" + read("App.java"));
+            // THE THREE IMPLEMENTATIONS. Nothing pointed the tool at any of them; an engine
+            // that rewrote only the interface would leave three classes failing to implement
+            // it, and the compile gate would have refused the whole change — so each is
+            // asserted by what it BECAME rather than merely that it changed.
+            () -> {
+                for (String impl : new String[] {
+                    "FixedWindowRateLimiter.java", "TokenBucketRateLimiter.java",
+                    "AdaptiveRateLimiter.java"}) {
+                    String source = read(impl);
+                    assertFalse(source.contains(UPSTREAM_DECL),
+                        impl + " must no longer declare the two-parameter override:\n" + source);
+                    assertTrue(source.contains("check(" + NEW_CLASS + " "),
+                        impl + "'s override must DECLARE the new class as its parameter."
+                            + " Searching for the bare name would pass on an import line."
+                            + " (It would NOT catch the class being nested instead of"
+                            + " top-level: mutation N produced exactly that and this assertion"
+                            + " stayed green, because the engine imports the nested type rather"
+                            + " than qualifying it. Measured, not predicted — the prediction"
+                            + " was the opposite.):\n" + source);
+                }
+            },
 
-        // The richest of the three, and it is upstream's own shape rather than one we arranged:
-        // AdaptiveRateLimiter both IMPLEMENTS check and DELEGATES to another limiter, so it now
-        // receives the object and has to take it apart again to build the inner call. That reads
-        // the GENERATED GETTERS, so this one line also proves getters=true reached the engine.
-        assertTrue(read("AdaptiveRateLimiter.java").contains(
-                "limiter.check(new ServiceCall(parameterObject.getServiceName(), "
-                    + "parameterObject.getOperationName()));"),
-            "the delegating limiter must unpack the object it received and rebuild one for the"
-                + " limiter it forwards to:\n" + read("AdaptiveRateLimiter.java"));
+            // THE THREE CALL SITES, in three separate files, pinned as WHOLE EXPRESSIONS.
+            //
+            // `contains("new ServiceCall(")` was the first version and it is too weak to be
+            // worth keeping: MEASURED, it survives the class being created nested instead of
+            // top-level, so it says the object is constructed somewhere without saying WITH
+            // WHAT. Each expression below names both arguments in order, which is the claim
+            // that actually distinguishes a completed grouping from a half-done one.
+            () -> assertTrue(read("FindCustomerRequest.java").contains(
+                    "rateLimiter.check(new ServiceCall(getServiceName(), getOperationName()));"),
+                "the call in FindCustomerRequest must pass both of upstream's arguments through"
+                    + " the new class:\n" + read("FindCustomerRequest.java")),
+
+            () -> assertTrue(read("App.java").contains(
+                    "limiter.check(new ServiceCall(service, operation));"),
+                "and so must App's, whose arguments are locals rather than calls:\n"
+                    + read("App.java")),
+
+            // The richest of the three, and it is upstream's own shape rather than one we
+            // arranged: AdaptiveRateLimiter both IMPLEMENTS check and DELEGATES to another
+            // limiter, so it now receives the object and has to take it apart again to build
+            // the inner call. That reads the GENERATED GETTERS, so this one line also proves
+            // getters=true reached the engine.
+            () -> assertTrue(read("AdaptiveRateLimiter.java").contains(
+                    "limiter.check(new ServiceCall(parameterObject.getServiceName(), "
+                        + "parameterObject.getOperationName()));"),
+                "the delegating limiter must unpack the object it received and rebuild one for"
+                    + " the limiter it forwards to:\n" + read("AdaptiveRateLimiter.java")));
     }
 }
