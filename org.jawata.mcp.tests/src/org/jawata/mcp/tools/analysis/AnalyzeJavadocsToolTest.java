@@ -105,6 +105,16 @@ class AnalyzeJavadocsToolTest {
     private List<Map<String, Object>> validate() {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("kind", "validate");
+        // ASK FOR THE POPULATION — the same fix ingest() above already carries, and for the
+        // same reason. validate caps at maxResults (default 200) and fills the page in file
+        // order, so an unscoped call hands back a PAGE while every assertion below is about a
+        // POPULATION. On 2026-09-05 two Javadoc warnings added to an unrelated fixture —
+        // CqsCleanTargets, which sorts before JavadocTargets — pushed this file's findings off
+        // the end of the page, and the broken-@see assertion failed over a detector that was
+        // entirely correct. Raising the cap to a number no fixture project will reach is the
+        // sibling's answer; scoping to one file was the other candidate and was rejected
+        // because the no-getter-spam clause is a claim about the WHOLE project.
+        args.put("maxResults", 100000);
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), () -> String.valueOf(r.getError()));
         Map<String, Object> data = (Map<String, Object>) r.getData();

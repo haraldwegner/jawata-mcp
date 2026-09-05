@@ -103,6 +103,11 @@ class CqsDetectorTest {
         assertFalse(hits.contains("greeting"), "lazy initialisation must be excluded");
         assertFalse(hits.contains("deferrer"), "a write deferred into a lambda must be excluded");
         assertFalse(hits.contains("next"), "an imposed supertype signature must be excluded");
+        assertFalse(hits.contains("receipt"),
+            "a FACTORY must be excluded: every write is to a field of an object the method just"
+                + " MADE, which nothing outside can observe, so there is no command to separate"
+                + " out. This is the case the detector shipped wrong — IVariableBinding.isField()"
+                + " is true of ANY object's field, and nothing asked whose");
         assertFalse(hits.contains("count"), "a pure query must be excluded");
         assertFalse(hits.contains("bump"), "a pure command must be excluded");
     }

@@ -1,5 +1,10 @@
 package org.jawata.mcp.tools.smell;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
@@ -20,7 +25,6 @@ import org.eclipse.jdt.core.dom.ParenthesizedExpression;
 import org.eclipse.jdt.core.dom.PostfixExpression;
 import org.eclipse.jdt.core.dom.PrefixExpression;
 import org.eclipse.jdt.core.dom.PrimitiveType;
-import org.eclipse.jdt.core.dom.QualifiedName;
 import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SuperFieldAccess;
@@ -30,11 +34,6 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.domain.Finding;
-
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 
 /**
  * Sprint 28d — <b>Command Query Separation</b> (Meyer). A method should either
@@ -46,9 +45,18 @@ import java.util.Set;
  *
  * <h2>The decision rule</h2>
  * <p>A method is flagged when its return type is not {@code void} <em>and</em>
- * its body assigns to (or increments/decrements) at least one <em>field</em> —
- * the mutation signal JDT resolves exactly, via
- * {@link IVariableBinding#isField()}, with no purity analysis and no guessing.</p>
+ * its body assigns to (or increments/decrements) at least one field
+ * <em>of its own receiver</em> — an unqualified name, {@code this.f} or
+ * {@code super.f}. That is the mutation signal JDT resolves exactly, with no
+ * purity analysis and no guessing.</p>
+ *
+ * <p><b>"Of its own receiver" is load-bearing and was missing.</b>
+ * {@link IVariableBinding#isField()} is true of ANY object's field, so before
+ * 2026-09-05 a method that constructed an object and populated it —
+ * {@code made.total = count} — was reported as mutating state. It mutates
+ * nothing anyone can observe: until the {@code return}, nothing outside holds a
+ * reference to that object. Factories were therefore flagged as commands, and
+ * the finding named a cure with nothing to separate out. See {@code fieldOf}.</p>
  *
  * <h2>What is deliberately NOT treated as mutation</h2>
  * <p>A call to a method that happens to mutate its receiver
@@ -82,6 +90,11 @@ import java.util.Set;
  *       a supertype method ({@code Iterator#next}, {@code Map#put},
  *       {@code Queue#poll}). The shape is not the author's to change, so the
  *       cure cannot be applied where the finding points.</li>
+ *   <li><b>Factories</b> — every write targets a field of an object the method
+ *       constructed. It is a query that builds its answer with assignments, and
+ *       there is no command in it to separate out. This one is not an added
+ *       exclusion so much as the decision rule finally being applied: see the
+ *       receiver note above.</li>
  * </ul>
  *
  * <p>Two of these (previous-value, lazy-init) are intentionally slightly
@@ -94,11 +107,12 @@ public final class CqsDetector extends AbstractAstDetector {
 
     public CqsDetector() {
         super("cqs",
-            "Command Query Separation — a method that BOTH writes a field and returns a value, so a "
-                + "caller cannot ask without also causing; points to Separate Query from Modifier. "
-                + "Excludes fluent/`this` returns, the previous-value protocol (Map.put, "
-                + "getAndIncrement), lazy initialisation, writes deferred into a lambda, and methods "
-                + "whose signature is imposed by a supertype.",
+            "Command Query Separation — a method that BOTH writes a field OF ITS OWN RECEIVER and "
+                + "returns a value, so a caller cannot ask without also causing; points to Separate "
+                + "Query from Modifier. Excludes fluent/`this` returns, the previous-value protocol "
+                + "(Map.put, getAndIncrement), lazy initialisation, writes deferred into a lambda, "
+                + "methods whose signature is imposed by a supertype, and factories — a method that "
+                + "populates an object it just constructed mutates nothing anyone can observe.",
             0);
     }
 
@@ -393,7 +407,30 @@ public final class CqsDetector extends AbstractAstDetector {
         return false;
     }
 
-    /** The field a write TARGET refers to, unwrapping parens and array indexing; null if not a field. */
+    /**
+     * The field a write TARGET refers to, unwrapping parens and array indexing; null if the
+     * write is not on THIS RECEIVER'S state.
+     *
+     * <p><b>Whose field it is decides everything, and asking only whether it IS a field was a
+     * defect.</b> {@link IVariableBinding#isField()} is true of any object's field, so
+     * {@code made.recipient = to} — populating something the method just constructed — read as
+     * this method mutating state. It is the opposite: nothing outside holds a reference to that
+     * object until the {@code return}, so a factory answered as a command-and-query and the
+     * finding named a cure that has nothing to separate. Measured on this product before the
+     * fix, {@code CoverageService.finalizeArtifact} was reported as writing twenty fields, and
+     * its class declares four, none of them named in the finding.</p>
+     *
+     * <p>So the target must denote the receiver's own state, which in Java is exactly three
+     * spellings: an unqualified name (implicitly {@code this.f}, or a field inherited or held
+     * by an enclosing type — a local or parameter is filtered out by {@code isField()}),
+     * {@code this.f}, and {@code super.f}.</p>
+     *
+     * <p><b>What that gives up, stated rather than left to be discovered:</b> a static field of
+     * this same class written through its type name ({@code Foo.CACHE = x}) is a
+     * {@code QualifiedName} and is now missed. That is the direction this detector already
+     * declares for its other two approximations — a missed violation costs a reader nothing,
+     * a false one costs them the time to disprove it.</p>
+     */
     private static IVariableBinding fieldOf(Expression target) {
         Expression e = unwrap(target);
         while (e instanceof ArrayAccess access) {
@@ -401,8 +438,8 @@ public final class CqsDetector extends AbstractAstDetector {
         }
         IBinding binding = switch (e) {
             case SimpleName name -> name.resolveBinding();
-            case QualifiedName name -> name.resolveBinding();
-            case FieldAccess access -> access.resolveFieldBinding();
+            case FieldAccess access -> access.getExpression() instanceof ThisExpression
+                ? access.resolveFieldBinding() : null;
             case SuperFieldAccess access -> access.resolveFieldBinding();
             case null, default -> null;
         };

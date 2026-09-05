@@ -54,6 +54,29 @@ public class CqsCleanTargets {
     }
 
     /**
+     * Exclusion: a FACTORY, and this is the one the detector used to get wrong.
+     *
+     * <p>Every assignment here targets a field of an object this method just MADE. Nothing
+     * outside can observe it, because until the {@code return} nothing outside holds a
+     * reference to it — so this is a pure query that happens to build its answer with
+     * assignments rather than with a constructor. Splitting it is not merely unnecessary,
+     * it is impossible: there is no command to separate out.</p>
+     */
+    Receipt receipt(String to) {
+        Receipt made = new Receipt();
+        made.recipient = to;
+        made.total = count;
+        return made;
+    }
+
+    /** The object {@link #receipt(String)} builds. Its fields are ITS state, not ours. */
+    static final class Receipt {
+
+        String recipient;
+        int total;
+    }
+
+    /**
      * Exclusion: an imposed supertype signature. {@code Iterator#next} must both
      * advance and answer; Separate Query from Modifier is not available to an
      * implementor, because the shape is not theirs to change.
