@@ -7,6 +7,7 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.data.EncapsulateFieldTool;
 import org.jawata.mcp.tools.data.HideDelegateTool;
 import org.jawata.mcp.tools.data.IntroduceSpecialCaseTool;
+import org.jawata.mcp.tools.data.ReplacePrimitiveWithObjectTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +45,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     private final EncapsulateFieldTool encapsulateField;
     private final HideDelegateTool hideDelegate;
     private final IntroduceSpecialCaseTool specialCase;
+    private final ReplacePrimitiveWithObjectTool replacePrimitive;
 
     public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
@@ -55,6 +57,11 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         // Row 22. UNROUTED, deliberately and recorded: no shipped detector names Introduce
         // Special Case. See the delegate's own javadoc for the measurement.
         this.specialCase = new IntroduceSpecialCaseTool(serviceSupplier, changeCache);
+        // Row 54. ALSO UNROUTED, and measured rather than inherited from the plan: the plan
+        // credits it with primitive_obsession's findings, and that detector is a census of
+        // PARAMETER LISTS naming two other rows as the cure. See the delegate's javadoc, and
+        // CureCatalog.SHIPPED_BUT_UNROUTED, where the guard reads the reason.
+        this.replacePrimitive = new ReplacePrimitiveWithObjectTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -77,7 +84,8 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     @Override
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
-        for (KindDelegate delegate : List.of(encapsulateField, hideDelegate, specialCase)) {
+        for (KindDelegate delegate : List.of(encapsulateField, hideDelegate, specialCase,
+                replacePrimitive)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -155,6 +163,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
             case "encapsulate_field" -> encapsulateField.executeWithService(service, arguments);
             case "hide_delegate" -> hideDelegate.executeWithService(service, arguments);
             case "special_case" -> specialCase.executeWithService(service, arguments);
+            case "replace_primitive" -> replacePrimitive.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
