@@ -1,0 +1,76 @@
+package com.example;
+
+/**
+ * Fixtures for Fowler row 55, Replace Query with Parameter, as
+ * {@code change_method_signature kind=replace_query_with_parameter}.
+ *
+ * <h2>Why the query is class-qualified, which two wrong fixtures established</h2>
+ *
+ * <p>The engine COPIES the selected expression to every call site, verbatim. So the expression
+ * has to mean the same thing there, and that is the row's real precondition rather than a
+ * detail:</p>
+ *
+ * <ol>
+ *   <li>The first version asked a private collaborator, {@code thermostat.selectedTemperature()}.
+ *       The compile gate refused the change with <i>thermostat cannot be resolved</i> — a
+ *       private field is not reachable from the caller.</li>
+ *   <li>The second asked the object itself, {@code selectedTemperature()}. The gate refused
+ *       again with <i>The method selectedTemperature() is undefined for the type
+ *       QueryParameterDesk</i> — an implicit receiver rebinds to whoever holds the call.</li>
+ * </ol>
+ *
+ * <p>Both refusals were correct and the fixture was wrong both times. What survives is a query
+ * whose text is SELF-CONTAINED, which is Fowler's own globally-reachable thermostat: the caller
+ * can ask it because the expression names where to ask.</p>
+ *
+ * <p>No comment here quotes what the operation emits, and none of them spells a declaration a
+ * test anchors on — a fixture that contains the string its own test searches for makes the test
+ * pass on the comment, which two earlier stages of this sprint learned the hard way.</p>
+ */
+public class QueryParameterTargets {
+
+    private static int setting = 20;
+
+    /** The question the methods below ask, reachable from anywhere that can name this class. */
+    public static int defaultTemperature() {
+        return setting;
+    }
+
+    /** A reading of this object alone, which no other object can take. */
+    public int localReading() {
+        return setting + 1;
+    }
+
+    /**
+     * Asks for the setting, then works from the answer.
+     *
+     * <p>Its caller lives in another file on purpose: the engine rewrites call sites across
+     * files, and a fixture whose only caller sits beside it would pass whether or not that
+     * happened.</p>
+     */
+    public int heatingPlan(int outsideTemp) {
+        int wanted = QueryParameterTargets.defaultTemperature();
+        return (wanted - outsideTemp) * 2;
+    }
+
+    /** Asks the same question twice, which is the ambiguity refusal rather than a target. */
+    public int twoQuestions(int outsideTemp) {
+        int low = QueryParameterTargets.defaultTemperature() - 1;
+        int high = QueryParameterTargets.defaultTemperature() + 1;
+        return high - low + outsideTemp;
+    }
+
+    /** Asks nothing at all, and is where the not-found refusal is exercised. */
+    public int plainArithmetic(int outsideTemp) {
+        return outsideTemp * 3;
+    }
+
+    /**
+     * Asks with NO receiver written, which this row refuses: copied into a caller the call
+     * would rebind to that caller, and case 2 above is what happens when it is not refused.
+     */
+    public int asksItself(int outsideTemp) {
+        int wanted = localReading();
+        return wanted - outsideTemp;
+    }
+}
