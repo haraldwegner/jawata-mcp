@@ -57,8 +57,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * dependent. Removing a setter rewrites the file — its constructor callers become direct
  * assignments and a modifier appears on a field — so the second setter is no longer where the
  * first step saw it, and the generation at the end must run against the file all the removals
- * left. Every step is therefore addressed BY NAME and resolved when it runs, and the whole
- * sequence reverts through one undo handle.</p>
+ * left. Every step is therefore re-resolved when it runs, and the whole sequence reverts
+ * through one undo handle.</p>
+ *
+ * <p><b>By IDENTITY, not by name.</b> Steps carry
+ * {@link org.eclipse.jdt.core.IJavaElement#getHandleIdentifier()} for both the class and the
+ * setter. The first version carried simple names, which are position-independent — the property
+ * a step needs — but not unique: two sibling member classes may share a simple name, and two
+ * 1-arg setters may share theirs, so the search that resolved them returned whichever came
+ * first. A handle has both properties, and one spelling besides.</p>
  *
  * <p>Row 10 next door is a recipe for a different reason (JDT's self-encapsulate engine
  * rewrites references across FILES, so each step must see the previous one's world), and row

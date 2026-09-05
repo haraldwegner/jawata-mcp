@@ -9,24 +9,21 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.NodeFinder;
 
 /**
- * Find a type declared in one file by its simple name — over the DOM tree or over the Java
- * model, with one statement about ambiguity that is actually true.
+ * Join a {@link IType} the caller already holds to its declaration in a parse of its own file.
  *
- * <h2>What this replaces</h2>
+ * <h2>What this replaces, and the two wrong answers it went through</h2>
  *
  * <p>Every generator in {@code tools.codegen} carried its own five-line
  * {@code findTypeDeclaration} over {@link CompilationUnit#types()}, which is the file's
- * TOP-LEVEL types only — so none of them could write into a member class, one of the
- * commonest shapes there is. Sprint 28d-rescue Stage 5 closed that as a class over an
- * enumerated population, and then immediately created the same helper TWICE: a DOM one in
- * {@code codegen} and a Java-model one in {@code data}, in packages that cannot see each
- * other, so a row in {@code data} that needed the DOM version hand-rolled a third. Five
- * copies became two, one level up, in the commit that closed the five. Both live here now.</p>
+ * TOP-LEVEL types only — so none of them could write into a member class, one of the commonest
+ * shapes there is. Sprint 28d-rescue Stage 5 closed that as a class, and then immediately
+ * created the same helper TWICE: a DOM one in {@code codegen} and a Java-model one in
+ * {@code data}, in packages that cannot see each other, so a row in {@code data} needing the
+ * DOM version hand-rolled a third. Five copies became two, one level up.</p>
  *
- * <h2>A SIMPLE NAME CAN REPEAT IN ONE FILE, and the earlier helpers said it could not</h2>
- *
- * <p>Both replaced javadocs justified taking the first hit with the claim that a simple name
- * cannot occur twice in a compilation unit. That is false, and it compiles:</p>
+ * <p>Both of those, and the merged class that replaced them, still joined on the SIMPLE NAME
+ * and took the first hit — with a javadoc claiming a simple name cannot occur twice in one
+ * compilation unit. That claim is false and it compiles:</p>
  *
  * <pre>{@code
  * public class Outer {
@@ -36,19 +33,23 @@ import org.eclipse.jdt.core.dom.NodeFinder;
  * class Sibling { static class Dup { } }
  * }</pre>
  *
- * <p>Two member types in different enclosing types may share a simple name, and so may two
- * members of different types. So the first hit is NOT the only hit. These lookups answer "a
- * type of this name somewhere in this file", which is the right question only when the name is
- * already known to be unique, such as a top-level type or a caller-supplied target the caller
- * then re-checks.</p>
+ * <p>So the second version documented the hazard and left its callers inside it, which is the
+ * shape an audit refused: two member types in different enclosing types may share a simple
+ * name, and the search returns whichever is declared first.</p>
+ *
+ * <h2>The answer is not to warn about the name — it is to stop taking one</h2>
+ *
+ * <p>Every caller HELD the element and handed over its name. This class takes the element, so
+ * there is nothing left to be ambiguous about, and the by-name entry points are deleted rather
+ * than deprecated: an entry point that cannot be spelled cannot be misused. The same join, on
+ * a method's range rather than a type's, is what {@code RemoveSettingMethodTool} uses, and the
+ * recipes in {@code tools.data} carry {@code getHandleIdentifier()} between steps for the same
+ * reason.</p>
  *
  * <p><b>A MEMBER is a different question and this class deliberately does not answer it.</b>
  * "The method or field called X" needs the declaring type, and a caller that holds one holds
- * something better than a name: the element itself, whose source range names the exact
- * declaration. {@code RemoveSettingMethodTool} does that — {@code NodeFinder} over the
- * method's own range, then its enclosing type's body declarations for everything else. A
- * by-name member lookup here was written and then deleted unused, because offering one invites
- * the very first-match ambiguity the paragraph above is about.</p>
+ * the element itself. A by-name member lookup here was written and then deleted unused, because
+ * offering one invites exactly the ambiguity above.</p>
  */
 public final class TypeLookup {
 

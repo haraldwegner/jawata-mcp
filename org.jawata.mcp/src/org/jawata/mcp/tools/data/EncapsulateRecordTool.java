@@ -48,14 +48,21 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * cross-file rewriting of every direct access, and the visibility change are JDT's
  * self-encapsulate engine doing what it already does.</p>
  *
- * <h2>Every step addresses its field BY NAME, resolved when the step runs</h2>
+ * <h2>Every step re-resolves its target when it runs, and by IDENTITY rather than by name</h2>
  *
  * <p>A recipe's steps are decided before the first one runs, and encapsulating a field
  * INSERTS two accessor methods into the same file — so a position captured up front points at
- * different text by the second step. The field names are captured instead, and each step
- * re-resolves its {@link IField} against the type as it stands. Row 58 recorded this hazard
- * first; this row is its second instance, on a different axis (a member list rather than a
- * statement's line).</p>
+ * different text by the second step. Row 58 recorded that hazard first; this row is its second
+ * instance, on a different axis (a member list rather than a statement's line).</p>
+ *
+ * <p><b>The first answer to it was a NAME, and a name is not an identity.</b> Each step carried
+ * the type's simple name and re-resolved it by searching the file depth-first, which returns
+ * whichever type of that name is declared first — so a request about a member class whose
+ * simple name a sibling shares was answered by rewriting the sibling, at every step. Steps now
+ * carry {@link org.eclipse.jdt.core.IJavaElement#getHandleIdentifier()}: position-independent,
+ * which is the property the name key was chosen for, and unique, which is the property it never
+ * had. The FIELD stays a name, because a field name is unique inside the type the handle just
+ * identified.</p>
  *
  * <h2>What it refuses, and what it merely SKIPS</h2>
  *
