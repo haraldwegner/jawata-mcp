@@ -117,8 +117,19 @@ import com.fasterxml.jackson.databind.JsonNode;
  * every message reads "Consider Replace Type Code with Class / Parameter Object". Both named
  * cures are other rows — the first ships already, the second is row 21 in Stage 4. Nothing in
  * that population is about a field with behaviour, which is this row's subject, so no shipped
- * finding names it. The reason is written into {@code CureCatalog.SHIPPED_BUT_UNROUTED}, where
- * the guard reads it.</p>
+ * finding names it.</p>
+ *
+ * <p><b>The reason lives HERE and in the plan, and NOT in
+ * {@code CureCatalog.SHIPPED_BUT_UNROUTED} — which is a weaker place than it sounds, so it is
+ * stated rather than left to be discovered.</b> {@code EveryShippedKindIsRoutedOrExplainedTest}
+ * reads that table over four doors — {@code apply_cleanup}, {@code extract}, {@code inline},
+ * {@code move} — and {@code data} is not one of them, so an entry there would today be read by
+ * nothing. Widening the guard is blocked on a real question rather than on effort: three smells
+ * route to the BARE front-door name {@code "data"}, which named one operation when it was
+ * written and now names four, so the guard would read every {@code data} kind as routed — false
+ * for this row, for {@code hide_delegate} and for {@code special_case} alike. Qualifying those
+ * three routes is Stage 5's merge work, per the plan's rule that {@code CureCatalog} has one
+ * owner and is batched at the merge.</p>
  */
 public class ReplacePrimitiveWithObjectTool extends AbstractRefactoringTool
         implements ToolKindDelegate {
