@@ -54,8 +54,17 @@ public final class RecipeEngine {
             try {
                 change = steps.get(i).build();
             } catch (Exception e) {
+                // THE CAUSE IS KEPT, and both halves earned their place in Stage 5. A step's
+                // failure used to reach the caller as getMessage() alone: no type, no stack,
+                // nothing logged. A recipe's steps run inside engines nobody here wrote, so
+                // that message is often all JDT says — and on its own a line like "X is not
+                // an instance of Y" names neither which engine raised it nor where. The type
+                // goes into the message a caller reads; the stack goes to the log, which is
+                // where a diagnosis has to start.
+                log.warn("recipe '{}' step {} failed", name, i + 1, e);
                 rollback(undos, service);
-                return new Result(false, List.of(), null, "step " + (i + 1) + ": " + e.getMessage());
+                return new Result(false, List.of(), null, "step " + (i + 1) + ": "
+                    + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             if (change == null) {
                 rollback(undos, service);

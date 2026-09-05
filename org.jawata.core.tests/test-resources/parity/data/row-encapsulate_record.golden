@@ -1,0 +1,83 @@
+=== EncapsulateRecordTargets.java ===
+package com.example;
+
+/**
+ * Fixtures for Fowler row 10, Encapsulate Record, as data kind=encapsulate_record.
+ *
+ * <p>The canonical class hands two fields out by name and also declares a constant, so one
+ * run exercises the encapsulation and the skip in the same call. The second class is already
+ * in the state the operation produces, which is the refusal.</p>
+ *
+ * <p>The nested shape is deliberate: the composed rows re-resolve their target between steps,
+ * and a member class is where a name-keyed lookup goes wrong.</p>
+ */
+public class EncapsulateRecordTargets {
+
+    /** Two public fields and a constant beside them. */
+    public static class Coordinate {
+
+        public static final String DATUM = "WGS84";
+
+        private double latitude;
+        private double longitude;
+
+        public Coordinate(double latitude, double longitude) {
+            this.setLatitude(latitude);
+            this.setLongitude(longitude);
+        }
+
+        public double getLongitude() {
+			return longitude;
+		}
+
+		public void setLongitude(double longitude) {
+			this.longitude = longitude;
+		}
+
+		public double getLatitude() {
+			return latitude;
+		}
+
+		public void setLatitude(double latitude) {
+			this.latitude = latitude;
+		}
+
+		public double distanceFromOrigin() {
+            return Math.sqrt(getLatitude() * getLatitude() + getLongitude() * getLongitude());
+        }
+    }
+
+    /** Already owns its state, so there is nothing here for this operation to do. */
+    public static class Sealed {
+
+        private int reading;
+
+        public Sealed(int reading) {
+            this.reading = reading;
+        }
+
+        public int getReading() {
+            return reading;
+        }
+    }
+}
+=== EncapsulateRecordUser.java ===
+package com.example;
+
+/**
+ * Reads a bare record's fields from another file.
+ *
+ * <p>Encapsulating a field rewrites every direct access to it, and the accesses that matter
+ * are the ones the caller never pointed the tool at. A reader in the same file would not show
+ * that.</p>
+ */
+public class EncapsulateRecordUser {
+
+    public String describe(EncapsulateRecordTargets.Coordinate where) {
+        return "at " + where.getLatitude() + "/" + where.getLongitude();
+    }
+
+    public double northOf(EncapsulateRecordTargets.Coordinate where) {
+        return where.getLatitude();
+    }
+}

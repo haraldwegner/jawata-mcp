@@ -145,13 +145,8 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool implements Too
                 ? setterName
                 : defaultSetterName(fieldName);
 
-            org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
-            SelfEncapsulateFieldRefactoring refactoring = new SelfEncapsulateFieldRefactoring(field);
-            refactoring.setGetterName(resolvedGetter);
-            refactoring.setSetterName(resolvedSetter);
-            refactoring.setVisibility(visibilityFlag);
-            refactoring.setEncapsulateDeclaringClass(true);
-            refactoring.setGenerateJavadoc(generateJavadoc);
+            SelfEncapsulateFieldRefactoring refactoring = refactoringFor(field, resolvedGetter,
+                resolvedSetter, visibilityFlag, generateJavadoc);
 
             // The operation name stays "data" — it is what the undo handle, the change cache
             // and the mechanical-change journal have always recorded, and renaming it here
@@ -163,6 +158,36 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool implements Too
                 .warn("data kind=encapsulate_field failed: {}", e.toString(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * The configured refactoring for ONE field — the single construction of it.
+     *
+     * <p>Public because row 10 ({@code data kind=encapsulate_record}) is this operation run
+     * over every public field of a class, and a recipe step owes the engine a {@code Change}
+     * rather than a response. Sharing the construction rather than repeating it is what keeps
+     * a change to the defaults, the visibility or {@code setEncapsulateDeclaringClass} from
+     * reaching one caller and missing the other.</p>
+     *
+     * <p>{@code getterName}/{@code setterName} may be null or blank, and then the same
+     * defaults the direct path uses apply — {@code is} for a boolean, {@code get} otherwise.
+     * </p>
+     */
+    public static SelfEncapsulateFieldRefactoring refactoringFor(IField field, String getterName,
+                                                                 String setterName,
+                                                                 int visibility,
+                                                                 boolean generateJavadoc)
+            throws Exception {
+        org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
+        SelfEncapsulateFieldRefactoring refactoring = new SelfEncapsulateFieldRefactoring(field);
+        refactoring.setGetterName(getterName != null && !getterName.isBlank()
+            ? getterName : defaultGetterName(field, field.getElementName()));
+        refactoring.setSetterName(setterName != null && !setterName.isBlank()
+            ? setterName : defaultSetterName(field.getElementName()));
+        refactoring.setVisibility(visibility);
+        refactoring.setEncapsulateDeclaringClass(true);
+        refactoring.setGenerateJavadoc(generateJavadoc);
+        return refactoring;
     }
 
     private static int parseVisibility(String s) {

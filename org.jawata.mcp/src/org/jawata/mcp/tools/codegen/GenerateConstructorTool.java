@@ -312,14 +312,9 @@ public class GenerateConstructorTool extends AbstractTool
         return null;
     }
 
+    /** Top-level OR nested — see {@link TypeDeclarations} for the defect this closed. */
     private static AbstractTypeDeclaration findTypeDeclaration(CompilationUnit unit, String simpleName) {
-        for (Object t : unit.types()) {
-            if (t instanceof AbstractTypeDeclaration decl
-                && simpleName.equals(decl.getName().getIdentifier())) {
-                return decl;
-            }
-        }
-        return null;
+        return TypeDeclarations.find(unit, simpleName);
     }
 
     private static void applyVisibility(AST ast, MethodDeclaration method, String visibility) {

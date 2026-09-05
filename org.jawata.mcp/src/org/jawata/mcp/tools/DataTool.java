@@ -5,9 +5,12 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.data.EncapsulateCollectionTool;
+import org.jawata.mcp.tools.data.ChangeReferenceToValueTool;
 import org.jawata.mcp.tools.data.EncapsulateFieldTool;
+import org.jawata.mcp.tools.data.EncapsulateRecordTool;
 import org.jawata.mcp.tools.data.HideDelegateTool;
 import org.jawata.mcp.tools.data.IntroduceSpecialCaseTool;
+import org.jawata.mcp.tools.data.RemoveSettingMethodTool;
 import org.jawata.mcp.tools.data.ReplaceDerivedVariableWithQueryTool;
 import org.jawata.mcp.tools.data.ReplacePrimitiveWithObjectTool;
 import org.jawata.mcp.tools.data.SplitVariableTool;
@@ -52,6 +55,9 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     private final EncapsulateCollectionTool encapsulateCollection;
     private final SplitVariableTool splitVariable;
     private final ReplaceDerivedVariableWithQueryTool replaceDerived;
+    private final RemoveSettingMethodTool removeSettingMethod;
+    private final EncapsulateRecordTool encapsulateRecord;
+    private final ChangeReferenceToValueTool referenceToValue;
 
     public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
@@ -81,6 +87,21 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         // route the tier model would downgrade if a second were bolted on.
         this.replaceDerived = new ReplaceDerivedVariableWithQueryTool(serviceSupplier,
             changeCache);
+        // Row 37, and the first of this stage's three COMPOSED rows. UNROUTED: no detector
+        // reports a field that should be settled at construction. Its own javadoc records two
+        // measured departures from the plan's recipe — add_final cannot make a FIELD final,
+        // and the delete atom would put a second engine on the file this row is rewriting.
+        this.removeSettingMethod = new RemoveSettingMethodTool(serviceSupplier, changeCache);
+        // Row 10, and this stage's first TRUE recipe: encapsulate_field once per public
+        // field, through RecipeEngine, so the set reverts through one handle. UNROUTED —
+        // find_modernization(class_to_record) reports the adjacent shape (a data class that
+        // could BE a record) rather than this one.
+        this.encapsulateRecord = new EncapsulateRecordTool(serviceSupplier, changeCache);
+        // Row 2, and the last of the three. UNROUTED, and the plan says so in its own C2
+        // clause: seven of the eight composed rows are callable from a finding and this one
+        // is not, because nothing reports "this class should be a value" — that is a
+        // modelling decision about the domain rather than a shape in the code.
+        this.referenceToValue = new ChangeReferenceToValueTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -104,7 +125,8 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
         for (KindDelegate delegate : List.of(encapsulateField, hideDelegate, specialCase,
-                replacePrimitive, encapsulateCollection, splitVariable, replaceDerived)) {
+                replacePrimitive, encapsulateCollection, splitVariable, replaceDerived,
+                removeSettingMethod, encapsulateRecord, referenceToValue)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -188,6 +210,12 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
             case "split_variable" -> splitVariable.executeWithService(service, arguments);
             case "replace_derived_variable" ->
                 replaceDerived.executeWithService(service, arguments);
+            case "remove_setting_method" ->
+                removeSettingMethod.executeWithService(service, arguments);
+            case "encapsulate_record" ->
+                encapsulateRecord.executeWithService(service, arguments);
+            case "reference_to_value" ->
+                referenceToValue.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.

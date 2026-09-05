@@ -25,8 +25,60 @@ public final class HeadlessJdtConfig {
 
     private static volatile boolean initialized;
 
-    /** Idempotent; cheap enough to call before any manipulation refactoring. */
+    /**
+     * Idempotent; cheap enough to call before any manipulation refactoring.
+     *
+     * <h2>The latch does not cover the template store, and that is the point</h2>
+     *
+     * <p>Everything below the latch is installed on the STATIC side of JDT and survives for
+     * the life of the process. The code-template store does not: it is built against
+     * {@code InstanceScope}, which belongs to the Eclipse WORKSPACE, and the workspace can be
+     * torn down and rebuilt under a process that has already initialised. When that happens
+     * the latch still says "done" while the store is gone — so
+     * {@code CodeGeneration.getSetterMethodBodyContent} returns null again and
+     * {@code SelfEncapsulateFieldRefactoring} takes the fallback path into the upstream bug
+     * this class exists to make unreachable. The store is therefore checked on EVERY call,
+     * against its own state rather than against a memory of having installed it.</p>
+     *
+     * <p>Measured in Sprint 28d-rescue Stage 5. {@code data kind=encapsulate_record} runs
+     * self-encapsulate once per public field, so it was the first operation to reach this
+     * path twice in one process across two workspaces. The symptom is the exact one the
+     * store's own comment below predicts — <em>Assignment is not an instance of
+     * Statement</em>, from {@code createSetterMethod} — and it appears only when something
+     * else built a workspace first, which is why a class that passes alone fails in company.
+     * </p>
+     */
     public static void ensureInitialized() {
+        installStatics();
+        // NOT behind the latch, and NOT a null check. What matters is whether the store
+        // ANSWERS: a store object can outlive the workspace whose preference node backs it,
+        // and a present-but-mute store takes JDT down the same fallback as an absent one.
+        // The condition is therefore the property the caller depends on — that the setter
+        // stub resolves — rather than a proxy for it.
+        if (!setterTemplateResolves()) {
+            synchronized (HeadlessJdtConfig.class) {
+                if (!setterTemplateResolves()) {
+                    org.slf4j.LoggerFactory.getLogger(HeadlessJdtConfig.class).warn(
+                        "JDT code-template store does not answer for the setter stub"
+                            + " (store={}); reinstalling. Without it"
+                            + " SelfEncapsulateFieldRefactoring takes its fallback path into"
+                            + " an upstream bug.",
+                        JavaManipulation.getCodeTemplateStore() == null ? "absent" : "present");
+                    installCodeTemplates();
+                }
+            }
+        }
+    }
+
+    /** Whether the store is there AND still hands back the template JDT will ask for. */
+    private static boolean setterTemplateResolves() {
+        TemplateStoreCore store = JavaManipulation.getCodeTemplateStore();
+        return store != null
+            && store.findTemplateById(CodeTemplateContextType.SETTERSTUB_ID) != null;
+    }
+
+    /** The process-lifetime half: preference ids, defaults, and the member-order cache. */
+    private static void installStatics() {
         if (initialized) return;
         synchronized (HeadlessJdtConfig.class) {
             if (initialized) return;
@@ -87,13 +139,24 @@ public final class HeadlessJdtConfig {
             // statement rules have, and both tools carry parity goldens that would need
             // re-recording with a divergence entry. They are outside Stage 3 and were
             // left rather than swept in at the end of it.
-            // Code-template store: without one, CodeGeneration.get*BodyContent
-            // returns null and SelfEncapsulateFieldRefactoring's fallback path
-            // hits an upstream bug (a bare Assignment added where a Statement
-            // is required). Registering the IDE-default stub bodies makes the
-            // template path work and the fallback unreachable.
-            if (JavaManipulation.getCodeTemplateStore() == null) {
-                ContextTypeRegistry registry = new ContextTypeRegistry();
+            initialized = true;
+        }
+    }
+
+    /**
+     * The WORKSPACE-lifetime half.
+     *
+     * <p>Without a store, {@code CodeGeneration.get*BodyContent} returns null and
+     * {@code SelfEncapsulateFieldRefactoring}'s fallback path hits an upstream bug — a bare
+     * {@code Assignment} added where a {@code Statement} is required. Registering the
+     * IDE-default stub bodies makes the template path work and the fallback unreachable.</p>
+     *
+     * <p>Called whenever the store is absent rather than once per process, because the store
+     * is bound to {@code InstanceScope} and does not outlive its workspace. See
+     * {@link #ensureInitialized()}.</p>
+     */
+    private static void installCodeTemplates() {
+        ContextTypeRegistry registry = new ContextTypeRegistry();
                 CodeTemplateContextType.registerContextTypes(registry);
                 TemplateStoreCore store = new TemplateStoreCore(registry,
                     InstanceScope.INSTANCE.getNode(JavaManipulation.getPreferenceNodeId()),
@@ -135,11 +198,8 @@ public final class HeadlessJdtConfig {
                 addTemplate(store, CodeTemplateContextType.CLASSBODY_ID, "classbody",
                     CodeTemplateContextType.CLASSBODY_CONTEXTTYPE, "");
 
-                JavaManipulation.setCodeTemplateStore(store);
-                JavaManipulation.setCodeTemplateContextRegistry(registry);
-            }
-            initialized = true;
-        }
+        JavaManipulation.setCodeTemplateStore(store);
+        JavaManipulation.setCodeTemplateContextRegistry(registry);
     }
 
     private static void addTemplate(TemplateStoreCore store, String id, String name,

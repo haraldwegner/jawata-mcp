@@ -30,7 +30,6 @@ import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
 import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
 import org.eclipse.jface.text.Document;
-import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.refactoring.SourceCommit;
@@ -169,70 +168,18 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
                     "Target type has no compilation unit.");
             }
 
-            List<FieldInfo> fieldInfos = new ArrayList<>();
-            for (String name : fieldNames) {
-                IField field = type.getField(name);
-                if (field == null || !field.exists()) {
-                    return ToolResponse.invalidParameter("fields",
-                        "Field '" + name + "' is not declared on " + type.getElementName() + ".");
-                }
-                String typeSig = field.getTypeSignature();
-                String typeName = Signature.toString(typeSig);
-                fieldInfos.add(new FieldInfo(name, typeName, isPrimitive(typeName)));
+            Generated generated;
+            try {
+                generated = generate(type, fieldNames,
+                    getStringParam(arguments, "indentChar", null));
+            } catch (NotARegularClass e) {
+                return ToolResponse.invalidParameter("filePath/line/column", e.getMessage());
+            } catch (IllegalArgumentException e) {
+                return ToolResponse.invalidParameter("fields", e.getMessage());
             }
-
-            ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
-            parser.setSource(cu);
-            parser.setKind(ASTParser.K_COMPILATION_UNIT);
-            parser.setResolveBindings(true);
-            CompilationUnit astRoot = (CompilationUnit) parser.createAST(new NullProgressMonitor());
-            AbstractTypeDeclaration targetDecl = findTypeDeclaration(astRoot, type.getElementName());
-            if (!(targetDecl instanceof TypeDeclaration typeDecl)) {
-                return ToolResponse.invalidParameter("filePath/line/column",
-                    "Target is not a regular class.");
-            }
-
-            AST ast = astRoot.getAST();
-            ASTRewrite rewrite = ASTRewrite.create(ast);
-            ListRewrite bodyRewrite = rewrite.getListRewrite(typeDecl,
-                TypeDeclaration.BODY_DECLARATIONS_PROPERTY);
-
-            List<String> methodsAdded = new ArrayList<>();
-            List<String> warnings = new ArrayList<>();
-
-            if (methodAlreadyExists(type, "equals", 1)) {
-                warnings.add("Skipped equals(Object) — already exists");
-            } else {
-                bodyRewrite.insertLast(buildEquals(ast, typeDecl.getName().getIdentifier(), fieldInfos), null);
-                methodsAdded.add("equals");
-            }
-            if (methodAlreadyExists(type, "hashCode", 0)) {
-                warnings.add("Skipped hashCode() — already exists");
-            } else {
-                bodyRewrite.insertLast(buildHashCode(ast, fieldInfos), null);
-                methodsAdded.add("hashCode");
-            }
-
-            String original = cu.getSource();
-            Document doc = new Document(original);
-            TextEdit edits = rewrite.rewriteAST(doc,
-                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
-                    cu, getStringParam(arguments, "indentChar", null)));
-            edits.apply(doc);
-            String newSource = doc.get();
-
-            // Ensure the java.util.Objects import textually so the staged and
-            // applied paths produce identical, compilable source.
-            if (!newSource.contains("import java.util.Objects;")) {
-                int pkgEnd = newSource.indexOf(";");
-                if (newSource.startsWith("package ") && pkgEnd > 0) {
-                    newSource = newSource.substring(0, pkgEnd + 1)
-                        + "\n\nimport java.util.Objects;"
-                        + newSource.substring(pkgEnd + 1);
-                } else {
-                    newSource = "import java.util.Objects;\n" + newSource;
-                }
-            }
+            String newSource = generated.source();
+            List<String> methodsAdded = generated.methodsAdded();
+            List<String> warnings = generated.warnings();
 
             boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
             if (!autoApply) {
@@ -275,6 +222,96 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
         } catch (Exception e) {
             log.warn("generate_equals_hashcode failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
+        }
+    }
+
+    /**
+     * The class's source WITH {@code equals} and {@code hashCode} — computed, not written.
+     *
+     * <p>Extracted from {@link #executeWithService} in Sprint 28d-rescue Stage 5, because row
+     * 2 ({@code data kind=reference_to_value}) ends with this generation and a recipe step
+     * owes the engine a change rather than a response. ONE construction, so the identity
+     * semantics this emits cannot differ between the direct call and the composed one.</p>
+     *
+     * @throws IllegalArgumentException when a named field is not declared on the type
+     * @throws NotARegularClass when the type is not a class this can write into
+     */
+    public static Generated generate(IType type, List<String> fieldNames, String indentChar)
+            throws Exception {
+        ICompilationUnit cu = type.getCompilationUnit();
+        List<FieldInfo> fieldInfos = new ArrayList<>();
+        for (String name : fieldNames) {
+            IField field = type.getField(name);
+            if (field == null || !field.exists()) {
+                throw new IllegalArgumentException(
+                    "Field '" + name + "' is not declared on " + type.getElementName() + ".");
+            }
+            String typeName = Signature.toString(field.getTypeSignature());
+            fieldInfos.add(new FieldInfo(name, typeName, isPrimitive(typeName)));
+        }
+
+        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+        parser.setSource(cu);
+        parser.setKind(ASTParser.K_COMPILATION_UNIT);
+        parser.setResolveBindings(true);
+        CompilationUnit astRoot = (CompilationUnit) parser.createAST(new NullProgressMonitor());
+        AbstractTypeDeclaration targetDecl = findTypeDeclaration(astRoot, type.getElementName());
+        if (!(targetDecl instanceof TypeDeclaration typeDecl)) {
+            throw new NotARegularClass("Target is not a regular class.");
+        }
+
+        AST ast = astRoot.getAST();
+        ASTRewrite rewrite = ASTRewrite.create(ast);
+        ListRewrite bodyRewrite = rewrite.getListRewrite(typeDecl,
+            TypeDeclaration.BODY_DECLARATIONS_PROPERTY);
+
+        List<String> methodsAdded = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        if (methodAlreadyExists(type, "equals", 1)) {
+            warnings.add("Skipped equals(Object) — already exists");
+        } else {
+            bodyRewrite.insertLast(
+                buildEquals(ast, typeDecl.getName().getIdentifier(), fieldInfos), null);
+            methodsAdded.add("equals");
+        }
+        if (methodAlreadyExists(type, "hashCode", 0)) {
+            warnings.add("Skipped hashCode() — already exists");
+        } else {
+            bodyRewrite.insertLast(buildHashCode(ast, fieldInfos), null);
+            methodsAdded.add("hashCode");
+        }
+
+        Document doc = new Document(cu.getSource());
+        rewrite.rewriteAST(doc, org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
+            cu, indentChar)).apply(doc);
+        String newSource = doc.get();
+
+        // Ensure the java.util.Objects import textually so the staged and
+        // applied paths produce identical, compilable source.
+        if (!newSource.contains("import java.util.Objects;")) {
+            int pkgEnd = newSource.indexOf(";");
+            if (newSource.startsWith("package ") && pkgEnd > 0) {
+                newSource = newSource.substring(0, pkgEnd + 1)
+                    + "\n\nimport java.util.Objects;"
+                    + newSource.substring(pkgEnd + 1);
+            } else {
+                newSource = "import java.util.Objects;\n" + newSource;
+            }
+        }
+        return new Generated(newSource, methodsAdded, warnings);
+    }
+
+    /** The generated source, and what it added or skipped because the class already had it. */
+    public record Generated(String source, List<String> methodsAdded, List<String> warnings) {
+    }
+
+    /** The caret's type is not a class this generator can write into. */
+    public static class NotARegularClass extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
+
+        NotARegularClass(String message) {
+            super(message);
         }
     }
 
@@ -467,14 +504,9 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
         return null;
     }
 
+    /** Top-level OR nested — see {@link TypeDeclarations} for the defect this closed. */
     private static AbstractTypeDeclaration findTypeDeclaration(CompilationUnit unit, String simpleName) {
-        for (Object t : unit.types()) {
-            if (t instanceof AbstractTypeDeclaration decl
-                && simpleName.equals(decl.getName().getIdentifier())) {
-                return decl;
-            }
-        }
-        return null;
+        return TypeDeclarations.find(unit, simpleName);
     }
 
     private record FieldInfo(String name, String typeName, boolean primitive) {}
