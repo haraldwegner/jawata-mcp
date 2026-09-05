@@ -185,9 +185,11 @@ class EncapsulateRecordToolTest {
      * encapsulates the wrong class and reports SUCCESS, which is the shape that actually
      * ships.</p>
      *
-     * <p>The two are now text-identical in their fields, so the assertion is positional: after
-     * a correct run the surviving {@code public double latitude;} is the DECOY's, above the
-     * public class; after a wrong one it is the real class's, below it.</p>
+     * <p>The two now declare the same FIELDS, so a containment check cannot say which one was
+     * encapsulated — they are not identical beyond that, and no assertion here leans on the
+     * differences. The assertion is positional: after a correct run the surviving
+     * {@code public double latitude;} is the DECOY's, above the public class; after a wrong one
+     * it is the real class's, below it.</p>
      */
     @Test
     @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
@@ -209,9 +211,15 @@ class EncapsulateRecordToolTest {
             "the surviving PUBLIC field must be the DECOY's, which is declared above the class"
                 + " this test pointed at. Below it means the row encapsulated the sibling and"
                 + " reported success:\n" + after);
+        // COUNTING the accessor proves nothing about WHICH class got it: a decoy that gained
+        // one still yields exactly 1, because the real class then gained none. An auditor
+        // proved that by neutralising the positional assertion above and watching this one
+        // pass while the decoy was encapsulated. So this asserts WHERE it landed too.
         assertEquals(1, occurrences(after, "public double getLatitude()"),
-            "and exactly one accessor pair exists — a decoy that gained one would be a rewrite"
-                + " of a class nobody pointed at:\n" + after);
+            "exactly one accessor pair exists:\n" + after);
+        assertTrue(after.indexOf("public double getLatitude()") > realClassAt,
+            "and it is inside the class this test pointed at — before that declaration means"
+                + " the accessors were generated on the sibling:\n" + after);
     }
 
     /** How many times a needle occurs — a containment check cannot see a SECOND one. */

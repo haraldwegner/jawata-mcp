@@ -76,8 +76,11 @@ class ChangeReferenceToValueToolTest {
         String after = Files.readString(targets, StandardCharsets.UTF_8);
         // COUNTED, because the decoy sibling declares the same setters: the file holds two of
         // each before the run and must hold the decoy's alone after it.
+        // These say ONE of the two Moneys lost each setter, not which — the decoy test next
+        // door is what pins that, and saying so here keeps the message inside what the
+        // assertion can see.
         assertEquals(1, occurrences(after, "public void setCurrency(String currency)"),
-            "the first setter must be gone from the class pointed at:\n" + after);
+            "one of the two setters of this name must be gone:\n" + after);
         assertEquals(1, occurrences(after, "public void setAmount(long amount)"),
             "and the SECOND — a row that removed only one would still report success:\n"
                 + after);
@@ -183,10 +186,13 @@ class ChangeReferenceToValueToolTest {
      * failure — loud, and the lucky case. With a plausible decoy the defect rewrites the wrong
      * class and reports SUCCESS, which is the shape that actually ships.</p>
      *
-     * <p>The two classes are now text-identical, so no string can tell them apart. The
-     * assertion is positional instead: after a correct run the surviving {@code setCurrency}
-     * is the DECOY's, which is declared above the public class; after a wrong one it is the
-     * real class's, below it.</p>
+     * <p>The two classes now share every MEMBER a string assertion would reach for, so a
+     * containment check cannot say which one was acted on. (They are not literally identical —
+     * the decoy's constructor is package-private and its body is indented one level deeper —
+     * and an earlier version of this sentence claimed they were. Those differences are not
+     * something an assertion about the refactoring's OUTPUT should lean on.) The assertion is
+     * positional instead: after a correct run the surviving {@code setCurrency} is the DECOY's,
+     * declared above the public class; after a wrong one it is the real class's, below it.</p>
      */
     @Test
     @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
@@ -208,10 +214,12 @@ class ChangeReferenceToValueToolTest {
             "the surviving setter must be the DECOY's, which is declared above the class this"
                 + " test pointed at. Below it means the row rewrote the sibling and reported"
                 + " success:\n" + after);
+        // COUNTING says one equality was generated, and NOT which class got it: a decoy that
+        // gained one also yields 2 (Ticket's plus the decoy's). The positional assertion below
+        // is the one that discriminates; an auditor proved this one passes while the equality
+        // sits in the decoy.
         assertEquals(2, occurrences(after, "public boolean equals(Object"),
-            "and the file must hold exactly Ticket's equality plus the real Money's new one —"
-                + " a THIRD would mean the decoy gained one, which is a rewrite of a class"
-                + " nobody pointed at:\n" + after);
+            "exactly one equality was generated, beside Ticket's own:\n" + after);
         // WHERE the generated equality landed, and this assertion is the one that catches the
         // generate step alone. The setter steps address their setter by its own handle, so they
         // reach the right method even when the TYPE key is wrong; only the generate step reads
