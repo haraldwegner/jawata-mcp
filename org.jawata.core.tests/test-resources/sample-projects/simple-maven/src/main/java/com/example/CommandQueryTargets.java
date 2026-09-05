@@ -33,6 +33,21 @@ public class CommandQueryTargets {
         return label + "/" + label.length();
     }
 
+    /**
+     * The DANGEROUS refusal, and a mutation is what showed it was missing.
+     *
+     * <p>This writes the field and returns something COMPUTED FROM IT. A rule that accepted
+     * anything mentioning a field it wrote would generate a query answering {@code failures}
+     * while callers were promised {@code failures * 2} — a change that compiles and is wrong.
+     * The neighbour above returns an expression over LOCALS and cannot catch that rule, because
+     * its return mentions no field at all: a mutation relaxing the check to "mentions a field"
+     * left every test green until this case existed.</p>
+     */
+    public int doubledFailures() {
+        failures = failures + 1;
+        return failures * 2;
+    }
+
     /** Answers a field it never writes, so it is already a query and there is nothing to split. */
     public int currentUntouched() {
         return untouched;

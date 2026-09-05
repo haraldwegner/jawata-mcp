@@ -137,6 +137,23 @@ class SeparateQueryFromModifierToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES an answer COMPUTED FROM the field it wrote — the case a relaxed rule "
+        + "would silently get wrong")
+    void refusesAnAnswerComputedFromTheField() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        ToolResponse r = tool.execute(argsFor("doubledFailures"));
+
+        assertFalse(r.isSuccess(),
+            "the answer is failures * 2, so a query returning `failures` would promise callers"
+                + " something the method never returned");
+        assertEquals(SeparateQueryFromModifierTool.Refusal.RETURN_NOT_A_WRITTEN_FIELD,
+            r.getError().getReason(),
+            "the refusal must be the returned-shape PRECONDITION: " + r.getError());
+        assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
+            "a refusal modifies nothing");
+    }
+
+    @Test
     @DisplayName("REFUSES a method that answers a field it never writes — already a query")
     void refusesAPureQuery() throws Exception {
         ToolResponse r = tool.execute(argsFor("currentUntouched"));
