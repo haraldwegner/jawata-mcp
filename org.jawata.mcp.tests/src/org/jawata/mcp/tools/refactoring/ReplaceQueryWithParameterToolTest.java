@@ -171,9 +171,12 @@ class ReplaceQueryWithParameterToolTest {
                 + " call site, where `this` is somebody else");
         assertEquals(ReplaceQueryWithParameterTool.Refusal.QUERY_NOT_SELF_CONTAINED,
             r.getError().getReason(),
-            "the refusal must be the self-containment PRECONDITION rather than the compile"
-                + " gate's, which is what caught this before the precondition existed and"
-                + " reported only that something did not compile: " + r.getError());
+            "the refusal must be the self-containment PRECONDITION. MEASURED, and it is the"
+                + " reason this precondition exists rather than being left to the gate:"
+                + " with the check disabled the operation SUCCEEDS here, because asksItself has"
+                + " no caller outside its own file — so there is no call site to break and"
+                + " nothing for the compile gate to see. It would ship a method taking a"
+                + " parameter nobody passes: " + r.getError());
         assertFalse(String.valueOf(r.getError()).contains("BROKE_COMPILE"),
             "and it must fire BEFORE the change is built, not after it is undone: "
                 + r.getError());

@@ -222,8 +222,14 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
         // the same thing there. A call with NO written receiver does not: `localReading()` is
         // an implicit `this`, and pasted into a caller it rebinds to whoever holds the call —
         // which is either a compile error or, worse, a different method of the same name.
-        // Without this the compile gate catches it and undoes the change, correctly but under
-        // a name that says only that something did not compile.
+        //
+        // AND THE COMPILE GATE IS NOT A SUBSTITUTE FOR THIS CHECK, which is the opposite of
+        // what this comment first claimed. Mutation Q disabled the precondition expecting the
+        // gate to catch the case; the operation SUCCEEDED. The method it was pointed at has no
+        // caller outside its own file, so there was no call site to break and nothing for the
+        // gate to see — it shipped a method taking a parameter nobody passes, waiting for the
+        // first caller to be written. The gate only fires where a call site already exists,
+        // and this precondition holds where one does not yet.
         if (target.getExpression() == null) {
             return Preparation.fail(ToolResponse.invalidParameter("queryCall",
                 "'" + queryCall + "' is called with no receiver written, so it reads as"
