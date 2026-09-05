@@ -8,6 +8,7 @@ import org.jawata.mcp.tools.api.ChangeSignatureTool;
 import org.jawata.mcp.tools.api.IntroduceParameterObjectTool;
 import org.jawata.mcp.tools.api.ParameterizeFunctionTool;
 import org.jawata.mcp.tools.api.ReplaceQueryWithParameterTool;
+import org.jawata.mcp.tools.api.SeparateQueryFromModifierTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,6 +48,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     private final IntroduceParameterObjectTool introduceParameterObject;
     private final ReplaceQueryWithParameterTool replaceQueryWithParameter;
     private final ParameterizeFunctionTool parameterizeFunction;
+    private final SeparateQueryFromModifierTool separateQueryFromModifier;
 
     public ChangeMethodSignatureTool(Supplier<IJdtService> serviceSupplier,
                                      RefactoringChangeCache changeCache) {
@@ -57,6 +59,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
         this.replaceQueryWithParameter =
             new ReplaceQueryWithParameterTool(serviceSupplier, changeCache);
         this.parameterizeFunction = new ParameterizeFunctionTool(serviceSupplier, changeCache);
+        this.separateQueryFromModifier =
+            new SeparateQueryFromModifierTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -80,7 +84,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
         for (KindDelegate delegate : List.of(changeSignature, introduceParameterObject,
-            replaceQueryWithParameter, parameterizeFunction)) {
+            replaceQueryWithParameter, parameterizeFunction, separateQueryFromModifier)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -168,6 +172,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
                 replaceQueryWithParameter.executeWithService(service, arguments);
             case "parameterize_function" ->
                 parameterizeFunction.executeWithService(service, arguments);
+            case "separate_query_from_modifier" ->
+                separateQueryFromModifier.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
