@@ -197,10 +197,13 @@ class ChangeReferenceToValueToolTest {
         String after = Files.readString(targets, StandardCharsets.UTF_8);
         assertFalse(after.contains("public void setPlace(String label)"),
             "the String overload must be gone:\n" + after);
+        // A CASE, NOT A CONTROL, and it is labelled because a mutation said so: restoring the
+        // name + arity lookup leaves this green, because each step removes its setter and by
+        // the second step only the other overload is left. The handle key is right by identity
+        // rather than by luck, but this test does not prove it — the sibling-class test does.
         assertFalse(after.contains("public void setPlace(int number)"),
-            "and so must the int one — carrying a setter between steps as a bare NAME cannot"
-                + " tell two 1-arg overloads apart, so one field would be done twice and the"
-                + " other never:\n" + after);
+            "and so must the int one — a row that removed one overload and reported success"
+                + " would leave half a value object:\n" + after);
         assertTrue(after.contains("this.label = label;") && after.contains("this.number = number;"),
             "each constructor call becomes the assignment of ITS OWN field:\n" + after);
     }

@@ -38,6 +38,66 @@ class GenerateToStringToolTest {
         objectMapper = new ObjectMapper();
     }
 
+    /**
+     * THE CONTROL for joining the declaration on the element rather than on its name.
+     *
+     * <p>Every generator here holds an {@link org.eclipse.jdt.core.IType} and used to hand a
+     * shared lookup that type's SIMPLE NAME, which returns the first declaration of that name
+     * in the file. {@code EncapsulateRecordTargets} declares {@code Legacy.Coordinate} ahead of
+     * the real {@code Coordinate}, so under the old join the generated method landed in the
+     * decoy — a class nobody pointed at — while the response reported success. Nothing in the
+     * suite could see it, because no fixture had two types of one name until Stage 5's round-2
+     * repair added this pair for a different row.</p>
+     */
+    @Test
+    @DisplayName("generates into the class it was pointed at, not a SIBLING of the same name")
+    void generatesIntoTheTypeItWasPointedAt() throws Exception {
+        IFile target = findFile("EncapsulateRecordTargets.java");
+        assertNotNull(target);
+        String source = new String(target.getContents().readAllBytes(),
+            java.nio.charset.StandardCharsets.UTF_8);
+        String[] lines = source.split("\n", -1);
+        int line = -1;
+        for (int i = 0; i < lines.length; i++) {
+            // The real one is public; the decoy is package-private, so this anchor is unique.
+            if (lines[i].contains("public static class Coordinate")) {
+                line = i;
+                break;
+            }
+        }
+        assertTrue(line >= 0, "the fixture no longer declares the public Coordinate");
+
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", target.getLocation().toFile().toPath().toString());
+        args.put("line", line);
+        args.put("column", lines[line].indexOf("Coordinate"));
+        args.putArray("fields").add("latitude");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "tool must succeed; got: " + r.getError());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String src = (String) data.get("generatedSource");
+        assertNotNull(src);
+        assertTrue(src.contains("\"Coordinate [\"") && src.contains("\"latitude=\""),
+            "the method must be built for the class that was pointed at; got:\n" + src);
+
+        String after = new String(target.getContents().readAllBytes(),
+            java.nio.charset.StandardCharsets.UTF_8);
+        // WHERE it landed is the half a generated-source assertion cannot see: the decoy has no
+        // latitude, so a toString written into it would not even compile — but the assertion
+        // above would still have passed.
+        int decoyAt = after.indexOf("static class Coordinate");
+        int realAt = after.indexOf("public static class Coordinate");
+        int methodAt = after.indexOf("public String toString()");
+        assertTrue(methodAt > realAt,
+            "the method must be inside the class that was pointed at, which is declared after"
+                + " the decoy:\n" + after);
+        assertTrue(decoyAt < realAt, "the decoy must still be declared FIRST, or this control"
+            + " has stopped discriminating:\n" + after);
+    }
+
     @Test
     @DisplayName("happy: STRING_CONCATENATION style generates concat method")
     void happy_toStringConcatStyle_generatesMethod() throws Exception {
