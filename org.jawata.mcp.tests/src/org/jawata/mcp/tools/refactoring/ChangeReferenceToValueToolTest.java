@@ -212,6 +212,14 @@ class ChangeReferenceToValueToolTest {
             "and the file must hold exactly Ticket's equality plus the real Money's new one —"
                 + " a THIRD would mean the decoy gained one, which is a rewrite of a class"
                 + " nobody pointed at:\n" + after);
+        // WHERE the generated equality landed, and this assertion is the one that catches the
+        // generate step alone. The setter steps address their setter by its own handle, so they
+        // reach the right method even when the TYPE key is wrong; only the generate step reads
+        // the type. Measured: with the type key reverted to a simple name, every other
+        // assertion here still passed while equals/hashCode were written into the decoy.
+        assertTrue(after.indexOf("public boolean equals(Object") > realClassAt,
+            "the FIRST equality in the file must be the real Money's, which is declared after"
+                + " the decoy. Before it means the generation landed on the sibling:\n" + after);
     }
 
     @Test
