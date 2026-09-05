@@ -35,11 +35,18 @@ import org.jawata.core.IJdtService;
  * }</pre>
  *
  * <p>Two member types in different enclosing types may share a simple name, and so may two
- * members of different types. So the first hit is NOT the only hit, and a caller that means
- * "the member of THIS type" must say which type — which is what {@link #memberOf} is for.
- * These lookups answer "a type of this name somewhere in this file", which is the right
- * question only when the name is already known to be unique, such as a top-level type or a
- * caller-supplied target the caller then re-checks.</p>
+ * members of different types. So the first hit is NOT the only hit. These lookups answer "a
+ * type of this name somewhere in this file", which is the right question only when the name is
+ * already known to be unique, such as a top-level type or a caller-supplied target the caller
+ * then re-checks.</p>
+ *
+ * <p><b>A MEMBER is a different question and this class deliberately does not answer it.</b>
+ * "The method or field called X" needs the declaring type, and a caller that holds one holds
+ * something better than a name: the element itself, whose source range names the exact
+ * declaration. {@code RemoveSettingMethodTool} does that — {@code NodeFinder} over the
+ * method's own range, then its enclosing type's body declarations for everything else. A
+ * by-name member lookup here was written and then deleted unused, because offering one invites
+ * the very first-match ambiguity the paragraph above is about.</p>
  */
 public final class TypeLookup {
 
@@ -60,19 +67,6 @@ public final class TypeLookup {
             return null;
         }
         return searchModel(unit.getTypes(), simpleName);
-    }
-
-    /**
-     * The body declarations of the type that OWNS a member — the scope a member lookup must
-     * use.
-     *
-     * <p>Searching the whole file for a method or field by name and taking the first match is
-     * the ambiguity above, wearing a convenience's clothes: a row can then check a
-     * precondition on one class and build its edit against another. Callers that hold the
-     * declaring type pass its simple name here and search what comes back.</p>
-     */
-    public static AbstractTypeDeclaration memberOf(CompilationUnit unit, String owningType) {
-        return declaration(unit, owningType);
     }
 
     private static AbstractTypeDeclaration searchDom(java.util.List<?> declarations,
