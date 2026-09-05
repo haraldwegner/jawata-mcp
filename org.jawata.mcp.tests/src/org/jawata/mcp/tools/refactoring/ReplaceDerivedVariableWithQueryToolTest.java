@@ -151,6 +151,22 @@ class ReplaceDerivedVariableWithQueryToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES an expression that CALLS — a query must give the same answer twice")
+    void refusesAnImpureDerivation() throws Exception {
+        // Both writers agree textually and read only fields, so every OTHER condition passes.
+        // Upstream's circuit breaker has this shape with a clock, and that is where it was
+        // found; this fixture brings it under a unit test rather than leaving the rule
+        // exercised only on foreign code.
+        ToolResponse r = at("private int stamp;", "stamp");
+        assertFalse(r.isSuccess(), "a call may answer differently on each read, and then the"
+            + " query is not the field");
+        assertTrue(String.valueOf(r.getError()).contains("same answer every time"),
+            "the refusal must name that reason: " + r.getError());
+        assertTrue(String.valueOf(r.getError()).contains("counter"),
+            "and name the call it found: " + r.getError());
+    }
+
+    @Test
     @DisplayName("REFUSES a field nothing assigns — that is ordinary state")
     void refusesAnUnwrittenField() throws Exception {
         ToolResponse r = at("private int limit = 10;", "limit");

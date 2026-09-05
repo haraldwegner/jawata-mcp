@@ -82,11 +82,17 @@ import com.fasterxml.jackson.databind.JsonNode;
  *       Replace Query with Parameter, a different row.</li>
  *   <li><b>A derived expression that CALLS anything.</b> A query stands in for a cached field
  *       only when the computation gives the same answer every time, and purity is not
- *       decidable here. Upstream's circuit breaker writes {@code lastFailureTime =
- *       System.nanoTime() + futureTime} in two places, identically — so the agreement check
- *       passes, and turning it into a query would re-read the CLOCK on every access, changing
- *       what the class does while compiling perfectly. That silent-behaviour-change is the
- *       worst outcome available, so the conservative direction is the only honest one.</li>
+ *       decidable here. A clock or a counter re-read on every access changes what the class
+ *       does while compiling perfectly, which is the worst outcome available — so the
+ *       conservative direction is the only honest one.
+ *       <p><b>The evidence first cited for this rule was wrong, and the rule stands anyway.</b>
+ *       It was introduced on the belief that upstream's {@code DefaultCircuitBreaker} wrote
+ *       {@code lastFailureTime = System.nanoTime() + futureTime} identically in two places and
+ *       was declined only for the clock. It has THREE writers with three different
+ *       expressions, so the agreement check refuses it first and this rule is never reached
+ *       there — a property of all three asserted after reading two. It is proved by
+ *       {@code DerivedVariableTargets.Session} instead, written once the mistake was found,
+ *       and the mistake surfaced only because a mutation FAILED to go red.</p></li>
  *   <li><b>No writes at all.</b> Nothing derives it, so it is ordinary state.</li>
  *   <li><b>A name the declaring type already declares as a method.</b> The query would clash.
  *       </li>

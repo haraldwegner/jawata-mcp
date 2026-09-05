@@ -21,26 +21,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * ROW 45 (Replace Derived Variable with Query) against code we did not author.
  *
- * <p><b>This is a REFUSAL on foreign code, and it is the strongest evidence this row can
- * carry rather than a weaker substitute for a success.</b> Upstream's
- * {@code DefaultCircuitBreaker} writes {@code this.lastFailureTime = System.nanoTime() +
- * futureTime} in two places, textually identical, both reading only fields and a static
- * call. It passes every other condition this operation checks: two writers, one rule, no
- * locals, no parameters. Turning it into a query would compile, pass the compile gate, and
- * silently change what the class does — because the clock is read afresh on every access,
- * and a circuit breaker whose "last failure time" is always now never opens.</p>
+ * <p>Upstream's {@code DefaultCircuitBreaker.lastFailureTime} is written in THREE places with
+ * THREE different expressions — {@code System.nanoTime() + futureTime},
+ * {@code System.nanoTime()} and {@code System.nanoTime() - retryTimePeriod}. It is a field
+ * that looks derived and is not derived from one rule, which is precisely what this row's
+ * agreement check exists to tell apart, and the refusal quotes all three so a reader can see
+ * the disagreement rather than take it on trust.</p>
  *
- * <p>Nothing in a fixture written by me would have produced that. The impurity condition was
- * added BECAUSE this file was read, and a version of the row without it would have shipped
- * with its own headline claim — that a query is indistinguishable from reading the field —
- * false in the first real case anyone pointed it at.</p>
+ * <h2>A CORRECTION, kept because the mistake is the point</h2>
+ *
+ * <p>This file first claimed the field demonstrated the IMPURITY refusal — that it "passes
+ * every other condition" and is declined only for the clock. That was false, and it was false
+ * because I read two of the three writes and stated a property of all three. The impurity rule
+ * is real and stays; what is not real is the evidence originally cited for it. It is proved by
+ * {@code DerivedVariableTargets.Session} in the unit tests, and by nothing here.</p>
+ *
+ * <p>The mistake surfaced only because a MUTATION did not go red: disabling the impurity check
+ * left this test green, since the message it asserted on ("nanoTime") is printed by the
+ * disagreement refusal too. A substring shared by two refusals is evidence that SOMETHING
+ * declined, never that the right thing did.</p>
  *
  * <p><b>NO FORK DEMONSTRATION of the success path, and it is a measured absence.</b> The
  * corpus was scanned for a field assigned the same field-only, call-free expression by every
- * writer; there is none. That is unsurprising in a teaching repository — a derived field
- * that has gone stale is a maintenance artefact, and these modules are written once to
- * illustrate a pattern — but it is stated as what it is rather than left as a gap that reads
- * like an oversight.</p>
+ * writer; there is none. Unsurprising in a teaching repository — a stale derived field is a
+ * maintenance artefact and these modules are written once — but stated as what it is rather
+ * than left as a gap that reads like an oversight.</p>
  */
 class ReplaceDerivedVariableWithQueryForkSliceTest {
 
@@ -60,8 +65,8 @@ class ReplaceDerivedVariableWithQueryForkSliceTest {
     }
 
     @Test
-    @DisplayName("upstream's clock-derived field is REFUSED — it would compile and be wrong")
-    void refusesUpstreamsClockDerivedField() throws Exception {
+    @DisplayName("upstream's three-rule field is refused, with all three rules quoted")
+    void refusesUpstreamsDisagreeingWriters() throws Exception {
         String before = Files.readString(breaker, StandardCharsets.UTF_8);
         String[] lines = before.split("\n", -1);
         int line = -1;
@@ -80,12 +85,17 @@ class ReplaceDerivedVariableWithQueryForkSliceTest {
         args.put("column", lines[line].indexOf("lastFailureTime"));
 
         ToolResponse r = tool.execute(args);
-        assertFalse(r.isSuccess(), "two writers, one rule, no locals, no parameters — it"
-            + " passes every OTHER condition, which is what makes it the case worth having");
-        assertTrue(String.valueOf(r.getError()).contains("nanoTime"),
-            "and the refusal must name the CALL that makes the substitution unsound, since"
-                + " that is the only thing separating this from a legitimate case: "
-                + r.getError());
+        assertFalse(r.isSuccess(), "three writers with three rules is not one derivation");
+        String error = String.valueOf(r.getError());
+        assertTrue(error.contains("do not agree"),
+            "the refusal must be the AGREEMENT one: " + error);
+        // ALL THREE, because quoting is the half that saves the reader the work. A refusal
+        // that said only "they disagree" would leave them to go and find the writers, which
+        // is exactly what the tool just did.
+        assertTrue(error.contains("System.nanoTime() + futureTime")
+                && error.contains("System.nanoTime() - retryTimePeriod"),
+            "and it must quote the rules it found, not merely report that they differ: "
+                + error);
         assertTrue(before.equals(Files.readString(breaker, StandardCharsets.UTF_8)),
             "a refusal must leave upstream's file byte-for-byte untouched");
     }

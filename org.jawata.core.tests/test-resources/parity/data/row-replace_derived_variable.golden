@@ -116,6 +116,34 @@ public class DerivedVariableTargets {
         }
     }
 
+    /**
+     * REFUSAL — derived by CALLING something, so a query would not give the same answer.
+     *
+     * <p>Both writers agree textually and read only fields, so every other condition passes.
+     * Upstream's circuit breaker has this shape with a clock, which is where it was found.</p>
+     */
+    public static class Session {
+        private int startedAt;
+        private int stamp;
+
+        public void begin() {
+            this.startedAt = 1;
+            this.stamp = counter();
+        }
+
+        public void refresh() {
+            this.stamp = counter();
+        }
+
+        public int shownStamp() {
+            return stamp;
+        }
+
+        private int counter() {
+            return startedAt + 1;
+        }
+    }
+
     /** REFUSAL — nothing assigns it, so it is ordinary state rather than a cached answer. */
     public static class Constants {
         private int limit = 10;
