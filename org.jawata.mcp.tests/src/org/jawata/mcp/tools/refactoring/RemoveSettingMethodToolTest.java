@@ -118,8 +118,9 @@ class RemoveSettingMethodToolTest {
             "a caller outside the constructors is asking to change the value after"
                 + " construction, which is the behaviour being removed");
         String error = String.valueOf(r.getError());
-        assertTrue(error.contains("outside"),
-            "the refusal must say that is the reason: " + error);
+        assertEquals(org.jawata.mcp.tools.data.RemoveSettingMethodTool.Refusal.CALLED_FROM_OUTSIDE,
+            r.getError().getReason(),
+            "the refusal must be the caller PRECONDITION: " + error);
         // NAMING the site is the half that matters: a caller told only "somebody calls it"
         // has to go and find them, which is the work the tool just did.
         assertTrue(error.contains("SettingMethodDesk"),
@@ -135,8 +136,9 @@ class RemoveSettingMethodToolTest {
         ToolResponse r = at("public void setReading(int reading)", "setReading");
         assertFalse(r.isSuccess(), "its body does more than assign, so deleting it would"
             + " remove behaviour rather than a setter");
-        assertTrue(String.valueOf(r.getError()).contains("not a setting method"),
-            "the refusal must name that reason: " + r.getError());
+        assertEquals(org.jawata.mcp.tools.data.RemoveSettingMethodTool.Refusal.NOT_A_SETTING_METHOD,
+            r.getError().getReason(),
+            "the refusal must be the shape PRECONDITION: " + r.getError());
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
     }
@@ -189,21 +191,17 @@ class RemoveSettingMethodToolTest {
         assertFalse(r.isSuccess(),
             "Gauge.setScale satisfies Adjustable, so it is part of a contract this class"
                 + " declares rather than a setter it is free to take away");
-        String error = String.valueOf(r.getError());
-        // WORDS ONLY THE PRECONDITION EMITS. "Adjustable" alone is not enough and a mutation
-        // proved it: with the supertype lookup reverted to superclasses-only, the row ACCEPTS
-        // this setter, performs the removal, and the compile gate refuses and undoes it —
-        // "The type Gauge must implement the inherited abstract method Adjustable.setScale".
-        // That message names the interface too, so the weaker assertion passed while the
-        // branch it claims to test was never reached.
-        assertTrue(error.contains("is part of a contract this class declares"),
-            "the refusal must be the PRECONDITION, naming the contract: " + error);
-        assertTrue(error.contains("Adjustable"),
-            "and it must name which supertype's: " + error);
-        assertFalse(error.contains("BROKE_COMPILE"),
-            "the compile gate catching it afterwards is a backstop, not this refusal: a row"
-                + " that performs and is undone tells the caller nothing about what to do"
-                + " instead: " + error);
+        // THE REASON, NOT THE PROSE. This used to search the message for words, which is how
+        // it once passed while the branch it names never ran: with the supertype lookup
+        // reverted, the row ACCEPTS this setter and the COMPILE GATE undoes it — and the
+        // compiler's own error says "Adjustable" too. One value replaces three searches, two
+        // of which had to be negative.
+        assertEquals(org.jawata.mcp.tools.data.RemoveSettingMethodTool.Refusal.OVERRIDES_SUPERTYPE,
+            r.getError().getReason(),
+            "the refusal must be the override PRECONDITION: " + r.getError());
+        assertTrue(String.valueOf(r.getError()).contains("Adjustable"),
+            "and the sentence still names which supertype's contract, for the human reading"
+                + " it: " + r.getError());
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
     }

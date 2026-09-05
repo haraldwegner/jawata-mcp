@@ -120,6 +120,38 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
     private static final int MAX_REFERENCES = 1000;
 
     /**
+     * WHICH precondition declined — the value a caller or a test branches on.
+     *
+     * <p>Every refusal below leaves as {@code INVALID_PARAMETER} with a different sentence, so
+     * the only way to tell them apart used to be searching that sentence. Two of this row's
+     * refusals then needed NEGATIVE searches to separate them, and one test asserted a word the
+     * COMPILE GATE's own error also prints — so it passed while the branch it named never ran.
+     * See {@link org.jawata.mcp.models.ErrorInfo} for the general form.</p>
+     *
+     * <p>These are constants rather than an enum because the value crosses the wire as a
+     * string, and a caller reading it has no access to this type.</p>
+     */
+    public static final class Refusal {
+
+        /** The setter implements or is implemented by a method of a supertype. */
+        public static final String OVERRIDES_SUPERTYPE = "OVERRIDES_SUPERTYPE";
+        /** Something outside the declaring class's own constructors calls it. */
+        public static final String CALLED_FROM_OUTSIDE = "CALLED_FROM_OUTSIDE";
+        /** The body is not a single assignment of the one parameter to a field. */
+        public static final String NOT_A_SETTING_METHOD = "NOT_A_SETTING_METHOD";
+        /** The assigned field is static, which is {@code global_data}'s subject. */
+        public static final String FIELD_IS_STATIC = "FIELD_IS_STATIC";
+        /** A constructor mentions it in a form this rewrite cannot express. */
+        public static final String UNREWRITABLE_CONSTRUCTOR_REFERENCE =
+            "UNREWRITABLE_CONSTRUCTOR_REFERENCE";
+        /** The reference search hit its cap, so the caller list is a sample. */
+        public static final String REFERENCE_CAP_REACHED = "REFERENCE_CAP_REACHED";
+
+        private Refusal() {
+        }
+    }
+
+    /**
      * A removal that is ready to perform, or the refusal that stopped it.
      *
      * <p>Exactly one of {@code change} and {@code refusal} is non-null. {@code finalNote} is
@@ -269,18 +301,20 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                 "'" + setter.getElementName() + "' is not a setting method: its body is not a"
                     + " single assignment of its one parameter to a field of this class."
                     + " Remove Setting Method takes away a plain setter; a method that does"
-                    + " anything else is doing something this operation cannot reason about."));
+                    + " anything else is doing something this operation cannot reason about.",
+                Refusal.NOT_A_SETTING_METHOD));
         }
         if (Modifier.isStatic(field.getModifiers())) {
             return Prepared.refused(ToolResponse.invalidParameter("position",
                 "'" + field.getName() + "' is STATIC. A static field settled at class"
                     + " initialization is global_data's subject rather than this one, and its"
-                    + " setter's callers are not constructors of anything."));
+                    + " setter's callers are not constructors of anything.",
+                Refusal.FIELD_IS_STATIC));
         }
         String overrideRefusal = overrideRefusal(service, setter, declaring);
         if (overrideRefusal != null) {
-            return Prepared.refused(
-                ToolResponse.invalidParameter("position", overrideRefusal));
+            return Prepared.refused(ToolResponse.invalidParameter(
+                "position", overrideRefusal, Refusal.OVERRIDES_SUPERTYPE));
         }
 
         // THE PRECONDITION. Every reference, enumerated — a caller outside this class's own
@@ -292,7 +326,8 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                 "'" + setter.getElementName() + "' has at least " + MAX_REFERENCES
                     + " references, which is the search cap — so the list is a SAMPLE and the"
                     + " precondition is a statement about every caller. It refuses rather than"
-                    + " deciding from a capped list."));
+                    + " deciding from a capped list.",
+                Refusal.REFERENCE_CAP_REACHED));
         }
         List<String> outsiders = new ArrayList<>();
         int inConstructors = 0;
@@ -310,7 +345,8 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                     + declaring.getElementName() + "'s own constructors, so removing it would"
                     + " take away a change those callers make on purpose: " + outsiders
                     + ". Route each of them through a constructor first — that is a decision"
-                    + " about their code, not about this class."));
+                    + " about their code, not about this class.",
+                Refusal.CALLED_FROM_OUTSIDE));
         }
 
         // The constructor calls this row rewrites, matched against what the search found: a
@@ -322,7 +358,8 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                 "a constructor mentions '" + setter.getElementName() + "' in a form this"
                     + " operation cannot rewrite (found " + inConstructors + " reference(s)"
                     + " and " + calls.size() + " plain call statement(s)) — a method reference"
-                    + " such as this::" + setter.getElementName() + " is the usual cause."));
+                    + " such as this::" + setter.getElementName() + " is the usual cause.",
+                Refusal.UNREWRITABLE_CONSTRUCTOR_REFERENCE));
         }
 
         FieldDeclaration fieldDeclaration = fieldNamed(owner, field.getName());

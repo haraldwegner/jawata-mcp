@@ -5,6 +5,22 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 /**
  * Error information for tool failures.
  * Provides machine-readable code, human-readable message, and helpful hint for AI.
+ *
+ * <h2>{@code code} is COARSE; {@code reason} says which refusal fired</h2>
+ *
+ * <p>One operation declines for many different reasons and every one of them arrives as
+ * {@code INVALID_PARAMETER} with a different sentence. That leaves a caller — and a test — no
+ * way to tell them apart but to search the prose, and searching prose is how the following
+ * shipped in Sprint 28d-rescue's Stage 5: a test asserted the message contained
+ * {@code "Adjustable"} to prove the override refusal had fired, and PASSED when the operation
+ * instead performed the change and the COMPILE GATE undid it — because the compiler's own
+ * error names the interface too. The branch the test was written for never ran.</p>
+ *
+ * <p>So a refusal may carry a {@code reason}: a short constant naming WHICH precondition
+ * declined, beside the sentence rather than instead of it. The sentence is for the human and
+ * stays exactly as it was; the reason is what a test or an agent should branch on. It is
+ * nullable and omitted from the wire when absent, so a refusal that has not adopted one is
+ * unchanged.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ErrorInfo {
@@ -12,15 +28,31 @@ public class ErrorInfo {
     private final String code;
     private final String message;
     private final String hint;
+    private final String reason;
 
     public ErrorInfo(String code, String message, String hint) {
+        this(code, message, hint, null);
+    }
+
+    public ErrorInfo(String code, String message, String hint, String reason) {
         this.code = code;
         this.message = message;
         this.hint = hint;
+        this.reason = reason;
     }
 
     public String getCode() {
         return code;
+    }
+
+    /**
+     * WHICH precondition declined, or null where the refusal has not adopted one.
+     *
+     * <p>Fine-grained where {@link #getCode()} is coarse: every precondition failure of a
+     * refactoring shares the code {@code INVALID_PARAMETER} and differs only in its prose.</p>
+     */
+    public String getReason() {
+        return reason;
     }
 
     public String getMessage() {
@@ -90,10 +122,19 @@ public class ErrorInfo {
     }
 
     public static ErrorInfo invalidParameter(String param, String reason) {
+        return invalidParameter(param, reason, null);
+    }
+
+    /**
+     * The same, carrying a constant that names WHICH precondition declined — see the class
+     * javadoc for why the sentence alone is not enough to branch on.
+     */
+    public static ErrorInfo invalidParameter(String param, String reason, String reasonCode) {
         return new ErrorInfo(
             INVALID_PARAMETER,
             String.format("Invalid parameter '%s': %s", param, reason),
-            "Check the tool's inputSchema (tools/list) for the required parameters and their expected shapes."
+            "Check the tool's inputSchema (tools/list) for the required parameters and their expected shapes.",
+            reasonCode
         );
     }
 

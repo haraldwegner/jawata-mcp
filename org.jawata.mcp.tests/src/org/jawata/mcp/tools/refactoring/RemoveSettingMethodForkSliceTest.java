@@ -116,15 +116,15 @@ class RemoveSettingMethodForkSliceTest {
             "setNext satisfies Filter, so removing it would stop AbstractFilter's subclasses"
                 + " being usable as the interface they are declared to be");
         String error = String.valueOf(r.getError());
-        // THE INTERFACE BRANCH SPECIFICALLY, not merely some refusal. setNext is a plain
-        // one-assignment setter, so the shape check passes, and it IS also called from
-        // outside — so naming the supertype is what tells the interface branch apart from
-        // the caller branch that would otherwise fire next.
-        assertTrue(error.contains("overrides") && error.contains("Filter"),
-            "it must be the CONTRACT refusal, naming the supertype it belongs to: " + error);
-        assertFalse(error.contains("outside"),
-            "and it must be that one rather than the caller refusal — both are true of this"
-                + " method, and only the nearer one is what this test claims: " + error);
+        // THE INTERFACE BRANCH SPECIFICALLY, read off the refusal rather than searched for in
+        // it. setNext is a plain one-assignment setter AND is called from outside, so two of
+        // this row's refusals are true of it and only the nearer one fires; separating them
+        // used to need a positive search plus a negative one.
+        assertEquals(org.jawata.mcp.tools.data.RemoveSettingMethodTool.Refusal.OVERRIDES_SUPERTYPE,
+            r.getError().getReason(),
+            "it must be the CONTRACT refusal rather than the caller one: " + error);
+        assertTrue(error.contains("Filter"),
+            "and the sentence still names the supertype, for the human reading it: " + error);
         assertEquals(before, Files.readString(filter, StandardCharsets.UTF_8),
             "a refusal must leave upstream's file byte-for-byte untouched");
     }

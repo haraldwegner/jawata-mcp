@@ -202,6 +202,14 @@ public class ToolResponse {
     }
 
     /**
+     * The same, naming WHICH precondition declined so a caller need not read the prose —
+     * see {@link ErrorInfo} for the defect that motivated it.
+     */
+    public static ToolResponse invalidParameter(String param, String reason, String reasonCode) {
+        return error(ErrorInfo.invalidParameter(param, reason, reasonCode));
+    }
+
+    /**
      * bugs.md #11 (Sprint 14): create a PROJECT_KEY_DROPPED error for a key
      * that was valid earlier in the session but has since been unloaded.
      */
