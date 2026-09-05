@@ -190,8 +190,20 @@ class RemoveSettingMethodToolTest {
             "Gauge.setScale satisfies Adjustable, so it is part of a contract this class"
                 + " declares rather than a setter it is free to take away");
         String error = String.valueOf(r.getError());
+        // WORDS ONLY THE PRECONDITION EMITS. "Adjustable" alone is not enough and a mutation
+        // proved it: with the supertype lookup reverted to superclasses-only, the row ACCEPTS
+        // this setter, performs the removal, and the compile gate refuses and undoes it —
+        // "The type Gauge must implement the inherited abstract method Adjustable.setScale".
+        // That message names the interface too, so the weaker assertion passed while the
+        // branch it claims to test was never reached.
+        assertTrue(error.contains("is part of a contract this class declares"),
+            "the refusal must be the PRECONDITION, naming the contract: " + error);
         assertTrue(error.contains("Adjustable"),
-            "the refusal must name the supertype whose contract it is: " + error);
+            "and it must name which supertype's: " + error);
+        assertFalse(error.contains("BROKE_COMPILE"),
+            "the compile gate catching it afterwards is a backstop, not this refusal: a row"
+                + " that performs and is undone tells the caller nothing about what to do"
+                + " instead: " + error);
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
     }
