@@ -27,4 +27,14 @@ public class DerivedParameterDesk {
     public double disagreeing(DerivedParameterTargets.Order order) {
         return targets.contested(order, 5);
     }
+
+    /** Derives it one way… */
+    public double disputedOne(DerivedParameterTargets.Order order) {
+        return targets.disputed(order, order.rate());
+    }
+
+    /** …and its neighbour derives it ANOTHER, which is the case that reaches unanimity. */
+    public double disputedTwo(DerivedParameterTargets.Order order) {
+        return targets.disputed(order, order.bonus());
+    }
 }

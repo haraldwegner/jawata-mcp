@@ -103,6 +103,27 @@ class ReplaceParameterWithQueryToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES when two callers each derive it plausibly but DIFFERENTLY — the case "
+        + "that reaches the unanimity check at all")
+    void refusesWhenCallersDeriveItDifferently() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        ToolResponse r = tool.execute(argsFor("disputed"));
+
+        assertFalse(r.isSuccess(),
+            "one caller passes order.rate() and the other order.bonus(); picking either would"
+                + " change what the other asked for");
+        assertEquals(ReplaceParameterWithQueryTool.Refusal.CALLERS_DISAGREE,
+            r.getError().getReason(),
+            "the refusal must be the unanimity PRECONDITION: " + r.getError());
+        assertTrue(String.valueOf(r.getError()).contains("rate")
+                && String.valueOf(r.getError()).contains("bonus"),
+            "and it must NAME both derivations it saw, so the caller can see the conflict"
+                + " rather than being told there is one: " + r.getError());
+        assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
+            "a refusal modifies nothing");
+    }
+
+    @Test
     @DisplayName("REFUSES a parameter the method does not declare")
     void refusesAnUnknownParameter() throws Exception {
         ObjectNode args = argsFor("discounted");

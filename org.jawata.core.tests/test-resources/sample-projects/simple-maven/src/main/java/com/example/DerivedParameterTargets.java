@@ -24,6 +24,19 @@ public class DerivedParameterTargets {
         return order.total() - rate;
     }
 
+    /**
+     * The SECOND disagreement, and a mutation is what showed it was missing.
+     *
+     * <p>Its callers both pass a no-argument query on the order — but not the SAME one. That
+     * reaches the unanimity check, which the neighbour above never does: there one caller
+     * passes a literal, refused earlier by the is-it-a-query check, so a mutation disabling
+     * unanimity left every test green. Two callers each deriving plausibly, and differently,
+     * is the only shape that exercises it.</p>
+     */
+    public double disputed(Order order, int rate) {
+        return order.total() + rate;
+    }
+
     /** The object the derivation is asked of. */
     public static class Order {
 
@@ -41,6 +54,11 @@ public class DerivedParameterTargets {
 
         public int rate() {
             return rate;
+        }
+
+        /** A SECOND plausible derivation of the same type — what makes disagreement possible. */
+        public int bonus() {
+            return rate * 2;
         }
     }
 }
