@@ -205,7 +205,7 @@ public class GenerateConstructorTool extends AbstractTool
             parser.setKind(ASTParser.K_COMPILATION_UNIT);
             parser.setResolveBindings(true);
             CompilationUnit astRoot = (CompilationUnit) parser.createAST(new NullProgressMonitor());
-            AbstractTypeDeclaration targetDecl = findTypeDeclaration(astRoot, type.getElementName());
+            AbstractTypeDeclaration targetDecl = findTypeDeclaration(astRoot, type);
             if (!(targetDecl instanceof TypeDeclaration typeDecl)) {
                 return ToolResponse.invalidParameter("filePath/line/column",
                     "Target is not a regular class; codegen on enums/interfaces/records is not supported.");
@@ -313,8 +313,8 @@ public class GenerateConstructorTool extends AbstractTool
     }
 
     /** Top-level OR nested — see {@link org.jawata.mcp.tools.shared.TypeLookup}. */
-    private static AbstractTypeDeclaration findTypeDeclaration(CompilationUnit unit, String simpleName) {
-        return org.jawata.mcp.tools.shared.TypeLookup.declaration(unit, simpleName);
+    private static AbstractTypeDeclaration findTypeDeclaration(CompilationUnit unit, IType type) {
+        return org.jawata.mcp.tools.shared.TypeLookup.declaration(unit, type);
     }
 
     private static void applyVisibility(AST ast, MethodDeclaration method, String visibility) {

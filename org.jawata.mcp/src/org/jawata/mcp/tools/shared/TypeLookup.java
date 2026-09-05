@@ -1,10 +1,12 @@
 package org.jawata.mcp.tools.shared;
 
-import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.jawata.core.IJdtService;
+import org.eclipse.jdt.core.dom.NodeFinder;
 
 /**
  * Find a type declared in one file by its simple name — over the DOM tree or over the Java
@@ -53,50 +55,27 @@ public final class TypeLookup {
     private TypeLookup() {
     }
 
-    /** The DOM declaration of this simple name, top-level or nested, or null. */
-    public static AbstractTypeDeclaration declaration(CompilationUnit unit, String simpleName) {
-        return searchDom(unit.types(), simpleName);
-    }
-
-    /** The Java-model type of this simple name declared in this file, or null. */
-    public static IType model(IJdtService service, String filePath, String simpleName)
-            throws Exception {
-        ICompilationUnit unit =
-            service.getCompilationUnit(service.getPathUtils().resolve(filePath));
-        if (unit == null) {
+    /**
+     * The DOM declaration of THIS type inside a parse of its own file, or null.
+     *
+     * <p>Joined on the element's source range rather than its name, so it is the declaration of
+     * the type the caller is holding and not of whichever type of that name comes first. Every
+     * caller has an {@link IType} already — the by-name form this replaced made five of them
+     * throw that identity away and ask for it back.</p>
+     */
+    public static AbstractTypeDeclaration declaration(CompilationUnit unit, IType type) {
+        try {
+            ISourceRange range = type.getNameRange();
+            if (range == null || range.getOffset() < 0) {
+                return null;
+            }
+            ASTNode node = NodeFinder.perform(unit, range.getOffset(), range.getLength());
+            while (node != null && !(node instanceof AbstractTypeDeclaration)) {
+                node = node.getParent();
+            }
+            return (AbstractTypeDeclaration) node;
+        } catch (JavaModelException e) {
             return null;
         }
-        return searchModel(unit.getTypes(), simpleName);
-    }
-
-    private static AbstractTypeDeclaration searchDom(java.util.List<?> declarations,
-                                                     String simpleName) {
-        for (Object each : declarations) {
-            if (!(each instanceof AbstractTypeDeclaration declaration)) {
-                continue;
-            }
-            if (simpleName.equals(declaration.getName().getIdentifier())) {
-                return declaration;
-            }
-            AbstractTypeDeclaration nested =
-                searchDom(declaration.bodyDeclarations(), simpleName);
-            if (nested != null) {
-                return nested;
-            }
-        }
-        return null;
-    }
-
-    private static IType searchModel(IType[] types, String simpleName) throws Exception {
-        for (IType type : types) {
-            if (type.getElementName().equals(simpleName)) {
-                return type;
-            }
-            IType nested = searchModel(type.getTypes(), simpleName);
-            if (nested != null) {
-                return nested;
-            }
-        }
-        return null;
     }
 }

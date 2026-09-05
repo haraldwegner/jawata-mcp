@@ -176,6 +176,22 @@ class EncapsulateRecordToolTest {
     }
 
     @Test
+    @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
+    void leavesTheDecoySiblingUntouched() throws Exception {
+        ToolResponse r = at("public static class Coordinate", "Coordinate");
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+
+        String after = Files.readString(targets, StandardCharsets.UTF_8);
+        // Legacy.Coordinate is declared FIRST and shares the target's simple name, so a recipe
+        // that carries its target between steps as a name lands here at every step.
+        assertTrue(after.contains("public String datum;"),
+            "the decoy sibling's public field must be exactly as it was — encapsulating it is"
+                + " a rewrite of a class nobody pointed at:\n" + after);
+        assertFalse(after.contains("getDatum()"),
+            "and it must gain no accessor:\n" + after);
+    }
+
+    @Test
     @DisplayName("runs from the class's TYPE NAME, with no file position given")
     void runsFromItsTypeName() throws Exception {
         ObjectNode args = new ObjectMapper().createObjectNode();

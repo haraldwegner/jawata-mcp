@@ -24,21 +24,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>The census, and what it says</h2>
  *
- * <p>Over the fork's 1354 main sources, 29 classes declare 43 public setters. Classified by
- * body shape, <b>14</b> are the plain one-assignment kind these two rows accept; the rest
- * validate, log, switch or delegate, and row 37 refuses those as not setting methods.</p>
+ * <p>Over the fork's 1354 main sources there are <b>48</b> {@code public void set…}
+ * declarations. Classified by body shape, <b>13</b> are the plain one-assignment kind these
+ * two rows accept — one parameter, one statement, {@code f = p;} — and the rest validate, log,
+ * switch, delegate or take more than one parameter, which row 37 refuses at its shape check.
+ * </p>
  *
- * <p><b>An earlier version of this note gave a FALSE reason for the absence, and it is
- * corrected rather than replaced.</b> It said every plain setter is a WIRING setter and that
- * "a teaching repository for design patterns is largely assembly". Counted: at least six of
- * the fourteen are ordinary value or state setters — {@code SimpleMessage.setBody},
- * {@code AbstractInstance.setAlive}, {@code FileLoader.setFileName},
- * {@code Queen.setFlirtiness}, {@code Worker.setReceivedData},
- * {@code BookViewModel.setSelectedBook}. The CONCLUSION survives and the explanation does
- * not: all fourteen are refused because each has at least one call site outside its declaring
- * class's constructors — that is, because the value is genuinely still being changed after
- * construction, which is this refactoring's own precondition. A narrative that fits the
- * conclusion is not evidence for it.</p>
+ * <p><b>This paragraph has now been wrong TWICE, and both corrections are kept rather than
+ * overwritten, because the second is the more instructive.</b> The first version said every
+ * plain setter is a WIRING setter and that "a teaching repository for design patterns is
+ * largely assembly" — a narrative that fitted the conclusion. The correction replaced it with
+ * a count of <em>fourteen</em> and a list of six examples, and a fresh auditor re-derived both:
+ * the count is <em>thirteen</em>, and one of the six named examples —
+ * {@code Worker.setReceivedData} — takes TWO parameters, so it is refused by the shape check
+ * and was never in the accepted set at all. Correcting a false explanation with a
+ * hand-assembled count is the same defect wearing better clothes.</p>
+ *
+ * <p>What survives, stated only as far as it was measured: of the thirteen, the ones examined
+ * are ordinary value or state setters rather than collaborator wiring —
+ * {@code SimpleMessage.setBody}, {@code AbstractInstance.setAlive},
+ * {@code FileLoader.setFileName}, {@code Queen.setFlirtiness},
+ * {@code BookViewModel.setSelectedBook} — and each is refused because the value is genuinely
+ * still being changed after construction, which is this refactoring's own precondition. That
+ * is a claim about the ones read, NOT about all thirteen; the row has no success-path
+ * demonstration on foreign code either way.</p>
  *
  * <p>So there is no success-path demonstration on foreign code, and the absence is stated
  * rather than left looking like an oversight. What IS demonstrated is a refusal on real

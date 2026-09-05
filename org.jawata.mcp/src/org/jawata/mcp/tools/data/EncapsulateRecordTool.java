@@ -12,6 +12,7 @@ import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.internal.corext.refactoring.sef.SelfEncapsulateFieldRefactoring;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.core.IJdtService;
@@ -226,32 +227,34 @@ public class EncapsulateRecordTool extends AbstractRefactoringTool implements To
         }
 
         ObjectMapper mapper = new ObjectMapper();
-        String unitPath = declaring.getCompilationUnit().getResource().getLocation()
-            .toOSString();
         List<RecipeStep> steps = new ArrayList<>();
         for (String fieldName : encapsulate) {
             ObjectNode args = mapper.createObjectNode();
-            // THE FILE AND THE SIMPLE NAME, not the fully-qualified one. Row 54 recorded the
-            // hazard: IType spells a nested type's qualified name with '$' and the binding
-            // spells it with '.', so a name-keyed lookup is one of two spellings and silently
-            // finds nothing for a member class. Walking this file's own types has no spelling.
-            args.put("filePath", unitPath);
-            args.put("typeName", declaring.getElementName());
+            // THE ELEMENT'S OWN HANDLE, which is JDT's identity for it. A step must survive the
+            // previous step's rewrite, and a POSITION does not — so this used to carry the
+            // file plus the type's simple name instead. That key is not unique: two sibling
+            // member classes may share a simple name, and the depth-first search behind it
+            // returns whichever is declared first, so every step of a request about one landed
+            // on the other. A handle is position-independent AND unique, which is the pair of
+            // properties the step actually needs; it also has ONE spelling, which is the row 54
+            // hazard ('$' from IType, '.' from the binding) closed rather than worked around.
+            args.put("type", declaring.getHandleIdentifier());
             args.put("field", fieldName);
             steps.add(new RecipeStep("data", args));
         }
         Recipe recipe = new Recipe("encapsulate record " + declaring.getElementName(), steps);
 
         RecipeEngine.Result result = recipe.run((operation, args) -> {
-            // BY NAME, resolved NOW: the previous step inserted accessor methods into this
+            // BY HANDLE, resolved NOW: the previous step inserted accessor methods into this
             // same file, so any position captured before the recipe started is stale. See the
             // class javadoc.
             String fieldName = args.path("field").asText();
-            IType current = org.jawata.mcp.tools.shared.TypeLookup.model(
-                service, args.path("filePath").asText(), args.path("typeName").asText());
+            String handle = args.path("type").asText();
+            IType current = JavaCore.create(handle) instanceof IType resolved && resolved.exists()
+                ? resolved : null;
             if (current == null) {
-                throw new IllegalStateException("could not re-resolve "
-                    + args.path("typeName").asText() + " after the previous step.");
+                throw new IllegalStateException("could not re-resolve " + handle
+                    + " after the previous step.");
             }
             IField field = current.getField(fieldName);
             if (field == null || !field.exists()) {

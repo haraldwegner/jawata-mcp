@@ -12,6 +12,79 @@ import java.util.Objects;
  */
 public class ReferenceToValueTargets {
 
+    /**
+     * A DECOY, and it is declared FIRST on purpose.
+     *
+     * <p>Its member class has the same simple name as {@link Money}, which Java allows because
+     * a simple name is unique inside a scope and not inside a file. A recipe that carries its
+     * target between steps as a simple name and re-resolves it by searching the file
+     * depth-first finds whichever comes first — so with this class ABOVE {@code Money}, every
+     * step of a request about {@code Money} lands here instead. Declared below it, the search
+     * is accidentally right and the defect is invisible, which is the state the fixture was in
+     * when the architect found the bug by reading rather than by running.</p>
+     */
+    public static class Legacy {
+
+        /**
+         * Same simple name as its sibling one level up, and nothing else in common.
+         *
+         * <p>Package-private ON PURPOSE: the model search this decoy exists to catch does not
+         * filter by visibility, so it still finds this one first — while the tests anchor on a
+         * declaration that is public, which now matches only the real target. A decoy that
+         * also matched the anchor would move the tests rather than the defect. THIS COMMENT
+         * MUST NOT SPELL THE ANCHOR EITHER: the first version did, the line search matched the
+         * comment, and the caret landed on this class — the fixture rule earned at row 54,
+         * broken in the very sentence explaining the fixture.</p>
+         */
+        static class Money {
+
+            private String note;
+
+            public Money(String note) {
+                this.note = note;
+            }
+
+            public String note() {
+                return note;
+            }
+        }
+    }
+
+    /**
+     * Two 1-arg setters of ONE name, on different fields — the second axis of the same defect.
+     *
+     * <p>Carrying a setter between steps as a bare name cannot tell these apart: the row would
+     * emit the name twice and resolve both steps to whichever overload comes first, so one
+     * field is done twice and the other never. Both are plain setting methods, so the row must
+     * remove both.</p>
+     */
+    public static class Seat {
+
+        private String label;
+        private int number;
+
+        public Seat(String label, int number) {
+            setPlace(label);
+            setPlace(number);
+        }
+
+        public void setPlace(String label) {
+            this.label = label;
+        }
+
+        public void setPlace(int number) {
+            this.number = number;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public int number() {
+            return number;
+        }
+    }
+
     /** Two setters, both called from the constructor, and no identity of its own. */
     public static class Money {
 

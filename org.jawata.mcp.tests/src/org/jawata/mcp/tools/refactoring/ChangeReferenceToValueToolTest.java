@@ -83,12 +83,26 @@ class ChangeReferenceToValueToolTest {
                 && after.contains("this.amount = amount;"),
             "each constructor call becomes a direct assignment, or the fields are never"
                 + " set:\n" + after);
-        assertTrue(after.contains("public boolean equals(Object"),
-            "and the class gains value equality — without it an immutable class is compared"
-                + " by identity, which is the worst of both:\n" + after);
-        assertTrue(after.contains("public int hashCode()"),
+        // COUNTED, NOT CONTAINED. The fixture's Ticket already declares equals and hashCode —
+        // it is the refusal case — so `contains(...)` is true of the pristine file and passes
+        // with the generation step deleted. An audit proved exactly that by stubbing the
+        // generate step out: five of five green with the row's advertised second half gone.
+        assertEquals(2, occurrences(after, "public boolean equals(Object"),
+            "the file must now declare equality TWICE: Ticket's own, and the one this row"
+                + " generated. One means nothing was generated:\n" + after);
+        assertEquals(2, occurrences(after, "public int hashCode()"),
             "with the hash that has to travel with it, or it breaks every hash-based"
                 + " collection:\n" + after);
+    }
+
+    /** How many times a needle occurs — a containment check cannot see a SECOND one. */
+    private static int occurrences(String haystack, String needle) {
+        int count = 0;
+        for (int at = haystack.indexOf(needle); at >= 0;
+                at = haystack.indexOf(needle, at + needle.length())) {
+            count++;
+        }
+        return count;
     }
 
     @Test
@@ -159,6 +173,39 @@ class ChangeReferenceToValueToolTest {
     }
 
     @Test
+    @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
+    void leavesTheDecoySiblingUntouched() throws Exception {
+        ToolResponse r = at("public static class Money", "Money");
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+
+        String after = Files.readString(targets, StandardCharsets.UTF_8);
+        // Legacy.Money is declared FIRST and shares the target's simple name, so a recipe that
+        // carries its target between steps as a name lands there at every step.
+        assertTrue(after.contains("public String note() {"),
+            "the decoy sibling must be exactly as it was:\n" + after);
+        assertFalse(after.contains("Legacy.Money) other"),
+            "and it must gain no generated equality — that would be a rewrite of a class"
+                + " nobody pointed at:\n" + after);
+    }
+
+    @Test
+    @DisplayName("removes BOTH 1-arg setters that share one name, each on its own field")
+    void removesBothOverloadsOfOneName() throws Exception {
+        ToolResponse r = at("public static class Seat", "Seat");
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+
+        String after = Files.readString(targets, StandardCharsets.UTF_8);
+        assertFalse(after.contains("public void setPlace(String label)"),
+            "the String overload must be gone:\n" + after);
+        assertFalse(after.contains("public void setPlace(int number)"),
+            "and so must the int one — carrying a setter between steps as a bare NAME cannot"
+                + " tell two 1-arg overloads apart, so one field would be done twice and the"
+                + " other never:\n" + after);
+        assertTrue(after.contains("this.label = label;") && after.contains("this.number = number;"),
+            "each constructor call becomes the assignment of ITS OWN field:\n" + after);
+    }
+
+    @Test
     @DisplayName("runs from the class's TYPE NAME, with no file position given")
     void runsFromItsTypeName() throws Exception {
         ObjectNode args = new ObjectMapper().createObjectNode();
@@ -166,8 +213,14 @@ class ChangeReferenceToValueToolTest {
         args.put("typeName", "com.example.ReferenceToValueTargets.Money");
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
-        assertTrue(Files.readString(targets, StandardCharsets.UTF_8)
-                .contains("public boolean equals(Object"),
-            "the name form must reach the same class the caret does");
+        String after = Files.readString(targets, StandardCharsets.UTF_8);
+        // NOT `contains("public boolean equals(Object")` — Ticket declares that in the pristine
+        // fixture, so the assertion was true before the run and proved nothing about where the
+        // name form landed. These two are true only of Money, and only after this row.
+        assertFalse(after.contains("void setCurrency("),
+            "the name form must reach the same class the caret does — Money's setter is gone"
+                + " only if it did:\n" + after);
+        assertEquals(2, occurrences(after, "public boolean equals(Object"),
+            "and Money gained its own equality beside Ticket's:\n" + after);
     }
 }

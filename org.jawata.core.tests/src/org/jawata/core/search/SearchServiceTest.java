@@ -133,17 +133,34 @@ class SearchServiceTest {
         assertTrue(supertypes.length >= 1, "Should have at least Object as supertype");
     }
 
+    /**
+     * The CONTRACT, in the bundle that publishes it.
+     *
+     * <p>This method answered {@code getAllSuperclasses} until 2026-09-05 while being named for
+     * the supertypes, and the test that covered it asserted only {@code length >= 1} — true of
+     * both answers, so it pinned neither. The only thing that could tell them apart lived two
+     * bundles away and reached this method through a refactoring tool.</p>
+     */
     @Test
-    @DisplayName("getAllSupertypes should return superclasses")
-    void getAllSupertypes_returnsSuperclasses() throws CoreException {
+    @DisplayName("getAllSupertypes returns interfaces as well as superclasses")
+    void getAllSupertypes_returnsInterfacesToo() throws CoreException {
         IType calculatorType = jdtService.findType("com.example.Calculator");
         assertNotNull(calculatorType, "Should find Calculator type");
-
         IType[] supertypes = searchService.getAllSupertypes(calculatorType);
-
-        // Should include Object at minimum
         assertNotNull(supertypes, "Should return supertypes array");
         assertTrue(supertypes.length >= 1, "Should have Object as supertype");
+
+        // THE DISCRIMINATOR: a type that implements an interface. Under the old answer this
+        // list held Object alone, and a caller asking "is this member part of an inherited
+        // contract?" was told no for every interface method there is.
+        IType gauge = jdtService.findType("com.example.SettingMethodTargets.Gauge");
+        assertNotNull(gauge, "Should find the Gauge fixture");
+        boolean namesTheInterface = false;
+        for (IType supertype : searchService.getAllSupertypes(gauge)) {
+            namesTheInterface |= "Adjustable".equals(supertype.getElementName());
+        }
+        assertTrue(namesTheInterface,
+            "Gauge implements Adjustable, so the interface must be among its supertypes");
     }
 
     @Test

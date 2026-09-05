@@ -14,6 +14,7 @@ import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.text.edits.ReplaceEdit;
@@ -228,7 +229,7 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
             return ToolResponse.symbolNotFound(
                 "'" + declaring.getElementName() + "' has no source compilation unit here.");
         }
-        List<String> setters = setterNames(declaring, unit);
+        List<IMethod> setters = setters(declaring, unit);
 
         // A RECIPE CANNOT STAGE — the same answer rows 10 and 58 give, for the same reason.
         if (!getBooleanParam(arguments, "auto_apply", true)) {
@@ -241,47 +242,51 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
         }
 
         ObjectMapper mapper = new ObjectMapper();
-        // THE FILE AND THE SIMPLE NAME — see TypeInFile for why a fully-qualified name is the
-        // wrong key between steps.
-        String unitPath = unit.getResource().getLocation().toOSString();
-        String simpleName = declaring.getElementName();
+        // THE ELEMENTS' OWN HANDLES. A step must survive the previous step's rewrite, so a
+        // position is out; this carried the file plus SIMPLE NAMES instead, and neither name
+        // identifies anything. Two sibling member classes may share a simple name, and two
+        // 1-arg setters may share theirs — in both cases the first hit wins and the step acts
+        // on something nobody pointed at. A handle is position-independent AND unique, and has
+        // one spelling, which also closes row 54's '$'-versus-'.' hazard rather than dodging it.
+        String typeHandle = declaring.getHandleIdentifier();
         List<RecipeStep> steps = new ArrayList<>();
-        for (String setter : setters) {
+        for (IMethod setter : setters) {
             ObjectNode args = mapper.createObjectNode();
-            args.put("filePath", unitPath);
-            args.put("typeName", simpleName);
-            args.put("setter", setter);
+            args.put("type", typeHandle);
+            args.put("setter", setter.getHandleIdentifier());
             steps.add(new RecipeStep("data", args));
         }
         ObjectNode generateArgs = mapper.createObjectNode();
-        generateArgs.put("filePath", unitPath);
-        generateArgs.put("typeName", simpleName);
+        generateArgs.put("type", typeHandle);
         generateArgs.set("fields", mapper.valueToTree(valueFields));
         steps.add(new RecipeStep("generate", generateArgs));
 
         Recipe recipe = new Recipe("change reference to value " + declaring.getElementName(),
             steps);
         RecipeEngine.Result result = recipe.run((operation, args) -> {
-            // BY NAME, resolved NOW: every previous step rewrote this file. See the javadoc.
-            IType current = org.jawata.mcp.tools.shared.TypeLookup.model(
-                service, args.path("filePath").asText(), args.path("typeName").asText());
+            // BY HANDLE, resolved NOW: every previous step rewrote this file. See the javadoc.
+            String handle = args.path("type").asText();
+            IType current = JavaCore.create(handle) instanceof IType resolved && resolved.exists()
+                ? resolved : null;
             if (current == null) {
-                throw new IllegalStateException("could not re-resolve "
-                    + args.path("typeName").asText() + " after the previous step.");
+                throw new IllegalStateException("could not re-resolve " + handle
+                    + " after the previous step.");
             }
             if ("generate".equals(operation)) {
                 return equalsHashCodeChange(current, valueFields);
             }
-            String setterName = args.path("setter").asText();
-            IMethod setter = methodNamed(current, setterName);
+            String setterHandle = args.path("setter").asText();
+            IMethod setter =
+                JavaCore.create(setterHandle) instanceof IMethod found && found.exists()
+                    ? found : null;
             if (setter == null) {
-                throw new IllegalStateException("could not find setter '" + setterName
-                    + "' after the previous step — it may have been renamed or removed.");
+                throw new IllegalStateException("could not find setter " + setterHandle
+                    + " after the previous step — it may have been renamed or removed.");
             }
             RemoveSettingMethodTool.Prepared prepared =
                 removeSettingMethod.prepare(service, setter);
             if (prepared.refusal() != null) {
-                throw new IllegalStateException("remove '" + setterName + "': "
+                throw new IllegalStateException("remove '" + setter.getElementName() + "': "
                     + String.valueOf(prepared.refusal().getError()));
             }
             return prepared.change();
@@ -351,10 +356,10 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
      * offer a method the step then refuses, and the recipe would roll back for a reason the
      * caller could not have predicted.</p>
      */
-    private static List<String> setterNames(IType declaring, ICompilationUnit unit)
+    private static List<IMethod> setters(IType declaring, ICompilationUnit unit)
             throws Exception {
         CompilationUnit ast = RemoveSettingMethodTool.parse(unit);
-        List<String> found = new ArrayList<>();
+        List<IMethod> found = new ArrayList<>();
         for (IMethod method : declaring.getMethods()) {
             if (method.isConstructor() || method.getNumberOfParameters() != 1) {
                 continue;
@@ -362,18 +367,9 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
             MethodDeclaration declaration = RemoveSettingMethodTool.declarationOf(ast, method);
             if (declaration != null
                     && RemoveSettingMethodTool.assignedField(declaration) != null) {
-                found.add(method.getElementName());
+                found.add(method);
             }
         }
         return found;
-    }
-
-    private static IMethod methodNamed(IType type, String name) throws Exception {
-        for (IMethod method : type.getMethods()) {
-            if (method.getElementName().equals(name) && method.getNumberOfParameters() == 1) {
-                return method;
-            }
-        }
-        return null;
     }
 }

@@ -253,10 +253,15 @@ class DeclaredShapeHonestyTest {
         // PROOF OF LIFE: doors that have not adopted the seam return an empty preamble and
         // are skipped, so a zero here would mean the loop looked at nothing.
         //
-        // SEVEN, and the first version of this line said six — a number recalled rather than
-        // counted, which the gate caught on its first run. This list holds eight doors;
-        // `hierarchy` is the only one that is not a FrontDoor yet, and `refactoring` IS one,
-        // because it took the description seam without the routing seam.
+        // EIGHT of the NINE doors this list holds. `hierarchy` is the only one that is not a
+        // FrontDoor yet; `refactoring` IS one, because it took the description seam without
+        // the routing seam.
+        //
+        // The number has been wrong twice in this comment and both are worth remembering: the
+        // first version said six when it was seven, recalled rather than counted; the second
+        // still said seven, and "eight doors", after Stage 5 added `data` and moved both — so
+        // a comment corrected once went stale the very next time its subject changed. The
+        // assertion below is the only copy that anything checks.
         assertEquals(8, checked,
             "the eight doors in this list that have adopted the description seam must be"
                 + " checked. data adopted inside Stage 5 and is the eighth; hierarchy adopts"

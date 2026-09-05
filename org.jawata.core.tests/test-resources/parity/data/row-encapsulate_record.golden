@@ -13,6 +13,41 @@ package com.example;
  */
 public class EncapsulateRecordTargets {
 
+    /**
+     * A DECOY, declared FIRST on purpose — see the same shape in {@code ReferenceToValueTargets}.
+     *
+     * <p>Its member class shares {@link Coordinate}'s simple name, which Java allows. A recipe
+     * that carries its target between steps as a simple name and re-resolves it by searching
+     * the file depth-first lands HERE at every step of a request about the real
+     * {@code Coordinate}. Below it, the search is accidentally right and the defect cannot be
+     * seen — which is the state this fixture was in while the row shipped.</p>
+     *
+     * <p>Its field is public and never touched by the tests, so if a run ever did land here it
+     * would be visible as a rewrite of a class nobody pointed at.</p>
+     */
+    public static class Legacy {
+
+        /**
+         * Same simple name as its sibling one level up, and nothing else in common.
+         *
+         * <p>Package-private ON PURPOSE: the model search this decoy exists to catch does not
+         * filter by visibility, so it still finds this one first — while the tests anchor on a
+         * declaration that is public, which now matches only the real target. A decoy that
+         * also matched the anchor would move the tests rather than the defect. THIS COMMENT
+         * MUST NOT SPELL THE ANCHOR EITHER: the first version did, the line search matched the
+         * comment, and the caret landed on this class — the fixture rule earned at row 54,
+         * broken in the very sentence explaining the fixture.</p>
+         */
+        static class Coordinate {
+
+            public String datum;
+
+            public Coordinate(String datum) {
+                this.datum = datum;
+            }
+        }
+    }
+
     /** Two public fields and a constant beside them. */
     public static class Coordinate {
 
