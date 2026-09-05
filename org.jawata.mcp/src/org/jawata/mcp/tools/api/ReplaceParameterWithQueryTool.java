@@ -13,7 +13,6 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
-import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
@@ -25,7 +24,6 @@ import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
-import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.TextEdit;
@@ -37,6 +35,7 @@ import org.jawata.mcp.tools.AbstractApplyingRefactoringTool;
 import org.jawata.mcp.tools.ToolKindDelegate;
 import org.jawata.mcp.tools.shared.FormatterOptions;
 import org.jawata.mcp.tools.shared.FqnTarget;
+import org.jawata.mcp.tools.shared.MethodLookup;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -193,7 +192,7 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
 
         ICompilationUnit unit = method.getCompilationUnit();
         CompilationUnit ast = IntroducedParameter.parse(unit);
-        MethodDeclaration decl = declarationOf(ast, method);
+        MethodDeclaration decl = MethodLookup.declaration(ast, method);
         if (decl == null || decl.getBody() == null) {
             return Preparation.fail(ToolResponse.invalidParameter("position",
                 "could not locate the method's body.", Refusal.NOT_A_METHOD));
@@ -354,19 +353,6 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
         return Preparation.of(ChangeEngine.fromFileEdits(label, byFile),
             label + " (" + rewritten + " read(s) in the body, " + calls.size()
                 + " call site(s) shortened)", extras);
-    }
-
-    private static MethodDeclaration declarationOf(CompilationUnit ast, IMethod method)
-            throws Exception {
-        ISourceRange range = method.getNameRange();
-        if (range == null || range.getOffset() < 0) {
-            return null;
-        }
-        ASTNode node = NodeFinder.perform(ast, range.getOffset(), range.getLength());
-        while (node != null && !(node instanceof MethodDeclaration)) {
-            node = node.getParent();
-        }
-        return (MethodDeclaration) node;
     }
 
     /**

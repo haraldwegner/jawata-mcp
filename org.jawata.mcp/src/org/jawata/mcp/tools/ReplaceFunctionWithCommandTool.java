@@ -1,6 +1,14 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
@@ -27,15 +35,9 @@ import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.CreateCompilationUnitChange;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.shared.FormatterOptions;
+import org.jawata.mcp.tools.shared.MethodLookup;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Fowler — <b>Replace Function with Command</b> (row 48). A function becomes an object: its
@@ -175,7 +177,7 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
     private Preparation replace(IJdtService service, ICompilationUnit unit, IMethod method,
                                 String newTypeName) throws Exception {
         CompilationUnit ast = parse(unit);
-        MethodDeclaration declaration = declarationOf(ast, method);
+        MethodDeclaration declaration = MethodLookup.declaration(ast, method);
         if (declaration == null || declaration.getBody() == null) {
             return Preparation.fail(ToolResponse.symbolNotFound(
                 "could not locate a body for " + method.getElementName()));
@@ -407,22 +409,6 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
             }
         });
         return found[0] != null ? found[0] : original;
-    }
-
-    private static MethodDeclaration declarationOf(CompilationUnit ast, IMethod method) {
-        MethodDeclaration[] found = { null };
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(MethodDeclaration node) {
-                IMethodBinding binding = node.resolveBinding();
-                if (found[0] == null && binding != null
-                        && method.equals(binding.getJavaElement())) {
-                    found[0] = node;
-                }
-                return true;
-            }
-        });
-        return found[0];
     }
 
     private static CompilationUnit parse(ICompilationUnit unit) {

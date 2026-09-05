@@ -31,6 +31,7 @@ import org.jawata.mcp.tools.AbstractRefactoringTool;
 import org.jawata.mcp.tools.ToolKindDelegate;
 import org.jawata.mcp.tools.codegen.GenerateEqualsHashCodeTool;
 import org.jawata.mcp.tools.shared.FqnTarget;
+import org.jawata.mcp.tools.shared.MethodLookup;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -378,7 +379,7 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
             if (method.isConstructor() || method.getNumberOfParameters() != 1) {
                 continue;
             }
-            MethodDeclaration declaration = RemoveSettingMethodTool.declarationOf(ast, method);
+            MethodDeclaration declaration = MethodLookup.declaration(ast, method);
             if (declaration != null
                     && RemoveSettingMethodTool.assignedField(declaration) != null) {
                 found.add(method);

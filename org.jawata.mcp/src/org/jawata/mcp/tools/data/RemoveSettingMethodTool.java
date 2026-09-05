@@ -11,7 +11,6 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
-import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
@@ -21,7 +20,6 @@ import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
-import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
@@ -50,6 +48,7 @@ import org.jawata.mcp.tools.AbstractRefactoringTool;
 import org.jawata.mcp.tools.ToolKindDelegate;
 import org.jawata.mcp.tools.shared.FormatterOptions;
 import org.jawata.mcp.tools.shared.FqnTarget;
+import org.jawata.mcp.tools.shared.MethodLookup;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -288,7 +287,7 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                 "'" + setter.getElementName() + "' has no source declaring type here."));
         }
         CompilationUnit ast = parse(unit);
-        MethodDeclaration declaration = declarationOf(ast, setter);
+        MethodDeclaration declaration = MethodLookup.declaration(ast, setter);
         AbstractTypeDeclaration owner = declaration == null ? null : ownerOf(declaration);
         if (declaration == null || declaration.getBody() == null || owner == null) {
             return Prepared.refused(ToolResponse.symbolNotFound("could not locate the body of "
@@ -661,29 +660,6 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
             }
         }
         return null;
-    }
-
-    /**
-     * The declaration of THIS method, found by its own source range rather than by its name.
-     *
-     * <p>Name and arity do not identify a method inside a compilation unit, and the earlier
-     * version of this lookup asserted that they did. Two sibling nested classes may each
-     * declare {@code setX(int)}; the architect's counter-example compiles. A name search then
-     * returns whichever comes first in the file, so the precondition can be checked against one
-     * class and the edit built against another — the same substitution-of-a-proxy defect this
-     * row's own checkpoint found three times over. The element's range is the method, so there
-     * is nothing left to be ambiguous about.</p>
-     */
-    static MethodDeclaration declarationOf(CompilationUnit ast, IMethod method) throws Exception {
-        ISourceRange range = method.getNameRange();
-        if (range == null || range.getOffset() < 0) {
-            return null;
-        }
-        ASTNode node = NodeFinder.perform(ast, range.getOffset(), range.getLength());
-        while (node != null && !(node instanceof MethodDeclaration)) {
-            node = node.getParent();
-        }
-        return (MethodDeclaration) node;
     }
 
     /** The type that DECLARES this member — its immediate enclosing type declaration. */
