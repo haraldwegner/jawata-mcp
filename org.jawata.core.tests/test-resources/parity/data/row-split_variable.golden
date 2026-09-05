@@ -1,0 +1,90 @@
+=== SplitVariableTargets.java ===
+package com.example;
+
+/**
+ * Row 65 (Split Variable) fixtures — the canonical case and each shape refused.
+ *
+ * <p>A new file in an EXISTING package, for the reason the row 22, 54 and 9 fixtures state.
+ * Method bodies are distinct on the clone axis, and no comment quotes the operation's output.</p>
+ */
+public class SplitVariableTargets {
+
+    /** THE CANONICAL CASE: one name, two meanings — a perimeter, then an area. */
+    public double measure(double height, double width) {
+        double temp = 2 * (height + width);
+        System.out.println(temp);
+        double area = height * width;
+        System.out.println(area);
+        return area;
+    }
+
+    /**
+     * THE PARAMETER CASE: Fowler's Remove Assignment to Parameter, same cure.
+     *
+     * <p>Its value READS the parameter, which is the shape an earlier version of the rule
+     * refused as an accumulator. It is not one — nothing loops, so there is one derivation
+     * and two meanings.</p>
+     */
+    public String label(String prefix, int id) {
+        prefix = prefix.trim();
+        return prefix + "-" + id;
+    }
+
+    /**
+     * THE LOOP-VARIABLE CASE, which is NOT an accumulator — upstream's own shape.
+     *
+     * <p>The assignment is inside a loop, but the variable is the loop's OWN: it is re-bound
+     * each iteration and carries nothing across. The condition that makes a loop dangerous is
+     * a variable declared OUTSIDE it, which is what {@code total} below has.</p>
+     */
+    public int lengths(String[] inputs) {
+        int found = 0;
+        for (String word : inputs) {
+            word = word.trim();
+            found = found + word.length();
+        }
+        return found;
+    }
+
+    /** REFUSAL — the assignment is in a conditional, so "every use after" is not settled. */
+    public int discount(int inputVal, int quantity) {
+        if (quantity > 50) {
+            inputVal = inputVal - 2;
+        }
+        return inputVal;
+    }
+
+    /** REFUSAL — an accumulator: the assignment is in a loop, so each pass reads the last. */
+    public int total(int[] values) {
+        int sum = 0;
+        for (int value : values) {
+            sum = sum + value;
+        }
+        return sum;
+    }
+
+    /** REFUSAL — an increment, which is an accumulator by construction. */
+    public int countUp(int limit) {
+        int seen = 0;
+        for (int i = 0; i < limit; i++) {
+            seen++;
+        }
+        return seen;
+    }
+
+    /** REFUSAL — assigned once, so there is nothing to split. */
+    public String single(String name) {
+        String greeting = "hi " + name;
+        return greeting;
+    }
+
+    /** REFUSAL — three values need two names, and the call carries one. */
+    public int thrice(int start) {
+        int step = start;
+        System.out.println(step);
+        step = start * 2;
+        System.out.println(step);
+        step = start * 3;
+        return step;
+    }
+}

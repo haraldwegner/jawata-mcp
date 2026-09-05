@@ -9,6 +9,7 @@ import org.jawata.mcp.tools.data.EncapsulateFieldTool;
 import org.jawata.mcp.tools.data.HideDelegateTool;
 import org.jawata.mcp.tools.data.IntroduceSpecialCaseTool;
 import org.jawata.mcp.tools.data.ReplacePrimitiveWithObjectTool;
+import org.jawata.mcp.tools.data.SplitVariableTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +49,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     private final IntroduceSpecialCaseTool specialCase;
     private final ReplacePrimitiveWithObjectTool replacePrimitive;
     private final EncapsulateCollectionTool encapsulateCollection;
+    private final SplitVariableTool splitVariable;
 
     public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
@@ -68,6 +70,10 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         // Encapsulate Collection in words, and its finding carries the accessor's file, line
         // and Class#method — which is this delegate's whole input.
         this.encapsulateCollection = new EncapsulateCollectionTool(serviceSupplier, changeCache);
+        // Row 65, and Fowler's Remove Assignment to Parameter from the same implementation.
+        // UNROUTED: no detector reports a variable serving two purposes, and none could run
+        // it — its whole input is the NAME the second value should carry.
+        this.splitVariable = new SplitVariableTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -91,7 +97,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
         for (KindDelegate delegate : List.of(encapsulateField, hideDelegate, specialCase,
-                replacePrimitive, encapsulateCollection)) {
+                replacePrimitive, encapsulateCollection, splitVariable)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -172,6 +178,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
             case "replace_primitive" -> replacePrimitive.executeWithService(service, arguments);
             case "encapsulate_collection" ->
                 encapsulateCollection.executeWithService(service, arguments);
+            case "split_variable" -> splitVariable.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
