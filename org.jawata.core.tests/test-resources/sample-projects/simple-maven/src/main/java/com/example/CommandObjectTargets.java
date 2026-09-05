@@ -1,4 +1,3 @@
-=== CommandObjectTargets.java ===
 package com.example;
 
 /**
@@ -30,7 +29,15 @@ public class CommandObjectTargets {
     /** The shape: two fields, one constructor that only assigns them, one method. */
     public static class Discount {
 
-        public static double execute(double base, int rate, int rounding) {
+        private final double base;
+        private final int rate;
+
+        public Discount(double base, int rate) {
+            this.base = base;
+            this.rate = rate;
+        }
+
+        public double execute(int rounding) {
             return Math.round((base * (100 - rate) / 100.0) * rounding) / (double) rounding;
         }
     }
@@ -115,51 +122,5 @@ public class CommandObjectTargets {
         public int execute() {
             return value;
         }
-    }
-}
-=== CommandObjectDesk.java ===
-package com.example;
-
-/**
- * Uses of {@link CommandObjectTargets}' commands in ANOTHER FILE — built and run in one expression,
- * except the one that is deliberately held.
- */
-public class CommandObjectDesk {
-
-    /** Builds and runs in one expression, which is the shape this row can rewrite. */
-    public double discounted(double base) {
-        return CommandObjectTargets.Discount.execute(base, 10, 100);
-    }
-
-    /** A SECOND use, because a rewrite that reached one is not evidence it reaches all. */
-    public double alsoDiscounted(double base) {
-        return CommandObjectTargets.Discount.execute(base, 25, 10);
-    }
-
-    /** Chooses an implementation by constructing it — the dispatch the refusal protects. */
-    public String loudly(String words) {
-        CommandObjectTargets.Speaker speaker = new CommandObjectTargets.Loud(words);
-        return speaker.say();
-    }
-
-    /** Runs the computed-field case, so it has a use and refuses for the constructor instead. */
-    public double computed(double base, double tax) {
-        return new CommandObjectTargets.Computed(base, tax).execute();
-    }
-
-    /** Runs the accumulating case, so it refuses for the field written afterwards. */
-    public int accumulated(int start) {
-        return new CommandObjectTargets.Accumulating(start).execute();
-    }
-
-    /** Runs the two-method case, so it refuses for having two jobs. */
-    public int twoJobs(int value) {
-        return new CommandObjectTargets.TwoJobs(value).execute();
-    }
-
-    /** RETAINS the command and runs it later, which is exactly what a command is for. */
-    public int retained(int value) {
-        CommandObjectTargets.Retained command = new CommandObjectTargets.Retained(value);
-        return command.execute();
     }
 }

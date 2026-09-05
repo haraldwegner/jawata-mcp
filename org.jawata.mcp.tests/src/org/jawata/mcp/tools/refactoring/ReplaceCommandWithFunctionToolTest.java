@@ -48,14 +48,14 @@ class ReplaceCommandWithFunctionToolTest {
         tool = new ChangeMethodSignatureTool(() -> service, cache);
         lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
         Path pkg = service.getProjectRoot().resolve("src/main/java/com/example");
-        targets = pkg.resolve("CommandTargets.java");
-        desk = pkg.resolve("CommandDesk.java");
+        targets = pkg.resolve("CommandObjectTargets.java");
+        desk = pkg.resolve("CommandObjectDesk.java");
     }
 
     private ObjectNode argsFor(String nested) {
         ObjectNode args = new ObjectMapper().createObjectNode();
         args.put("kind", "replace_command_with_function");
-        args.put("typeName", "com.example.CommandTargets." + nested);
+        args.put("typeName", "com.example.CommandObjectTargets." + nested);
         return args;
     }
 
@@ -81,13 +81,13 @@ class ReplaceCommandWithFunctionToolTest {
                 "while the body reads the PARAMETERS where it read the fields, unchanged in"
                     + " every other respect:\n" + after),
 
-            () -> assertTrue(uses.contains("CommandTargets.Discount.execute(base, 10, 100)"),
+            () -> assertTrue(uses.contains("CommandObjectTargets.Discount.execute(base, 10, 100)"),
                 "the first use must become one static call carrying both argument lists:\n"
                     + uses),
-            () -> assertTrue(uses.contains("CommandTargets.Discount.execute(base, 25, 10)"),
+            () -> assertTrue(uses.contains("CommandObjectTargets.Discount.execute(base, 25, 10)"),
                 "and so must the SECOND — one rewritten use is not evidence of a change that"
                     + " must reach every one of them:\n" + uses),
-            () -> assertFalse(uses.contains("new CommandTargets.Discount("),
+            () -> assertFalse(uses.contains("new CommandObjectTargets.Discount("),
                 "no use may be left constructing a command with no constructor:\n" + uses));
     }
 
@@ -144,9 +144,9 @@ class ReplaceCommandWithFunctionToolTest {
     }
 
     @Test
-    @DisplayName("REFUSES when a use HOLDS the command instead of running it in place")
-    void refusesAHeldCommand() throws Exception {
-        ToolResponse r = tool.execute(argsFor("Held"));
+    @DisplayName("REFUSES when a use RETAINS the command instead of running it in place")
+    void refusesARetainedCommand() throws Exception {
+        ToolResponse r = tool.execute(argsFor("Retained"));
 
         assertFalse(r.isSuccess(), "holding it is the thing a command is for, so this row will"
             + " not take it away");
@@ -172,7 +172,7 @@ class ReplaceCommandWithFunctionToolTest {
         apply.put("changeId", String.valueOf(changeId));
         assertTrue(lifecycle.execute(apply).isSuccess());
         assertTrue(Files.readString(desk, StandardCharsets.UTF_8)
-                .contains("CommandTargets.Discount.execute(base, 10, 100)"),
+                .contains("CommandObjectTargets.Discount.execute(base, 10, 100)"),
             "and the staged change must be the real one");
     }
 

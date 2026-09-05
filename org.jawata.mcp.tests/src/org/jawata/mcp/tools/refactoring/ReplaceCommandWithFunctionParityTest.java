@@ -33,9 +33,9 @@ class ReplaceCommandWithFunctionParityTest {
             pkg -> {
                 ObjectNode args = new ObjectMapper().createObjectNode();
                 args.put("kind", "replace_command_with_function");
-                args.put("typeName", "com.example.CommandTargets.Discount");
+                args.put("typeName", "com.example.CommandObjectTargets.Discount");
                 return args;
             },
-            List.of("CommandTargets.java", "CommandDesk.java"));
+            List.of("CommandObjectTargets.java", "CommandObjectDesk.java"));
     }
 }
