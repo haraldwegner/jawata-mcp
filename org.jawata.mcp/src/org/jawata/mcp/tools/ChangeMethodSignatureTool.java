@@ -7,6 +7,7 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.api.ChangeSignatureTool;
 import org.jawata.mcp.tools.api.IntroduceParameterObjectTool;
 import org.jawata.mcp.tools.api.ParameterizeFunctionTool;
+import org.jawata.mcp.tools.api.ReplaceParameterWithQueryTool;
 import org.jawata.mcp.tools.api.ReplaceQueryWithParameterTool;
 import org.jawata.mcp.tools.api.SeparateQueryFromModifierTool;
 
@@ -49,6 +50,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     private final ReplaceQueryWithParameterTool replaceQueryWithParameter;
     private final ParameterizeFunctionTool parameterizeFunction;
     private final SeparateQueryFromModifierTool separateQueryFromModifier;
+    private final ReplaceParameterWithQueryTool replaceParameterWithQuery;
 
     public ChangeMethodSignatureTool(Supplier<IJdtService> serviceSupplier,
                                      RefactoringChangeCache changeCache) {
@@ -61,6 +63,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
         this.parameterizeFunction = new ParameterizeFunctionTool(serviceSupplier, changeCache);
         this.separateQueryFromModifier =
             new SeparateQueryFromModifierTool(serviceSupplier, changeCache);
+        this.replaceParameterWithQuery =
+            new ReplaceParameterWithQueryTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -76,15 +80,18 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     /**
      * Built from the typed fields, keyed by what each delegate calls itself.
      *
-     * <p>One entry today, and Stage 4's ten rows are the rest. The list is a
-     * {@code List.of(...)} of fields for the same reason {@code data} and {@code inline} hold
-     * theirs that way — the delegates are typed fields rather than a map.</p>
+     * <p>The list is a {@code List.of(...)} of fields for the same reason {@code data} and
+     * {@code inline} hold theirs that way — the delegates are typed fields rather than a map.
+     * No count is written here on purpose: an earlier version said "one entry today" and was
+     * false by the third row, which is the drift this whole seam exists to remove. The count
+     * that matters is asserted at C9, against the shipped list.</p>
      */
     @Override
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
         for (KindDelegate delegate : List.of(changeSignature, introduceParameterObject,
-            replaceQueryWithParameter, parameterizeFunction, separateQueryFromModifier)) {
+            replaceQueryWithParameter, parameterizeFunction, separateQueryFromModifier,
+            replaceParameterWithQuery)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -174,6 +181,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
                 parameterizeFunction.executeWithService(service, arguments);
             case "separate_query_from_modifier" ->
                 separateQueryFromModifier.executeWithService(service, arguments);
+            case "replace_parameter_with_query" ->
+                replaceParameterWithQuery.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
