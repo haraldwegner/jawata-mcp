@@ -1,0 +1,117 @@
+=== PrecheckTargets.java ===
+package com.example;
+
+/**
+ * Fixtures for Fowler row 47, Replace Exception with Precheck, as
+ * {@code change_method_signature kind=replace_exception_with_precheck}.
+ *
+ * <p>One method per derivation the row understands, and one per refusal. No comment here spells a
+ * declaration a test anchors on and none quotes what the operation emits — a fixture that contains
+ * the string its own test searches for makes the test pass on the comment, which three earlier
+ * stages of this sprint learned the hard way.</p>
+ */
+public class PrecheckTargets {
+
+    private final double[] readings = { 1.0, 2.0, 3.0 };
+
+    /** Fowler's own example: an index checked by catching rather than by asking. */
+    public double readingAt(int slot) {
+        if (slot < 0 || slot >= readings.length) {
+            return 0.0;
+        }
+        return readings[slot];
+    }
+
+    /** The null derivation — a field read through a receiver that may not be there. */
+    public String labelOf(Reading reading) {
+        try {
+            return reading.label;
+        } catch (NullPointerException e) {
+            return "unknown";
+        }
+    }
+
+    /** The arithmetic derivation, on integers, where the language is what throws. */
+    public int share(int total, int people) {
+        try {
+            return total / people;
+        } catch (ArithmeticException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * REFUSED: the guarded statement calls something.
+     *
+     * <p>The call may raise the same exception from inside itself, and a check on what is visible
+     * here would not stop it — so the exception would escape a method that used to handle it.</p>
+     */
+    public double firstOf(int slot) {
+        try {
+            return neighbour().readings[slot];
+        } catch (ArrayIndexOutOfBoundsException e) {
+            return 0.0;
+        }
+    }
+
+    /** REFUSED: the handler reads the exception, and afterwards there is none to read. */
+    public double readingOrReport(int slot) {
+        try {
+            return readings[slot];
+        } catch (ArrayIndexOutOfBoundsException e) {
+            throw new IllegalStateException(e.getMessage());
+        }
+    }
+
+    /** REFUSED: the handler falls through, so a precheck would run and then continue anyway. */
+    public double readingOrZero(int slot) {
+        double answer = 0.0;
+        try {
+            answer = readings[slot];
+        } catch (ArrayIndexOutOfBoundsException e) {
+            answer = 0.0;
+        }
+        return answer;
+    }
+
+    /** REFUSED: floating-point division answers infinity rather than throwing. */
+    public double ratio(double numerator, double denominator) {
+        try {
+            return numerator / denominator;
+        } catch (ArithmeticException e) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * REFUSED: TWO try statements in one body, and nothing said which.
+     *
+     * <p>Both are candidates the row could act on, which is what makes the ambiguity real rather
+     * than a shape it happens not to handle — naming either exception type resolves it.</p>
+     */
+    public double either(int slot, int people) {
+        try {
+            return readings[slot];
+        } catch (ArrayIndexOutOfBoundsException e) {
+            try {
+                return 100 / people;
+            } catch (ArithmeticException other) {
+                return 0.0;
+            }
+        }
+    }
+
+    private PrecheckTargets neighbour() {
+        return this;
+    }
+
+    /** The object whose field the null derivation reads. */
+    public static class Reading {
+
+        public String label;
+
+        public Reading(String label) {
+            this.label = label;
+        }
+    }
+}
