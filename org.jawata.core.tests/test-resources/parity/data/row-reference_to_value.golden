@@ -51,12 +51,17 @@ public class ReferenceToValueTargets {
     }
 
     /**
-     * Two 1-arg setters of ONE name, on different fields — the second axis of the same defect.
+     * Two 1-arg setters of ONE name, on different fields. Both are plain setting methods, so
+     * the row must remove both.
      *
-     * <p>Carrying a setter between steps as a bare name cannot tell these apart: the row would
-     * emit the name twice and resolve both steps to whichever overload comes first, so one
-     * field is done twice and the other never. Both are plain setting methods, so the row must
-     * remove both.</p>
+     * <p><b>This is a CASE, not a control, and the first version of this comment claimed
+     * otherwise.</b> It said a name key would resolve both steps to whichever overload comes
+     * first, doing one field twice and the other never. A mutation restoring the name lookup
+     * left all seven tests GREEN, and the reason is that each step REMOVES its setter: step one
+     * takes the first {@code setPlace}, and by step two only the other one is left, so the
+     * ambiguous key self-corrects here. The overload hazard is real about the KEY and benign
+     * about this row's own sequence — which is a different sentence from the one that was
+     * written, and the difference is the whole of what a mutation is for.</p>
      */
     public static class Seat {
 
