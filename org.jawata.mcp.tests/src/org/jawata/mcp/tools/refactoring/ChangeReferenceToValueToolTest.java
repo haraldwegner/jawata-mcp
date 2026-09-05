@@ -74,9 +74,11 @@ class ChangeReferenceToValueToolTest {
         assertTrue(r.isSuccess(), "got: " + r.getError());
 
         String after = Files.readString(targets, StandardCharsets.UTF_8);
-        assertFalse(after.contains("void setCurrency("),
-            "the first setter must be gone:\n" + after);
-        assertFalse(after.contains("void setAmount("),
+        // COUNTED, because the decoy sibling declares the same setters: the file holds two of
+        // each before the run and must hold the decoy's alone after it.
+        assertEquals(1, occurrences(after, "public void setCurrency(String currency)"),
+            "the first setter must be gone from the class pointed at:\n" + after);
+        assertEquals(1, occurrences(after, "public void setAmount(long amount)"),
             "and the SECOND — a row that removed only one would still report success:\n"
                 + after);
         assertTrue(after.contains("this.currency = currency;")
@@ -172,19 +174,43 @@ class ChangeReferenceToValueToolTest {
                 + " left the setters removed would leave a class in neither state");
     }
 
+    /**
+     * THE DECOY IS A PLAUSIBLE TARGET, and the first version of it was not.
+     *
+     * <p>{@code Legacy.Money} is declared FIRST, shares the target's simple name, and now
+     * declares the SAME MEMBERS. That last part is what makes this a control: with a decoy that
+     * lacked them, the by-name defect threw ("could not find setter") and the row reported
+     * failure — loud, and the lucky case. With a plausible decoy the defect rewrites the wrong
+     * class and reports SUCCESS, which is the shape that actually ships.</p>
+     *
+     * <p>The two classes are now text-identical, so no string can tell them apart. The
+     * assertion is positional instead: after a correct run the surviving {@code setCurrency}
+     * is the DECOY's, which is declared above the public class; after a wrong one it is the
+     * real class's, below it.</p>
+     */
     @Test
     @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
     void leavesTheDecoySiblingUntouched() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        assertEquals(2, occurrences(before, "public void setCurrency(String currency)"),
+            "the fixture must declare the setter TWICE — once per Money — or this control has"
+                + " stopped discriminating:\n" + before);
+
         ToolResponse r = at("public static class Money", "Money");
         assertTrue(r.isSuccess(), "got: " + r.getError());
 
         String after = Files.readString(targets, StandardCharsets.UTF_8);
-        // Legacy.Money is declared FIRST and shares the target's simple name, so a recipe that
-        // carries its target between steps as a name lands there at every step.
-        assertTrue(after.contains("public String note() {"),
-            "the decoy sibling must be exactly as it was:\n" + after);
-        assertFalse(after.contains("Legacy.Money) other"),
-            "and it must gain no generated equality — that would be a rewrite of a class"
+        assertEquals(1, occurrences(after, "public void setCurrency(String currency)"),
+            "exactly one Money must have lost its setter:\n" + after);
+        int survivor = after.indexOf("public void setCurrency(String currency)");
+        int realClassAt = after.indexOf("public static class Money");
+        assertTrue(survivor < realClassAt,
+            "the surviving setter must be the DECOY's, which is declared above the class this"
+                + " test pointed at. Below it means the row rewrote the sibling and reported"
+                + " success:\n" + after);
+        assertEquals(2, occurrences(after, "public boolean equals(Object"),
+            "and the file must hold exactly Ticket's equality plus the real Money's new one —"
+                + " a THIRD would mean the decoy gained one, which is a rewrite of a class"
                 + " nobody pointed at:\n" + after);
     }
 
@@ -220,9 +246,9 @@ class ChangeReferenceToValueToolTest {
         // NOT `contains("public boolean equals(Object")` — Ticket declares that in the pristine
         // fixture, so the assertion was true before the run and proved nothing about where the
         // name form landed. These two are true only of Money, and only after this row.
-        assertFalse(after.contains("void setCurrency("),
-            "the name form must reach the same class the caret does — Money's setter is gone"
-                + " only if it did:\n" + after);
+        assertEquals(1, occurrences(after, "public void setCurrency(String currency)"),
+            "the name form must reach the same class the caret does — one of the two Moneys"
+                + " loses its setter only if it did:\n" + after);
         assertEquals(2, occurrences(after, "public boolean equals(Object"),
             "and Money gained its own equality beside Ticket's:\n" + after);
     }

@@ -250,11 +250,18 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
 
         ObjectMapper mapper = new ObjectMapper();
         // THE ELEMENTS' OWN HANDLES. A step must survive the previous step's rewrite, so a
-        // position is out; this carried the file plus SIMPLE NAMES instead, and neither name
-        // identifies anything. Two sibling member classes may share a simple name, and two
-        // 1-arg setters may share theirs — in both cases the first hit wins and the step acts
-        // on something nobody pointed at. A handle is position-independent AND unique, and has
-        // one spelling, which also closes row 54's '$'-versus-'.' hazard rather than dodging it.
+        // position is out; this carried the file plus SIMPLE NAMES instead, and a simple name
+        // identifies nothing: two sibling member classes may share one, and the first hit wins,
+        // so every step of a request about the one landed on the other. A handle is
+        // position-independent AND unique, and has one spelling, which also closes row 54's
+        // '$'-versus-'.' hazard rather than dodging it.
+        //
+        // THE SETTER'S HANDLE IS RIGHT BY IDENTITY, NOT BY A DEFECT IT PREVENTS, and an earlier
+        // version of this comment claimed otherwise — that a name key also confused two 1-arg
+        // overloads. A mutation restoring that key left every test green: each step REMOVES its
+        // setter, so by the second step only the other overload is left and the ambiguous key
+        // self-corrects. The claim was retracted in the fixture and the test and left standing
+        // here, which an audit caught; it is retracted here now.
         String typeHandle = declaring.getHandleIdentifier();
         List<RecipeStep> steps = new ArrayList<>();
         for (IMethod setter : setters) {

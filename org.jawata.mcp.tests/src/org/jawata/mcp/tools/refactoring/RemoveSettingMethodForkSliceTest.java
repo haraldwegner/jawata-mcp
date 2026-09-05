@@ -27,8 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Over the fork's 1354 main sources there are <b>48</b> {@code public void set…}
  * declarations. Classified by body shape, <b>13</b> are the plain one-assignment kind these
  * two rows accept — one parameter, one statement, {@code f = p;} — and the rest validate, log,
- * switch, delegate or take more than one parameter, which row 37 refuses at its shape check.
- * </p>
+ * switch, delegate, or take a number of parameters other than one (measured: one takes two,
+ * and one takes NONE), all of which row 37 refuses at its shape check.</p>
  *
  * <p><b>This paragraph has now been wrong TWICE, and both corrections are kept rather than
  * overwritten, because the second is the more instructive.</b> The first version said every

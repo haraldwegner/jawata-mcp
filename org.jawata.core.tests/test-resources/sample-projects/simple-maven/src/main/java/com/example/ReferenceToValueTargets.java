@@ -35,14 +35,28 @@ public class ReferenceToValueTargets {
          */
         static class Money {
 
-            private String note;
+            private String currency;
+            private long amount;
 
-            public Money(String note) {
-                this.note = note;
+            Money(String currency, long amount) {
+                setCurrency(currency);
+                setAmount(amount);
             }
 
-            public String note() {
-                return note;
+            public void setCurrency(String currency) {
+                this.currency = currency;
+            }
+
+            public void setAmount(long amount) {
+                this.amount = amount;
+            }
+
+            public String currency() {
+                return currency;
+            }
+
+            public long amount() {
+                return amount;
             }
         }
     }

@@ -175,20 +175,53 @@ class EncapsulateRecordToolTest {
                 + " caller reading an accessor that no longer exists");
     }
 
+    /**
+     * THE DECOY IS A PLAUSIBLE TARGET, and the first version of it was not.
+     *
+     * <p>{@code Legacy.Coordinate} is declared FIRST, shares the target's simple name, and now
+     * declares the SAME FIELDS. That last part is what makes this a control: with a decoy that
+     * lacked them the by-name defect threw ("could not find field 'latitude'") and the row
+     * reported failure — loud, and the lucky case. With a plausible decoy the defect
+     * encapsulates the wrong class and reports SUCCESS, which is the shape that actually
+     * ships.</p>
+     *
+     * <p>The two are now text-identical in their fields, so the assertion is positional: after
+     * a correct run the surviving {@code public double latitude;} is the DECOY's, above the
+     * public class; after a wrong one it is the real class's, below it.</p>
+     */
     @Test
     @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
     void leavesTheDecoySiblingUntouched() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        assertEquals(2, occurrences(before, "public double latitude;"),
+            "the fixture must declare the field TWICE — once per Coordinate — or this control"
+                + " has stopped discriminating:\n" + before);
+
         ToolResponse r = at("public static class Coordinate", "Coordinate");
         assertTrue(r.isSuccess(), "got: " + r.getError());
 
         String after = Files.readString(targets, StandardCharsets.UTF_8);
-        // Legacy.Coordinate is declared FIRST and shares the target's simple name, so a recipe
-        // that carries its target between steps as a name lands here at every step.
-        assertTrue(after.contains("public String datum;"),
-            "the decoy sibling's public field must be exactly as it was — encapsulating it is"
-                + " a rewrite of a class nobody pointed at:\n" + after);
-        assertFalse(after.contains("getDatum()"),
-            "and it must gain no accessor:\n" + after);
+        assertEquals(1, occurrences(after, "public double latitude;"),
+            "exactly one Coordinate must have been encapsulated:\n" + after);
+        int survivor = after.indexOf("public double latitude;");
+        int realClassAt = after.indexOf("public static class Coordinate");
+        assertTrue(survivor < realClassAt,
+            "the surviving PUBLIC field must be the DECOY's, which is declared above the class"
+                + " this test pointed at. Below it means the row encapsulated the sibling and"
+                + " reported success:\n" + after);
+        assertEquals(1, occurrences(after, "public double getLatitude()"),
+            "and exactly one accessor pair exists — a decoy that gained one would be a rewrite"
+                + " of a class nobody pointed at:\n" + after);
+    }
+
+    /** How many times a needle occurs — a containment check cannot see a SECOND one. */
+    private static int occurrences(String haystack, String needle) {
+        int count = 0;
+        for (int at = haystack.indexOf(needle); at >= 0;
+                at = haystack.indexOf(needle, at + needle.length())) {
+            count++;
+        }
+        return count;
     }
 
     @Test

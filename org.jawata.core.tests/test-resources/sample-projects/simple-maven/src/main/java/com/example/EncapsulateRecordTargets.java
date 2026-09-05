@@ -39,10 +39,12 @@ public class EncapsulateRecordTargets {
          */
         static class Coordinate {
 
-            public String datum;
+            public double latitude;
+            public double longitude;
 
-            public Coordinate(String datum) {
-                this.datum = datum;
+            Coordinate(double latitude, double longitude) {
+                this.latitude = latitude;
+                this.longitude = longitude;
             }
         }
     }
