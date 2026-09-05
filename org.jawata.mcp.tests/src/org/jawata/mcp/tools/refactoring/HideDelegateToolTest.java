@@ -140,6 +140,21 @@ class HideDelegateToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES a fluent builder — a static intermediate call has no receiver")
+    void refusesAFluentBuilder() throws Exception {
+        // THE SHAPE THE CORPUS ACTUALLY CONTAINS. A census of all 84 message_chains findings
+        // in java-design-patterns returned 41 JDK pipelines and 43 fluent builders, and no
+        // chain of the kind this row exists for. Product.builder().name("Eggs") has no
+        // receiver object: generating Product.name("Eggs") would drop the builder entirely.
+        // The census is what found this gap — the operation did not refuse it before.
+        int line = lineOf("return Ticket.create().label(\"urgent\");");
+        ToolResponse r = tool.execute(at(line, 24));
+        assertFalse(r.isSuccess(), "a static intermediate call is a factory, not a delegate");
+        assertTrue(String.valueOf(r.getError()).contains("is STATIC"),
+            "the refusal must name the reason: " + r.getError());
+    }
+
+    @Test
     @DisplayName("REFUSES a position that is not a two-deep chain")
     void refusesASingleCall() throws Exception {
         int line = lineOf("return john.getDepartment();");

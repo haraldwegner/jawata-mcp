@@ -18,6 +18,7 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.MethodInvocation;
+import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
 import org.eclipse.jdt.core.dom.rewrite.ImportRewrite;
@@ -199,6 +200,20 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
             return ToolResponse.symbolNotFound(
                 "could not resolve the call chain to method bindings; the file may not "
                     + "compile against this workspace's classpath.");
+        }
+
+        // A STATIC intermediate call is not a delegate the client reaches THROUGH — it is a
+        // factory the client calls ON A TYPE. `Product.builder().name("Eggs")` has no
+        // receiver object to forward from, and generating `Product.name("Eggs")` would drop
+        // the builder entirely. Found by censusing the fork corpus: of 84 message-chain
+        // findings there, 43 are fluent builders, and this shape is most of them.
+        if (Modifier.isStatic(innerBinding.getModifiers())) {
+            return ToolResponse.invalidParameter("position",
+                "the intermediate call `" + inner.getName().getIdentifier() + "` is STATIC, so"
+                    + " there is no receiver to hide a delegate behind. This is the fluent-"
+                    + "builder shape (Type.builder().field(...)), where the chain is one"
+                    + " object configuring itself rather than a client reaching through a"
+                    + " server to a delegate.");
         }
 
         ITypeBinding serverBinding = innerBinding.getDeclaringClass();

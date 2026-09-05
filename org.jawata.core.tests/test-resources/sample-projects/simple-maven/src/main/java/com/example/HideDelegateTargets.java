@@ -82,6 +82,37 @@ public class HideDelegateTargets {
         return john.getDepartment();
     }
 
+    /** A fluent builder: {@code create()} is STATIC, so there is no receiver to hide behind. */
+    public static class Ticket {
+        private String label = "";
+
+        public static Ticket create() {
+            return new Ticket();
+        }
+
+        public Ticket label(String value) {
+            this.label = value;
+            return this;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
+    /**
+     * REFUSAL — the fluent-builder shape, and the fork corpus says it is the common one.
+     *
+     * <p>Censusing all 84 {@code message_chains} findings in {@code java-design-patterns}
+     * found 41 JDK pipelines and 43 fluent builders, and NOT ONE chain where a client reaches
+     * through a domain object to a second one. So this fixture carries the shape the detector
+     * actually reports most often, and pins that the operation declines it for the right
+     * reason rather than generating a forwarder that drops the builder.</p>
+     */
+    public Ticket urgentTicket() {
+        return Ticket.create().label("urgent");
+    }
+
     /**
      * CROSS-PACKAGE: the hidden call returns {@code com.example.service.Lead}, which the server's
      * file does not import. The forwarder generated on Person needs that import, and the
