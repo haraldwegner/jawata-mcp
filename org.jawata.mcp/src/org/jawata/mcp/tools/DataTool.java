@@ -6,6 +6,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.data.EncapsulateFieldTool;
 import org.jawata.mcp.tools.data.HideDelegateTool;
+import org.jawata.mcp.tools.data.IntroduceSpecialCaseTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +43,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
 
     private final EncapsulateFieldTool encapsulateField;
     private final HideDelegateTool hideDelegate;
+    private final IntroduceSpecialCaseTool specialCase;
 
     public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
@@ -50,6 +52,9 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         // findings on this repository, measured, and its own message already names this
         // refactoring as the cure.
         this.hideDelegate = new HideDelegateTool(serviceSupplier, changeCache);
+        // Row 22. UNROUTED, deliberately and recorded: no shipped detector names Introduce
+        // Special Case. See the delegate's own javadoc for the measurement.
+        this.specialCase = new IntroduceSpecialCaseTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -72,7 +77,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     @Override
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
-        for (KindDelegate delegate : List.of(encapsulateField, hideDelegate)) {
+        for (KindDelegate delegate : List.of(encapsulateField, hideDelegate, specialCase)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -149,6 +154,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         return switch (kind) {
             case "encapsulate_field" -> encapsulateField.executeWithService(service, arguments);
             case "hide_delegate" -> hideDelegate.executeWithService(service, arguments);
+            case "special_case" -> specialCase.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
