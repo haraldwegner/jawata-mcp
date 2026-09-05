@@ -11,13 +11,17 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.Block;
+import org.eclipse.jdt.core.dom.BodyDeclaration;
+import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
@@ -119,8 +123,14 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
      * A removal that is ready to perform, or the refusal that stopped it.
      *
      * <p>Exactly one of {@code change} and {@code refusal} is non-null. {@code finalNote} is
-     * null when the field became final, and otherwise says why it did not — a fact the direct
-     * caller reads in the label and row 2 folds into its own summary.</p>
+     * null when the field became final, and otherwise says why it did not.</p>
+     *
+     * <p><b>{@code finalNote} has no reader today, and saying so is the point.</b> The same
+     * sentence is already inside {@code label}, which every caller does read, so the field is
+     * the fact offered separately in case a caller wants it apart from the prose. An earlier
+     * version of this javadoc claimed row 2 folded it into its own summary; row 2 does not, and
+     * an unread field described as read is how a plausible claim outlives the code it was
+     * written for.</p>
      */
     public record Prepared(Change change, String label, String finalNote, ToolResponse refusal) {
 
@@ -246,9 +256,9 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                 "'" + setter.getElementName() + "' has no source declaring type here."));
         }
         CompilationUnit ast = parse(unit);
-        MethodDeclaration declaration = methodNamed(ast, setter.getElementName(),
-            setter.getNumberOfParameters());
-        if (declaration == null || declaration.getBody() == null) {
+        MethodDeclaration declaration = declarationOf(ast, setter);
+        AbstractTypeDeclaration owner = declaration == null ? null : ownerOf(declaration);
+        if (declaration == null || declaration.getBody() == null || owner == null) {
             return Prepared.refused(ToolResponse.symbolNotFound("could not locate the body of "
                 + setter.getElementName() + " in its own source."));
         }
@@ -277,6 +287,13 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
         // constructors is asking to change the value after construction.
         List<SearchMatch> references = service.getSearchService()
             .findAllReferences(setter, MAX_REFERENCES);
+        if (references.size() >= MAX_REFERENCES) {
+            return Prepared.refused(ToolResponse.invalidParameter("position",
+                "'" + setter.getElementName() + "' has at least " + MAX_REFERENCES
+                    + " references, which is the search cap — so the list is a SAMPLE and the"
+                    + " precondition is a statement about every caller. It refuses rather than"
+                    + " deciding from a capped list."));
+        }
         List<String> outsiders = new ArrayList<>();
         int inConstructors = 0;
         for (SearchMatch match : references) {
@@ -299,7 +316,7 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
         // The constructor calls this row rewrites, matched against what the search found: a
         // reference inside a constructor that is NOT a plain call statement (a method
         // reference, say) cannot be rewritten, and leaving it would break the build.
-        List<ExpressionStatement> calls = constructorCalls(ast, declaration.resolveBinding());
+        List<ExpressionStatement> calls = constructorCalls(owner, declaration.resolveBinding());
         if (calls.size() != inConstructors) {
             return Prepared.refused(ToolResponse.invalidParameter("position",
                 "a constructor mentions '" + setter.getElementName() + "' in a form this"
@@ -308,7 +325,7 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
                     + " such as this::" + setter.getElementName() + " is the usual cause."));
         }
 
-        FieldDeclaration fieldDeclaration = fieldNamed(ast, field.getName());
+        FieldDeclaration fieldDeclaration = fieldNamed(owner, field.getName());
         if (fieldDeclaration == null) {
             return Prepared.refused(ToolResponse.symbolNotFound(
                 "could not locate the declaration of '" + field.getName() + "' in "
@@ -332,7 +349,7 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
         // The setter itself.
         rewrite.remove(declaration, null);
 
-        String finalNote = finalRefusal(service, ast, declaring, field, fieldDeclaration,
+        String finalNote = finalRefusal(service, owner, declaring, field, fieldDeclaration,
             declaration, calls);
         if (finalNote == null) {
             ListRewrite modifiers = rewrite.getListRewrite(fieldDeclaration,
@@ -370,7 +387,8 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
      * left non-final on the one shape the row exists to fix. So the calls about to become
      * assignments are counted with them.</p>
      */
-    private String finalRefusal(IJdtService service, CompilationUnit ast, IType declaring,
+    private String finalRefusal(IJdtService service, AbstractTypeDeclaration ownerType,
+                                IType declaring,
                                 IVariableBinding field, FieldDeclaration fieldDeclaration,
                                 MethodDeclaration setter,
                                 List<ExpressionStatement> becomingAssignments) throws Exception {
@@ -384,8 +402,13 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
         // A write anywhere but this class's constructors (or the setter we are deleting)
         // means the value is not settled at construction, whatever the setter did.
         IMethod setterElement = setterElement(declaring, setter);
-        for (SearchMatch write : service.getSearchService()
-                .findWriteAccesses(declaring.getField(field.getName()), MAX_REFERENCES)) {
+        List<SearchMatch> writes = service.getSearchService()
+            .findWriteAccesses(declaring.getField(field.getName()), MAX_REFERENCES);
+        if (writes.size() >= MAX_REFERENCES) {
+            return "it has at least " + MAX_REFERENCES + " writers, which is the search cap,"
+                + " so the list is a sample and 'nothing outside writes it' cannot be said";
+        }
+        for (SearchMatch write : writes) {
             if (write.getElement() instanceof IMethod owner
                     && declaring.equals(owner.getDeclaringType())
                     && (owner.isConstructor() || owner.equals(setterElement))) {
@@ -396,7 +419,7 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
 
         VariableDeclarationFragment fragment =
             (VariableDeclarationFragment) fieldDeclaration.fragments().get(0);
-        List<MethodDeclaration> constructors = constructors(ast, declaring.getElementName());
+        List<MethodDeclaration> constructors = constructors(ownerType);
         if (fragment.getInitializer() != null) {
             return constructors.stream().anyMatch(c ->
                     assignsAtTopLevel(c, field) + willAssign(c, becomingAssignments) > 0)
@@ -514,47 +537,37 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
             && binding.getName().equals(field.getName());
     }
 
-    /** Plain `setX(v);` statements inside the file's constructors. */
-    private static List<ExpressionStatement> constructorCalls(CompilationUnit ast,
+    /** Plain `setX(v);` statements inside THIS type's own constructors. */
+    private static List<ExpressionStatement> constructorCalls(AbstractTypeDeclaration owner,
                                                               IMethodBinding setter) {
         List<ExpressionStatement> found = new ArrayList<>();
         if (setter == null) {
             return found;
         }
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(MethodDeclaration node) {
-                if (!node.isConstructor()) {
-                    return false;
-                }
-                node.accept(new ASTVisitor() {
-                    @Override
-                    public boolean visit(ExpressionStatement statement) {
-                        if (statement.getExpression() instanceof MethodInvocation invocation
-                                && invocation.arguments().size() == 1
-                                && setter.isEqualTo(invocation.resolveMethodBinding())) {
-                            found.add(statement);
-                        }
-                        return true;
+        for (MethodDeclaration constructor : constructors(owner)) {
+            constructor.accept(new ASTVisitor() {
+                @Override
+                public boolean visit(ExpressionStatement statement) {
+                    if (statement.getExpression() instanceof MethodInvocation invocation
+                            && invocation.arguments().size() == 1
+                            && setter.isEqualTo(invocation.resolveMethodBinding())) {
+                        found.add(statement);
                     }
-                });
-                return false;
-            }
-        });
+                    return true;
+                }
+            });
+        }
         return found;
     }
 
-    private static List<MethodDeclaration> constructors(CompilationUnit ast, String typeName) {
+    /** This type's own constructors — its direct members, never a nested type's. */
+    private static List<MethodDeclaration> constructors(AbstractTypeDeclaration owner) {
         List<MethodDeclaration> found = new ArrayList<>();
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(MethodDeclaration node) {
-                if (node.isConstructor() && node.getName().getIdentifier().equals(typeName)) {
-                    found.add(node);
-                }
-                return false;
+        for (Object member : owner.bodyDeclarations()) {
+            if (member instanceof MethodDeclaration method && method.isConstructor()) {
+                found.add(method);
             }
-        });
+        }
         return found;
     }
 
@@ -597,38 +610,52 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
             + " (offset " + match.getOffset() + ")";
     }
 
-    private static FieldDeclaration fieldNamed(CompilationUnit ast, String name) {
-        FieldDeclaration[] found = new FieldDeclaration[1];
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(FieldDeclaration node) {
-                for (Object fragment : node.fragments()) {
-                    if (fragment instanceof VariableDeclarationFragment declared
-                            && declared.getName().getIdentifier().equals(name)
-                            && found[0] == null) {
-                        found[0] = node;
-                    }
-                }
-                return true;
+    /** A field DECLARED BY this type — not one of the same name in a sibling nested class. */
+    private static FieldDeclaration fieldNamed(AbstractTypeDeclaration owner, String name) {
+        for (Object member : owner.bodyDeclarations()) {
+            if (!(member instanceof FieldDeclaration declaration)) {
+                continue;
             }
-        });
-        return found[0];
+            for (Object fragment : declaration.fragments()) {
+                if (fragment instanceof VariableDeclarationFragment declared
+                        && declared.getName().getIdentifier().equals(name)) {
+                    return declaration;
+                }
+            }
+        }
+        return null;
     }
 
-    static MethodDeclaration methodNamed(CompilationUnit ast, String name, int arity) {
-        MethodDeclaration[] found = new MethodDeclaration[1];
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(MethodDeclaration node) {
-                if (found[0] == null && !node.isConstructor()
-                        && node.getName().getIdentifier().equals(name)
-                        && node.parameters().size() == arity) {
-                    found[0] = node;
-                }
-                return true;
-            }
-        });
-        return found[0];
+    /**
+     * The declaration of THIS method, found by its own source range rather than by its name.
+     *
+     * <p>Name and arity do not identify a method inside a compilation unit, and the earlier
+     * version of this lookup asserted that they did. Two sibling nested classes may each
+     * declare {@code setX(int)}; the architect's counter-example compiles. A name search then
+     * returns whichever comes first in the file, so the precondition can be checked against one
+     * class and the edit built against another — the same substitution-of-a-proxy defect this
+     * row's own checkpoint found three times over. The element's range is the method, so there
+     * is nothing left to be ambiguous about.</p>
+     */
+    static MethodDeclaration declarationOf(CompilationUnit ast, IMethod method) throws Exception {
+        ISourceRange range = method.getNameRange();
+        if (range == null || range.getOffset() < 0) {
+            return null;
+        }
+        ASTNode node = NodeFinder.perform(ast, range.getOffset(), range.getLength());
+        while (node != null && !(node instanceof MethodDeclaration)) {
+            node = node.getParent();
+        }
+        return (MethodDeclaration) node;
+    }
+
+    /** The type that DECLARES this member — its immediate enclosing type declaration. */
+    private static AbstractTypeDeclaration ownerOf(BodyDeclaration member) {
+        ASTNode node = member.getParent();
+        while (node != null && !(node instanceof AbstractTypeDeclaration)) {
+            node = node.getParent();
+        }
+        return (AbstractTypeDeclaration) node;
     }
 
     static CompilationUnit parse(ICompilationUnit unit) {

@@ -245,11 +245,17 @@ public class SearchService {
     }
 
     /**
-     * Find all supertypes of a type.
+     * Find all supertypes of a type — superclasses AND interfaces.
+     *
+     * <p>This answered {@code getAllSuperclasses} until 2026-09-05, so it returned the classes
+     * only and never an interface. A caller that asks a type for its SUPERTYPES and uses the
+     * answer to decide whether a member is part of an inherited contract got the wrong answer
+     * for every interface method — silently, because an empty tail of the list reads exactly
+     * like "nothing inherited".</p>
      */
     public IType[] getAllSupertypes(IType type) throws CoreException {
         ITypeHierarchy hierarchy = getTypeHierarchy(type);
-        return hierarchy.getAllSuperclasses(type);
+        return hierarchy.getAllSupertypes(type);
     }
 
     /**

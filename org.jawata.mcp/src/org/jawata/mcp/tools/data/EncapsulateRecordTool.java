@@ -247,8 +247,8 @@ public class EncapsulateRecordTool extends AbstractRefactoringTool implements To
             // same file, so any position captured before the recipe started is stale. See the
             // class javadoc.
             String fieldName = args.path("field").asText();
-            IType current = TypeInFile.find(service, args.path("filePath").asText(),
-                args.path("typeName").asText());
+            IType current = org.jawata.mcp.tools.shared.TypeLookup.model(
+                service, args.path("filePath").asText(), args.path("typeName").asText());
             if (current == null) {
                 throw new IllegalStateException("could not re-resolve "
                     + args.path("typeName").asText() + " after the previous step.");

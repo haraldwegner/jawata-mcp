@@ -263,8 +263,8 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
             steps);
         RecipeEngine.Result result = recipe.run((operation, args) -> {
             // BY NAME, resolved NOW: every previous step rewrote this file. See the javadoc.
-            IType current = TypeInFile.find(service, args.path("filePath").asText(),
-                args.path("typeName").asText());
+            IType current = org.jawata.mcp.tools.shared.TypeLookup.model(
+                service, args.path("filePath").asText(), args.path("typeName").asText());
             if (current == null) {
                 throw new IllegalStateException("could not re-resolve "
                     + args.path("typeName").asText() + " after the previous step.");
@@ -359,8 +359,7 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
             if (method.isConstructor() || method.getNumberOfParameters() != 1) {
                 continue;
             }
-            MethodDeclaration declaration = RemoveSettingMethodTool.methodNamed(
-                ast, method.getElementName(), 1);
+            MethodDeclaration declaration = RemoveSettingMethodTool.declarationOf(ast, method);
             if (declaration != null
                     && RemoveSettingMethodTool.assignedField(declaration) != null) {
                 found.add(method.getElementName());

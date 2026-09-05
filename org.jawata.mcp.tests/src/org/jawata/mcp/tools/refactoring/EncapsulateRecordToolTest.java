@@ -38,14 +38,17 @@ class EncapsulateRecordToolTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     private DataTool tool;
+    private org.jawata.mcp.tools.RefactoringTool lifecycle;
     private Path targets;
     private Path user;
 
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new DataTool(() -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
+            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        tool = new DataTool(() -> service, cache);
+        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
         Path pkg = service.getProjectRoot().resolve("src/main/java/com/example");
         targets = pkg.resolve("EncapsulateRecordTargets.java");
         user = pkg.resolve("EncapsulateRecordUser.java");
@@ -114,5 +117,74 @@ class EncapsulateRecordToolTest {
             "the refusal must name that reason: " + r.getError());
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
+    }
+
+    @Test
+    @DisplayName("REFUSES auto_apply=false, because a recipe has no single change to preview")
+    void refusesToStageBecauseItIsARecipe() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        String[] lines = before.split("\n", -1);
+        ToolResponse r = null;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].contains("public static class Coordinate")) {
+                ObjectNode args = new ObjectMapper().createObjectNode();
+                args.put("kind", "encapsulate_record");
+                args.put("filePath", targets.toString());
+                args.put("line", i);
+                args.put("column", lines[i].indexOf("Coordinate"));
+                args.put("auto_apply", false);
+                r = tool.execute(args);
+                break;
+            }
+        }
+        assertFalse(r == null, "the fixture no longer declares Coordinate");
+        assertFalse(r.isSuccess(),
+            "each step is built against the file the previous step rewrote, so there is no"
+                + " staged change to show before the first has run");
+        assertTrue(String.valueOf(r.getError()).contains("COMPOSED"),
+            "the refusal must say WHY, and point at the halves a caller can stage: "
+                + r.getError());
+        assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
+            "a refusal modifies nothing");
+    }
+
+    @Test
+    @DisplayName("the ONE undo handle reverts the whole recipe, in both files")
+    void undoRevertsEveryStep() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        String beforeUser = Files.readString(user, StandardCharsets.UTF_8);
+        ToolResponse r = at("public static class Coordinate", "Coordinate");
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        assertFalse(before.equals(Files.readString(targets, StandardCharsets.UTF_8)),
+            "the CONTROL: with nothing changed, an undo that restores nothing would pass");
+
+        Object data = r.getData();
+        assertTrue(data instanceof java.util.Map, "expected a data map, got: " + data);
+        Object handle = ((java.util.Map<?, ?>) data).get("undoChangeId");
+        assertTrue(handle != null, "the recipe must hand back ONE undo handle: " + data);
+
+        ObjectNode undo = new ObjectMapper().createObjectNode();
+        undo.put("action", "undo");
+        undo.put("undoChangeId", String.valueOf(handle));
+        ToolResponse undone = lifecycle.execute(undo);
+        assertTrue(undone.isSuccess(), "got: " + undone.getError());
+        assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
+            "the class it rewrote is restored");
+        assertEquals(beforeUser, Files.readString(user, StandardCharsets.UTF_8),
+            "and so is the OTHER file — a per-step undo that missed one would leave a"
+                + " caller reading an accessor that no longer exists");
+    }
+
+    @Test
+    @DisplayName("runs from the class's TYPE NAME, with no file position given")
+    void runsFromItsTypeName() throws Exception {
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        args.put("kind", "encapsulate_record");
+        args.put("typeName", "com.example.EncapsulateRecordTargets.Coordinate");
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        assertTrue(Files.readString(targets, StandardCharsets.UTF_8)
+                .contains("private double latitude;"),
+            "the name form must reach the same class the caret does");
     }
 }

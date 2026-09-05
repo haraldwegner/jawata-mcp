@@ -117,9 +117,11 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     /**
      * Built from the typed fields, keyed by what each delegate calls itself.
      *
-     * <p>One entry today. The list is a {@code List.of(...)} of fields for the same reason
-     * {@code inline} and {@code generate} hold theirs that way — the delegates are typed
-     * fields rather than a map — and it grows a line per Stage 5 row.</p>
+     * <p>Ten entries — the count Stage 9 assigns this door, reached when Stage 5's last three
+     * rows landed. The list is a {@code List.of(...)} of fields for the same reason
+     * {@code inline} and {@code generate} hold theirs that way: the delegates are typed fields
+     * rather than a map. (It said "one entry today" until 2026-09-05, nine rows after that
+     * stopped being true — a count in a comment, which nothing derives and nothing checks.)</p>
      */
     @Override
     public Map<String, KindDelegate> delegates() {

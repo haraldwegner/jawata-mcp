@@ -25,24 +25,39 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <h2>The census, and what it says</h2>
  *
  * <p>Over the fork's 1354 main sources, 29 classes declare 43 public setters. Classified by
- * body shape, roughly a dozen are the plain one-assignment kind these two rows accept; the
- * rest validate, log, switch or delegate, and row 37 refuses those as not setting methods.
- * Every plain one is a WIRING setter — {@code setPresenter}, {@code setLoader},
- * {@code setNext}, {@code setFilterManager}, {@code setFlirtiness} — called by an assembler
- * after construction.</p>
+ * body shape, <b>14</b> are the plain one-assignment kind these two rows accept; the rest
+ * validate, log, switch or delegate, and row 37 refuses those as not setting methods.</p>
  *
- * <p><b>That is not a gap in the rows; it is what the corpus is.</b> Remove Setting Method
- * applies where a field should be settled at construction, and a wiring setter is the exact
- * opposite: it exists so a collaborator can be attached later. A teaching repository for
- * design patterns is largely assembly, so the shape these rows cure is rare in it and the
- * shape they refuse is everywhere. Row 45 recorded the mirror image of this for its own
- * subject.</p>
+ * <p><b>An earlier version of this note gave a FALSE reason for the absence, and it is
+ * corrected rather than replaced.</b> It said every plain setter is a WIRING setter and that
+ * "a teaching repository for design patterns is largely assembly". Counted: at least six of
+ * the fourteen are ordinary value or state setters — {@code SimpleMessage.setBody},
+ * {@code AbstractInstance.setAlive}, {@code FileLoader.setFileName},
+ * {@code Queen.setFlirtiness}, {@code Worker.setReceivedData},
+ * {@code BookViewModel.setSelectedBook}. The CONCLUSION survives and the explanation does
+ * not: all fourteen are refused because each has at least one call site outside its declaring
+ * class's constructors — that is, because the value is genuinely still being changed after
+ * construction, which is this refactoring's own precondition. A narrative that fits the
+ * conclusion is not evidence for it.</p>
  *
  * <p>So there is no success-path demonstration on foreign code, and the absence is stated
- * rather than left looking like an oversight. What IS demonstrated is the refusal, on a real
- * upstream wiring setter, which is evidence rather than a demonstration — and it PINS the
- * census: if upstream ever grows a setter this row would perform on, or this one stops being
- * called from outside, the assertion below stops holding and someone re-reads this note.</p>
+ * rather than left looking like an oversight. What IS demonstrated is a refusal on real
+ * upstream code, which is evidence rather than a demonstration.</p>
+ *
+ * <h2>WHICH refusal this pins CHANGED on 2026-09-05, and the change is the finding</h2>
+ *
+ * <p>It used to assert the CALLER refusal on {@code AbstractFilter.setNext}. It now asserts
+ * the interface-contract refusal, because {@code AbstractFilter implements Filter} and
+ * {@code Filter} declares {@code setNext} — a nearer precondition, which fires first. That
+ * branch could not fire at all until the same day: the supertype lookup it reads answered
+ * with superclasses ONLY, so a setter implementing an interface method looked to it like a
+ * setter implementing nothing. The published refusal existed, was documented, and was
+ * unreachable for the commonest way a Java method is part of a contract.</p>
+ *
+ * <p>Upstream's caller fact is still true — {@code setNext} is called by {@code FilterChain}
+ * from outside — but this assertion no longer measures it, and saying so is the point: a
+ * reader who took the old sentence at face value would believe a caller census is pinned
+ * here when what is pinned is the class's interface.</p>
  */
 class RemoveSettingMethodForkSliceTest {
 
@@ -62,9 +77,9 @@ class RemoveSettingMethodForkSliceTest {
     }
 
     @Test
-    @DisplayName("upstream's wiring setter is refused, the outside caller is named, and the "
-        + "file is untouched")
-    void refusesUpstreamsWiringSetter() throws Exception {
+    @DisplayName("upstream's setter is refused because it implements an INTERFACE the class "
+        + "declares, and the file is untouched")
+    void refusesUpstreamsInterfaceSetter() throws Exception {
         String before = Files.readString(filter, StandardCharsets.UTF_8);
         String[] lines = before.split("\n", -1);
         int line = -1;
@@ -84,15 +99,18 @@ class RemoveSettingMethodForkSliceTest {
 
         ToolResponse r = tool.execute(args);
         assertFalse(r.isSuccess(),
-            "a setter called after construction is how the chain is built; removing it would"
-                + " take away the wiring");
+            "setNext satisfies Filter, so removing it would stop AbstractFilter's subclasses"
+                + " being usable as the interface they are declared to be");
         String error = String.valueOf(r.getError());
-        // The CALLER refusal specifically, not merely some refusal. setNext IS a plain
-        // one-assignment setter, so the shape check passes and this is the branch that must
-        // fire — which is what makes the assertion about this row rather than about any
-        // decline.
-        assertTrue(error.contains("outside"),
-            "it must be the caller refusal, since the body shape is acceptable: " + error);
+        // THE INTERFACE BRANCH SPECIFICALLY, not merely some refusal. setNext is a plain
+        // one-assignment setter, so the shape check passes, and it IS also called from
+        // outside — so naming the supertype is what tells the interface branch apart from
+        // the caller branch that would otherwise fire next.
+        assertTrue(error.contains("overrides") && error.contains("Filter"),
+            "it must be the CONTRACT refusal, naming the supertype it belongs to: " + error);
+        assertFalse(error.contains("outside"),
+            "and it must be that one rather than the caller refusal — both are true of this"
+                + " method, and only the nearer one is what this test claims: " + error);
         assertEquals(before, Files.readString(filter, StandardCharsets.UTF_8),
             "a refusal must leave upstream's file byte-for-byte untouched");
     }

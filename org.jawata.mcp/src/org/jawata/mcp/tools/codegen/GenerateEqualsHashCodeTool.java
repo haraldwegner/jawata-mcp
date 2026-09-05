@@ -504,9 +504,9 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
         return null;
     }
 
-    /** Top-level OR nested — see {@link TypeDeclarations} for the defect this closed. */
+    /** Top-level OR nested — see {@link org.jawata.mcp.tools.shared.TypeLookup}. */
     private static AbstractTypeDeclaration findTypeDeclaration(CompilationUnit unit, String simpleName) {
-        return TypeDeclarations.find(unit, simpleName);
+        return org.jawata.mcp.tools.shared.TypeLookup.declaration(unit, simpleName);
     }
 
     private record FieldInfo(String name, String typeName, boolean primitive) {}

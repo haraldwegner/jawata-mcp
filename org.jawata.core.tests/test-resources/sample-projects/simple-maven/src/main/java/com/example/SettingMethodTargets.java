@@ -3,9 +3,10 @@ package com.example;
 /**
  * Fixtures for Fowler row 37, Remove Setting Method, as data kind=remove_setting_method.
  *
- * <p>Four shapes: the canonical one this row exists for, and one for each refusal that is not
- * about the caller. The caller refusal needs a second file, because a call from another class
- * is exactly what makes it a refusal.</p>
+ * <p>Eight shapes: the canonical one this row exists for, one for each refusal that is not
+ * about the caller, the sibling pair that makes a name-keyed lookup wrong, and the class whose
+ * setter belongs to an interface. The caller refusal needs a second file, because a call from
+ * another class is exactly what makes it a refusal.</p>
  *
  * <p>No comment here quotes what the operation emits. A fixture that contains the string its
  * own test searches for makes the test pass on the comment, which is how a row in this stage
@@ -99,6 +100,84 @@ public class SettingMethodTargets {
 
         public int hits() {
             return hits;
+        }
+    }
+
+    /**
+     * The FIRST of two sibling classes declaring {@code setLabel(String)}.
+     *
+     * <p>A simple name is unique inside a SCOPE, not inside a file, so two sibling nested
+     * classes may each declare a member of the same name and arity — this pair compiles. Row 37
+     * once resolved its target by searching the whole compilation unit for that name and taking
+     * the first hit, which means a request about {@link RightPanel} was answered by rewriting
+     * THIS class. Every other fixture here has distinctly named setters, so the whole-file
+     * search was accidentally correct on all of them and nothing could see it.</p>
+     */
+    public static class LeftPanel {
+
+        private String title;
+
+        public LeftPanel(String title) {
+            setLabel(title);
+        }
+
+        public void setLabel(String title) {
+            this.title = title;
+        }
+
+        public String title() {
+            return title;
+        }
+    }
+
+    /** The SECOND of the pair — the one a test asks about, so a first-match lookup misses it. */
+    public static class RightPanel {
+
+        private String caption;
+
+        public RightPanel(String caption) {
+            setLabel(caption);
+        }
+
+        public void setLabel(String caption) {
+            this.caption = caption;
+        }
+
+        public String caption() {
+            return caption;
+        }
+    }
+
+    /** The contract {@link Gauge} declares, so its setter is not the class's to take away. */
+    public interface Adjustable {
+
+        void setScale(int scale);
+    }
+
+    /**
+     * Every precondition passes except one: the setter implements an INTERFACE method.
+     *
+     * <p>Deliberately canonical in every other respect — one constructor, that constructor the
+     * only caller, a body of one assignment — so the only thing that can refuse it is the
+     * override check. An interface rather than a superclass, because the supertype lookup this
+     * refusal reads returned superclasses ONLY until 2026-09-05, which made the published
+     * refusal unreachable for exactly this shape.</p>
+     */
+    public static class Gauge implements Adjustable {
+
+        private int scale;
+
+        public Gauge(int scale) {
+            setScale(scale);
+        }
+
+        @Override
+        public void setScale(int scale) {
+            this.scale = scale;
+        }
+
+        public int scale() {
+            return scale;
         }
     }
 }

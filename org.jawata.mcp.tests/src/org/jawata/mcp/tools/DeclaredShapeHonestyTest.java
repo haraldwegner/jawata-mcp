@@ -166,6 +166,10 @@ class DeclaredShapeHonestyTest {
         doors.put("inline", new InlineTool(svc, cache));
         doors.put("apply_cleanup", new ApplyCleanupTool(svc, cache));
         doors.put("hierarchy", new HierarchyTool(svc, cache));
+        // `data` JOINS HERE AT STAGE 5, which is what this file said would happen: it was
+        // excluded while it published a single operation and no kind enum, and it now
+        // publishes ten kinds through a routing table like any other door.
+        doors.put("data", new DataTool(svc, cache));
         doors.put("refactoring", new RefactoringTool(svc, cache,
             new org.jawata.mcp.domain.NoOpAdvisor()));
         return doors;
@@ -253,10 +257,10 @@ class DeclaredShapeHonestyTest {
         // counted, which the gate caught on its first run. This list holds eight doors;
         // `hierarchy` is the only one that is not a FrontDoor yet, and `refactoring` IS one,
         // because it took the description seam without the routing seam.
-        assertEquals(7, checked,
-            "the seven doors in this list that have adopted the description seam must be"
-                + " checked. hierarchy adopts inside Stage 7 and data inside Stage 5, and"
-                + " each becomes an eighth and ninth here when it does");
+        assertEquals(8, checked,
+            "the eight doors in this list that have adopted the description seam must be"
+                + " checked. data adopted inside Stage 5 and is the eighth; hierarchy adopts"
+                + " inside Stage 7 and becomes a ninth when it does");
     }
 
     /**
@@ -272,8 +276,8 @@ class DeclaredShapeHonestyTest {
     @DisplayName("the guard covers every parametric front door, not the three it started with")
     void theGuardsOwnCoverage() {
         Map<String, AbstractTool> doors = frontDoors();
-        assertEquals(8, doors.size(),
-            "eight parametric front doors are guarded; if the surface changed, change this"
+        assertEquals(9, doors.size(),
+            "nine parametric front doors are guarded; if the surface changed, change this"
                 + " number deliberately rather than letting the guard quietly shrink: "
                 + doors.keySet());
         doors.forEach((name, door) -> assertFalse(discriminatorValues(door).isEmpty(),
@@ -349,7 +353,8 @@ class DeclaredShapeHonestyTest {
             new MoveTool(svc, cache),
             new RefactorToPatternTool(svc, cache),
             new GenerateTool(svc, cache),
-            new ApplyCleanupTool(svc, cache));
+            new ApplyCleanupTool(svc, cache),
+            new DataTool(svc, cache));
 
         int compared = 0;
         for (KindedTool door : routingDoors) {
@@ -402,15 +407,10 @@ class DeclaredShapeHonestyTest {
         org.jawata.mcp.refactoring.OperationRegistry registry =
             new org.jawata.mcp.refactoring.OperationRegistry();
         java.util.Map<String, AbstractTool> tools = new LinkedHashMap<>(frontDoors());
-        // `data` IS ADDED BY HAND because frontDoors() above does not carry it, and the
-        // reason has changed under this line. It used to be that data published no kind
-        // enum and so was not a parametric front door at all; Stage 5 made it one, with a
-        // kind enum and a routing table, when it grew past its single operation. What is
-        // left is only that frontDoors() is a hand-written list this stage did not extend
-        // — which Stage 9's M6c removes by deriving that list rather than writing it.
-        RefactoringChangeCache cache = new RefactoringChangeCache();
-        Supplier<IJdtService> svc = () -> service;
-        tools.put("data", new DataTool(svc, cache));
+        // `data` used to be added by hand here, because frontDoors() did not carry it — it
+        // published no kind enum and so was not a parametric front door at all. Stage 5 made
+        // it one, and frontDoors() now lists it, so the hand-add is gone rather than left
+        // standing as a copy of a fact the list already holds.
         // THE POLICY IS ASKED OF OperationSurface (Stage 6a, M8), which is where it lives
         // now. It used to be a package-private reader on ToolRegistry, and this line is the
         // reason the extraction was worth doing: the check wants "what does this tool publish
