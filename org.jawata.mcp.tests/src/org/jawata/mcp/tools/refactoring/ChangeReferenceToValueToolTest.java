@@ -187,12 +187,18 @@ class ChangeReferenceToValueToolTest {
      * class and reports SUCCESS, which is the shape that actually ships.</p>
      *
      * <p>The two classes now share every MEMBER a string assertion would reach for, so a
-     * containment check cannot say which one was acted on. (They are not literally identical —
-     * the decoy's constructor is package-private and its body is indented one level deeper —
-     * and an earlier version of this sentence claimed they were. Those differences are not
-     * something an assertion about the refactoring's OUTPUT should lean on.) The assertion is
-     * positional instead: after a correct run the surviving {@code setCurrency} is the DECOY's,
-     * declared above the public class; after a wrong one it is the real class's, below it.</p>
+     * containment check cannot say which one was acted on. The assertion is positional instead:
+     * after a correct run the surviving {@code setCurrency} is the DECOY's, declared above the
+     * real class; after a wrong one it is the real class's, below it.</p>
+     *
+     * <p><b>THE ANCHOR IS THE DECOY'S VISIBILITY, and this sentence has now been wrong twice
+     * about it.</b> The landmark is {@code public static class Money}: the decoy's class is
+     * declared package-private, so that needle resolves to the real class and nothing else.
+     * Drop {@code public} from it and it resolves to the decoy instead — measured. The first
+     * version of this paragraph said the two classes were text-identical, which was false; the
+     * second said they differ only in the constructor's visibility and the indentation, "not
+     * something an assertion should lean on" — also false, because it named the two differences
+     * that carry nothing and omitted the one every assertion here depends on.</p>
      */
     @Test
     @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")

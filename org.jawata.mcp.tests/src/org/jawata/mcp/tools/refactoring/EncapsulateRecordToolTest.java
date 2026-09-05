@@ -186,10 +186,17 @@ class EncapsulateRecordToolTest {
      * ships.</p>
      *
      * <p>The two now declare the same FIELDS, so a containment check cannot say which one was
-     * encapsulated — they are not identical beyond that, and no assertion here leans on the
-     * differences. The assertion is positional: after a correct run the surviving
-     * {@code public double latitude;} is the DECOY's, above the public class; after a wrong one
+     * encapsulated. The assertion is positional: after a correct run the surviving
+     * {@code public double latitude;} is the DECOY's, above the real class; after a wrong one
      * it is the real class's, below it.</p>
+     *
+     * <p><b>THE ANCHOR IS THE DECOY'S VISIBILITY, and an earlier version of this paragraph
+     * denied it.</b> It said "no assertion here leans on the differences" between the two
+     * classes. Two do, and so does the caret-finder: all three key on
+     * {@code public static class Coordinate}, which resolves to the real class ONLY because the
+     * decoy's is declared package-private. That is the fixture's whole design — its own javadoc
+     * says so — and a test paragraph that denies its dependence on it is the same overclaim one
+     * layer down.</p>
      */
     @Test
     @DisplayName("acts on the class it was pointed at, not on a SIBLING of the same simple name")
@@ -216,7 +223,8 @@ class EncapsulateRecordToolTest {
         // proved that by neutralising the positional assertion above and watching this one
         // pass while the decoy was encapsulated. So this asserts WHERE it landed too.
         assertEquals(1, occurrences(after, "public double getLatitude()"),
-            "exactly one accessor pair exists:\n" + after);
+            "exactly one getter for this field exists — nothing here counts the SETTER, and"
+                + " the word 'pair' stood in this message until an audit read it:\n" + after);
         assertTrue(after.indexOf("public double getLatitude()") > realClassAt,
             "and it is inside the class this test pointed at — before that declaration means"
                 + " the accessors were generated on the sibling:\n" + after);

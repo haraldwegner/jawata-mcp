@@ -26,11 +26,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Over the fork's 1354 main sources there are <b>48</b> {@code public void set…}
  * declarations. Classified by body shape, <b>13</b> are the plain one-assignment kind these
- * two rows accept — one parameter, one statement, {@code f = p;} — and the rest validate, log,
- * switch, delegate, or take a number of parameters that is not one. The arity distribution of
- * the 48, measured: <b>34 take one, 12 take two, one takes three</b>
- * ({@code RegisterWorkerDto.setupWorkerDto}) <b>and one takes none</b>
- * ({@code App.setUp}). Row 37 refuses everything but the 13 at its shape check.</p>
+ * two rows accept — one parameter, one statement, {@code f = p;}. The arity distribution of the
+ * 48, measured: <b>34 take one, 12 take two, one takes three</b>
+ * ({@code RegisterWorkerDto.setupWorkerDto}) <b>and one takes none</b> ({@code App.setUp}).
+ * Row 37 refuses everything but the 13 at its shape check — the 14 by arity, and the other 21
+ * because their bodies do more than assign. Those 21 mostly validate, log, switch or delegate;
+ * at least two do none of those ({@code Message.setBody} throws a poison pill,
+ * {@code LruCache.setHead} splices a linked list), so that list is a description of the
+ * majority and not a partition.</p>
  *
  * <p><b>This paragraph has now been wrong TWICE, and both corrections are kept rather than
  * overwritten, because the second is the more instructive.</b> The first version said every
