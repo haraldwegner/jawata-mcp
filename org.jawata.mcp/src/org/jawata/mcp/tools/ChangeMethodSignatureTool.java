@@ -5,6 +5,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.api.ChangeSignatureTool;
+import org.jawata.mcp.tools.api.IntroduceParameterObjectTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,11 +42,14 @@ import java.util.function.Supplier;
 public class ChangeMethodSignatureTool extends AbstractRefactoringTool implements KindedTool {
 
     private final ChangeSignatureTool changeSignature;
+    private final IntroduceParameterObjectTool introduceParameterObject;
 
     public ChangeMethodSignatureTool(Supplier<IJdtService> serviceSupplier,
                                      RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
         this.changeSignature = new ChangeSignatureTool(serviceSupplier, changeCache);
+        this.introduceParameterObject =
+            new IntroduceParameterObjectTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -68,7 +72,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     @Override
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
-        for (KindDelegate delegate : List.of(changeSignature)) {
+        for (KindDelegate delegate : List.of(changeSignature, introduceParameterObject)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -150,6 +154,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
         }
         return switch (kind) {
             case "change_signature" -> changeSignature.executeWithService(service, arguments);
+            case "introduce_parameter_object" ->
+                introduceParameterObject.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
