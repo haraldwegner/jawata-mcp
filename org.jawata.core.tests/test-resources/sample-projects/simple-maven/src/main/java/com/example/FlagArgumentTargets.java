@@ -38,6 +38,17 @@ public class FlagArgumentTargets {
         return base;
     }
 
+    /**
+     * Every caller passes the SAME literal, so one generated method would have no caller.
+     *
+     * <p>The FORK is what put this case here: all fourteen of its methods declaring a boolean
+     * parameter are called with one value and only one, so the row would have generated dead code
+     * on every candidate the corpus offers.</p>
+     */
+    public double always(double base, boolean rounded) {
+        return rounded ? Math.round(base) : base;
+    }
+
     /** Nobody calls it, so the two named methods would be generated for nobody. */
     public double uncalled(double base, boolean doubled) {
         return doubled ? base * 2 : base;

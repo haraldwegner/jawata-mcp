@@ -33,6 +33,16 @@ public class FlagArgumentDesk {
         return targets.fare(base, chosen);
     }
 
+    /** Passes the flag one way… */
+    public double roundedOnce(double base) {
+        return targets.always(base, true);
+    }
+
+    /** …and so does its neighbour, which is what makes the flag one-sided. */
+    public double roundedTwice(double base) {
+        return targets.always(base, true);
+    }
+
     /** Calls the non-boolean case, so it has callers and refuses for the type instead. */
     public double tiered(double base) {
         return targets.tiered(base, 3);

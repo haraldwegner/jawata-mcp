@@ -71,6 +71,14 @@ import com.fasterxml.jackson.databind.JsonNode;
  * no name to rewrite it to. The row refuses and names the file, rather than leaving that one call
  * behind on a method the others no longer use.</p>
  *
+ * <p><b>And every caller passing the SAME literal is refused too, which the FORK CORPUS is what
+ * put here.</b> Of its fourteen methods declaring a boolean parameter, the seven called with a
+ * literal all pass one value and only one — three setters, two constructors this row does not
+ * reach, a JDK-fixed signature, and a guard helper whose other callers pass expressions. For those
+ * the flag is not selecting between two things: it is a constant the callers happen to agree on,
+ * and two named methods would leave one with no caller. That case wants the parameter REMOVED,
+ * which is {@code kind=change_signature} on this same door.</p>
+ *
  * <p>Scoped to a {@code boolean} flag, and that is stated rather than left to be discovered: an
  * enum flag is the same idea with N names instead of two, and a caller passing an enum constant
  * that this row silently treated as unrecognised would be the worst of both.</p>
@@ -100,6 +108,8 @@ public class RemoveFlagArgumentTool extends AbstractApplyingRefactoringTool
         public static final String NO_CALL_SITES = "NO_CALL_SITES";
         /** A caller passes a variable rather than a literal, so it has no name to become. */
         public static final String CALLER_PASSES_A_VARIABLE = "CALLER_PASSES_A_VARIABLE";
+        /** Every caller passes the SAME literal, so one generated method would have no caller. */
+        public static final String FLAG_IS_ONE_SIDED = "FLAG_IS_ONE_SIDED";
         /** The reference search hit its cap, so the caller list is a sample. */
         public static final String REFERENCE_CAP_REACHED = "REFERENCE_CAP_REACHED";
 
@@ -131,7 +141,9 @@ public class RemoveFlagArgumentTool extends AbstractApplyingRefactoringTool
             default, because naming the two cases IS the change. Each new method DELEGATES with
             its literal and every call site is rewritten to the one matching the literal it
             passed; the original stays, so nothing about behaviour moves. Refuses a caller that
-            passes a variable — it has not made the decision yet and has no name to become.""";
+            passes a variable (it has not made the decision yet, so it has no name to become) and
+            a flag every caller passes the SAME way (one of the two methods would have no caller;
+            that parameter is a constant, and kind=change_signature removes it).""";
     }
 
     /** Structural: call sites move to different methods. */
@@ -299,6 +311,20 @@ public class RemoveFlagArgumentTool extends AbstractApplyingRefactoringTool
                 "nothing calls '" + method.getElementName() + "', so the two named methods would"
                     + " be generated for nobody. The point of this row is what the CALL SITES"
                     + " read like afterwards.", Refusal.NO_CALL_SITES));
+        }
+        // THE CORPUS PUT THIS HERE. Every candidate in the fork passes ONE literal and only one —
+        // three setters and a guard helper — and for those the flag is not selecting between two
+        // things at all: it is a constant every caller happens to agree on. Two named methods
+        // would leave one with no caller, which is dead code this row would have generated.
+        if (rewrittenTrue == 0 || rewrittenFalse == 0) {
+            boolean only = rewrittenFalse == 0;
+            return Preparation.fail(ToolResponse.invalidParameter("parameter",
+                "every caller of '" + method.getElementName() + "' passes " + only + " for '"
+                    + parameter + "', so '" + (only ? whenFalse : whenTrue) + "' would be"
+                    + " generated with no caller. The flag is not selecting between two things"
+                    + " here — it is a constant, and removing it outright is"
+                    + " change_method_signature kind=change_signature.",
+                Refusal.FLAG_IS_ONE_SIDED));
         }
 
         // The two delegates, generated next to the original, which STAYS. Nothing about the

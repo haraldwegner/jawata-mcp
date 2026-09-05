@@ -106,6 +106,24 @@ class RemoveFlagArgumentToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES a flag every caller passes the SAME way, because one generated method "
+        + "would have no caller")
+    void refusesAOneSidedFlag() throws Exception {
+        ToolResponse r = tool.execute(argsFor("always", "rounded", "roundedUp", "exact"));
+
+        Assertions.assertAll(
+            () -> assertFalse(r.isSuccess(), "the flag is a constant these callers agree on, not"
+                + " a choice between two things"),
+            () -> assertEquals(RemoveFlagArgumentTool.Refusal.FLAG_IS_ONE_SIDED,
+                r.getError().getReason(),
+                "and it must NOT be the variable refusal — both callers pass a literal here: "
+                    + r.getError()),
+            () -> assertTrue(String.valueOf(r.getError()).contains("change_signature"),
+                "and it must name the operation that DOES fit — removing the parameter — rather"
+                    + " than leaving the caller to guess: " + r.getError()));
+    }
+
+    @Test
     @DisplayName("REFUSES a non-boolean flag, and says an enum is the same idea with more names")
     void refusesANonBooleanFlag() throws Exception {
         ToolResponse r = tool.execute(argsFor("tiered", "tier", "highTier", "lowTier"));
