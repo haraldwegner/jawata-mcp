@@ -76,6 +76,8 @@ class RetargetCallSitesTest {
         int[] pos = posAfter(Files.readString(service_), "class Service", "v1(");
 
         ObjectNode args = mapper.createObjectNode();
+        // Row 21 turned change_method_signature into a front door and made `kind` REQUIRED.
+        args.put("kind", "change_signature");
         args.put("filePath", service_.toString());
         args.put("line", pos[0]);
         args.put("column", pos[1]);
@@ -106,6 +108,12 @@ class RetargetCallSitesTest {
     void validation_retargetExclusiveWithSignatureChange() throws Exception {
         int[] pos = posAfter(Files.readString(service_), "class Service", "v1(");
         ObjectNode args = mapper.createObjectNode();
+        // `kind` matters MORE here than in the success case above, and the reason is worth
+        // stating: this test asserts a REFUSAL, so omitting `kind` would keep it green while
+        // the branch it names — the retarget/signature-change exclusivity rule — was never
+        // reached. It was not among the failures row 21's contract break produced, which is
+        // precisely the symptom: a test that starts passing for the wrong reason says nothing.
+        args.put("kind", "change_signature");
         args.put("filePath", service_.toString());
         args.put("line", pos[0]);
         args.put("column", pos[1]);

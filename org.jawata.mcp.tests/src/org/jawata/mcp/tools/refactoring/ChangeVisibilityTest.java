@@ -64,6 +64,9 @@ class ChangeVisibilityTest {
     private ToolResponse changeVisibility(String methodName, String visibility) throws Exception {
         int[] pos = declPosOf(Files.readString(widget), methodName);
         ObjectNode args = mapper.createObjectNode();
+        // Row 21 turned change_method_signature into a front door and made `kind` REQUIRED.
+        // Visibility changes are the original operation, which now answers to this name.
+        args.put("kind", "change_signature");
         args.put("filePath", widget.toString());
         args.put("line", pos[0]);
         args.put("column", pos[1]);

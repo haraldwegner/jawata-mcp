@@ -73,6 +73,12 @@ class ChangeMethodSignatureParityTest {
         ChangeMethodSignatureTool tool = new ChangeMethodSignatureTool(() -> service, cache);
 
         ObjectNode args = objectMapper.createObjectNode();
+        // Row 21 turned change_method_signature into a front door and made `kind` REQUIRED.
+        // These three goldens predate the door and pin the ORIGINAL operation, which now
+        // answers to this name — so they are re-pointed rather than re-recorded, and the
+        // archived output is expected to match byte for byte. If it does not, the door
+        // changed something it was only supposed to route.
+        args.put("kind", "change_signature");
         args.put("filePath", file.toString());
         args.put("line", FM_LINE);
         args.put("column", FM_COL);

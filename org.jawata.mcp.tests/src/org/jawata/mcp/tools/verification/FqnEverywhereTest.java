@@ -184,6 +184,8 @@ class FqnEverywhereTest {
     void changeSignatureByName() {
         ChangeMethodSignatureTool tool = new ChangeMethodSignatureTool(() -> service, cache);
         ObjectNode args = byName("symbol", "com.example.Calculator#subtract");
+        // Row 21 turned change_method_signature into a front door and made `kind` REQUIRED.
+        args.put("kind", "change_signature");
         args.put("newName", "minus");
         args.put("auto_apply", false);
 
