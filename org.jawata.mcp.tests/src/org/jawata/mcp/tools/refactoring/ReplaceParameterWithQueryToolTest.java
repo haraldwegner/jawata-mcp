@@ -124,6 +124,35 @@ class ReplaceParameterWithQueryToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES when the body reads the parameter twice, because a query put in its "
+        + "place would be evaluated twice")
+    void refusesARepeatedRead() throws Exception {
+        String before = Files.readString(targets, StandardCharsets.UTF_8);
+        ToolResponse r = tool.execute(argsFor("compounded"));
+
+        assertFalse(r.isSuccess(), "both callers agree, so the only thing left to refuse on is"
+            + " that one evaluation would become two");
+        assertEquals(ReplaceParameterWithQueryTool.Refusal.PARAMETER_READ_REPEATEDLY,
+            r.getError().getReason(),
+            "and it must NOT be the unanimity refusal — the callers agree here: " + r.getError());
+        assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
+            "a refusal modifies nothing");
+    }
+
+    @Test
+    @DisplayName("REFUSES a single read INSIDE a loop, which the read count alone cannot see")
+    void refusesAReadInsideALoop() throws Exception {
+        ToolResponse r = tool.execute(argsFor("accrued"));
+
+        assertFalse(r.isSuccess(), "one read in a loop is evaluated once per iteration");
+        assertEquals(ReplaceParameterWithQueryTool.Refusal.PARAMETER_READ_REPEATEDLY,
+            r.getError().getReason(), "got: " + r.getError());
+        assertTrue(String.valueOf(r.getError()).contains("loop"),
+            "and the refusal must name the SHAPE it saw rather than the count, which is 1 here"
+                + " and would make the message false: " + r.getError());
+    }
+
+    @Test
     @DisplayName("REFUSES a parameter the method does not declare")
     void refusesAnUnknownParameter() throws Exception {
         ObjectNode args = argsFor("discounted");

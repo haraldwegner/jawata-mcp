@@ -67,6 +67,20 @@ import com.fasterxml.jackson.databind.JsonNode;
  * <p>Unanimity is the whole safety argument. One call site passing something else means the
  * parameter carries information the query cannot reproduce, and removing it would change what
  * that caller asked for — so the row refuses and names the file.</p>
+ *
+ * <h2>And the body must read the parameter ONCE, which is Fowler's own precondition</h2>
+ *
+ * <p>The call site evaluates the derivation once; the body would evaluate it once per read. Where
+ * the method changes the state the query reads, those evaluations answer differently and the
+ * method computes something no caller asked for — and it compiles, so nothing below this row
+ * could catch it. Fowler says the same thing as a caveat: do not do this when the query depends on
+ * state the function modifies.</p>
+ *
+ * <p><b>Upstream's own instance of the trigger is exactly that case</b>, which is how the
+ * precondition came to be here rather than by review. {@code Feind.fightForTheSword(reacher,
+ * sword.getLocker(), sword)} is called twice and both callers agree, so every other condition
+ * passes — and {@code holder} is read five times inside a loop whose body attacks it and can
+ * release the sword. See {@code fork-lockable-object}, which pins the refusal.</p>
  */
 public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTool
         implements ToolKindDelegate {
@@ -89,6 +103,8 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
         public static final String CALLERS_DISAGREE = "CALLERS_DISAGREE";
         /** The reference search hit its cap, so the caller list is a sample. */
         public static final String REFERENCE_CAP_REACHED = "REFERENCE_CAP_REACHED";
+        /** The body would evaluate the query more than the call site evaluated it once. */
+        public static final String PARAMETER_READ_REPEATEDLY = "PARAMETER_READ_REPEATEDLY";
 
         private Refusal() {
         }
@@ -119,7 +135,9 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
             for another parameter of the same call. The exact inverse of
             replace_query_with_parameter — which direction is right depends on whether the
             dependency or the repetition costs more, so neither is a default. Refuses if the
-            method has no callers, or if one caller passes something else.""";
+            method has no callers, if one caller passes something else, or if the body reads
+            the parameter more than once or inside a loop — the call site evaluates the
+            derivation once and the body would evaluate it once per read.""";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -193,6 +211,22 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
             return Preparation.fail(ToolResponse.invalidParameter("parameter",
                 "'" + method.getElementName() + "' declares no parameter '" + parameter + "'.",
                 Refusal.PARAMETER_NOT_FOUND));
+        }
+
+        // FOWLER'S OWN PRECONDITION, and the corpus is what put it here. The call site evaluates
+        // the derivation ONCE; the body would evaluate it once per read. Where the method changes
+        // the state the query reads, several reads answer differently and the method computes
+        // something no caller asked for — and it COMPILES, so no gate below this one can see it.
+        // Purity is not decidable here, exactly as row 45 states for its own impurity rule, so
+        // the check is the read count and the read's context rather than an analysis of the query.
+        List<SimpleName> reads = readsOf(decl, parameters.get(index).resolveBinding());
+        String repeated = whyReadingIsRepeated(reads, decl);
+        if (repeated != null) {
+            return Preparation.fail(ToolResponse.invalidParameter("parameter",
+                "'" + parameter + "' " + repeated + ", so the query would be evaluated more often"
+                    + " than the call site evaluates it once. Where the method changes the state"
+                    + " the query reads, those evaluations can differ.",
+                Refusal.PARAMETER_READ_REPEATEDLY));
         }
 
         List<SearchMatch> references =
@@ -284,9 +318,8 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
         ASTRewrite own = rewrites.get(unit);
         own.getListRewrite(decl, MethodDeclaration.PARAMETERS_PROPERTY)
             .remove(parameters.get(index), null);
-        IVariableBinding removed = parameters.get(index).resolveBinding();
         int rewritten = 0;
-        for (SimpleName use : readsOf(decl, removed)) {
+        for (SimpleName use : reads) {
             own.replace(use, own.createStringPlaceholder(receiverParameter + "." + query + "()",
                 ASTNode.METHOD_INVOCATION), null);
             rewritten++;
@@ -334,6 +367,46 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
             node = node.getParent();
         }
         return (MethodDeclaration) node;
+    }
+
+    /**
+     * WHY the substitution would evaluate the query more than once, or {@code null} if it would
+     * not. The answer is a phrase completing "'{@code x}' …", so the refusal names what was seen
+     * rather than restating the rule.
+     *
+     * <p>Two shapes are refused and they are the same defect counted differently. SEVERAL reads
+     * become several evaluations outright. ONE read inside a loop, a lambda or an anonymous class
+     * is evaluated once per iteration or per invocation, which the read count alone cannot see —
+     * and that second shape is not hypothetical: upstream's own instance of this refactoring's
+     * trigger has both at once.</p>
+     *
+     * <p>What it deliberately does NOT do is decide whether the query is pure. That is not
+     * decidable here, which is the same reasoning row 45 gives for refusing any call in a derived
+     * expression rather than trying to classify it. The cost is that a genuinely pure query read
+     * twice is refused too, and the refusal says which shape it saw so a reader can judge that.</p>
+     */
+    private static String whyReadingIsRepeated(List<SimpleName> reads, MethodDeclaration decl) {
+        if (reads.size() > 1) {
+            return "is read " + reads.size() + " times in the body";
+        }
+        if (reads.size() == 1) {
+            for (ASTNode n = reads.get(0); n != null && n != decl; n = n.getParent()) {
+                String shape = switch (n) {
+                    case org.eclipse.jdt.core.dom.WhileStatement ignored -> "a while loop";
+                    case org.eclipse.jdt.core.dom.ForStatement ignored -> "a for loop";
+                    case org.eclipse.jdt.core.dom.EnhancedForStatement ignored -> "a for-each loop";
+                    case org.eclipse.jdt.core.dom.DoStatement ignored -> "a do-while loop";
+                    case org.eclipse.jdt.core.dom.LambdaExpression ignored -> "a lambda";
+                    case org.eclipse.jdt.core.dom.AnonymousClassDeclaration ignored ->
+                        "an anonymous class";
+                    case null, default -> null;
+                };
+                if (shape != null) {
+                    return "is read inside " + shape + ", so its one read runs many times";
+                }
+            }
+        }
+        return null;
     }
 
     /** Every READ of that parameter in the body — its own declaration is not one. */

@@ -37,4 +37,14 @@ public class DerivedParameterDesk {
     public double disputedTwo(DerivedParameterTargets.Order order) {
         return targets.disputed(order, order.bonus());
     }
+
+    /** Agrees, so the refusal cannot be unanimity — the body reading it twice is what refuses. */
+    public double compoundedOnce(DerivedParameterTargets.Order order) {
+        return targets.compounded(order, order.rate());
+    }
+
+    /** Agrees too — here the body's ONE read sits in a loop. */
+    public double accruedOnce(DerivedParameterTargets.Order order) {
+        return targets.accrued(order, order.rate());
+    }
 }
