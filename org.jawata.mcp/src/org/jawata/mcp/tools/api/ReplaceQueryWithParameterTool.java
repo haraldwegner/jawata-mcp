@@ -1,27 +1,17 @@
 package org.jawata.mcp.tools.api;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
-import org.eclipse.jdt.core.ISourceRange;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTNode;
-import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.MethodInvocation;
-import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.internal.corext.refactoring.code.IntroduceParameterRefactoring;
 import org.eclipse.ltk.core.refactoring.Change;
-import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.ChangeEngine;
@@ -203,7 +193,9 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
         }
 
         ICompilationUnit unit = method.getCompilationUnit();
-        List<MethodInvocation> calls = callsNamed(parse(unit), method, queryCall);
+        List<MethodInvocation> calls = IntroducedParameter.within(
+            IntroducedParameter.parse(unit), method, MethodInvocation.class,
+            call -> queryCall.equals(call.getName().getIdentifier()));
         if (calls.isEmpty()) {
             return Preparation.fail(ToolResponse.invalidParameter("queryCall",
                 "'" + method.getElementName() + "' contains no call to '" + queryCall + "'.",
@@ -241,40 +233,21 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
 
         HeadlessJdtConfig.ensureInitialized();
 
-        IntroduceParameterRefactoring refactoring = new IntroduceParameterRefactoring(
-            unit, target.getStartPosition(), target.getLength());
-
-        // THE ORDER IS LOAD-BEARING, AND IT COST TWO RUNS TO GET RIGHT. setParameterName writes
-        // through to a ParameterInfo that JDT does not build until checkInitialConditions has
-        // run — calling it before throws NullPointerException out of the engine — and
-        // checkInitialConditions REBUILDS it, so a name set before the last condition check is
-        // silently discarded and JDT's guess ships instead. Stage 6 row 49 recorded the same
-        // shape on a different engine, which is what makes it a trap rather than an accident.
-        //
-        // RefactoringEngine.propose runs checkAllConditions, which is both checks, so there is
-        // no window inside it. The window is opened here instead: run the conditions, name the
-        // parameter, build the change, and hand the BUILT change to the pipeline through
-        // PreparedRefactoring — the seam Stage 6 promoted for exactly this, so the compile
-        // gate, the parity check and the undo handle are unchanged.
-        RefactoringStatus conditions =
-            refactoring.checkInitialConditions(new NullProgressMonitor());
-        String requestedName = getStringParam(arguments, "parameterName");
-        if (!conditions.hasFatalError() && requestedName != null && !requestedName.isBlank()) {
-            refactoring.setParameterName(requestedName);
-        }
-        if (!conditions.hasFatalError()) {
-            conditions.merge(refactoring.checkFinalConditions(new NullProgressMonitor()));
-        }
-        if (conditions.hasFatalError()) {
+        // The engine's naming window, and why the checks run out here rather than inside
+        // RefactoringEngine.propose, are IntroducedParameter's subject — read it there. Row 27
+        // needs the identical sequence over a literal instead of a call, which is why it is a
+        // shared class rather than a second copy of this block.
+        IntroducedParameter.Configured configured =
+            IntroducedParameter.configure(unit, target, getStringParam(arguments,
+                "parameterName"));
+        if (configured.isRefused()) {
             return Preparation.fail(ToolResponse.error("REFACTORING_FAILED",
-                "replace_query_with_parameter refused: " + conditions.getMessageMatchingSeverity(
-                    RefactoringStatus.FATAL),
+                "replace_query_with_parameter refused: " + configured.refusal(),
                 "JDT's own preconditions declined — the selected call is not an r-value, or its"
                     + " type is not visible at every call site. Nothing was modified."));
         }
         CheckedChange checked = engine.propose(
-            new PreparedRefactoring(refactoring.createChange(new NullProgressMonitor()),
-                "replace query " + queryCall + "()"),
+            new PreparedRefactoring(configured.change(), "replace query " + queryCall + "()"),
             "replace query " + queryCall + "() with a parameter of " + method.getElementName());
         if (checked.isRefused()) {
             return Preparation.fail(ToolResponse.error("REFACTORING_FAILED",
@@ -287,8 +260,7 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
         Map<String, Object> extras = new LinkedHashMap<>();
         extras.put("method", method.getElementName());
         extras.put("queryCall", queryCall);
-        extras.put("parameterName", refactoring.getAddedParameterInfo() == null
-            ? requestedName : refactoring.getAddedParameterInfo().getNewName());
+        extras.put("parameterName", configured.name());
         extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, service).size());
         if (checked.hasWarnings()) {
             extras.put("warnings", checked.messages());
@@ -299,43 +271,4 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
         return Preparation.of(change, summary, extras);
     }
 
-    /**
-     * Every invocation of {@code name} lexically inside {@code method}'s own body.
-     *
-     * <p>The method is located by its ELEMENT's own source range rather than by searching the
-     * file for its name — the identity join this sprint adopted after a name key resolved to a
-     * sibling class declaring the same member. Nested lambdas and anonymous classes are NOT
-     * excluded: a query asked inside a lambda is still a query this method asks, and JDT
-     * decides for itself whether the expression can be lifted.</p>
-     */
-    private static List<MethodInvocation> callsNamed(CompilationUnit ast, IMethod method,
-                                                     String name) throws Exception {
-        List<MethodInvocation> found = new ArrayList<>();
-        ISourceRange range = method.getSourceRange();
-        if (range == null || range.getOffset() < 0) {
-            return found;
-        }
-        ASTNode declaration = NodeFinder.perform(ast, range.getOffset(), range.getLength());
-        if (declaration == null) {
-            return found;
-        }
-        declaration.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(MethodInvocation node) {
-                if (name.equals(node.getName().getIdentifier())) {
-                    found.add(node);
-                }
-                return true;
-            }
-        });
-        return found;
-    }
-
-    private static CompilationUnit parse(ICompilationUnit unit) {
-        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
-        parser.setSource(unit);
-        parser.setResolveBindings(true);
-        parser.setBindingsRecovery(true);
-        return (CompilationUnit) parser.createAST(null);
-    }
 }

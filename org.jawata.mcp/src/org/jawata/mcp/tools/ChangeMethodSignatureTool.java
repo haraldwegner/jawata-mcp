@@ -6,6 +6,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.api.ChangeSignatureTool;
 import org.jawata.mcp.tools.api.IntroduceParameterObjectTool;
+import org.jawata.mcp.tools.api.ParameterizeFunctionTool;
 import org.jawata.mcp.tools.api.ReplaceQueryWithParameterTool;
 
 import java.util.LinkedHashMap;
@@ -45,6 +46,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     private final ChangeSignatureTool changeSignature;
     private final IntroduceParameterObjectTool introduceParameterObject;
     private final ReplaceQueryWithParameterTool replaceQueryWithParameter;
+    private final ParameterizeFunctionTool parameterizeFunction;
 
     public ChangeMethodSignatureTool(Supplier<IJdtService> serviceSupplier,
                                      RefactoringChangeCache changeCache) {
@@ -54,6 +56,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
             new IntroduceParameterObjectTool(serviceSupplier, changeCache);
         this.replaceQueryWithParameter =
             new ReplaceQueryWithParameterTool(serviceSupplier, changeCache);
+        this.parameterizeFunction = new ParameterizeFunctionTool(serviceSupplier, changeCache);
     }
 
     @Override
@@ -77,7 +80,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
     public Map<String, KindDelegate> delegates() {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
         for (KindDelegate delegate : List.of(changeSignature, introduceParameterObject,
-            replaceQueryWithParameter)) {
+            replaceQueryWithParameter, parameterizeFunction)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -163,6 +166,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
                 introduceParameterObject.executeWithService(service, arguments);
             case "replace_query_with_parameter" ->
                 replaceQueryWithParameter.executeWithService(service, arguments);
+            case "parameterize_function" ->
+                parameterizeFunction.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so
             // that a delegate added to the routing table and forgotten HERE fails loudly at
             // the call rather than being dispatched to whichever branch happened to be last.
