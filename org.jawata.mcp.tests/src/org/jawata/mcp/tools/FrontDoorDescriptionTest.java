@@ -365,8 +365,12 @@ class FrontDoorDescriptionTest {
         // THIS TEST IS THE OTHER HALF, and it is the stronger one. A file-text check reads
         // source; this reads what a CLIENT receives. Before M5, SIX of the SEVEN doors M5
         // converted published a hand-written usage line differing from the generated one, so
-        // this failed then. (The loop now runs over eight: `data` adopted inside Stage 5 and
-        // is not part of that historical measurement.) A door that writes one back publishes two, and fails again. Neither
+        // this failed then. (The loop now runs over NINE: `data` adopted inside Stage 5 and
+        // `change_method_signature` inside Stage 4, neither part of that historical
+        // measurement. The count is stated here and asserted below, because a narrative
+        // number nothing checks goes stale the next time a door adopts — this one already
+        // had, twice, and a C4 audit found it still saying seven and eight.)
+        // A door that writes one back publishes two, and fails again. Neither
         // check subsumes the other: source could be clean while the published text was
         // assembled wrongly, and vice versa.
         //

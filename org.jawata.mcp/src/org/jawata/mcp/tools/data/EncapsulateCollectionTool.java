@@ -143,7 +143,7 @@ public class EncapsulateCollectionTool extends AbstractRefactoringTool
             the field. Refuses an accessor that already wraps or copies (it is
             already safe, so there is nothing to do), a concrete or array return
             type (no read-only view of one exists; widen it with
-            change_method_signature first), and a static field (that is
+            change_method_signature kind=change_signature first), and a static field (that is
             global_data's kind). Each refusal names which. A mutator the class
             ALREADY has is not refused — it is a step already taken, so it is
             skipped and the accessor is still closed, which is upstream's own

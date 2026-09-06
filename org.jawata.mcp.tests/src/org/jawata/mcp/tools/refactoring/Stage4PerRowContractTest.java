@@ -317,6 +317,18 @@ class Stage4PerRowContractTest {
             // version of this written after an undo compares a restored tree against itself
             // and passes for every row: that is not a weak check, it is no check.
             Map<String, String> now = snapshotOfPackage();
+
+            // PROOF OF WORK, which the sibling loop has and this one lacked until a round-2
+            // audit said so. A row that reported success and wrote nothing satisfies every
+            // comparison below, because a tree nothing touched is trivially inside any
+            // declared radius. Measured latent rather than live at the time — all ten rows
+            // do write — but a check that a no-op passes is the shape this file exists to
+            // stop.
+            if (was.equals(now)) {
+                problems.add(row.label() + ": reported success and changed NOTHING, so the"
+                    + " blast-radius comparison below proves nothing about it");
+                continue;
+            }
             for (Map.Entry<String, String> file : now.entrySet()) {
                 if (row.touches().contains(file.getKey())) {
                     continue;

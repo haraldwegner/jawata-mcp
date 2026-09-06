@@ -110,9 +110,16 @@ class ReplaceErrorCodeWithExceptionToolTest {
             // C4 audit found that by reading the production line rather than by mutating,
             // and it was right. What follows are the parts of the response that DO vary with
             // the input, which is what makes them worth asserting.
-            () -> assertTrue(summary.contains("-1"),
-                "the response must QUOTE the value the caller named, because that value is"
-                    + " what the row could not infer and had to be told: " + summary),
+            // READ OFF THE FIELD, not searched for in the rendered response. The first
+            // version of this assertion searched `summary` for "-1" and could not fail: the
+            // response carries a unified diff whose hunk header reads @@ -18,9 +18,9 @@, so
+            // the needle is in the text whatever the row did with the value. That is the
+            // very defect this assertion was written to REPLACE, reproduced inside its own
+            // repair, and a round-2 audit measured it by stripping the value from the map
+            // and watching the check still pass.
+            () -> assertEquals("-1", data.get("errorValue"),
+                "the response must carry back the value the caller named, because that is"
+                    + " what the row could not infer and had to be told: " + data),
             () -> assertEquals(1, data.get("returnsReplaced"),
                 "readingAt has exactly one sentinel return; a count that drifts means the row"
                     + " rewrote more or less of the method than the fixture declares: " + data),

@@ -409,11 +409,15 @@ public final class CureCatalog {
             + " RUNNABLE route, which is what CureTier turns into PERFORM, so wiring it is a"
             + " tier decision for the route merge rather than a transcription.",
         "change_method_signature kind=separate_query_from_modifier",
-        "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN HERE, and the sharper of the two: `cqs`"
-            + " names this refactoring in its message AND already routes to a design entry at"
-            + " ADVISE. Shipping this row gives that smell its first runnable route, so the"
-            + " open question is whether `cqs` should offer both cures and at which tier —"
-            + " which is a decision, not a transcription.",
+        "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN, and the consequence is the OPPOSITE of the"
+            + " entry above — which is why it is spelled out rather than grouped with it."
+            + " `cqs` is NOT advice-only: it already declares one cure whose recipe is"
+            + " `apply_cleanup kind=return_modified_value`, that step IS registered, and"
+            + " CureTier therefore derives PERFORM today. Adding this row would make TWO"
+            + " runnable routes, and CureTier's own rule for that is ADVISE — 'nothing"
+            + " mechanical chooses between them'. So wiring the MORE precise cure would COST"
+            + " this smell its runnable instruction. That is a real trade for the route merge"
+            + " to make, and it runs the other way from every other row here.",
         "change_method_signature kind=replace_query_with_parameter",
         "no detector reports a method that asks a question it could be told the answer to."
             + " The operation's input is the CALL to stop making, which a finding does not"

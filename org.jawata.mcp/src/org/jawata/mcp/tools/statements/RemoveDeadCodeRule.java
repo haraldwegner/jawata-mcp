@@ -105,7 +105,8 @@ public final class RemoveDeadCodeRule implements CleanupRule {
             imports are deliberately left alone: organize_imports owns
             them. Casts and parameters are out of scope — an unnecessary
             cast is not unreachable code, and dropping a parameter can
-            rename the method, which is change_method_signature's job.""";
+            rename the method, which is
+            change_method_signature kind=change_signature's job.""";
     }
 
     @Override

@@ -63,7 +63,7 @@ class EveryShippedKindIsRoutedOrExplainedTest {
     // that, and it was right: an exemption list has to be about what was NOT worked on.
 
     @Test
-    @DisplayName("each kind on the four reached front doors is named by a cure, or carries a reason")
+    @DisplayName("each kind on the five reached front doors is named by a cure, or carries a reason")
     void everyCleanupKindIsRoutedOrExplained() {
         Supplier<IJdtService> svc = () -> null;
         RefactoringChangeCache cache = new RefactoringChangeCache();
@@ -103,9 +103,16 @@ class EveryShippedKindIsRoutedOrExplainedTest {
                 }
             }
         }
-        assertTrue(examined >= 30,
-            "PROOF OF LIFE: the four doors must publish their kinds here, or this loop runs"
-                + " over nothing and passes. Examined: " + examined);
+        // AN EXACT COUNT, not a floor. It was `examined >= 30`, and a round-2 audit measured
+        // what that permits: the five doors publish 43 kinds, this door contributes 11, so
+        // DELETING IT AGAIN leaves 32 and the floor still passes — the precise re-narrowing
+        // the widening was for. A floor cannot see a door go; a count can, and its sibling
+        // guard in FrontDoorDescriptionTest already used one.
+        org.junit.jupiter.api.Assertions.assertEquals(43, examined,
+            "PROOF OF LIFE: the five doors must publish their kinds here, or this loop runs"
+                + " over nothing and passes. A door removed from the list above, or a kind"
+                + " added without a route or a reason, changes this number. Examined: "
+                + examined);
 
         assertTrue(silent.isEmpty(),
             "these operations ship and no finding names them, and no reason is written"
