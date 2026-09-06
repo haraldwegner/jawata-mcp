@@ -90,10 +90,22 @@ class EveryDeclaringKindRendersItsCureTest {
      * promised one and its only loop was over eight names.
      *
      * <p><b>An architect watch measured the gap and it is bigger than the audit reported.</b>
-     * {@link CureCatalog} declares TWENTY-TWO kinds; {@code WERE_SILENT} covers eight and
-     * {@code ocp} opts out explicitly — leaving <b>thirteen declaring kinds whose rendering
-     * was asserted by nothing at all</b>, including every kind Stage 8 added. The class name
-     * says "every declaring kind"; this method is what makes that true.</p>
+     * {@link CureCatalog} declares TWENTY-TWO kinds and {@code WERE_SILENT} covers eight, so
+     * <b>fourteen declaring kinds had their rendering asserted by nothing at all</b>,
+     * including every kind Stage 8 added. The class name says "every declaring kind"; this
+     * method is what makes that true.</p>
+     *
+     * <p><b>THE FIRST VERSION OF THIS LOOP SKIPPED {@code ocp}, AND THAT SKIP WAS INERT —
+     * a mutation is what found it.</b> It was written believing that a detector answering
+     * {@code rendersOwnCure()} must render nothing HERE, so including it would assert the
+     * opposite of what it promises. Measured: with the skip disabled, {@code ocp} entered the
+     * loop and the test stayed GREEN, because {@code rendersOwnCure()} governs whether
+     * {@link AbstractAstDetector} appends a cure sentence to its own FINDINGS — it has no
+     * bearing on {@link CureLookup}, which renders for {@code ocp} like any other declaring
+     * kind. So the guard excluded nothing, and the sentence explaining it was false. It is
+     * gone, the loop covers all twenty-two, and this paragraph is here because a dead branch
+     * that reads as load-bearing is worse than no branch: the next reader would have believed
+     * it.</p>
      *
      * <p><b>{@code WERE_SILENT} IS NOT REPLACED, and that is the point of adding rather than
      * rewriting.</b> Its javadoc argues it must stay hand-written — <i>"a set read off
@@ -109,20 +121,10 @@ class EveryDeclaringKindRendersItsCureTest {
     @DisplayName("EVERY kind that declares a cure renders it — derived from the table, not listed")
     void everyDeclaringKindRendersACure() {
         CatalogueAddresses addresses = CatalogueAddresses.of(store);
-        org.jawata.mcp.domain.DetectorCatalog catalog =
-            FowlerDetectors.registerInto(new org.jawata.mcp.domain.DetectorCatalog(), () -> null);
 
         java.util.List<String> silent = new java.util.ArrayList<>();
         java.util.List<String> checked = new java.util.ArrayList<>();
         for (String kind : CureCatalog.declaredKinds()) {
-            // The opt-out is asked of the DETECTOR, exactly as the sibling test below asks
-            // it — never matched on the message's wording, which is free to change. A kind
-            // whose detector composes its own cure sentence must render nothing here, so
-            // including it would assert the opposite of what it promises.
-            if (catalog.get(kind).orElse(null) instanceof AbstractAstDetector ast
-                    && ast.rendersOwnCure()) {
-                continue;
-            }
             String hint = CureLookup.forKind(addresses, kind).hint();
             if (hint.isBlank() || !hint.contains("TIER:")) {
                 silent.add(kind + " -> " + (hint.isBlank() ? "(nothing)" : hint));
@@ -132,8 +134,8 @@ class EveryDeclaringKindRendersItsCureTest {
 
         // PROOF OF LIFE. An empty or tiny population would make the emptiness assertion below
         // pass over nothing — the shape this sprint has now found six times. The floor is
-        // deliberately well under the current 21 so that ADDING a kind never fails this line;
-        // what it catches is the loop running over a table that failed to load.
+        // deliberately well under the current twenty-two so that ADDING a kind never fails
+        // this line; what it catches is the loop running over a table that failed to load.
         assertTrue(checked.size() >= 15,
             "the cure table must yield a real population here, or the check below passes"
                 + " over nothing. Checked: " + checked);
