@@ -277,8 +277,8 @@ public class MoveFieldTool extends AbstractRefactoringTool
 
         ICompilationUnit destinationCu = destination.getCompilationUnit();
         CompilationUnit destinationAst = parse(destinationCu);
-        AbstractTypeDeclaration destinationType = typeNamed(destinationAst,
-            destination.getElementName());
+        AbstractTypeDeclaration destinationType =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(destinationAst, destination);
         if (destinationType == null) {
             return ToolResponse.symbolNotFound(
                 "could not locate the body of " + targetType);
@@ -372,15 +372,9 @@ public class MoveFieldTool extends AbstractRefactoringTool
         return found.size() == 1 && found.get(0).fragments().size() == 1 ? found.get(0) : null;
     }
 
-    private static AbstractTypeDeclaration typeNamed(CompilationUnit ast, String name) {
-        for (Object type : ast.types()) {
-            if (type instanceof AbstractTypeDeclaration declaration
-                    && name.equals(declaration.getName().getIdentifier())) {
-                return declaration;
-            }
-        }
-        return null;
-    }
+    // `typeNamed` WAS HERE — top-level types only, keyed by a simple name. A field moved to a
+    // NESTED destination class could not find it. Deleted at C8b round 2 with the rest of the
+    // population; see the class note in `tools.shared.TypeLookup`.
 
     private static CompilationUnit parse(ICompilationUnit unit) {
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

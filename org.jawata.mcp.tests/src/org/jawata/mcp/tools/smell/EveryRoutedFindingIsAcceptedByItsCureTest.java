@@ -60,13 +60,72 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
      *       can call. {@code type_code}'s addresses ARE covered here all the same — {@code
      *       ocp} relabels its traces and keeps their symbol, so the same emission site is
      *       measured through that kind.</li>
-     *   <li>{@code unused} and {@code divergent_change} have a detector and find nothing in
-     *       {@code simple-maven}. That is a property of the fixture, not of the detector.</li>
+     *   <li>{@code divergent_change} has a detector and finds nothing in {@code simple-maven}.
+     *       That is a property of the fixture, not of the detector.</li>
      * </ul>
+     *
+     * <p><b>{@code unused} WAS ON THIS LIST AND THE REASON WAS FALSE</b> — "has a detector and
+     * finds nothing in simple-maven", stamped as measured. {@code DeadCodeTargets.java}
+     * contains an unused private field, an unused private method and an unused nested class,
+     * each labelled as such in the fixture's own comments. What was actually happening is that
+     * this test read only the {@code findings} key while that detector answers under
+     * {@code unusedItems}, so it saw nothing and reported the emptiness as the fixture's. A
+     * C8b round-2 audit found it, and the false sentence was load-bearing: it is what kept
+     * this equality green.</p>
      */
+    /**
+     * WHICH of a kind's findings the door half examines — one per address SHAPE, and the
+     * choice of axis is the whole point.
+     *
+     * <p>It examined ONE, and the one was {@code rows.get(0)} — whichever the detector
+     * happened to emit first. A C8b round-2 audit reproduced the consequence: run a sibling
+     * class first and a different {@code lazy_class} finding led, on a nested type whose door
+     * then refused, so the gate's answer depended on iteration order.</p>
+     *
+     * <p><b>Sorting fixes the flake and not the blindness, and a COUNT does not fix it
+     * either.</b> The first repair sorted and took the first three. Measured against the very
+     * case that forced the repair: {@code lazy_class} emits 175 findings on this fixture and
+     * {@code com.example.DeadCodeTargets.NeverUsed} sorts at index 22, so a three-deep sample
+     * would have been green over the defect that produced it. Raising the number is not the
+     * answer — it buys 175 door calls per cure to reach one shape — and neither is spreading
+     * the sample across the sorted range, which lands on 0, 87 and 174 and reaches that
+     * address only by luck of where it happens to sort.</p>
+     *
+     * <p>So the sample is taken along the axis the DOOR actually resolves against. Every
+     * address-shaped defect this step found lived on one of three properties of the address
+     * itself — does the symbol name a member or a type, is that type nested, and is a file
+     * position present — so the findings are bucketed by exactly that triple and one
+     * representative of each bucket is driven. The bound is structural rather than chosen:
+     * three booleans is at most eight buckets per kind, whatever the population.</p>
+     *
+     * <p>It is still a bound and this file says so: the gate reports that a routed cure works
+     * for the address SHAPES its detector emits, never for every finding. What it no longer
+     * does is depend on where in a sorted list a shape happens to fall.</p>
+     */
+    private static String addressShapeOf(Map<String, Object> row) {
+        String symbol = row.get("symbol") == null ? "" : String.valueOf(row.get("symbol"));
+        int member = symbol.indexOf('#');
+        String type = member < 0 ? symbol : symbol.substring(0, member);
+        boolean nested = false;
+        String[] segments = type.split("\\.");
+        for (int i = 0; i < segments.length - 1; i++) {
+            if (!segments[i].isEmpty() && Character.isUpperCase(segments[i].charAt(0))) {
+                // A segment after the first type-shaped one: an enclosing type, so this
+                // address names a member class. THE shape whose lookup this step fixed.
+                nested = true;
+                break;
+            }
+        }
+        boolean positioned = row.get("line") instanceof Integer line && line >= 0
+            && row.get("column") instanceof Integer column && column >= 0;
+        return (member < 0 ? "type" : "member")
+            + (nested ? "/nested" : "/top-level")
+            + (positioned ? "/positioned" : "/name-only");
+    }
+
     private static final java.util.SortedSet<String> EXPECTED_SILENT =
         new java.util.TreeSet<>(List.of(
-            "singleton", "type_code", "unused", "divergent_change"));
+            "singleton", "type_code", "divergent_change"));
 
     /** Every operation the real doors publish, spelled the way the cure table spells it. */
     private static List<String> registryOfRealDoors() {
@@ -119,6 +178,13 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
         org.jawata.mcp.refactoring.OperationRegistry operations =
             org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
         org.jawata.mcp.refactoring.OperationRegistry.Snapshot borrowed = operations.snapshot();
+        // DECLARED OUTSIDE THE BORROW so the assertions can read them after it is given back,
+        // and so the `try` can open BEFORE `clear()` — a C8b round-2 audit found the try
+        // opening after it, which left the whole publish window unguarded: anything throwing
+        // there would have left the singleton holding nine doors for every later class.
+        Map<String, String> silent = new LinkedHashMap<>();
+        Map<String, String> unusable = new LinkedHashMap<>();
+        try {
         operations.clear();
         for (org.jawata.mcp.tools.AbstractTool published
                 : org.jawata.mcp.tools.RefactoringDoors.all(
@@ -139,9 +205,6 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
             "the cure table must yield a real routed population, or this asserts nothing."
                 + " Routed: " + routed);
 
-        Map<String, String> silent = new LinkedHashMap<>();
-        Map<String, String> unusable = new LinkedHashMap<>();
-        try {
         for (String kind : routed) {
             Detector detector = catalog.get(kind).orElse(null);
             if (detector == null) {
@@ -275,7 +338,27 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
             if (rows.isEmpty()) {
                 continue;
             }
-            CodeAddress address = addressOf(rows.get(0));
+            // THE FINDING IS CHOSEN DETERMINISTICALLY, and it was not. This drove
+            // `rows.get(0)` — whichever finding the detector happened to emit first — so the
+            // gate's subject changed with iteration order, and a C8b round-2 audit reproduced
+            // it: run one sibling class before this one and a different `lazy_class` finding
+            // led, on a nested type whose door then refused. A gate that tests an arbitrary
+            // member of a set answers a different question on each run, and its green says
+            // nothing about the member it did not pick.
+            //
+            // Sorting by the ADDRESS is what makes it a measurement rather than a lottery:
+            // the same finding is examined on every machine, and a failure names something a
+            // reader can go and look at. Then ONE PER ADDRESS SHAPE, for the reason
+            // `addressShapeOf` gives — sorted-first-three would have sampled indices 0..2 of
+            // this kind's 175 findings and missed the nested address at index 22 that forced
+            // the repair. Sorting decides WHICH representative of a shape; the shape decides
+            // which representatives there are.
+            Map<String, Map<String, Object>> byShape = new LinkedHashMap<>();
+            rows.stream()
+                .sorted(java.util.Comparator.comparing(row -> String.valueOf(row.get("symbol"))
+                    + "|" + row.get("filePath") + "|" + row.get("line")))
+                .forEach(row -> byShape.putIfAbsent(addressShapeOf(row), row));
+            List<Map<String, Object>> sample = List.copyOf(byShape.values());
             for (CureCatalog.Cure cure : CureCatalog.curesFor(kind)) {
                 String recipe = cure.recipe();
                 int marker = recipe == null ? -1 : recipe.indexOf(" kind=");
@@ -289,6 +372,8 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
                 if (door == null) {
                     continue;
                 }
+                for (Map<String, Object> row : sample) {
+                CodeAddress address = addressOf(row);
                 examined++;
                 String failure = addressRefusalOf(door,
                     recipe.substring(marker + " kind=".length()), address, mapper);
@@ -296,8 +381,9 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
                     // The ADDRESS is in the message, not just the refusal: a reader of this
                     // failure needs to see what was handed over, or the only way to find out
                     // is another run.
-                    rejected.put(kind + " -> " + recipe,
+                    rejected.putIfAbsent(kind + " -> " + recipe,
                         failure + "   [address: " + address.arguments() + "]");
+                }
                 }
             }
         }
@@ -367,10 +453,22 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
         return null;
     }
 
+    /**
+     * The rows, WHEREVER the detector put them — asked of the product, not assumed.
+     *
+     * <p>This read {@code "findings"} and nothing else, which made it structurally blind to a
+     * third of the catalog: six analyzers answer under a key of their own, and {@code unused}
+     * — a ROUTED kind — answers under {@code unusedItems}. So its rows were never examined,
+     * the kind was filed as "no finding on the fixture project", and an exemption waved it
+     * through. That reason was also false: {@code DeadCodeTargets.java} contains an unused
+     * field, an unused method and an unused nested class, self-labelled as such.</p>
+     */
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> findingsOf(ToolResponse r) {
-        Object findings = ((Map<String, Object>) r.getData()).get("findings");
-        return findings == null ? List.of() : (List<Map<String, Object>>) findings;
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        Object rows = data.get(
+            org.jawata.mcp.tools.FindQualityIssueTool.resultListKeyOf(data));
+        return rows == null ? List.of() : (List<Map<String, Object>>) rows;
     }
 
     private static CodeAddress addressOf(Map<String, Object> row) {

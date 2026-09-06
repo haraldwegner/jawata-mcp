@@ -259,7 +259,9 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
         ICompilationUnit serverUnit = server.getCompilationUnit();
         boolean sameFile = serverUnit.equals(unit);
         CompilationUnit serverAst = sameFile ? ast : parse(serverUnit);
-        TypeDeclaration serverType = typeNamed(serverAst, server.getElementName());
+        TypeDeclaration serverType =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(serverAst, server)
+                instanceof TypeDeclaration found ? found : null;
         if (serverType == null) {
             return ToolResponse.symbolNotFound(
                 "could not locate " + server.getElementName() + " in its own source.");
@@ -405,28 +407,22 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
         return project.findType(binding.getErasure().getQualifiedName());
     }
 
-    /**
-     * The declaration of {@code name} anywhere in the unit, NESTED TYPES INCLUDED.
-     *
-     * <p>The first version walked {@code ast.types()}, which is the top-level types only, and
-     * returned null for every nested one — so the operation refused with "could not locate X
-     * in its own source" on a shape that is not exceptional at all. Two of this row's own
-     * tests caught it on their first run; no review had, because the method reads correctly
-     * until you ask what {@code types()} actually contains.</p>
-     */
-    private static TypeDeclaration typeNamed(CompilationUnit ast, String name) {
-        TypeDeclaration[] found = new TypeDeclaration[1];
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(TypeDeclaration node) {
-                if (found[0] == null && node.getName().getIdentifier().equals(name)) {
-                    found[0] = node;
-                }
-                return true;
-            }
-        });
-        return found[0];
-    }
+    // `typeNamed` WAS HERE, and THIS ONE IS THE RECORD WORTH KEEPING — it is the only copy in
+    // the population that had ALREADY BEEN FIXED. Its javadoc said so in its own words: the
+    // first version walked `ast.types()`, the top-level types only, and returned null for
+    // every nested one, so the operation refused about a shape that is not exceptional at all;
+    // two of this row's own tests caught it on the first run and no review had, "because the
+    // method reads correctly until you ask what types() actually contains."
+    //
+    // THE DEFECT WAS FOUND, DIAGNOSED EXACTLY, AND FIXED IN PRIVATE. Four other files went on
+    // shipping the unfixed version, and one of them — `inline kind=class` — is what C8b round
+    // 2 caught. A cure written where only its own file can reach it does not reduce the class;
+    // it removes the one instance that would have made the class visible.
+    //
+    // The visitor also kept the weaker half: it took the FIRST node of that simple name, so
+    // two sibling nested classes sharing a name resolved to whichever came first. That is the
+    // key defect Stage 5 closed by joining on the element's own source range, which is what
+    // `tools.shared.TypeLookup` does and what this now asks.
 
     private static CompilationUnit parse(ICompilationUnit unit) {
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

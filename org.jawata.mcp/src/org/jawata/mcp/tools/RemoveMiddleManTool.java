@@ -178,7 +178,9 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool
                                 JsonNode arguments) throws Exception {
         ICompilationUnit unit = middleMan.getCompilationUnit();
         CompilationUnit ast = parse(unit);
-        TypeDeclaration type = typeNamed(ast, middleMan.getElementName());
+        TypeDeclaration type =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(ast, middleMan)
+                instanceof TypeDeclaration found ? found : null;
         if (type == null) {
             return ToolResponse.symbolNotFound(
                 "could not locate the body of " + middleMan.getElementName());
@@ -468,15 +470,9 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool
         return found[0] != null ? found[0] : original;
     }
 
-    private static TypeDeclaration typeNamed(CompilationUnit ast, String name) {
-        for (Object type : ast.types()) {
-            if (type instanceof TypeDeclaration declaration
-                    && name.equals(declaration.getName().getIdentifier())) {
-                return declaration;
-            }
-        }
-        return null;
-    }
+    // `typeNamed` WAS HERE — top-level types only, keyed by a simple name, so a nested middle
+    // man was invisible. Deleted at C8b round 2 with the rest of the population; see the class
+    // note in `tools.shared.TypeLookup`.
 
     private static CompilationUnit parse(ICompilationUnit unit) {
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

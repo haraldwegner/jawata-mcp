@@ -13,7 +13,6 @@ import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
@@ -171,7 +170,9 @@ public class IntroduceSpecialCaseTool extends AbstractRefactoringTool implements
                                    JsonNode arguments) throws Exception {
         ICompilationUnit unit = target.getCompilationUnit();
         CompilationUnit ast = parse(unit);
-        TypeDeclaration declaration = typeNamed(ast, target.getElementName());
+        TypeDeclaration declaration =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(ast, target)
+                instanceof TypeDeclaration found ? found : null;
         if (declaration == null) {
             return ToolResponse.symbolNotFound(
                 "could not locate " + target.getElementName() + " in its own source.");
@@ -341,19 +342,11 @@ public class IntroduceSpecialCaseTool extends AbstractRefactoringTool implements
         };
     }
 
-    private static TypeDeclaration typeNamed(CompilationUnit ast, String name) {
-        TypeDeclaration[] found = new TypeDeclaration[1];
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(TypeDeclaration node) {
-                if (found[0] == null && node.getName().getIdentifier().equals(name)) {
-                    found[0] = node;
-                }
-                return true;
-            }
-        });
-        return found[0];
-    }
+    // `typeNamed` WAS HERE — byte-for-byte the visitor `HideDelegateTool` arrived at when IT
+    // hit the nested-type defect, copied here without the javadoc that explained why. So it
+    // descended correctly and still keyed on a simple NAME, taking the first match. Deleted at
+    // C8b round 2 with the rest of the population; see the class note in
+    // `tools.shared.TypeLookup`.
 
     private static CompilationUnit parse(ICompilationUnit unit) {
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

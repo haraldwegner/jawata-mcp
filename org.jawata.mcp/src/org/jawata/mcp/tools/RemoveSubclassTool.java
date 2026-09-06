@@ -192,8 +192,19 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
             throws Exception {
         ICompilationUnit subCu = subclass.getCompilationUnit();
         CompilationUnit subAst = parse(subCu);
-        TypeDeclaration subType = typeNamed(subAst, subclass.getElementName());
-        if (subType == null) {
+        // JOINED ON THE ELEMENT, NOT ITS NAME — and the difference is a NESTED class. This
+        // used to walk the unit's TOP-LEVEL types, so a subclass declared inside another type
+        // was invisible and the door answered SYMBOL_NOT_FOUND about an address it had just
+        // resolved. Found by C8b round 2 on a real `lazy_class` finding
+        // (com.example.DeadCodeTargets.NeverUsed), and `inline kind=class` accepted the same
+        // address, which is what said the resolver was fine and this lookup was not.
+        //
+        // This is the EIGHTH instance of one defect in this repository — five code generators
+        // at Stage 5, row 29's superclass lookup, row 37's — and `tools.shared.TypeLookup`
+        // exists because of them. The fix is to use it rather than to write the ninth copy.
+        AbstractTypeDeclaration subDeclaration =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(subAst, subclass);
+        if (!(subDeclaration instanceof TypeDeclaration subType)) {
             return ToolResponse.symbolNotFound(
                 "could not locate the body of " + subclass.getElementName());
         }
@@ -262,7 +273,12 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
         }
 
         CompilationUnit parentAst = parse(parentCu);
-        AbstractTypeDeclaration parentType = typeNamed(parentAst, parentBinding.getName());
+        // The same join for the parent, for the same reason: a nested parent was equally
+        // invisible, and the binding's own element is the identity to join on.
+        AbstractTypeDeclaration parentType =
+            parentBinding.getJavaElement() instanceof org.eclipse.jdt.core.IType parentOwner
+                ? org.jawata.mcp.tools.shared.TypeLookup.declaration(parentAst, parentOwner)
+                : null;
         if (parentType == null) {
             return ToolResponse.symbolNotFound(
                 "could not locate the body of " + parentBinding.getName());
@@ -341,26 +357,22 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
             new PreparedRefactoring(composite, label), "remove_subclass", arguments);
     }
 
-    /**
-     * <b>RECORDED FOR C7, NOT FIXED HERE.</b> This walks the unit's TOP-LEVEL types and matches
-     * a SIMPLE NAME — so it cannot see a nested subclass, and it re-derives an identity the
-     * caller already holds from a key that is not unique. Both are defects this sprint closed
-     * as classes elsewhere ({@code tools.shared.TypeLookup} for the first, the
-     * handle-identifier key for the second). It is left standing because row 38 belongs to a
-     * CLOSED stage and whether it can actually mis-resolve depends on what
-     * {@code getTypeAtPosition} can hand it, which is not established — the same call the C4
-     * record makes about {@code MoveStatementsIntoFunctionTool}: written down rather than
-     * fixed blind.
-     */
-    private static TypeDeclaration typeNamed(CompilationUnit ast, String name) {
-        for (Object type : ast.types()) {
-            if (type instanceof TypeDeclaration declaration
-                    && name.equals(declaration.getName().getIdentifier())) {
-                return declaration;
-            }
-        }
-        return null;
-    }
+    // `typeNamed` WAS HERE — a top-level-only, by-NAME lookup, deleted at C8b round 2 rather
+    // than left beside the joined one. Both of its call sites now ask
+    // `tools.shared.TypeLookup`, which descends into member types and joins on the element's
+    // own source range. Leaving it would have kept a second answer to one question in the
+    // file that had just been corrected for having it.
+    //
+    // ITS JAVADOC WENT WITH IT, and that is worth a sentence because the paragraph was RIGHT
+    // and was left standing anyway. C7 recorded this exact defect here — top-level types, a
+    // simple name as a key — and declined to fix it on the ground that row 38 sits in a closed
+    // stage and that whether it could actually mis-resolve "is not established". C8b round 2
+    // established it, on a real finding. A defect described accurately in the file that has it
+    // is not a smaller defect than one nobody noticed; the note bought a checkpoint's delay
+    // and nothing else. Deleting the javadoc rather than re-pointing it is deliberate: left in
+    // place it would have attached to `parse` below and told that method's readers about a
+    // method that no longer exists — the orphaned-comment defect this plan already records
+    // once, at C3.
 
     private static CompilationUnit parse(ICompilationUnit unit) {
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

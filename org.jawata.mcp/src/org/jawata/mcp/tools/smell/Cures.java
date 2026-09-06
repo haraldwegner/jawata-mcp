@@ -94,16 +94,16 @@ public final class Cures {
      *         in the dispatch chain beside the filters that already do
      */
     @SuppressWarnings("unchecked")
-    public static ToolResponse attach(ToolResponse response) {
-        if (response == null || !response.isSuccess()
+    public static ToolResponse attach(ToolResponse response, String kind, String rowsKey) {
+        if (response == null || !response.isSuccess() || kind == null
             || !(response.getData() instanceof Map<?, ?> data)
-            || !(data.get("findings") instanceof List<?> rows)) {
+            || !(data.get(rowsKey) instanceof List<?> rows)) {
             return response;
         }
         for (Object o : rows) {
             if (o instanceof Map<?, ?> raw) {
                 try {
-                    attachTo((Map<String, Object>) raw);
+                    attachTo((Map<String, Object>) raw, kind);
                 } catch (UnsupportedOperationException immutableRow) {
                     // A detector that answered with an immutable row keeps its own answer
                     // rather than the sweep failing. It loses its cures and says nothing —
@@ -115,9 +115,15 @@ public final class Cures {
         return response;
     }
 
-    private static void attachTo(Map<String, Object> row) {
-        Object kind = row.get("kind");
-        if (!(kind instanceof String smell) || row.containsKey("cures")) {
+    private static void attachTo(Map<String, Object> row, String smell) {
+        // THE SMELL KIND IS PASSED IN, NOT READ OFF THE ROW, and a C8b round-2 audit is why.
+        // Reading `row.get("kind")` works for a Finding-shaped row and is WRONG for the
+        // tool-adapted kinds: `unused` answers with rows whose `kind` is the JAVA ELEMENT's
+        // kind — "Method", "Field" — so the join looked up a cure for a smell called "Method",
+        // found none, and left a ROUTED kind with no steps. That is the same silent opt-out
+        // the join was moved to close, arriving through a different door; the dispatch knows
+        // which kind it asked for, so it says.
+        if (row.containsKey("cures")) {
             return;
         }
         // BUILT THROUGH `Finding` ON PURPOSE. A row's line is 1-based, a door's is 0-based,

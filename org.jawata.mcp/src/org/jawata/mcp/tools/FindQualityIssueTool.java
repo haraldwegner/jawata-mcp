@@ -357,8 +357,8 @@ public class FindQualityIssueTool extends AbstractTool {
             // the three detectors that do NOT extend it reached a caller with no runnable
             // step — measured through the built product at C8b, and one of the three was the
             // smell S8b step 9 had just added. Here no detector can be outside it.
-            .map(detector -> org.jawata.mcp.tools.smell.Cures.attach(
-                filterExcludedPaths(detector.detect(service, arguments), arguments)))
+            .map(detector -> attachCures(
+                filterExcludedPaths(detector.detect(service, arguments), arguments), kind))
             // Sprint 28 (v3.6.4): a single kind honours summary/limit/offset too. It used to
             // return the detector's response untouched, so `summary:true` here was accepted
             // and dropped without a word. capByDefault=false keeps the default shape: paging
@@ -651,7 +651,7 @@ public class FindQualityIssueTool extends AbstractTool {
                 break;
             }
             ToolResponse r = catalog.get(k)
-                .map(d -> org.jawata.mcp.tools.smell.Cures.attach(d.detect(service, arguments)))
+                .map(d -> attachCures(d.detect(service, arguments), k))
                 .orElse(null);
             // Sprint 28 C4 (audit finding 7) — this read data.get("findings")
             // ONLY. Six of the analyzers return their list under a different
@@ -880,12 +880,44 @@ public class FindQualityIssueTool extends AbstractTool {
     }
 
     private static String resultListKey(Map<String, Object> data) {
+        return resultListKeyOf(data);
+    }
+
+    /**
+     * WHERE A DETECTOR PUT ITS ROWS — the product's own answer, so a caller need not guess.
+     *
+     * <p>Six of the analyzers answer under a key of their own ({@code unusedItems},
+     * {@code violations}, {@code issues}, {@code cycles}, {@code largeClasses}) rather than
+     * under {@code findings}, and a reader that assumes one key silently sees nothing from a
+     * third of the catalog. That defect has now been found twice: once in the family sweep
+     * (C4, audit finding 7) and once in the cure join (C8b round 2), which is why this stopped
+     * being private — a gate that has to know where the rows are should ASK rather than carry
+     * a second copy of the list.</p>
+     */
+    public static String resultListKeyOf(Map<String, Object> data) {
         for (String key : RESULT_LIST_KEYS) {
             if (data.get(key) instanceof List<?>) {
                 return key;
             }
         }
         return "findings";
+    }
+
+    /**
+     * The cure join, applied where every detector's answer passes.
+     *
+     * <p>It is told the SMELL kind and WHERE the rows are, because neither is safely readable
+     * from a row: the tool-adapted detectors answer under their own key with rows whose
+     * {@code kind} is a Java element's, not a smell's.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private static ToolResponse attachCures(ToolResponse response, String kind) {
+        if (response == null || !response.isSuccess()
+            || !(response.getData() instanceof Map<?, ?> data)) {
+            return response;
+        }
+        return org.jawata.mcp.tools.smell.Cures.attach(
+            response, kind, resultListKeyOf((Map<String, Object>) data));
     }
 
     @SuppressWarnings("unchecked")

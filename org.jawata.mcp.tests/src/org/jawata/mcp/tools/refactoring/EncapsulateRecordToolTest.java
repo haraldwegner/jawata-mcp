@@ -146,10 +146,22 @@ class EncapsulateRecordToolTest {
         assertTrue(String.valueOf(r.getError()).contains("COMPOSED"),
             "the refusal must say WHY, and point at the halves a caller can stage: "
                 + r.getError());
-        // D3a (S8b step 7): the smaller operation, handed over as a step rather than as
-        // prose. ONE step goes on the wire and the message keeps the per-field list — the
-        // plan's table says "a NextStep per public field" and the gate it is measured by
-        // reads a singular error.nextStep; raised at C8b rather than settled here.
+        // D3a, SETTLED AT C8b — the comment here said "raised at C8b rather than settled",
+        // which was true until C8b settled it and then was not. The plan's table asks for "a
+        // NextStep per public field"; the refusal wire carries a SINGULAR nextStep, shared by
+        // every refusal in the product, so the step names the operation and the type and the
+        // MESSAGE names each field. That is the same information, without a published shape
+        // changing everywhere to serve one row. Declared as a deviation in the plan.
+        //
+        // AND THE FIELD LIST IS ASSERTED, which it was not: a C8b round-2 audit deleted it
+        // and every test stayed green — the "deliverable guarded by nothing" shape, in the
+        // commit that closed two of them.
+        String refusal = String.valueOf(r.getError());
+        for (String field : java.util.List.of("latitude", "longitude")) {
+            assertTrue(refusal.contains(field),
+                "the refusal must NAME each public field, because that is what makes 'one at"
+                    + " a time' a thing a caller can carry out: " + refusal);
+        }
         assertEquals("data kind=encapsulate_field", r.getError().getNextStep().operation(),
             "the staging refusal must name the step it leaves: " + r.getError());
         assertEquals(java.util.Map.of("filePath", targets.toString(), "line", caret,

@@ -206,7 +206,8 @@ public class InlineClassTool extends AbstractRefactoringTool
     private ToolResponse inline(IJdtService service, IType source, ICompilationUnit absorberCu,
                                 JsonNode arguments) throws Exception {
         CompilationUnit sourceAst = parse(source.getCompilationUnit());
-        AbstractTypeDeclaration sourceType = typeNamed(sourceAst, source.getElementName());
+        AbstractTypeDeclaration sourceType =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(sourceAst, source);
         if (sourceType == null) {
             return ToolResponse.symbolNotFound(
                 "could not locate the body of " + source.getElementName());
@@ -516,15 +517,10 @@ public class InlineClassTool extends AbstractRefactoringTool
         return names;
     }
 
-    private static AbstractTypeDeclaration typeNamed(CompilationUnit ast, String name) {
-        for (Object type : ast.types()) {
-            if (type instanceof AbstractTypeDeclaration declaration
-                    && name.equals(declaration.getName().getIdentifier())) {
-                return declaration;
-            }
-        }
-        return null;
-    }
+    // `typeNamed` WAS HERE — see the class note in `tools.shared.TypeLookup`. It walked the
+    // unit's TOP-LEVEL types, so a nested source class was invisible and this door answered
+    // SYMBOL_NOT_FOUND about an address it had just resolved. Caught at C8b round 2 by a real
+    // `lazy_class` finding on com.example.CommandObjectTargets.Accumulating.
 
     private static AbstractTypeDeclaration firstType(CompilationUnit ast) {
         for (Object type : ast.types()) {

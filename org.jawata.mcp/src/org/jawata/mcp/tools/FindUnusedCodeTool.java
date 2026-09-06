@@ -231,6 +231,17 @@ public class FindUnusedCodeTool extends AbstractTool {
                 item.put("name", binding.getName());
                 item.put("kind", binding instanceof IMethodBinding ? "Method" : "Field");
                 item.put("filePath", service.getPathUtils().formatPath(file));
+                // THE ADDRESS ITS OWN CURE CAN BE POINTED AT. `unused` is a ROUTED kind —
+                // apply_cleanup kind=remove_dead_code — and until C8b round 2 its rows
+                // carried a bare `name`, which no door can resolve, so the route was an
+                // instruction nobody could follow. The binding is right here; symbolOf is the
+                // one renderer, the same one step 5 gave the other thirteen detectors. The
+                // key is `symbol` because that is what every door reads and what the cure
+                // join looks for; `name` stays for the readers that already use it.
+                String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(binding);
+                if (symbol != null) {
+                    item.put("symbol", symbol);
+                }
 
                 if (node instanceof VariableDeclarationFragment vdf) {
                     int line = ast.getLineNumber(vdf.getName().getStartPosition()) - 1;
