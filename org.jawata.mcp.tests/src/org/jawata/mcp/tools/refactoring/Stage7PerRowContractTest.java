@@ -166,6 +166,34 @@ class Stage7PerRowContractTest {
     }
 
     @Test
+    @DisplayName("the door selects on `direction`, and the schema and the dispatch agree on that")
+    void theDoorSelectsOnDirection() {
+        HierarchyTool door = door();
+        // C7's seam clause names this door specifically, because it is the one door whose
+        // discriminator is NOT `kind` — the seam takes the word FROM the door rather than
+        // imposing one. The property has held since the door was converted and NOTHING
+        // asserted it: a C7 round-1 audit listed it as a property with no test, and it stayed
+        // that way through five repair rounds.
+        assertEquals("direction", door.discriminator(),
+            "the assembled description, the schema enum and executeWithService all read this"
+                + " one word; changing it silently breaks every caller");
+
+        // AND THE THREE PLACES THAT WORD REACHES MUST AGREE. Asserting discriminator() alone
+        // would pass with the schema still publishing `direction` and the dispatch reading
+        // `kind` — the equality in FrontDoorDescriptionTest cannot see that, because both of
+        // its sides read discriminator(). So the SCHEMA is checked here too, and the dispatch
+        // is checked by every row in this class running from a real argument node.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties =
+            (Map<String, Object>) door.getInputSchema().get("properties");
+        assertTrue(properties.containsKey("direction"),
+            "the published schema must offer the same word the door selects on: "
+                + properties.keySet());
+        assertTrue(door.getDescription().contains("direction="),
+            "and a client reading the description must see it spelled that way");
+    }
+
+    @Test
     @DisplayName("every row runs from a FILE POSITION, with no symbol and no typeName")
     void everyRowRunsFromAFilePosition() throws Exception {
         List<String> problems = new ArrayList<>();
