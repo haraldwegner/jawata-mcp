@@ -66,9 +66,16 @@ class TheProseAndTheCureNameTheSameFixTest {
         "god_class", List.of("extract kind=class"),
         // "Consider Extract Class for the fields used only some of the time"
         "temporary_field", List.of("extract kind=class"),
-        // "the slot must own its state" — encapsulate the field
-        // Stage 1 renamed encapsulate_field to `data`, for the same reason.
-        "encapsulation", List.of("data"));
+        // "the slot must own its state" — encapsulate the field.
+        //
+        // THIS SAID `data` UNTIL C8, and the bare spelling was the defect rather than the
+        // history. Stage 1 renamed the standalone `encapsulate_field` tool to `data`, which is
+        // what the old comment recorded; Stage 5 then grew `data` from ONE operation to TEN,
+        // and the recipe was never re-spelled. A bare front-door name is a registered,
+        // unambiguous operation, so the tier derived PERFORM and told a reader to run `data` —
+        // which refuses every call that does not say which kind. The prose was right the whole
+        // time and the table could not deliver it.
+        "encapsulation", List.of("data kind=encapsulate_field"));
 
     @Test
     @DisplayName("the FIRST runnable cure is the one the detector's own prose names")

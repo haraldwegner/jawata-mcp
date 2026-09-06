@@ -75,6 +75,47 @@ public interface KindedTool extends FrontDoor {
     }
 
     /**
+     * WHICH KINDS ARE STRUCTURAL — asked of the delegates, exactly as the kind list is.
+     *
+     * <p>The delegates already answer this about themselves ({@link KindDelegate#isStructural()}),
+     * so a door that hand-writes the set is keeping a second copy of a fact it can project. That
+     * is the same argument {@link #publishedKinds()} and {@link #withDelegateParameters} make on
+     * this interface, and it is made for the third time here because the cost has now been paid
+     * three times.</p>
+     *
+     * <p><b>THIS IS A GATE, WHICH IS WHY THE DEFAULT MATTERS RATHER THAN THE TIDINESS.</b>
+     * {@link Tool#structuralKinds()} feeds the architect-involvement gate. Its base default is
+     * EMPTY, so a door that never overrides it publishes every one of its operations as
+     * non-structural and the gate stays silent on all of them — with nothing failing, which is
+     * the only reason it can go unnoticed. {@code Tool.isStructural()}'s own javadoc records
+     * exactly that happening once already: the gate went quiet for pull-up, push-down and the
+     * method move, and no test said so.</p>
+     *
+     * <p><b>It was silent on two more doors when this was written, and an architect watch
+     * measured it.</b> {@code data} and {@code hierarchy} overrode nothing, so
+     * {@code data kind=encapsulate_collection} — which declares itself structural — was published
+     * as ordinary. {@code change_method_signature} was about to make it eleven more: ten of its
+     * eleven delegates declare themselves structural and the door overrides nothing, so
+     * publishing its kinds as operations (M10) would have registered eleven signature-changing
+     * operations as non-structural in the same change. A widening that quietly disarms a gate is
+     * worse than the gap it closes, so the two land together.</p>
+     *
+     * <p>Three doors — {@code extract}, {@code inline} and {@code move} — each carried a
+     * near-identical copy of this loop. They are gone; this is the one they all now answer
+     * through.</p>
+     */
+    @Override
+    default java.util.Set<String> structuralKinds() {
+        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
+        delegates().forEach((kind, delegate) -> {
+            if (delegate.isStructural()) {
+                structural.add(kind);
+            }
+        });
+        return java.util.Set.copyOf(structural);
+    }
+
+    /**
      * THE BACKSTOP: every parameter any delegate declares reaches the published contract,
      * whether or not someone remembered to curate it on the door.
      *

@@ -96,18 +96,12 @@ public class InlineTool extends AbstractTool implements KindedTool {
      * door whose failure was an ABSENT declaration, that is the whole point: a delegate that
      * exists but says nothing is now the same as a kind that is not structural, and the only
      * way to be structural is to say so on the class that does the work.</p>
+     *
+     * <p><b>C8: the derivation moved to {@link KindedTool} and this override is gone.</b> The
+     * paragraph above says an absent override is indistinguishable from a considered "nothing
+     * here is structural" — which was still true of six OTHER doors while this one was fixed.
+     * Deriving it on the interface makes the absent case impossible rather than noticed.</p>
      */
-    @Override
-    public java.util.Set<String> structuralKinds() {
-        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
-        for (KindDelegate delegate
-                : java.util.List.of(method, variable, clazz, subclass, middleMan)) {
-            if (delegate.isStructural()) {
-                structural.add(delegate.kindName());
-            }
-        }
-        return java.util.Set.copyOf(structural);
-    }
 
     /**
      * ASSEMBLED, not written (Stage 6a, M4).

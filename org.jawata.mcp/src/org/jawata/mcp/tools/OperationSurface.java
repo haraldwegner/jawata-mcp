@@ -1,9 +1,8 @@
 package org.jawata.mcp.tools;
 
-import org.jawata.mcp.refactoring.OperationRegistry;
-
 import java.util.List;
-import java.util.Set;
+
+import org.jawata.mcp.refactoring.OperationRegistry;
 
 /**
  * THE ONE PLACE A TOOL BECOMES AN OPERATION — seam D of Stage 6a.
@@ -39,24 +38,23 @@ import java.util.Set;
  *       publisher of them.</li>
  * </ul>
  *
- * <p>Both clauses are name lists today, and Stage 9's M10 replaces the first with
- * {@code tool instanceof KindedTool} — which is possible only because {@code refactoring}
- * deliberately implements {@link FrontDoor} and not {@link KindedTool}, so the second clause
- * becomes redundant at the same moment rather than needing a rule of its own.</p>
+ * <p><b>BOTH CLAUSES WERE NAME LISTS, AND M10 HAS NOW REPLACED THEM WITH ONE TYPE TEST</b> —
+ * {@code tool instanceof KindedTool}. The paragraph that stood here predicted exactly that,
+ * and it was right about the mechanism: {@code refactoring} deliberately implements
+ * {@link FrontDoor} and not {@link KindedTool}, so the second clause became redundant in the
+ * same moment rather than needing a rule of its own. The two bullets above are kept as the
+ * REASONING — they say what the filter is for, which a reader still needs — but they no
+ * longer describe two constants, because there are none.</p>
+ *
+ * <p><b>It ran at C8 rather than at Stage 9, and the reason is a defect the list had already
+ * shipped.</b> The allowlist named eight doors; nine implement {@link KindedTool}. The missing
+ * one was {@code change_method_signature}, which became a door ONE DAY after this list was
+ * written and was never added — so eleven shipped refactorings were published as no operation
+ * at all, and a cure naming any of them would have thrown at boot. That is what a name list
+ * does when the thing it names changes: it fails OPEN, and it fails silently, because no
+ * reference-updating refactoring touches a string literal.</p>
  */
 public final class OperationSurface {
-
-    /**
-     * The tools whose published kinds ARE operations a cure step may name. Everything else
-     * registers its own name and no kinds — a tool is an operation, but a reporting tool's
-     * kind enum is a list of questions, not of transformations.
-     */
-    private static final Set<String> REFACTORING_FRONT_DOORS = Set.of(
-        "extract", "inline", "move", "hierarchy", "data", "apply_cleanup",
-        "refactor_to_pattern", "generate");
-
-    /** See the class note: harvesting this door's kinds cost a boot. */
-    private static final String LIFECYCLE_FRONT_DOOR = "refactoring";
 
     private OperationSurface() {
     }
@@ -79,12 +77,33 @@ public final class OperationSurface {
      * Stage 9 without touching how any tool reports its own dispatch.</p>
      */
     public static List<String> operationKindsOf(Tool tool) {
-        if (LIFECYCLE_FRONT_DOOR.equals(tool.getName())
-                || !REFACTORING_FRONT_DOORS.contains(tool.getName())) {
-            // The lifecycle door is named EXPLICITLY rather than merely left out of the set.
-            // Left out, the exclusion is invisible: re-adding the name would silently
-            // republish six operations a second time, which is the boot failure above. It
-            // still registers its own NAME as an operation, which publish() does anyway.
+        // M10 (Stage 9's step, run at C8): the TYPE answers this, not a list of names.
+        //
+        // Both clauses used to be name lists — an eight-name allowlist and an explicit
+        // exclusion for the lifecycle door — and the class note above predicted both would
+        // collapse into this one test. They did, and BOTH halves are discharged by it:
+        // `refactoring` deliberately implements FrontDoor and NOT KindedTool, so its verbs
+        // never enter the operation namespace without a rule of their own.
+        //
+        // WHY IT COULD NOT WAIT FOR STAGE 9, which is where the plan had put it. The
+        // allowlist was written on 2026-09-04 and `change_method_signature` became the ninth
+        // door on 2026-09-05 — one day later, and the list was never widened. So ELEVEN
+        // shipped refactorings were published as no operation at all, and any cure naming one
+        // would have thrown at boot. Nothing could see it: the routing guard examines that
+        // door and PASSES, because the gap this list created is what makes its silence
+        // correct. A list of names fails OPEN, and it fails silently.
+        //
+        // MEASURED BEFORE RUNNING, because the risk that decides it is a name collision
+        // making an operation ambiguous, which IS a boot failure: across the whole tools tree
+        // only `method` (x3), `class` (x3) and `variable` (x2) are shared names, each of the
+        // eleven occurs exactly once, and none matches any bare recipe the cure table
+        // declares. Both branches of the boot check are unreachable by this widening.
+        //
+        // AND IT DOES NOT GO ALONE. Publishing a kind also CLASSIFIES it, so this would have
+        // registered eleven signature-changing operations as non-structural and silenced the
+        // architect gate on all of them. KindedTool.structuralKinds() lands in the same
+        // change for exactly that reason.
+        if (!(tool instanceof KindedTool)) {
             return List.of();
         }
         return tool.publishedKinds();

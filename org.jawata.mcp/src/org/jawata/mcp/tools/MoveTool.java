@@ -267,25 +267,18 @@ public class MoveTool extends AbstractTool implements KindedTool {
      *
      * <p>This is the declaration the architect gate lost when `move_method` folded in:
      * its list held the retired tool name, so a method move stopped being reviewed.</p>
+     *
+     * <p>A member or a type changing owner is a hierarchy change; a class or package move
+     * rewrites every import that named it. Moving STATEMENTS is deliberately NOT structural:
+     * it rewrites call SITES but changes no signature and no hierarchy, which is the
+     * criterion. A C6 audit asked why the two were treated alike, and this is the answer
+     * written down rather than left to be re-derived.</p>
+     *
+     * <p><b>Stage 6a (M3a) derived it from the delegates; C8 moved that derivation to
+     * {@link KindedTool}, so the override here is gone.</b> The criterion above stays, because
+     * it is what a delegate answers against. What is gone is the third copy of one loop —
+     * and with it the possibility of a door having no copy at all, which is the state six
+     * doors were in while these three were correct.</p>
      */
-    @Override
-    public java.util.Set<String> structuralKinds() {
-        // A member or a type changing owner is a hierarchy change; a class or package move
-        // rewrites every import that named it. Moving STATEMENTS is not on this list: it
-        // rewrites call SITES but changes no signature and no hierarchy, which is the
-        // criterion. A C6 audit asked why the two were treated alike, and this is the
-        // answer written down rather than left to be re-derived.
-        //
-        // Stage 6a (M3a): DERIVED from the delegates, which each declare it. The reasoning
-        // above stays because it is the CRITERION, and the criterion is what a delegate
-        // answers against; what is gone is the second list of names beside the routing map.
-        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
-        delegates.forEach((kind, delegate) -> {
-            if (delegate instanceof KindDelegate d && d.isStructural()) {
-                structural.add(kind);
-            }
-        });
-        return java.util.Set.copyOf(structural);
-    }
 
 }

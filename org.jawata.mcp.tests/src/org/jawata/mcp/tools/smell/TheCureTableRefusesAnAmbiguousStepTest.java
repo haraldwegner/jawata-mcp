@@ -52,12 +52,34 @@ class TheCureTableRefusesAnAmbiguousStepTest {
         // one tool over. A list that is right by construction cannot go stale; the
         // comment beside the one derived entry was the whole fix and it was not applied
         // to its neighbours.
+        // AND THE SAME DEFECT WAS ONE LEVEL UP, which C8 found the hard way. The comment
+        // above is about each door's KINDS being derived rather than typed out — and it is
+        // correct — but the LIST OF DOORS beside it stayed hand-written, and by C8 it was
+        // short by THREE: `data` (ten kinds), `generate` (seven) and `change_method_signature`
+        // (eleven) had all become front doors since it was last touched. So this mirror was
+        // missing 28 kinds while asserting that the shipped cure table validates against "the
+        // real front doors", and an architect watch named it: it would pass a widening of the
+        // operation surface WITHOUT HAVING LOOKED.
+        //
+        // It bit immediately. Qualifying three bare `data` recipes — which fixed an
+        // instruction the product refuses — turned this file red, because the mirror
+        // published `data` with no kinds at all and so could not back `data kind=…`.
+        //
+        // The three are added here. The list is STILL hand-written, and that is the remaining
+        // half: deriving it needs the registration seam M6c extracts out of the application,
+        // so the population comes from the same source production uses. Until then this
+        // comment is the marker, and the lesson is the one this sprint keeps re-learning —
+        // deriving the inner list while hand-writing the outer one moves the staleness up a
+        // level rather than removing it.
         for (org.jawata.mcp.tools.AbstractTool door : List.of(
                 new org.jawata.mcp.tools.RefactorToPatternTool(none, cache),
                 new org.jawata.mcp.tools.ExtractTool(none, cache),
                 new org.jawata.mcp.tools.MoveTool(none, cache),
                 new org.jawata.mcp.tools.InlineTool(none, cache),
                 new org.jawata.mcp.tools.HierarchyTool(none, cache),
+                new org.jawata.mcp.tools.DataTool(none, cache),
+                new org.jawata.mcp.tools.codegen.GenerateTool(none, cache),
+                new org.jawata.mcp.tools.ChangeMethodSignatureTool(none, cache),
                 new org.jawata.mcp.tools.ApplyCleanupTool(none, cache))) {
             registry.register(door.getName(), kindsOrFail(door));
         }

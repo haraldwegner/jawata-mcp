@@ -26,9 +26,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OperationRegistryTest {
 
     /** A tool with a kind enum, so the schema-reading path is exercised. */
-    private static final class Parametric implements Tool {
+    /**
+     * A refactoring front door: its kinds ARE operations.
+     *
+     * <p><b>It used to qualify by its NAME.</b> It was called {@code extract} so that
+     * {@code OperationSurface}'s hand-written allowlist would let its kinds through, and its
+     * kinds were read off its schema enum. M10 replaced that allowlist with
+     * {@code tool instanceof KindedTool}, so the name buys nothing and the TYPE is what
+     * decides — which is the whole point of the change, and this fake now demonstrates it
+     * rather than working around it. The name is kept only so the assertions below still read
+     * against a plausible door.</p>
+     *
+     * <p>Its kinds now come from {@link org.jawata.mcp.tools.KindedTool#publishedKinds()},
+     * which projects {@code delegates()}, so the delegates are where {@code alpha} and
+     * {@code beta} are declared. The schema is left carrying the same enum deliberately: the
+     * two must agree, and a fake whose schema disagreed with its delegates would be a state
+     * the real doors cannot reach.</p>
+     */
+    private static final class Parametric implements org.jawata.mcp.tools.KindedTool {
         @Override public String getName() {
-            return "extract";          // a refactoring front door: its kinds ARE operations
+            return "extract";
+        }
+        @Override public String discriminator() {
+            return "kind";
+        }
+        @Override public Map<String, org.jawata.mcp.tools.KindDelegate> delegates() {
+            Map<String, org.jawata.mcp.tools.KindDelegate> byKind = new java.util.LinkedHashMap<>();
+            byKind.put("alpha", new FakeDelegate("alpha"));
+            byKind.put("beta", new FakeDelegate("beta"));
+            return byKind;
         }
         @Override public String getDescription() {
             return "kind alpha, kind beta";
@@ -39,6 +65,19 @@ class OperationRegistryTest {
         }
         @Override public ToolResponse execute(JsonNode arguments) {
             return ToolResponse.success(Map.of());
+        }
+    }
+
+    /** The minimum a delegate must be for the door to publish its kind. */
+    private record FakeDelegate(String name) implements org.jawata.mcp.tools.KindDelegate {
+        @Override public String kindName() {
+            return name;
+        }
+        @Override public String kindSummary() {
+            return name + " — a fake operation";
+        }
+        @Override public Map<String, Object> parameterSchema() {
+            return Map.of();
         }
     }
 

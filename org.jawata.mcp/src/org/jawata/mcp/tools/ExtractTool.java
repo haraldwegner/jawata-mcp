@@ -380,16 +380,14 @@ public class ExtractTool extends AbstractTool implements KindedTool {
      * written here are gone — not because a hand-written list is inelegant, but because this
      * one was measurably wrong: it named two while five had been added under it, and no
      * amount of care at the door can notice a kind arriving in the map beside it.</p>
+     *
+     * <p><b>C8: THE DERIVATION MOVED TO {@link KindedTool}, and the override here is gone.</b>
+     * Three doors carried a near-identical copy of that loop and six carried none, so the gate
+     * this feeds was silent on {@code data} and {@code hierarchy} and about to go silent on
+     * eleven more. Deriving it once on the interface is the same move {@code publishedKinds()}
+     * and {@code withDelegateParameters} already made there, for the reason the latter states:
+     * a backstop each door opts into by remembering is not a backstop. This paragraph stays
+     * because the criterion above is what a reader needs when deciding a NEW delegate's answer.</p>
      */
-    @Override
-    public java.util.Set<String> structuralKinds() {
-        java.util.Set<String> structural = new java.util.LinkedHashSet<>();
-        delegates.forEach((kind, delegate) -> {
-            if (delegate instanceof KindDelegate d && d.isStructural()) {
-                structural.add(kind);
-            }
-        });
-        return java.util.Set.copyOf(structural);
-    }
 
 }

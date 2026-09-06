@@ -29,7 +29,12 @@ class EveryShippedFixIsReachableTest {
         new String[] {"feature_envy", "move kind=method"},
         new String[] {"god_class", "extract kind=class"},
         new String[] {"temporary_field", "extract kind=class"},
-        new String[] {"encapsulation", "data"});
+        // QUALIFIED at C8. This pinned the bare `data` spelling, which read as a route and was
+        // not one: a bare front-door name is a registered, unambiguous operation, so the tier
+        // derived PERFORM and instructed a reader to run `data` — which refuses every call
+        // that does not name a kind. The route this file exists to prove was REACHABLE was
+        // the one route in the table that could not be run.
+        new String[] {"encapsulation", "data kind=encapsulate_field"});
 
     @Test
     @DisplayName("each of the four smells offers its already-shipped fix by name")
