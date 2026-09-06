@@ -15,6 +15,46 @@ import org.jawata.mcp.domain.DetectorCatalog;
  */
 public final class FowlerDetectors {
 
+    /**
+     * THE SMELLS WE DELIBERATELY DO NOT DETECT, each with the reason — because an
+     * undetected smell and a forgotten one read identically from outside.
+     *
+     * <p><b>This exists because a C8 audit found both of these in a THIRD STATE.</b>
+     * Sprint 28d-rescue's exit criterion is that <i>every one of the 24 smells is a firing
+     * detector or a written declination, no third state</i>, and a search of the whole
+     * repository for either name returned nothing at all: they were not detected, not
+     * declined, and not mentioned. Prose would have closed the letter of that clause and
+     * left the next omission exactly as invisible, so this is a DECLARATION a test reads —
+     * {@code EverySmellIsDetectedOrDeclinedTest} asserts that Fowler's twenty-four are
+     * partitioned by this map and the registered kinds, with nothing in both and nothing in
+     * neither.</p>
+     *
+     * <p>Keyed by the smell's name in Fowler's 2nd edition, NOT by a {@code kind} — these
+     * have no kind, which is the point. Nothing here may appear in the shipped kind list,
+     * and the test asserts that too.</p>
+     */
+    public static final java.util.Map<String, String> DECLINED = java.util.Map.of(
+        "Mysterious Name",
+        "A name is mysterious only against what the code MEANS, and nothing here reads"
+            + " meaning. The mechanical half already ships as `naming`, which reports what a"
+            + " convention can decide — casing, and a member whose name disagrees with the"
+            + " population around it. Whether `process()` is a poor name for what it does is"
+            + " the judgement this product routes to a human, and a detector that guessed it"
+            + " would report most of any codebase. Fowler's cure is Rename, which ships as"
+            + " `rename_symbol`; what is declined is the DETECTION, not the fix.",
+
+        "Comments",
+        "Fowler's Comments smell is a comment used as DEODORANT — one that explains code"
+            + " that should have explained itself. Deciding that needs the judgement above:"
+            + " it means holding the comment against the code and asking whether the code"
+            + " could have carried it, and a rule that fired on comment density would report"
+            + " every well-documented file in this repository, including this one."
+            + " DELIBERATELY NOT THE SAME THING as `commented_out_code`, which DOES ship:"
+            + " that check reports commented-out CODE as a candidate, never as dead code,"
+            + " and it is a narrower, decidable sub-case rather than this smell. A reader"
+            + " who found the kind list containing one and this map containing the other"
+            + " would otherwise be right to think we had contradicted ourselves.");
+
     private FowlerDetectors() {
     }
 
