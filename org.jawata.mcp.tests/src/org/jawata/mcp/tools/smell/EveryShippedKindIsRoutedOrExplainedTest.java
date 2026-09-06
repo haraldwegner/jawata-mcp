@@ -46,11 +46,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * because nothing else will notice — and three stages have now proved that a lesson written
  * in a comment is not a mechanism.</p>
  *
- * <p><b>The sentence above said SIX and then listed FIVE, omitting the very door C7 added.</b>
- * A round-3 audit caught it — inside the commit whose stated job was this file's stale counts,
- * and in the same self-contradiction shape that commit had just repaired one file over. That
- * is the argument for M6c in one line: a hand-written list and a hand-written count of it
- * disagree the moment anyone edits either, and nothing here fails when they do.</p>
+ * <p><b>The sentence above SAID SIX and then LISTED FIVE until a C7 round-3 audit read it</b> —
+ * omitting the very door C7 added, inside the commit whose stated job was this file's stale
+ * counts, and in the same self-contradiction shape that commit had just repaired one file
+ * over. It names all six now. That is the argument for M6c in one line: a hand-written list
+ * and a hand-written count of it disagree the moment anyone edits either, and nothing here
+ * fails when they do.</p>
+ *
+ * <p><b>FIVE stale counts have been repaired in this file across three commits</b>, each fixed
+ * by hand and each sweep missing one more — and a round-4 audit found that the paragraph
+ * above had itself gone stale in the present tense, asserting a defect the sentence it
+ * describes no longer has. That is the sixth. Nothing in this list of corrections is a
+ * mechanism; the derivation is.</p>
  *
  * <p>It is still not the whole surface, and that is deliberate rather than convenient: a
  * test that fails for work not yet started teaches a reader to ignore it.

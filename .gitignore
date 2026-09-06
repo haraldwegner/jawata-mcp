@@ -118,6 +118,12 @@ npm/dist/
 
 # Claude Code configuration (machine-specific)
 .claude/
+# ...except inside the sample projects, where a `.claude/.edit-baks/` tree is FIXTURE
+# DATA: the edit-bak-hygiene project exists so a test can prove that tree is not source.
+# The rule above is unanchored, so it ate it. Same class as the six occurrences recorded
+# elsewhere in this file, found by a C7 round-4 audit.
+!org.jawata.core.tests/test-resources/sample-projects/**/.claude/
+!org.jawata.core.tests/test-resources/sample-projects/**/.claude/**
 org.jawata.launcher/dependency-reduced-pom.xml
 docs/REFACTORING_LESSONS_LEARNED.md
 
@@ -145,6 +151,20 @@ __pycache__/
 # JDT/Eclipse per-project build output (the jawata-dev resident compiles these)
 bin/
 **/bin/
+# ...except that inside the sample projects a `bin/` tree can be FIXTURE DATA rather than
+# output: pde-bundle-a and plain-eclipse each carry a GHOST SOURCE under bin/ so a test can
+# prove those trees are not treated as source. Same class again — and this file already
+# records an occurrence where a fixture "arrived in CI without the one file that makes it a
+# PDE project", failing the two regression tests written to catch it.
+#
+# THE DISTINCTION IS THE EXTENSION, not a list of project names. A `.java` file under bin/
+# is never build output — that is the whole reason a ghost source is a usable fixture — so
+# sources there are visible and compiled classes stay ignored. The first version of this
+# negation un-ignored the trees WHOLESALE and exposed two gradle fixtures' .class output:
+# an over-match cure for an over-match defect, caught by running `git status` rather than
+# by reading the rule.
+!org.jawata.core.tests/test-resources/sample-projects/**/bin/
+org.jawata.core.tests/test-resources/sample-projects/**/bin/**/*.class
 
 # Eclipse workspace runtime state written by the resident JDT process (indexes,
 # marker snapshots, launch library info) and the local field recording. Machine-local,
