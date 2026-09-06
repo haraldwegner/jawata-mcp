@@ -35,6 +35,7 @@ class DecomposeConditionalToolTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     private RefactorToPatternTool tool;
+    private org.jawata.mcp.tools.RefactoringTool lifecycle;
     private ObjectMapper mapper;
     private Path target;
     private String before;
@@ -42,7 +43,12 @@ class DecomposeConditionalToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new RefactorToPatternTool(() -> service, new RefactoringChangeCache());
+        // ONE cache, shared. The lifecycle door finds an undo handle only in the cache the
+        // operation wrote it to, so two instances would make every undo here fail to resolve
+        // and read as a defect in the row rather than in the wiring.
+        RefactoringChangeCache cache = new RefactoringChangeCache();
+        tool = new RefactorToPatternTool(() -> service, cache);
+        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
         mapper = new ObjectMapper();
         target = service.allProjects().iterator().next().projectRoot()
             .resolve("src/main/java/com/example/DecomposeConditionalTargets.java");
@@ -95,7 +101,60 @@ class DecomposeConditionalToolTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) r.getData();
         assertEquals(3, data.get("partsExtracted"), "three names, three extractions: " + data);
-        assertNotNull(data.get("undoChangeId"), "a multi-step recipe owes one undo: " + data);
+        assertNotNull(data.get("undoChangeId"),
+            "a multi-step recipe owes ONE undo. That the handle RESOLVES and restores is"
+                + " asserted by undoRevertsTheWholeRecipe below — this line only says the"
+                + " row hands one back, and on its own it never said more.");
+    }
+
+    /**
+     * C2's clause is <i>"each recipe reverts through its SINGLE undo handle"</i>, and until a
+     * C2 audit read this file, the only undo assertion here was the {@code assertNotNull}
+     * above.
+     *
+     * <p><b>A handle that is present and does not resolve looks identical to one that
+     * works.</b> Row 8 extracts up to three methods in three separate steps; the failure this
+     * guards is a per-step undo that reverts the last extraction and leaves the first two —
+     * which would leave the fixture compiling, with two methods nobody asked for and a
+     * condition still reading as its extracted call. Rows 2, 10, 36 and 58 all execute their
+     * handle and compare byte-for-byte; this row was the one that did not.</p>
+     */
+    @Test
+    @DisplayName("the recipe reverts through its single undo handle, every step of it")
+    void undoRevertsTheWholeRecipe() throws Exception {
+        ObjectNode args = argsFor("if (date.isBefore");
+        args.put("conditionName", "notSummer");
+        args.put("thenName", "applyWinterCharge");
+        args.put("elseName", "applySummerCharge");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "the recipe must apply; got: " + r.getError());
+
+        // THE CONTROL, and it is the whole reason this test is not the vacuous one it
+        // replaces: if the row changed nothing, an undo that restored nothing would pass the
+        // comparison below on the pristine fixture. This is the shape a C2 audit found in
+        // row 2's fork slice, so it is asserted here rather than assumed.
+        assertFalse(before.equals(after()),
+            "the fixture must actually differ before an undo can mean anything");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        Object handle = data.get("undoChangeId");
+        assertNotNull(handle, "the recipe must hand back ONE undo handle: " + data);
+
+        ObjectNode undo = mapper.createObjectNode();
+        undo.put("action", "undo");
+        undo.put("undoChangeId", String.valueOf(handle));
+        ToolResponse undone = lifecycle.execute(undo);
+        assertTrue(undone.isSuccess(),
+            "the handle must RESOLVE through the lifecycle door — a handle the cache cannot"
+                + " find is exactly the state assertNotNull could not tell apart: "
+                + undone.getError());
+
+        assertEquals(before, after(),
+            "and all THREE extractions come back. A per-step undo that reverted only the"
+                + " last one would leave two methods nobody asked for behind, in a file that"
+                + " still compiles — so nothing below this row could report it.");
     }
 
     @Test

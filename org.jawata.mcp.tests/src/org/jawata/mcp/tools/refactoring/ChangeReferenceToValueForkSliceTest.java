@@ -76,16 +76,22 @@ class ChangeReferenceToValueForkSliceTest {
         args.put("column", lines[line].indexOf("AbstractFilter"));
 
         ToolResponse r = tool.execute(args);
-        assertFalse(r.isSuccess(), "its one setter is called from outside, so the first step"
-            + " declines and the recipe cannot continue");
+        assertFalse(r.isSuccess(), "its one setter satisfies the Filter interface, so the"
+            + " first step declines and the recipe cannot continue");
         String error = String.valueOf(r.getError());
-        assertTrue(error.contains("reference_to_value failed"),
-            "the failure must be reported as this row's, carrying the step's own reason: "
-                + error);
-        // THE ROLLBACK, which is the point of the file. Not "it did not finish" — nothing of
-        // it survives.
+        // WHICH REFUSAL, not merely that one fired. `setNext` satisfies two of this row's
+        // preconditions at once — it implements an interface method AND is called from
+        // outside — so a test that only checked "it declined" would pass whichever branch
+        // answered, and would keep passing if the branches were reordered or one deleted.
+        // The sibling RemoveSettingMethodForkSliceTest pins the same method the same way,
+        // and this row reaches that refusal THROUGH its recipe's first step.
+        assertTrue(error.contains("Filter"),
+            "the refusal must be the CONTRACT one, which names the supertype — the caller"
+                + " refusal would name a call site instead: " + error);
+        assertTrue(error.contains("reference_to_value"),
+            "and it must be reported as this row's failure rather than the delegate's,"
+                + " because the caller asked this row: " + error);
         assertEquals(before, Files.readString(filter, StandardCharsets.UTF_8),
-            "a recipe that declines part-way must leave upstream's file exactly as it found"
-                + " it; a half-applied refactoring is the one outcome the caller cannot see");
+            "upstream's file is byte-for-byte untouched");
     }
 }
