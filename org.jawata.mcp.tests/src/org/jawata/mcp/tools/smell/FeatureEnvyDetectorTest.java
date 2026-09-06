@@ -50,7 +50,7 @@ class FeatureEnvyDetectorTest {
     @DisplayName("flags the envious method, not the homebody")
     void flags_envy() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("envious"), "method that prefers a foreign type should be flagged: " + hits);
-        assertFalse(hits.contains("homebody"), "method using only its own members must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.FeatureEnvyTargets#envious"), "method that prefers a foreign type should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.FeatureEnvyTargets#homebody"), "method using only its own members must NOT be flagged: " + hits);
     }
 }

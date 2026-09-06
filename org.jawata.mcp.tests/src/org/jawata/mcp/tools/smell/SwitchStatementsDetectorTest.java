@@ -50,8 +50,8 @@ class SwitchStatementsDetectorTest {
     @DisplayName("flags the 3-case int switch, not the enum or the 2-case switch")
     void flags_type_code_switch() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("onCode"), "int switch with 3 cases should be flagged: " + hits);
-        assertFalse(hits.contains("onEnum"), "enum switch must NOT be flagged: " + hits);
-        assertFalse(hits.contains("small"), "2-case switch must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.SwitchTypeCodeTargets#onCode"), "int switch with 3 cases should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.SwitchTypeCodeTargets#onEnum"), "enum switch must NOT be flagged: " + hits);
+        assertFalse(hits.contains("com.example.SwitchTypeCodeTargets#small"), "2-case switch must NOT be flagged: " + hits);
     }
 }

@@ -50,9 +50,9 @@ class TypeCodeDetectorTest {
     @DisplayName("flags a STATUS_* type-code group, not unrelated constants")
     void flags_type_code_group() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("Order"),
+        assertTrue(hits.contains("com.example.Order"),
             "a class with >= 3 same-prefix same-type constants should be flagged: " + hits);
-        assertFalse(hits.contains("NoCodes"),
+        assertFalse(hits.contains("com.example.NoCodes"),
             "a class with unrelated singleton constants must NOT be flagged: " + hits);
     }
 }

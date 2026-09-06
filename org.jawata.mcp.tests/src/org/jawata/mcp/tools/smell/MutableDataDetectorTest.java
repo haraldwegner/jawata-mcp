@@ -60,9 +60,9 @@ class MutableDataDetectorTest {
     @DisplayName("an accessor that hands out the field itself is reported, by name and through this")
     void reportsTheBareReturnOfAMutableField() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("MutableDataTargets#getItems"),
+        assertTrue(hits.contains("com.example.MutableDataTargets#getItems"),
             "returning the list itself hands every caller the object's state: " + hits);
-        assertTrue(hits.contains("MutableDataTargets#getSlots"),
+        assertTrue(hits.contains("com.example.MutableDataTargets#getSlots"),
             "and `return this.slots` is the same shape written the other way: " + hits);
     }
 
@@ -70,16 +70,16 @@ class MutableDataDetectorTest {
     @DisplayName("every safe wrapping is silent — they are the cure, not the smell")
     void doesNotReportWrappedOrCopiedReturns() {
         Set<String> hits = symbols();
-        assertFalse(hits.contains("MutableDataTargets#viewItems"),
+        assertFalse(hits.contains("com.example.MutableDataTargets#viewItems"),
             "an unmodifiable view is exactly what this detector tells people to write: " + hits);
-        assertFalse(hits.contains("MutableDataTargets#copyItems"),
+        assertFalse(hits.contains("com.example.MutableDataTargets#copyItems"),
             "a defensive copy leaves the original alone: " + hits);
-        assertFalse(hits.contains("MutableDataTargets#copySlots"),
+        assertFalse(hits.contains("com.example.MutableDataTargets#copySlots"),
             "and so does an array copy: " + hits);
-        assertFalse(hits.contains("MutableDataTargets#getLabel"),
+        assertFalse(hits.contains("com.example.MutableDataTargets#getLabel"),
             "a String cannot be changed by the caller, so handing it back leaks nothing: "
                 + hits);
-        assertFalse(hits.contains("MutableDataTargets#rawItems"),
+        assertFalse(hits.contains("com.example.MutableDataTargets#rawItems"),
             "a private accessor does not leak outside the class: " + hits);
     }
 

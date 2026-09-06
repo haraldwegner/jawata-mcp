@@ -52,7 +52,7 @@ class LazyClassDetectorTest {
     @DisplayName("flags the empty leaf, not the busy one")
     void flags_lazy_leaf() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("LazyLeaf"), "empty standalone class should be flagged: " + hits);
-        assertFalse(hits.contains("BusyLeaf"), "class with > threshold methods must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.LazyLeaf"), "empty standalone class should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.BusyLeaf"), "class with > threshold methods must NOT be flagged: " + hits);
     }
 }

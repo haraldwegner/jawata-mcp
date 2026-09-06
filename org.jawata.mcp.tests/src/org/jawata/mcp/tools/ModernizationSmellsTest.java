@@ -134,7 +134,7 @@ class ModernizationSmellsTest {
     @Test
     @DisplayName("the symbol is the top-level type, derived from the file rather than guessed")
     void symbolIsDerivedFromTheFileName() {
-        assertEquals("RecordSealedTargets", findingIn("data_class",
+        assertEquals("com.example.RecordSealedTargets", findingIn("data_class",
             "RecordSealedTargets.java").get("symbol"),
             "A candidate carries a file and a line and NO symbol, so the adapter derives one"
                 + " from the file name — which Java guarantees matches the public top-level"

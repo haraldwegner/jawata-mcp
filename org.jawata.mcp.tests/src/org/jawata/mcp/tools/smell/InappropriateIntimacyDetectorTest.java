@@ -50,8 +50,8 @@ class InappropriateIntimacyDetectorTest {
     @DisplayName("flags both mutually-intimate classes, not the aloof one")
     void flags_intimate_pair() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("IntimA"), "mutually-intimate class should be flagged: " + hits);
-        assertTrue(hits.contains("IntimB"), "mutually-intimate class should be flagged: " + hits);
-        assertFalse(hits.contains("Aloof"), "class touching no foreign fields must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.IntimA"), "mutually-intimate class should be flagged: " + hits);
+        assertTrue(hits.contains("com.example.IntimB"), "mutually-intimate class should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.Aloof"), "class touching no foreign fields must NOT be flagged: " + hits);
     }
 }

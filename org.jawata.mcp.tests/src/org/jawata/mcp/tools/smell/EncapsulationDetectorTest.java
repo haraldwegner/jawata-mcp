@@ -70,7 +70,7 @@ class EncapsulationDetectorTest {
         List<Map<String, Object>> findings = findingsIn(LEAKING);
         assertEquals(1, findings.size(),
             () -> "Account has one field, and it leaks through setBalance; got: " + findings);
-        assertEquals("Account#balance", String.valueOf(findings.get(0).get("symbol")));
+        assertEquals("com.example.Account#balance", String.valueOf(findings.get(0).get("symbol")));
 
         String message = String.valueOf(findings.get(0).get("message"));
         assertTrue(message.contains("encapsulated in name only"),

@@ -78,10 +78,10 @@ class CqsDetectorTest {
             () -> "CqsTargets must produce exactly 3 findings; got: " + findings);
         Set<String> hits = findings.stream()
             .map(f -> String.valueOf(f.get("symbol"))).collect(Collectors.toSet());
-        assertTrue(hits.contains("withdraw"), () -> "assign-then-answer must fire: " + hits);
-        assertTrue(hits.contains("register"), () -> "two writes then answer must fire: " + hits);
-        assertTrue(hits.contains("tick"), () -> "post-increment then answer must fire: " + hits);
-        assertFalse(hits.contains("lastName"), () -> "a pure query must NOT fire: " + hits);
+        assertTrue(hits.contains("com.example.CqsTargets#withdraw"), () -> "assign-then-answer must fire: " + hits);
+        assertTrue(hits.contains("com.example.CqsTargets#register"), () -> "two writes then answer must fire: " + hits);
+        assertTrue(hits.contains("com.example.CqsTargets#tick"), () -> "post-increment then answer must fire: " + hits);
+        assertFalse(hits.contains("com.example.CqsTargets#lastName"), () -> "a pure query must NOT fire: " + hits);
     }
 
     @Test
@@ -98,18 +98,18 @@ class CqsDetectorTest {
     @DisplayName("each exclusion is individually silent (named, so a regression says which)")
     void eachExclusionIsSilent() {
         Set<String> hits = symbolsIn(CLEAN);
-        assertFalse(hits.contains("label"), "fluent `return this` must be excluded");
-        assertFalse(hits.contains("getAndBump"), "previous-value protocol must be excluded");
-        assertFalse(hits.contains("greeting"), "lazy initialisation must be excluded");
-        assertFalse(hits.contains("deferrer"), "a write deferred into a lambda must be excluded");
-        assertFalse(hits.contains("next"), "an imposed supertype signature must be excluded");
-        assertFalse(hits.contains("receipt"),
+        assertFalse(hits.contains("com.example.CqsCleanTargets#label"), "fluent `return this` must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets#getAndBump"), "previous-value protocol must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets#greeting"), "lazy initialisation must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets#deferrer"), "a write deferred into a lambda must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets.Counter#next"), "an imposed supertype signature must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets#receipt"),
             "a FACTORY must be excluded: every write is to a field of an object the method just"
                 + " MADE, which nothing outside can observe, so there is no command to separate"
                 + " out. This is the case the detector shipped wrong — IVariableBinding.isField()"
                 + " is true of ANY object's field, and nothing asked whose");
-        assertFalse(hits.contains("count"), "a pure query must be excluded");
-        assertFalse(hits.contains("bump"), "a pure command must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets#count"), "a pure query must be excluded");
+        assertFalse(hits.contains("com.example.CqsCleanTargets#bump"), "a pure command must be excluded");
     }
 
     @SuppressWarnings("unchecked")

@@ -50,11 +50,11 @@ class ShotgunSurgeryDetectorTest {
     @DisplayName("flags the widely-referenced concrete type, not the unreferenced one or the abstraction")
     void flags_wide_reference_spread() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("ShotgunTarget"),
+        assertTrue(hits.contains("com.example.ShotgunTarget"),
             "concrete type referenced from > threshold (10) types should be flagged: " + hits);
-        assertFalse(hits.contains("LonelyShotgun"),
+        assertFalse(hits.contains("com.example.LonelyShotgun"),
             "unreferenced type must NOT be flagged: " + hits);
-        assertFalse(hits.contains("AbstractWidelyUsed"),
+        assertFalse(hits.contains("com.example.AbstractWidelyUsed"),
             "an abstract type referenced just as widely must NOT be flagged (DIP): " + hits);
     }
 }

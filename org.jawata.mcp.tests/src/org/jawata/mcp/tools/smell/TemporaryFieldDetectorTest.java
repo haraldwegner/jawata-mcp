@@ -50,7 +50,7 @@ class TemporaryFieldDetectorTest {
     @DisplayName("flags the field used by one method, not the shared field")
     void flags_temporary_field() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("temp"), "field used by a single method should be flagged: " + hits);
-        assertFalse(hits.contains("shared"), "field used by two methods must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.TemporaryFieldTargets#temp"), "field used by a single method should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.TemporaryFieldTargets#shared"), "field used by two methods must NOT be flagged: " + hits);
     }
 }

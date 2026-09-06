@@ -77,7 +77,7 @@ class OcpDetectorTest {
         assertEquals(1, fromSwitch.size(),
             () -> "SwitchTypeCodeTargets has one 3-case int switch (onCode); the enum switch and "
                 + "the 2-case switch are below the rule. Got: " + fromSwitch);
-        assertEquals("onCode", String.valueOf(fromSwitch.get(0).get("symbol")));
+        assertEquals("com.example.SwitchTypeCodeTargets#onCode", String.valueOf(fromSwitch.get(0).get("symbol")));
         assertTrue(String.valueOf(fromSwitch.get(0).get("message")).contains("[trace: switch_statements]"),
             () -> "a finding must name the measurement it rests on: " + fromSwitch.get(0));
 
@@ -85,7 +85,7 @@ class OcpDetectorTest {
         assertEquals(1, fromTypeCode.size(),
             () -> "TypeCodeTargets has one STATUS_* group of 3 (Order); NoCodes' two unrelated "
                 + "constants are not a group. Got: " + fromTypeCode);
-        assertEquals("Order", String.valueOf(fromTypeCode.get(0).get("symbol")));
+        assertEquals("com.example.Order", String.valueOf(fromTypeCode.get(0).get("symbol")));
         assertTrue(String.valueOf(fromTypeCode.get(0).get("message")).contains("[trace: type_code]"),
             () -> "a finding must name the measurement it rests on: " + fromTypeCode.get(0));
     }

@@ -54,9 +54,9 @@ class GodClassDetectorTest {
     @DisplayName("flags the large + central class, not the large + isolated one")
     void flags_god_not_lonely() {
         Set<String> hits = godClassSymbols();
-        assertTrue(hits.contains("GodClassTarget"),
+        assertTrue(hits.contains("com.example.GodClassTarget"),
             "large class with high fan-in should be flagged: " + hits);
-        assertFalse(hits.contains("LonelyLargeClass"),
+        assertFalse(hits.contains("com.example.LonelyLargeClass"),
             "large class with zero fan-in must NOT be a God Class: " + hits);
     }
 }

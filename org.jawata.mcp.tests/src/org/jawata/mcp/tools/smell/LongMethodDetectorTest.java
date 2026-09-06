@@ -78,26 +78,26 @@ class LongMethodDetectorTest {
     @DisplayName("default thresholds flag the long and the branchy method, not the clean one")
     void flags_smelly_ignores_clean() {
         Set<String> hits = longMethodSymbols(null);
-        assertTrue(hits.contains("longOne"), "long straight-line method should be flagged (LOC): " + hits);
-        assertTrue(hits.contains("branchy"), "branchy method should be flagged (CC): " + hits);
-        assertFalse(hits.contains("clean"), "short simple method must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.LongMethodTargets#longOne"), "long straight-line method should be flagged (LOC): " + hits);
+        assertTrue(hits.contains("com.example.LongMethodTargets#branchy"), "branchy method should be flagged (CC): " + hits);
+        assertFalse(hits.contains("com.example.LongMethodTargets#clean"), "short simple method must NOT be flagged: " + hits);
     }
 
     @Test
     @DisplayName("raising the threshold spares the long-but-simple method; CC trigger still fires")
     void threshold_respected() {
         Set<String> hits = longMethodSymbols(1000);
-        assertFalse(hits.contains("longOne"), "LOC-gated method should clear a high threshold: " + hits);
-        assertTrue(hits.contains("branchy"), "CC trigger is independent of the LOC threshold: " + hits);
-        assertFalse(hits.contains("clean"), "clean method never flagged: " + hits);
+        assertFalse(hits.contains("com.example.LongMethodTargets#longOne"), "LOC-gated method should clear a high threshold: " + hits);
+        assertTrue(hits.contains("com.example.LongMethodTargets#branchy"), "CC trigger is independent of the LOC threshold: " + hits);
+        assertFalse(hits.contains("com.example.LongMethodTargets#clean"), "clean method never flagged: " + hits);
     }
 
     @Test
     @DisplayName("test sources are excluded by default, included on opt-in (v1.2.1)")
     void test_sources_excluded_by_default() {
-        assertFalse(longMethodSymbols(null).contains("longTestHelper"),
+        assertFalse(longMethodSymbols(null).contains("com.example.SampleTest#longTestHelper"),
             "a long method in test source must NOT be flagged by default");
-        assertTrue(longMethodSymbols(null, true).contains("longTestHelper"),
+        assertTrue(longMethodSymbols(null, true).contains("com.example.SampleTest#longTestHelper"),
             "includeTests=true must surface the test-source long method");
     }
 }

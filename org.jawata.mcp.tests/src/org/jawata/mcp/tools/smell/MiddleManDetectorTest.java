@@ -50,7 +50,7 @@ class MiddleManDetectorTest {
     @DisplayName("flags the all-delegating broker, not the class doing real work")
     void flags_broker() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("Broker"), "class delegating all methods to a field should be flagged: " + hits);
-        assertFalse(hits.contains("DoesRealWork"), "class doing its own work must NOT be flagged: " + hits);
+        assertTrue(hits.contains("com.example.Broker"), "class delegating all methods to a field should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.DoesRealWork"), "class doing its own work must NOT be flagged: " + hits);
     }
 }
