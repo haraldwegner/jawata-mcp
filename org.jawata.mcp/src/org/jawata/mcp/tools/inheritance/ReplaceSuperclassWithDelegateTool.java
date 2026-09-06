@@ -57,6 +57,18 @@ import com.fasterxml.jackson.databind.JsonNode;
  * one. <b>That check is cross-file and it is the entire safety argument</b> — without it this row
  * ships a change that compiles in the class's own file and breaks its callers.</p>
  *
+ * <p><b>AND THE COMPILE GATE CANNOT BACK IT UP, which is why the check is load-bearing rather
+ * than defensive.</b> Measured, by mutation: with this refusal disabled the row PERFORMS on the
+ * fixture and reports SUCCESS, leaving {@code ReconciledDesk} — a file the change never touched
+ * — assigning a non-subclass to a superclass-typed variable. The gate verifies the files a
+ * change EDITS, not the files it BREAKS. Every observation in this stage agrees: row 29's
+ * destroyed implicit constructor was caught because the affected subclasses shared the edited
+ * file, and row 41's unresolved qualifier was caught because the caller was itself being
+ * rewritten. A break one file away is invisible to it.</p>
+
+ * <p>So a cross-file precondition in this product is not belt-and-braces over a gate that would
+ * have caught it anyway. It is the only thing looking.</p>
+ *
  * <p>An OVERRIDE is refused for the same reason from the other side: a caller holding the
  * superclass and calling an overridden method is depending on dynamic dispatch, and delegation
  * does not provide it.</p>
