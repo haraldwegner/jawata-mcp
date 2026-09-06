@@ -439,13 +439,16 @@ class FrontDoorDescriptionTest {
                     + generated + "\n  in: " + described);
         }
         // PROOF OF LIFE: an empty list would satisfy the loop.
-        assertEquals(8, adoptedDoors().size(),
-            "eight doors have adopted the description seam — the six Stage 6a converted,"
-                + " refactoring, which takes the description half only, and data, which"
-                + " adopted inside Stage 5 as it grew past its single operation. hierarchy"
-                + " becomes the ninth inside Stage 7 and change_method_signature the tenth"
-                + " inside Stage 4; each must be ADDED here deliberately, because a door"
-                + " that adopts the seam and never reaches this loop is asserted by nothing");
+        assertEquals(9, adoptedDoors().size(),
+            "nine doors have adopted the description seam — the six Stage 6a converted,"
+                + " refactoring, which takes the description half only, data, which"
+                + " adopted inside Stage 5 as it grew past its single operation, and"
+                + " change_method_signature, which adopted inside Stage 4 as it grew from"
+                + " one operation to eleven. hierarchy becomes the tenth inside Stage 7;"
+                + " each must be ADDED here deliberately, because a door that adopts the"
+                + " seam and never reaches this loop is asserted by nothing — which is"
+                + " exactly the state Stage 4's door was left in, and what a C4 audit"
+                + " refused on: the property HELD in the code and no assertion asked it");
     }
 
     /**
@@ -466,7 +469,8 @@ class FrontDoorDescriptionTest {
             new org.jawata.mcp.tools.codegen.GenerateTool(() -> null, cache),
             new ApplyCleanupTool(() -> null, cache),
             new RefactoringTool(() -> null, cache),
-            new DataTool(() -> null, cache));
+            new DataTool(() -> null, cache),
+            new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> null, cache));
     }
 
     private static int occurrences(String text, String needle) {
