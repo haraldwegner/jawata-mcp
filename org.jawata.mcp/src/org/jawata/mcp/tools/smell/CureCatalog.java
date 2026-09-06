@@ -385,7 +385,74 @@ public final class CureCatalog {
             + " smell detector — it takes a cloneGroupId that only that tool produces, and"
             + " the cure table keys on smell kinds. So it is routed in practice and"
             + " unroutable in this table's terms, which is worth stating rather than"
-            + " leaving as a blank that reads like an oversight.");
+            + " leaving as a blank that reads like an oversight.",
+
+        // --- Sprint 28d-rescue Stage 4, the ten kinds on change_method_signature. NONE of
+        // them routes, and until a C4 audit counted it none was written down either — the
+        // two states a reader cannot tell apart, which is this table's entire reason to
+        // exist. Stage 3 and Stage 6 each learned that at their own checkpoint; Stage 4 is
+        // the third, and the guard below was scoped past this door so nothing said so.
+        //
+        // TWO OF THE TEN ARE DIFFERENT IN KIND from the other eight, and the difference is
+        // the whole reason they are HERE rather than routed: a detector already names them
+        // in its message prose, so the gap is on the cure-table side rather than the
+        // detector side. Wiring either one is a ROUTE, and this plan's own rule is that a
+        // lane records the routes its rows need and leaves the table to the merge — because
+        // the first RUNNABLE route a smell gains is exactly the input CureTier reads to
+        // derive PERFORM, which turns a suggestion into an instruction. That is the same
+        // lever the Stage 3 architect finding is about for `loops`, where one runnable route
+        // made the product instruct while the rewriter accepted 2 of 21 candidates.
+        "change_method_signature kind=introduce_parameter_object",
+        "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN HERE. `long_parameter_list` names this"
+            + " refactoring in every one of its messages — 'Consider Introduce Parameter"
+            + " Object' — and so does `primitive_obsession`. Both would gain their first"
+            + " RUNNABLE route, which is what CureTier turns into PERFORM, so wiring it is a"
+            + " tier decision for the route merge rather than a transcription.",
+        "change_method_signature kind=separate_query_from_modifier",
+        "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN HERE, and the sharper of the two: `cqs`"
+            + " names this refactoring in its message AND already routes to a design entry at"
+            + " ADVISE. Shipping this row gives that smell its first runnable route, so the"
+            + " open question is whether `cqs` should offer both cures and at which tier —"
+            + " which is a decision, not a transcription.",
+        "change_method_signature kind=replace_query_with_parameter",
+        "no detector reports a method that asks a question it could be told the answer to."
+            + " The operation's input is the CALL to stop making, which a finding does not"
+            + " carry, and its real precondition is that the expression's text means the same"
+            + " thing at every call site — a fact about the callers rather than the method.",
+        "change_method_signature kind=replace_parameter_with_query",
+        "the inverse of the above and unrouted for a different reason: the query IS"
+            + " derivable, from the call sites, so a detector could in principle name this."
+            + " None does. Nothing reports a parameter every caller derives the same way.",
+        "change_method_signature kind=parameterize_function",
+        "no detector reports two near-identical methods differing by one constant."
+            + " `find_duplicate_code` is the nearest and reports clone GROUPS, not the"
+            + " literal that separates them — and the literal is this operation's input.",
+        "change_method_signature kind=replace_exception_with_precheck",
+        "UNROUTABLE rather than unrouted, and measured rather than assumed:"
+            + " find_quality_issue(kind=catches) is a SEARCH — it takes an exception name and"
+            + " returns the sites that catch it — so it emits no finding and names no cure."
+            + " No detector reports a try/catch that a test could replace.",
+        "change_method_signature kind=preserve_whole_object",
+        "no detector reports several arguments taken off one object. `long_parameter_list` is"
+            + " the nearest and names Introduce Parameter Object instead, which is a different"
+            + " row on this same door — it BUILDS an object where this one passes an object"
+            + " the caller already holds.",
+        "change_method_signature kind=remove_flag_argument",
+        "no detector reports a boolean parameter that selects behaviour. It could not be run"
+            + " from a finding even if one existed: the two new methods' NAMES are the whole"
+            + " point of the change, and no finding carries a name.",
+        "change_method_signature kind=replace_command_with_function",
+        "no detector reports a command class that could be a function, and a census says one"
+            + " would mostly report cases this row must refuse: over the fork's 1354 main"
+            + " sources, 33 classes have exactly one command-shaped public method and 27 of"
+            + " them declare it because a SUPERTYPE does, which is dispatch rather than"
+            + " ceremony.",
+        "change_method_signature kind=replace_error_code_with_exception",
+        "no detector reports a sentinel return, and one could not carry this row's input: the"
+            + " ERROR VALUE is the caller's to name. Measured over the fork's 1354 main"
+            + " sources, the sentinel-shaped returns are 43 `return null`, 38 `return false`"
+            + " and 3 `return -1`, and almost every one is ordinary control flow — which is"
+            + " why the row requires the value rather than inferring it.");
 
     /** Map.of caps at ten pairs; this table passed it at Stage 6. */
     private static Map<String, String> mapOf(String... pairs) {

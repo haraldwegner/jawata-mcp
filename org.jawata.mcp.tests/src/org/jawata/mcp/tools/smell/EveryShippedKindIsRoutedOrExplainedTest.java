@@ -50,7 +50,11 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         "extract kind=variable", "extract kind=constant",
         "extract kind=interface", "extract kind=superclass",
         "inline kind=method", "inline kind=variable",
-        "move kind=class", "move kind=package");
+        "move kind=class", "move kind=package",
+        // The operation change_method_signature WAS before Stage 4 gave it ten siblings and
+        // turned it into a door. Stage 4 did not change it — it only stopped being the whole
+        // tool — so it is exempt on the same terms as the eight above.
+        "change_method_signature kind=change_signature");
     // NOT EXEMPT, though both shipped before this sprint: Stage 6 CHANGED them, so
     // "pre-existing" stops being true of them. Row 49 landed as the `replaceDuplicates`
     // parameter on `extract kind=method` and folded `replace_duplicates` onto
@@ -70,7 +74,14 @@ class EveryShippedKindIsRoutedOrExplainedTest {
             new ApplyCleanupTool(svc, cache),
             new org.jawata.mcp.tools.ExtractTool(svc, cache),
             new org.jawata.mcp.tools.InlineTool(svc, cache),
-            new org.jawata.mcp.tools.MoveTool(svc, cache));
+            new org.jawata.mcp.tools.MoveTool(svc, cache),
+            // FIFTH at C4. Stage 4's ten kinds shipped neither routed nor written down, and
+            // this guard was scoped past their door — so its silence said nothing about them,
+            // which is word for word what a C6 audit said about Stage 6 and the reason the
+            // list grew from one door to four. Third stage, same omission: the scope has to
+            // widen in the SAME change that adds the kinds, or the guard passes over exactly
+            // the work that was done.
+            new org.jawata.mcp.tools.ChangeMethodSignatureTool(svc, cache));
 
         List<String> routed = new ArrayList<>();
         for (String kind : CureCatalog.declaredKinds()) {

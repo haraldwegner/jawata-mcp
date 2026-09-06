@@ -88,8 +88,16 @@ class ReplaceErrorCodeWithExceptionForkSliceTest {
             // throttling failure now propagates where upstream discarded it.
             () -> assertTrue(String.valueOf(r.getData()).contains("CHANGES BEHAVIOUR"),
                 "the response must say so: " + r.getData()),
-            () -> assertTrue(String.valueOf(r.getData()).contains("CHECKED"),
-                "and must name what would have made the compiler demand an answer: "
-                    + r.getData()));
+
+            // NOT an assertion on the word CHECKED. That sentence is emitted unconditionally,
+            // so it is entailed by the line above and could detect nothing — a C4 audit found
+            // it by reading the production line. What IS variable here, and what actually
+            // measures upstream's shape, is that exactly one caller was read and none of them
+            // tested the code. If upstream's App ever starts checking the return, this row
+            // must refuse instead, and this number is what notices.
+            () -> Assertions.assertEquals(1,
+                ((java.util.Map<?, ?>) r.getData()).get("callersChecked"),
+                "upstream's orderDrink has exactly one caller, and the whole demonstration is"
+                    + " that it DISCARDS the code: " + r.getData()));
     }
 }

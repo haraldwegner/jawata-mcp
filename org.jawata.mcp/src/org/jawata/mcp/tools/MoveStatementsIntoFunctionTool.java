@@ -202,7 +202,8 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool
                 "the statement uses '" + free + "', which is local to the caller and is not"
                     + " in scope inside " + binding.getName() + " — and its value differs per"
                     + " call site anyway. Passing it in is a real answer, but it is"
-                    + " change_method_signature's, and a different decision.");
+                    + " change_method_signature kind=change_signature's, and a different"
+                    + " decision.");
         }
 
         // RENAMED ON THE WAY IN — the caller's argument name becomes the callee's

@@ -192,7 +192,8 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool
             return ToolResponse.invalidParameter("position",
                 "the statement uses '" + free + "', which belongs to " + owner.getName()
                     + "'s own scope and does not exist at a call site. Passing the value out"
-                    + " is the real answer, and it is change_method_signature's.");
+                    + " is the real answer, and it is"
+                    + " change_method_signature kind=change_signature's.");
         }
 
         IMethodBinding binding = owner.resolveBinding();

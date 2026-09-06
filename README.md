@@ -281,7 +281,11 @@ ships, fails the build. The prose that follows groups the same names by what the
 - *Refactor* — `rename_symbol`, `extract` *(method / variable / constant / interface /
   superclass / class / replace_inline_code)*, `inline` *(method / variable)*, `move`
   *(class / package / method)*, `hierarchy` *(pull-up / push-down)*, `data`,
-  `change_method_signature`, `generate` *(constructor / getters_setters / equals_hashcode / tostring / test_skeleton /
+  `change_method_signature` *(change_signature / introduce_parameter_object /
+  replace_query_with_parameter / parameterize_function / separate_query_from_modifier /
+  replace_parameter_with_query / replace_exception_with_precheck / preserve_whole_object /
+  remove_flag_argument / replace_command_with_function / replace_error_code_with_exception)*,
+  `generate` *(constructor / getters_setters / equals_hashcode / tostring / test_skeleton /
   override_methods / copy_class)* · `refactoring` *(single change: apply / undo / inspect ·
   multi-step, parity-gated: plan / apply_plan / inspect_plan / undo_plan)*
 - *Multi-step orchestration* — `refactoring(action=plan → apply_plan)` walks a refactoring as

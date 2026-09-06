@@ -98,15 +98,27 @@ class ReplaceErrorCodeWithExceptionToolTest {
         ToolResponse r = tool.execute(argsFor("readingAt"));
         assertTrue(r.isSuccess(), "got: " + r.getError());
 
-        String summary = String.valueOf(r.getData());
+        java.util.Map<?, ?> data = (java.util.Map<?, ?>) r.getData();
+        String summary = String.valueOf(data);
         Assertions.assertAll(
             () -> assertTrue(summary.contains("CHANGES BEHAVIOUR"),
                 "a caller that carried on with the sentinel now propagates, and a reader who"
                     + " assumed this row was like its neighbours would be wrong: " + summary),
-            () -> assertTrue(summary.contains("CHECKED"),
-                "and the response must name what makes it safe, rather than leaving the caller"
-                    + " to discover that an unchecked exception changes nothing loudly: "
-                    + summary));
+
+            // THE CHECKED/UNCHECKED SENTENCE IS UNCONDITIONAL, so an assertion on the word
+            // CHECKED is entailed by the one above and can detect nothing it does not — a
+            // C4 audit found that by reading the production line rather than by mutating,
+            // and it was right. What follows are the parts of the response that DO vary with
+            // the input, which is what makes them worth asserting.
+            () -> assertTrue(summary.contains("-1"),
+                "the response must QUOTE the value the caller named, because that value is"
+                    + " what the row could not infer and had to be told: " + summary),
+            () -> assertEquals(1, data.get("returnsReplaced"),
+                "readingAt has exactly one sentinel return; a count that drifts means the row"
+                    + " rewrote more or less of the method than the fixture declares: " + data),
+            () -> assertEquals(2, data.get("callersChecked"),
+                "ErrorCodeDesk calls readingAt twice and neither tests the result — the count"
+                    + " is the evidence for the claim that none of them did: " + data));
     }
 
     @Test

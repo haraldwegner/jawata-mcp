@@ -275,7 +275,8 @@ public class EncapsulateCollectionTool extends AbstractRefactoringTool
                         : "Collections.unmodifiableList returns a List, not an "
                             + returned.getName() + ", so wrapping would not compile. Widen"
                             + " the return type to the interface first"
-                            + " (change_method_signature), then run this.")
+                            + " (change_method_signature kind=change_signature), then run"
+                            + " this.")
                     + " Wrappable return types: " + VIEW_FOR.keySet().stream().sorted()
                         .toList());
         }

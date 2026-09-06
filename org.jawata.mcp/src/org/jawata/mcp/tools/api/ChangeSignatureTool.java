@@ -139,7 +139,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             compile_workspace; revert with undo_refactoring(undoChangeId).
             Pass auto_apply: false to stage instead — returns { changeId, diff }.
 
-            USAGE: Position on method declaration, provide changes
+            Position on the method declaration, or name it, and provide the changes.
             OUTPUT: Modified files + unified diff + undo handle
 
             PARAMETER OPERATIONS:
