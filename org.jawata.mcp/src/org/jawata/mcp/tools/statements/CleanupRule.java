@@ -63,6 +63,25 @@ public interface CleanupRule extends org.jawata.mcp.tools.KindDelegate {
         return java.util.Map.of();
     }
 
+    /**
+     * WHAT THIS RULE LEAVES FOR SOMEONE ELSE, as an operation name — null for most rules.
+     *
+     * <p>A sweep that finishes is not always a job that is finished. Deleting dead code
+     * leaves the imports that only the deleted code used: still valid Java, still compiling,
+     * and now wrong — so the rule that creates that state is the one place that knows to name
+     * {@code organize_imports}. D3a asks a refusal to name its next step; this is the same
+     * obligation on the other channel, because {@code remove_dead_code} NEVER refuses and a
+     * pointer only reachable through a refusal would never be reached at all.</p>
+     *
+     * <p>Null is the honest default and is what nearly every rule returns: a rule with nothing
+     * to hand on says nothing rather than inventing a successor. The step is attached with the
+     * FILE the sweep ran over, because that is the address {@code organize_imports} takes and
+     * the only one this rule holds.</p>
+     */
+    default String leavesTo() {
+        return null;
+    }
+
     // The rule's own prose is `kindSummary()`, inherited from the role — it used to be a
     // SECOND declaration here called `describe()`, forwarded to by a default. Two names for
     // one fact is what this stage removes, and this one had the extra defect that the prose

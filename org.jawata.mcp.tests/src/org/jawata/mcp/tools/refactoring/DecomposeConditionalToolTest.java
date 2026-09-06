@@ -241,6 +241,19 @@ class DecomposeConditionalToolTest {
         assertTrue(String.valueOf(r.getError()).contains("else if"),
             "and the refusal must say so, and point at the row that owns the shape: "
                 + r.getError());
+        // D3a (S8b step 7): the row that owns the shape is handed over as an OPERATION,
+        // pointed where the caller was pointing, rather than named in the sentence alone.
+        assertEquals("refactor_to_pattern kind=replace_conditional_with_polymorphism",
+            r.getError().getNextStep().operation(),
+            "the refusal must hand over the sibling row as a step: " + r.getError());
+        assertEquals(args.get("filePath").asText(),
+            r.getError().getNextStep().arguments().get("filePath"),
+            "and at the refused call's own address: "
+                + r.getError().getNextStep().arguments());
+        assertEquals(args.get("line").asInt(),
+            r.getError().getNextStep().arguments().get("line"),
+            "including the line, unconverted — these coordinates came from a door, not from"
+                + " a finding: " + r.getError().getNextStep().arguments());
         assertEquals(before, after(), "nothing may be written on a refusal");
     }
 

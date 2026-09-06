@@ -246,7 +246,14 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
                     + " equals/hashCode against the file those removals left, so there is no"
                     + " single staged change to preview. Run it (it reverts through one undo"
                     + " handle), or stage the halves yourself: data kind=remove_setting_method"
-                    + " per setter, then generate kind=equals_hashcode.");
+                    + " per setter, then generate kind=equals_hashcode.")
+                // D3a: the FIRST of the two halves the sentence names, pointed at the class
+                // the caller named. The second half (generate kind=equals_hashcode) follows
+                // it and is in the message; a step is singular on the wire, and the ORDER is
+                // what makes naming the first one the useful half.
+                .withNextStep(new org.jawata.mcp.models.NextStep(
+                    "data kind=remove_setting_method",
+                    org.jawata.mcp.models.CodeAddress.of(arguments), null));
         }
 
         ObjectMapper mapper = new ObjectMapper();

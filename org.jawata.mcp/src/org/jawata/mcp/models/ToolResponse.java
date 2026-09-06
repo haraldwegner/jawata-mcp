@@ -35,6 +35,26 @@ public class ToolResponse {
     }
 
     /**
+     * THE SAME REFUSAL, NOW NAMING THE SMALLER STEP IT LEAVES THE CALLER (S8b step 7, D3a).
+     *
+     * <p>Composes with every existing factory rather than duplicating them: a refusal site
+     * keeps whatever it already builds — parameter, sentence, reason code — and appends this.
+     * Adding a next-step argument to each factory instead would have widened four signatures
+     * and left the sites that do not point anywhere carrying a null.</p>
+     *
+     * <p>A no-op on a success, on a response with no error, and where there is no step —
+     * because "this refusal leaves you nothing smaller" is a real answer and the wire says it
+     * by omission, exactly as {@link ErrorInfo#getReason()} does.</p>
+     */
+    public ToolResponse withNextStep(NextStep step) {
+        if (success || error == null || step == null) {
+            return this;
+        }
+        this.error = error.withNextStep(step);
+        return this;
+    }
+
+    /**
      * Sprint 22 (POST layer): central steering injection. On a successful
      * response, attach the directional next-step nudge unless the tool already
      * set one. No-op on errors or when {@code steering} is null.

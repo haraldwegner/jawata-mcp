@@ -125,6 +125,7 @@ class EncapsulateRecordToolTest {
         String before = Files.readString(targets, StandardCharsets.UTF_8);
         String[] lines = before.split("\n", -1);
         ToolResponse r = null;
+        int caret = -1;
         for (int i = 0; i < lines.length; i++) {
             if (lines[i].contains("public static class Coordinate")) {
                 ObjectNode args = new ObjectMapper().createObjectNode();
@@ -133,6 +134,7 @@ class EncapsulateRecordToolTest {
                 args.put("line", i);
                 args.put("column", lines[i].indexOf("Coordinate"));
                 args.put("auto_apply", false);
+                caret = i;
                 r = tool.execute(args);
                 break;
             }
@@ -144,6 +146,17 @@ class EncapsulateRecordToolTest {
         assertTrue(String.valueOf(r.getError()).contains("COMPOSED"),
             "the refusal must say WHY, and point at the halves a caller can stage: "
                 + r.getError());
+        // D3a (S8b step 7): the smaller operation, handed over as a step rather than as
+        // prose. ONE step goes on the wire and the message keeps the per-field list — the
+        // plan's table says "a NextStep per public field" and the gate it is measured by
+        // reads a singular error.nextStep; raised at C8b rather than settled here.
+        assertEquals("data kind=encapsulate_field", r.getError().getNextStep().operation(),
+            "the staging refusal must name the step it leaves: " + r.getError());
+        assertEquals(java.util.Map.of("filePath", targets.toString(), "line", caret,
+                "column", lines[caret].indexOf("Coordinate")),
+            r.getError().getNextStep().arguments(),
+            "and point it at the REFUSED CALL'S OWN address: "
+                + r.getError().getNextStep().arguments());
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
     }

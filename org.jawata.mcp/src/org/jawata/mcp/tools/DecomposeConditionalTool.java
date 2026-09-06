@@ -230,7 +230,11 @@ public class DecomposeConditionalTool extends AbstractTool
                 return ToolResponse.invalidParameter("position",
                     "This is an `else if` chain. Flattening one link of it into a named call "
                         + "describes the code wrongly — the chain is one decision with several "
-                        + "arms. Use refactor_to_pattern kind=replace_conditional_with_polymorphism.");
+                        + "arms. Use refactor_to_pattern kind=replace_conditional_with_polymorphism.")
+                    // D3a: the SIBLING operation, pointed at the same place the caller was.
+                    .withNextStep(new org.jawata.mcp.models.NextStep(
+                        "refactor_to_pattern kind=replace_conditional_with_polymorphism",
+                        org.jawata.mcp.models.CodeAddress.of(arguments), null));
             }
             if (writesInside(branch.getExpression())) {
                 return ToolResponse.invalidParameter("position",

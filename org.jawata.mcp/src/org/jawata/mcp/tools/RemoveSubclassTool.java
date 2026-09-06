@@ -172,7 +172,15 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
                 return ToolResponse.invalidParameter("position",
                     subclass.getElementName() + " has " + subtypes.length + " subtype(s) of its"
                         + " own, which folding it into its parent would reparent. That is"
-                        + " Collapse Hierarchy, not Remove Subclass.");
+                        + " Collapse Hierarchy, not Remove Subclass.")
+                    // D3a: the sentence named the sibling by its FOWLER name, which a reader
+                    // recognises and a caller cannot run. This is the same answer as an
+                    // OPERATION, pointed at the class the caller named — and it is spelled
+                    // `direction=` because that is what this door selects on (S8b step 6).
+                    .withNextStep(new org.jawata.mcp.models.NextStep(
+                        "hierarchy direction=collapse_hierarchy",
+                        new org.jawata.mcp.models.CodeAddress(null, -1, -1,
+                            subclass.getFullyQualifiedName('.')), null));
             }
             return remove(service, subclass, arguments);
         } catch (Exception e) {

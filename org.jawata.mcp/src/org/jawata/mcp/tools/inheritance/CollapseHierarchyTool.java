@@ -204,7 +204,13 @@ public class CollapseHierarchyTool extends AbstractApplyingRefactoringTool
             return Preparation.fail(ToolResponse.invalidParameter("position",
                 "'" + middle.getElementName() + "' has no subtypes, so nothing would be"
                     + " reparented and this is Remove Subclass rather than Collapse Hierarchy:"
-                    + " run inline kind=subclass instead.", Refusal.NO_SUBTYPES));
+                    + " run inline kind=subclass instead.", Refusal.NO_SUBTYPES)
+                // D3a: the sentence has named the sibling since Stage 7; this is the same
+                // answer POINTED AT SOMETHING. The address is the class the caller already
+                // named, so the step is runnable without them working anything out.
+                .withNextStep(new org.jawata.mcp.models.NextStep("inline kind=subclass",
+                    new org.jawata.mcp.models.CodeAddress(null, -1, -1,
+                        middle.getFullyQualifiedName('.')), null)));
         }
 
         IJavaElement parentElement = parent.getJavaElement();

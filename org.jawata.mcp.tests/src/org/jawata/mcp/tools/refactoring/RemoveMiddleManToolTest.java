@@ -88,6 +88,26 @@ class RemoveMiddleManToolTest {
                 + " a FieldAccess over a ThisExpression and not the SimpleName receiver the"
                 + " other fixture has:\n" + read(middleMan));
 
+        // THE REFUSAL THAT SITS UNDER THIS CASE, and it had no test of its own until S8b
+        // step 7. Omitting `delegateField` on a class that forwards to TWO fields must
+        // decline rather than pick one — and D3a's answer here is deliberately NO next step.
+        ObjectNode unnamed = mapper.createObjectNode();
+        unnamed.put("kind", "middle_man");
+        unnamed.put("filePath", middleMan.toString());
+        unnamed.put("line", lineOf(middleMan, "public class TwoDelegateMiddleMan"));
+        unnamed.put("column", 13);
+        ToolResponse undecided = tool.execute(unnamed);
+        assertFalse(undecided.isSuccess(),
+            "two delegates and no name is an ambiguous request, not a narrower one");
+        assertTrue(String.valueOf(undecided.getError()).contains("delegateField"),
+            "and the refusal must name the value it needs: " + undecided.getError());
+        // The step this refusal leaves is THIS operation again with one more value, and that
+        // value is a decision only the caller can make — so a pointer would be an instruction
+        // to repeat the call that just failed. The written reason is at the refusal site.
+        org.junit.jupiter.api.Assertions.assertNull(undecided.getError().getNextStep(),
+            "no next step: the missing input is a choice, not a smaller operation: "
+                + undecided.getError());
+
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "middle_man");
         args.put("filePath", middleMan.toString());

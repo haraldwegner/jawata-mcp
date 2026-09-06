@@ -71,6 +71,51 @@ class RemoveDeadCodeToolTest {
         return after;
     }
 
+    /**
+     * D3a on the channel this row actually uses (S8b step 7).
+     *
+     * <p>Every other composed row hands its next step over at a REFUSAL. {@code
+     * remove_dead_code} never refuses — it deletes what the compiler proves unused and
+     * reports — so a pointer reachable only through a refusal would never be reached at all.
+     * It rides the applied response AND the no-op, and both are asserted here because they
+     * are built at two different sites and only one of them would have been noticed.</p>
+     *
+     * <p>What it points at is not decoration: deleting the last reader of an import leaves
+     * that import behind, still valid Java, still compiling. Nothing downstream raises it.</p>
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    @DisplayName("the sweep names what it leaves behind — on the applied response AND the no-op")
+    void theSweepNamesTheImportsItLeaves() throws Exception {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "remove_dead_code");
+        args.put("filePath", target.toString());
+
+        ToolResponse applied = tool.execute(args);
+        assertTrue(applied.isSuccess(), "the cleanup must run; got: " + applied.getError());
+        Map<String, Object> appliedData = (Map<String, Object>) applied.getData();
+        org.junit.jupiter.api.Assertions.assertEquals(Boolean.TRUE, appliedData.get("hasChanges"),
+            "PROOF OF LIFE: with nothing removed this is the no-op case and the two halves"
+                + " of this test would be the same one: " + appliedData);
+        org.junit.jupiter.api.Assertions.assertEquals(Map.of("operation", "organize_imports",
+                "arguments", Map.of("filePath", target.toString())),
+            appliedData.get("nextStep"),
+            "the applied response must name the tidy this sweep leaves, with the file: "
+                + appliedData.get("nextStep"));
+
+        // The SECOND run has nothing left to remove, which is the hasChanges:false site.
+        ToolResponse noop = tool.execute(args);
+        assertTrue(noop.isSuccess(), "a sweep with nothing to do is not a failure");
+        Map<String, Object> noopData = (Map<String, Object>) noop.getData();
+        org.junit.jupiter.api.Assertions.assertEquals(Boolean.FALSE, noopData.get("hasChanges"),
+            "the second run must find nothing, or this is not the no-op path: " + noopData);
+        org.junit.jupiter.api.Assertions.assertEquals(Map.of("operation", "organize_imports",
+                "arguments", Map.of("filePath", target.toString())),
+            noopData.get("nextStep"),
+            "and the no-op carries it too — organize_imports is idempotent, and a caller who"
+                + " swept and stopped is exactly who it is for: " + noopData.get("nextStep"));
+    }
+
     @Test
     @DisplayName("private members nothing reaches are removed; the ones that are reached stay")
     void deadPrivateMembersGo() throws Exception {

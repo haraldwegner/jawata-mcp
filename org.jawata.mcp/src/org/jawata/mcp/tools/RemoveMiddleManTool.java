@@ -218,6 +218,14 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool
         String delegateField = getStringParam(arguments, "delegateField");
         if (delegateField == null || delegateField.isBlank()) {
             if (byTarget.size() > 1) {
+                // D3a, AND THE WRITTEN REASON FOR CARRYING NO `nextStep` HERE. Every other
+                // composed row's refusal hands the caller a SMALLER OPERATION. This one does
+                // not, because the step it leaves is THIS operation again with one more
+                // value — and that value is a decision (which collaborator stops being
+                // forwarded to) that only the caller can make. A NextStep naming
+                // `inline kind=middle_man` pointed back at the same place would be an
+                // instruction to repeat the call that just failed. The message names the
+                // candidate fields instead, which is the information the choice needs.
                 return ToolResponse.invalidParameter("delegateField",
                     middleMan.getElementName() + " forwards to " + byTarget.size()
                         + " different fields " + byTarget.keySet() + ". Removing them all at"

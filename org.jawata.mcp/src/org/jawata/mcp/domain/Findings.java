@@ -53,13 +53,10 @@ public final class Findings {
             if (!f.cures().isEmpty()) {
                 List<Map<String, Object>> steps = new ArrayList<>();
                 for (org.jawata.mcp.models.NextStep step : f.cures()) {
-                    Map<String, Object> one = new LinkedHashMap<>();
-                    one.put("operation", step.operation());
-                    one.put("arguments", step.address().arguments());
-                    if (step.discriminator() != null) {
-                        one.put("discriminator", step.discriminator());
-                    }
-                    steps.add(one);
+                    // ONE renderer, on the step itself. S8b step 7 put a next step on the
+                    // refusal channel too, and a hand-built map here would have become the
+                    // second copy of a published shape.
+                    steps.add(step.rendered());
                 }
                 row.put("cures", steps);
             }

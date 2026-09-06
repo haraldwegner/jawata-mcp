@@ -40,6 +40,41 @@ public record CodeAddress(String filePath, int line, int column, String symbol) 
     }
 
     /**
+     * THE ADDRESS A CALL WAS POINTED AT — read back off the arguments it arrived with.
+     *
+     * <p>S8b step 7: a refusal that names a smaller step has to point that step SOMEWHERE, and
+     * the only place it can honestly point is where the caller was already pointing. Reading
+     * it back here rather than at each refusal site keeps the door's parameter names in one
+     * place — a site that spelled {@code "file"} instead of {@code "filePath"} would build an
+     * address nothing resolves and nothing would say so.</p>
+     *
+     * <p><b>NO conversion happens here, and that is the difference from {@link #of(Finding)}.</b>
+     * A finding's line is 1-based and is converted once, there. These coordinates came from a
+     * door, so they are already 0-based; subtracting again would move the step one line up the
+     * file, which compiles, runs, and is wrong.</p>
+     */
+    public static CodeAddress of(com.fasterxml.jackson.databind.JsonNode arguments) {
+        if (arguments == null) {
+            return new CodeAddress(null, -1, -1, null);
+        }
+        String named = text(arguments, "symbol");
+        return new CodeAddress(text(arguments, "filePath"),
+            number(arguments, "line"), number(arguments, "column"),
+            named != null ? named : text(arguments, "typeName"));
+    }
+
+    private static String text(com.fasterxml.jackson.databind.JsonNode node, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = node.get(field);
+        return value == null || value.isNull() || value.asText().isBlank()
+            ? null : value.asText();
+    }
+
+    private static int number(com.fasterxml.jackson.databind.JsonNode node, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = node.get(field);
+        return value == null || !value.isNumber() ? -1 : value.asInt();
+    }
+
+    /**
      * THE FULLY-QUALIFIED NAME OF A RESOLVED BINDING — the one renderer.
      *
      * <p>A detector knows exactly what it found: it is holding the binding. What it used

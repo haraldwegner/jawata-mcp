@@ -112,6 +112,23 @@ import com.fasterxml.jackson.databind.JsonNode;
  * and respond rather than handing one back — so the analysis and the change-building live in
  * {@code prepare}, and the direct path is a thin wrapper over it. ONE construction, so a fix
  * to the analysis cannot reach one caller and miss the other.</p>
+ *
+ * <h2>D3a: THIS ROW'S REFUSALS LEAVE NO SMALLER STEP, and that is the answer rather than a
+ * gap</h2>
+ *
+ * <p>S8b step 7 gives each composed row's refusal a {@code nextStep} naming the smaller
+ * operation it leaves the caller. This row carries none, and the reason is read off its own
+ * refusals rather than assumed: every one of them reports that the setter is STILL NEEDED —
+ * an outside caller assigns through it, an interface declares it, the field is not settled at
+ * construction. None of those is a step someone can run to get closer; each is a fact about
+ * the code that has to CHANGE before this operation applies at all, and the change is a design
+ * decision (stop calling the setter, stop declaring it in the contract) rather than a
+ * refactoring this product performs.</p>
+ *
+ * <p>Naming a plausible successor anyway — {@code data kind=encapsulate_field}, say — would
+ * hand the caller an operation that does not address what was refused. An honest silence is
+ * the more useful answer, and D3a admits it explicitly: a row either names its next step or
+ * says in writing that none applies. This paragraph is that writing.</p>
  */
 public class RemoveSettingMethodTool extends AbstractRefactoringTool implements ToolKindDelegate {
 

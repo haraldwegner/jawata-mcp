@@ -230,7 +230,15 @@ public class EncapsulateRecordTool extends AbstractRefactoringTool implements To
                     + " field, and each step is built against the file the previous step"
                     + " rewrote, so there is no single staged change to preview. Run it (it"
                     + " reverts through one undo handle), or stage the fields yourself with"
-                    + " data kind=encapsulate_field, one at a time.");
+                    + " data kind=encapsulate_field, one at a time.")
+                // D3a: the SMALLER STEP, pointed at the type the caller named. The plan's
+                // table says "a NextStep per public field" and the gate it is measured by
+                // reads a SINGULAR error.nextStep — so one step goes on the wire and the
+                // message keeps the field list. Carrying one step per field would need
+                // either a list-valued nextStep or the `needs[]` clause v4.1 puts on a CURE
+                // rather than on a step; raised at C8b rather than decided here.
+                .withNextStep(new org.jawata.mcp.models.NextStep("data kind=encapsulate_field",
+                    org.jawata.mcp.models.CodeAddress.of(arguments), null));
         }
 
         ObjectMapper mapper = new ObjectMapper();

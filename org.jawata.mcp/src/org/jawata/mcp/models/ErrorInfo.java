@@ -29,16 +29,46 @@ public class ErrorInfo {
     private final String message;
     private final String hint;
     private final String reason;
+    private final NextStep nextStep;
 
     public ErrorInfo(String code, String message, String hint) {
         this(code, message, hint, null);
     }
 
     public ErrorInfo(String code, String message, String hint, String reason) {
+        this(code, message, hint, reason, null);
+    }
+
+    public ErrorInfo(String code, String message, String hint, String reason,
+                     NextStep nextStep) {
         this.code = code;
         this.message = message;
         this.hint = hint;
         this.reason = reason;
+        this.nextStep = nextStep;
+    }
+
+    /**
+     * THE SMALLER STEP THIS REFUSAL LEAVES THE CALLER, or null where none applies.
+     *
+     * <p>A refusal that names its successor IN PROSE — "run {@code data
+     * kind=encapsulate_field} on each public field first" — is readable and is something the
+     * caller has to parse back into a call. This is the same answer in the shape the finding
+     * channel already publishes, so an agent reads a refusal's pointer exactly as it reads a
+     * cure: {@code operation}, {@code arguments}, and a {@code discriminator} where there is a
+     * neighbour to be told apart from.</p>
+     *
+     * <p>Nullable and omitted from the wire when absent, for the reason {@link #getReason()}
+     * is: a refusal that has nothing smaller to offer says nothing rather than saying nothing
+     * loudly, and every refusal that has not adopted one is unchanged.</p>
+     */
+    public NextStep getNextStep() {
+        return nextStep;
+    }
+
+    /** The same refusal, now naming what to do instead. */
+    public ErrorInfo withNextStep(NextStep step) {
+        return new ErrorInfo(code, message, hint, reason, step);
     }
 
     public String getCode() {

@@ -170,7 +170,11 @@ public class ReplaceTempWithQueryTool extends AbstractRefactoringTool
                     "'" + name + "' is assigned more than once, so it is not a name for one"
                         + " value — a query returning its initializer would give the wrong"
                         + " answer after the second assignment. Split Variable (data"
-                        + " kind=split_variable) is the step before this one.");
+                        + " kind=split_variable) is the step before this one.")
+                    // D3a, the SIBLING half of this row's pair: split the variable first, at
+                    // the place the caller already named.
+                    .withNextStep(new org.jawata.mcp.models.NextStep("data kind=split_variable",
+                        org.jawata.mcp.models.CodeAddress.of(arguments), null));
             }
 
             // A RECIPE CANNOT STAGE, and saying so is the only honest answer. Its second

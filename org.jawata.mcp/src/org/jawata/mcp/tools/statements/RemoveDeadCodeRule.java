@@ -95,6 +95,22 @@ public final class RemoveDeadCodeRule implements CleanupRule {
         return "remove_dead_code";
     }
 
+    /**
+     * The imports this rule deliberately leaves behind are somebody's job, and now it says
+     * whose IN A SHAPE A CALLER CAN RUN.
+     *
+     * <p>{@link #kindSummary()} below has always said it in prose — "Unused imports are
+     * deliberately left alone: organize_imports owns them" — which a human reads and an agent
+     * has to parse back into a call. This is the same sentence as a step. It matters here more
+     * than at a refusal because this rule NEVER refuses: deleting the last caller of a private
+     * member leaves an import that only the deleted code used, and the result still compiles,
+     * so nothing downstream would ever raise it.</p>
+     */
+    @Override
+    public String leavesTo() {
+        return "organize_imports";
+    }
+
     @Override
     public String kindSummary() {
         return """

@@ -264,6 +264,34 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         return withAutoApply(withProjectKey(schema));
     }
 
+    /**
+     * THE STEP THIS SWEEP LEAVES BEHIND, or empty where the rule leaves none.
+     *
+     * <p>D3a asks a refusal to name the smaller step it leaves the caller. {@code
+     * remove_dead_code} NEVER refuses — it deletes what the compiler proves unused and
+     * reports — so the same obligation has to ride the responses it DOES send, or the pointer
+     * would sit on a channel this rule never reaches. It goes on both the applied response and
+     * the no-op: {@code organize_imports} is idempotent, so a file with nothing to tidy costs
+     * the caller nothing, and a caller who cleaned one file and stopped is exactly who the
+     * pointer is for.</p>
+     *
+     * <p><b>It needs the file, and says nothing when it has none.</b> A whole-project sweep has
+     * no single address, and {@code organize_imports} answers that case through its {@code
+     * scope} parameter — which {@link org.jawata.mcp.models.CodeAddress} cannot express,
+     * because an address is a place in a file. Rather than render a step with empty arguments
+     * that no caller could run, the sweep-wide case is left unsaid. Recorded as a limit of the
+     * address type, not of the rule.</p>
+     */
+    private static java.util.Optional<org.jawata.mcp.models.NextStep> leavesTo(
+            String kind, String filePath) {
+        org.jawata.mcp.tools.statements.CleanupRule rule = RULES.get(kind);
+        if (rule == null || rule.leavesTo() == null || filePath == null || filePath.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(new org.jawata.mcp.models.NextStep(rule.leavesTo(),
+            new org.jawata.mcp.models.CodeAddress(filePath, -1, -1, null), null));
+    }
+
     @Override
     protected Preparation prepareChange(IJdtService service, JsonNode arguments) throws Exception {
         // NAME FORM FIRST. The per-row contract says every row must be callable from the
@@ -366,6 +394,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
             // claimed we had scanned files we skipped. It is now the number we actually read.
             data.put("filesScanned", scan.examinedCount());
             data.putAll(scan.describe());
+            leavesTo(kind, filePath).ifPresent(step -> data.put("nextStep", step.rendered()));
             return Preparation.fail(ToolResponse.success(data, ResponseMeta.builder()
                 .steering(scan.steering(0, "code to clean up"))
                 .suggestedNextTools(List.of("get_diagnostics to check for remaining issues"))
@@ -376,6 +405,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         Map<String, Object> extras = new LinkedHashMap<>();
         extras.put("kind", kind);
         extras.put("hasChanges", true);
+        leavesTo(kind, filePath).ifPresent(step -> extras.put("nextStep", step.rendered()));
         if (scopedToMember) {
             extras.put("scopedToMemberAt", line + ":" + column);
         }

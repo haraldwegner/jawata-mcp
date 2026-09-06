@@ -130,6 +130,7 @@ class ChangeReferenceToValueToolTest {
         String before = Files.readString(targets, StandardCharsets.UTF_8);
         String[] lines = before.split("\n", -1);
         ToolResponse r = null;
+        int caret = -1;
         for (int i = 0; i < lines.length; i++) {
             if (lines[i].contains("public static class Money")) {
                 ObjectNode args = new ObjectMapper().createObjectNode();
@@ -138,6 +139,7 @@ class ChangeReferenceToValueToolTest {
                 args.put("line", i);
                 args.put("column", lines[i].indexOf("Money"));
                 args.put("auto_apply", false);
+                caret = i;
                 r = tool.execute(args);
                 break;
             }
@@ -149,6 +151,17 @@ class ChangeReferenceToValueToolTest {
         assertTrue(String.valueOf(r.getError()).contains("COMPOSED"),
             "the refusal must say WHY, and point at the halves a caller can stage: "
                 + r.getError());
+        // D3a (S8b step 7): the sentence names both halves; this asserts the FIRST of them
+        // is handed over as a runnable step rather than as prose to parse. The order is what
+        // makes the first half the useful one — equals/hashCode is generated against the
+        // file the removals leave.
+        assertEquals("data kind=remove_setting_method", r.getError().getNextStep().operation(),
+            "the staging refusal must name the step it leaves: " + r.getError());
+        assertEquals(java.util.Map.of("filePath", targets.toString(), "line", caret,
+                "column", lines[caret].indexOf("Money")),
+            r.getError().getNextStep().arguments(),
+            "and point it at the REFUSED CALL'S OWN address, so the caller re-runs it where"
+                + " they already were: " + r.getError().getNextStep().arguments());
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
     }

@@ -84,6 +84,45 @@ class RemoveSubclassToolTest {
         return tool.execute(args);
     }
 
+    /**
+     * THE PARTITION WITH ROW 4, AND IT HAD NO TEST AT ALL UNTIL S8b STEP 7.
+     *
+     * <p>This door refuses a class that has subtypes of its own, because folding it in would
+     * REPARENT them — which is Collapse Hierarchy, a different operation with different
+     * preconditions. Its sibling has asserted the mirror of this since Stage 7 ({@code
+     * refusesALeaf}); this side was published, documented, and exercised by nothing. That is
+     * the "a published refusal with no test" shape C7 found four times, one door over.</p>
+     *
+     * <p>D3a is why it is written now: the refusal named Collapse Hierarchy by its FOWLER
+     * name, which a reader recognises and a caller cannot run. It hands over the operation.</p>
+     */
+    @Test
+    @DisplayName("a class with subtypes is refused, and the refusal hands over Collapse Hierarchy")
+    void aClassWithSubtypesIsRefusedAndNamesTheSibling() throws Exception {
+        Path middle = pkg.resolve("TierBanded.java");
+        String before = read(middle);
+
+        ToolResponse r = removeSubclass(middle, "class TierBanded",
+            read(middle).split("\n", -1)[lineOf(middle, "class TierBanded")]
+                .indexOf("TierBanded"));
+
+        org.junit.jupiter.api.Assertions.assertFalse(r.isSuccess(),
+            "TierGold extends it, so folding it in would reparent a class nobody named");
+        org.junit.jupiter.api.Assertions.assertTrue(
+            String.valueOf(r.getError()).contains("Collapse Hierarchy"),
+            "the refusal must say which operation this is: " + r.getError());
+        org.junit.jupiter.api.Assertions.assertEquals(
+            "hierarchy direction=collapse_hierarchy", r.getError().getNextStep().operation(),
+            "and hand it over as a runnable step — spelled `direction=`, which is what that"
+                + " door selects on: " + r.getError());
+        org.junit.jupiter.api.Assertions.assertEquals("com.example.TierBanded",
+            r.getError().getNextStep().arguments().get("symbol"),
+            "pointed at the class the caller named: "
+                + r.getError().getNextStep().arguments());
+        org.junit.jupiter.api.Assertions.assertEquals(before, read(middle),
+            "a refusal changes nothing");
+    }
+
     @Test
     @DisplayName("a subclass carrying no distinction folds into its parent and its users repoint")
     void theSubclassIsFoldedIn() throws Exception {

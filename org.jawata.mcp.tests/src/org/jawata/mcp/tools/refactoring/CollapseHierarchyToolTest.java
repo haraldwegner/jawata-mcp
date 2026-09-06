@@ -114,6 +114,16 @@ class CollapseHierarchyToolTest {
             () -> assertTrue(String.valueOf(r.getError()).contains("inline kind=subclass"),
                 "the two rows partition on this precondition, so the refusal must hand the"
                     + " caller its sibling: " + r.getError()),
+            // D3a (S8b step 7): the sentence has always NAMED the sibling; this asserts it
+            // is also POINTED — an operation plus the address to run it at, which is what
+            // separates a next step from a suggestion.
+            () -> assertEquals("inline kind=subclass",
+                r.getError().getNextStep().operation(),
+                "the refusal must hand over the sibling as an OPERATION: " + r.getError()),
+            () -> assertEquals("com.example.TierLeaf",
+                r.getError().getNextStep().arguments().get("symbol"),
+                "and pointed at the class the caller named, so it is runnable as given: "
+                    + r.getError().getNextStep().arguments()),
             () -> assertTrue(read("TierLeaf.java").contains("class TierLeaf"),
                 "a refusal changes nothing"));
     }

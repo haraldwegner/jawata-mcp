@@ -167,6 +167,13 @@ class ReplaceTempWithQueryToolTest {
         String error = String.valueOf(r.getError());
         assertTrue(error.contains("Split Variable"),
             "and the refusal must name the step that comes first: " + error);
+        // D3a (S8b step 7): "the step that comes first" is now handed over as an operation
+        // with an address, not only as a Fowler name in a sentence.
+        assertEquals("data kind=split_variable", r.getError().getNextStep().operation(),
+            "the refusal must hand over the preceding step: " + error);
+        assertTrue(r.getError().getNextStep().arguments().containsKey("filePath"),
+            "pointed at the refused call's own address: "
+                + r.getError().getNextStep().arguments());
         assertEquals(before, read(), "nothing may change on a refusal");
     }
 

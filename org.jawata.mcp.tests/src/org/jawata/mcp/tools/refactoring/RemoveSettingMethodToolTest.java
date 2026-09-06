@@ -125,6 +125,15 @@ class RemoveSettingMethodToolTest {
         // has to go and find them, which is the work the tool just did.
         assertTrue(error.contains("SettingMethodDesk"),
             "and it must name where, so the caller can be routed rather than hunted: " + error);
+        // D3a (S8b step 7): this row carries NO next step, and the absence is asserted rather
+        // than left to be noticed. Its refusals report that the setter is STILL NEEDED — an
+        // outside caller assigns through it — which is a fact about the code that has to
+        // CHANGE, not a smaller operation someone can run. The written reason is the class
+        // javadoc of RemoveSettingMethodTool; if a successor is ever found, this assertion is
+        // what makes updating that paragraph unavoidable.
+        org.junit.jupiter.api.Assertions.assertNull(r.getError().getNextStep(),
+            "a pointer here would name an operation that does not address what was refused: "
+                + error);
         assertEquals(before, Files.readString(targets, StandardCharsets.UTF_8),
             "a refusal modifies nothing");
     }
