@@ -64,8 +64,14 @@ public final class OperationSurface {
      * and the reason this class exists rather than four lines inside a map insert.
      */
     public static void publish(Tool tool) {
+        // THE SELECTOR IS ASKED OF THE DOOR, never assumed. Eight doors select on `kind` and
+        // `hierarchy` on `direction`; a literal "kind" here is what made every address the
+        // product printed for that door's seven operations an instruction it then refuses.
+        // A tool that is not a front door publishes no kinds, so nothing selects among them
+        // and the value is never read — `kind` is the honest filler rather than a guess.
+        String discriminator = tool instanceof FrontDoor door ? door.discriminator() : "kind";
         OperationRegistry.theRegistry().register(tool.getName(), operationKindsOf(tool),
-            tool.isMechanical(), tool.isStructural(), tool.structuralKinds());
+            tool.isMechanical(), tool.isStructural(), tool.structuralKinds(), discriminator);
     }
 
     /**

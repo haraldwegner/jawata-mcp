@@ -99,6 +99,23 @@ public final class OperationRegistry {
     private final Set<String> mechanical = ConcurrentHashMap.newKeySet();
     private final Set<String> structural = ConcurrentHashMap.newKeySet();
 
+    /**
+     * tool name → THE PARAMETER THAT SELECTS ITS KINDS, as the door itself declares it.
+     *
+     * <p>The registry's KEY stays {@code "<tool> kind=<kind>"} for every door, because a key
+     * only has to be unique and a cure table already declares it that way. What varies is how
+     * a reader is told to CALL it: eight doors select on {@code kind} and {@code hierarchy}
+     * selects on {@code direction}, so rendering {@code "hierarchy kind=up"} produced an
+     * instruction the product itself refuses — measured across all seven of that door's
+     * operations. Holding the discriminator here is what lets {@link #invocationOf} spell the
+     * call the way the door will actually accept it.</p>
+     *
+     * <p>It arrives WITH the registration for the same reason the classification above does:
+     * a door that is retired takes its discriminator with it, and there is no second table to
+     * go stale.</p>
+     */
+    private final Map<String, String> discriminatorOf = new ConcurrentHashMap<>();
+
     /** The registry the application wires; tests may construct their own. */
     public static OperationRegistry theRegistry() {
         return DEFAULT;
@@ -118,7 +135,7 @@ public final class OperationRegistry {
      * registry over the same tools from tripping over itself.
      */
     public void register(String toolName, Collection<String> kinds) {
-        register(toolName, kinds, false, false, Set.of());
+        register(toolName, kinds, false, false, Set.of(), "kind");
     }
 
     /**
@@ -127,14 +144,22 @@ public final class OperationRegistry {
      * @param isMechanical    every operation of this tool preserves behaviour
      * @param isStructural    every operation of this tool changes a signature or hierarchy
      * @param structuralKinds the kinds that are structural when the tool as a whole is not
+     * @param discriminator   the parameter this tool selects its kinds on — {@code kind} for
+     *                        every door but {@code hierarchy}, which uses {@code direction}.
+     *                        It changes how {@link #invocationOf} SPELLS a call and nothing
+     *                        about the keys stored here; a tool publishing no kinds has
+     *                        nothing to select, so its value is never read
      */
     public void register(String toolName, Collection<String> kinds, boolean isMechanical,
-                         boolean isStructural, Set<String> structuralKinds) {
+                         boolean isStructural, Set<String> structuralKinds, String discriminator) {
         if (toolName == null || toolName.isBlank()) {
             return;
         }
         publish(toolName, toolName);
         classify(toolName, isMechanical, isStructural);
+        if (discriminator != null && !discriminator.isBlank()) {
+            discriminatorOf.put(toolName, discriminator);
+        }
         if (kinds == null) {
             return;
         }
@@ -244,14 +269,24 @@ public final class OperationRegistry {
      * name would be the confident wrong answer the class note warns about. An ambiguous
      * bare kind is likewise returned unchanged, because there is no single right answer
      * and the cure table should have declared the qualified form.</p>
+     *
+     * <p><b>IT SPELLS THE DOOR'S OWN SELECTOR, and until S8b step 6 it did not.</b> A key
+     * that already read {@code "<tool> kind=<kind>"} was returned untouched, which is right
+     * for eight doors and wrong for {@code hierarchy} — it selects on {@code direction}, so
+     * every address the product printed for its seven operations was an instruction the
+     * product refuses with {@code "direction is required"}. The key is unchanged; only the
+     * rendering asks {@link #discriminatorOf} how the door is actually called.</p>
      */
     public String invocationOf(String operation) {
         String tool = toolFor(operation);
         if (tool == null || tool.equals(operation)) {
             return operation;
         }
-        // Already qualified (the "<tool> kind=<kind>" key) — leave it alone.
-        return operation.contains(" kind=") ? operation : qualify(tool, operation);
+        // The stored key is always "<tool> kind=<kind>"; strip it back to the kind and
+        // re-spell it with the selector the door declared.
+        int marker = operation.indexOf(" kind=");
+        String kind = marker < 0 ? operation : operation.substring(marker + " kind=".length());
+        return tool + " " + discriminatorOf.getOrDefault(tool, "kind") + "=" + kind;
     }
 
     /** Empty it. For tests that need a registry with known contents. */

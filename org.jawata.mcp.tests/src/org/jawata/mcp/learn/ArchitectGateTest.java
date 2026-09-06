@@ -65,11 +65,11 @@ class ArchitectGateTest {
                 new org.jawata.mcp.tools.RefactorToPatternTool(() -> null,
                     new org.jawata.mcp.refactoring.RefactoringChangeCache()))) {
             registry.register(tool.getName(), tool.publishedKinds(), tool.isMechanical(),
-                tool.isStructural(), tool.structuralKinds());
+                tool.isStructural(), tool.structuralKinds(), "kind");
         }
-        registry.register("format", java.util.List.of(), false, false, java.util.Set.of());
+        registry.register("format", java.util.List.of(), false, false, java.util.Set.of(), "kind");
         registry.register("rename_symbol", java.util.List.of(), true, false,
-            java.util.Set.of());
+            java.util.Set.of(), "kind");
         return registry;
     }
 

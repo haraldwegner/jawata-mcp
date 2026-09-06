@@ -67,7 +67,7 @@ class EventTapTest {
         // test that exercises the tap has to wire the tool it names, exactly as the
         // application does at registration.
         org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
-            .register("rename_symbol", java.util.List.of(), true, false, java.util.Set.of());
+            .register("rename_symbol", java.util.List.of(), true, false, java.util.Set.of(), "kind");
         tap.onCall("s1", "rename_symbol", mapper.readTree("{}"),
             ToolResponse.success(Map.of("filesModified", List.of("A.java", "B.java"))), 0L);
         assertTrue(events.countByKind().containsKey(LearnerEvent.KIND_MECHANICAL_TOUCH));

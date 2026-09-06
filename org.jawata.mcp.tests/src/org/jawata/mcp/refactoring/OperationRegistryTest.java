@@ -134,16 +134,16 @@ class OperationRegistryTest {
     void theBorrowIsExact() {
         OperationRegistry registry = new OperationRegistry();
         registry.register("alpha_door", java.util.List.of("one", "two"), true, false,
-            java.util.Set.of("one"));
+            java.util.Set.of("one"), "kind");
         registry.register("beta_door", java.util.List.of("three"), false, true,
-            java.util.Set.of());
+            java.util.Set.of(), "kind");
         OperationRegistry.Snapshot taken = registry.snapshot();
 
         // PROOF OF LIFE, and then some damage worth undoing.
         assertTrue(registry.has("alpha_door"), "the fixture must be registered to begin with");
         registry.clear();
         registry.register("gamma_door", java.util.List.of("four"), false, false,
-            java.util.Set.of("four"));
+            java.util.Set.of("four"), "kind");
         assertFalse(registry.has("alpha_door"), "and the damage must be real");
 
         registry.restore(taken);

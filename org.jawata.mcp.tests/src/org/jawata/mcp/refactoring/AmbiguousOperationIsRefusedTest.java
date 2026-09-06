@@ -103,8 +103,8 @@ class AmbiguousOperationIsRefusedTest {
     void classificationTravelsWithRegistration() {
         OperationRegistry registry = new OperationRegistry();
         registry.register("move", List.of("class", "package", "method"),
-            /* mechanical */ true, /* structural */ false, Set.of("method"));
-        registry.register("find_quality_issue", List.of(), false, false, Set.of());
+            /* mechanical */ true, /* structural */ false, Set.of("method"), "kind");
+        registry.register("find_quality_issue", List.of(), false, false, Set.of(), "kind");
 
         assertTrue(registry.isMechanical("move"), "a refactoring preserves behaviour");
         assertTrue(registry.isStructural("move kind=method"),

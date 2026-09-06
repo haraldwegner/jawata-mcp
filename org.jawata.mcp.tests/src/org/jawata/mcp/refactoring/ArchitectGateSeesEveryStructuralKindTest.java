@@ -49,7 +49,7 @@ class ArchitectGateSeesEveryStructuralKindTest {
                 new InlineTool(() -> null, new RefactoringChangeCache()),
                 new MoveTool(() -> null, new RefactoringChangeCache()))) {
             registry.register(tool.getName(), tool.publishedKinds(), tool.isMechanical(),
-                tool.isStructural(), tool.structuralKinds());
+                tool.isStructural(), tool.structuralKinds(), "kind");
         }
         return registry;
     }
