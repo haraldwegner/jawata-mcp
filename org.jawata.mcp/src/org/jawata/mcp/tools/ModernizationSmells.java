@@ -106,7 +106,8 @@ public final class ModernizationSmells {
                 if (!raw.isSuccess() || !(raw.getData() instanceof Map<?, ?> data)) {
                     return raw;
                 }
-                return ToolResponse.success(asFindings(data, arguments), ResponseMeta.builder()
+                return ToolResponse.success(asFindings(service, data, arguments),
+                    ResponseMeta.builder()
                     .totalCount(countOf(data))
                     .returnedCount(countOf(data))
                     .build());
@@ -135,12 +136,13 @@ public final class ModernizationSmells {
             }
 
             @SuppressWarnings("unchecked")
-            private Map<String, Object> asFindings(Map<?, ?> data, JsonNode arguments) {
+            private Map<String, Object> asFindings(IJdtService service, Map<?, ?> data,
+                                                   JsonNode arguments) {
                 List<Map<String, Object>> findings = new ArrayList<>();
                 if (data.get("candidates") instanceof List<?> candidates) {
                     for (Object o : candidates) {
                         if (o instanceof Map<?, ?> c) {
-                            findings.add(asFinding((Map<String, Object>) c));
+                            findings.add(asFinding(service, (Map<String, Object>) c));
                         }
                     }
                 }
@@ -167,7 +169,8 @@ public final class ModernizationSmells {
                 return out;
             }
 
-            private Map<String, Object> asFinding(Map<String, Object> candidate) {
+            private Map<String, Object> asFinding(IJdtService service,
+                                                  Map<String, Object> candidate) {
                 String path = String.valueOf(candidate.get("filePath"));
                 Map<String, Object> finding = new LinkedHashMap<>();
                 finding.put("kind", kind);
@@ -177,7 +180,7 @@ public final class ModernizationSmells {
                 Object suggestion = candidate.get("suggestion");
                 finding.put("message",
                     (suggestion == null ? "" : suggestion + " ") + cure);
-                finding.put("symbol", typeNameOf(path));
+                finding.put("symbol", qualifiedTypeOf(service, path));
                 // The sketch of what it would become — the half a reader judges the
                 // suggestion by, and dropping it would make the finding weaker than the
                 // sweep it came from.
@@ -194,6 +197,38 @@ public final class ModernizationSmells {
              * derived rather than guessed — and it is the coarser answer, which is why
              * the line stays on the finding beside it.</p>
              */
+            /**
+             * The type name QUALIFIED BY ITS PACKAGE, read off the compilation unit.
+             *
+             * <p>The javadoc below used to end "there is no symbol to be had without
+             * re-analysing what the sweep already walked", and that was true of the
+             * TYPE. It is not true of the PACKAGE: the unit knows its own, so the
+             * qualified name costs one model lookup and no re-analysis. Without it the
+             * symbol was `PipelineTargets` — a name shared by every package that has
+             * one, which no door can resolve, so the cure this finding names could not
+             * be pointed at the thing it found.</p>
+             */
+            private String qualifiedTypeOf(IJdtService service, String path) {
+                String simple = typeNameOf(path);
+                if (simple == null || service == null) {
+                    return simple;
+                }
+                try {
+                    org.eclipse.jdt.core.ICompilationUnit unit =
+                        service.getCompilationUnit(java.nio.file.Path.of(path));
+                    if (unit == null || unit.getParent() == null) {
+                        return simple;
+                    }
+                    String pkg = unit.getParent().getElementName();
+                    return pkg == null || pkg.isBlank() ? simple : pkg + "." + simple;
+                } catch (RuntimeException e) {
+                    // A path the model cannot resolve degrades to the simple name, which
+                    // renders CONSIDER downstream and says the address was not usable —
+                    // rather than throwing inside a sweep over hundreds of files.
+                    return simple;
+                }
+            }
+
             private String typeNameOf(String path) {
                 if (path == null || path.isBlank()) {
                     return null;

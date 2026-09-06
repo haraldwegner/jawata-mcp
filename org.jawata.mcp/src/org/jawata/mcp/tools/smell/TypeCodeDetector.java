@@ -72,7 +72,9 @@ public final class TypeCodeDetector extends AbstractAstDetector {
                             "Class '" + name + "' has " + e.getValue() + " '" + prefix
                                 + "_*' type-code constants. Consider Replace Type Code with Class "
                                 + "(refactor_to_pattern kind=replace_type_code_with_class).",
-                            name));
+                            // OCP RELABELS THESE TRACES AND KEEPS THEIR SYMBOL, so this one
+                            // address serves two kinds: fixing it here is what fixed `ocp`.
+                            SmellAddress.qualifiedOr(SmellAddress.owner(node), name)));
                     });
                 return true;
             }

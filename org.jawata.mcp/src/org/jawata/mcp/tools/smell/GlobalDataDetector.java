@@ -97,13 +97,20 @@ public final class GlobalDataDetector extends AbstractAstDetector {
                         continue;
                     }
                     String name = f.getName().getIdentifier();
+                    // THE ADDRESS IS THE BINDING'S NAME, not the identifier. `counter` is
+                    // what a reader sees; `com.example.Targets#counter` is what a door can
+                    // be pointed at, and the cure this finding names is an operation that
+                    // has to be pointed somewhere. Null when the binding did not resolve —
+                    // the finding then carries no symbol, which is the honest absence.
+                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                        f.resolveBinding());
                     out.add(new Finding(
                         "global_data", filePath, line, -1, "warning",
                         "Static mutable state '" + name + "': " + reason
                             + ". A wrong value here has no single place to look for the"
                             + " write that caused it. Consider Encapsulate Variable —"
                             + " put it behind a function so the writers can be counted.",
-                        name));
+                        symbol == null ? name : symbol));
                 }
                 return true;
             }

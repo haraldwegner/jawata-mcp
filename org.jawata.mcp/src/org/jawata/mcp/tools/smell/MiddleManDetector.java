@@ -58,11 +58,17 @@ public final class MiddleManDetector extends AbstractAstDetector {
                 if (total >= MIN_METHODS && delegating * 100 >= thresholdPercent * total) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
+                    // THE ADDRESS IS THE BINDING'S QUALIFIED NAME. The identifier reads
+                    // fine in the sentence and is not an address — a simple name is shared
+                    // by every class that uses it, so nothing can look it up, and the cure
+                    // this finding names is an operation that must be pointed somewhere.
+                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                        node.resolveBinding());
                     out.add(new Finding(
                         "middle_man", filePath, line, -1, "warning",
                         "Class '" + name + "' delegates " + delegating + "/" + total + " methods to a "
                             + "field (>= " + thresholdPercent + "%). Consider Remove Middle Man.",
-                        name));
+                        symbol == null ? name : symbol));
                 }
                 return true;
             }

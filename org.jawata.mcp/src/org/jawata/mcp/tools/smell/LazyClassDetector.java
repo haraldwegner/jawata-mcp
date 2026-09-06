@@ -65,11 +65,17 @@ public final class LazyClassDetector extends AbstractAstDetector {
                 if (fanIn >= 0 && fanIn <= 1) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
+                    // THE ADDRESS IS THE BINDING'S QUALIFIED NAME. The identifier reads
+                    // fine in the sentence and is not an address — a simple name is shared
+                    // by every class that uses it, so nothing can look it up, and the cure
+                    // this finding names is an operation that must be pointed somewhere.
+                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                        node.resolveBinding());
                     out.add(new Finding(
                         "lazy_class", filePath, line, -1, "warning",
                         "Class '" + name + "' has <= " + threshold + " methods and low fan-in. "
                             + "Consider Inline Class.",
-                        name));
+                        symbol == null ? name : symbol));
                 }
                 return true;
             }

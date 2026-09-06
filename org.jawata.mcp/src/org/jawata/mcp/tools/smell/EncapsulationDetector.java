@@ -126,10 +126,16 @@ public final class EncapsulationDetector extends AbstractAstDetector {
                         || audit.pokeSetCount() < minimum) {
                         continue;
                     }
+                    // THE OWNER IS QUALIFIED. `Ticket#label` names a field in whichever
+                    // Ticket the reader happens to open; the cure is an operation and needs
+                    // the one the finding meant.
+                    String owner = org.jawata.mcp.models.CodeAddress.symbolOf(
+                        node.resolveBinding());
                     out.add(new Finding("encapsulation", filePath,
                         ast.getLineNumber(node.getName().getStartPosition()), -1, "warning",
                         message(node.getName().getIdentifier(), audit),
-                        node.getName().getIdentifier() + "#" + audit.field()));
+                        (owner == null ? node.getName().getIdentifier() : owner)
+                            + "#" + audit.field()));
                 }
             }
         });

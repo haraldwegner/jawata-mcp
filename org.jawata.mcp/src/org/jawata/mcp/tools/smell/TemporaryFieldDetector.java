@@ -89,7 +89,8 @@ public final class TemporaryFieldDetector extends AbstractAstDetector {
                             "temporary_field", filePath, fieldLine.get(field), -1, "warning",
                             "Field '" + field + "' is referenced by only one method ("
                                 + e.getValue().iterator().next() + "). Consider Extract Class.",
-                            field));
+                            SmellAddress.qualifiedOr(SmellAddress.owner(node), node.getName().getIdentifier())
+                                + "#" + field));
                     }
                 }
                 return true;

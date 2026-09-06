@@ -54,12 +54,18 @@ public final class GodClassDetector extends AbstractAstDetector {
                 if (fanIn >= FANIN_TRIGGER) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
+                    // THE ADDRESS IS THE BINDING'S QUALIFIED NAME. The identifier reads
+                    // fine in the sentence and is not an address — a simple name is shared
+                    // by every class that uses it, so nothing can look it up, and the cure
+                    // this finding names is an operation that must be pointed somewhere.
+                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                        node.resolveBinding());
                     out.add(new Finding(
                         "god_class", filePath, line, -1, "warning",
                         "Class '" + name + "' has " + members + " members (threshold " + threshold
                             + ") and high fan-in (" + fanIn + " referencing types >= " + FANIN_TRIGGER
                             + "). Consider Extract Class to split responsibilities.",
-                        name));
+                        symbol == null ? name : symbol));
                 }
                 return true;
             }

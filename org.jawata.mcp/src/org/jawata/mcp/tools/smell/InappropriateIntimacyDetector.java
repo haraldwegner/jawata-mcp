@@ -113,7 +113,10 @@ public final class InappropriateIntimacyDetector implements Detector {
             "inappropriate_intimacy", loc.filePath(), loc.line(), -1, "warning",
             "Class '" + simpleName(self) + "' and '" + simpleName(other) + "' access each other's "
                 + "fields (" + outward + " out, " + inward + " in). Consider Move Method/Field.",
-            simpleName(self));
+            // `self` is ALREADY qualified — simpleName() is for the SENTENCE, where a reader
+            // wants the short form. The address wants the long one, and it was here all
+            // along: the finding was throwing away the very thing a door needs.
+            self);
     }
 
     private void scan(CompilationUnit ast, String filePath,

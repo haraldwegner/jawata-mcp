@@ -102,6 +102,15 @@ public final class MutableDataDetector extends AbstractAstDetector {
                 if (leaks.size() < minimum) {
                     return true;
                 }
+                // THE OWNER IS THE BINDING'S QUALIFIED NAME. `MutableDataTargets#getItems`
+                // reads fine and is not an address: a simple type name is shared by every
+                // package that uses it, so nothing can look the member up. The cure this
+                // finding names is an operation, and an operation has to be pointed
+                // somewhere.
+                org.eclipse.jdt.core.dom.ITypeBinding owner = node.resolveBinding();
+                String qualified = owner == null ? null
+                    : org.jawata.mcp.models.CodeAddress.symbolOf(owner);
+                String prefix = qualified == null ? node.getName().getIdentifier() : qualified;
                 int i = 0;
                 for (Map.Entry<String, String> e : leaks.entrySet()) {
                     out.add(new Finding("mutable_data", filePath, lines.get(i++), -1, "warning",
@@ -111,7 +120,7 @@ public final class MutableDataDetector extends AbstractAstDetector {
                             + " object never finds out — there is no setter here to remove."
                             + " Consider Encapsulate Collection: return a read-only view and"
                             + " put the modifications on this class.",
-                        node.getName().getIdentifier() + "#" + e.getKey()));
+                        prefix + "#" + e.getKey()));
                 }
                 return true;
             }

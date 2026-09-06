@@ -40,6 +40,43 @@ public record CodeAddress(String filePath, int line, int column, String symbol) 
     }
 
     /**
+     * THE FULLY-QUALIFIED NAME OF A RESOLVED BINDING — the one renderer.
+     *
+     * <p>A detector knows exactly what it found: it is holding the binding. What it used
+     * to EMIT was the identifier — {@code items}, {@code carrier} — which reads fine in a
+     * message and is not an address: nothing can look it up, because a simple name is
+     * shared by every class that happens to use it. So a finding said "here is a fix" and
+     * carried nothing the fix could be pointed at.</p>
+     *
+     * <p>Returns {@code pkg.Type#member} for a field or method, {@code pkg.Type} for a
+     * type, and NULL when the binding did not resolve — which happens on a file whose
+     * imports do not, and is reported as the absence it is rather than papered over with
+     * the simple name. A caller that falls back to the simple name is choosing a value
+     * that reads like an address and is not one; where that choice is made, it is
+     * written down.</p>
+     */
+    public static String symbolOf(org.eclipse.jdt.core.dom.IBinding binding) {
+        if (binding instanceof org.eclipse.jdt.core.dom.ITypeBinding type) {
+            return type.getErasure() == null ? null : qualified(type.getErasure());
+        }
+        if (binding instanceof org.eclipse.jdt.core.dom.IVariableBinding variable) {
+            org.eclipse.jdt.core.dom.ITypeBinding owner = variable.getDeclaringClass();
+            return owner == null ? null : qualified(owner) + "#" + variable.getName();
+        }
+        if (binding instanceof org.eclipse.jdt.core.dom.IMethodBinding method) {
+            org.eclipse.jdt.core.dom.ITypeBinding owner = method.getDeclaringClass();
+            return owner == null ? null : qualified(owner) + "#" + method.getName();
+        }
+        return null;
+    }
+
+    /** A nested type is {@code Outer.Inner}; the resolver takes either spelling. */
+    private static String qualified(org.eclipse.jdt.core.dom.ITypeBinding type) {
+        String name = type.getQualifiedName();
+        return name == null || name.isBlank() ? type.getName() : name;
+    }
+
+    /**
      * Can a door be pointed at this?
      *
      * <p>Two forms answer yes, and they are the two every converted door publishes: a

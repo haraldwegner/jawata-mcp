@@ -44,12 +44,18 @@ public final class LongMethodDetector extends AbstractAstDetector {
                 if (loc > threshold || cc > CC_TRIGGER) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
+                    // THE ADDRESS IS THE BINDING'S QUALIFIED NAME. The identifier reads
+                    // fine in the sentence and is not an address — a simple name is shared
+                    // by every class that uses it, so nothing can look it up, and the cure
+                    // this finding names is an operation that must be pointed somewhere.
+                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                        node.resolveBinding());
                     out.add(new Finding(
                         "long_method", filePath, line, -1, "warning",
                         "Method '" + name + "' is " + loc + " LOC, cyclomatic complexity " + cc
                             + " (LOC threshold " + threshold + ", CC trigger " + CC_TRIGGER
                             + "). Consider Extract Method.",
-                        name));
+                        symbol == null ? name : symbol));
                 }
                 return true;
             }

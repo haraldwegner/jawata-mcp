@@ -68,7 +68,16 @@ public final class ShotgunSurgeryDetector extends AbstractAstDetector {
                         "Type '" + name + "' is referenced from " + spread + " distinct types (threshold "
                             + threshold + "); a change to it ripples widely. Consider Move Method/Field "
                             + "to gather the scattered responsibility." + CureCatalog.ocpHint(),
-                        name));
+                        // `type` is the resolved binding this finding was computed FROM —
+                        // its qualified name was in hand the whole time and the finding
+                        // emitted the identifier instead.
+                        SmellAddress.qualifiedOr(
+                            // `type` here is the MODEL type, not a binding — and the
+                            // separator is chosen, not defaulted: getFullyQualifiedName()
+                            // spells a nested type Outer$Inner, and row 54 of this sprint
+                            // lost a whole migration to that mismatch. The resolver takes
+                            // the dotted form.
+                            type.getFullyQualifiedName('.'), name)));
                 }
                 return true;
             }

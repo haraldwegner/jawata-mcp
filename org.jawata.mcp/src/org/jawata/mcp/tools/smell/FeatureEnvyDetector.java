@@ -102,7 +102,10 @@ public final class FeatureEnvyDetector extends AbstractAstDetector {
                         "Method '" + name + "' accesses " + simpleName(enviedType) + " members "
                             + enviedCount + " times vs " + ownCount[0] + " of its own. Consider Move "
                             + "Method to " + simpleName(enviedType) + ".",
-                        name));
+                        // ownType is the declaring class's qualified name, resolved at the
+                        // top of this visit. The identifier alone names a method that could
+                        // be in any class; `move kind=method` has to be told which.
+                        ownType + "#" + name));
                 }
                 return true;
             }

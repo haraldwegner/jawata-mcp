@@ -50,7 +50,7 @@ public final class SwitchStatementsDetector extends AbstractAstDetector {
                         "switch_statements", filePath, line, -1, "warning",
                         "Switch on a type code with " + cases + " cases (threshold " + threshold
                             + "). Consider Replace Conditional with Polymorphism.",
-                        enclosingMethod(node)));
+                        SmellAddress.qualifiedOr(SmellAddress.enclosingSymbol(node), enclosingMethod(node))));
                 }
                 return true;
             }
