@@ -218,20 +218,81 @@ class CureTierTest {
     }
 
     /**
-     * THE DEFERRED WIDENING, asserted absent with its delivery condition.
+     * THE DEFERRED WIDENING, still deferred — and it is NOT what moved this number.
      *
-     * <p>The model says a cure is ORDERED STEPS; every route the table holds
-     * today has at most one, so a steps list would be a field nothing reads.
-     * This pins the current shape so the first multi-step cure turns it red and
-     * the widening is a conscious act instead of a drive-by.</p>
+     * <p>This pinned TWO components until 2026-09-06, with a delivery condition naming
+     * "the first cure needing an ORDERED second step". A third component arrived and it
+     * is a DISCRIMINATOR, not a step, so the assertion went red for a reason its own
+     * text did not name. Bumping the number and leaving the sentence would have retired
+     * a deferral nobody has met, which is why the condition is restated rather than
+     * quietly dropped: a cure is still ONE step, and the day one needs two ordered steps
+     * {@code recipe} becomes a list and the tier derivation is updated with it.</p>
      */
     @Test
-    @DisplayName("a route is one step until a cure needs two")
+    @DisplayName("a route is still one step; the third component is a discriminator")
     void aRouteIsOneStepUntilACureNeedsTwo() {
-        assertEquals(2, CureCatalog.Cure.class.getRecordComponents().length,
-            "Cure is (recipe, operation) — one step per route. DELIVERY CONDITION:"
-                + " the first cure needing an ORDERED second step replaces `recipe`"
-                + " with a steps list and updates the tier derivation with it. Until"
-                + " then a list field would be a field nothing reads");
+        assertEquals(3, CureCatalog.Cure.class.getRecordComponents().length,
+            "Cure is (recipe, operation, discriminator) — still ONE step per route."
+                + " DELIVERY CONDITION, unchanged and unmet: the first cure needing an"
+                + " ORDERED second step replaces `recipe` with a steps list and updates"
+                + " the tier derivation with it");
+        assertEquals("discriminator",
+            CureCatalog.Cure.class.getRecordComponents()[2].getName(),
+            "and the third component is the sentence that tells a cure from its"
+                + " neighbours — if it ever becomes a steps list, the condition above"
+                + " has been met and this test is the place that says so");
+    }
+
+    /**
+     * INVARIANT 3, driven through a PLANTED table — the only way it can fail.
+     *
+     * <p>The shipped table satisfies every invariant, so a check run only against it is
+     * unfalsifiable: one that had rotted would look exactly like one that held. These
+     * plant a table that breaks it, and a table that does not.</p>
+     */
+    @Test
+    @DisplayName("two runnable cures with nothing to tell them apart do not load")
+    void twoUndiscriminatedRunnableCuresRefuseToLoad() {
+        java.util.Map<String, java.util.List<CureCatalog.Cure>> planted = java.util.Map.of(
+            "planted_smell", java.util.List.of(
+                new CureCatalog.Cure("extract kind=method", null),
+                new CureCatalog.Cure("inline kind=method", null)));
+
+        IllegalStateException refused = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalStateException.class, () -> CureCatalog.validate(planted),
+            "a smell offering two runnable cures and no way to choose between them leaves"
+                + " an agent guessing, which is what the ranked list exists to prevent");
+        assertTrue(refused.getMessage().contains("planted_smell"),
+            "the refusal must name the KIND, or a table with four bad rows is a scavenger"
+                + " hunt: " + refused.getMessage());
+        assertTrue(refused.getMessage().contains("extract kind=method")
+                && refused.getMessage().contains("inline kind=method"),
+            "and BOTH offending cures, because every offender is collected before the"
+                + " throw — a first-wins check makes four bad rows take four builds and"
+                + " each one look like a new defect: " + refused.getMessage());
+    }
+
+    @Test
+    @DisplayName("the control: two runnable cures that CAN be told apart load fine")
+    void twoDiscriminatedRunnableCuresAreAccepted() {
+        // Without this the case above would pass just as well against a check that
+        // refused every multi-cure kind — which is a different product, not an invariant.
+        java.util.Map<String, java.util.List<CureCatalog.Cure>> planted = java.util.Map.of(
+            "planted_smell", java.util.List.of(
+                new CureCatalog.Cure("extract kind=method", null, "when the run of"
+                    + " statements has a name you can give it"),
+                new CureCatalog.Cure("inline kind=method", null, "when the method's body"
+                    + " is as clear as its name")));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+            () -> CureCatalog.validate(planted),
+            "a discriminator on each is exactly what the invariant asks for");
+
+        // AND A SINGLE runnable cure needs none: there is nothing to tell it apart FROM,
+        // and demanding a sentence there would be demanding prose for its own sake. This
+        // is what keeps the two-argument convenience constructor honest rather than lax.
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+            () -> CureCatalog.validate(java.util.Map.of("solo",
+                java.util.List.of(new CureCatalog.Cure("extract kind=method", null)))),
+            "one runnable cure has no neighbour to be distinguished from");
     }
 }

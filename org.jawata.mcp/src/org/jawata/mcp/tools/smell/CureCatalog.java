@@ -60,16 +60,63 @@ public final class CureCatalog {
 
     /**
      * One declared cure: the plan kind that performs it (or null when nothing
-     * automates it), and the catalogue key its design lives under.
+     * automates it), the catalogue key its design lives under, and the
+     * DISCRIMINATOR — the sentence that tells this cure from the others declared
+     * for the same smell.
+     *
+     * <p>The discriminator exists because the verdict stopped being a function of
+     * how MANY cures a smell has. Under the old rule a second runnable cure demoted
+     * the smell from "run this" to "consider these", so the product instructed less
+     * the more it could do. Harald overturned it: <i>"You have 3 alternatives. Pick
+     * the most appropriate one and perform."</i> An agent can only pick if each
+     * alternative says what tells it from its neighbours, ANCHORED TO A FACT THE
+     * FINDING CARRIES — otherwise the ranking is a list and the choice is a guess.</p>
+     *
+     * <p><b>Null is legal and means "this smell declares only one runnable cure".</b>
+     * There is nothing to tell apart, so demanding a sentence would be demanding
+     * prose for its own sake. INVARIANT 3 in {@link #validate} is what keeps that
+     * honest: the moment a kind declares a SECOND runnable cure, every one of them
+     * must carry a discriminator or the table does not load.</p>
      */
-    public record Cure(String recipe, String operation) {
+    public record Cure(String recipe, String operation, String discriminator) {
+
+        /**
+         * The two-argument form, for the ~40 single-cure rows that need no
+         * discriminator.
+         *
+         * <p>It is a convenience and not a loophole, and the difference is INVARIANT
+         * 3: a row written this way is fine alone and REFUSES TO LOAD the moment a
+         * second runnable cure joins its kind. Widening all forty call sites instead
+         * would have put a literal {@code null} on every row that legitimately has
+         * nothing to say.</p>
+         */
+        public Cure(String recipe, String operation) {
+            this(recipe, operation, null);
+        }
     }
 
-    /** The three designs that close a modification axis — OCP's answer, shared by its traces. */
+    /**
+     * The three designs that close a modification axis — OCP's answer, shared by its traces.
+     *
+     * <p>Each carries the sentence that tells it from the other two. They are not ranked
+     * against each other here and must not be: which one fits is a property of the code at
+     * the address the finding names, so the agent reads the branching and picks. Before the
+     * tier reversal this list made its three smells say "consider" — three good answers
+     * counted as doubt.</p>
+     */
     private static final List<Cure> OPEN_THE_AXIS = List.of(
-        new Cure("refactor_to_state", "design:state"),
-        new Cure("refactor_to_command_dispatcher", "design:command"),
-        new Cure("form_template_method", "design:template-method"));
+        new Cure("refactor_to_state", "design:state",
+            "when the branching turns on a FIELD holding one of a fixed set of values, and"
+                + " the object changes that value as it runs — the axis is the object's own"
+                + " lifecycle, so each value becomes a class that knows what comes next"),
+        new Cure("refactor_to_command_dispatcher", "design:command",
+            "when the branches are NAMED ACTIONS a caller asks for, and a new one arrives as"
+                + " a new request rather than as a new state — the axis is the request set,"
+                + " so each action becomes a command the dispatcher looks up"),
+        new Cure("form_template_method", "design:template-method",
+            "when the branches share ONE SKELETON and differ only at named steps inside it —"
+                + " the axis is the steps, so the skeleton is written once and each variant"
+                + " supplies its own steps"));
 
     private static final Map<String, List<Cure>> BY_KIND = byKind();
 
@@ -194,12 +241,29 @@ public final class CureCatalog {
         //
         // lazy_class gets TWO routes and therefore ADVISE, which is the honest tier. A class
         // that has stopped earning its name is folded into its only user when it stands
-        // beside one and into its parent when it stands under one, and which of those it is
-        // is a fact about the hierarchy that the finding does not carry. Offering one as an
-        // instruction would send half the readers at the wrong operation.
+        // beside one and into its parent when it stands under one.
+        //
+        // THAT SENTENCE USED TO END "...which the finding does not carry. Offering one as an
+        // instruction would send half the readers at the wrong operation." Both halves were
+        // true and the CONCLUSION no longer follows. The finding does not carry the
+        // hierarchy, so nothing here can pick — but nothing here has to: the verdict is now
+        // RUN with BOTH cures ranked, each carrying the sentence that tells it apart, and the
+        // agent reads the type the finding names and picks. What would send half the readers
+        // wrong is offering one cure; offering two undescribed ones is the other half of the
+        // same mistake, and it is what INVARIANT 3 now refuses.
+        //
+        // A NOTE ON "anchored to a fact the finding carries" (v4 P4), because this row is
+        // where that clause meets its edge: the discriminating fact here is READABLE AT THE
+        // ADDRESS the finding carries, not present as a field on it. That is the honest
+        // reading — a discriminator's job is to tell the agent what to go and look at — and
+        // it is recorded rather than silently widened.
         m.put("lazy_class", List.of(
-            new Cure("inline kind=class", null),
-            new Cure("inline kind=subclass", null)));
+            new Cure("inline kind=class", null,
+                "when the class stands BESIDE its user — a collaborator with no supertype of"
+                    + " its own; it folds into the caller that holds it"),
+            new Cure("inline kind=subclass", null,
+                "when it stands UNDER a parent and overrides nothing; it folds into that"
+                    + " parent, and inline kind=class would refuse it")));
         // ONE route, so PERFORM, and it is the clearest instruction in this table after
         // remove_dead_code: the finding says a class does nothing but forward, and the cure
         // removes exactly the forwarding it counted. No catalogue design — Remove Middle Man
@@ -292,6 +356,32 @@ public final class CureCatalog {
         // INVARIANT 1, checkable here because it needs nothing outside the table:
         // the pair (kind, operation) is the ENTRY IDENTITY — declared at most once,
         // or two rows claim one route set.
+        validate(m);
+        // INVARIANT 2 — every recipe names a published operation — moved to
+        // validateAgainst. See its javadoc for why it cannot live here.
+        return Map.copyOf(m);
+    }
+
+    /**
+     * THE INVARIANTS THE TABLE CAN CHECK ABOUT ITSELF, before anything else exists.
+     *
+     * <p>Extracted from {@code byKind()} so the checks have a name and a home; the
+     * one that needs the operation registry stays in {@link #validateAgainst},
+     * because at class-load that registry is legitimately empty.</p>
+     *
+     * <p><b>The extraction emitted a TAB-indented body into this space-indented
+     * file</b> — the defect Stage 3 recorded against {@code extract} and which is
+     * still open. Re-indented by hand here; the finding is not new and is not
+     * silently absorbed.</p>
+     *
+     * <p>PACKAGE-VISIBLE rather than private, and that is the seam the invariants are
+     * tested through. Run only against the shipped table they are unfalsifiable: the
+     * table satisfies them, so a check that had rotted would look exactly like a check
+     * that held. A test in this package plants a table that BREAKS one and requires the
+     * throw — which is the same argument {@code CureTier}'s registry parameter makes for
+     * the derivation next door.</p>
+     */
+    static void validate(Map<String, List<Cure>> m) {
         for (Map.Entry<String, List<Cure>> e : m.entrySet()) {
             java.util.Set<String> ops = new java.util.HashSet<>();
             for (Cure c : e.getValue()) {
@@ -304,9 +394,35 @@ public final class CureCatalog {
                 }
             }
         }
-        // INVARIANT 2 — every recipe names a published operation — moved to
-        // validateAgainst. See its javadoc for why it cannot live here.
-        return Map.copyOf(m);
+
+        // INVARIANT 3: a smell with TWO OR MORE runnable cures must be able to tell
+        // them apart. The verdict no longer falls back to "consider" when there are
+        // several — it stays RUN and hands over a ranked list — so the sentence that
+        // distinguishes each one is now load-bearing rather than decorative. A list
+        // of equally-described alternatives is exactly the "pick one" the ruling
+        // refuses to leave to chance.
+        //
+        // EVERY offender is collected before throwing, deliberately. A first-wins
+        // throw makes a table with four bad rows take four builds to fix, and each
+        // run would look like a new defect rather than the same one.
+        java.util.List<String> undiscriminated = new java.util.ArrayList<>();
+        for (Map.Entry<String, List<Cure>> e : m.entrySet()) {
+            List<Cure> runnable = e.getValue().stream()
+                .filter(c -> c.recipe() != null).toList();
+            if (runnable.size() < 2) {
+                continue;
+            }
+            for (Cure c : runnable) {
+                if (c.discriminator() == null || c.discriminator().isBlank()) {
+                    undiscriminated.add(e.getKey() + " -> " + c.recipe());
+                }
+            }
+        }
+        if (!undiscriminated.isEmpty()) {
+            throw new IllegalStateException("CureCatalog: these kinds declare more than"
+                + " one runnable cure and cannot tell them apart, so an agent asked to"
+                + " pick the most appropriate one would be guessing: " + undiscriminated);
+        }
     }
 
     /**
