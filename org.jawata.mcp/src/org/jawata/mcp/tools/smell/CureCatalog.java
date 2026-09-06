@@ -484,7 +484,10 @@ public final class CureCatalog {
             + " rule: it moves a leading run of assignments to fields the parent declares,"
             + " which is a fact about who declares what and not about text repeating.",
         "hierarchy kind=replace_type_code_with_subclasses",
-        "ROUTABLE AND DELIBERATELY NOT ROUTED. `type_code` reports 10 findings here and every"
+        "ROUTABLE AND DELIBERATELY NOT ROUTED. `type_code` reports 10 findings over 466 files"
+            + " here — the POPULATION is stated with the count because this fixture project"
+            + " grows monotonically and a round-2 audit measured 9 over 457 files, which was"
+            + " equally true when it was taken. Every one of the ten messages names"
             + " message names the SIBLING cure — refactor_to_pattern"
             + " kind=replace_type_code_with_class, which shipped in Stage 3 and is that"
             + " smell's ONE runnable route, so CureTier derives PERFORM. Adding this row as a"

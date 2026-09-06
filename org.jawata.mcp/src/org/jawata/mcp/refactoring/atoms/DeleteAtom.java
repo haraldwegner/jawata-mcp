@@ -131,6 +131,12 @@ public final class DeleteAtom {
         // What this CANNOT see is a caller deleting a unit because it wants a NESTED type
         // gone — the unit then has one top-level type and looks innocent. That intent lives
         // with the caller, so collapse_hierarchy keeps its own nested-class refusal.
+        //
+        // SO ONLY HALF THE PROMISE IS A RULE. A round-2 audit measured the other half and it
+        // is still a habit: the nested guard occurs in ONE file across the bundle, and
+        // `inline kind=class` and `inline kind=subclass` have none. That is pre-existing and
+        // out of this repair's scope, but "the fourth caller inherits it" was written about
+        // the whole check and is true only of the multi-top-level half.
         for (IJavaElement element : elements) {
             if (element instanceof org.eclipse.jdt.core.ICompilationUnit unit
                     && unit.getTypes().length > 1) {

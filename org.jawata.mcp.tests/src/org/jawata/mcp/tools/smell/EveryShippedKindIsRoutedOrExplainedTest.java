@@ -26,7 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * explained, and nothing said so; the shortfall was found by a review reading the table,
  * which is the wrong instrument for a fact a test can hold.</p>
  *
- * <p>Scoped to the front doors THIS SPRINT HAS REACHED, which at C4 is FIVE:
+ * <p><b>THE COUNTS IN THE PROSE BELOW WENT STALE AGAIN AT C7, and a round-2 audit listed all
+ * three.</b> They are corrected here, and the correction is worth less than the sentence that
+ * predicted it: this file already says "a number in prose beside a list it describes has
+ * nothing holding it to the list", and then went stale a fourth time in the paragraph making
+ * that point. The number that IS held is the {@code assertEquals} on {@code examined}. The
+ * cure is deriving the door list from the registered doors rather than typing it, which is
+ * Stage 9's M6c — every stale count in this file is one more argument for it.</p>
+ *
+ * <p>Scoped to the front doors THIS SPRINT HAS REACHED, which at C7 is SIX:
  * {@code apply_cleanup} from Stage 3, {@code extract}, {@code inline} and {@code move} from
  * Stage 6, and {@code change_method_signature} from Stage 4. It was scoped to the first
  * alone until C6, and an audit was right that the silence therefore said nothing about
@@ -46,10 +54,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EveryShippedKindIsRoutedOrExplainedTest {
 
     /**
-     * Kinds that shipped BEFORE Sprint 28d-rescue on the FOUR doors this guard has widened
-     * to — three at C6 ({@code extract}, {@code inline}, {@code move}) and one at C4
-     * ({@code change_method_signature}). Exempt by NAME so the exemption is readable and
-     * shortenable; anything new on those doors is guarded from the day it lands.
+     * Kinds that shipped BEFORE Sprint 28d-rescue on the FIVE doors this guard has widened
+     * to — three at C6 ({@code extract}, {@code inline}, {@code move}), one at C4
+     * ({@code change_method_signature}) and one at C7 ({@code hierarchy}). Exempt by NAME so
+     * the exemption is readable and shortenable; anything new on those doors is guarded from
+     * the day it lands.
      *
      * <p><b>This sentence said "three doors at C6" until a C4 audit read it against the list
      * below.</b> That is the THIRD time a count in this file went stale, and the other two
@@ -132,15 +141,15 @@ class EveryShippedKindIsRoutedOrExplainedTest {
                 }
             }
         }
-        // AN EXACT COUNT, not a floor. It was `examined >= 30`, which cannot see this door
-        // leave: the five doors publish 43 kinds and this one contributes 11, so any way of
-        // dropping it lands well above 30 and the floor still passes — the precise
-        // re-narrowing the widening was for. MEASURED at 38, by substituting a duplicate of
-        // an existing door for this one and running the class; the arithmetic for deleting
-        // the entry outright is 32, which is stated as arithmetic rather than as a
-        // measurement because that is not the mutation that was run. A floor cannot see a
-        // door go; a count can, and the sibling guard in FrontDoorDescriptionTest already
-        // used one.
+        // AN EXACT COUNT, not a floor. It was `examined >= 30`, which cannot see a door
+        // leave: any single door's departure still lands above 30, so the floor passes — the
+        // precise re-narrowing the widening was for. A floor cannot see a door go; a count
+        // can, and the sibling guard in FrontDoorDescriptionTest already used one.
+        //
+        // 50 = the six doors' published kinds, and both halves are MEASURED rather than
+        // arithmetic: a C7 round-2 audit removed HierarchyTool from the list above and the
+        // failure read `Examined: 43`, so this door contributes exactly 7 — up, down and the
+        // five Stage 7 rows — against the 43 the previous five published.
         org.junit.jupiter.api.Assertions.assertEquals(50, examined,
             "PROOF OF LIFE: the six doors must publish their kinds here, or this loop runs"
                 + " over nothing and passes. A door removed from the list above, or a kind"

@@ -19,10 +19,17 @@ import java.util.List;
  * later under {@code -Xdoclint}.</p>
  *
  * <p>This exists as its own class because the fault belongs to DELETION, not to any one
- * operation. {@link org.jawata.mcp.refactoring.atoms.DeleteAtom} has exactly two production
- * callers — {@code InlineClassTool} (row 17) and {@code RemoveSubclassTool} (row 38) — and
- * when this was first written inside one of them, the other had the same defect and nothing
- * said so. A third caller now inherits the answer instead of rediscovering the question.</p>
+ * operation. {@link org.jawata.mcp.refactoring.atoms.DeleteAtom} has THREE production callers
+ * — {@code InlineClassTool} (row 17), {@code RemoveSubclassTool} (row 38) and
+ * {@code CollapseHierarchyTool} (row 4) — and when this was first written inside one of them,
+ * the second had the same defect and nothing said so. The third inherited the answer instead
+ * of rediscovering the question, which is the whole argument for the class.</p>
+ *
+ * <p><b>This paragraph said "exactly two" until a C7 round-2 audit read it, and contradicted
+ * itself two lines later by mentioning a third.</b> It is the same shape as the stale claim
+ * that same audit round was repairing in {@code DeleteAtom} — a count about the world, written
+ * in a comment, with nothing that fails when it stops being true. Fixed here by the same
+ * measurement that fixed the other: {@code get_call_hierarchy} on {@code DeleteAtom#delete}.</p>
  *
  * <h2>Unwrapped, not deleted</h2>
  *

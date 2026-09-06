@@ -82,7 +82,12 @@ class DeleteAtomTest {
         assertTrue(String.valueOf(checked.messages()).contains("PairedSurvivor"),
             "and the refusal must NAME the bystander it is protecting, or a caller cannot tell"
                 + " what the objection is: " + checked.messages());
-        assertTrue(Files.exists(paired), "and nothing was deleted");
+        // NO "and the file still exists" ASSERTION HERE, deliberately. `delete` ends at
+        // engine.propose — it STAGES and never performs — so the file is on disk down every
+        // path, refusal or not, and asserting it would pass with this whole check deleted.
+        // A round-2 audit found that assertion in the first version of this test: an
+        // assertion that cannot fail, inside the repair whose subject is assertions that
+        // cannot fail. The three above carry the claim.
     }
 
     @Test
