@@ -11,8 +11,15 @@ import java.util.function.Supplier;
  *
  * <p>Sprint 28d-rescue, S8b step 8. Four different files held a hand-written list of these
  * doors: the application's registrations, the cure table's mirror, the honesty test's map and
- * the routing guard's set. Every one of them was a copy of the same fact, and by C8 the
- * memberships were <b>10 · 8 · 6 · 8</b> against a true population of NINE.</p>
+ * the routing guard's set. Every one of them was a copy of the same fact, and no two agreed.</p>
+ *
+ * <p><b>A QUARTET OF COUNTS STOOD HERE AND IS GONE, which a C8b audit is owed for.</b> It read
+ * "10 · 8 · 6 · 8 against a true population of NINE" and the last figure was the only
+ * reproducible one. Re-derived at C8 from the files themselves: the honesty test's map held
+ * TEN, the routing guard's set SIX, and the value 8 described none of the four. The sentence
+ * was a hand-written count of hand-written lists — the very shape this class exists to remove,
+ * in the paragraph explaining why. What survives is the part that needs no arithmetic and is
+ * checkable at any commit: they disagreed, and the disagreement is below.</p>
  *
  * <h2>The errors were COMPLEMENTARY, which is what made them one defect rather than four
  * omissions</h2>

@@ -16,26 +16,17 @@ public record Finding(
     int column,
     String severity,
     String message,
-    String symbol,
-    java.util.List<org.jawata.mcp.models.NextStep> cures
+    String symbol
 ) {
-    /**
-     * The seven-argument form every detector uses — cures are attached LATER.
-     *
-     * <p>A detector's job is to find the thing, not to know what cures it: the cure
-     * table is one place and {@code AbstractAstDetector.withCures} is the one site that
-     * consults it. So a detector constructs without cures and the base fills them in,
-     * which is also why widening this record touched no detector.</p>
-     */
-    public Finding(String kind, String filePath, int line, int column, String severity,
-                   String message, String symbol) {
-        this(kind, filePath, line, column, severity, message, symbol, java.util.List.of());
-    }
-
-    /** The same finding with its resolved next steps attached. */
-    public Finding withCures(java.util.List<org.jawata.mcp.models.NextStep> steps) {
-        return new Finding(kind, filePath, line, column, severity, message, symbol, steps);
-    }
+    // THE `cures` COMPONENT IS GONE, and its absence is the deliverable rather than a
+    // simplification. S8b step 4 added it so a finding could carry executable steps, and
+    // filled it from `AbstractAstDetector` — which meant the three detectors that do not
+    // extend that class carried an empty list all the way to the caller, silently. C8b
+    // measured that through the built product. The steps are now attached ON THE WIRE ROW,
+    // once, on the dispatch path every detector reaches ({@link
+    // org.jawata.mcp.tools.smell.Cures}), so there is no slot here for a producer to leave
+    // unfilled. A detector's job is to find the thing, not to know what cures it, and this
+    // record is now exactly that job.
 
     /** A warning-severity finding at a file/line with no column or symbol. */
     public static Finding warning(String kind, String filePath, int line, String message) {

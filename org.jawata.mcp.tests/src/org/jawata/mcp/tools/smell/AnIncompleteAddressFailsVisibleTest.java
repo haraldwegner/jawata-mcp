@@ -28,6 +28,18 @@ class AnIncompleteAddressFailsVisibleTest {
     /** switch_statements has one runnable cure whose step is a pattern kind, so it RUNs. */
     private static final String RUNNABLE_KIND = "switch_statements";
 
+    /**
+     * The operations these two kinds' cures name, supplied EXPLICITLY.
+     *
+     * <p>{@code CureTier.derive(kind)} consults the PROCESS registry, which a unit-test JVM
+     * leaves empty because no tool has registered — so every kind would answer CONSIDER for a
+     * reason about plumbing and every assertion below would pass while measuring nothing.
+     * This file's sibling {@code CureTierTest} records the same trap twice, for {@code cqs}
+     * and for {@code lazy_class}.</p>
+     */
+    private static final java.util.List<String> REGISTERED = java.util.List.of(
+        "replace_conditional_with_polymorphism", "inline kind=class", "inline kind=subclass");
+
     private static String hintFor(Finding f) {
         return CureLookup.forKind(org.jawata.mcp.knowledge.CatalogueAddresses.of(null),
             f.kind()).hint(CodeAddress.of(f));
@@ -48,8 +60,58 @@ class AnIncompleteAddressFailsVisibleTest {
         assertTrue(hint.contains(RUNNABLE_KIND + " detector's gap"),
             () -> "and it must name WHOSE gap it is — the detector emits the address, so"
                 + " a reader who wants it fixed knows where to look: " + hint);
-        assertTrue(bare.cures().isEmpty(),
-            "and nothing executable is offered, because there is nothing to point at");
+        // AND NOTHING EXECUTABLE IS OFFERED. This used to read `bare.cures().isEmpty()` on a
+        // Finding built by the convenience constructor — empty BY CONSTRUCTION, so it passed
+        // with the whole join deleted. A C8b audit found it, and it was the only test step 4
+        // added. It now calls the join itself, which is the thing that could be wrong.
+        assertTrue(Cures.stepsFor(RUNNABLE_KIND, CodeAddress.of(bare), REGISTERED).isEmpty(),
+            "the cure is RUNNABLE and the address is not, so the join must offer nothing"
+                + " rather than an instruction that fails at the door");
+    }
+
+    @Test
+    @DisplayName("a line with no column is NOT a complete position, and offers nothing")
+    void aLineWithoutAColumnIsNotAPosition() {
+        // THE SHAPE 37 OF THE 40 DETECTOR EMISSION SITES PRODUCE, and the one no test
+        // constructed until a C8b audit said so. `complete()` used to ask only for a line,
+        // so a finding like this was called complete, rendered RUN, and the door answered
+        // INVALID_COORDINATES — the fail-open the method exists to prevent.
+        //
+        // The symbol is deliberately BARE: a qualified one satisfies complete()'s first
+        // branch and this assertion would then be about that branch instead of this one.
+        Finding lineOnly =
+            new Finding(RUNNABLE_KIND, "/tmp/A.java", 12, -1, "warning", "m", "items");
+        CodeAddress address = CodeAddress.of(lineOnly);
+        assertEquals(11, address.line(), "the line still converts");
+        assertEquals(-1, address.column(), "and the absent column stays absent");
+        assertFalse(address.complete(),
+            "half a position is not a position: every door that takes one demands both");
+        assertFalse(address.arguments().containsKey("line"),
+            "so neither coordinate is handed over — a lone line would make the door take"
+                + " the positional path and then refuse");
+        assertTrue(Cures.stepsFor(RUNNABLE_KIND, address, REGISTERED).isEmpty(),
+            "and the join offers nothing, for the same reason the bare symbol does");
+    }
+
+    @Test
+    @DisplayName("the join renders one step per runnable cure, with its discriminator")
+    void theJoinRendersTheCuresThemselves() {
+        // THE POSITIVE HALF, which nothing asserted at all: every test above proves the join
+        // is SILENT where it should be, and silence is also what a deleted join produces.
+        // `lazy_class` is used because it declares TWO runnable cures, so this also pins that
+        // the ranked list arrives whole rather than as its first element.
+        CodeAddress address = CodeAddress.of(new Finding(
+            "lazy_class", "/tmp/A.java", 3, 7, "warning", "m", "com.foo.Bare"));
+        java.util.List<org.jawata.mcp.models.NextStep> steps =
+            Cures.stepsFor("lazy_class", address, REGISTERED);
+        assertEquals(2, steps.size(),
+            () -> "lazy_class ships two fixes and both are handed over: " + steps);
+        assertEquals(address, steps.get(0).address(),
+            "each step points at the address the finding carried, not at a fresh one");
+        for (org.jawata.mcp.models.NextStep step : steps) {
+            assertFalse(step.rendered().isEmpty(),
+                () -> "and each renders to the wire shape a caller reads: " + step);
+        }
     }
 
     @Test

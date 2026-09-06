@@ -102,7 +102,7 @@ public abstract class AbstractAstDetector implements Detector {
      * <p>A kind that declares no cure gets nothing appended — {@code hint()}
      * returns blank there, and blank is a contract other branches read.</p>
      */
-    private List<Finding> withCures(List<Finding> found) {
+    private List<Finding> withCureProse(List<Finding> found) {
         if (rendersOwnCure() || found.isEmpty()) {
             return found;
         }
@@ -120,37 +120,19 @@ public abstract class AbstractAstDetector implements Detector {
             org.jawata.mcp.models.CodeAddress address =
                 org.jawata.mcp.models.CodeAddress.of(f);
             String cure = cures.hint(address);
-            Finding rendered = cure.isBlank() ? f
+            out.add(cure.isBlank() ? f
                 : new Finding(f.kind(), f.filePath(), f.line(), f.column(), f.severity(),
-                    f.message() + cure, f.symbol());
-            out.add(rendered.withCures(stepsFor(f.kind(), address)));
+                    f.message() + cure, f.symbol()));
         }
         return out;
     }
 
-    /**
-     * The EXECUTABLE cures for one finding — empty unless the answer is RUN and the
-     * finding can actually be the thing it is run from.
-     *
-     * <p>Both halves matter and they fail differently. A kind whose answer is CONSIDER has
-     * nothing to run, which is an honest empty. A kind whose answer is RUN but whose
-     * finding carries no usable address ALSO gets an empty list — and the rendered
-     * sentence says so and names the detector, so the absence is visible rather than
-     * looking like the first case.</p>
-     */
-    private static List<org.jawata.mcp.models.NextStep> stepsFor(
-            String kind, org.jawata.mcp.models.CodeAddress address) {
-        CureTier.Derivation tier = CureTier.derive(kind);
-        if (tier.tier() != CureTier.Tier.RUN || !address.complete()) {
-            return List.of();
-        }
-        List<org.jawata.mcp.models.NextStep> steps = new ArrayList<>();
-        for (CureCatalog.Cure c : tier.runnable()) {
-            steps.add(new org.jawata.mcp.models.NextStep(
-                CureLookup.Cures.invocationOf(c.recipe()), address, c.discriminator()));
-        }
-        return List.copyOf(steps);
-    }
+    // THE EXECUTABLE HALF USED TO BE HERE TOO, as `stepsFor`, and it moved to
+    // {@link Cures} at C8b. The two halves look alike and are not: the PROSE needs the
+    // knowledge STORE, which only a detector holds, so it stays here; the STEPS need
+    // nothing but the cure table and the finding's own address, so they can be — and now
+    // are — computed once on the dispatch path, where a detector that does not extend this
+    // class cannot miss them. Three did.
 
     @Override
     public final String kind() {
@@ -267,10 +249,14 @@ public abstract class AbstractAstDetector implements Detector {
 
         Map<String, Object> scan = buildScanReport(listed, examined, unreadable, unparseable, bindingsDead, degraded,
 				missed);
-        // Stage 12: the resolved cure is appended HERE, once, for every detector —
-        // so a reader of any cure-declaring kind gets what a reader of `ocp` gets.
-        List<Finding> answered = withCures(findings);
-
+        // THE CURE JOIN IS NOT HERE ANY MORE, and where it went is the point. It ran on this
+        // base class — "once, for every detector" said the comment, and that was true of
+        // every detector THAT EXTENDS THIS ONE. Three do not, so they reached a caller with
+        // no runnable step and nothing said so; measured through the built product at C8b,
+        // and one of the three was the smell S8b step 9 had just added. It now runs once on
+        // the dispatch path, where participation is not a detector's to decline. See
+        // {@link Cures}.
+        List<Finding> answered = withCureProse(findings);
         return Findings.toResponse(answered, scan,
             steeringFor(answered.size(), examined, missed, degraded));
     }

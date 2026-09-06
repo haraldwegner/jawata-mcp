@@ -791,16 +791,19 @@ public final class CureCatalog {
         // NOT taken, because taking them would change a smell's TIER, and that is a product
         // decision rather than a transcription. Both are spelled out below.
         //
-        // THE `kind=` IN THESE KEYS IS A LIE ABOUT THIS DOOR, and it is spelled that way on
-        // purpose so the keys match the registry. `OperationRegistry.qualify` hard-codes
-        // "<tool> kind=<kind>" and its javadoc says that is "what a reader types" — but
-        // `hierarchy` selects on `direction`, and a call passing `kind` is refused with
-        // "direction is required". So every qualified address for this door renders an
-        // instruction that does not run. The defect PREDATES Stage 7 (it was already true of
-        // up/down) and Stage 7 multiplies it from two operations to seven. Not fixed here:
-        // `qualify` takes a tool NAME rather than the tool, so teaching it the discriminator
-        // means changing the operation-naming surface, which Stage 9's M6c/M10 is already
-        // deriving. Recorded where a reader meets the address rather than left to be found.
+        // THE `kind=` IN THESE KEYS IS THE REGISTRY'S SPELLING, NOT THE DOOR'S, and that is
+        // deliberate: `OperationRegistry.qualify` keys every operation as "<tool> kind=<kind>"
+        // so a cure's key matches what the registry holds, while `hierarchy` DISPATCHES on
+        // `direction`.
+        //
+        // THE SECOND HALF OF THIS PARAGRAPH WAS TRUE AND IS NOT — corrected at C8b, where an
+        // audit found it still standing. It said every qualified address for this door
+        // "renders an instruction that does not run", and that it was "not fixed here". S8b
+        // step 6 fixed it: the door's own `discriminator()` travels with its registration, so
+        // `invocationOf` RENDERS `direction=` for this door while the KEY above stays
+        // `kind=`. `EveryRenderedInvocationIsAcceptedByItsDoorTest` drives every door with
+        // what the product renders and fails on any door that would refuse it — it failed on
+        // exactly these seven before step 6 and passes now.
         "hierarchy kind=pull_up_constructor_body",
         "no detector reports a subclass constructor assigning fields its SUPERCLASS declares."
             + " The nearest is `duplicated_code`, which compares bodies and would name the"

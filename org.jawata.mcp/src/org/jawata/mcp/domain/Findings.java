@@ -44,22 +44,13 @@ public final class Findings {
             if (f.severity() != null) row.put("severity", f.severity());
             row.put("message", f.message());
             if (f.symbol() != null) row.put("symbol", f.symbol());
-            // THE EXECUTABLE HALF. The message already carries the cure as prose, and it
-            // stays — a human reads it. This is the same answer in a shape a caller can
-            // run without parsing English back into a call, which is what "callable
-            // straight from the finding" has to mean to mean anything. ABSENT when empty,
-            // never an empty array: an absent key is the wire's own "nothing here", and a
-            // caller that tests for the key gets the truth either way.
-            if (!f.cures().isEmpty()) {
-                List<Map<String, Object>> steps = new ArrayList<>();
-                for (org.jawata.mcp.models.NextStep step : f.cures()) {
-                    // ONE renderer, on the step itself. S8b step 7 put a next step on the
-                    // refusal channel too, and a hand-built map here would have become the
-                    // second copy of a published shape.
-                    steps.add(step.rendered());
-                }
-                row.put("cures", steps);
-            }
+            // THE EXECUTABLE HALF IS NOT RENDERED HERE, and it used to be. It read
+            // `f.cures()`, which only `AbstractAstDetector` ever filled — so this branch was
+            // dead for every detector that does not extend that class, and those detectors
+            // reached a caller with the cure as prose only. The steps are attached to the ROW
+            // instead, on the dispatch path, by {@link org.jawata.mcp.tools.smell.Cures};
+            // the key and its absent-when-empty contract are unchanged, and a caller cannot
+            // tell which producer filled it, which is the point.
             rows.add(row);
         }
         Map<String, Object> data = new LinkedHashMap<>();

@@ -64,11 +64,19 @@ import org.junit.jupiter.api.Test;
 class EveryShippedKindIsRoutedOrExplainedTest {
 
     /**
-     * Kinds that shipped BEFORE Sprint 28d-rescue on the FIVE doors this guard has widened
-     * to — three at C6 ({@code extract}, {@code inline}, {@code move}), one at C4
-     * ({@code change_method_signature}) and one at C7 ({@code hierarchy}). Exempt by NAME so
-     * the exemption is readable and shortenable; anything new on those doors is guarded from
-     * the day it lands.
+     * Kinds that shipped BEFORE Sprint 28d-rescue, exempt by NAME so the exemption is readable
+     * and shortenable; anything new on any door is guarded from the day it lands.
+     *
+     * <p><b>THE DOOR COUNT THAT STOOD HERE IS GONE, and its removal is the fix rather than a
+     * better number.</b> It read "the FIVE doors this guard has widened to" and named them —
+     * true when written, false the moment S8b step 8 derived the population and this list
+     * gained {@code generate}'s seven kinds and three of {@code refactor_to_pattern}'s. A C8b
+     * audit found it, and noted that it was the FIFTH stale count in the file that documents
+     * the previous four, written in the commit whose own javadoc declares the drift over.
+     * There is nothing to keep in step now: the guard reads
+     * {@link org.jawata.mcp.tools.RefactoringDoors#all}, so no prose here has to say how many
+     * doors there are, and the one number that remains — {@code examined == 78} — is asserted
+     * against the derived population rather than described beside it.</p>
      *
      * <p><b>This sentence said "three doors at C6" until a C4 audit read it against the list
      * below.</b> That is the THIRD time a count in this file went stale, and the other two

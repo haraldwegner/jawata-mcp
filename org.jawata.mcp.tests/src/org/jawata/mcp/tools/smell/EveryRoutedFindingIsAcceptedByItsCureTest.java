@@ -95,14 +95,36 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
     @DisplayName("every routed kind's findings carry an address a door could resolve")
     void everyRoutedKindEmitsAUsableAddress() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        // BOTH registries. The Fowler smells are AbstractAstDetectors; the older quality
-        // kinds are TOOLS adapted to the Detector interface, and they live in a catalog of
-        // their own. A routed kind can come from either, so a test that consulted one
-        // would report "no detector" for kinds that have one.
+        // THE CALLER'S OWN PATH, not a catalog assembled here. This used to build the two
+        // registries by hand — the Fowler smells and the tool-adapted quality kinds — which
+        // was a copy of what `FindQualityIssueTool` does in its own constructor, and it
+        // ALSO meant the test drove `Detector.detect` directly and so never saw the cure
+        // join the dispatch applies. A C8b audit found the consequence: three detectors ship
+        // no executable cure and this gate passed them. Going through the tool is what makes
+        // "what the caller receives" the thing being measured.
+        org.jawata.mcp.tools.FindQualityIssueTool door =
+            new org.jawata.mcp.tools.FindQualityIssueTool(() -> service);
         DetectorCatalog catalog =
             org.jawata.mcp.tools.QualityDetectors.builtins(() -> service);
         FowlerDetectors.registerInto(catalog, () -> null);
         List<String> registry = registryOfRealDoors();
+
+        // THE PROCESS REGISTRY IS POPULATED FOR THE DURATION, because the product's is.
+        // `Cures.attach` derives the tier against the PROCESS registry — correctly, that is
+        // what a running server has — and a unit-test JVM leaves it empty because no tool has
+        // registered, so every kind would answer CONSIDER for a reason about plumbing and the
+        // `cures` assertion below would fail for all of them. Publishing the real doors
+        // through the real publish path is what makes this test's process resemble the one
+        // the claim is about. Borrowed and given back, the way the sibling door gate does it.
+        org.jawata.mcp.refactoring.OperationRegistry operations =
+            org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
+        org.jawata.mcp.refactoring.OperationRegistry.Snapshot borrowed = operations.snapshot();
+        operations.clear();
+        for (org.jawata.mcp.tools.AbstractTool published
+                : org.jawata.mcp.tools.RefactoringDoors.all(
+                    () -> service, new RefactoringChangeCache())) {
+            org.jawata.mcp.tools.OperationSurface.publish(published);
+        }
         ObjectMapper mapper = new ObjectMapper();
 
         List<String> routed = new ArrayList<>();
@@ -119,6 +141,7 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
 
         Map<String, String> silent = new LinkedHashMap<>();
         Map<String, String> unusable = new LinkedHashMap<>();
+        try {
         for (String kind : routed) {
             Detector detector = catalog.get(kind).orElse(null);
             if (detector == null) {
@@ -128,8 +151,9 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
                 continue;
             }
             ObjectNode args = mapper.createObjectNode();
+            args.put("kind", kind);
             args.put("includeTests", true);
-            ToolResponse r = detector.detect(service, args);
+            ToolResponse r = door.execute(args);
             if (!r.isSuccess()) {
                 silent.put(kind, "detector failed: " + r.getError());
                 continue;
@@ -141,13 +165,33 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
             }
             for (Map<String, Object> row : rows) {
                 CodeAddress address = addressOf(row);
-                boolean named = address.symbol() != null && address.symbol().contains(".");
-                if (!address.complete() || !named) {
+                if (address.symbol() == null || !address.symbol().contains(".")) {
+                    // The `complete()` term that used to sit beside this is GONE, and a C8b
+                    // audit is why: a qualified symbol satisfies complete()'s FIRST branch,
+                    // so `!complete() || !named` could never fire on the complete() half.
+                    // Two conditions, one of them unreachable, reading as two checks.
                     unusable.putIfAbsent(kind, "symbol=" + row.get("symbol")
                         + " filePath=" + row.get("filePath") + " line=" + row.get("line"));
                     break;
                 }
+                // AND THE PRODUCT MUST HAVE RENDERED THE STEPS, not merely carried an address
+                // they could be built from. This is the clause the test was NAMED for and did
+                // not check: it rebuilt the address from the row's raw fields, so a detector
+                // that emitted no `cures` at all passed. Three did — including the smell step
+                // 9 itself added — and only the built artifact said so.
+                if (!(row.get("cures") instanceof List<?> cures) || cures.isEmpty()) {
+                    unusable.putIfAbsent(kind, "the finding carries a usable address and NO"
+                        + " cures array, so the cure reached the caller as prose only:"
+                        + " symbol=" + row.get("symbol"));
+                    break;
+                }
             }
+        }
+        } finally {
+            // GIVEN BACK whatever happened, including a failing assertion above — a test that
+            // left the singleton holding nine doors would silently change what every later
+            // class in this shard derives.
+            operations.restore(borrowed);
         }
 
         assertTrue(unusable.isEmpty(),

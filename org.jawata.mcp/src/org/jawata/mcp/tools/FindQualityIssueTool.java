@@ -353,7 +353,12 @@ public class FindQualityIssueTool extends AbstractTool {
                 "kind '" + kind + "' is not in family '" + family + "'. That family: " + catalog.kinds(family));
         }
         return catalog.get(kind)
-            .map(detector -> filterExcludedPaths(detector.detect(service, arguments), arguments))
+            // THE CURE JOIN, on the dispatch path. It used to live on AbstractAstDetector, so
+            // the three detectors that do NOT extend it reached a caller with no runnable
+            // step — measured through the built product at C8b, and one of the three was the
+            // smell S8b step 9 had just added. Here no detector can be outside it.
+            .map(detector -> org.jawata.mcp.tools.smell.Cures.attach(
+                filterExcludedPaths(detector.detect(service, arguments), arguments)))
             // Sprint 28 (v3.6.4): a single kind honours summary/limit/offset too. It used to
             // return the detector's response untouched, so `summary:true` here was accepted
             // and dropped without a word. capByDefault=false keeps the default shape: paging
@@ -645,7 +650,9 @@ public class FindQualityIssueTool extends AbstractTool {
             if (cancelRequested != null && cancelRequested.get()) {
                 break;
             }
-            ToolResponse r = catalog.get(k).map(d -> d.detect(service, arguments)).orElse(null);
+            ToolResponse r = catalog.get(k)
+                .map(d -> org.jawata.mcp.tools.smell.Cures.attach(d.detect(service, arguments)))
+                .orElse(null);
             // Sprint 28 C4 (audit finding 7) — this read data.get("findings")
             // ONLY. Six of the analyzers return their list under a different
             // key (unusedItems, violations, issues, cycles, largeClasses), so
