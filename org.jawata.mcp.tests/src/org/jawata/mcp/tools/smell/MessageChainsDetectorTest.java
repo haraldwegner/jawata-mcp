@@ -53,13 +53,18 @@ class MessageChainsDetectorTest {
     @DisplayName("flags the length-4 chain, not the length-2 one")
     void flags_long_chain() {
         Set<String> hits = symbols(null);
-        assertTrue(hits.contains("longChain"), "length-4 chain should be flagged: " + hits);
-        assertFalse(hits.contains("shortChain"), "length-2 chain must NOT be flagged: " + hits);
+        // QUALIFIED AT S8b STEP 9, NEGATIVES INCLUDED — `hits` is a Set, so a bare name left
+        // here makes assertFalse trivially true. Each literal is the address this run printed.
+        assertTrue(hits.contains("com.example.MessageChainTargets#longChain"),
+            "length-4 chain should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.MessageChainTargets#shortChain"),
+            "length-2 chain must NOT be flagged: " + hits);
     }
 
     @Test
     @DisplayName("raising the threshold spares the length-4 chain")
     void threshold_respected() {
-        assertFalse(symbols(5).contains("longChain"), "length-4 chain clears a threshold of 5");
+        assertFalse(symbols(5).contains("com.example.MessageChainTargets#longChain"),
+            "length-4 chain clears a threshold of 5");
     }
 }

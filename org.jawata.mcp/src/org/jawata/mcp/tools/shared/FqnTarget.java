@@ -82,8 +82,21 @@ public final class FqnTarget {
         if (name == null) {
             return Optional.empty();
         }
-        // An explicit position wins — the caller asked for that exact spot.
-        if (text(args, "filePath") != null) {
+        // AN EXPLICIT POSITION WINS — the caller asked for that exact spot. A FILE PATH ON
+        // ITS OWN IS NOT A POSITION, and reading it as one is what this guard used to do.
+        //
+        // Measured by S8b step 9's INVARIANT A, which drives every routed cure's door with
+        // the address its own finding carries: a finding holds a qualified symbol AND the
+        // file it was found in, and 37 of the 40 detector emission sites carry no column. So
+        // the door saw a filePath, skipped the name resolution it was handed, took the
+        // positional path with line=-1/column=-1, and answered INVALID_COORDINATES — on
+        // SIXTEEN routed cures at once. The name was in the arguments the whole time.
+        //
+        // The published sentence on every one of these tools names all three together
+        // ("Explicit filePath/line/column win when both are given"), so this makes the code
+        // agree with what the schema already promised rather than changing the contract.
+        if (text(args, "filePath") != null && number(args, "line") >= 0
+            && number(args, "column") >= 0) {
             return Optional.empty();
         }
 
@@ -144,5 +157,17 @@ public final class FqnTarget {
             return null;
         }
         return node.asText();
+    }
+
+    /**
+     * A coordinate the caller actually supplied, or {@code -1}.
+     *
+     * <p>Absent, null and non-numeric all answer {@code -1} — the domain's own "not
+     * applicable" — so the position guard above asks one question ("is this a real
+     * coordinate") instead of three.</p>
+     */
+    private static int number(ObjectNode args, String field) {
+        JsonNode node = args.get(field);
+        return node == null || !node.isNumber() ? -1 : node.asInt();
     }
 }

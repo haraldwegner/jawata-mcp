@@ -39,7 +39,13 @@ class CureTierTest {
     @DisplayName("the tier is derived per kind: one runnable route performs, everything else advises")
     void theTierIsDerivedPerKind() {
         // PERFORM — exactly one runnable route, its step published.
-        for (String kind : List.of("switch_statements", "type_code", "singleton", "long_method")) {
+        //
+        // `type_code` and `long_method` LEFT THIS GROUP AT S8b STEP 9, and where they went is
+        // the point. Both gained routes the table had withheld — type_code three, long_method
+        // five — and under the old rule that would have DEMOTED them from an instruction to a
+        // suggestion. They are asserted below with the other multi-route kinds instead, so
+        // this loop keeps meaning "exactly one" rather than quietly becoming "at least one".
+        for (String kind : List.of("switch_statements", "singleton")) {
             CureTier.Derivation d = CureTier.derive(kind);
             assertEquals(CureTier.Tier.RUN, d.tier(),
                 () -> kind + " declares exactly one runnable route whose step is a"
@@ -53,7 +59,13 @@ class CureTierTest {
         // They asserted CONSIDER until 2026-09-06, on the rule that several routes mean
         // nothing mechanical chooses. Nothing mechanical does choose; the AGENT does, and
         // withholding the alternatives was never what made that safe.
-        for (String kind : List.of("ocp", "divergent_change", "shotgun_surgery")) {
+        // `divergent_change` LEFT THIS LOOP AT STEP 9's ROUTING TABLE, and the reason is the
+        // trap this file records twice below rather than a change of verdict: it gained row 64
+        // (`extract kind=split_phase`), which is not a pattern kind, and in a unit-test JVM no
+        // tool has registered — so the one-argument derive() answers by the
+        // STEP-NOT-REGISTERED rule and says nothing about the count rule these assertions
+        // exist to prove is gone. Its own assertion, with a registry, is below.
+        for (String kind : List.of("ocp", "shotgun_surgery")) {
             CureTier.Derivation d = CureTier.derive(kind);
             assertEquals(CureTier.Tier.RUN, d.tier(),
                 () -> kind + " declares THREE runnable routes, and three good answers are"
@@ -83,6 +95,58 @@ class CureTierTest {
             () -> "two shipped fixes for one smell must both be offered: " + lazy);
         assertEquals(2, lazy.runnable().size(), () -> "both of them: " + lazy);
 
+        // THE TWO KINDS STEP 9 MOVED HERE, and they are the reversal's largest payoff.
+        //
+        // `long_method` reports 276 findings on this repository and offered ONE answer. Four
+        // more were built and withheld — and the unrouted table said why, in as many words:
+        // "long_method already has one route, which the tier model turns to ADVISE the moment
+        // a second is added, so bolting this on would cost that kind its runnable
+        // instruction." That was a true reading of the old rule. Step 3 reversed the rule and
+        // the sentence became false, so the routes went in.
+        CureTier.Derivation longMethod = CureTier.derive("long_method",
+            List.of("compose_method", "apply_cleanup kind=guard_clauses",
+                "refactor_to_pattern kind=decompose_conditional",
+                "extract kind=temp_to_query", "extract kind=function_to_command"));
+        assertEquals(CureTier.Tier.RUN, longMethod.tier(),
+            () -> "five shipped fixes for one smell is coverage, not doubt: " + longMethod);
+        assertEquals(5, longMethod.runnable().size(),
+            () -> "and every one is handed over, ranked: " + longMethod);
+
+        // RUN WITH FOUR — divergent_change, the churn trace that also has a SEQUENTIAL cure.
+        // Three OCP designs plus row 64 Split Phase, which is the only refactoring the spec's
+        // "Finds it" column gives this smell and the reason ocpHint() now renders from `ocp`.
+        CureTier.Derivation divergent = CureTier.derive("divergent_change",
+            List.of("refactor_to_state", "refactor_to_command_dispatcher",
+                "form_template_method", "extract kind=split_phase"));
+        assertEquals(CureTier.Tier.RUN, divergent.tier(),
+            () -> "four shipped fixes for one smell is coverage, not doubt: " + divergent);
+        assertEquals(4, divergent.runnable().size(),
+            () -> "and every one is handed over, ranked: " + divergent);
+        assertEquals("extract kind=split_phase",
+            divergent.runnable().get(3).recipe(),
+            () -> "the three designs reshape a class and Split Phase reshapes a method, so it"
+                + " is offered LAST — a ranking a reader acts on top-down: " + divergent);
+
+        CureTier.Derivation typeCode = CureTier.derive("type_code",
+            List.of("replace_type_code_with_class",
+                "hierarchy kind=replace_type_code_with_subclasses",
+                "data kind=replace_primitive"));
+        assertEquals(CureTier.Tier.RUN, typeCode.tier(),
+            () -> "a type code has three different right answers depending on what the code"
+                + " is FOR, and the agent reads which: " + typeCode);
+        assertEquals(3, typeCode.runnable().size(), () -> "all three: " + typeCode);
+
+        // EVERY multi-route kind must discriminate, or a ranked list is a guess. Asserted
+        // over both new arrivals rather than trusting INVARIANT 3 to have caught it — that
+        // invariant runs at LOAD time on the shipped table, and this says the same thing
+        // about the derivation a reader actually receives.
+        for (CureTier.Derivation multi : List.of(longMethod, typeCode)) {
+            for (CureCatalog.Cure c : multi.runnable()) {
+                assertNotNull(c.discriminator(),
+                    () -> "each cure must say what tells it from its neighbours: " + c);
+            }
+        }
+
         // ADVISE — cures declared, none runnable (design-only).
         //
         // `cqs` IS NOT ONE OF THESE, and used to be listed here under this comment. It
@@ -99,37 +163,29 @@ class CureTierTest {
                     + " so nothing can be PERFORMED: " + d);
         }
 
-        // `cqs` WITH ITS STEP REGISTERED — PERFORM, and this is the claim the shipped product
-        // makes about it. CureCatalog's unrouted entry for row 61 tells a future route merge
-        // that wiring a SECOND cure here would cost this smell its runnable instruction, and
-        // that sentence is only worth reading if the first half is true. It was asserted
-        // nowhere until a C4 audit pointed out that the only test naming cqs asserted ADVISE,
-        // for a reason that does not apply to it.
-        CureTier.Derivation performed =
-            CureTier.derive("cqs", List.of("apply_cleanup kind=return_modified_value"));
+        // `cqs` WITH BOTH STEPS REGISTERED — RUN, with two, and this row is where the whole
+        // reversal can be read in one place.
+        //
+        // The paragraph that stood here said the two-route case "means adding the second cure
+        // to the catalogue, which is exactly the change the route merge has not made", and
+        // explained that the merge would not make it because a second runnable route would
+        // turn this smell's instruction back into a suggestion. Every word was a true reading
+        // of the old rule. S8b step 3 reversed the rule and step 9 made the change: row 61
+        // (`change_method_signature kind=separate_query_from_modifier`) shipped at C4 and is
+        // now declared beside row 60.
+        //
+        // So the "trade" this file recorded across three checkpoints was never a trade
+        // between two goods. It was the cost of a rule, and the rule is gone.
+        CureTier.Derivation performed = CureTier.derive("cqs",
+            List.of("apply_cleanup kind=return_modified_value",
+                "change_method_signature kind=separate_query_from_modifier"));
         assertEquals(CureTier.Tier.RUN, performed.tier(),
-            () -> "cqs declares ONE runnable route, so with that step registered the answer"
-                + " is run it: " + performed);
+            () -> "cqs declares TWO runnable routes and both are shipped fixes — under the"
+                + " old count rule that was a demotion: " + performed);
+        assertEquals(2, performed.runnable().size(),
+            () -> "and both are handed over, ranked: " + performed);
         assertEquals("apply_cleanup kind=return_modified_value", performed.recipe(),
-            () -> "and RUN must name the step: " + performed);
-        assertEquals(1, performed.runnable().size(),
-            () -> "cqs declares one cure, so the ranked list holds exactly it: " + performed);
-
-        // THE OTHER HALF OF ROW 61's RECORDED TRADE — that a SECOND runnable route would turn
-        // this instruction back into a suggestion — is NOT asserted here, and the reason is
-        // worth writing down because the first attempt to assert it was wrong.
-        //
-        // It passed a two-element list to the overload above, expecting ADVISE. The overload's
-        // second argument is the REGISTRY of registered steps, not the routes: routes come
-        // from the catalog, which declares ONE cure for cqs whatever registry it is asked
-        // about. So that call still derived PERFORM, and the run said so — "one runnable
-        // route, every step registered".
-        //
-        // Constructing the two-route case for cqs means adding the second cure to the
-        // catalogue, which is exactly the change the route merge has not made. The RULE it
-        // would hit is already exercised, three assertions above, by the kinds that really do
-        // declare several runnable routes. So the trade is real, its two halves are covered
-        // by different tests, and neither is a claim nobody checks.
+            () -> "the first is the LOCAL fix, which is the commoner case: " + performed);
 
         // ADVISE — zero cures is a NORMAL state, not a defect.
         CureTier.Derivation none = CureTier.derive("no_such_smell");

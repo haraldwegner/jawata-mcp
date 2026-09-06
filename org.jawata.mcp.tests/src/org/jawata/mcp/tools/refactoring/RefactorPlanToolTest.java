@@ -125,7 +125,14 @@ class RefactorPlanToolTest {
     @Test
     @DisplayName("every OCP-cure recipe kind is a runnable single-step plan (detect -> cure -> execute)")
     void ocpCureKinds_areRunnablePlans() {
-        for (String kind : org.jawata.mcp.tools.smell.CureCatalog.recipesFor("divergent_change")) {
+        // READS `ocp`, NOT `divergent_change`, and the move is the same correction ocpHint()
+        // took at S8b step 9. This method's own name says its subject is the OCP cure kinds,
+        // and it asserts every step dispatches to `refactor_to_pattern`; it read
+        // divergent_change only because all three churn rows shared one constant, so either
+        // key gave the same three. Step 9 gave divergent_change a fourth cure — row 64,
+        // `extract kind=split_phase` — which is a real route and not a plan kind, so this
+        // loop began asserting that an `extract` operation is a `refactor_to_pattern` plan.
+        for (String kind : org.jawata.mcp.tools.smell.CureCatalog.recipesFor("ocp")) {
             ObjectNode a = plan(kind);
             a.put("line", 5);
             a.put("column", 6);

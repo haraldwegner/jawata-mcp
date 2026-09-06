@@ -173,6 +173,62 @@ public final class FqnResolver {
                     typeFqn, jp.getElementName(), e.getMessage());
             }
         }
+        return secondaryType(typeFqn, projects);
+    }
+
+    /**
+     * A TOP-LEVEL TYPE THAT DOES NOT OWN ITS FILE — which {@code findType} cannot return.
+     *
+     * <p>{@link IJavaProject#findType(String)} resolves a source type through the classpath's
+     * name environment, and that maps {@code com.foo.Bar} to {@code com/foo/Bar.java}. Java
+     * allows any number of package-private top-level types beside the public one, and every
+     * one of them has a perfectly ordinary fully-qualified name that this lookup answers
+     * "not found" for.</p>
+     *
+     * <p><b>Measured, and it is why this exists:</b> S8b step 9's INVARIANT A drove each
+     * routed cure's door with its own finding's address and three smells failed identically —
+     * {@code com.example.Rejecter#op} declared in {@code LspTargets.java},
+     * {@code com.example.IspClientAbc#use} in {@code IspTargets.java}. The detector had
+     * resolved the binding and rendered the correct name; the resolver could not take it, and
+     * the product's own answer was <i>"no type … was found, and nothing similarly named
+     * either"</i> about a type sitting in the workspace.</p>
+     *
+     * <p>The scan is the package fragment's own compilation units rather than a search index:
+     * it is exact, it needs no index to be warm, and it runs only after {@code findType} has
+     * already failed — so the common case pays nothing.</p>
+     */
+    private static Optional<IType> secondaryType(String typeFqn, List<IJavaProject> projects) {
+        int lastDot = typeFqn.lastIndexOf('.');
+        if (lastDot <= 0) {
+            return Optional.empty();   // the default package has no fragment to scan
+        }
+        String packageName = typeFqn.substring(0, lastDot);
+        String simpleName = typeFqn.substring(lastDot + 1);
+        for (IJavaProject jp : projects) {
+            try {
+                for (org.eclipse.jdt.core.IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
+                    if (root.getKind() != org.eclipse.jdt.core.IPackageFragmentRoot.K_SOURCE) {
+                        continue;
+                    }
+                    org.eclipse.jdt.core.IPackageFragment fragment =
+                        root.getPackageFragment(packageName);
+                    if (fragment == null || !fragment.exists()) {
+                        continue;
+                    }
+                    for (org.eclipse.jdt.core.ICompilationUnit unit
+                            : fragment.getCompilationUnits()) {
+                        for (IType candidate : unit.getTypes()) {
+                            if (simpleName.equals(candidate.getElementName())) {
+                                return Optional.of(candidate);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("secondary-type scan for '{}' in project '{}' failed: {}",
+                    typeFqn, jp.getElementName(), e.getMessage());
+            }
+        }
         return Optional.empty();
     }
 

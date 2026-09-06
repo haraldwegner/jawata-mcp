@@ -58,16 +58,24 @@ class LongParameterListDetectorTest {
     @DisplayName("flags 5-param method + constructor, not the 2-param method")
     void flags_long_lists() {
         Set<String> hits = symbols(null);
-        assertTrue(hits.contains("tooMany"), "5-param method should be flagged: " + hits);
-        assertTrue(hits.contains("LongParameterListTargets"),
+        // QUALIFIED AT S8b STEP 9, and the NEGATIVES with them. `hits` is a Set and
+        // Set.contains is exact equality, so a bare name left behind here would make
+        // assertFalse trivially true — the vacuity step 5 shipped in four files by
+        // qualifying only the positives. Each literal is the address this run printed.
+        assertTrue(hits.contains("com.example.LongParameterListTargets#tooMany"),
+            "5-param method should be flagged: " + hits);
+        assertTrue(hits.contains(
+                "com.example.LongParameterListTargets#LongParameterListTargets"),
             "5-arg constructor should be flagged (symbol = type name): " + hits);
-        assertFalse(hits.contains("ok"), "2-param method must NOT be flagged: " + hits);
+        assertFalse(hits.contains("com.example.LongParameterListTargets#ok"),
+            "2-param method must NOT be flagged: " + hits);
     }
 
     @Test
     @DisplayName("raising threshold above the width spares the method")
     void threshold_respected() {
         Set<String> hits = symbols(10);
-        assertFalse(hits.contains("tooMany"), "5 params clears a threshold of 10: " + hits);
+        assertFalse(hits.contains("com.example.LongParameterListTargets#tooMany"),
+            "5 params clears a threshold of 10: " + hits);
     }
 }

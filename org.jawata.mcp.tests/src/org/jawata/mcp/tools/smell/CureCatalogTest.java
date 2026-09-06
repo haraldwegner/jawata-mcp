@@ -62,8 +62,19 @@ class CureCatalogTest {
     @DisplayName("every recipe the deleted table held survives, per kind")
     void theRecipeMappingsSurvive() {
         assertEquals(List.of("inline_singleton"), CureCatalog.recipesFor("singleton"));
-        assertEquals(List.of("replace_type_code_with_class"),
-            CureCatalog.recipesFor("type_code"));
+        // SURVIVES AND IS STILL FIRST, which is this test's actual subject. It pins that a
+        // migration cannot LOSE a mapping; it never claimed a kind may have only one. S8b
+        // step 9 gave type_code two more — subclasses when behaviour branches on the code, a
+        // value object when the code has rules of its own — so the assertion moved from the
+        // whole list to the mapping it exists to protect, plus its ORDER, because the first
+        // cure is what a reader meets.
+        assertEquals("replace_type_code_with_class",
+            CureCatalog.recipesFor("type_code").get(0),
+            "the mapping the deleted table held must survive, and stay the one offered first");
+        org.junit.jupiter.api.Assertions.assertTrue(
+            CureCatalog.recipesFor("type_code").size() > 1,
+            "PROOF OF LIFE for the assertion above: with a single recipe it would pass"
+                + " whether or not step 9's routes had landed");
         // CHANGED DELIBERATELY, v4.0.2, and this guard is why it is deliberate.
         // It pins what the deleted table held, so a migration cannot lose a
         // mapping by accident — and it correctly refused this edit until the
@@ -77,14 +88,38 @@ class CureCatalogTest {
         // and it remains reachable through OPEN_THE_AXIS.
         assertEquals(List.of("replace_conditional_with_polymorphism"),
             CureCatalog.recipesFor("switch_statements"));
-        assertEquals(List.of("compose_method"), CureCatalog.recipesFor("long_method"));
+        // The same move as type_code above, and the bigger one: long_method went from ONE
+        // recipe to FIVE at S8b step 9. What this test protects is that the mapping the
+        // deleted table held is still here and still first.
+        assertEquals("compose_method", CureCatalog.recipesFor("long_method").get(0),
+            "the mapping the deleted table held must survive, and stay the one offered first");
+        org.junit.jupiter.api.Assertions.assertEquals(5,
+            CureCatalog.recipesFor("long_method").size(),
+            "PROOF OF LIFE: the four routes the old count rule kept out are what step 9"
+                + " added, and a first-element check alone would pass without them");
 
         List<String> axis = List.of(
             "refactor_to_state", "refactor_to_command_dispatcher", "form_template_method");
-        assertEquals(axis, CureCatalog.recipesFor("divergent_change"),
-            "the churn traces kept their three designs, in order — the hint is built from"
-                + " this list, so a reordering would silently reword what the user reads");
+        // THE HINT'S SOURCE MOVED, and this assertion moved with it. It used to read
+        // `divergent_change`, because all three churn rows shared one constant and any of
+        // them rendered the same sentence. At S8b step 9 `divergent_change` gained row 64
+        // (`extract kind=split_phase`) — the only refactoring the spec's "Finds it" column
+        // gives it — which is not a design on this axis and not a `refactor_to_pattern` kind,
+        // so rendering from that row would have printed a call naming the wrong tool.
+        // `ocp` is the row whose members ARE the OCP designs.
+        assertEquals(axis, CureCatalog.recipesFor("ocp"),
+            "the OCP designs, in order — ocpHint() is built from THIS list, so a reordering"
+                + " would silently reword what the user reads");
         assertEquals(axis, CureCatalog.recipesFor("shotgun_surgery"));
+        // The churn traces still keep the three, and divergent_change keeps them FIRST — the
+        // three reshape a class, row 64 reshapes a method, so it is offered last.
+        assertEquals(axis, CureCatalog.recipesFor("divergent_change").subList(0, 3),
+            "divergent_change still leads with the same three designs, in the same order");
+        assertEquals(List.of("extract kind=split_phase"),
+            CureCatalog.recipesFor("divergent_change").subList(3, 4),
+            "PROOF OF LIFE for the sublist above: without row 64 the two assertions would be"
+                + " the single assertion this replaced, and the move of ocpHint()'s source"
+                + " would be unmeasured");
     }
 
     /**
@@ -107,10 +142,18 @@ class CureCatalogTest {
             "but nothing automates it, so there is no plan kind to run");
         // ...and cqs is now the other half of the same contract: a smell whose
         // cure IS automated names the operation that runs it.
-        assertEquals(List.of("apply_cleanup kind=return_modified_value"),
+        // BOTH HALVES AT S8b STEP 9, and the sentence this replaces had gone false twice
+        // over. It read "row 61 is the cross-file half and is not shipped" — row 61 SHIPPED
+        // at C4 (`change_method_signature kind=separate_query_from_modifier`), so the claim
+        // was stale from the day that stage closed; and the reason it was not wired anyway
+        // was the count rule, which step 3 reversed. A reader of `cqs` now gets the local
+        // fix and the cross-file one, each saying which case it is for.
+        assertEquals(List.of("apply_cleanup kind=return_modified_value",
+                "change_method_signature kind=separate_query_from_modifier"),
             CureCatalog.recipesFor("cqs"),
-            "row 60 is the runnable local cure for cqs; row 61 is the cross-file half"
-                + " and is not shipped");
+            "row 60 is the runnable LOCAL cure for cqs — the answer is built in a mutable"
+                + " local — and row 61 is the cross-file half, where the answer is a field"
+                + " the method wrote and callers read");
 
         // Was `assertTrue(CureCatalog.hasRecipe("long_method"))`. hasRecipe was deleted
         // 2026-08-28: the unwired gate showed all three of its callers were this test,

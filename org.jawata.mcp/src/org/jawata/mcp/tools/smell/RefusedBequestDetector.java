@@ -39,11 +39,14 @@ public final class RefusedBequestDetector extends AbstractAstDetector {
                 if (rejectsInheritance(node)) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
+                    // The MESSAGE keeps the identifier, which is what reads; the SYMBOL is
+                    // the qualified name, which is what a door can be pointed at.
                     out.add(new Finding(
                         "refused_bequest", filePath, line, -1, "warning",
                         "Override '" + name + "' rejects its inheritance (throws "
                             + "UnsupportedOperationException). Consider Replace Inheritance with Delegation.",
-                        name));
+                        SmellAddress.qualifiedOr(org.jawata.mcp.models.CodeAddress.symbolOf(
+                            node.resolveBinding()), name)));
                 }
                 return true;
             }

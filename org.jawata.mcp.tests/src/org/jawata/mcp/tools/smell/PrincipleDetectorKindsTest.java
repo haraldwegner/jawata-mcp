@@ -56,7 +56,13 @@ class PrincipleDetectorKindsTest {
         // ADAPT scans that already shipped behind find_modernization, where a reader
         // looking for smells never found them.
         "global_data", "mutable_data", "loops", "data_class", "commented_out_code",
-        "alternative_classes");
+        "alternative_classes",
+        // 28d-rescue S8b step 9 — Duplicated Code, the third ADAPTED kind. Its finder
+        // (find_duplicate_code) has shipped since Sprint 14b; what it lacked was a smell
+        // name, so a sweep for smells returned nothing while the analysis was already
+        // there. Routing it is what made the gap visible: the cure table gained two
+        // runnable cures for it, and nothing could reach them.
+        "duplicated_code");
 
     private List<String> registeredKinds() {
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> null);

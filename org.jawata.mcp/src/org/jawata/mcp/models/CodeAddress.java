@@ -115,32 +115,67 @@ public record CodeAddress(String filePath, int line, int column, String symbol) 
      * Can a door be pointed at this?
      *
      * <p>Two forms answer yes, and they are the two every converted door publishes: a
-     * QUALIFIED symbol, or a file with a line. A symbol is qualified when it carries a
-     * package — {@code com.foo.Bar} or {@code com.foo.Bar#items} — because that is what
-     * the shared resolver can look up. A BARE name cannot be resolved and is exactly the
+     * QUALIFIED symbol, or a file with a COMPLETE position. A symbol is qualified when it
+     * carries a package — {@code com.foo.Bar} or {@code com.foo.Bar#items} — because that is
+     * what the shared resolver can look up. A BARE name cannot be resolved and is exactly the
      * case this method exists to catch.</p>
+     *
+     * <p><b>The position form needs a column, and this used to accept a line alone.</b> The
+     * architecture says {@code (filePath, line, column)} with {@code column ≥ 0}; the code
+     * asked only for a line, so a finding carrying {@code column = -1} — which 37 of the 40
+     * detector emission sites emit — was called complete and rendered RUN, and the door then
+     * answered {@code INVALID_COORDINATES}. That is the fail-open this method exists to
+     * prevent, in the method itself.</p>
      */
     public boolean complete() {
         if (symbol != null && symbol.contains(".")) {
             return true;
         }
-        return filePath != null && !filePath.isBlank() && line >= 0;
+        return filePath != null && !filePath.isBlank() && line >= 0 && column >= 0;
     }
 
-    /** The arguments a door is called with — the qualified symbol wins where both exist. */
+    /**
+     * THE ARGUMENTS A DOOR IS CALLED WITH — everything the address holds, not the best one.
+     *
+     * <p>This used to RETURN EARLY on a qualified symbol, on the reasoning that a name is the
+     * better address because it survives an edit above it. S8b step 9's INVARIANT A measured
+     * what that cost, by driving each routed cure's door with the address its own finding
+     * carries, and it cost EIGHT of them:</p>
+     *
+     * <ul>
+     *   <li>five {@code data} kinds — {@code replace_primitive}, {@code hide_delegate},
+     *       {@code special_case} and {@code encapsulate_collection} — answered
+     *       <i>"filePath is required"</i>. They take a name form for the TARGET and still
+     *       need the file, and dropping it made the product render an instruction it
+     *       refuses;</li>
+     *   <li>three {@code hierarchy} kinds answered {@code SYMBOL_NOT_FOUND} for
+     *       {@code com.example.Rejecter#op} — a correct fully-qualified name for a
+     *       package-private top-level class declared in {@code LspTargets.java}, which the
+     *       resolver looks for in a file of its own. The position was in hand and thrown
+     *       away.</li>
+     * </ul>
+     *
+     * <p>So both go. This is not a workaround around either door: every converted door
+     * publishes the same sentence — <i>"Explicit filePath/line/column win when both are
+     * given"</i> — so supplying both is the form they document, and which one they use is
+     * their decision rather than this record's guess.</p>
+     */
     public Map<String, Object> arguments() {
         Map<String, Object> args = new LinkedHashMap<>();
         if (symbol != null && symbol.contains(".")) {
             args.put("symbol", symbol);
-            return args;
         }
         if (filePath != null && !filePath.isBlank()) {
             args.put("filePath", filePath);
         }
-        if (line >= 0) {
+        // A LINE WITHOUT A COLUMN IS NOT A POSITION, and half of one is worse than none:
+        // every converted door prefers an explicit position over a symbol, so handing it
+        // `line` alone makes it take the positional path and then refuse
+        // INVALID_COORDINATES — which is what INVARIANT A measured on SIXTEEN routed cures
+        // at once, because 37 of the 40 detector emission sites pass the literal -1 for
+        // column. Both or neither; with neither, the symbol above is what the door resolves.
+        if (line >= 0 && column >= 0) {
             args.put("line", line);
-        }
-        if (column >= 0) {
             args.put("column", column);
         }
         return args;

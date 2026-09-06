@@ -59,8 +59,12 @@ class LspDetectorTest {
     @DisplayName("lsp is broader than refused_bequest (which catches only UnsupportedOperationException)")
     void lsp_broader_than_refused_bequest() {
         Set<String> rb = symbols("refused_bequest");
-        assertTrue(rb.contains("op"), "refused_bequest catches the UOE override: " + rb);
-        assertFalse(rb.contains("compute"),
+        // QUALIFIED AT S8b STEP 9 — and ONLY the refused_bequest half, which is the detector
+        // step 9 changed. The `hits` assertions above read `lsp`, whose detector still emits
+        // an identifier, so qualifying them would assert an address nothing produces.
+        assertTrue(rb.contains("com.example.Rejecter#op"),
+            "refused_bequest catches the UnsupportedOperationException override: " + rb);
+        assertFalse(rb.contains("com.example.Rejecter#compute"),
             "refused_bequest must NOT catch the IllegalStateException override (lsp does): " + rb);
     }
 }

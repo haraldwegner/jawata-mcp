@@ -222,7 +222,14 @@ class CureLookupTest {
         assertFalse(degraded.degradation().contains("java-design-patterns"),
             () -> "the seeded namespace is not absent and naming it would send a reader"
                 + " to repair a catalogue that is fine: " + degraded.degradation());
-        assertEquals(List.of("compose_method"), degraded.fallbackRecipes(),
+        // ALL FIVE, since S8b step 9 gave long_method the four routes the table had withheld.
+        // The subject here is that the fallback is handed over AT ALL beside a non-null
+        // degradation — so it asserts the whole list rather than a first element, which would
+        // have gone on passing while four of the five silently vanished.
+        assertEquals(List.of("compose_method", "apply_cleanup kind=guard_clauses",
+                "refactor_to_pattern kind=decompose_conditional",
+                "extract kind=temp_to_query", "extract kind=function_to_command"),
+            degraded.fallbackRecipes(),
             "the hardcoded map is handed over — as the fallback, which is why it only"
                 + " appears beside a non-null degradation");
         assertTrue(degraded.hint().contains("DEGRADED"),
@@ -314,6 +321,25 @@ class CureLookupTest {
                 () -> "kind '" + kind + "' is on this sprint's roster and declares NO cure —"
                     + " a detector that names a problem and no answer to it");
             for (CureCatalog.Cure c : declared) {
+                // SCOPED TO CURES THAT DECLARE A KEY, at S8b step 9. This loop demanded a
+                // resolvable design address from EVERY cure of these five kinds, which was
+                // true of every cure they had: each was a design a reader opens. Step 9 gave
+                // them RUNNABLE cures too — separate_query_from_modifier for cqs,
+                // replace_superclass_with_delegate for composition_over_inheritance, three
+                // more for encapsulation — and those name refactorings, not patterns.
+                //
+                // The table's own contract already says this ("a recipe with no design still
+                // runs"), and its warning says what the alternative costs: inventing an
+                // address to satisfy a check resolves to nothing and renders NO CATALOGUE
+                // ADDRESS, which is worse than offering the runnable fix alone. That is not
+                // hypothetical — the first draft of step 9 wrote `design:law-of-demeter` for
+                // message_chains and the re-resolution audit caught it in one run.
+                //
+                // So a NULL key is legitimate and is skipped; a key that is DECLARED must
+                // still resolve, which is the half that catches a mis-spelling.
+                if (c.operation() == null) {
+                    continue;
+                }
                 assertTrue(addresses.resolves(c.operation()),
                     () -> "kind '" + kind + "': cure key " + c.operation() + " resolves to"
                         + " nothing. Either the catalogue does not hold that design or the"

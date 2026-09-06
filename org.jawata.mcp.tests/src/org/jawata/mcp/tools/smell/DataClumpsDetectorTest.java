@@ -58,16 +58,23 @@ class DataClumpsDetectorTest {
     @DisplayName("flags both methods sharing a 3-param tuple, not the single-param one")
     void flags_shared_tuple() {
         Set<String> hits = symbols(null);
-        assertTrue(hits.contains("plotPoint"), "shared-tuple method should be flagged: " + hits);
-        assertTrue(hits.contains("movePoint"), "shared-tuple method should be flagged: " + hits);
-        assertFalse(hits.contains("single"), "1-param method below clump width must NOT be flagged: " + hits);
+        // QUALIFIED AT S8b STEP 9, NEGATIVES INCLUDED — `hits` is a Set, so a bare name left
+        // here makes assertFalse trivially true. Each literal is the address this run printed.
+        assertTrue(hits.contains("com.example.DataClumpsTargets#plotPoint"),
+            "shared-tuple method should be flagged: " + hits);
+        assertTrue(hits.contains("com.example.DataClumpsTargets#movePoint"),
+            "shared-tuple method should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.DataClumpsTargets#single"),
+            "1-param method below clump width must NOT be flagged: " + hits);
     }
 
     @Test
     @DisplayName("a high recurrence threshold spares a tuple that recurs only twice")
     void threshold_respected() {
         Set<String> hits = symbols(5);
-        assertFalse(hits.contains("plotPoint"), "tuple recurring twice clears a threshold of 5: " + hits);
-        assertFalse(hits.contains("movePoint"), "tuple recurring twice clears a threshold of 5: " + hits);
+        assertFalse(hits.contains("com.example.DataClumpsTargets#plotPoint"),
+            "tuple recurring twice clears a threshold of 5: " + hits);
+        assertFalse(hits.contains("com.example.DataClumpsTargets#movePoint"),
+            "tuple recurring twice clears a threshold of 5: " + hits);
     }
 }

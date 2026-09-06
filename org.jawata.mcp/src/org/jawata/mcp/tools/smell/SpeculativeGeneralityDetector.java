@@ -47,12 +47,16 @@ public final class SpeculativeGeneralityDetector extends AbstractAstDetector {
                     if (subtypes != null && subtypes.length == 1) {
                         int line = ast.getLineNumber(node.getStartPosition());
                         String name = node.getName().getIdentifier();
+                        // The MESSAGE keeps the identifier, which is what reads; the SYMBOL
+                        // is the qualified name, which is what a door can be pointed at —
+                        // and the binding is already in hand from the subtype search above.
                         out.add(new Finding(
                             "speculative_generality", filePath, line, -1, "warning",
                             (node.isInterface() ? "Interface '" : "Abstract class '") + name
                                 + "' has exactly one subtype (" + subtypes[0].getElementName()
                                 + "). Consider Collapse Hierarchy / Inline Class.",
-                            name));
+                            SmellAddress.qualifiedOr(
+                                org.jawata.mcp.models.CodeAddress.symbolOf(binding), name)));
                     }
                 } catch (Exception e) {
                     // search failure — do not flag

@@ -149,13 +149,24 @@ public final class CureCatalog {
         // of this one.
         m.put("cqs", List.of(
             new Cure("apply_cleanup kind=return_modified_value",
-                "design:command-query-responsibility-segregation")));
+                "design:command-query-responsibility-segregation",
+                "when the mutation is LOCAL — the method builds its answer in a mutable"
+                    + " local and can simply return the value"),
+            new Cure("change_method_signature kind=separate_query_from_modifier", null,
+                "when the mutation is a FIELD the method wrote and callers read the answer"
+                    + " too — the command and the query split, and call sites split with"
+                    + " them")));
         m.put("coupling", List.of(
             new Cure(null, "design:dependency-injection"),
             new Cure(null, "design:mediator")));
         m.put("composition_over_inheritance", List.of(
-            new Cure(null, "design:delegation"),
-            new Cure(null, "design:strategy")));
+            new Cure("hierarchy kind=replace_superclass_with_delegate", null,
+                "when the subclass overrides NOTHING and inherited only to reuse — the"
+                    + " parent becomes a field it holds"),
+            new Cure(null, "design:delegation",
+                "the design this names, for the cases the operation refuses"),
+            new Cure(null, "design:strategy",
+                "when what varies is an ALGORITHM rather than a whole parent")));
         // encapsulation's runnable route is declared with the other three below,
         // where the reason they were unreachable is written down once.
 
@@ -163,7 +174,19 @@ public final class CureCatalog {
         // Same designs as `ocp` because they ARE its traces: OcpDetector relabels
         // a trace finding, so the trace's cure and the principle's must be one
         // table or they drift the moment either is edited.
-        m.put("divergent_change", OPEN_THE_AXIS);
+        // …AND ONE MORE, which is why this row stopped BEING OPEN_THE_AXIS. Row 64 Split
+        // Phase is the only refactoring the inventory's "Finds it" column gives to
+        // divergent_change, and it is not an OCP design: the three above open an axis by
+        // introducing an abstraction, while Split Phase cuts a method that does two jobs in
+        // sequence into two. It is offered LAST because those three reshape a class and this
+        // one reshapes a method.
+        List<Cure> divergentChange = new java.util.ArrayList<>(OPEN_THE_AXIS);
+        divergentChange.add(new Cure("extract kind=split_phase", null,
+            "when the divergence is SEQUENTIAL — the class does one job and then another with"
+                + " its result, so the two phases separate rather than an abstraction being"
+                + " introduced",
+            List.of("line")));
+        m.put("divergent_change", List.copyOf(divergentChange));
         m.put("shotgun_surgery", OPEN_THE_AXIS);
         // The detector's own sentence says "Consider Replace Conditional with
         // Polymorphism", and Sprint 28d BUILT that operation — for this smell.
@@ -195,11 +218,44 @@ public final class CureCatalog {
         // The honest state is that the operation exists with no smell recommending
         // it. That is recorded as a finding, not papered over with a row.
         m.put("type_code", List.of(
-            new Cure("replace_type_code_with_class", "design:type-object")));
+            new Cure("replace_type_code_with_class", "design:type-object",
+                "when the code only needs to stop being an int — a type-safe enum, and"
+                    + " nothing branches on it"),
+            new Cure("hierarchy kind=replace_type_code_with_subclasses", null,
+                "when BEHAVIOUR branches on the code — each value becomes a subclass that"
+                    + " carries its own behaviour"),
+            new Cure("data kind=replace_primitive", null,
+                "when the code is really a VALUE with rules of its own — validation, a"
+                    + " format, arithmetic — rather than one of a fixed set")));
         m.put("singleton", List.of(
             new Cure("inline_singleton", "design:singleton")));
+        // FIVE ROUTES AT S8b STEP 9, and every one of them was refused before it on the SAME
+        // false ground. The unrouted-reason table said, of guard_clauses and of
+        // decompose_conditional and of function_to_command: "`long_method` already has one
+        // route — compose_method — which the tier model turns to ADVISE the moment a second is
+        // added, so bolting this on would cost that kind its runnable instruction." That was a
+        // true reading of the old rule and it is why the routes were withheld. Step 3 reversed
+        // the rule; the sentences became false; and what they had been protecting was a smell
+        // with 276 findings on this repository offering exactly one answer.
         m.put("long_method", List.of(
-            new Cure("compose_method", "design:compose-method")));
+            new Cure("compose_method", "design:compose-method",
+                "when the method reads as a SEQUENCE OF NAMED STEPS once you say them out"
+                    + " loud — the whole body becomes a short list of calls",
+                List.of("sections")),
+            new Cure("apply_cleanup kind=guard_clauses", null,
+                "when the length is NESTING rather than volume — conditionals inside"
+                    + " conditionals, where the real work is at the bottom"),
+            new Cure("refactor_to_pattern kind=decompose_conditional", null,
+                "when ONE conditional carries the complexity and its parts want names",
+                List.of("line", "column", "conditionName", "thenName", "elseName")),
+            new Cure("extract kind=temp_to_query", null,
+                "when the body is long with TEMPORARIES that each explain one thing; each"
+                    + " becomes a query and the method shortens around them",
+                List.of("line", "column")),
+            new Cure("extract kind=function_to_command", null,
+                "when the locals THREAD THROUGH everything, so no range extracts cleanly —"
+                    + " the method becomes an object and its locals become fields",
+                List.of("newTypeName"))));
 
         // --- Sprint 28d-rescue, S0: the four fixes that already SHIPPED and could not
         // be offered. Not new operations — `move_method`, `extract` and
@@ -226,7 +282,12 @@ public final class CureCatalog {
         // `inline` as well — so a bare mention would name three different operations
         // and the registry refuses it. The qualified spelling is what a reader types.
         m.put("feature_envy", List.of(
-            new Cure("move kind=method", null)));
+            new Cure("move kind=method", null,
+                "when ONE method is envious — it moves to the class whose data it prefers"),
+            new Cure("extract kind=combine_functions", null,
+                "when SEVERAL methods envy the same data — they and the data become one"
+                    + " class, rather than moving one at a time",
+                List.of("functions", "newTypeName"))));
         // QUALIFIED, for the reason the fold pointers are: `extract` publishes seven
         // kinds, and naming the bare front door leaves a reader to guess which one. The
         // architecture says extract(class) for both of these, and the registry publishes
@@ -234,7 +295,12 @@ public final class CureCatalog {
         m.put("god_class", List.of(
             new Cure("extract kind=class", null)));
         m.put("temporary_field", List.of(
-            new Cure("extract kind=class", null)));
+            new Cure("extract kind=class", null,
+                "when the field and the methods that use it form a COHERENT JOB — they leave"
+                    + " together as a class of their own"),
+            new Cure("data kind=special_case", null,
+                "when the field is empty for a RECOGNISABLE CASE and every reader checks for"
+                    + " it — the case becomes a subclass that answers for itself")));
         // QUALIFIED at C8, and it was not a style point — it was a BROKEN INSTRUCTION.
         // `data` is a registered, unambiguous operation name, so CureTier derived PERFORM and
         // the product told a reader to RUN it. DataTool's first branch refuses a call with no
@@ -245,7 +311,18 @@ public final class CureCatalog {
         // the kinds for two of them; an architect watch measured the third and found the
         // failure. Same standard the god_class and loops entries above already state.
         m.put("encapsulation", List.of(
-            new Cure("data kind=encapsulate_field", "design:private-class-data")));
+            new Cure("data kind=encapsulate_field", "design:private-class-data",
+                "when ONE field is exposed and its type is a plain value — the accessor pair"
+                    + " goes on and the field goes private"),
+            new Cure("data kind=encapsulate_collection", null,
+                "when the exposed field is a COLLECTION — a getter alone still hands the"
+                    + " contents out, so the view is read-only and the mutators move here"),
+            new Cure("data kind=encapsulate_record", null,
+                "when SEVERAL public fields are exposed at once — the whole record is"
+                    + " encapsulated in one pass rather than a field at a time"),
+            new Cure("data kind=remove_setting_method", null,
+                "when the field is settled at construction and the setter is what breaks"
+                    + " that — the setter goes and the field becomes final")));
 
         // --- Sprint 28d-rescue, S6: the four rows whose detector already exists. Stage 6
         // BUILT cures for smells this table had no row for at all, and leaving them out is
@@ -283,7 +360,12 @@ public final class CureCatalog {
         // removes exactly the forwarding it counted. No catalogue design — Remove Middle Man
         // is a refactoring, and `design:middle-man` is not a row that exists.
         m.put("middle_man", List.of(
-            new Cure("inline kind=middle_man", null)));
+            new Cure("inline kind=middle_man", null,
+                "when MOST of the class forwards — the forwarders go and callers reach the"
+                    + " delegate directly",
+                List.of("delegateField")),
+            new Cure("inline kind=method", null,
+                "when only ONE method forwards and the class otherwise earns its place")));
         // Move Field, on the smell that reports two classes reaching into each other's
         // state. NOT on shotgun_surgery, though the plan names both: shotgun surgery is
         // "one change touches many classes", and moving a single field almost never settles
@@ -380,6 +462,86 @@ public final class CureCatalog {
         // own message, which says to read it and then delete it or write down why it
         // stays.
 
+        // --- S8b step 9: THE SEVEN SMELLS THAT HAD NO ROW AT ALL --------------------
+        //
+        // Each of these detectors ships, fires, and named its cure in its own message
+        // prose while this table offered nothing runnable — the built-but-unwired state
+        // the sprint exists to remove, one level up from the kinds it was found on.
+        //
+        // THEY COULD NOT HAVE BEEN WRITTEN BEFORE STEP 3. Under the old rule a second
+        // runnable cure demoted the smell from "run this" to "consider these", so a row
+        // with four good answers was worth LESS than a row with one — and the honest
+        // move was to withhold three of them. Every row below carries several, each with
+        // the sentence that tells it from its neighbours, which is only possible because
+        // the verdict stopped counting.
+        m.put("long_parameter_list", List.of(
+            new Cure("change_method_signature kind=introduce_parameter_object", null,
+                "when the parameters name PARTS OF ONE THING — a start and an end, an x"
+                    + " and a y — and a name for that thing suggests itself",
+                List.of("newTypeName")),
+            new Cure("change_method_signature kind=preserve_whole_object", null,
+                "when the caller already HOLDS an object and is taking it apart to pass"
+                    + " the pieces; pass the object it already has",
+                List.of("parameters")),
+            new Cure("change_method_signature kind=replace_parameter_with_query", null,
+                "when one parameter can be DERIVED from another the call already passes,"
+                    + " so every caller computes the same thing",
+                List.of("parameter")),
+            new Cure("change_method_signature kind=change_signature", null,
+                "when a parameter is simply unused, or the list only needs reordering —"
+                    + " the smallest answer, and the one to rule out first")));
+        m.put("data_clumps", List.of(
+            new Cure("change_method_signature kind=introduce_parameter_object", null,
+                "when the clump travels through SIGNATURES and has no home yet",
+                List.of("newTypeName")),
+            new Cure("change_method_signature kind=preserve_whole_object", null,
+                "when the clump is already an object's fields and the caller is unpacking"
+                    + " them at the call",
+                List.of("parameters")),
+            new Cure("extract kind=combine_functions", null,
+                "when the clump is accompanied by the FUNCTIONS that work on it — then the"
+                    + " data and its behaviour become one class rather than one parameter",
+                List.of("functions", "newTypeName"))));
+        m.put("speculative_generality", List.of(
+            new Cure("hierarchy kind=collapse_hierarchy", null,
+                "when the unearned generality is a LEVEL in a hierarchy — the middle class"
+                    + " nobody needed folds into its parent"),
+            new Cure("apply_cleanup kind=remove_dead_code", null,
+                "when it is a member nothing reaches rather than a level — the compiler"
+                    + " proves it unused and the sweep deletes it")));
+        // NO DESIGN ADDRESS, and the first draft of this row had one. `design:law-of-demeter`
+        // reads perfectly and the catalogue holds no such row — the re-resolution audit caught
+        // it within one run, which is exactly the failure this file's own warning describes:
+        // an invented key resolves to nothing, and the finding then renders NO CATALOGUE
+        // ADDRESS, which is worse for a reader than offering the runnable fix with no further
+        // reading. Hide Delegate is a refactoring, not a pattern.
+        m.put("message_chains", List.of(
+            new Cure("data kind=hide_delegate", null)));
+        m.put("primitive_obsession", List.of(
+            new Cure("data kind=replace_primitive", "design:value-object")));
+        m.put("refused_bequest", List.of(
+            new Cure("hierarchy kind=down", null,
+                "when only SOME subclasses refuse the bequest — the unwanted members are"
+                    + " pushed down to the ones that do want them, and the hierarchy stays"),
+            new Cure("hierarchy kind=replace_subclass_with_delegate", null,
+                "when the subclass is refusing but its OVERRIDES are the point — its"
+                    + " varying behaviour becomes a delegate the parent holds"),
+            new Cure("hierarchy kind=replace_superclass_with_delegate", null,
+                "when the subclass overrides NOTHING and inherited only to reuse — the"
+                    + " parent becomes a field, and substitutability goes with it")));
+        // THE DUPLICATED-CODE KIND, decided in the plan rather than parked: the clone
+        // groups become findings the way ModernizationSmells reshaped find_modernization's
+        // candidates, so the finder is unchanged and the smell row stays "have".
+        m.put("duplicated_code", List.of(
+            new Cure("extract kind=replace_inline_code", null,
+                "when the clones are STATEMENT RANGES that already exist as a method"
+                    + " somewhere — the group's own id names them",
+                List.of("cloneGroupId")),
+            new Cure("change_method_signature kind=parameterize_function", null,
+                "when the clones differ only by a LITERAL — one function takes it as a"
+                    + " parameter and the copies collapse into it",
+                List.of("literal"))));
+
         // INVARIANT 1, checkable here because it needs nothing outside the table:
         // the pair (kind, operation) is the ENTRY IDENTITY — declared at most once,
         // or two rows claim one route set.
@@ -475,11 +637,16 @@ public final class CureCatalog {
         "apply_cleanup kind=redundant_modifiers",
         "same shape as add_final: bulk hygiene, not a finding. JDT's own engine performs"
             + " it and the natural way to reach it is the sweep, not a report.",
-        "apply_cleanup kind=guard_clauses",
-        "no detector reports nested conditionals. `long_method` is the nearest, and it"
-            + " already has one route — compose_method — which the tier model turns to"
-            + " ADVISE the moment a second is added, so bolting this on would cost that"
-            + " kind its runnable instruction to buy this one a mention.",
+        // SIXTEEN ENTRIES WERE DELETED FROM THIS TABLE AT S8b STEP 9, and they were not
+        // tidied away — a guard measured them. `apply_cleanup kind=guard_clauses` was the
+        // first: it said "no detector reports nested conditionals" and argued that routing it
+        // to `long_method` would cost that smell its runnable instruction, because a second
+        // runnable cure demoted the verdict. Step 3 reversed that rule and step 9 took the
+        // route, so the sentence became false the moment the route landed — and nothing said
+        // so, because the routing guard's question was "routed OR explained" and an operation
+        // that is both satisfies it. `EveryShippedKindIsRoutedOrExplainedTest` now refuses
+        // the conjunction and NAMES every offender, which is how these sixteen were found
+        // rather than remembered.
         "apply_cleanup kind=consolidate_conditional",
         "no detector reports repeated checks with one outcome. It would be a real"
             + " detector and it is not one of this sprint's six.",
@@ -493,23 +660,32 @@ public final class CureCatalog {
         "apply_cleanup kind=split_loop",
         "no detector reports a loop doing two things. `long_method` does not, and a"
             + " loop-level detector is not among this sprint's six.",
-        // NOT an apply_cleanup entry, and the first one here that is not. The gate that
-        // reads this map covered only apply_cleanup when this was written; C6 widened it to
-        // four doors, and refactor_to_pattern is the one still outside — so this line is
-        // still unchecked, but for a narrower reason than it used to claim. It is written
-        // because the per-row contract says routed OR unrouted with the reason, and an
-        // unexplained gap and a forgotten one read identically.
-        "refactor_to_pattern kind=decompose_conditional",
-        "no detector reports a complicated conditional. `long_method` is the nearest and"
-            + " already has one route — compose_method — which the tier model turns to"
-            + " ADVISE the moment a second is added. And this one could not be run from a"
-            + " finding even if the finding existed: it needs method NAMES from the caller,"
-            + " which is the whole refactoring, and no finding carries those."
-            + " NO FORK DEMONSTRATION EITHER, and the reason is the same sentence: every"
-            + " other row is demonstrated by pointing a sweep at foreign code and reading"
-            + " what changed, and this one cannot be, because it does nothing until a human"
-            + " supplies three names. A fork slice for it would be a fixture with names"
-            + " chosen by us — which is the very thing 'code we did not author' excludes.",
+        // `refactor_to_pattern kind=decompose_conditional` WAS HERE and is routed now, on
+        // `long_method`, with `needs=[line, column, conditionName, thenName, elseName]`. Its
+        // entry made two claims and only one has survived: the tier argument is retired with
+        // the rule it rested on, while the observation that the row needs three NAMES from
+        // the caller is still true — and v4.1's `needs[]` is what turned that from a reason
+        // not to route into a declared input the agent supplies. Its other half — that the
+        // same sentence is why the row has no fork demonstration — moved to the row's own
+        // record in the plan, where a reader of the fork clause meets it.
+
+        // --- Sprint 28d-rescue Stage 5's three rows that stay unrouted after step 9's
+        // routing table, each for its OWN reason rather than a shared shrug.
+        "data kind=split_variable",
+        "no detector reports a variable serving two purposes — and one could not route here"
+            + " even if it existed. The operation's whole input is the NEW NAME for the"
+            + " second value, which is what saying the two purposes apart MEANS; a finding"
+            + " carries no names. That makes this unroutABLE rather than merely unrouted,"
+            + " which is a stronger statement than the rows around it.",
+        "data kind=replace_derived_variable",
+        "no detector reports a field always recomputed from other fields. It would be a real"
+            + " detector — every writer's expression compared against every other — and it is"
+            + " not one of this sprint's six.",
+        "data kind=reference_to_value",
+        "nothing reports that a class SHOULD BE A VALUE, and the plan's own C2 clause says so:"
+            + " seven of the eight composed rows carry a detector and this is the one that"
+            + " does not. Whether shared mutable identity is the point or the bug is a"
+            + " modelling decision about the domain, not a shape in the code.",
 
         // --- Sprint 28d-rescue Stage 6. FIVE of its twelve rows route: lazy_class takes
         // two (17, 38), middle_man and inappropriate_intimacy one each (36, 23), and row 24
@@ -517,29 +693,13 @@ public final class CureCatalog {
         // audit counted and this comment had missed. These six do not, and a
         // C6 audit was right that neither routed nor written down reads as an oversight.
         //
-        // FIVE OF THE SIX SHARE ONE REASON and it is worth stating once: they need a NAME
-        // from the caller — the new class, the command, the query, the phase boundary —
-        // and a finding carries no names. That is the same reason row 8 is here, and it is
-        // not a gap in the detector side that a detector would close.
-        "extract kind=combine_functions",
-        "no detector reports functions that should be a class, and one could not route here"
-            + " anyway: WHICH functions belong together is the decision this carries out,"
-            + " and a finding that already knew would have done the refactoring.",
-        "extract kind=function_to_command",
-        "no detector reports a function that wants to be an object. `long_method` is the"
-            + " nearest — a long function whose locals thread through every extraction is"
-            + " exactly the case — but it already has one route, compose_method, which the"
-            + " tier model turns to ADVISE the moment a second is added. And the command's"
-            + " NAME is the caller's; every call site reads it.",
-        "extract kind=split_phase",
-        "no detector reports a function doing two jobs in sequence, and the operation's"
-            + " whole input is the BOUNDARY between them — a judgement about meaning that"
-            + " nothing in the syntax marks. A finding could say `long_method` and could"
-            + " not say where the seam is.",
-        "extract kind=temp_to_query",
-        "no detector reports a temp that should be a query. It is a step INSIDE a"
-            + " long-method cure rather than a finding of its own, in the same way"
-            + " slide_declaration is.",
+        // FOUR OF THESE SIX WERE DELETED AT STEP 9 — combine_functions, function_to_command,
+        // split_phase and temp_to_query — and the paragraph that stood here is why they could
+        // be. It said five of the six "need a NAME from the caller … and a finding carries no
+        // names", and treated that as disqualifying. v4.1's `needs[]` is the answer: the cure
+        // DECLARES what the agent must supply, the finding supplies the address, and the two
+        // together are a runnable instruction. What is left below are the rows where nothing
+        // reports the shape at all — a detector-side gap, which no `needs[]` closes.
         "move kind=statements_into_function",
         "no detector reports a statement that always accompanies a call. Finding one means"
             + " comparing every call site of every method against its neighbours, which is"
@@ -561,12 +721,12 @@ public final class CureCatalog {
             + " driven by a recipe — so the fix IS reachable from a finding, one level up."
             + " What no finding can supply is the name and the RANGE, which are the whole"
             + " input here.",
-        "extract kind=replace_inline_code",
-        "reachable from find_duplicate_code, which is a VERIFICATION tool rather than a"
-            + " smell detector — it takes a cloneGroupId that only that tool produces, and"
-            + " the cure table keys on smell kinds. So it is routed in practice and"
-            + " unroutable in this table's terms, which is worth stating rather than"
-            + " leaving as a blank that reads like an oversight.",
+        // `extract kind=replace_inline_code` WAS HERE, and its entry described its own cure.
+        // It said the row is "reachable from find_duplicate_code, which is a VERIFICATION
+        // tool rather than a smell detector … so it is routed in practice and unroutable in
+        // this table's terms". Step 9 closed exactly that gap: the clone finder is now
+        // registered as the smell `duplicated_code`, so the table's terms and practice agree
+        // and the row routes like any other, with the group id as a declared `needs[]`.
 
         // --- Sprint 28d-rescue Stage 4, the ten kinds on change_method_signature. NONE of
         // them routes, and until a C4 audit counted it none was written down either — the
@@ -583,45 +743,28 @@ public final class CureCatalog {
         // derive PERFORM, which turns a suggestion into an instruction. That is the same
         // lever the Stage 3 architect finding is about for `loops`, where one runnable route
         // made the product instruct while the rewriter accepted 2 of 21 candidates.
-        "change_method_signature kind=introduce_parameter_object",
-        "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN HERE. `long_parameter_list` names this"
-            + " refactoring in every one of its messages — 'Consider Introduce Parameter"
-            + " Object' — and so does `primitive_obsession`. Both would gain their first"
-            + " RUNNABLE route, which is what CureTier turns into PERFORM, so wiring it is a"
-            + " tier decision for the route merge rather than a transcription.",
-        "change_method_signature kind=separate_query_from_modifier",
-        "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN, and the consequence is the OPPOSITE of the"
-            + " entry above — which is why it is spelled out rather than grouped with it."
-            + " `cqs` is NOT advice-only: it already declares one cure whose recipe is"
-            + " `apply_cleanup kind=return_modified_value`, that step IS registered, and"
-            + " CureTier therefore derives PERFORM today. Adding this row would make TWO"
-            + " runnable routes, and CureTier's own rule for that is ADVISE — 'nothing"
-            + " mechanical chooses between them'. So wiring the MORE precise cure would COST"
-            + " this smell its runnable instruction. That is a real trade for the route merge"
-            + " to make, and it runs the other way from every other row here.",
+        // THE TWO "ROUTE AVAILABLE, DELIBERATELY NOT TAKEN" ENTRIES ARE GONE, and the route
+        // is taken. They were the clearest statements of the rule step 3 reversed, and they
+        // ran in opposite directions: introduce_parameter_object would have given
+        // `long_parameter_list` its FIRST runnable route (an upgrade), while
+        // separate_query_from_modifier would have made `cqs` declare a SECOND (a demotion,
+        // under the old rule, of the smell that could do more). Both were correct readings of
+        // the rule and both are now moot: the verdict no longer counts, so
+        // `long_parameter_list` declares four cures and `cqs` two, each ranked with the
+        // sentence that tells it from its neighbour. THREE MORE change_method_signature
+        // entries went with them — parameterize_function, replace_parameter_with_query and
+        // preserve_whole_object — each of which said no detector reports its shape while a
+        // detector's own message named it.
         "change_method_signature kind=replace_query_with_parameter",
         "no detector reports a method that asks a question it could be told the answer to."
             + " The operation's input is the CALL to stop making, which a finding does not"
             + " carry, and its real precondition is that the expression's text means the same"
             + " thing at every call site — a fact about the callers rather than the method.",
-        "change_method_signature kind=replace_parameter_with_query",
-        "the inverse of the above and unrouted for a different reason: the query IS"
-            + " derivable, from the call sites, so a detector could in principle name this."
-            + " None does. Nothing reports a parameter every caller derives the same way.",
-        "change_method_signature kind=parameterize_function",
-        "no detector reports two near-identical methods differing by one constant."
-            + " `find_duplicate_code` is the nearest and reports clone GROUPS, not the"
-            + " literal that separates them — and the literal is this operation's input.",
         "change_method_signature kind=replace_exception_with_precheck",
         "UNROUTABLE rather than unrouted, and measured rather than assumed:"
             + " find_quality_issue(kind=catches) is a SEARCH — it takes an exception name and"
             + " returns the sites that catch it — so it emits no finding and names no cure."
             + " No detector reports a try/catch that a test could replace.",
-        "change_method_signature kind=preserve_whole_object",
-        "no detector reports several arguments taken off one object. `long_parameter_list` is"
-            + " the nearest and names Introduce Parameter Object instead, which is a different"
-            + " row on this same door — it BUILDS an object where this one passes an object"
-            + " the caller already holds.",
         "change_method_signature kind=remove_flag_argument",
         "no detector reports a boolean parameter that selects behaviour. It could not be run"
             + " from a finding even if one existed: the two new methods' NAMES are the whole"
@@ -663,50 +806,38 @@ public final class CureCatalog {
             + " The nearest is `duplicated_code`, which compares bodies and would name the"
             + " assignments rather than the ownership — and ownership is this row's entire"
             + " rule: it moves a leading run of assignments to fields the parent declares,"
-            + " which is a fact about who declares what and not about text repeating.",
-        "hierarchy kind=replace_type_code_with_subclasses",
-        "ROUTABLE AND DELIBERATELY NOT ROUTED. `type_code` reports 9 findings over this"
-            + " bundle's 457 files (projectKey=jawata-mcp), and the SCOPE is stated with the"
-            + " count because without it the number is not reproducible: an unscoped call"
-            + " answers 10 over 466, the extra finding being a fixture in ANOTHER repository"
-            + " that happens to be loaded in the same workspace. Two earlier versions of this"
-            + " sentence blamed the difference on the fixture project growing over time —"
-            + " wrong, and a two-command experiment settles it: this bundle measures 9 today,"
-            + " exactly as it did then. Nothing grew; the two calls asked different questions."
-            + " Every one of the nine messages names the SIBLING cure — refactor_to_pattern"
-            + " kind=replace_type_code_with_class, which shipped in Stage 3 and is that"
-            + " smell's ONE runnable route, so CureTier derives PERFORM. Adding this row as a"
-            + " second runnable route derives ADVISE by the same rule, so wiring the more"
-            + " specific cure would COST the smell its runnable instruction. That trade was"
-            + " established at C4 for `cqs`; this is its second measured instance, which is"
-            + " what makes it a property of the tier model rather than a quirk of one smell.",
-        "hierarchy kind=replace_superclass_with_delegate",
-        "ROUTABLE AND NOT YET ROUTED, and it is the MIRROR of the entry above rather than"
-            + " another gap. `composition_over_inheritance` names this row in its own finding"
-            + " text, under Fowler's earlier title Replace Inheritance with Delegation, and"
-            + " declares TWO cures that are both design-only — so it derives ADVISE today and"
-            + " this row would be its FIRST runnable route, deriving PERFORM. That is an"
-            + " upgrade rather than a cost, which is exactly why it is a decision and not a"
-            + " transcription: it changes what the product INSTRUCTS on that smell. Held for"
-            + " the route batch with both directions of the trade now measured. The demand is"
-            + " real and entirely external — the smell reports 0 over this bundle's 457 files"
-            + " (projectKey=jawata-mcp) and 9 over the fork. The population is stated for the"
-            + " same reason as the entry above: an earlier version said '460 files', which is"
-            + " neither the scoped figure nor the unscoped one and so was reproducible from"
-            + " nothing. A round-5 audit found it one entry below the one that had just been"
-            + " corrected for exactly that.",
-        "hierarchy kind=replace_subclass_with_delegate",
-        "no detector reports a subclass whose variation is what it OVERRIDES."
-            + " `composition_over_inheritance` is the nearest and reports the opposite case —"
-            + " a subclass that overrides NOTHING, which is the sibling row above. A detector"
-            + " for this one would have to judge that a second axis of variation is WANTED,"
-            + " which is a design intention and not a property of the code.",
-        "hierarchy kind=collapse_hierarchy",
-        "no detector reports a hierarchy level that is not earning itself. `lazy_class` is the"
-            + " nearest and routes to inline kind=subclass, which is this row's COMPLEMENT —"
-            + " that row folds a leaf and refuses a class with subtypes, naming this one. So a"
-            + " lazy_class finding on a middle level already points here through that row's"
-            + " refusal, which is reachable in practice and not a table entry.");
+            + " which is a fact about who declares what and not about text repeating.");
+
+    // FOUR hierarchy ENTRIES WERE DELETED AT S8b STEP 9 —
+    // replace_type_code_with_subclasses, replace_superclass_with_delegate,
+    // replace_subclass_with_delegate and collapse_hierarchy — because all four are routed
+    // now, on type_code, composition_over_inheritance, refused_bequest and
+    // speculative_generality. Only pull_up_constructor_body is left above, and it is the one
+    // where nothing reports the shape.
+    //
+    // TWO OF THE FOUR WERE THIS SPRINT'S MEASURED INSTANCES OF THE TIER TRADE, one in each
+    // direction, and the measurements survive their verdicts:
+    //
+    //   * replace_type_code_with_subclasses — `type_code` reports 9 findings over this
+    //     bundle's 457 files (projectKey=jawata-mcp). The SCOPE belongs with the count: an
+    //     unscoped call answers 10 over 466, the extra finding being a fixture in ANOTHER
+    //     repository loaded in the same workspace. Two earlier versions of that sentence
+    //     blamed fixture growth over time; a two-command experiment settled it — this bundle
+    //     measures 9 today, exactly as it did then, and the two calls simply asked different
+    //     questions. Every one of the nine messages names the SIBLING cure, so routing this
+    //     one made a SECOND runnable cure, which under the old rule cost the smell its
+    //     runnable instruction. That was the entry's whole argument, and step 3 retired it.
+    //
+    //   * replace_superclass_with_delegate — the mirror. `composition_over_inheritance`
+    //     names this row in its own finding text, under Fowler's earlier title Replace
+    //     Inheritance with Delegation, and declared TWO design-only cures, so it derived
+    //     CONSIDER and this row was its FIRST runnable one. An upgrade where the entry above
+    //     was a demotion. Demand real and entirely external: 0 over this bundle's 457 files,
+    //     9 over the fork.
+    //
+    // Having both directions measured is what made the cost of a route legible rather than
+    // anecdotal — and what made reversing the rule, rather than choosing between them, the
+    // answer.
 
     /** Map.of caps at ten pairs; this table passed it at Stage 6. */
     private static Map<String, String> mapOf(String... pairs) {
@@ -862,8 +993,15 @@ public final class CureCatalog {
      * read off a catalogue row by {@link CureLookup} — is the answer.</p>
      */
     public static String ocpHint() {
+        // READ OFF `ocp`, NOT OFF `divergent_change`, and the difference stopped being
+        // academic at S8b step 9. The three rows shared one constant, so either key rendered
+        // the same sentence and the choice was arbitrary; then divergent_change gained row 64
+        // (Split Phase), which is an `extract` kind and not a design on this axis — so
+        // rendering from that row would have printed "refactor_to_pattern kind=… / extract
+        // kind=split_phase", a call that names the wrong tool. `ocp` is the row whose members
+        // ARE the OCP designs, which is what this sentence is about.
         return OCP_LEAD + " — refactor_to_pattern "
-            + "kind=" + String.join(" / ", recipesFor("divergent_change")) + " "
+            + "kind=" + String.join(" / ", recipesFor("ocp")) + " "
             + "(or refactoring(action=plan, kind=<same>) then apply_plan for a parity-gated run).";
     }
 

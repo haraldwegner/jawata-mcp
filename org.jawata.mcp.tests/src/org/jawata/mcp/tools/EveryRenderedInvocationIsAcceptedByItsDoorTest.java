@@ -70,19 +70,17 @@ class EveryRenderedInvocationIsAcceptedByItsDoorTest {
 
     private static final ObjectMapper OM = new ObjectMapper();
 
+    /**
+     * The door population, from the one place that constructs it.
+     *
+     * <p>This method used to hold the nine by hand, with a comment marking the debt. S8b
+     * step 8 paid it: {@link RefactoringDoors#all} is what the application registers from,
+     * so a door added there enters this gate in the same edit rather than a suite run
+     * later.</p>
+     */
     private static List<AbstractTool> doors() {
         Supplier<IJdtService> none = () -> null;
-        RefactoringChangeCache cache = new RefactoringChangeCache();
-        return List.of(
-            new RefactorToPatternTool(none, cache),
-            new ExtractTool(none, cache),
-            new MoveTool(none, cache),
-            new InlineTool(none, cache),
-            new HierarchyTool(none, cache),
-            new DataTool(none, cache),
-            new org.jawata.mcp.tools.codegen.GenerateTool(none, cache),
-            new ChangeMethodSignatureTool(none, cache),
-            new ApplyCleanupTool(none, cache));
+        return RefactoringDoors.all(none, new RefactoringChangeCache());
     }
 
     @Test

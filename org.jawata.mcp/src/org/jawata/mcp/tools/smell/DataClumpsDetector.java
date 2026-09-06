@@ -124,7 +124,12 @@ public final class DataClumpsDetector implements Detector {
                         .collect(Collectors.joining(", "));
                     int line = ast.getLineNumber(node.getStartPosition());
                     byTuple.computeIfAbsent(tuple, k -> new ArrayList<>())
-                        .add(new Occurrence(filePath, line, node.getName().getIdentifier()));
+                        // The occurrence's method is the finding's SYMBOL and nothing else
+                        // reads it, so it carries the qualified name a door can resolve;
+                        // the message names the CLUMP, not the method.
+                        .add(new Occurrence(filePath, line, SmellAddress.qualifiedOr(
+                            org.jawata.mcp.models.CodeAddress.symbolOf(node.resolveBinding()),
+                            node.getName().getIdentifier())));
                 }
                 return true;
             }

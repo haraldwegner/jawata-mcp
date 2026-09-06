@@ -50,8 +50,13 @@ class PrimitiveObsessionDetectorTest {
     @DisplayName("flags the all-primitive parameter list, not the mixed/typed ones")
     void flags_primitive_list() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("coords"), "3 primitive params should be flagged: " + hits);
-        assertFalse(hits.contains("mixed"), "1-of-2 primitive must NOT be flagged: " + hits);
-        assertFalse(hits.contains("typed"), "all-object params must NOT be flagged: " + hits);
+        // QUALIFIED AT S8b STEP 9, NEGATIVES INCLUDED — `hits` is a Set, so a bare name left
+        // here makes assertFalse trivially true. Each literal is the address this run printed.
+        assertTrue(hits.contains("com.example.PrimitiveObsessionTargets#coords"),
+            "3 primitive params should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.PrimitiveObsessionTargets#mixed"),
+            "1-of-2 primitive must NOT be flagged: " + hits);
+        assertFalse(hits.contains("com.example.PrimitiveObsessionTargets#typed"),
+            "all-object params must NOT be flagged: " + hits);
     }
 }

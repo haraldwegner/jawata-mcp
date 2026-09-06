@@ -93,7 +93,32 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // Spelled `kind=` because that is what OperationRegistry.qualify produces for every
         // door, including one whose discriminator is `direction`. CureCatalog's Stage 7 block
         // records why that spelling is wrong as an INSTRUCTION and why it is right as a KEY.
-        "hierarchy kind=up", "hierarchy kind=down");
+        "hierarchy kind=up", "hierarchy kind=down",
+        // S8b STEP 8 widened this guard to all nine doors, which made TEN more operations
+        // visible for the first time — `generate`'s seven and three of
+        // `refactor_to_pattern`'s. They are exempt on exactly the terms the eight above are:
+        // every one shipped BEFORE Sprint 28d-rescue and this sprint did not change any of
+        // them. The guard could not see them until the door list stopped being hand-written,
+        // so their absence here was never a decision — it was the blind spot.
+        //
+        // ONE WRITTEN REASON COVERS `generate`'s SEVEN, and the plan says in as many words
+        // that this stage must not decide them: code generation is invoked because somebody
+        // wants the code, not because a detector found a shape. No finding says "this class
+        // is missing a toString"; a person decides that. Routing them would need a detector
+        // per generator, which is a different sprint's question.
+        "generate kind=constructor", "generate kind=getters_setters",
+        "generate kind=equals_hashcode", "generate kind=tostring",
+        "generate kind=test_skeleton", "generate kind=override_methods",
+        "generate kind=copy_class",
+        // The three pattern kinds, same terms. `refactor_to_visitor` and
+        // `replace_pattern_with_idiom` came with Sprint 19's Kerievsky set;
+        // `replace_constructor_with_factory` came with Sprint 28d, and this table's own
+        // comment records why it was NOT bolted onto a smell to satisfy a reachability
+        // check — no detector's prose asks for a factory, so the entry would have served the
+        // check rather than a reader.
+        "refactor_to_pattern kind=refactor_to_visitor",
+        "refactor_to_pattern kind=replace_pattern_with_idiom",
+        "refactor_to_pattern kind=replace_constructor_with_factory");
     // NOT EXEMPT, though both shipped before this sprint: Stage 6 CHANGED them, so
     // "pre-existing" stops being true of them. Row 49 landed as the `replaceDuplicates`
     // parameter on `extract kind=method` and folded `replace_duplicates` onto
@@ -134,12 +159,16 @@ class EveryShippedKindIsRoutedOrExplainedTest {
 
         int examined = 0;
         List<String> silent = new ArrayList<>();
+        List<String> contradicted = new ArrayList<>();
         for (org.jawata.mcp.tools.AbstractTool tool : doors) {
             for (String kind : tool.publishedKinds()) {
                 String qualified = OperationRegistry.qualify(tool.getName(), kind);
                 examined++;
-                if (PRE_EXISTING.contains(qualified)
-                        || routed.contains(qualified) || routed.contains(kind)) {
+                boolean isRouted = routed.contains(qualified) || routed.contains(kind);
+                if (isRouted && CureCatalog.unroutedReason(qualified) != null) {
+                    contradicted.add(qualified);
+                }
+                if (PRE_EXISTING.contains(qualified) || isRouted) {
                     continue;
                 }
                 if (CureCatalog.unroutedReason(qualified) == null) {
@@ -169,39 +198,33 @@ class EveryShippedKindIsRoutedOrExplainedTest {
                 + " kind added without a route or a reason, changes this number. Examined: "
                 + examined);
 
-        // THE SILENT SET IS NAMED, NOT MERELY EMPTY — and this is S8b step 8's honest state
-        // rather than its finished one.
+        // EMPTY AT S8b STEP 9, over the whole operation surface for the first time.
         //
-        // Widening the door list from six to nine made eighteen operations visible to this
-        // guard for the first time. They are not newly unrouted; they have shipped unrouted
-        // and unexplained all along, and the hand-written list was what kept the guard from
-        // saying so. Step 9 is the routing table that empties this set — the plan assigns the
-        // emptiness to that step in as many words.
-        //
-        // ASSERTED BY EQUALITY, for the reason step 5's derived gate gives: an `isEmpty()`
-        // that is expected to fail says nothing, and a set that merely SHRINKS cannot tell a
-        // routed operation from a forgotten one. Equality means an operation ARRIVING here —
-        // a new kind shipped without a route or a reason — fails immediately, which is the
-        // property the guard exists for and the one a hand-written door list never had.
-        org.junit.jupiter.api.Assertions.assertEquals(
-            java.util.Set.of(
-                "generate kind=constructor", "generate kind=getters_setters",
-                "generate kind=equals_hashcode", "generate kind=tostring",
-                "generate kind=test_skeleton", "generate kind=override_methods",
-                "generate kind=copy_class",
-                "refactor_to_pattern kind=refactor_to_visitor",
-                "refactor_to_pattern kind=replace_pattern_with_idiom",
-                "refactor_to_pattern kind=replace_constructor_with_factory",
-                "data kind=hide_delegate", "data kind=special_case",
-                "data kind=replace_primitive", "data kind=split_variable",
-                "data kind=replace_derived_variable", "data kind=remove_setting_method",
-                "data kind=encapsulate_record", "data kind=reference_to_value"),
-            new java.util.LinkedHashSet<>(silent),
+        // Step 8's widening made eighteen operations visible here at once — they had shipped
+        // unrouted and unexplained all along, and the hand-written door list was what kept
+        // the guard from saying so. Step 9 answered every one of them: five gained a ROUTE
+        // (hide_delegate, special_case, replace_primitive, remove_setting_method,
+        // encapsulate_record), three gained a written REASON, and ten were exempted by name
+        // above as predating this sprint.
+        assertTrue(silent.isEmpty(),
             "these operations ship and no finding names them, and no reason is written"
                 + " down. Either route them, or say in the table why nothing does — an"
-                + " unexplained gap and a forgotten one read identically. Step 9 empties"
-                + " this set; until then it is named so nothing can quietly join it: "
-                + silent);
+                + " unexplained gap and a forgotten one read identically: " + silent);
+
+        // AND THE OTHER DIRECTION, which this guard could not see until step 9 gave it
+        // something to catch. "Routed" and "unrouted with a reason" are exclusive states, and
+        // the OR above is satisfied by either — so an operation that gains a route keeps its
+        // old reason, the reason goes on saying "no detector reports this", and nothing
+        // complains. Step 9 routed eleven kinds that had one, and every one of those
+        // sentences was false the moment the route landed.
+        //
+        // This is the same failure the SILENT list guards from the opposite side: there, a
+        // gap nobody wrote down; here, a written-down gap that has since been closed. Both
+        // are a hand-written sentence about a table, and only the table can say it is stale.
+        assertTrue(contradicted.isEmpty(),
+            "these operations are BOTH named by a cure and carry a written reason for having"
+                + " no route. One of the two is stale, and it is the reason: delete it, in"
+                + " the same change that added the route: " + contradicted);
     }
 
     @Test

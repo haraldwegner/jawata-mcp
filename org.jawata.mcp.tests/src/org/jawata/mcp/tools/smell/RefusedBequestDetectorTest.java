@@ -50,7 +50,16 @@ class RefusedBequestDetectorTest {
     @DisplayName("flags the override that throws UnsupportedOperationException, not the honoured one")
     void flags_refusal() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("doIt"), "override that throws UOE should be flagged: " + hits);
-        assertFalse(hits.contains("keepIt"), "override with a real body must NOT be flagged: " + hits);
+        // QUALIFIED AT S8b STEP 9, NEGATIVES INCLUDED — `hits` is a Set, so a bare name left
+        // here makes assertFalse trivially true. The positive is the address this run printed;
+        // the negative is read off the fixture, and BOTH declarations of `keepIt` are named,
+        // because the base class and the honouring subclass each declare one and asserting
+        // only the subclass would leave the other unmeasured.
+        assertTrue(hits.contains("com.example.Refuser#doIt"),
+            "override that throws UnsupportedOperationException should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.Honorer#keepIt"),
+            "override with a real body must NOT be flagged: " + hits);
+        assertFalse(hits.contains("com.example.BequestBase#keepIt"),
+            "and neither must the base declaration it overrides: " + hits);
     }
 }

@@ -50,7 +50,12 @@ class SpeculativeGeneralityDetectorTest {
     @DisplayName("flags the single-implementor interface, not the multi-implementor one")
     void flags_sole_implementor() {
         Set<String> hits = symbols();
-        assertTrue(hits.contains("SoleService"), "interface with one implementor should be flagged: " + hits);
-        assertFalse(hits.contains("MultiService"), "interface with two implementors must NOT be flagged: " + hits);
+        // QUALIFIED AT S8b STEP 9, NEGATIVES INCLUDED — `hits` is a Set, so a bare name left
+        // here makes assertFalse trivially true. Each literal is the address this run printed
+        // or the fixture's own declaration.
+        assertTrue(hits.contains("com.example.SoleService"),
+            "interface with one implementor should be flagged: " + hits);
+        assertFalse(hits.contains("com.example.MultiService"),
+            "interface with two implementors must NOT be flagged: " + hits);
     }
 }

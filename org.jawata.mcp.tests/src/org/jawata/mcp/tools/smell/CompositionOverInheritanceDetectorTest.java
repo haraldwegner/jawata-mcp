@@ -83,13 +83,16 @@ class CompositionOverInheritanceDetectorTest {
             () -> "InheritanceTargets must produce exactly 2 findings; got: " + findings);
         Set<String> hits = findings.stream()
             .map(f -> String.valueOf(f.get("symbol"))).collect(Collectors.toSet());
-        assertTrue(hits.contains("ReportingLedger"),
+        // QUALIFIED AT S8b STEP 9, NEGATIVES INCLUDED — `hits` is a Set, so a bare name left
+        // here makes assertFalse trivially true. Each literal is the address this run printed
+        // or the fixture's own declaration.
+        assertTrue(hits.contains("com.example.ReportingLedger"),
             () -> "a subclass overriding NOTHING of a concrete parent must fire: " + hits);
-        assertTrue(hits.contains("AuditLedger"),
+        assertTrue(hits.contains("com.example.AuditLedger"),
             () -> "a subclass touching 1 of 6 inherited members (16%) must fire: " + hits);
-        assertFalse(hits.contains("FullLedger"),
+        assertFalse(hits.contains("com.example.FullLedger"),
             () -> "a subclass overriding 3 and touching all 6 must NOT fire: " + hits);
-        assertFalse(hits.contains("Ledger"),
+        assertFalse(hits.contains("com.example.Ledger"),
             () -> "the parent itself extends nothing and must NOT fire: " + hits);
     }
 
@@ -99,14 +102,17 @@ class CompositionOverInheritanceDetectorTest {
         Map<String, String> bySymbol = findingsIn(DIRTY).stream().collect(Collectors.toMap(
             f -> String.valueOf(f.get("symbol")), f -> String.valueOf(f.get("message"))));
 
-        String noOverrides = bySymbol.get("ReportingLedger");
+        // KEYED BY THE QUALIFIED ADDRESS, because that is what the finding now carries — and
+        // a miss here returns null rather than failing, so the next line would throw a
+        // NullPointerException instead of stating what went wrong.
+        String noOverrides = bySymbol.get("com.example.ReportingLedger");
         assertTrue(noOverrides.contains("overrides NONE"),
             () -> "the no-override arm must say so: " + noOverrides);
         assertFalse(noOverrides.contains("below the"),
             () -> "ReportingLedger touches 33% of the surface, above the 25% threshold, so the "
                 + "percentage arm must NOT be claimed for it: " + noOverrides);
 
-        String barelyTouched = bySymbol.get("AuditLedger");
+        String barelyTouched = bySymbol.get("com.example.AuditLedger");
         assertTrue(barelyTouched.contains("1 of 6 inherited member(s)"),
             () -> "the percentage arm must report the fraction it measured: " + barelyTouched);
 
@@ -134,12 +140,21 @@ class CompositionOverInheritanceDetectorTest {
         // Every class named here is a NEAR MISS: shaped so it would fire if its
         // exclusion were removed. See InheritanceCleanTargets for each derivation.
         Set<String> hits = symbolsIn(CLEAN);
-        assertFalse(hits.contains("Dot"), "an ABSTRACT superclass must be excluded");
-        assertFalse(hits.contains("MissingAccount"), "a Throwable hierarchy must be excluded");
-        assertFalse(hits.contains("Names"), "a superclass outside the source must be excluded");
-        assertFalse(hits.contains("ReadOnlyLedger"),
+        // QUALIFIED AT S8b STEP 9. These are ALL negatives, which is exactly where a bare name
+        // stops meaning anything: `hits` now holds package-qualified addresses and Set.contains
+        // is exact equality, so every one of these five would pass with the detector reporting
+        // the whole file. The names are read off InheritanceCleanTargets, which declares all
+        // five in com.example.
+        assertFalse(hits.contains("com.example.Dot"),
+            "an ABSTRACT superclass must be excluded");
+        assertFalse(hits.contains("com.example.MissingAccount"),
+            "a Throwable hierarchy must be excluded");
+        assertFalse(hits.contains("com.example.Names"),
+            "a superclass outside the source must be excluded");
+        assertFalse(hits.contains("com.example.ReadOnlyLedger"),
             "a class that refuses a bequest belongs to refused_bequest, not here");
-        assertFalse(hits.contains("Shape"), "a class extending nothing must be excluded");
+        assertFalse(hits.contains("com.example.Shape"),
+            "a class extending nothing must be excluded");
     }
 
     @Test
@@ -159,7 +174,10 @@ class CompositionOverInheritanceDetectorTest {
         List<Map<String, Object>> findings = (List<Map<String, Object>>) data.get("findings");
         assertEquals(1, findings.size(),
             () -> "ReadOnlyLedger.credit is the one refused bequest in this file; got: " + findings);
-        assertEquals("credit", String.valueOf(findings.get(0).get("symbol")));
+        assertEquals("com.example.ReadOnlyLedger#credit",
+            String.valueOf(findings.get(0).get("symbol")),
+            "and it is handed over with an address the cure can be run from, not the bare"
+                + " member name it used to carry");
     }
 
     // ------------------------------------------------------------- registration

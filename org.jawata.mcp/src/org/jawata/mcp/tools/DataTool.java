@@ -202,6 +202,27 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
             return ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
+        // THE NAME FORM IS RESOLVED AT THE DOOR, for every kind, before dispatch.
+        //
+        // `data` was the ONE refactoring front door that did not do this — measured against
+        // the caller set of materializePosition, which names extract, inline, move,
+        // hierarchy, refactor_to_pattern, apply_cleanup and change_method_signature's ten
+        // delegates, and not this one. Underneath it, FOUR of the ten delegates
+        // (encapsulate_collection, hide_delegate, special_case, replace_primitive) never
+        // called it either, while the other six did — so half this door accepted a symbol
+        // and half answered INVALID_COORDINATES for the same published parameter.
+        //
+        // Found by S8b step 9's INVARIANT A driving each routed cure's door with its own
+        // finding's address. It goes HERE rather than into the four delegates because that
+        // would be the seventh and eighth copies of a call every kind on this door needs;
+        // the existing six stay, harmlessly, since the second call sees the position this
+        // one already wrote and returns at once — and they are what keeps the delegates
+        // usable when a test constructs one directly.
+        java.util.Optional<ToolResponse> materialized =
+            org.jawata.mcp.tools.shared.FqnTarget.materializePosition(service, arguments);
+        if (materialized.isPresent()) {
+            return materialized.get();
+        }
         return switch (kind) {
             case "encapsulate_field" -> encapsulateField.executeWithService(service, arguments);
             case "hide_delegate" -> hideDelegate.executeWithService(service, arguments);

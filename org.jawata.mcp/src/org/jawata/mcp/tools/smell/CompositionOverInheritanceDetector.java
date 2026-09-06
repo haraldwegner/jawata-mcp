@@ -184,11 +184,13 @@ public final class CompositionOverInheritanceDetector extends AbstractAstDetecto
         }
 
         String name = node.getName().getIdentifier();
+        // The MESSAGE keeps the identifier, which is what reads; the SYMBOL is the
+        // qualified name, which is what a door can be pointed at.
         return new Finding("composition_over_inheritance", filePath,
             ast.getLineNumber(node.getName().getStartPosition()), -1, "warning",
             message(name, parent.getName(), overridesNothing, barelyTouched,
                 used.keys.size(), surface.keys.size(), percent, threshold),
-            name);
+            SmellAddress.qualifiedOr(SmellAddress.owner(node), name));
     }
 
     private static String message(String subclass, String superclass, boolean overridesNothing,

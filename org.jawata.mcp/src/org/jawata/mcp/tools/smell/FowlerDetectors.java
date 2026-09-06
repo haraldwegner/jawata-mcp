@@ -142,6 +142,13 @@ public final class FowlerDetectors {
             // would be two answers to one question.
             .register(org.jawata.mcp.tools.ModernizationSmells.loops(), "fowler")
             .register(org.jawata.mcp.tools.ModernizationSmells.dataClass(), "fowler")
+            // Sprint 28d-rescue S8b step 9 — Duplicated Code, adapted for the same reason
+            // and in the same shape: find_duplicate_code has grouped structurally-identical
+            // methods since Sprint 14b, behind a name a reader has to already know, so the
+            // smell read as covered and no sweep for smells returned it. One finding per
+            // clone INSTANCE, because a group is an aggregate with no single place and
+            // every cure it routes to is pointed at a method.
+            .register(org.jawata.mcp.tools.DuplicatedCodeSmell.detector(), "fowler")
             // Sprint 28d-rescue — commented-out code, on Harald's ruling of 2026-09-02.
             // It reports a CANDIDATE and never dead code: commented-out code can still
             // carry meaning, and nothing removes it without a human yes.

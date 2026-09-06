@@ -55,12 +55,15 @@ public final class PrimitiveObsessionDetector extends AbstractAstDetector {
                 if (primitive >= threshold && primitive * 2 > total) {
                     int line = ast.getLineNumber(node.getStartPosition());
                     String name = node.getName().getIdentifier();
+                    // The MESSAGE keeps the identifier, which is what reads; the SYMBOL is
+                    // the qualified name, which is what a door can be pointed at.
                     out.add(new Finding(
                         "primitive_obsession", filePath, line, -1, "warning",
                         (node.isConstructor() ? "Constructor '" : "Method '") + name + "' takes "
                             + primitive + " primitive/String parameters of " + total
                             + ". Consider Replace Type Code with Class / Parameter Object.",
-                        name));
+                        SmellAddress.qualifiedOr(org.jawata.mcp.models.CodeAddress.symbolOf(
+                            node.resolveBinding()), name)));
                 }
                 return true;
             }
