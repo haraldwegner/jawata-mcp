@@ -159,21 +159,22 @@ class DeclaredShapeHonestyTest {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Supplier<IJdtService> svc = () -> service;
         Map<String, AbstractTool> doors = new LinkedHashMap<>();
-        doors.put("extract", new ExtractTool(svc, cache));
-        doors.put("generate", new GenerateTool(svc, cache));
-        doors.put("refactor_to_pattern", new RefactorToPatternTool(svc, cache));
-        doors.put("move", new MoveTool(svc, cache));
-        doors.put("inline", new InlineTool(svc, cache));
-        doors.put("apply_cleanup", new ApplyCleanupTool(svc, cache));
-        doors.put("hierarchy", new HierarchyTool(svc, cache));
-        // `data` JOINS HERE AT STAGE 5, which is what this file said would happen: it was
-        // excluded while it published a single operation and no kind enum, and it now
-        // publishes ten kinds through a routing table like any other door.
-        doors.put("data", new DataTool(svc, cache));
-        // `change_method_signature` JOINS HERE AT STAGE 4, for the reason `data` joined at
-        // Stage 5: it was excluded while it published a single operation and no kind enum, and
-        // it now routes on `kind` like every other door.
-        doors.put("change_method_signature", new ChangeMethodSignatureTool(svc, cache));
+        // DERIVED AT S8b STEP 8. This map was hand-written and each door joined it by hand,
+        // one stage at a time — `data` at Stage 5, `change_method_signature` at Stage 4, both
+        // with a comment explaining that they had been excluded while they published a single
+        // operation. Those comments were correct and the mechanism was the defect: the map
+        // could only gain a door when somebody remembered, and by C8 the four copies of this
+        // same population held 10, 8, 6 and 8 members against a true nine.
+        for (AbstractTool door : org.jawata.mcp.tools.RefactoringDoors.all(svc, cache)) {
+            doors.put(door.getName(), door);
+        }
+        // THE LIFECYCLE DOOR IS ADDED HERE AND ONLY HERE, deliberately. `refactoring` is a
+        // front door by every structural test this file applies — a published discriminator,
+        // typed delegates, a description — but its actions are verbs over a change the other
+        // doors produced rather than transformations of code, so it implements FrontDoor and
+        // NOT KindedTool and its verbs never enter the operation namespace. It is outside
+        // RefactoringDoors for that reason, and inside this map because the honesty rules DO
+        // apply to it.
         doors.put("refactoring", new RefactoringTool(svc, cache,
             new org.jawata.mcp.domain.NoOpAdvisor()));
         return doors;

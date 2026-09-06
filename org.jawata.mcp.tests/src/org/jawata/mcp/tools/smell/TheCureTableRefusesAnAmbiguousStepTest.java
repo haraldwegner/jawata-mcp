@@ -71,19 +71,19 @@ class TheCureTableRefusesAnAmbiguousStepTest {
         // comment is the marker, and the lesson is the one this sprint keeps re-learning —
         // deriving the inner list while hand-writing the outer one moves the staleness up a
         // level rather than removing it.
-        for (org.jawata.mcp.tools.AbstractTool door : List.of(
-                new org.jawata.mcp.tools.RefactorToPatternTool(none, cache),
-                new org.jawata.mcp.tools.ExtractTool(none, cache),
-                new org.jawata.mcp.tools.MoveTool(none, cache),
-                new org.jawata.mcp.tools.InlineTool(none, cache),
-                new org.jawata.mcp.tools.HierarchyTool(none, cache),
-                new org.jawata.mcp.tools.DataTool(none, cache),
-                new org.jawata.mcp.tools.codegen.GenerateTool(none, cache),
-                new org.jawata.mcp.tools.ChangeMethodSignatureTool(none, cache),
-                new org.jawata.mcp.tools.ApplyCleanupTool(none, cache))) {
+        // S8b step 8: THE OUTER LIST IS DERIVED TOO. The comment above is the record of what
+        // this cost while it was hand-written; the population now comes from
+        // RefactoringDoors.all, which is the same call the application registers from, so a
+        // door cannot be in production and missing from this mirror.
+        //
+        // The leftover `registry.register("data", List.of())` that sat here is gone with it.
+        // It was a no-op — registration is idempotent and it added no kinds — left behind
+        // when DataTool joined the loop above, and it is exactly the shape that makes a
+        // reader wonder whether the door is registered twice on purpose.
+        for (org.jawata.mcp.tools.AbstractTool door
+                : org.jawata.mcp.tools.RefactoringDoors.all(none, cache)) {
             registry.register(door.getName(), kindsOrFail(door));
         }
-        registry.register("data", List.of());
         return registry;
     }
 

@@ -1034,21 +1034,27 @@ public class JawataApplication implements IApplication {
         toolRegistry.register(new RenameSymbolTool(() -> jdtService, refactoringChangeCache));
         toolRegistry.register(new OrganizeImportsTool(() -> jdtService, refactoringChangeCache));
 
+        // S8b step 8: THE NINE REFACTORING DOORS COME FROM ONE SOURCE.
+        // They used to be nine scattered register(...) calls here, and three test
+        // files each kept their own hand-written copy of the same set — memberships
+        // 10, 8, 6 and 8 against a true population of nine. A door added to
+        // RefactoringDoors.all is now registered, mirrored, covered and examined in
+        // the same edit, because none of those files holds a name any more.
+        for (org.jawata.mcp.tools.AbstractTool door
+                : org.jawata.mcp.tools.RefactoringDoors.all(
+                    () -> jdtService, refactoringChangeCache)) {
+            toolRegistry.register(door);
+        }
+
         // Sprint 16b/A: apply-tool category front doors. Collapse 16 narrow
         // refactor/codegen tools into 5 parametric verbs; the narrow classes
         // remain as the delegated implementations, no longer registered.
-        toolRegistry.register(new ExtractTool(() -> jdtService, refactoringChangeCache));
-        toolRegistry.register(new InlineTool(() -> jdtService, refactoringChangeCache));
-        toolRegistry.register(new MoveTool(() -> jdtService, refactoringChangeCache));
-        toolRegistry.register(new HierarchyTool(() -> jdtService, refactoringChangeCache));
         // Sprint 22a P1-a.1: the composition-axis primitive — move an instance
         // method onto the type of one of its parameters/fields (net-new front door).
         // Sprint 28d-rescue (stage 1): FOLDED into `move` as kind=method.
-        toolRegistry.register(new GenerateTool(() -> jdtService, refactoringChangeCache));
 
         // Sprint 19 (Kerievsky): pattern-targeted refactorings behind one parametric
         // front door; the per-pattern delegates are not registered standalone.
-        toolRegistry.register(new RefactorToPatternTool(() -> jdtService, refactoringChangeCache));
 
         // Fine-grained reference search (JDT-unique capabilities).
         // Sprint 11 Phase D: 13 narrow find_* tools collapsed to 2 parametric ones.
@@ -1074,13 +1080,11 @@ public class JawataApplication implements IApplication {
         // get_type_usage_summary via inspect(kind)).
 
         // Advanced refactoring tools (extract/inline now via the `extract`/`inline` front doors above)
-        toolRegistry.register(new ChangeMethodSignatureTool(() -> jdtService, refactoringChangeCache));
         // Sprint 28d-rescue (stage 1): FOLDED into `refactor_to_pattern` as
         // kind=replace_pattern_with_idiom, whose default idiom already IS this.
 
         // Sprint 11 Phase E (v1.5.1): JDT-LTK structural refactoring.
         // move/pull-up/push-down now via the `move`/`move_in_hierarchy` front doors above.
-        toolRegistry.register(new DataTool(() -> jdtService, refactoringChangeCache));
 
         // Sprint 12 (v1.6.0): Ring 1 workspace verification tools.
         toolRegistry.register(new CompileWorkspaceTool(() -> jdtService));
@@ -1109,7 +1113,6 @@ public class JawataApplication implements IApplication {
         toolRegistry.register(new FindModernizationTool(() -> jdtService));
 
         // Sprint 15 (v1.10.0): parametric clean-up catalog (upstream v1.4.2 harvest).
-        toolRegistry.register(new ApplyCleanupTool(() -> jdtService, refactoringChangeCache));
 
         // Sprint 15a/15b: naming/Javadoc/nullness analysis now via analyze(kind);
         // apply_null_annotations stays (it mutates).

@@ -1,17 +1,16 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.OperationRegistry;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
-import org.jawata.mcp.tools.ApplyCleanupTool;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.refactoring.OperationRegistry;
+import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * EVERY SHIPPED OPERATION IS EITHER OFFERED BY A FINDING OR EXPLAINED.
@@ -26,42 +25,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * explained, and nothing said so; the shortfall was found by a review reading the table,
  * which is the wrong instrument for a fact a test can hold.</p>
  *
- * <p><b>THE COUNTS IN THE PROSE BELOW WENT STALE AGAIN AT C7, and a round-2 audit listed all
- * three.</b> They are corrected here, and the correction is worth less than the sentence that
- * predicted it: this file already says "a number in prose beside a list it describes has
- * nothing holding it to the list", and then went stale a fourth time in the paragraph making
- * that point. The number that IS held is the {@code assertEquals} on {@code examined}. The
- * cure is deriving the door list from the registered doors rather than typing it, which is
- * Stage 9's M6c — every stale count in this file is one more argument for it.</p>
+ * <p><b>THE PROSE COUNTS IN THIS FILE WENT STALE FOUR TIMES, and each sweep to correct them
+ * introduced the next one</b> — including a sentence that said SIX and then listed five, in
+ * the very commit whose job was fixing stale counts, and another that announced the count was
+ * gone in the same breath as restating it. The file's own diagnosis was right: a number in
+ * prose beside a hand-written list has nothing holding it to the list, and nothing here FAILED
+ * when the two disagreed.</p>
  *
- * <p>Scoped to the front doors THIS SPRINT HAS REACHED, which at C7 is SIX:
- * {@code apply_cleanup} from Stage 3, {@code extract}, {@code inline} and {@code move} from
- * Stage 6, {@code change_method_signature} from Stage 4, and {@code hierarchy} from Stage 7.
- * It was scoped to the first alone until C6, and an audit was right that the silence
- * therefore said nothing about Stage 6's twelve rows — the guard passed over them without
- * looking. <b>Then it happened again</b>: Stage 4 created a door with ten new kinds and did
- * not widen this list, so a C4 audit made the identical finding one stage later. <b>And a
- * third time at C7</b>, on {@code hierarchy}'s five. The lesson stopped getting narrower
- * after the second telling: the scope must widen in the SAME change that adds the kinds,
- * because nothing else will notice — and three stages have now proved that a lesson written
- * in a comment is not a mechanism.</p>
+ * <p><b>That is over, because the list it drifted from is gone.</b> S8b step 8 derives the
+ * doors, so there is no hand-written membership left for a paragraph to miscount. One number
+ * is still typed by hand — the {@code assertEquals} on {@code examined} — and that one is
+ * right to be: deriving it from the same call that fills the loop would compare the doors with
+ * themselves, which is the tautology this file's siblings already record.</p>
  *
- * <p><b>The sentence above SAID SIX and then LISTED FIVE until a C7 round-3 audit read it</b> —
- * omitting the very door C7 added, inside the commit whose stated job was this file's stale
- * counts, and in the same self-contradiction shape that commit had just repaired one file
- * over. It names all six now. That is the argument for M6c in one line: a hand-written list
- * and a hand-written count of it disagree the moment anyone edits either, and nothing here
- * fails when they do.</p>
+ * <p><b>SCOPED TO EVERY REFACTORING DOOR, because the list is no longer written by hand.</b>
+ * S8b step 8 replaced it with {@code RefactoringDoors.all} — the same call the application
+ * registers from — so the guard examines all nine doors and their 78 operations, and a door
+ * cannot be shipped and unexamined.</p>
  *
- * <p><b>THIS PARAGRAPH USED TO COUNT THE STALE COUNTS, and every count it gave was wrong.</b>
- * It has now been corrected three times, and each correction supplied a fresh number that the
- * next audit falsified — including one that asserted the count was gone in the same sentence
- * that restated it. So there is no number here at all, and that is the repair rather than a
- * gap in it. What is true without arithmetic: <b>every stale count in this file was a
- * hand-written number sitting beside a hand-written list, and each sweep to correct them
- * introduced one more.</b> Nothing in that history is a mechanism. The derivation in Stage 9's
- * M6c is — and until it lands, the honest form of this paragraph is one with nothing in it to
- * go stale.</p>
+ * <p>The history is kept because it is the argument. It was scoped to {@code apply_cleanup}
+ * alone until C6, and an audit was right that the silence therefore said nothing about Stage
+ * 6's twelve rows — the guard passed over them without looking. <b>Then it happened again</b>:
+ * Stage 4 created a door with ten new kinds and did not widen this list, so a C4 audit made
+ * the identical finding one stage later. <b>And a third time at C7</b>, on {@code hierarchy}'s
+ * five. Each entry recorded the same lesson in the same words — the scope must widen in the
+ * SAME change that adds the kinds, because nothing else will notice — and the next stage did
+ * not apply it. That is the tell: nothing here FAILED when a door was added, so the list could
+ * only grow when somebody remembered, and three stages running nobody did. A lesson written in
+ * a comment was never the mechanism; the derivation is.</p>
  *
  * <p>It is still not the whole surface, and that is deliberate rather than convenient: a
  * test that fails for work not yet started teaches a reader to ignore it.
@@ -111,34 +102,30 @@ class EveryShippedKindIsRoutedOrExplainedTest {
     // that, and it was right: an exemption list has to be about what was NOT worked on.
 
     @Test
-    @DisplayName("each kind on the six reached front doors is named by a cure, or carries a reason")
+    @DisplayName("each kind on every refactoring door is named by a cure, or carries a reason")
     void everyCleanupKindIsRoutedOrExplained() {
         Supplier<IJdtService> svc = () -> null;
         RefactoringChangeCache cache = new RefactoringChangeCache();
         // From each tool's PUBLISHED schema, which is the same list the registry harvests.
         // Reading it here rather than widening a package-private helper: the schema is the
         // contract, and a test asserting the contract should read the contract.
-        List<org.jawata.mcp.tools.AbstractTool> doors = List.of(
-            new ApplyCleanupTool(svc, cache),
-            new org.jawata.mcp.tools.ExtractTool(svc, cache),
-            new org.jawata.mcp.tools.InlineTool(svc, cache),
-            new org.jawata.mcp.tools.MoveTool(svc, cache),
-            // FIFTH at C4. Stage 4's ten kinds shipped neither routed nor written down, and
-            // this guard was scoped past their door — so its silence said nothing about them,
-            // which is word for word what a C6 audit said about Stage 6 and the reason the
-            // list grew from one door to four. Third stage, same omission: the scope has to
-            // widen in the SAME change that adds the kinds, or the guard passes over exactly
-            // the work that was done.
-            new org.jawata.mcp.tools.ChangeMethodSignatureTool(svc, cache),
-            // SIXTH at C7, and the paragraph above predicted this exactly. Stage 7 added five
-            // kinds to `hierarchy` and did not widen this list, so the guard passed over the
-            // whole stage — which is what a C6 audit said about Stage 6 and a C4 audit said
-            // about Stage 4, in the same words. FOURTH stage, same omission. The lesson has
-            // been written down three times and applied zero times, which says the lesson is
-            // not the cure: nothing here FAILS when a door is added, so the list can only be
-            // widened by somebody remembering. Deriving it from the registered doors is the
-            // cure, and it is Stage 9's M6c — this entry is the fourth argument for it.
-            new org.jawata.mcp.tools.HierarchyTool(svc, cache));
+        // DERIVED AT S8b STEP 8, and the history is kept because it is the argument.
+        //
+        // This list was hand-written and was widened FOUR TIMES, each time by an audit rather
+        // than by a failure: from one door to four when a C6 audit found Stage 6's eleven
+        // kinds unexamined; a FIFTH at C4, when Stage 4's ten kinds shipped neither routed nor
+        // written down and this guard was scoped past their door, so its silence said nothing
+        // about them; a SIXTH at C7, when Stage 7 added five kinds to `hierarchy` and the
+        // guard passed over the whole stage. Each entry recorded the same lesson in the same
+        // words — "the scope must widen in the SAME change that adds the kinds, because
+        // nothing else will notice" — and the next stage did not apply it.
+        //
+        // That is the tell: the lesson was never the cure. Nothing here FAILED when a door was
+        // added, so the list could only be widened by somebody remembering, and four times
+        // running nobody did. The population now comes from the same call the application
+        // registers from, so a door cannot be shipped and unexamined.
+        List<org.jawata.mcp.tools.AbstractTool> doors =
+            org.jawata.mcp.tools.RefactoringDoors.all(svc, cache);
 
         List<String> routed = new ArrayList<>();
         for (String kind : CureCatalog.declaredKinds()) {
@@ -165,20 +152,56 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // precise re-narrowing the widening was for. A floor cannot see a door go; a count
         // can, and the sibling guard in FrontDoorDescriptionTest already used one.
         //
-        // 50 = the six doors' published kinds, and both halves are MEASURED rather than
-        // arithmetic: a C7 round-2 audit removed HierarchyTool from the list above and the
-        // failure read `Examined: 43`, so this door contributes exactly 7 — up, down and the
-        // five Stage 7 rows — against the 43 the previous five published.
-        org.junit.jupiter.api.Assertions.assertEquals(50, examined,
-            "PROOF OF LIFE: the six doors must publish their kinds here, or this loop runs"
-                + " over nothing and passes. A door removed from the list above, or a kind"
-                + " added without a route or a reason, changes this number. Examined: "
+        // 78 = the NINE doors' published kinds, which is the whole operation surface — the
+        // measured start state S8b opened on, reached here for the first time because the
+        // door list stopped being hand-written. It was 50 over six doors; `data` (10),
+        // `generate` (7) and `refactor_to_pattern` (11) were the three the hand list never
+        // gained.
+        //
+        // The literal STAYS hand-written on purpose, and this is the one place that is right.
+        // Deriving it from the same call that populates the loop would compare the doors with
+        // themselves — the tautology this file's sibling guards already record — so the number
+        // is what a drifting population cannot fake. It was `examined >= 30` once: a floor
+        // cannot see a door LEAVE, because any single departure still lands above it.
+        org.junit.jupiter.api.Assertions.assertEquals(78, examined,
+            "PROOF OF LIFE: the nine doors must publish their kinds here, or this loop runs"
+                + " over nothing and passes. A door removed from RefactoringDoors.all, or a"
+                + " kind added without a route or a reason, changes this number. Examined: "
                 + examined);
 
-        assertTrue(silent.isEmpty(),
+        // THE SILENT SET IS NAMED, NOT MERELY EMPTY — and this is S8b step 8's honest state
+        // rather than its finished one.
+        //
+        // Widening the door list from six to nine made eighteen operations visible to this
+        // guard for the first time. They are not newly unrouted; they have shipped unrouted
+        // and unexplained all along, and the hand-written list was what kept the guard from
+        // saying so. Step 9 is the routing table that empties this set — the plan assigns the
+        // emptiness to that step in as many words.
+        //
+        // ASSERTED BY EQUALITY, for the reason step 5's derived gate gives: an `isEmpty()`
+        // that is expected to fail says nothing, and a set that merely SHRINKS cannot tell a
+        // routed operation from a forgotten one. Equality means an operation ARRIVING here —
+        // a new kind shipped without a route or a reason — fails immediately, which is the
+        // property the guard exists for and the one a hand-written door list never had.
+        org.junit.jupiter.api.Assertions.assertEquals(
+            java.util.Set.of(
+                "generate kind=constructor", "generate kind=getters_setters",
+                "generate kind=equals_hashcode", "generate kind=tostring",
+                "generate kind=test_skeleton", "generate kind=override_methods",
+                "generate kind=copy_class",
+                "refactor_to_pattern kind=refactor_to_visitor",
+                "refactor_to_pattern kind=replace_pattern_with_idiom",
+                "refactor_to_pattern kind=replace_constructor_with_factory",
+                "data kind=hide_delegate", "data kind=special_case",
+                "data kind=replace_primitive", "data kind=split_variable",
+                "data kind=replace_derived_variable", "data kind=remove_setting_method",
+                "data kind=encapsulate_record", "data kind=reference_to_value"),
+            new java.util.LinkedHashSet<>(silent),
             "these operations ship and no finding names them, and no reason is written"
                 + " down. Either route them, or say in the table why nothing does — an"
-                + " unexplained gap and a forgotten one read identically: " + silent);
+                + " unexplained gap and a forgotten one read identically. Step 9 empties"
+                + " this set; until then it is named so nothing can quietly join it: "
+                + silent);
     }
 
     @Test
