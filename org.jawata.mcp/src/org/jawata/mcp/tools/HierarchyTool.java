@@ -40,6 +40,8 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
         for (AbstractTool delegate : List.of(new PullUpTool(serviceSupplier, cache),
                 new PushDownTool(serviceSupplier, cache),
                 new org.jawata.mcp.tools.inheritance.PullUpConstructorBodyTool(
+                    serviceSupplier, cache),
+                new org.jawata.mcp.tools.inheritance.ReplaceTypeCodeWithSubclassesTool(
                     serviceSupplier, cache))) {
             directions.put(((KindDelegate) delegate).kindName(), delegate);
         }
