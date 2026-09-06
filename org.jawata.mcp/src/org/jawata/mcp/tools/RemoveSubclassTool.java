@@ -1,6 +1,13 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
@@ -8,26 +15,16 @@ import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
-import org.eclipse.jdt.core.dom.CastExpression;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
-import org.eclipse.jdt.core.dom.InstanceofExpression;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SimpleType;
-import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
-import org.eclipse.jdt.core.dom.SuperConstructorInvocation;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
 import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
-import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jface.text.Document;
 import org.eclipse.ltk.core.refactoring.CompositeChange;
 import org.eclipse.text.edits.TextEdit;
@@ -40,15 +37,9 @@ import org.jawata.mcp.refactoring.PreparedRefactoring;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.refactoring.atoms.DeleteAtom;
 import org.jawata.mcp.tools.shared.FormatterOptions;
+import org.jawata.mcp.tools.shared.HierarchyFold;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Fowler — <b>Remove Subclass</b> (row 38). A subclass that no longer does enough to earn
@@ -231,7 +222,8 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
         for (Object member : subType.bodyDeclarations()) {
             if (member instanceof MethodDeclaration method && !method.isConstructor()) {
                 IMethodBinding binding = method.resolveBinding();
-                if (binding != null && overridesSomething(binding, parentBinding)) {
+                if (binding != null
+                        && HierarchyFold.overridesSomething(binding, parentBinding)) {
                     return ToolResponse.invalidParameter("position",
                         subclass.getElementName() + "." + method.getName() + "() overrides "
                             + parentBinding.getName() + ", and that override IS the"
@@ -241,7 +233,7 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
                 }
             }
             if (member instanceof MethodDeclaration ctor && ctor.isConstructor()) {
-                String forwarding = constructorForwardsUnchanged(ctor);
+                String forwarding = HierarchyFold.constructorForwardsUnchanged(ctor);
                 if (forwarding != null) {
                     return ToolResponse.invalidParameter("position",
                         subclass.getElementName() + "'s constructor " + forwarding
@@ -253,7 +245,7 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
             }
         }
 
-        String observed = observedAnywhere(service, subclass);
+        String observed = HierarchyFold.observedAnywhere(service, subclass);
         if (observed != null) {
             return ToolResponse.invalidParameter("position",
                 "the type " + subclass.getElementName() + " is observed at " + observed
@@ -267,14 +259,14 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
             return ToolResponse.symbolNotFound(
                 "could not locate the body of " + parentBinding.getName());
         }
-        Set<String> existing = memberNames(parentType);
+        Set<String> existing = HierarchyFold.memberNames(parentType);
         List<BodyDeclaration> moving = new ArrayList<>();
         for (Object member : subType.bodyDeclarations()) {
             if (member instanceof MethodDeclaration method && method.isConstructor()) {
                 continue;
             }
             BodyDeclaration declaration = (BodyDeclaration) member;
-            for (String name : namesOf(declaration)) {
+            for (String name : HierarchyFold.namesOf(declaration)) {
                 if (existing.contains(name)) {
                     return ToolResponse.invalidParameter("position",
                         "'" + name + "' is declared by both " + subclass.getElementName()
@@ -305,10 +297,11 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
                 FormatterOptions.forGeneratedCode(parentAst))));
 
         int repointed = 0;
-        for (ICompilationUnit user : referencingUnits(service, subclass, parentCu)) {
+        for (ICompilationUnit user
+                : HierarchyFold.referencingUnits(service, subclass, parentCu)) {
             CompilationUnit ast = parse(user);
             ASTRewrite rewrite = ASTRewrite.create(ast.getAST());
-            int here = repointTypeReferences(ast, subclass.getElementName(),
+            int here = HierarchyFold.repointTypeReferences(ast, subclass.getElementName(),
                 parentBinding.getName(), rewrite);
             if (here == 0) {
                 continue;
@@ -341,159 +334,16 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
     }
 
     /**
-     * Every compilation unit mentioning the subclass, except its own and the parent's.
-     * The parent is excluded because its edit is already staged and a second edit list for
-     * the same file would be two rewrites of one document.
+     * <b>RECORDED FOR C7, NOT FIXED HERE.</b> This walks the unit's TOP-LEVEL types and matches
+     * a SIMPLE NAME — so it cannot see a nested subclass, and it re-derives an identity the
+     * caller already holds from a key that is not unique. Both are defects this sprint closed
+     * as classes elsewhere ({@code tools.shared.TypeLookup} for the first, the
+     * handle-identifier key for the second). It is left standing because row 38 belongs to a
+     * CLOSED stage and whether it can actually mis-resolve depends on what
+     * {@code getTypeAtPosition} can hand it, which is not established — the same call the C4
+     * record makes about {@code MoveStatementsIntoFunctionTool}: written down rather than
+     * fixed blind.
      */
-    private static Set<ICompilationUnit> referencingUnits(IJdtService service, IType subclass,
-                                                          ICompilationUnit parentCu)
-            throws Exception {
-        Set<ICompilationUnit> units = new LinkedHashSet<>();
-        for (SearchMatch match : org.jawata.mcp.refactoring.CompleteReferences.of(service, subclass)) {
-            if (match.getElement() instanceof IJavaElement element) {
-                ICompilationUnit unit = (ICompilationUnit) element
-                    .getAncestor(IJavaElement.COMPILATION_UNIT);
-                if (unit != null && !unit.equals(subclass.getCompilationUnit())
-                        && !unit.equals(parentCu)) {
-                    units.add(unit);
-                }
-            }
-        }
-        return units;
-    }
-
-    /** `Sub x = new Sub()` becomes `Parent x = new Parent()`, wherever the name appears. */
-    private static int repointTypeReferences(CompilationUnit ast, String from, String to,
-                                             ASTRewrite rewrite) {
-        List<SimpleName> names = new ArrayList<>();
-        ast.accept(new ASTVisitor() {
-            @Override
-            public boolean visit(SimpleType node) {
-                if (node.getName() instanceof SimpleName name
-                        && from.equals(name.getIdentifier())) {
-                    names.add(name);
-                }
-                return true;
-            }
-        });
-        for (SimpleName name : names) {
-            rewrite.replace(name, ast.getAST().newSimpleName(to), null);
-        }
-        return names.size();
-    }
-
-    /** Whether this method has the same signature as one the parent chain declares. */
-    private static boolean overridesSomething(IMethodBinding method, ITypeBinding parent) {
-        for (ITypeBinding type = parent; type != null; type = type.getSuperclass()) {
-            for (IMethodBinding candidate : type.getDeclaredMethods()) {
-                if (!candidate.isConstructor() && method.overrides(candidate)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Null when the constructor forwards its own parameters through to super() unchanged,
-     * which is the only shape where `new Sub(args)` and `new Parent(args)` are the same
-     * call. Otherwise the reason, phrased to complete "the constructor ...".
-     */
-    private static String constructorForwardsUnchanged(MethodDeclaration ctor) {
-        if (ctor.getBody() == null) {
-            return null;
-        }
-        List<?> statements = ctor.getBody().statements();
-        if (statements.isEmpty()) {
-            return ctor.parameters().isEmpty() ? null
-                : "takes parameters it does not pass on";
-        }
-        if (statements.size() > 1
-                || !(statements.get(0) instanceof SuperConstructorInvocation up)) {
-            return "does more than pass its parameters to super()";
-        }
-        List<?> parameters = ctor.parameters();
-        List<?> arguments = up.arguments();
-        if (parameters.size() != arguments.size()) {
-            return "passes " + arguments.size() + " argument(s) to super() from "
-                + parameters.size() + " parameter(s)";
-        }
-        for (int i = 0; i < parameters.size(); i++) {
-            String parameter =
-                ((SingleVariableDeclaration) parameters.get(i)).getName().getIdentifier();
-            if (!(arguments.get(i) instanceof SimpleName argument)
-                    || !parameter.equals(argument.getIdentifier())) {
-                return "fixes the value of super()'s argument " + (i + 1);
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Where the subclass's identity is asked about — an instanceof or a cast. Returns a
-     * readable location, or null when nothing observes it.
-     */
-    private static String observedAnywhere(IJdtService service, IType subclass)
-            throws Exception {
-        String name = subclass.getElementName();
-        Set<ICompilationUnit> units = new LinkedHashSet<>();
-        units.add(subclass.getCompilationUnit());
-        for (SearchMatch match : org.jawata.mcp.refactoring.CompleteReferences.of(service, subclass)) {
-            if (match.getElement() instanceof IJavaElement element) {
-                ICompilationUnit unit = (ICompilationUnit) element
-                    .getAncestor(IJavaElement.COMPILATION_UNIT);
-                if (unit != null) {
-                    units.add(unit);
-                }
-            }
-        }
-        for (ICompilationUnit unit : units) {
-            CompilationUnit ast = parse(unit);
-            String[] found = { null };
-            ast.accept(new ASTVisitor() {
-                @Override
-                public boolean visit(InstanceofExpression node) {
-                    if (found[0] == null && name.equals(node.getRightOperand().toString())) {
-                        found[0] = unit.getElementName() + " (an instanceof check)";
-                    }
-                    return true;
-                }
-
-                @Override
-                public boolean visit(CastExpression node) {
-                    if (found[0] == null && name.equals(node.getType().toString())) {
-                        found[0] = unit.getElementName() + " (a cast)";
-                    }
-                    return true;
-                }
-            });
-            if (found[0] != null) {
-                return found[0];
-            }
-        }
-        return null;
-    }
-
-    private static Set<String> memberNames(AbstractTypeDeclaration type) {
-        Set<String> names = new LinkedHashSet<>();
-        for (Object member : type.bodyDeclarations()) {
-            names.addAll(namesOf((BodyDeclaration) member));
-        }
-        return names;
-    }
-
-    private static List<String> namesOf(BodyDeclaration declaration) {
-        List<String> names = new ArrayList<>();
-        if (declaration instanceof MethodDeclaration method) {
-            names.add(method.getName().getIdentifier());
-        } else if (declaration instanceof FieldDeclaration field) {
-            for (Object fragment : field.fragments()) {
-                names.add(((VariableDeclarationFragment) fragment).getName().getIdentifier());
-            }
-        }
-        return names;
-    }
-
     private static TypeDeclaration typeNamed(CompilationUnit ast, String name) {
         for (Object type : ast.types()) {
             if (type instanceof TypeDeclaration declaration

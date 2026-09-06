@@ -46,6 +46,8 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
                 new org.jawata.mcp.tools.inheritance.ReplaceSuperclassWithDelegateTool(
                     serviceSupplier, cache),
                 new org.jawata.mcp.tools.inheritance.ReplaceSubclassWithDelegateTool(
+                    serviceSupplier, cache),
+                new org.jawata.mcp.tools.inheritance.CollapseHierarchyTool(
                     serviceSupplier, cache))) {
             directions.put(((KindDelegate) delegate).kindName(), delegate);
         }

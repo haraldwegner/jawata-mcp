@@ -1,0 +1,70 @@
+=== TierBase.java ===
+package com.example;
+
+/**
+ * ROW 4's PARENT — concrete on purpose, so nothing about an abstract parent is in play in the
+ * performing case. It also serves the NO_SUPERCLASS refusal, since it extends nothing itself.
+ */
+public class TierBase {
+
+    private final String name;
+
+    public TierBase(String name) {
+        this.name = name;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public int band() {
+        return 1;
+    }
+}
+=== TierGold.java ===
+package com.example;
+
+/**
+ * A subtype of the level row 4 collapses. Afterwards it must extend {@link TierBase} DIRECTLY —
+ * the reparenting is the half that distinguishes this row from Remove Subclass.
+ */
+public class TierGold extends TierBase {
+
+    public TierGold(String name) {
+        super(name);
+    }
+
+    public int multiplier() {
+        return 3;
+    }
+}
+=== TierSilver.java ===
+package com.example;
+
+/**
+ * The SECOND subtype, so the reparenting claim is about a set rather than a single case — one
+ * subtype reparented could be a coincidence of how the sweep happened to visit files.
+ */
+public class TierSilver extends TierBase {
+
+    public TierSilver(String name) {
+        super(name);
+    }
+
+    public int multiplier() {
+        return 2;
+    }
+}
+=== TierDesk.java ===
+package com.example;
+
+/**
+ * Names the collapsed level as a DECLARED TYPE, so the reference sweep has a file to repoint
+ * that is neither the parent's nor a subtype's.
+ */
+public class TierDesk {
+
+    public int bandOf(TierBase banded) {
+        return banded.band();
+    }
+}
