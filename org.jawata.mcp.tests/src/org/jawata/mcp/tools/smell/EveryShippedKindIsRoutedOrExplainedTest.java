@@ -26,16 +26,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * explained, and nothing said so; the shortfall was found by a review reading the table,
  * which is the wrong instrument for a fact a test can hold.</p>
  *
- * <p>Scoped to the front doors THIS SPRINT HAS REACHED, which at C6 is four:
- * {@code apply_cleanup} from Stage 3, and {@code extract}, {@code inline} and {@code move}
- * from Stage 6. It was scoped to the first alone until C6, and an audit was right that the
- * silence therefore said nothing about Stage 6's twelve rows — the guard passed over them
- * without looking.</p>
+ * <p>Scoped to the front doors THIS SPRINT HAS REACHED, which at C4 is FIVE:
+ * {@code apply_cleanup} from Stage 3, {@code extract}, {@code inline} and {@code move} from
+ * Stage 6, and {@code change_method_signature} from Stage 4. It was scoped to the first
+ * alone until C6, and an audit was right that the silence therefore said nothing about
+ * Stage 6's twelve rows — the guard passed over them without looking. <b>Then it happened
+ * again</b>: Stage 4 created a door with ten new kinds and did not widen this list, so a C4
+ * audit made the identical finding one stage later. The lesson the second time is narrower
+ * than the first: the scope must widen in the SAME change that adds the kinds, because
+ * nothing else will notice.</p>
  *
  * <p>It is still not the whole surface, and that is deliberate rather than convenient: a
  * test that fails for work not yet started teaches a reader to ignore it.
- * {@code PRE_EXISTING} below names the kinds that shipped BEFORE this sprint on the three
- * doors it widened to. They are exempted by NAME, not by silence, so the exemption is a
+ * {@code PRE_EXISTING} below names the kinds that shipped BEFORE this sprint on the doors
+ * it widened to. They are exempted by NAME, not by silence, so the exemption is a
  * list somebody can read and shorten — and a new kind on those doors is guarded from the
  * day it lands, which is the whole difference.</p>
  */
@@ -103,11 +107,15 @@ class EveryShippedKindIsRoutedOrExplainedTest {
                 }
             }
         }
-        // AN EXACT COUNT, not a floor. It was `examined >= 30`, and a round-2 audit measured
-        // what that permits: the five doors publish 43 kinds, this door contributes 11, so
-        // DELETING IT AGAIN leaves 32 and the floor still passes — the precise re-narrowing
-        // the widening was for. A floor cannot see a door go; a count can, and its sibling
-        // guard in FrontDoorDescriptionTest already used one.
+        // AN EXACT COUNT, not a floor. It was `examined >= 30`, which cannot see this door
+        // leave: the five doors publish 43 kinds and this one contributes 11, so any way of
+        // dropping it lands well above 30 and the floor still passes — the precise
+        // re-narrowing the widening was for. MEASURED at 38, by substituting a duplicate of
+        // an existing door for this one and running the class; the arithmetic for deleting
+        // the entry outright is 32, which is stated as arithmetic rather than as a
+        // measurement because that is not the mutation that was run. A floor cannot see a
+        // door go; a count can, and the sibling guard in FrontDoorDescriptionTest already
+        // used one.
         org.junit.jupiter.api.Assertions.assertEquals(43, examined,
             "PROOF OF LIFE: the five doors must publish their kinds here, or this loop runs"
                 + " over nothing and passes. A door removed from the list above, or a kind"
