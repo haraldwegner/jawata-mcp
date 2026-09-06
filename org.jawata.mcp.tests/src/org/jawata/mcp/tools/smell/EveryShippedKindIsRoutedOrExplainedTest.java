@@ -53,11 +53,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and a hand-written count of it disagree the moment anyone edits either, and nothing here
  * fails when they do.</p>
  *
- * <p><b>FIVE stale counts have been repaired in this file across three commits</b>, each fixed
- * by hand and each sweep missing one more — and a round-4 audit found that the paragraph
- * above had itself gone stale in the present tense, asserting a defect the sentence it
- * describes no longer has. That is the sixth. Nothing in this list of corrections is a
- * mechanism; the derivation is.</p>
+ * <p><b>THIS PARAGRAPH USED TO COUNT THE STALE COUNTS, and its count was wrong.</b> It said
+ * five across three commits; a round-5 audit counted the diffs and made it eight across six,
+ * and the file's two other historical paragraphs give a third and a fourth figure. The count
+ * is not restated here, deliberately — a paragraph about hand-written numbers going stale is
+ * the last place to put another hand-written number, and every attempt to fix the count
+ * produced the next instance. What is true without arithmetic: <b>every stale count in this
+ * file was a hand-written number sitting beside a hand-written list, and each sweep to
+ * correct them introduced one more.</b> Nothing in that history is a mechanism. The
+ * derivation in Stage 9's M6c is.</p>
  *
  * <p>It is still not the whole surface, and that is deliberate rather than convenient: a
  * test that fails for work not yet started teaches a reader to ignore it.

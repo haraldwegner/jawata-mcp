@@ -508,8 +508,12 @@ public final class CureCatalog {
             + " upgrade rather than a cost, which is exactly why it is a decision and not a"
             + " transcription: it changes what the product INSTRUCTS on that smell. Held for"
             + " the route batch with both directions of the trade now measured. The demand is"
-            + " real and entirely external — the smell reports 0 over this repository's 460"
-            + " files and 9 over the fork.",
+            + " real and entirely external — the smell reports 0 over this bundle's 457 files"
+            + " (projectKey=jawata-mcp) and 9 over the fork. The population is stated for the"
+            + " same reason as the entry above: an earlier version said '460 files', which is"
+            + " neither the scoped figure nor the unscoped one and so was reproducible from"
+            + " nothing. A round-5 audit found it one entry below the one that had just been"
+            + " corrected for exactly that.",
         "hierarchy kind=replace_subclass_with_delegate",
         "no detector reports a subclass whose variation is what it OVERRIDES."
             + " `composition_over_inheritance` is the nearest and reports the opposite case —"

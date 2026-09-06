@@ -118,12 +118,6 @@ npm/dist/
 
 # Claude Code configuration (machine-specific)
 .claude/
-# ...except inside the sample projects, where a `.claude/.edit-baks/` tree is FIXTURE
-# DATA: the edit-bak-hygiene project exists so a test can prove that tree is not source.
-# The rule above is unanchored, so it ate it. Same class as the six occurrences recorded
-# elsewhere in this file, found by a C7 round-4 audit.
-!org.jawata.core.tests/test-resources/sample-projects/**/.claude/
-!org.jawata.core.tests/test-resources/sample-projects/**/.claude/**
 org.jawata.launcher/dependency-reduced-pom.xml
 docs/REFACTORING_LESSONS_LEARNED.md
 
@@ -151,20 +145,9 @@ __pycache__/
 # JDT/Eclipse per-project build output (the jawata-dev resident compiles these)
 bin/
 **/bin/
-# ...except that inside the sample projects a `bin/` tree can be FIXTURE DATA rather than
-# output: pde-bundle-a and plain-eclipse each carry a GHOST SOURCE under bin/ so a test can
-# prove those trees are not treated as source. Same class again — and this file already
-# records an occurrence where a fixture "arrived in CI without the one file that makes it a
-# PDE project", failing the two regression tests written to catch it.
-#
-# THE DISTINCTION IS THE EXTENSION, not a list of project names. A `.java` file under bin/
-# is never build output — that is the whole reason a ghost source is a usable fixture — so
-# sources there are visible and compiled classes stay ignored. The first version of this
-# negation un-ignored the trees WHOLESALE and exposed two gradle fixtures' .class output:
-# an over-match cure for an over-match defect, caught by running `git status` rather than
-# by reading the rule.
-!org.jawata.core.tests/test-resources/sample-projects/**/bin/
-org.jawata.core.tests/test-resources/sample-projects/**/bin/**/*.class
+# (The sample projects' own bin/ trees are handled by the block at the END of this file,
+# which inverts the default inside test-resources/sample-projects rather than negating one
+# developer-artifact rule at a time.)
 
 # Eclipse workspace runtime state written by the resident JDT process (indexes,
 # marker snapshots, launch library info) and the local field recording. Machine-local,
@@ -179,3 +162,30 @@ org.jawata.core.tests/test-resources/sample-projects/**/bin/**/*.class
 # `git add -A` failure this rule exists to prevent. Found by a C7 round-3 audit, which
 # created a probe file there and watched `git add` refuse it.
 /workspace/
+
+# ─── FIXTURE DATA IS VISIBLE BY DEFAULT ───────────────────────────────────────
+# Everything above this line is a DEVELOPER-ARTIFACT rule: it names a directory a tool
+# writes into. Inside test-resources/sample-projects those same names are FIXTURE DATA —
+# each fixture plants a file under the directory its build system writes to, precisely so
+# a test can prove that tree is not treated as source.
+#
+# This file records SEVEN prior collisions of that kind, each closed by negating one more
+# rule, one at a time: .classpath, .project, .settings/, *.jar, build/generated/,
+# bazel-bin/, maven-level-17/target/. A C7 audit then found three MORE live (.claude/ and
+# **/bin/ were eating three tracked ghost sources) and, after those were negated too,
+# probed EIGHT further rules that would swallow a fixture that does not exist yet —
+# out/, target/, logs/, working/, .idea/, .gradle/, .jawata/, .vscode/. Fixing instances
+# was never going to end: the eleventh instance is as likely as the eighth was.
+#
+# So the default is INVERTED here instead. Directories under sample-projects are visible,
+# and the machine-written exceptions are named — which is a list that shrinks the problem
+# rather than a list that grows with it.
+#
+# MEASURED, not reasoned: with the two exceptions below, `git status --untracked-files=all`
+# reports ZERO untracked files, every probed future fixture is visible, and .class output,
+# the gradle cache and our own classpath scratch stay ignored. Without them the same rule
+# exposed 34 files of gradle daemon state — which is the `git add -A` hazard this whole
+# thread began with, so the exceptions are the point rather than a detail.
+!org.jawata.core.tests/test-resources/sample-projects/**/
+org.jawata.core.tests/test-resources/sample-projects/**/.gradle/
+org.jawata.core.tests/test-resources/sample-projects/**/jawata-classpath-*.txt
