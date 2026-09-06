@@ -86,6 +86,64 @@ class EveryDeclaringKindRendersItsCureTest {
     }
 
     /**
+     * THE UNIVERSAL THIS CLASS IS NAMED FOR — added at C8, because until then the class
+     * promised one and its only loop was over eight names.
+     *
+     * <p><b>An architect watch measured the gap and it is bigger than the audit reported.</b>
+     * {@link CureCatalog} declares TWENTY-TWO kinds; {@code WERE_SILENT} covers eight and
+     * {@code ocp} opts out explicitly — leaving <b>thirteen declaring kinds whose rendering
+     * was asserted by nothing at all</b>, including every kind Stage 8 added. The class name
+     * says "every declaring kind"; this method is what makes that true.</p>
+     *
+     * <p><b>{@code WERE_SILENT} IS NOT REPLACED, and that is the point of adding rather than
+     * rewriting.</b> Its javadoc argues it must stay hand-written — <i>"a set read off
+     * CureCatalog would agree with it by construction and would still agree after a kind
+     * quietly lost its cure"</i> — and the architect tested that defence and found it HOLDS:
+     * those eight are a measurement taken by the as-built pass on a date, which no live
+     * object owns. It is a regression lock across TIME. This method is the complementary
+     * shape, a universal across the CURRENT table, and the two fail on different things: the
+     * lock catches a kind losing its cure, the universal catches a kind arriving without one.
+     * Deriving the lock would have destroyed the only guard against the first.</p>
+     */
+    @Test
+    @DisplayName("EVERY kind that declares a cure renders it — derived from the table, not listed")
+    void everyDeclaringKindRendersACure() {
+        CatalogueAddresses addresses = CatalogueAddresses.of(store);
+        org.jawata.mcp.domain.DetectorCatalog catalog =
+            FowlerDetectors.registerInto(new org.jawata.mcp.domain.DetectorCatalog(), () -> null);
+
+        java.util.List<String> silent = new java.util.ArrayList<>();
+        java.util.List<String> checked = new java.util.ArrayList<>();
+        for (String kind : CureCatalog.declaredKinds()) {
+            // The opt-out is asked of the DETECTOR, exactly as the sibling test below asks
+            // it — never matched on the message's wording, which is free to change. A kind
+            // whose detector composes its own cure sentence must render nothing here, so
+            // including it would assert the opposite of what it promises.
+            if (catalog.get(kind).orElse(null) instanceof AbstractAstDetector ast
+                    && ast.rendersOwnCure()) {
+                continue;
+            }
+            String hint = CureLookup.forKind(addresses, kind).hint();
+            if (hint.isBlank() || !hint.contains("TIER:")) {
+                silent.add(kind + " -> " + (hint.isBlank() ? "(nothing)" : hint));
+            }
+            checked.add(kind);
+        }
+
+        // PROOF OF LIFE. An empty or tiny population would make the emptiness assertion below
+        // pass over nothing — the shape this sprint has now found six times. The floor is
+        // deliberately well under the current 21 so that ADDING a kind never fails this line;
+        // what it catches is the loop running over a table that failed to load.
+        assertTrue(checked.size() >= 15,
+            "the cure table must yield a real population here, or the check below passes"
+                + " over nothing. Checked: " + checked);
+        assertTrue(silent.isEmpty(),
+            "these kinds DECLARE a cure and render it without an address or without its"
+                + " derived tier, so a reader is told a fix exists and not which one or"
+                + " whether to run it: " + silent);
+    }
+
+    /**
      * THE CONTROL, and the reason this test is not vacuous: a kind that declares
      * NO cure must still render nothing. Without it, an implementation that
      * appended a sentence to every finding would pass the assertion above while
