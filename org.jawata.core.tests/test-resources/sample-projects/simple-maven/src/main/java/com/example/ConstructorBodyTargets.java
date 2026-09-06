@@ -1,0 +1,129 @@
+package com.example;
+
+/**
+ * Fixtures for row 29, Pull Up Constructor Body — the case it performs and each case it refuses.
+ *
+ * <p><b>Read this before adding anything.</b> {@code simple-maven} is ONE project shared by every
+ * test in the suite, and it grows. Five times in this sprint a fixture written for one row moved
+ * something another row's test was counting: a findings page, a clone-group page, a naming
+ * population, a search ranking, and a line number a Sprint 19 test still addresses. The names
+ * here are deliberately unusual for that reason — a class called {@code Base} or {@code Item}
+ * would be the sixth.</p>
+ */
+public class ConstructorBodyTargets {
+
+    /** The superclass that OWNS the state — and declares no constructor, so the row generates one. */
+    public static class Employment {
+
+        protected String employer;
+        protected int grade;
+
+        public String summary() {
+            return employer + " " + grade;
+        }
+    }
+
+    /**
+     * THE CASE THE ROW PERFORMS. Its two leading statements assign fields {@code Employment}
+     * declares, from its own parameters, so they belong to the superclass by ownership.
+     * {@code started} is this class's own and must stay exactly where it is.
+     */
+    public static class Contractor extends Employment {
+
+        private final int started;
+
+        public Contractor(String employer, int grade, int started) {
+            this.employer = employer;
+            this.grade = grade;
+            this.started = started;
+        }
+
+        public int started() {
+            return started;
+        }
+    }
+
+    /**
+     * PERFORMED, and it is the BARE-super case: {@code super()} says only "the superclass sets
+     * itself up with nothing", which is exactly what this row changes. It is replaced by the
+     * argument-carrying call rather than left beside it, which would delegate upward twice.
+     */
+    public static class Seconded extends Employment {
+
+        private final String host;
+
+        public Seconded(String employer, int grade, String host) {
+            super();
+            this.employer = employer;
+            this.grade = grade;
+            this.host = host;
+        }
+
+        public String host() {
+            return host;
+        }
+    }
+
+    /** A superclass that DOES declare a constructor, for the two cases that need one. */
+    public static class Tenured {
+
+        protected final String faculty;
+
+        protected Tenured(String faculty) {
+            this.faculty = faculty;
+        }
+    }
+
+    /**
+     * REFUSED — already delegates upward WITH ARGUMENTS, so the superclass is already
+     * establishing its own state and what is left here is this class's own work.
+     */
+    public static class Reader extends Tenured {
+
+        private final int chair;
+
+        public Reader(String faculty, int chair) {
+            super(faculty);
+            this.chair = chair;
+        }
+
+        public int chair() {
+            return chair;
+        }
+    }
+
+    /**
+     * REFUSED — nothing to pull up. Its FIRST statement is its own field, and the run stops
+     * there: the superclass assignment below it is never reached, which is the point. A later
+     * statement may depend on an earlier one, so only a LEADING run can move without changing
+     * the order things happen in.
+     */
+    public static class Engaged extends Employment {
+
+        private final String agency;
+
+        public Engaged(String employer, int grade, String agency) {
+            this.agency = agency;
+            this.employer = employer;
+            this.grade = grade;
+        }
+
+        public String agency() {
+            return agency;
+        }
+    }
+
+    /** REFUSED — extends nothing but Object, so there is no superclass to pull the body up into. */
+    public static class Unattached {
+
+        private final String note;
+
+        public Unattached(String note) {
+            this.note = note;
+        }
+
+        public String note() {
+            return note;
+        }
+    }
+}

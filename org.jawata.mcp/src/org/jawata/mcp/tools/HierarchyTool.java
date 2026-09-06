@@ -38,7 +38,9 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
         super(serviceSupplier);
         Map<String, AbstractTool> directions = new LinkedHashMap<>();
         for (AbstractTool delegate : List.of(new PullUpTool(serviceSupplier, cache),
-                new PushDownTool(serviceSupplier, cache))) {
+                new PushDownTool(serviceSupplier, cache),
+                new org.jawata.mcp.tools.inheritance.PullUpConstructorBodyTool(
+                    serviceSupplier, cache))) {
             directions.put(((KindDelegate) delegate).kindName(), delegate);
         }
         this.byDirection = java.util.Collections.unmodifiableMap(directions);
