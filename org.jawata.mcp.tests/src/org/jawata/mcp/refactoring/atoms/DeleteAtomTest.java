@@ -61,6 +61,31 @@ class DeleteAtomTest {
     }
 
     @Test
+    @DisplayName("REFUSES a compilation unit declaring more than one top-level type")
+    void refusesAFileThatDeclaresMoreThanOneType() throws Exception {
+        Path paired = service.allProjects().iterator().next().projectRoot()
+            .resolve("src/main/java/com/example/PairedInOneFile.java");
+        ICompilationUnit unit = service.getCompilationUnit(paired);
+        assertNotNull(unit, "the fixture must be in the model");
+        assertTrue(unit.getTypes().length == 2,
+            "PROOF OF LIFE: the fixture must declare TWO top-level types, or this asserts"
+                + " nothing — it had " + unit.getTypes().length);
+
+        CheckedChange checked =
+            DeleteAtom.delete(new IJavaElement[] { unit }, "test delete", new JdtRefactoringEngine());
+
+        assertTrue(checked.isRefused(),
+            "this class promises 'nothing else is touched' and deleting the FILE takes every"
+                + " type in it. The engine never asks about that widening — the caller named"
+                + " the unit — so the promise was false at two of three production callers"
+                + " until this check existed");
+        assertTrue(String.valueOf(checked.messages()).contains("PairedSurvivor"),
+            "and the refusal must NAME the bystander it is protecting, or a caller cannot tell"
+                + " what the objection is: " + checked.messages());
+        assertTrue(Files.exists(paired), "and nothing was deleted");
+    }
+
+    @Test
     @DisplayName("the named method goes, and nothing else does")
     void theNamedElementIsDeleted() throws Exception {
         IType type = targets();

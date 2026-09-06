@@ -56,6 +56,18 @@ public class TierKin {
         }
     }
 
+    /** Gives {@link TierFixedCtor} a subtype, so it reaches the fixed-argument refusal. */
+    public static class OfFixedCtor extends TierFixedCtor {
+    }
+
+    /** Gives {@link TierColliding} a subtype, so it reaches the name-collision refusal. */
+    public static class OfColliding extends TierColliding {
+
+        public OfColliding(String label) {
+            super(label);
+        }
+    }
+
     /** The observation itself — this is what makes TierObserved's refusal fire. */
     public boolean isObserved(Object candidate) {
         return candidate instanceof TierObserved;

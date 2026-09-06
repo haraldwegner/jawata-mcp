@@ -66,7 +66,15 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // The operation change_method_signature WAS before Stage 4 gave it ten siblings and
         // turned it into a door. Stage 4 did not change it — it only stopped being the whole
         // tool — so it is exempt on the same terms as the eight above.
-        "change_method_signature kind=change_signature");
+        "change_method_signature kind=change_signature",
+        // The two on `hierarchy` that predate Stage 7. They were reached as the standalone
+        // tools pull_up and push_down until Stage 1 renamed the door; Stage 7 did not change
+        // them, it only gave them five siblings, so they are exempt on the same terms as the
+        // eight above.
+        // Spelled `kind=` because that is what OperationRegistry.qualify produces for every
+        // door, including one whose discriminator is `direction`. CureCatalog's Stage 7 block
+        // records why that spelling is wrong as an INSTRUCTION and why it is right as a KEY.
+        "hierarchy kind=up", "hierarchy kind=down");
     // NOT EXEMPT, though both shipped before this sprint: Stage 6 CHANGED them, so
     // "pre-existing" stops being true of them. Row 49 landed as the `replaceDuplicates`
     // parameter on `extract kind=method` and folded `replace_duplicates` onto
@@ -93,7 +101,16 @@ class EveryShippedKindIsRoutedOrExplainedTest {
             // list grew from one door to four. Third stage, same omission: the scope has to
             // widen in the SAME change that adds the kinds, or the guard passes over exactly
             // the work that was done.
-            new org.jawata.mcp.tools.ChangeMethodSignatureTool(svc, cache));
+            new org.jawata.mcp.tools.ChangeMethodSignatureTool(svc, cache),
+            // SIXTH at C7, and the paragraph above predicted this exactly. Stage 7 added five
+            // kinds to `hierarchy` and did not widen this list, so the guard passed over the
+            // whole stage — which is what a C6 audit said about Stage 6 and a C4 audit said
+            // about Stage 4, in the same words. FOURTH stage, same omission. The lesson has
+            // been written down three times and applied zero times, which says the lesson is
+            // not the cure: nothing here FAILS when a door is added, so the list can only be
+            // widened by somebody remembering. Deriving it from the registered doors is the
+            // cure, and it is Stage 9's M6c — this entry is the fourth argument for it.
+            new org.jawata.mcp.tools.HierarchyTool(svc, cache));
 
         List<String> routed = new ArrayList<>();
         for (String kind : CureCatalog.declaredKinds()) {
@@ -124,8 +141,8 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // measurement because that is not the mutation that was run. A floor cannot see a
         // door go; a count can, and the sibling guard in FrontDoorDescriptionTest already
         // used one.
-        org.junit.jupiter.api.Assertions.assertEquals(43, examined,
-            "PROOF OF LIFE: the five doors must publish their kinds here, or this loop runs"
+        org.junit.jupiter.api.Assertions.assertEquals(50, examined,
+            "PROOF OF LIFE: the six doors must publish their kinds here, or this loop runs"
                 + " over nothing and passes. A door removed from the list above, or a kind"
                 + " added without a route or a reason, changes this number. Examined: "
                 + examined);

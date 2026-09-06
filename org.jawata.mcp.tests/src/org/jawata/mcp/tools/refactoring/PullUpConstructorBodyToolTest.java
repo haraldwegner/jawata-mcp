@@ -133,6 +133,20 @@ class PullUpConstructorBodyToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES when the superclass has no source here — there is nowhere to pull TO")
+    void refusesASuperclassOutsideSource() throws Exception {
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        args.put("direction", "pull_up_constructor_body");
+        args.put("symbol", "com.example.ErroringTargets#ErroringTargets");
+        ToolResponse r = tool.execute(args);
+
+        assertFalse(r.isSuccess(), "IllegalStateException is the JDK's, so there is no"
+            + " constructor of ours to add the pulled assignments to");
+        assertEquals(PullUpConstructorBodyTool.Refusal.SUPERCLASS_NOT_IN_SOURCE,
+            r.getError().getReason(), "got: " + r.getError());
+    }
+
+    @Test
     @DisplayName("a BARE super() is replaced, not left beside the new call")
     void replacesABareSuperCall() throws Exception {
         ToolResponse r = tool.execute(argsFor("Seconded"));

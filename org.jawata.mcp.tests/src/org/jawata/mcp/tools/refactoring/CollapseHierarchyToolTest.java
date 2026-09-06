@@ -163,6 +163,28 @@ class CollapseHierarchyToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES a level whose constructor FIXES super()'s argument")
+    void refusesAFixedArgumentConstructor() throws Exception {
+        ToolResponse r = tool.execute(argsFor("TierFixedCtor"));
+
+        assertFalse(r.isSuccess(), "the super(...) call in each subtype would stop meaning the"
+            + " same thing once this level is gone");
+        assertEquals(CollapseHierarchyTool.Refusal.CONSTRUCTOR_FIXES_ARGUMENT,
+            r.getError().getReason(), "got: " + r.getError());
+    }
+
+    @Test
+    @DisplayName("REFUSES a level declaring a member name the parent already declares")
+    void refusesACollidingMemberName() throws Exception {
+        ToolResponse r = tool.execute(argsFor("TierColliding"));
+
+        assertFalse(r.isSuccess(), "two members of one name is a merge, and merging is a"
+            + " decision this row will not make");
+        assertEquals(CollapseHierarchyTool.Refusal.MEMBER_NAME_COLLIDES,
+            r.getError().getReason(), "got: " + r.getError());
+    }
+
+    @Test
     @DisplayName("REFUSES a class that extends nothing")
     void refusesWithoutASuperclass() throws Exception {
         ToolResponse r = tool.execute(argsFor("TierBase"));

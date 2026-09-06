@@ -20,14 +20,18 @@ import org.jawata.mcp.refactoring.RefactoringEngine;
  * <p>So this publishes NOTHING. It exists to be composed, and the operations that compose
  * it carry the judgement.</p>
  *
- * <p><b>IT HAS NO PRODUCTION CALLER YET, and that is worth saying rather than leaving to
- * be discovered.</b> This javadoc previously named row 34 as a consumer. Row 34 was built
- * the next day and deliberately did NOT use it — {@code RemoveDeadCodeRule} states the
- * deviation and its reason — so the claim was false within a day of being written. Its
- * remaining named consumers, rows 2 and 37, belong to a later stage. Until one of them
- * lands, the only thing exercising this is its own test, which is speculative generality
- * by the project's own definition; the honest options are to wire it, delete it, or say
- * this.</p>
+ * <p><b>IT HAS THREE PRODUCTION CALLERS, and this paragraph said it had none until a C7
+ * architect watch read it.</b> Measured with {@code get_call_hierarchy} on
+ * {@link #delete}: {@code InlineClassTool.inline} (row 17), {@code RemoveSubclassTool.remove}
+ * (row 38) and {@code CollapseHierarchyTool} (row 4). None of the three is a consumer this
+ * javadoc ever predicted — it named rows 34, 2 and 37, and all three of THOSE declined the
+ * atom for their own written reasons. So the C3 open item "wire it, delete it, or baseline
+ * it" is answered by measurement rather than by a decision: Stage 6 wired it, in a stage
+ * nobody had listed.</p>
+ *
+ * <p>The lesson is the one this repository keeps paying for: a claim about the world, written
+ * in a comment, with nothing that fails when it stops being true. It was false for a year and
+ * grew louder the whole time.</p>
  *
  * <h2>Why the Eclipse engine rather than an edit of our own</h2>
  *
@@ -111,6 +115,37 @@ public final class DeleteAtom {
      */
     public static CheckedChange delete(
             IJavaElement[] elements, String label, RefactoringEngine engine) throws Exception {
+        // THE ONE WIDENING THE ENGINE NEVER ASKS ABOUT. Every question above arrives as a
+        // confirmation and is answered no. Deleting a COMPILATION UNIT that declares more
+        // than one top-level type is not a question — the caller named the file, and the
+        // siblings go with it silently.
+        //
+        // This class promised otherwise ("nothing else is touched"; "an atom that quietly
+        // widened its own blast radius…") and did not enforce it. A C7 architect watch found
+        // the promise false and found the check written at ONE of the three production
+        // callers, the newest; the other two — inline kind=class and inline kind=subclass —
+        // could each take a sibling class with them, in shipped code. Asking here rather than
+        // at each caller is the difference between a rule and a habit: the fourth caller
+        // inherits it instead of having to remember it.
+        //
+        // What this CANNOT see is a caller deleting a unit because it wants a NESTED type
+        // gone — the unit then has one top-level type and looks innocent. That intent lives
+        // with the caller, so collapse_hierarchy keeps its own nested-class refusal.
+        for (IJavaElement element : elements) {
+            if (element instanceof org.eclipse.jdt.core.ICompilationUnit unit
+                    && unit.getTypes().length > 1) {
+                java.util.List<String> declared = new java.util.ArrayList<>();
+                for (org.eclipse.jdt.core.IType declaredType : unit.getTypes()) {
+                    declared.add(declaredType.getElementName());
+                }
+                return CheckedChange.refused(
+                    org.eclipse.ltk.core.refactoring.RefactoringStatus.createFatalErrorStatus(
+                        "refusing to delete " + unit.getElementName() + ": it declares "
+                            + unit.getTypes().length + " top-level types " + declared
+                            + ", and deleting the file takes all of them. Name the type you"
+                            + " mean, or move it into a file of its own first."));
+            }
+        }
         JavaDeleteProcessor processor = new JavaDeleteProcessor(elements);
         processor.setQueries(REFUSE);
         // The caller names what it wants gone. Left true, the engine ADDS the accessors

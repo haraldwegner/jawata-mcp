@@ -456,7 +456,65 @@ public final class CureCatalog {
             + " ERROR VALUE is the caller's to name. Measured over the fork's 1354 main"
             + " sources, the sentinel-shaped returns are 43 `return null`, 38 `return false`"
             + " and 3 `return -1`, and almost every one is ordinary control flow — which is"
-            + " why the row requires the value rather than inferring it.");
+            + " why the row requires the value rather than inferring it.",
+
+        // --- Sprint 28d-rescue Stage 7, the five kinds on hierarchy. FOURTH stage, same
+        // omission: the guard was scoped past this door too, so its silence said nothing
+        // about these five, and a C7 audit made the finding the C6 and C4 audits had
+        // already made word for word. The lesson this file states one paragraph up — the
+        // scope widens in the SAME change that adds the kinds — is now earned three times.
+        // TWO of these five are NOT gaps on the detector side. They are routes deliberately
+        // NOT taken, because taking them would change a smell's TIER, and that is a product
+        // decision rather than a transcription. Both are spelled out below.
+        //
+        // THE `kind=` IN THESE KEYS IS A LIE ABOUT THIS DOOR, and it is spelled that way on
+        // purpose so the keys match the registry. `OperationRegistry.qualify` hard-codes
+        // "<tool> kind=<kind>" and its javadoc says that is "what a reader types" — but
+        // `hierarchy` selects on `direction`, and a call passing `kind` is refused with
+        // "direction is required". So every qualified address for this door renders an
+        // instruction that does not run. The defect PREDATES Stage 7 (it was already true of
+        // up/down) and Stage 7 multiplies it from two operations to seven. Not fixed here:
+        // `qualify` takes a tool NAME rather than the tool, so teaching it the discriminator
+        // means changing the operation-naming surface, which Stage 9's M6c/M10 is already
+        // deriving. Recorded where a reader meets the address rather than left to be found.
+        "hierarchy kind=pull_up_constructor_body",
+        "no detector reports a subclass constructor assigning fields its SUPERCLASS declares."
+            + " The nearest is `duplicated_code`, which compares bodies and would name the"
+            + " assignments rather than the ownership — and ownership is this row's entire"
+            + " rule: it moves a leading run of assignments to fields the parent declares,"
+            + " which is a fact about who declares what and not about text repeating.",
+        "hierarchy kind=replace_type_code_with_subclasses",
+        "ROUTABLE AND DELIBERATELY NOT ROUTED. `type_code` reports 10 findings here and every"
+            + " message names the SIBLING cure — refactor_to_pattern"
+            + " kind=replace_type_code_with_class, which shipped in Stage 3 and is that"
+            + " smell's ONE runnable route, so CureTier derives PERFORM. Adding this row as a"
+            + " second runnable route derives ADVISE by the same rule, so wiring the more"
+            + " specific cure would COST the smell its runnable instruction. That trade was"
+            + " established at C4 for `cqs`; this is its second measured instance, which is"
+            + " what makes it a property of the tier model rather than a quirk of one smell.",
+        "hierarchy kind=replace_superclass_with_delegate",
+        "ROUTABLE AND NOT YET ROUTED, and it is the MIRROR of the entry above rather than"
+            + " another gap. `composition_over_inheritance` names this row in its own finding"
+            + " text, under Fowler's earlier title Replace Inheritance with Delegation, and"
+            + " declares TWO cures that are both design-only — so it derives ADVISE today and"
+            + " this row would be its FIRST runnable route, deriving PERFORM. That is an"
+            + " upgrade rather than a cost, which is exactly why it is a decision and not a"
+            + " transcription: it changes what the product INSTRUCTS on that smell. Held for"
+            + " the route batch with both directions of the trade now measured. The demand is"
+            + " real and entirely external — the smell reports 0 over this repository's 460"
+            + " files and 9 over the fork.",
+        "hierarchy kind=replace_subclass_with_delegate",
+        "no detector reports a subclass whose variation is what it OVERRIDES."
+            + " `composition_over_inheritance` is the nearest and reports the opposite case —"
+            + " a subclass that overrides NOTHING, which is the sibling row above. A detector"
+            + " for this one would have to judge that a second axis of variation is WANTED,"
+            + " which is a design intention and not a property of the code.",
+        "hierarchy kind=collapse_hierarchy",
+        "no detector reports a hierarchy level that is not earning itself. `lazy_class` is the"
+            + " nearest and routes to inline kind=subclass, which is this row's COMPLEMENT —"
+            + " that row folds a leaf and refuses a class with subtypes, naming this one. So a"
+            + " lazy_class finding on a middle level already points here through that row's"
+            + " refusal, which is reachable in practice and not a table entry.");
 
     /** Map.of caps at ten pairs; this table passed it at Stage 6. */
     private static Map<String, String> mapOf(String... pairs) {

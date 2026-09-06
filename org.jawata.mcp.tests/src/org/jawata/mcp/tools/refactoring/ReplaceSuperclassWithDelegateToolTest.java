@@ -136,6 +136,17 @@ class ReplaceSuperclassWithDelegateToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES a class that is ITSELF extended — delegation is not inherited")
+    void refusesAClassWithSubclasses() throws Exception {
+        ToolResponse r = tool.execute(argsFor("ExtendedReuse"));
+
+        assertFalse(r.isSuccess(), "its own subclass would lose everything the extends gives it,"
+            + " and a delegate field is not inherited in its place");
+        assertEquals(ReplaceSuperclassWithDelegateTool.Refusal.HAS_SUBCLASSES,
+            r.getError().getReason(), "got: " + r.getError());
+    }
+
+    @Test
     @DisplayName("REFUSES a class that extends nothing but Object")
     void refusesWithoutASuperclass() throws Exception {
         ToolResponse r = tool.execute(argsFor("Ledgering"));
