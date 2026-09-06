@@ -181,11 +181,44 @@ bin/
 # and the machine-written exceptions are named — which is a list that shrinks the problem
 # rather than a list that grows with it.
 #
-# MEASURED, not reasoned: with the two exceptions below, `git status --untracked-files=all`
-# reports ZERO untracked files, every probed future fixture is visible, and .class output,
-# the gradle cache and our own classpath scratch stay ignored. Without them the same rule
-# exposed 34 files of gradle daemon state — which is the `git add -A` hazard this whole
+# MEASURED, not reasoned: with the exceptions below, `git status --untracked-files=all`
+# reports ZERO untracked files, and .class output, the gradle cache and our own classpath
+# scratch stay ignored. Without them the same rule exposed 34 files — 29 of gradle daemon
+# state and 5 of our own classpath scratch, which is the `git add -A` hazard this whole
 # thread began with, so the exceptions are the point rather than a detail.
+#
+# SEVEN of the eight rules probed above are now visible; `.gradle/` is the one that is NOT,
+# because it is re-ignored below on purpose. An earlier version of this paragraph claimed
+# ALL eight, eight lines under the sentence naming .gradle/ as one of them — a C7 round-6
+# audit read the two together. A fixture that genuinely needs a file under .gradle/ would
+# have to negate it, which is the trade this block makes deliberately rather than by
+# oversight.
 !org.jawata.core.tests/test-resources/sample-projects/**/
 org.jawata.core.tests/test-resources/sample-projects/**/.gradle/
 org.jawata.core.tests/test-resources/sample-projects/**/jawata-classpath-*.txt
+
+# …and the fixtures' own BUILD OUTPUT stays ignored, which the inversion above broke.
+#
+# Two rules that protected these trees were written in the depth-1 form —
+# `sample-projects/*/build/*` and `maven-level-17/target/*` — and a directory negation at
+# ANY depth overrides them. Measured against the previous commit: `git add -A` began
+# staging simple-gradle/build/libs/*.jar and maven-level-17/target/surefire-reports/*,
+# and the untracked count over the probe set went 3 -> 14.
+#
+# THE FILE ALREADY SAID THIS WOULD HAPPEN, TWICE, in comments the inversion did not touch:
+# "a Gradle or Bazel run in a fixture directory drops jars into build/libs or bazel-out,
+# and the next `git add -A` would commit them", and "Under the wide negation the next
+# `git add -A` would have committed run residue: the gate's own 'nothing enters our tree'
+# clause, broken by the change that closed it." That was the C1-round-3 defect. The
+# inversion repeated it one paragraph below the record of it.
+#
+# ORDER IS THE WHOLE FIX: these must sit AFTER the negation above, because git takes the
+# LAST matching rule. The single-star form is deliberate and this file explains it —
+# `build/*` excludes the ENTRIES of build/, which a directory negation can then re-open,
+# whereas `build/**` would exclude the deliberate exceptions beyond recovery.
+org.jawata.core.tests/test-resources/sample-projects/**/build/*
+org.jawata.core.tests/test-resources/sample-projects/**/target/*
+!org.jawata.core.tests/test-resources/sample-projects/*/build/generated/
+!org.jawata.core.tests/test-resources/sample-projects/*/build/generated/**
+!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/classes-src/
+!org.jawata.core.tests/test-resources/sample-projects/maven-level-17/target/classes-src/**
