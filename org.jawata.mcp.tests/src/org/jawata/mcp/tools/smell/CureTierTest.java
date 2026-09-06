@@ -1,6 +1,7 @@
 package org.jawata.mcp.tools.smell;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -48,15 +49,39 @@ class CureTierTest {
                 "the performing recipe is the route's own step, read off the table");
         }
 
-        // ADVISE — several runnable routes, nothing mechanical chooses.
+        // RUN WITH THREE — the reversal, and these three assertions are the whole of it.
+        // They asserted CONSIDER until 2026-09-06, on the rule that several routes mean
+        // nothing mechanical chooses. Nothing mechanical does choose; the AGENT does, and
+        // withholding the alternatives was never what made that safe.
         for (String kind : List.of("ocp", "divergent_change", "shotgun_surgery")) {
             CureTier.Derivation d = CureTier.derive(kind);
-            assertEquals(CureTier.Tier.CONSIDER, d.tier(),
-                () -> kind + " declares THREE runnable routes; choosing one is a design"
-                    + " decision, and a derivation that picks one anyway has invented"
-                    + " a preference no table declares: " + d);
-            assertNull(d.recipe(), "an advisory answer carries no single recipe to run");
+            assertEquals(CureTier.Tier.RUN, d.tier(),
+                () -> kind + " declares THREE runnable routes, and three good answers are"
+                    + " coverage rather than doubt — the old rule demoted a smell for"
+                    + " knowing more: " + d);
+            assertEquals(3, d.runnable().size(),
+                () -> kind + " must hand over ALL of them, ranked: " + d);
+            for (CureCatalog.Cure c : d.runnable()) {
+                assertNotNull(c.discriminator(),
+                    () -> kind + " offers several cures, so each must say what tells it"
+                        + " from the others — a ranked list of identical descriptions is"
+                        + " the guess this replaced: " + c);
+            }
         }
+
+        // RUN WITH TWO — lazy_class, the kind whose two cures the table used to withhold
+        // with a written reason that the finding cannot tell them apart. It still cannot;
+        // the cures say which case each is for, and the agent reads the type.
+        // WITH ITS STEPS REGISTERED, and the registry argument is not decoration — it is
+        // the trap this file already records for cqs. In a unit-test JVM no tool has
+        // registered, so `inline kind=class` is in no registry and the derivation answers
+        // by the STEP-NOT-REGISTERED rule, which is a true statement about plumbing and
+        // says nothing about the count rule this assertion is here to prove is gone.
+        CureTier.Derivation lazy = CureTier.derive("lazy_class",
+            List.of("inline kind=class", "inline kind=subclass"));
+        assertEquals(CureTier.Tier.RUN, lazy.tier(),
+            () -> "two shipped fixes for one smell must both be offered: " + lazy);
+        assertEquals(2, lazy.runnable().size(), () -> "both of them: " + lazy);
 
         // ADVISE — cures declared, none runnable (design-only).
         //
@@ -86,7 +111,9 @@ class CureTierTest {
             () -> "cqs declares ONE runnable route, so with that step registered the answer"
                 + " is run it: " + performed);
         assertEquals("apply_cleanup kind=return_modified_value", performed.recipe(),
-            () -> "and PERFORM must name the single step to run: " + performed);
+            () -> "and RUN must name the step: " + performed);
+        assertEquals(1, performed.runnable().size(),
+            () -> "cqs declares one cure, so the ranked list holds exactly it: " + performed);
 
         // THE OTHER HALF OF ROW 61's RECORDED TRADE — that a SECOND runnable route would turn
         // this instruction back into a suggestion — is NOT asserted here, and the reason is
@@ -145,7 +172,9 @@ class CureTierTest {
         CureTier.Derivation broken = CureTier.derive("switch_statements", without);
         assertEquals(CureTier.Tier.CONSIDER, broken.tier(),
             "a route whose step no registered operation backs cannot be performed");
-        assertNull(broken.recipe());
+        assertTrue(broken.runnable().isEmpty(),
+            "and it hands over nothing to run — the reversal widened WHEN we instruct,"
+                + " not what we are willing to name as runnable when it is not there");
         assertTrue(broken.reason().contains("replace_conditional_with_polymorphism"),
             () -> "the missing step is NAMED — a bare ADVISE cannot tell a design"
                 + " decision from a mis-spelled table row: " + broken.reason());
@@ -198,8 +227,19 @@ class CureTierTest {
             List.of(new CureLookup.ResolvedCure("refactor_to_state", "design:state",
                 "java-design-patterns", "catalogue:java-design-patterns/state/README.md")),
             List.of(), null, List.of());
-        assertTrue(advise.hint().contains("TIER: CONSIDER"),
-            () -> "ocp declares three routes; today that still yields CONSIDER: "
+        // THIS ASSERTED "CONSIDER" UNTIL STEP 3, and the sentence beside it said "today
+        // that still yields CONSIDER" — true when written, and the tier reversal is
+        // exactly what made it false. ocp declares three runnable routes, so the reader
+        // now gets all three, ranked, each with what tells it from the others.
+        assertTrue(advise.hint().contains("TIER: RUN — 3 alternatives"),
+            () -> "three routes are three answers, not doubt: " + advise.hint());
+        assertTrue(advise.hint().contains("(1) ") && advise.hint().contains("(2) ")
+                && advise.hint().contains("(3) "),
+            () -> "and they are RANKED, so a reader has an order to read them in: "
+                + advise.hint());
+        assertTrue(advise.hint().contains("the axis is the object's own lifecycle"),
+            () -> "each carrying the sentence that tells it from its neighbours — without"
+                + " which a ranked list is a list and the choice is a guess: "
                 + advise.hint());
     }
 

@@ -22,21 +22,42 @@ import java.util.List;
  *
  * <h2>The rules, in the order they decide</h2>
  * <ol>
- *   <li>No cure declared — ADVISE. <b>Zero cures is a normal state</b>, not a
+ *   <li>No cure declared — CONSIDER. <b>Zero cures is a normal state</b>, not a
  *       defect: a cure is unfillable until its steps exist.</li>
- *   <li>Cures declared, none runnable — ADVISE: the cures name designs and
+ *   <li>Cures declared, none runnable — CONSIDER: the cures name designs and
  *       nothing automates them.</li>
- *   <li>A declared step is NOT in the registry — ADVISE, and the step is
+ *   <li>A declared step is NOT in the registry — CONSIDER, and the step is
  *       NAMED. Never silently narrowed to the remaining routes: a table
  *       declaring a step that does not exist is a defect to surface, and
  *       narrowing would hide it exactly the way an absent field reading as
  *       empty hid three fields at Stage 10.</li>
- *   <li>Exactly one runnable route, its step registered — PERFORM, naming the
- *       step.</li>
- *   <li>Several runnable routes — ADVISE: nothing mechanical chooses between
- *       them, and a derivation that picked one anyway would have invented a
- *       preference no table declares.</li>
+ *   <li><b>AT LEAST ONE runnable route, every step registered — RUN, carrying
+ *       the whole ranked list.</b></li>
  * </ol>
+ *
+ * <h2>Rule 5 is gone, and it is what this class existed to get wrong</h2>
+ *
+ * <p>There used to be a fifth rule: <i>several runnable routes — ADVISE, because
+ * nothing mechanical chooses between them.</i> It read as caution and it was a
+ * measure of COVERAGE wearing certainty's clothes — every fix the product gained
+ * demoted the smell that gained it, so a smell with three good answers instructed
+ * LESS than one with a single answer. Measured three times before it was
+ * overturned: routing row 61 to {@code cqs} would have cost that smell its
+ * instruction, routing row 59 to {@code type_code} the same, and thirteen rows sat
+ * unrouted with the tier rule as the written reason.</p>
+ *
+ * <p>Harald, 2026-09-06: <i>"But this is software development. There are always
+ * degrees of freedom... You can say: You have 3 alternatives. Pick the most
+ * appropriate one and perform"</i> — and on the thirteen: <i>"if you leave 13 on
+ * the street on your discretion, that's a flaw"</i>. So the verdict is RUN whenever
+ * anything is runnable, the alternatives travel as a RANKED LIST, and each carries
+ * the sentence that tells it from its neighbours. Nothing mechanical chooses — the
+ * AGENT chooses, which is what it is for, and what it needs to choose with is a
+ * discriminator rather than a demotion.</p>
+ *
+ * <p>The partial-route rule went with it. A route that commonly declines used to
+ * pull its kind down to ADVISE; that measurement is now the route's DISCRIMINATOR,
+ * so the reader gets the same number and still gets an instruction.</p>
  *
  * <p>The registry parameter is the falsifiable seam, in the same style as
  * {@link CureLookup#audit(org.jawata.mcp.knowledge.ExperienceStore, List)}: a
@@ -55,12 +76,23 @@ public final class CureTier {
     }
 
     /**
-     * One derivation: the kind asked about, the tier, the single runnable step
-     * when the tier is {@link Tier#RUN} (null otherwise), and the reason —
-     * which advise cause applied, stated so a reader can tell a design decision
-     * from a mis-spelled table row.
+     * One derivation: the kind asked about, the tier, the RANKED runnable cures
+     * when the tier is {@link Tier#RUN} (empty otherwise), and the reason — which
+     * consider-cause applied, stated so a reader can tell a design decision from a
+     * mis-spelled table row.
+     *
+     * <p>{@code runnable} replaced a single {@code recipe} when rule 5 went. A lone
+     * recipe could only be filled when there was exactly one, which is why several
+     * routes had to mean "no instruction": the shape could not carry them. The list
+     * is in the table's declaration order, which is the author's ranking.</p>
      */
-    public record Derivation(String kind, Tier tier, String recipe, String reason) {
+    public record Derivation(String kind, Tier tier, List<CureCatalog.Cure> runnable,
+                             String reason) {
+
+        /** The first ranked step, or null when nothing is runnable — for callers that want one. */
+        public String recipe() {
+            return runnable.isEmpty() ? null : runnable.get(0).recipe();
+        }
     }
 
     private CureTier() {
@@ -102,43 +134,38 @@ public final class CureTier {
     public static Derivation derive(String kind, List<String> registry) {
         List<CureCatalog.Cure> declared = CureCatalog.curesFor(kind);
         if (declared.isEmpty()) {
-            return new Derivation(kind, Tier.CONSIDER, null,
+            return new Derivation(kind, Tier.CONSIDER, List.of(),
                 "no cure declared — a normal state, not a defect");
         }
-        List<String> runnable = new ArrayList<>();
+        List<CureCatalog.Cure> runnable = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         for (CureCatalog.Cure c : declared) {
             if (c.recipe() == null) {
                 continue;
             }
-            runnable.add(c.recipe());
+            runnable.add(c);
             if (!registry.contains(c.recipe())) {
                 missing.add(c.recipe());
             }
         }
         if (runnable.isEmpty()) {
-            return new Derivation(kind, Tier.CONSIDER, null,
+            return new Derivation(kind, Tier.CONSIDER, List.of(),
                 "the declared cures name designs; nothing automates them");
         }
         if (!missing.isEmpty()) {
-            return new Derivation(kind, Tier.CONSIDER, null,
+            return new Derivation(kind, Tier.CONSIDER, List.of(),
                 "step(s) not in the operation registry: " + String.join(", ", missing));
         }
-        if (runnable.size() == 1) {
-            // A route that commonly declines on its own finder's candidates must not be
-            // reported as an instruction. PERFORM reads as "run this"; a user who does,
-            // and gets an honest no-op, has been told something untrue about the product.
-            String partial = CureCatalog.partialReason(runnable.get(0));
-            if (partial != null) {
-                return new Derivation(kind, Tier.CONSIDER, null,
-                    "one runnable route (" + runnable.get(0) + ") but it declines most of"
-                        + " what this finding names — " + partial);
-            }
-            return new Derivation(kind, Tier.RUN, runnable.get(0),
-                "one runnable route, every step registered");
-        }
-        return new Derivation(kind, Tier.CONSIDER, null,
-            runnable.size() + " runnable routes and nothing mechanical chooses"
-                + " between them — a design decision");
+        // ONE RULE WHERE THERE WERE TWO. The count of runnable routes decides NOTHING
+        // any more: it is a measure of how much the product can do, and the old rule
+        // read it as doubt. Whatever is runnable is handed over, ranked, and the agent
+        // picks — which is why every cure past the first has to carry a discriminator,
+        // enforced at load time by CureCatalog's INVARIANT 3.
+        return new Derivation(kind, Tier.RUN, List.copyOf(runnable),
+            runnable.size() == 1
+                ? "one runnable route, every step registered"
+                : runnable.size() + " runnable routes, every step registered — ranked,"
+                    + " each with what tells it from the others; pick the one that fits"
+                    + " and perform it");
     }
 }

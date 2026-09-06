@@ -167,9 +167,32 @@ public final class CureLookup {
                 // constant it had just renamed. A string is invisible to every
                 // reference-updating engine — the same property that let the operation
                 // allowlist name a door that no longer existed.
-                b.append(tier.tier() == CureTier.Tier.RUN
-                    ? " TIER: RUN — run " + invocationOf(tier.recipe()) + "."
-                    : " TIER: CONSIDER — " + tier.reason() + ".");
+                if (tier.tier() != CureTier.Tier.RUN) {
+                    b.append(" TIER: CONSIDER — ").append(tier.reason()).append('.');
+                } else if (tier.runnable().size() == 1) {
+                    CureCatalog.Cure only = tier.runnable().get(0);
+                    b.append(" TIER: RUN — run ").append(invocationOf(only.recipe()));
+                    // A DISCRIMINATOR IS RENDERED EVEN WITH ONE CURE. It is not required
+                    // there — nothing to tell apart — but where it exists it carries a
+                    // caveat the reader needs, and `loops` is the case: its measurement
+                    // used to arrive as a demotion and now arrives beside the step.
+                    if (only.discriminator() != null) {
+                        b.append(" — ").append(only.discriminator());
+                    }
+                    b.append('.');
+                } else {
+                    b.append(" TIER: RUN — ").append(tier.runnable().size())
+                     .append(" alternatives; pick the one that fits and perform it:");
+                    int rank = 0;
+                    for (CureCatalog.Cure c : tier.runnable()) {
+                        b.append(" (").append(++rank).append(") ")
+                         .append(invocationOf(c.recipe()));
+                        if (c.discriminator() != null) {
+                            b.append(" — ").append(c.discriminator());
+                        }
+                        b.append(rank == tier.runnable().size() ? "." : ";");
+                    }
+                }
             }
             return b.toString();
         }

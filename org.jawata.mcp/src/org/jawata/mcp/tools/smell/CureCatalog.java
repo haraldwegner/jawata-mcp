@@ -334,8 +334,21 @@ public final class CureCatalog {
         // name leaves a reader to guess which. No catalogue design: a pipeline is a
         // rewrite, not a pattern, and inventing an address for it is the failure the
         // re-resolution sweep caught on this very table one commit ago.
+        // THE MEASUREMENT USED TO BE A DEMOTION, and is now the discriminator. This route
+        // commonly declines on its own finder's candidates, and the old rule answered by
+        // pulling the kind down to "consider" and withholding the step. That told a reader
+        // less: they lost the instruction AND still had to find out why. Now they get the
+        // step and the number, and decide.
         m.put("loops", List.of(
-            new Cure("apply_cleanup kind=loop_to_pipeline", null)));
+            new Cure("apply_cleanup kind=loop_to_pipeline", null,
+                "expect it to decline most of what this finding names, and read the loop"
+                    + " yourself for the rest — measured over the java-design-patterns"
+                    + " corpus, 1884 distinct source paths aggregated from its modules:"
+                    + " find_modernization (loop_to_stream), which is this smell's finder,"
+                    + " names 29 candidates in 18 files, and this rewriter changes 2 of"
+                    + " them. It refuses arrays, any break/continue/return, a body doing"
+                    + " more than one thing, and a list not declared empty directly above"
+                    + " — all correctly, and the finder applies none of those tests")));
         // The clearest route in this table: the finding says a private member is never
         // used, and the cure removes exactly that member. Qualified for the same reason
         // as the pipeline above, and with no catalogue design for the same reason too —
@@ -691,41 +704,6 @@ public final class CureCatalog {
             }
         }
         return Map.copyOf(m);
-    }
-
-    /**
-     * ROUTES THAT RUN, AND COMMONLY DECLINE — the gap between a finder and its fix.
-     *
-     * <p>{@link CureTier} derives PERFORM from route COUNT: one runnable route, run it.
-     * That reads as an instruction, and it is the right derivation when the route acts on
-     * what the finding names. It is the wrong one when the two disagree, because the user
-     * follows an instruction and gets an honest no-op — and learns to distrust the next
-     * instruction too.</p>
-     *
-     * <p>An entry here is a MEASUREMENT, not a hunch. It says the route was run against
-     * its own finder's candidate set and how much of it the route accepted. The tier then
-     * reports ADVISE and carries the number, so the reader decides.</p>
-     *
-     * <p>This is a stopgap and worth naming as one. The structural answer is for a routed
-     * cleanup kind's detector to BE the rule's own applicability scan, so finder and
-     * rewriter cannot disagree by construction — that changes what a Fowler smell reports,
-     * which belongs to the detector stage rather than here.</p>
-     */
-    private static final Map<String, String> PARTIAL_ROUTES = Map.of(
-        "apply_cleanup kind=loop_to_pipeline",
-        "measured over the java-design-patterns corpus, 1884 distinct source paths"
-            + " aggregated from its modules (the fork holds more; the rest collide on path"
-            + " when the modules are flattened into one root): find_modernization"
-            + " (loop_to_stream), which is this smell's finder, names 29 candidates in 18"
-            + " files, and this rewriter changes 2 of them. It refuses arrays, any"
-            + " break/continue/return, a body doing more than one thing, and a list not"
-            + " declared empty directly above — all correctly, and the finder applies none"
-            + " of those tests. So run it if you like, but expect most findings to be ones"
-            + " it declines, and read the loop yourself for the rest.");
-
-    /** Why a runnable route commonly declines, or null when it acts on what it is given. */
-    public static String partialReason(String operation) {
-        return operation == null ? null : PARTIAL_ROUTES.get(operation);
     }
 
     /** Why an operation that ships is reachable from no finding, or null if it is. */
