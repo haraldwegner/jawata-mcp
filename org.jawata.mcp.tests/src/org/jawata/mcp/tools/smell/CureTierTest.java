@@ -59,13 +59,50 @@ class CureTierTest {
         }
 
         // ADVISE — cures declared, none runnable (design-only).
-        for (String kind : List.of("cqs", "coupling", "composition_over_inheritance",
+        //
+        // `cqs` IS NOT ONE OF THESE, and used to be listed here under this comment. It
+        // declares a RUNNABLE recipe (apply_cleanup kind=return_modified_value), so the
+        // "none runnable" rule cannot be what answers for it: in this JVM it derives ADVISE
+        // by the STEP-NOT-REGISTERED rule instead, because no registry is wired in a unit
+        // test. Two true statements about two different registry states, filed under one
+        // false rationale — found by a C4 audit reading the comment against the table.
+        for (String kind : List.of("coupling", "composition_over_inheritance",
                 "encapsulation")) {
             CureTier.Derivation d = CureTier.derive(kind);
             assertEquals(CureTier.Tier.ADVISE, d.tier(),
                 () -> kind + " is cured by a design decision — nothing automates it,"
                     + " so nothing can be PERFORMED: " + d);
         }
+
+        // `cqs` WITH ITS STEP REGISTERED — PERFORM, and this is the claim the shipped product
+        // makes about it. CureCatalog's unrouted entry for row 61 tells a future route merge
+        // that wiring a SECOND cure here would cost this smell its runnable instruction, and
+        // that sentence is only worth reading if the first half is true. It was asserted
+        // nowhere until a C4 audit pointed out that the only test naming cqs asserted ADVISE,
+        // for a reason that does not apply to it.
+        CureTier.Derivation performed =
+            CureTier.derive("cqs", List.of("apply_cleanup kind=return_modified_value"));
+        assertEquals(CureTier.Tier.PERFORM, performed.tier(),
+            () -> "cqs declares ONE runnable route, so with that step registered the answer"
+                + " is run it: " + performed);
+        assertEquals("apply_cleanup kind=return_modified_value", performed.recipe(),
+            () -> "and PERFORM must name the single step to run: " + performed);
+
+        // THE OTHER HALF OF ROW 61's RECORDED TRADE — that a SECOND runnable route would turn
+        // this instruction back into a suggestion — is NOT asserted here, and the reason is
+        // worth writing down because the first attempt to assert it was wrong.
+        //
+        // It passed a two-element list to the overload above, expecting ADVISE. The overload's
+        // second argument is the REGISTRY of registered steps, not the routes: routes come
+        // from the catalog, which declares ONE cure for cqs whatever registry it is asked
+        // about. So that call still derived PERFORM, and the run said so — "one runnable
+        // route, every step registered".
+        //
+        // Constructing the two-route case for cqs means adding the second cure to the
+        // catalogue, which is exactly the change the route merge has not made. The RULE it
+        // would hit is already exercised, three assertions above, by the kinds that really do
+        // declare several runnable routes. So the trade is real, its two halves are covered
+        // by different tests, and neither is a claim nobody checks.
 
         // ADVISE — zero cures is a NORMAL state, not a defect.
         CureTier.Derivation none = CureTier.derive("no_such_smell");

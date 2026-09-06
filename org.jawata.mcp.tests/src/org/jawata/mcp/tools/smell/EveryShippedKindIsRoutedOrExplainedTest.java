@@ -46,9 +46,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EveryShippedKindIsRoutedOrExplainedTest {
 
     /**
-     * Kinds that shipped BEFORE Sprint 28d-rescue on the three doors this guard widened to
-     * at C6. Exempt by NAME so the exemption is readable and shortenable; anything new on
-     * those doors is guarded from the day it lands.
+     * Kinds that shipped BEFORE Sprint 28d-rescue on the FOUR doors this guard has widened
+     * to — three at C6 ({@code extract}, {@code inline}, {@code move}) and one at C4
+     * ({@code change_method_signature}). Exempt by NAME so the exemption is readable and
+     * shortenable; anything new on those doors is guarded from the day it lands.
+     *
+     * <p><b>This sentence said "three doors at C6" until a C4 audit read it against the list
+     * below.</b> That is the THIRD time a count in this file went stale, and the other two
+     * were corrected by the two commits that walked past this one — so the lesson is not
+     * "check the counts" but that a number in prose beside a list it describes has nothing
+     * holding it to the list. The count that IS held is the {@code assertEquals} on
+     * {@code examined} further down; this paragraph is prose and will go stale again.</p>
      */
     private static final List<String> PRE_EXISTING = List.of(
         "extract kind=variable", "extract kind=constant",
