@@ -30,7 +30,19 @@ import java.util.function.Supplier;
  * {@code docs/upgrade-checklist.md} for the implications of this
  * dependency on Eclipse target-platform bumps.</p>
  */
-public class PullUpTool extends AbstractRefactoringTool {
+public class PullUpTool extends AbstractRefactoringTool implements ToolKindDelegate {
+
+    /**
+     * The door reaches this delegate as {@code direction=up}, and it says so itself.
+     *
+     * <p>It cannot be derived from {@link #getName()}, which answers {@code pull_up} — the
+     * retired standalone tool name. That gap is exactly why the role asks each delegate to
+     * state its own kind rather than inferring one.</p>
+     */
+    @Override
+    public String kindName() {
+        return "up";
+    }
 
     public PullUpTool(Supplier<IJdtService> serviceSupplier,
                      RefactoringChangeCache changeCache) {
@@ -47,10 +59,8 @@ public class PullUpTool extends AbstractRefactoringTool {
         return """
             Move a method or field from a subtype up to its direct superclass.
 
-            USAGE:
-              pull_up(filePath="src/main/java/com/example/Dog.java",
-                      line=12, column=20,
-                      abstractInOriginal=false)
+            Point at the member — a position inside it, or its name — and optionally
+            ask for abstractInOriginal.
 
             Inputs:
             - filePath / line / column — position inside the method or field

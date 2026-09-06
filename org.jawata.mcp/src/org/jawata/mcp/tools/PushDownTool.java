@@ -26,7 +26,14 @@ import java.util.function.Supplier;
  * {@code docs/upgrade-checklist.md} for what to verify on Eclipse
  * target-platform bumps.</p>
  */
-public class PushDownTool extends AbstractRefactoringTool {
+public class PushDownTool extends AbstractRefactoringTool implements ToolKindDelegate {
+
+    /** The door reaches this delegate as {@code direction=down}; {@link #getName()} says
+     * {@code push_down}, the retired standalone name, so the kind is stated rather than derived. */
+    @Override
+    public String kindName() {
+        return "down";
+    }
 
     public PushDownTool(Supplier<IJdtService> serviceSupplier,
                        RefactoringChangeCache changeCache) {
@@ -44,9 +51,7 @@ public class PushDownTool extends AbstractRefactoringTool {
             Move a method or field from a supertype down into all of its
             direct subtypes.
 
-            USAGE:
-              push_down(filePath="src/main/java/com/example/Animal.java",
-                        line=8, column=20)
+            Point at the member — a position inside it, or its name.
 
             Inputs:
             - filePath / line / column — position inside the method or field

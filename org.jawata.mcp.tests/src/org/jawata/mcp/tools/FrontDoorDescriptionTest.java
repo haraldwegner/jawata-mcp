@@ -324,31 +324,22 @@ class FrontDoorDescriptionTest {
                 + usage);
     }
 
-    @Test
-    @DisplayName("a door that has not adopted the seam is untouched by it")
-    void anUnadoptedDoorKeepsItsOwnText() {
-        // The seam is opt-in per door, by design: each converts in the step that owns it.
-        // Without this, "every door is assembled" could be believed of doors that are not.
-        //
-        // THIS TEST WATCHED `data` UNTIL STAGE 5 CONVERTED IT, AND STAYED GREEN THROUGH THE
-        // CONVERSION — which is worth recording rather than quietly re-pointing. It asserted
-        // that data's description contained "USAGE:", meaning "still hand-written". The
-        // assembler GENERATES a usage line, so the moment data adopted the seam the premise
-        // became false and the assertion went on passing. An assertion that survives the
-        // falsification of its own premise is the defect class this whole sprint is about,
-        // found here in the suite that polices it.
-        //
-        // The subject is now `hierarchy`, the last door that has not adopted — it converts
-        // inside Stage 7 as it grows from two kinds to seven — and the assertion is on what
-        // actually distinguishes an unadopted door: it does NOT route through the assembler.
-        HierarchyTool notYet = new HierarchyTool(() -> null, new RefactoringChangeCache());
-        assertFalse(notYet instanceof FrontDoor,
-            "hierarchy has not adopted the description seam yet; when Stage 7 converts it,"
-                + " this test loses its last subject and should be DELETED rather than"
-                + " re-pointed at a door that has adopted");
-        assertTrue(notYet.getDescription().contains("USAGE:"),
-            "and it still publishes a hand-written usage line of its own");
-    }
+    // DELETED IN STAGE 7, ON THIS TEST'S OWN INSTRUCTION — `anUnadoptedDoorKeepsItsOwnText`.
+    //
+    // It watched whichever door had not yet adopted the seam, and its last subject was
+    // `hierarchy`. Stage 7 converts that door as it grows from two kinds to seven, so the test
+    // has no subject left: every door now routes through the assembler, which is the state it
+    // existed to say was not yet true.
+    //
+    // ITS OWN MESSAGE SAID TO DELETE IT RATHER THAN RE-POINT IT, and the reason is in the note
+    // it carried: the previous time its subject converted — `data`, in Stage 5 — it was
+    // re-pointed rather than reconsidered, and before that it had gone on passing after its
+    // premise became false, because it asserted the presence of a "USAGE:" line and the
+    // assembler generates one. Re-pointing a test whose premise has expired is how that happens.
+    // There is no third door to move it to, and inventing one would be the same mistake.
+    //
+    // What it protected is not lost: `noDoorWritesItsOwnUsageLine` asserts the positive form
+    // over every adopted door, and it is mutation-proved.
 
     @Test
     @DisplayName("M5's discriminator: no door that has adopted the seam publishes a usage line of its own")
@@ -443,12 +434,12 @@ class FrontDoorDescriptionTest {
                     + generated + "\n  in: " + described);
         }
         // PROOF OF LIFE: an empty list would satisfy the loop.
-        assertEquals(9, adoptedDoors().size(),
-            "nine doors have adopted the description seam — the six Stage 6a converted,"
+        assertEquals(10, adoptedDoors().size(),
+            "TEN doors have adopted the description seam — the six Stage 6a converted,"
                 + " refactoring, which takes the description half only, data, which"
                 + " adopted inside Stage 5 as it grew past its single operation, and"
                 + " change_method_signature, which adopted inside Stage 4 as it grew from"
-                + " one operation to eleven. hierarchy becomes the tenth inside Stage 7;"
+                + " one operation to eleven, and hierarchy inside Stage 7, which was the LAST;"
                 + " each must be ADDED here deliberately, because a door that adopts the"
                 + " seam and never reaches this loop is asserted by nothing — which is"
                 + " exactly the state Stage 4's door was left in, and what a C4 audit"
@@ -474,7 +465,12 @@ class FrontDoorDescriptionTest {
             new ApplyCleanupTool(() -> null, cache),
             new RefactoringTool(() -> null, cache),
             new DataTool(() -> null, cache),
-            new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> null, cache));
+            new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> null, cache),
+            // TENTH, and the last. Added in the SAME change that converted the door, because a
+            // C4 audit refused on precisely the opposite: change_method_signature adopted the
+            // seam and was not added here, so the property held in the code and no assertion
+            // asked it. There is no eleventh door.
+            new HierarchyTool(() -> null, cache));
     }
 
     private static int occurrences(String text, String needle) {

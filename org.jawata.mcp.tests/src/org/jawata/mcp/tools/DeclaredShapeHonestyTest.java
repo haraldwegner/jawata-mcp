@@ -204,12 +204,15 @@ class DeclaredShapeHonestyTest {
             }
         });
 
-        // PROOF OF LIFE, and a ratchet: today two doors write their own block. `hierarchy`
-        // adopts the seam inside Stage 7 and will drop to one; `refactoring` stays forever,
-        // because its seven actions reach four delegates and there is no per-action delegate
-        // to project a bullet from. A count that fell to zero unnoticed would leave this
-        // method looping over nothing.
-        assertEquals(java.util.Set.of("hierarchy", "refactoring"), handWritten.keySet(),
+        // PROOF OF LIFE, and a ratchet. `hierarchy` adopted the seam in Stage 7 and left this
+        // set, which is the ratchet doing exactly what it was for: the guard did not quietly
+        // shrink, it went RED and named the door, and removing it here was a deliberate act.
+        //
+        // ONE door remains and it is not a backlog: `refactoring` stays forever, because its
+        // seven actions reach four delegates and there is no per-action delegate to project a
+        // bullet from. So a set that fell to EMPTY would mean this method loops over nothing,
+        // which is why the assertion is an equality rather than a shrinking bound.
+        assertEquals(java.util.Set.of("refactoring"), handWritten.keySet(),
             "these are the doors whose kind block is still their own prose. When one adopts"
                 + " the seam, remove it here deliberately rather than letting the guard"
                 + " quietly shrink: " + handWritten.keySet());
@@ -257,19 +260,21 @@ class DeclaredShapeHonestyTest {
         // PROOF OF LIFE: doors that have not adopted the seam return an empty preamble and
         // are skipped, so a zero here would mean the loop looked at nothing.
         //
-        // NINE of the TEN doors this list holds. `hierarchy` is the only one that is not a
-        // FrontDoor yet; `refactoring` IS one, because it took the description seam without
-        // the routing seam.
+        // ALL TEN doors this list holds. `hierarchy` adopted in Stage 7 and was the last
+        // hold-out; `refactoring` had already counted, because it took the description seam
+        // without the routing seam.
         //
         // The number has been wrong twice in this comment and both are worth remembering: the
         // first version said six when it was seven, recalled rather than counted; the second
         // still said seven, and "eight doors", after Stage 5 added `data` and moved both — so
         // a comment corrected once went stale the very next time its subject changed. The
-        // assertion below is the only copy that anything checks.
-        assertEquals(9, checked,
-            "the nine doors in this list that have adopted the description seam must be"
-                + " checked. data adopted inside Stage 5 and change_method_signature inside"
-                + " Stage 4; hierarchy adopts inside Stage 7 and becomes a tenth when it does");
+        // assertion below is the only copy that anything checks, which is why it is the one
+        // that went red when this door converted rather than drifting quietly to ten.
+        assertEquals(10, checked,
+            "every door in this list has now adopted the description seam — data inside"
+                + " Stage 5, change_method_signature inside Stage 4 and hierarchy inside"
+                + " Stage 7, which was the last. A number BELOW ten means a door stopped"
+                + " being assembled; there is no eleventh door to grow into");
     }
 
     /**
