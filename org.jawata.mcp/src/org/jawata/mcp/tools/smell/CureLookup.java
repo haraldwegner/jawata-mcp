@@ -161,9 +161,15 @@ public final class CureLookup {
             // one case where the table has nothing to derive from.
             if (b.length() > 0) {
                 CureTier.Derivation tier = CureTier.derive(kind);
-                b.append(tier.tier() == CureTier.Tier.PERFORM
-                    ? " TIER: PERFORM — run " + invocationOf(tier.recipe()) + "."
-                    : " TIER: ADVISE — " + tier.reason() + ".");
+                // THE RENAME DOES NOT REACH THESE, which is the whole reason step 1 has a
+                // gate of its own: rename_symbol moved twenty references across four files
+                // and left the two literals a reader actually SEES, one line below the
+                // constant it had just renamed. A string is invisible to every
+                // reference-updating engine — the same property that let the operation
+                // allowlist name a door that no longer existed.
+                b.append(tier.tier() == CureTier.Tier.RUN
+                    ? " TIER: RUN — run " + invocationOf(tier.recipe()) + "."
+                    : " TIER: CONSIDER — " + tier.reason() + ".");
             }
             return b.toString();
         }

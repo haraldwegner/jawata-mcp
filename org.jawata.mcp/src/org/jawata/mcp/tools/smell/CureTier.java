@@ -6,10 +6,16 @@ import java.util.List;
 /**
  * THE TIER IS DERIVED, NOT ASSIGNED — Sprint 28d Stage 11a.
  *
- * <p>The cure model (ARCHITECTURE-28d.md, "What the catalogue is", ruled built
- * 2026-08-31): whether a finding's answer is <b>PERFORM</b> (one runnable route,
- * run it) or <b>ADVISE</b> (a design decision) is a function of the declared
- * routes and the operations that actually exist. A tier written into a table
+ * <p>The cure model: whether a finding's answer is <b>RUN</b> (do this) or
+ * <b>CONSIDER</b> (a design decision) is a function of the declared routes and the
+ * operations that actually exist.
+ *
+ * <p><b>The two were called PERFORM and ADVISE until 2026-09-06.</b> The words are
+ * Harald's, and they are step 1 of the tier reversal: <i>"You have 3 alternatives.
+ * Pick the most appropriate one and perform."</i> The RULES below are unchanged by
+ * this step and still derive from the COUNT of runnable routes — which is the thing
+ * being overturned, in step 3, not here. Renaming first keeps the two changes
+ * separately revertible. A tier written into a table
  * would drift the day an operation shipped or was renamed; a derived tier
  * cannot, because it is recomputed from the table and the registry on every
  * ask.</p>
@@ -43,14 +49,14 @@ public final class CureTier {
     /** The two answers the model derives — the split dossier item 11 tracked. */
     public enum Tier {
         /** One runnable route, every step registered: run it. */
-        PERFORM,
+        RUN,
         /** A design decision: alternatives, design-only cures, or nothing declared. */
-        ADVISE
+        CONSIDER
     }
 
     /**
      * One derivation: the kind asked about, the tier, the single runnable step
-     * when the tier is {@link Tier#PERFORM} (null otherwise), and the reason —
+     * when the tier is {@link Tier#RUN} (null otherwise), and the reason —
      * which advise cause applied, stated so a reader can tell a design decision
      * from a mis-spelled table row.
      */
@@ -96,7 +102,7 @@ public final class CureTier {
     public static Derivation derive(String kind, List<String> registry) {
         List<CureCatalog.Cure> declared = CureCatalog.curesFor(kind);
         if (declared.isEmpty()) {
-            return new Derivation(kind, Tier.ADVISE, null,
+            return new Derivation(kind, Tier.CONSIDER, null,
                 "no cure declared — a normal state, not a defect");
         }
         List<String> runnable = new ArrayList<>();
@@ -111,11 +117,11 @@ public final class CureTier {
             }
         }
         if (runnable.isEmpty()) {
-            return new Derivation(kind, Tier.ADVISE, null,
+            return new Derivation(kind, Tier.CONSIDER, null,
                 "the declared cures name designs; nothing automates them");
         }
         if (!missing.isEmpty()) {
-            return new Derivation(kind, Tier.ADVISE, null,
+            return new Derivation(kind, Tier.CONSIDER, null,
                 "step(s) not in the operation registry: " + String.join(", ", missing));
         }
         if (runnable.size() == 1) {
@@ -124,14 +130,14 @@ public final class CureTier {
             // and gets an honest no-op, has been told something untrue about the product.
             String partial = CureCatalog.partialReason(runnable.get(0));
             if (partial != null) {
-                return new Derivation(kind, Tier.ADVISE, null,
+                return new Derivation(kind, Tier.CONSIDER, null,
                     "one runnable route (" + runnable.get(0) + ") but it declines most of"
                         + " what this finding names — " + partial);
             }
-            return new Derivation(kind, Tier.PERFORM, runnable.get(0),
+            return new Derivation(kind, Tier.RUN, runnable.get(0),
                 "one runnable route, every step registered");
         }
-        return new Derivation(kind, Tier.ADVISE, null,
+        return new Derivation(kind, Tier.CONSIDER, null,
             runnable.size() + " runnable routes and nothing mechanical chooses"
                 + " between them — a design decision");
     }

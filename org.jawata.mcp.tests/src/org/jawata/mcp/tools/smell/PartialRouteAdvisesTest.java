@@ -36,7 +36,7 @@ class PartialRouteAdvisesTest {
     void aPartialRouteAdvises() {
         CureTier.Derivation d = CureTier.derive("loops", REGISTRY);
 
-        assertEquals(CureTier.Tier.ADVISE, d.tier(),
+        assertEquals(CureTier.Tier.CONSIDER, d.tier(),
             "one runnable route, but it declines most candidates: " + d);
         assertNull(d.recipe(),
             "ADVISE carries no recipe — offering one is the instruction this removes: " + d);
@@ -54,11 +54,11 @@ class PartialRouteAdvisesTest {
 
         // Without this, the case above would pass just as well if the change had made
         // every derivation ADVISE — which is a different product, not a repair.
-        assertEquals(CureTier.Tier.PERFORM, d.tier(),
+        assertEquals(CureTier.Tier.RUN, d.tier(),
             "remove_dead_code acts on exactly what the unused finding names: " + d);
         assertEquals("apply_cleanup kind=remove_dead_code", d.recipe(),
             "and it is still handed to the caller by name: " + d);
-        assertNotEquals(CureTier.Tier.ADVISE, d.tier(), "the control must differ from the case");
+        assertNotEquals(CureTier.Tier.CONSIDER, d.tier(), "the control must differ from the case");
     }
 
     @Test

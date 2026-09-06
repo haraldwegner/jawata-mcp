@@ -40,7 +40,7 @@ class CureTierTest {
         // PERFORM — exactly one runnable route, its step published.
         for (String kind : List.of("switch_statements", "type_code", "singleton", "long_method")) {
             CureTier.Derivation d = CureTier.derive(kind);
-            assertEquals(CureTier.Tier.PERFORM, d.tier(),
+            assertEquals(CureTier.Tier.RUN, d.tier(),
                 () -> kind + " declares exactly one runnable route whose step is a"
                     + " published kind — anything but PERFORM means the derivation"
                     + " cannot see the route the table declares: " + d);
@@ -51,7 +51,7 @@ class CureTierTest {
         // ADVISE — several runnable routes, nothing mechanical chooses.
         for (String kind : List.of("ocp", "divergent_change", "shotgun_surgery")) {
             CureTier.Derivation d = CureTier.derive(kind);
-            assertEquals(CureTier.Tier.ADVISE, d.tier(),
+            assertEquals(CureTier.Tier.CONSIDER, d.tier(),
                 () -> kind + " declares THREE runnable routes; choosing one is a design"
                     + " decision, and a derivation that picks one anyway has invented"
                     + " a preference no table declares: " + d);
@@ -69,7 +69,7 @@ class CureTierTest {
         for (String kind : List.of("coupling", "composition_over_inheritance",
                 "encapsulation")) {
             CureTier.Derivation d = CureTier.derive(kind);
-            assertEquals(CureTier.Tier.ADVISE, d.tier(),
+            assertEquals(CureTier.Tier.CONSIDER, d.tier(),
                 () -> kind + " is cured by a design decision — nothing automates it,"
                     + " so nothing can be PERFORMED: " + d);
         }
@@ -82,7 +82,7 @@ class CureTierTest {
         // for a reason that does not apply to it.
         CureTier.Derivation performed =
             CureTier.derive("cqs", List.of("apply_cleanup kind=return_modified_value"));
-        assertEquals(CureTier.Tier.PERFORM, performed.tier(),
+        assertEquals(CureTier.Tier.RUN, performed.tier(),
             () -> "cqs declares ONE runnable route, so with that step registered the answer"
                 + " is run it: " + performed);
         assertEquals("apply_cleanup kind=return_modified_value", performed.recipe(),
@@ -106,10 +106,10 @@ class CureTierTest {
 
         // ADVISE — zero cures is a NORMAL state, not a defect.
         CureTier.Derivation none = CureTier.derive("no_such_smell");
-        assertEquals(CureTier.Tier.ADVISE, none.tier(),
+        assertEquals(CureTier.Tier.CONSIDER, none.tier(),
             "a kind with no declared cure advises; it does not throw and does not invent");
         CureTier.Derivation nul = CureTier.derive(null);
-        assertEquals(CureTier.Tier.ADVISE, nul.tier(),
+        assertEquals(CureTier.Tier.CONSIDER, nul.tier(),
             "every caller passes whatever the finding carried, so null must be an answer");
     }
 
@@ -143,7 +143,7 @@ class CureTierTest {
                 + " 'broken' run is broken for a different reason than intended");
 
         CureTier.Derivation broken = CureTier.derive("switch_statements", without);
-        assertEquals(CureTier.Tier.ADVISE, broken.tier(),
+        assertEquals(CureTier.Tier.CONSIDER, broken.tier(),
             "a route whose step no registered operation backs cannot be performed");
         assertNull(broken.recipe());
         assertTrue(broken.reason().contains("replace_conditional_with_polymorphism"),
@@ -152,7 +152,7 @@ class CureTierTest {
 
         // (2) REPAIRED SECOND — the real registry, same kind.
         CureTier.Derivation repaired = CureTier.derive("switch_statements");
-        assertEquals(CureTier.Tier.PERFORM, repaired.tier());
+        assertEquals(CureTier.Tier.RUN, repaired.tier());
         assertEquals("replace_conditional_with_polymorphism", repaired.recipe());
     }
 
@@ -190,16 +190,17 @@ class CureTierTest {
                 "catalogue:java-design-patterns/strategy/README.md")),
             List.of(), null, List.of());
         assertTrue(perform.hint().contains(
-                "TIER: PERFORM — run refactor_to_pattern kind=replace_conditional_with_polymorphism"),
-            () -> "a one-route kind's finding must say PERFORM and name the run: "
+                "TIER: RUN — run refactor_to_pattern kind=replace_conditional_with_polymorphism"),
+            () -> "a one-route kind's finding must say RUN and name the invocation: "
                 + perform.hint());
 
         CureLookup.Cures advise = new CureLookup.Cures("ocp",
             List.of(new CureLookup.ResolvedCure("refactor_to_state", "design:state",
                 "java-design-patterns", "catalogue:java-design-patterns/state/README.md")),
             List.of(), null, List.of());
-        assertTrue(advise.hint().contains("TIER: ADVISE"),
-            () -> "ocp declares three routes; its finding advises: " + advise.hint());
+        assertTrue(advise.hint().contains("TIER: CONSIDER"),
+            () -> "ocp declares three routes; today that still yields CONSIDER: "
+                + advise.hint());
     }
 
     /**
