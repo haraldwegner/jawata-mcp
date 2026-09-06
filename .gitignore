@@ -150,4 +150,12 @@ bin/
 # marker snapshots, launch library info) and the local field recording. Machine-local,
 # regenerated on demand, and 46 MB of it landed in a commit once because `git add -A`
 # does not know the difference. origin tracks none of it.
-workspace/
+#
+# ANCHORED with a leading slash, and that is not style. A bare `workspace/` matches a
+# directory of that name AT ANY DEPTH, so the first version of this rule swallowed
+# org.jawata.core/src/org/jawata/core/workspace/ — seven tracked production and test
+# sources. Already-tracked files stay tracked, so nothing broke on the day; a NEW file in
+# that package would have been silently lost, which is the exact inverse of the
+# `git add -A` failure this rule exists to prevent. Found by a C7 round-3 audit, which
+# created a probe file there and watched `git add` refuse it.
+/workspace/

@@ -36,13 +36,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Scoped to the front doors THIS SPRINT HAS REACHED, which at C7 is SIX:
  * {@code apply_cleanup} from Stage 3, {@code extract}, {@code inline} and {@code move} from
- * Stage 6, and {@code change_method_signature} from Stage 4. It was scoped to the first
- * alone until C6, and an audit was right that the silence therefore said nothing about
- * Stage 6's twelve rows — the guard passed over them without looking. <b>Then it happened
- * again</b>: Stage 4 created a door with ten new kinds and did not widen this list, so a C4
- * audit made the identical finding one stage later. The lesson the second time is narrower
- * than the first: the scope must widen in the SAME change that adds the kinds, because
- * nothing else will notice.</p>
+ * Stage 6, {@code change_method_signature} from Stage 4, and {@code hierarchy} from Stage 7.
+ * It was scoped to the first alone until C6, and an audit was right that the silence
+ * therefore said nothing about Stage 6's twelve rows — the guard passed over them without
+ * looking. <b>Then it happened again</b>: Stage 4 created a door with ten new kinds and did
+ * not widen this list, so a C4 audit made the identical finding one stage later. <b>And a
+ * third time at C7</b>, on {@code hierarchy}'s five. The lesson stopped getting narrower
+ * after the second telling: the scope must widen in the SAME change that adds the kinds,
+ * because nothing else will notice — and three stages have now proved that a lesson written
+ * in a comment is not a mechanism.</p>
+ *
+ * <p><b>The sentence above said SIX and then listed FIVE, omitting the very door C7 added.</b>
+ * A round-3 audit caught it — inside the commit whose stated job was this file's stale counts,
+ * and in the same self-contradiction shape that commit had just repaired one file over. That
+ * is the argument for M6c in one line: a hand-written list and a hand-written count of it
+ * disagree the moment anyone edits either, and nothing here fails when they do.</p>
  *
  * <p>It is still not the whole surface, and that is deliberate rather than convenient: a
  * test that fails for work not yet started teaches a reader to ignore it.
@@ -92,7 +100,7 @@ class EveryShippedKindIsRoutedOrExplainedTest {
     // that, and it was right: an exemption list has to be about what was NOT worked on.
 
     @Test
-    @DisplayName("each kind on the five reached front doors is named by a cure, or carries a reason")
+    @DisplayName("each kind on the six reached front doors is named by a cure, or carries a reason")
     void everyCleanupKindIsRoutedOrExplained() {
         Supplier<IJdtService> svc = () -> null;
         RefactoringChangeCache cache = new RefactoringChangeCache();
