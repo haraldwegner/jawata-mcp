@@ -121,6 +121,30 @@ class ReplaceTypeCodeWithSubclassesToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES a NAMED prefix with one constant — the parameter does not switch the "
+        + "precondition off")
+    void refusesANamedPrefixWithOneConstant() throws Exception {
+        ObjectNode args = argsFor("Sabbatical");
+        args.put("prefix", "TERM");
+        ToolResponse r = tool.execute(args);
+
+        Assertions.assertAll(
+            () -> assertFalse(r.isSuccess(),
+                "one lone constant is not a type code, and naming its prefix does not make it"
+                    + " one — a C7 audit ran exactly this through the built artifact and got a"
+                    + " generated SabbaticalSingle.java back"),
+            () -> assertEquals(ReplaceTypeCodeWithSubclassesTool.Refusal.NO_TYPE_CODE_CONSTANTS,
+                r.getError().getReason(), "got: " + r.getError()),
+            () -> assertTrue(String.valueOf(r.getError()).contains("1 constant(s)"),
+                "and the refusal must say WHY the named prefix was rejected — a reader who can"
+                    + " see their own prefix listed as 'found' reads the old message as the"
+                    + " tool disagreeing with itself: " + r.getError()),
+            () -> assertEquals("(absent)", read("SabbaticalSingle.java"),
+                "and nothing is generated. THIS is the assertion the bug would fail: the row"
+                    + " reported success and wrote this file"));
+    }
+
+    @Test
     @DisplayName("REFUSES when the code is not read through an accessor — Fowler's first step")
     void refusesWhenTheCodeIsNotEncapsulated() throws Exception {
         ToolResponse r = tool.execute(argsFor("Stipend"));

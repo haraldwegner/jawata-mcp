@@ -197,21 +197,42 @@ public class ReplaceTypeCodeWithSubclassesTool extends AbstractApplyingRefactori
         }
         String prefix = null;
         for (Map.Entry<String, List<String>> group : byPrefix.entrySet()) {
+            // A LONE CONSTANT IS NOT A TYPE CODE, whether or not the caller named its prefix.
+            // This rule used to sit on the ELSE branch only, so supplying `prefix` skipped it:
+            // the row then performed on the very fixture its own test asserts it refuses,
+            // generating a subclass from a single constant and reporting success. A published
+            // parameter silently turning a documented precondition off — found by a C7 audit,
+            // live, through the built artifact rather than by reading.
+            if (group.getValue().size() < 2) {
+                continue;
+            }
             if (wanted != null && !wanted.isBlank()) {
                 if (group.getKey().equals(wanted)) {
                     prefix = group.getKey();
                 }
-            } else if (group.getValue().size() >= 2
-                    && (prefix == null || group.getValue().size() > byPrefix.get(prefix).size())) {
+            } else if (prefix == null || group.getValue().size() > byPrefix.get(prefix).size()) {
                 prefix = group.getKey();
             }
         }
         if (prefix == null) {
+            // NAMED BUT TOO SMALL is its own answer. Reporting "declares no group" while the
+            // caller can see their prefix in the `found` list reads as the tool disagreeing
+            // with itself; the count is what they need.
+            String named = wanted == null || wanted.isBlank() ? null : wanted;
+            String detail;
+            if (named == null) {
+                detail = "";
+            } else if (byPrefix.containsKey(named)) {
+                detail = " Asked for '" + named + "', which has "
+                    + byPrefix.get(named).size() + " constant(s): " + byPrefix.get(named)
+                    + ". One lone constant is not a code.";
+            } else {
+                detail = " Asked for '" + named + "'; found " + byPrefix.keySet() + ".";
+            }
             return Preparation.fail(ToolResponse.invalidParameter("prefix",
                 "'" + type.getElementName() + "' declares no group of two or more static final"
                     + " constants sharing a PREFIX_ — which is what a type code looks like."
-                    + (wanted == null ? "" : " Asked for '" + wanted + "'; found "
-                        + byPrefix.keySet() + "."),
+                    + detail,
                 Refusal.NO_TYPE_CODE_CONSTANTS));
         }
         List<String> constants = byPrefix.get(prefix);
