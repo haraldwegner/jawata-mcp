@@ -271,16 +271,27 @@ class CureTierTest {
     @Test
     @DisplayName("a route is still one step; the third component is a discriminator")
     void aRouteIsOneStepUntilACureNeedsTwo() {
-        assertEquals(3, CureCatalog.Cure.class.getRecordComponents().length,
-            "Cure is (recipe, operation, discriminator) — still ONE step per route."
-                + " DELIVERY CONDITION, unchanged and unmet: the first cure needing an"
+        assertEquals(4, CureCatalog.Cure.class.getRecordComponents().length,
+            "Cure is (recipe, operation, discriminator, needs) — still ONE step per route."
+                + " DELIVERY CONDITION, unchanged and STILL UNMET: the first cure needing an"
                 + " ORDERED second step replaces `recipe` with a steps list and updates"
                 + " the tier derivation with it");
         assertEquals("discriminator",
             CureCatalog.Cure.class.getRecordComponents()[2].getName(),
-            "and the third component is the sentence that tells a cure from its"
+            "the third component is the sentence that tells a cure from its"
                 + " neighbours — if it ever becomes a steps list, the condition above"
                 + " has been met and this test is the place that says so");
+        // THE COUNT MOVED 3 -> 4 AT S8b STEP 9, and the delivery condition above did NOT.
+        // This is the same correction step 2 made when the discriminator arrived: a
+        // component is not a STEP. `needs` names the inputs a door takes that a finding
+        // cannot carry — a new class's name, a boundary line — so the agent supplies exactly
+        // those and nothing else. Bumping the number and leaving the sentence unexamined
+        // would retire a deferral nobody has met, which is why the fourth component is
+        // pinned BY NAME here too.
+        assertEquals("needs",
+            CureCatalog.Cure.class.getRecordComponents()[3].getName(),
+            "and the fourth is what the AGENT must supply, not an ordered step this"
+                + " product performs");
     }
 
     /**

@@ -78,7 +78,16 @@ public final class CureCatalog {
      * honest: the moment a kind declares a SECOND runnable cure, every one of them
      * must carry a discriminator or the table does not load.</p>
      */
-    public record Cure(String recipe, String operation, String discriminator) {
+    public record Cure(String recipe, String operation, String discriminator,
+                       java.util.List<String> needs) {
+
+        /**
+         * {@code needs} is never null — an empty list and "declares nothing" are the same
+         * answer, and letting both spellings exist would make every reader check for two.
+         */
+        public Cure {
+            needs = needs == null ? java.util.List.of() : java.util.List.copyOf(needs);
+        }
 
         /**
          * The two-argument form, for the ~40 single-cure rows that need no
@@ -91,7 +100,12 @@ public final class CureCatalog {
          * nothing to say.</p>
          */
         public Cure(String recipe, String operation) {
-            this(recipe, operation, null);
+            this(recipe, operation, null, java.util.List.of());
+        }
+
+        /** Discriminated, and needing nothing the finding does not already carry. */
+        public Cure(String recipe, String operation, String discriminator) {
+            this(recipe, operation, discriminator, java.util.List.of());
         }
     }
 
