@@ -145,3 +145,9 @@ __pycache__/
 # JDT/Eclipse per-project build output (the jawata-dev resident compiles these)
 bin/
 **/bin/
+
+# Eclipse workspace runtime state written by the resident JDT process (indexes,
+# marker snapshots, launch library info) and the local field recording. Machine-local,
+# regenerated on demand, and 46 MB of it landed in a commit once because `git add -A`
+# does not know the difference. origin tracks none of it.
+workspace/
