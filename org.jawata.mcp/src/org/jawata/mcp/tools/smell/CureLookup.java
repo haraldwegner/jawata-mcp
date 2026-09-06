@@ -90,7 +90,7 @@ public final class CureLookup {
          * kind=move_method", a call that does not exist. A standalone operation is
          * invoked by its own name.</p>
          */
-        private static String invocationOf(String operation) {
+        static String invocationOf(String operation) {
             // THE REGISTRY ANSWERS THIS NOW, not a hardcoded front door. Stage 1 folded
             // `move_method` into `move kind=method`, so the set of operations reached
             // through a front door is no longer "the pattern kinds" — and a rendering
@@ -112,6 +112,20 @@ public final class CureLookup {
         }
 
         public String hint() {
+            return hint(null);
+        }
+
+        /**
+         * The same sentence, judged against ONE FINDING's address.
+         *
+         * <p>{@link #hint()} passes null and means "no finding in hand": it renders what
+         * the KIND can offer, which is what every existing caller asks for and what every
+         * pinned wording in {@code CureLookupTest} is about. Passing an address adds the
+         * one question a per-kind answer cannot ask — can THIS finding be the thing the
+         * cure is run from — and that question has to be asked per finding, because two
+         * findings of one kind can differ in exactly that.</p>
+         */
+        public String hint(org.jawata.mcp.models.CodeAddress address) {
             StringBuilder b = new StringBuilder();
             if (!resolved.isEmpty()) {
                 List<String> names = new ArrayList<>();
@@ -167,7 +181,21 @@ public final class CureLookup {
                 // constant it had just renamed. A string is invisible to every
                 // reference-updating engine — the same property that let the operation
                 // allowlist name a door that no longer existed.
-                if (tier.tier() != CureTier.Tier.RUN) {
+                if (tier.tier() == CureTier.Tier.RUN && address != null
+                        && !address.complete()) {
+                    // FAIL VISIBLE. The cure is runnable and THIS finding cannot be what
+                    // runs it: the detector named something no door can resolve — a bare
+                    // member name rather than a qualified one. Rendering RUN would hand
+                    // over an instruction that fails at the door, and the caller would
+                    // have no way to tell whose gap it was. So it says CONSIDER and NAMES
+                    // THE DETECTOR, because that is who has to fix it.
+                    b.append(" TIER: CONSIDER — ").append(kind)
+                     .append(" declares a runnable cure, but this finding carries no")
+                     .append(" address it can be run from (symbol='")
+                     .append(String.valueOf(address.symbol()))
+                     .append("'). That is the ").append(kind)
+                     .append(" detector's gap, not the cure's.");
+                } else if (tier.tier() != CureTier.Tier.RUN) {
                     b.append(" TIER: CONSIDER — ").append(tier.reason()).append('.');
                 } else if (tier.runnable().size() == 1) {
                     CureCatalog.Cure only = tier.runnable().get(0);

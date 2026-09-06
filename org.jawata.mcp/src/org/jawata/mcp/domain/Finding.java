@@ -16,8 +16,27 @@ public record Finding(
     int column,
     String severity,
     String message,
-    String symbol
+    String symbol,
+    java.util.List<org.jawata.mcp.models.NextStep> cures
 ) {
+    /**
+     * The seven-argument form every detector uses — cures are attached LATER.
+     *
+     * <p>A detector's job is to find the thing, not to know what cures it: the cure
+     * table is one place and {@code AbstractAstDetector.withCures} is the one site that
+     * consults it. So a detector constructs without cures and the base fills them in,
+     * which is also why widening this record touched no detector.</p>
+     */
+    public Finding(String kind, String filePath, int line, int column, String severity,
+                   String message, String symbol) {
+        this(kind, filePath, line, column, severity, message, symbol, java.util.List.of());
+    }
+
+    /** The same finding with its resolved next steps attached. */
+    public Finding withCures(java.util.List<org.jawata.mcp.models.NextStep> steps) {
+        return new Finding(kind, filePath, line, column, severity, message, symbol, steps);
+    }
+
     /** A warning-severity finding at a file/line with no column or symbol. */
     public static Finding warning(String kind, String filePath, int line, String message) {
         return new Finding(kind, filePath, line, -1, "warning", message, null);

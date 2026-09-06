@@ -109,15 +109,47 @@ public abstract class AbstractAstDetector implements Detector {
         org.jawata.mcp.knowledge.CatalogueAddresses addresses =
             org.jawata.mcp.knowledge.CatalogueAddresses.of(store.get());
         List<Finding> out = new ArrayList<>(found.size());
-        Map<String, String> byKind = new LinkedHashMap<>();   // one lookup per KIND, not per finding
+        // THE LOOKUP is memoised per KIND, as before — it walks every row in the store.
+        // The SENTENCE is not, and cannot be: it now depends on whether THIS finding
+        // carries an address the cure could be run from, and two findings of one kind
+        // differ in exactly that. Building the sentence is string work; the scan is not.
+        Map<String, CureLookup.Cures> byKind = new LinkedHashMap<>();
         for (Finding f : found) {
-            String cure = byKind.computeIfAbsent(f.kind(),
-                k -> CureLookup.forKind(addresses, k).hint());
-            out.add(cure.isBlank() ? f
+            CureLookup.Cures cures =
+                byKind.computeIfAbsent(f.kind(), k -> CureLookup.forKind(addresses, k));
+            org.jawata.mcp.models.CodeAddress address =
+                org.jawata.mcp.models.CodeAddress.of(f);
+            String cure = cures.hint(address);
+            Finding rendered = cure.isBlank() ? f
                 : new Finding(f.kind(), f.filePath(), f.line(), f.column(), f.severity(),
-                    f.message() + cure, f.symbol()));
+                    f.message() + cure, f.symbol());
+            out.add(rendered.withCures(stepsFor(f.kind(), address)));
         }
         return out;
+    }
+
+    /**
+     * The EXECUTABLE cures for one finding — empty unless the answer is RUN and the
+     * finding can actually be the thing it is run from.
+     *
+     * <p>Both halves matter and they fail differently. A kind whose answer is CONSIDER has
+     * nothing to run, which is an honest empty. A kind whose answer is RUN but whose
+     * finding carries no usable address ALSO gets an empty list — and the rendered
+     * sentence says so and names the detector, so the absence is visible rather than
+     * looking like the first case.</p>
+     */
+    private static List<org.jawata.mcp.models.NextStep> stepsFor(
+            String kind, org.jawata.mcp.models.CodeAddress address) {
+        CureTier.Derivation tier = CureTier.derive(kind);
+        if (tier.tier() != CureTier.Tier.RUN || !address.complete()) {
+            return List.of();
+        }
+        List<org.jawata.mcp.models.NextStep> steps = new ArrayList<>();
+        for (CureCatalog.Cure c : tier.runnable()) {
+            steps.add(new org.jawata.mcp.models.NextStep(
+                CureLookup.Cures.invocationOf(c.recipe()), address, c.discriminator()));
+        }
+        return List.copyOf(steps);
     }
 
     @Override
