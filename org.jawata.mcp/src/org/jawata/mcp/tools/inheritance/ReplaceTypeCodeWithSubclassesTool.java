@@ -234,11 +234,22 @@ public class ReplaceTypeCodeWithSubclassesTool extends AbstractApplyingRefactori
         // gets an implicit default calling super(), which does not exist once the base declares
         // a constructor of its own — so the generated file would not compile.
         //
-        // AND NOTHING BELOW THIS ROW WOULD SAY SO: probed deliberately, a generated file
-        // containing `return NO_SUCH_CONSTANT_PROBE;` still reported SUCCESS. The compile gate
-        // does not verify CREATED files, only edited ones. That is recorded for the checkpoint
-        // as a gap in the safety net every row in this sprint leans on; here it means this row
-        // must get its own generated code right without help.
+        // AND THE COMPILE GATE WOULD NOT SAY SO. Probed: a generated file containing
+        // `return NO_SUCH_CONSTANT_PROBE;` — an unresolved symbol — still reported SUCCESS.
+        //
+        // THE PRECISE CLAIM, because the first version of this note overstated it and a
+        // MUTATION corrected it minutes later. The gate is NOT blind to created files: a later
+        // mutation put `public int null()` into one and the gate refused it, naming
+        // "SYNTAX: Syntax error on token null". Created files ARE parsed. What is not checked
+        // is RESOLUTION — an unresolved symbol, a missing constructor, a bad override. That is
+        // precisely the half generated code gets wrong, because generated code is
+        // syntactically correct by construction and wrong about what it REFERS to.
+        //
+        // MEASURED, and it is why this row's parity golden earns its keep: with the
+        // constructor generation disabled, NINE of ten tests stayed green — every `contains`
+        // assertion and the compile gate alike — and only the GOLDEN went red. For a row that
+        // generates source, the golden is the one instrument that sees an unresolvable
+        // reference. Recorded for the checkpoint.
         MethodDeclaration baseConstructor = soleConstructor(target);
         if (baseConstructor == null) {
             return Preparation.fail(ToolResponse.invalidParameter("position",
