@@ -174,8 +174,17 @@ public final class CureCatalog {
             new Cure("extract kind=class", null)));
         m.put("temporary_field", List.of(
             new Cure("extract kind=class", null)));
+        // QUALIFIED at C8, and it was not a style point — it was a BROKEN INSTRUCTION.
+        // `data` is a registered, unambiguous operation name, so CureTier derived PERFORM and
+        // the product told a reader to RUN it. DataTool's first branch refuses a call with no
+        // `kind`: "kind is required; one of [...]". So the one route this smell had could not
+        // run, and the tier said run it. Three smells carried the identical bare recipe —
+        // this one, global_data and mutable_data — all three from before the door grew from
+        // one operation to ten. Stage 5 recorded the qualification as merge work and named
+        // the kinds for two of them; an architect watch measured the third and found the
+        // failure. Same standard the god_class and loops entries above already state.
         m.put("encapsulation", List.of(
-            new Cure("data", "design:private-class-data")));
+            new Cure("data kind=encapsulate_field", "design:private-class-data")));
 
         // --- Sprint 28d-rescue, S6: the four rows whose detector already exists. Stage 6
         // BUILT cures for smells this table had no row for at all, and leaving them out is
@@ -222,10 +231,39 @@ public final class CureCatalog {
         //     per pair by a person; `extract kind=superclass` is the last step of it and
         //     not the cure, and offering it as the cure would skip the renaming that
         //     makes the two substitutable in the first place.
+        // QUALIFIED at C8, and this is the one of the three whose KIND was genuinely open —
+        // Stage 5 recorded it as "UNDECIDED … a question, not a transcription", because this
+        // smell's subject is STATIC mutable state, which row 9 refuses by name.
+        //
+        // It is `encapsulate_field`, and that is what this detector's own message already asks
+        // for: "Consider Encapsulate Variable — put it behind a function so the writers can be
+        // counted." Nine of the door's ten kinds are excluded by their own subject, and the
+        // tenth, encapsulate_collection, declines a static field explicitly rather than by
+        // omission. The tier does not move: one runnable route before, one after.
+        //
+        // THE PREMISE IS MEASURED, NOT ASSUMED. Nothing established that the JDT engine
+        // underneath accepts a static field at all, and if it refused, this route would be an
+        // instruction the product declines — exactly the state the qualification is fixing.
+        // GlobalDataRoutePremiseTest runs it on a public static field and asserts it succeeds
+        // AND rewrites the file, so the route goes red the day that stops being true.
+        //
+        // WHAT THIS ROUTE DOES NOT CURE, recorded because a reader would otherwise assume it
+        // does: the detector reports two shapes — a static field that is not final (the
+        // reference is reassignable) and a static FINAL field of a mutable type (the contents
+        // are). This cures the first. For the second the reference is already fixed, so a
+        // generated accessor handing back the same list reduces the writers by none — and row
+        // 9, which WOULD close it, declines static state. The two detectors partition by
+        // staticness, the two cures by what leaks, and that shape falls between them. If it
+        // turns out to be a material fraction of real findings, it belongs in PARTIAL_ROUTES
+        // with the number rather than downgraded by hand.
         m.put("global_data", List.of(
-            new Cure("data", "design:private-class-data")));
+            new Cure("data kind=encapsulate_field", "design:private-class-data")));
+        // QUALIFIED at C8 with the rest — see the note on `encapsulation`. The KIND was
+        // already decided by Stage 5, which recorded it in the plan and left the table to the
+        // merge: this smell reports a class handing its own mutable collection out, and row 9
+        // is the cure that returns a read-only view and puts the mutators on the class.
         m.put("mutable_data", List.of(
-            new Cure("data", "design:private-class-data")));
+            new Cure("data kind=encapsulate_collection", "design:private-class-data")));
         m.put("data_class", List.of(
             new Cure(null, "design:value-object")));
         // QUALIFIED, because `apply_cleanup` publishes many kinds and a bare front-door
