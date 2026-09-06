@@ -110,7 +110,9 @@ public class RefactorToVisitorTool extends AbstractApplyingRefactoringTool
             return Preparation.fail(ToolResponse.invalidParameter("type", "Source not available"));
         }
         CompilationUnit ast = PatternSupport.parse(cu);
-        TypeDeclaration base = findType(ast, baseType.getElementName());
+        TypeDeclaration base =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(ast, baseType)
+                instanceof TypeDeclaration found ? found : null;
         if (base == null) {
             return Preparation.fail(ToolResponse.invalidParameter("type", "Cannot locate " + baseType.getElementName()));
         }
@@ -186,12 +188,10 @@ public class RefactorToVisitorTool extends AbstractApplyingRefactoringTool
         return Preparation.of(composite, summary, extras);
     }
 
-    private static TypeDeclaration findType(CompilationUnit ast, String simpleName) {
-        for (Object t : ast.types()) {
-            if (t instanceof TypeDeclaration td && simpleName.equals(td.getName().getIdentifier())) {
-                return td;
-            }
-        }
-        return null;
-    }
+    // `findType` WAS HERE — top-level types only, keyed by a simple name. A C8b round-3 audit
+    // reproduced the consequence LIVE against the built product: pointed at the nested type
+    // `AbstractAstDetector.ScanDegradation`, this door answered "Cannot locate ScanDegradation"
+    // about an address it had just resolved, while the same door on a top-level type in the
+    // same file got past the lookup and refused for its real precondition. See the class note
+    // in `tools.shared.TypeLookup`.
 }

@@ -131,7 +131,16 @@ public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool
             return Preparation.fail(ToolResponse.invalidParameter("method", "The method's class must extend a superclass"));
         }
         ITypeBinding superBinding = a.getSuperclassType().resolveBinding();
-        TypeDeclaration superType = findTypeInCu(ast, superBinding);
+        // Joined on the binding's OWN ELEMENT rather than walked. The old helper compared
+        // bindings — identity-correct, unlike its by-name siblings — and still walked the
+        // unit's TOP-LEVEL types only, so a nested superclass was invisible. Both halves of
+        // the population had the nesting defect; only some of it had the name defect.
+        org.eclipse.jdt.core.IType superOwner =
+            superBinding != null && superBinding.getJavaElement()
+                instanceof org.eclipse.jdt.core.IType owner ? owner : null;
+        TypeDeclaration superType = superOwner != null
+            && org.jawata.mcp.tools.shared.TypeLookup.declaration(ast, superOwner)
+                instanceof TypeDeclaration found ? found : null;
         if (superType == null) {
             return Preparation.fail(ToolResponse.invalidParameter("superclass",
                 "form_template_method (v1.4) requires the superclass to be in the same file."));
@@ -318,17 +327,10 @@ public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool
         return null;
     }
 
-    private static TypeDeclaration findTypeInCu(CompilationUnit ast, ITypeBinding binding) {
-        if (binding == null) {
-            return null;
-        }
-        for (Object o : ast.types()) {
-            if (o instanceof TypeDeclaration t && equalBinding(t.resolveBinding(), binding)) {
-                return t;
-            }
-        }
-        return null;
-    }
+    // `findTypeInCu` WAS HERE — top-level types only, keyed by a BINDING. It is the member of
+    // the population that proves the two defects are separable: its key was already an
+    // identity, and it still could not see a nested superclass. Deleted at C8b round 3; see the
+    // class note in `tools.shared.TypeLookup`.
 
     private static boolean equalBinding(ITypeBinding x, ITypeBinding y) {
         return x != null && y != null && x.isEqualTo(y);

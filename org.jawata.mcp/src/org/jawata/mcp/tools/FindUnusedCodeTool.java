@@ -244,8 +244,16 @@ public class FindUnusedCodeTool extends AbstractTool {
                 }
 
                 if (node instanceof VariableDeclarationFragment vdf) {
-                    int line = ast.getLineNumber(vdf.getName().getStartPosition()) - 1;
-                    int column = ast.getColumnNumber(vdf.getName().getStartPosition());
+                    // 1-BASED, BOTH, because that is what `Finding` documents and what the
+                    // single conversion site subtracts from. This tool was the ONE producer
+                    // that pre-converted — `getLineNumber(...) - 1` plus a raw
+                    // `getColumnNumber(...)`, which JDT answers 0-based — so once C8b round 2
+                    // widened the cure join past the `findings` key, every `unused` cure was
+                    // decremented a SECOND time and named the line above the member.
+                    // `CodeAddress`'s own javadoc describes that outcome one paragraph from
+                    // the code that caused it, written about the other factory.
+                    int line = lineOf(ast, vdf.getName());
+                    int column = columnOf(ast, vdf.getName());
                     item.put("line", line);
                     item.put("column", column);
 
@@ -254,8 +262,8 @@ public class FindUnusedCodeTool extends AbstractTool {
                         item.put("type", vb.getType().getName());
                     }
                 } else if (node instanceof MethodDeclaration md) {
-                    int line = ast.getLineNumber(md.getName().getStartPosition()) - 1;
-                    int column = ast.getColumnNumber(md.getName().getStartPosition());
+                    int line = lineOf(ast, md.getName());
+                    int column = columnOf(ast, md.getName());
                     item.put("line", line);
                     item.put("column", column);
                     item.put("signature", getMethodSignature(md));
@@ -264,6 +272,28 @@ public class FindUnusedCodeTool extends AbstractTool {
                 unusedItems.add(item);
             }
         }
+    }
+
+    /**
+     * The 1-based line of a name — which is what {@code getLineNumber} already answers.
+     *
+     * <p>Wrapped rather than inlined so the base is stated ONCE instead of at each of the two
+     * emission sites. Two sites each spelling their own arithmetic is how this tool came to
+     * disagree with every other finding producer and go unnoticed for as long as nothing
+     * joined its rows to a door.</p>
+     */
+    private static int lineOf(CompilationUnit ast, ASTNode name) {
+        return ast.getLineNumber(name.getStartPosition());
+    }
+
+    /**
+     * The 1-based column of a name. {@code getColumnNumber} answers 0-BASED, so this is the
+     * one place that adds the one — and the asymmetry with {@link #lineOf}, which adds
+     * nothing, is exactly why both are wrapped: two JDT calls beside each other disagreeing
+     * about their base is not something a reader should have to remember.
+     */
+    private static int columnOf(CompilationUnit ast, ASTNode name) {
+        return ast.getColumnNumber(name.getStartPosition()) + 1;
     }
 
     private boolean isPrivate(int modifiers) {

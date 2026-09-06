@@ -405,7 +405,9 @@ public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
             return Preparation.fail(ToolResponse.invalidParameter("type", "Source not available."));
         }
         CompilationUnit aAst = parse(aCu);
-        TypeDeclaration aTd = findType(aAst, aType.getElementName());
+        TypeDeclaration aTd =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(aAst, aType)
+                instanceof TypeDeclaration found ? found : null;
         if (aTd == null || aTd.isInterface()) {
             return Preparation.fail(ToolResponse.invalidParameter("type", "Caret must be on a class."));
         }
@@ -432,7 +434,15 @@ public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
                 return Preparation.fail(ToolResponse.invalidParameter("siblings", "Sibling not found in package: " + s + "."));
             }
             CompilationUnit sast = parse(scu);
-            TypeDeclaration std = findType(sast, s);
+            // THE SIBLING IS RESOLVED TO A TYPE BEFORE IT IS LOOKED UP, which is the whole
+            // difference from the caret site above: there the caller hands us an element, here
+            // they hand us a NAME. `getType(s)` is exact rather than a search — this row
+            // already requires the sibling to live in `s + ".java"`, so it is that file's
+            // top-level type by construction — and it gives the identity join something to
+            // join ON, which is what let the by-name helper go.
+            TypeDeclaration std =
+                org.jawata.mcp.tools.shared.TypeLookup.declaration(sast, scu.getType(s))
+                    instanceof TypeDeclaration found ? found : null;
             if (std == null || std.isInterface()) {
                 return Preparation.fail(ToolResponse.invalidParameter("siblings", s + " is not a class in " + s + ".java."));
             }
@@ -659,14 +669,10 @@ public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
         return (CompilationUnit) parser.createAST(null);
     }
 
-    private static TypeDeclaration findType(CompilationUnit ast, String simpleName) {
-        for (Object t : ast.types()) {
-            if (t instanceof TypeDeclaration td && simpleName.equals(td.getName().getIdentifier())) {
-                return td;
-            }
-        }
-        return null;
-    }
+    // `findType` WAS HERE — the same top-level-only, simple-name lookup as `typeNamed`, under
+    // a different identifier. C8b round 2 enumerated that population BY NAME and so missed
+    // this one and four others; round 3 enumerated it name-blind, from references to
+    // `CompilationUnit#types()`, and found them. See the class note in `tools.shared.TypeLookup`.
 
     private List<String> stringArray(JsonNode arguments, String name) {
         List<String> out = new ArrayList<>();

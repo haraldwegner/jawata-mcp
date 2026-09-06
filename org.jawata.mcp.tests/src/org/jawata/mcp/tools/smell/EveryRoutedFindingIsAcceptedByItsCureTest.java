@@ -273,6 +273,26 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
                 + " detector stopped firing:\n  " + join(silent));
     }
 
+    // A WHOLE-CATALOGUE "the finding's line names its symbol" GATE WAS WRITTEN HERE AND
+    // REMOVED, and the reason is worth more than the gate would have been.
+    //
+    // It was aimed at a real defect: every other check in this class builds its address
+    // through `CodeAddress.of(Finding)` and then asks a door, so a producer emitting the wrong
+    // BASE is converted by the same rule the gate uses and reported as accepted — a relative
+    // check cannot see a base error, because both sides move together. An ABSOLUTE check,
+    // against the file, can.
+    //
+    // Run over the fixture it failed for TWELVE routed kinds, and reading them is what killed
+    // it: a finding does not, in general, point at its symbol's declaration. `switch_statements`
+    // and `ocp` point at the `switch`; `message_chains` at the chain expression; `loops` at the
+    // `for`. Those are correct and are what a reader wants. So "the line contains the symbol's
+    // name" is NOT an invariant of this product, and a gate asserting it reports a defect for
+    // eleven kinds that have none — which would then be "fixed" against a wrong oracle.
+    //
+    // The narrow version of the check lives where the claim is actually true:
+    // `FindUnusedCodeToolTest`, whose tool points at the declaration NAME by construction.
+    // What remains unestablished is recorded at C8b rather than guessed at here.
+
     /**
      * INVARIANT A's SECOND HALF — the door is ASKED, not reasoned about.
      *

@@ -126,7 +126,9 @@ public class InlineSingletonTool extends AbstractApplyingRefactoringTool
                 "Singleton source not available: " + singleton.getElementName()));
         }
         CompilationUnit sast = parse(scu);
-        TypeDeclaration typeDecl = findType(sast, singleton.getElementName());
+        TypeDeclaration typeDecl =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(sast, singleton)
+                instanceof TypeDeclaration found ? found : null;
         if (typeDecl == null) {
             return Preparation.fail(ToolResponse.invalidParameter("type",
                 "Cannot locate type declaration for " + singleton.getElementName()));
@@ -240,33 +242,20 @@ public class InlineSingletonTool extends AbstractApplyingRefactoringTool
         return (CompilationUnit) parser.createAST(null);
     }
 
-    private static TypeDeclaration findType(CompilationUnit ast, String simpleName) {
-        for (Object t : ast.types()) {
-            if (t instanceof TypeDeclaration td) {
-                if (simpleName.equals(td.getName().getIdentifier())) {
-                    return td;
-                }
-                TypeDeclaration nested = findNested(td, simpleName);
-                if (nested != null) {
-                    return nested;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static TypeDeclaration findNested(TypeDeclaration outer, String simpleName) {
-        for (TypeDeclaration nested : outer.getTypes()) {
-            if (simpleName.equals(nested.getName().getIdentifier())) {
-                return nested;
-            }
-            TypeDeclaration deeper = findNested(nested, simpleName);
-            if (deeper != null) {
-                return deeper;
-            }
-        }
-        return null;
-    }
+    // `findType` + `findNested` WERE HERE, and this pair is the one worth a sentence: it had
+    // ALREADY been given the nesting fix, privately, exactly as `HideDelegateTool` had —
+    // `findNested` recursed to any depth, so this member of the population did NOT have the
+    // nesting defect at all. What it kept is the other half: both halves key on a SIMPLE NAME
+    // and take the first hit, so two sibling nested classes of one name resolve to whichever
+    // comes first.
+    //
+    // (An earlier version of THIS comment said `findNested` descended one level. That was
+    // false — it is recursive — and it is left recorded rather than quietly corrected, because
+    // the whole reason round 3 exists is that prose about code goes stale in the same commit
+    // that writes it.)
+    //
+    // A private cure hides the class it belongs to; that is why C8b round 3 enumerated the
+    // population name-blind instead. See the class note in `tools.shared.TypeLookup`.
 
     private static MethodInvocation findInvocation(CompilationUnit ast, int offset) {
         NodeFinder finder = new NodeFinder(ast, offset, 0);

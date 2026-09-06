@@ -121,7 +121,9 @@ public class ReplaceTypeCodeWithClassTool extends AbstractApplyingRefactoringToo
             return Preparation.fail(ToolResponse.invalidParameter("type", "Source not available"));
         }
         CompilationUnit ast = parse(cu);
-        TypeDeclaration td = findType(ast, type.getElementName());
+        TypeDeclaration td =
+            org.jawata.mcp.tools.shared.TypeLookup.declaration(ast, type)
+                instanceof TypeDeclaration found ? found : null;
         if (td == null) {
             return Preparation.fail(ToolResponse.invalidParameter("type", "Cannot locate " + type.getElementName()));
         }
@@ -236,14 +238,9 @@ public class ReplaceTypeCodeWithClassTool extends AbstractApplyingRefactoringToo
         return (CompilationUnit) parser.createAST(null);
     }
 
-    private static TypeDeclaration findType(CompilationUnit ast, String simpleName) {
-        for (Object t : ast.types()) {
-            if (t instanceof TypeDeclaration td && simpleName.equals(td.getName().getIdentifier())) {
-                return td;
-            }
-        }
-        return null;
-    }
+    // `findType` WAS HERE — top-level types only, keyed by a simple name, so a nested class
+    // holding a group of type-code constants was invisible. Deleted at C8b round 3 with the
+    // rest of the name-blind population; see the class note in `tools.shared.TypeLookup`.
 
     private static boolean isIdentifier(String s) {
         if (s == null || s.isEmpty() || !Character.isJavaIdentifierStart(s.charAt(0))) {
