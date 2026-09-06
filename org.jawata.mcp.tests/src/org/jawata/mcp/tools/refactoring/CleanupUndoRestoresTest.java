@@ -25,11 +25,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Sprint 28d-rescue — the rows whose undo handle nothing asserted.
  *
- * <p>C3's per-row contract opens with "a staged change with an undo handle". Five rows
- * assert it through their fork slices, and row 8 asserts it in its own tool test. Three — consolidate_conditional (7),
- * control_flag_to_break (44) and split_loop (63) — have no fork slice, because their
- * shapes occur nowhere in the corpus, and so nothing asserted their undo at all. A C3
- * audit found the gap.</p>
+ * <p>C3's per-row contract opens with "a staged change with an undo handle". Three rows —
+ * consolidate_conditional (7), control_flag_to_break (44) and split_loop (63) — have no fork
+ * slice, because their shapes occur nowhere in the corpus, and so nothing asserted their undo
+ * at all. A C3 audit found that gap.</p>
+ *
+ * <p><b>ROW 34 JOINED THEM AT C2, and the sentence that used to stand here is why it was
+ * missed.</b> It read "Five rows assert it through their fork slices" — and they do not. A
+ * fork slice asserts the handle is NON-NULL and stops there; {@code
+ * RemoveDeadCodeForkSliceTest} is the case in point. That is precisely the defect C2's own
+ * blocker B3 named for row 8 — "a handle that is present and does not resolve looks identical
+ * to one that works" — so counting those rows as covered was counting the weaker assertion as
+ * the stronger one. Row 34 is a C2 recipe row and its handle was never resolved by anything;
+ * it is asserted here now, and the claim about the other five is gone rather than restated.</p>
  *
  * <p>These assert the STRONGER thing, because a handle that does not work is worse than
  * no handle: apply the rewrite, then run the undo and require the file back
@@ -90,5 +98,13 @@ class CleanupUndoRestoresTest {
     @DisplayName("row 63 split_loop applies and reverses")
     void splitLoop() throws Exception {
         assertUndoRestores("split_loop", "SplitLoopTargets.java");
+    }
+
+    @Test
+    @DisplayName("row 34 remove_dead_code applies and reverses — C2's recipe row")
+    void removeDeadCode() throws Exception {
+        // A DELETION above all others must come back. Its fork slice asserts the handle is
+        // non-null and never resolves it, which is the shape B3 refused for row 8.
+        assertUndoRestores("remove_dead_code", "DeadCodeTargets.java");
     }
 }
