@@ -1,6 +1,5 @@
 org.jawata.core.JdtServiceImpl#dispose()
 org.jawata.core.search.SearchService#findReadAccesses(IJavaElement,int)
-org.jawata.core.search.SearchService#getAllSupertypes(IType)
 org.jawata.core.search.SearchService#getProject()
 org.jawata.core.search.SearchService#getScope()
 org.jawata.core.workspace.DiskSyncGuard.ScanResult#isEmpty()
@@ -37,6 +36,11 @@ org.jawata.mcp.knowledge.ToolExperienceStore#failedWrites()
 org.jawata.mcp.learn.PrecedentSteer#compose(String,List<ToolExperience>)
 org.jawata.mcp.learn.ServerChecks#dial()
 org.jawata.mcp.learn.SessionLedger#sessionCount()
+# v4.1.0: on the wire. Jackson serializes ErrorInfo into every refusal; proven on the
+# running product (nextStep inside the error object). The gate cannot see reflection.
+org.jawata.mcp.models.ErrorInfo#getNextStep()
+# v4.1.0: on the wire, same path as getNextStep (proven: "reason":"NOT_A_TYPE").
+org.jawata.mcp.models.ErrorInfo#getReason()
 org.jawata.mcp.models.ErrorInfo#refactoringFailed(String)
 org.jawata.mcp.models.ErrorInfo#timeout(String,int)
 org.jawata.mcp.models.ResponseMeta#getReturnedCount()
@@ -65,12 +69,17 @@ org.jawata.mcp.protocol.McpProtocolHandler#getClientName()
 org.jawata.mcp.protocol.McpProtocolHandler#getClientVersion()
 org.jawata.mcp.protocol.McpProtocolHandler#isInitialized()
 org.jawata.mcp.protocol.McpProtocolHandler#processMessage(String)
+# v4.1.0: a question a guard asks of the registry. The product registers; it never asks.
+org.jawata.mcp.refactoring.OperationRegistry#isWired()
+# v4.1.0: convenience overload for tests; the product calls the fuller form.
+org.jawata.mcp.refactoring.OperationRegistry#register(String,Collection<String>)
+# v4.1.0: borrow-and-return for tests that write the global registry. A production
+# caller would be WRONG: the product registers once at boot and never restores.
+org.jawata.mcp.refactoring.OperationRegistry#restore(Snapshot)
+# v4.1.0: the other half of the borrow; same reason as restore.
+org.jawata.mcp.refactoring.OperationRegistry#snapshot()
 org.jawata.mcp.refactoring.PurityCheck#check(MethodDeclaration,MethodDeclaration)
 org.jawata.mcp.refactoring.RefactoringChangeCache#size()
-# Built for rows 2, 34 and 37. Row 34 declined it the next day and says why;
-# rows 2 and 37 are a later stage. Kept rather than deleted because it is tested
-# and correct and its named consumers are coming. Delete it if they do not.
-org.jawata.mcp.refactoring.atoms.DeleteAtom#delete(IJavaElement[],String,RefactoringEngine)
 org.jawata.mcp.runtime.RuntimeSessionRegistry#size()
 org.jawata.mcp.tools.AbstractApplyingRefactoringTool.Preparation#of(Change,String)
 org.jawata.mcp.tools.SearchSymbolsTool#teachTheAddress(String,List<Map<String,Object>>)
@@ -79,7 +88,26 @@ org.jawata.mcp.tools.ToolRegistry#getTool(String)
 org.jawata.mcp.tools.ToolRegistry#getToolNames()
 org.jawata.mcp.tools.ToolRegistry#hasTool(String)
 org.jawata.mcp.tools.ToolRegistry#registerAll(Tool[])
+# v4.1.0: exposes the retired-name redirects so a guard can check every one answers.
+org.jawata.mcp.tools.ToolRegistry#retiredNames()
+# v4.1.0: a description fragment one seam test reads; nothing else needs the constant.
+org.jawata.mcp.tools.codegen.GenerateTool#LEGACY_KIND_BLOCK
 org.jawata.mcp.tools.lombok.LombokDetector#importsLombok(CompilationUnit)
 org.jawata.mcp.tools.shared.ResolveOrRelocate#relocate(IJdtService,String)
+# v4.1.0: advisory text for a smell with no runnable fix. TEST-ONLY TODAY AND THE ONE
+# WORTH REVISITING: the text has no consumer and never reaches a response (28f).
+org.jawata.mcp.tools.smell.CureCatalog#adviceFor(String)
+# v4.1.0: "which smells declare a fix?" — asked by five guards, never by the product,
+# which USES the table rather than enumerating it.
+org.jawata.mcp.tools.smell.CureCatalog#declaredKinds()
+# v4.1.0: the written reason a fix is offered by no smell; read by the routing guard.
+org.jawata.mcp.tools.smell.CureCatalog#unroutedReason(String)
+# v4.1.0: accessor on a result record; only the tier tests read it directly.
+org.jawata.mcp.tools.smell.CureTier.Derivation#recipe()
+# v4.1.0: overload; the two-argument form is the production path inside Cures.
+org.jawata.mcp.tools.smell.Cures#stepsFor(String,CodeAddress,List<String>)
+# v4.1.0: the written record of the two smells deliberately not detected; a guard
+# checks it against the shipped kind list. The product has no reason to read it.
+org.jawata.mcp.tools.smell.FowlerDetectors#DECLINED
 org.jawata.mcp.transport.HttpTransport#getActualPort()
 org.jawata.mcp.transport.HttpTransport#sendEvent(String,String)

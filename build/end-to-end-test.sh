@@ -1296,23 +1296,37 @@ case "$OCPQ" in
 esac
 
 # --- cure-tier-derived: 28d Stage 11a, the tier is DERIVED, not assigned -----
-# The cure model: one runnable route whose step the front door publishes derives
-# PERFORM, and the finding says so, naming what to run. OcpTarget carries both
-# traces, so both perform-tier answers must appear — the switch trace's and the
+# The cure model: a runnable route whose step the front door publishes derives
+# RUN, and the finding says so, naming what to run. OcpTarget carries both
+# traces, so both run-tier answers must appear — the switch trace's and the
 # type-code trace's, each with its own step.
+#
+# v4.1.0: the tier was renamed PERFORM -> RUN at 28d-rescue S8b step 1, and the
+# rename swept src and tests — not build/*.sh. So this script went on asserting
+# the OLD word, and the first release run after the rename was the red run that
+# found it: the sixth pinned copy, one more than the comment below counted. The
+# literal below is copied from what the built product renders, not retyped.
 case "$OCPQ" in
     # v4.0.2: the FIFTH place this one fact was pinned — four test files and
     # this script each held 'which refactoring does the switch kind recommend'
     # as their own literal. The kind routes to the operation its own prose
     # names now, and every copy had to be found by a red run of its owner.
-    *'TIER: PERFORM — run refactor_to_pattern kind=replace_conditional_with_polymorphism.'*)
-        pass "cure-tier-derived the switch trace derives PERFORM and names replace_conditional_with_polymorphism" ;;
-    *) fail "cure-tier-derived no PERFORM tier naming replace_conditional_with_polymorphism on the switch trace — the derivation did not reach the finding: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+    *'TIER: RUN — run refactor_to_pattern kind=replace_conditional_with_polymorphism.'*)
+        pass "cure-tier-derived the switch trace derives RUN and names replace_conditional_with_polymorphism" ;;
+    *) fail "cure-tier-derived no RUN tier naming replace_conditional_with_polymorphism on the switch trace — the derivation did not reach the finding: $(printf '%s' "$OCPQ" | head -c 400)" ;;
 esac
+# v4.1.0: the type-code trace no longer renders ONE step. 28d-rescue S8b step 9
+# routed rows 59 and 54 to type_code as well, and step 3 made the verdict stop
+# counting cures — so the smell now carries THREE runnable cures, ranked, each
+# with the sentence that tells it from its neighbours, and the tier line reads
+# "3 alternatives; pick the one that fits and perform it: (1) ...". The old
+# single-step literal could never match again. The needle below is the ranked
+# form with replace_type_code_with_class in FIRST place, copied from what the
+# built product renders on this very fixture.
 case "$OCPQ" in
-    *'TIER: PERFORM — run refactor_to_pattern kind=replace_type_code_with_class.'*)
-        pass "cure-tier-derived the type-code trace derives PERFORM and names replace_type_code_with_class" ;;
-    *) fail "cure-tier-derived no PERFORM tier naming replace_type_code_with_class on the type-code trace: $(printf '%s' "$OCPQ" | head -c 400)" ;;
+    *'TIER: RUN — 3 alternatives; pick the one that fits and perform it: (1) refactor_to_pattern kind=replace_type_code_with_class'*)
+        pass "cure-tier-derived the type-code trace derives RUN and ranks replace_type_code_with_class first of three" ;;
+    *) fail "cure-tier-derived no RUN tier ranking replace_type_code_with_class first on the type-code trace: $(printf '%s' "$OCPQ" | head -c 400)" ;;
 esac
 # THE CONTROL: the missing-step signature must NOT fire on a real build. It
 # appears only when the cure table declares a step the shipped front door does
