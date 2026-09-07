@@ -81,8 +81,8 @@ public final class FqnResolver {
      * every overload, not the first one (jawata-mcp#46).
      *
      * <p>The schema documents that form as <i>"com.foo.Bar#member (method any overload /
-     * field)"</i>, and {@link #resolveMemberByName}'s own comment said "method (any
-     * overload) first" — but its loop returned on the first name match. So a search over a
+     * field)"</i>, and the member lookup's own comment said "method (any overload) first"
+     * — but its loop returned on the first name match. So a search over a
      * member with two overloads searched ONE and reported its correct zero as the answer
      * for the member. Measured: {@code find_references} on
      * {@code FindDuplicateCodeTool#collectPool} answered {@code totalReferences: 0} while
