@@ -53,14 +53,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * COMPLETE's wording rather than NOT HANDLED. That is a defect IN a stamped shape, not an
  * unstamped one, which is why the mark stands and the issue is open.</p>
  *
- * <p><b>CODEGEN — CARRIES THE STAMP</b> via the applying pipeline it joins.</p>
+ * <p><b>CODEGEN and two of the three composers — NEITHER MARK: a DEFECT FOUND.</b> The
+ * plan names this outcome: "a shape that can degrade and does not stamp is a defect found
+ * by this list, not a new issue." An earlier version of this class marked codegen
+ * CANNOT DEGRADE, on the reasoning that it takes no gate and makes no claim a gate would
+ * support. A C2b audit disproved it and the disproof is at the source:
+ * {@code GenerateConstructorTool.buildType} DROPS the generic suffix
+ * ({@code List&lt;String&gt;} becomes raw {@code List}), which its own javadoc admits — and
+ * {@code fieldsInitialized} reports field NAMES, which are unaffected, so the one field
+ * that could carry the signal reports success. That is a DEGRADED result delivered with
+ * COMPLETE's payload.</p>
  *
  * @see ResponseShapeCensusTest for the population this marks
  */
 class DegradationStampMarkingTest {
 
     /** The two verdicts D2 allows. */
-    private enum Mark { CARRIES_THE_STAMP, CANNOT_DEGRADE }
+    private enum Mark {
+        CARRIES_THE_STAMP,
+        CANNOT_DEGRADE,
+        /**
+         * Not a D2 mark — the plan's own third outcome: "a shape that can degrade and does
+         * not stamp is a defect found by this list, not a new issue." Recorded here so the
+         * population is fully accounted while the defect stays visible.
+         */
+        DEFECT_FOUND
+    }
 
     /** Base class to family name — the DERIVATION key. */
     private static final Map<String, String> FAMILY_BY_BASE = new LinkedHashMap<>();
@@ -101,9 +119,28 @@ class DegradationStampMarkingTest {
      * one.</p>
      */
     private static final java.util.Set<String> FORWARDING = java.util.Set.of(
-        "refactor_to_pattern compose_method",
-        "refactor_to_pattern decompose_conditional",
         "refactor_to_pattern replace_pattern_with_idiom");
+
+    /**
+     * COMPOSING — builds its OWN response after calling only {@code prepareChange} on a
+     * gated tool, so the caller never sees the gated family's response.
+     *
+     * <p>An earlier version put these in FORWARDING on the claim that they "hand the work
+     * to a tool in a gated family". False, and the audit read it: both call
+     * {@code extract.prepareChange(...)} — the preparation step only, never
+     * {@code executeWithService} — then emit
+     * {@code {operation, applied:true, filesModified, undoChangeId, sectionsExtracted, summary}}.
+     * No {@code compileVerified}, no {@code introducedErrors}, <b>not even a diff</b>.</p>
+     *
+     * <p>And {@code applied: true} IS the composite claim, made while nothing verifies the
+     * final state: {@code RecipeEngine} gates each step in REPORT mode, which keeps
+     * introduced TYPE errors, and its own comment says the composite "is verified by the
+     * whole composite the caller applies" — but no caller applies one, because the engine
+     * has already performed every step.</p>
+     */
+    private static final java.util.Set<String> COMPOSING = java.util.Set.of(
+        "refactor_to_pattern compose_method",
+        "refactor_to_pattern decompose_conditional");
 
 
 
@@ -114,27 +151,23 @@ class DegradationStampMarkingTest {
         MARK_BY_FAMILY.put("engine", Mark.CARRIES_THE_STAMP);
         MARK_BY_FAMILY.put("rule", Mark.CARRIES_THE_STAMP);
         MARK_BY_FAMILY.put("forwarding", Mark.CARRIES_THE_STAMP);
-        // CODEGEN IS THE ONE 'CANNOT DEGRADE', and the reasoning is the stage's sharpest
-        // distinction. Read at the source (GenerateConstructorTool:283-299) the applied
-        // response is {operation, filePath, methodName, fieldsInitialized, generatedSource,
-        // applied, filesModified, diff, undoChangeId}. There is NO compileVerified — and
-        // that is the point: it takes no gate AND makes no claim a gate would have to
-        // support. It reports what it did and hands back a diff and an undo handle.
-        //
-        // A missing GATE is not a missing STAMP. The stamp asks whether a caller can tell a
-        // degraded answer from a complete one; this answer is complete and says only true
-        // things. That generated source might not compile is a correctness exposure, filed
-        // as its own concern — marking it "does not carry the stamp" would be marking the
-        // wrong defect and would leave the real one unnamed.
-        MARK_BY_FAMILY.put("codegen", Mark.CANNOT_DEGRADE);
+        // Filed as jawata-mcp#80.
+        MARK_BY_FAMILY.put("composing", Mark.DEFECT_FOUND);
+        // Filed as jawata-mcp#79 — the list found it, which is what D2 asks of it.
+        MARK_BY_FAMILY.put("codegen", Mark.DEFECT_FOUND);
     }
 
     private static Map<String, KindDelegate> delegatesOf(AbstractTool door) {
         return door instanceof KindedTool k ? k.delegates() : Map.of();
     }
 
-    /** Walks the superclass chain until a known base is found. Null if none is. */
-    private static String familyOf(Object delegate) {
+    /**
+     * Family for one shape. The class walk decides FIRST; the address sets are consulted
+     * only when it finds nothing, so a delegate re-based onto a new unmarked base is NAMED
+     * rather than absorbed by its address — which the audit found the earlier ordering
+     * allowed for exactly the ten address-matched shapes.
+     */
+    private static String familyOf(String shape, Object delegate) {
         for (Class<?> c = delegate.getClass(); c != null; c = c.getSuperclass()) {
             String family = FAMILY_BY_BASE.get(c.getName());
             if (family != null) {
@@ -147,22 +180,22 @@ class DegradationStampMarkingTest {
                 return family;
             }
         }
-        if (SELF_BUILT.contains(shapeUnderTest)) {
+        if (SELF_BUILT.contains(shape)) {
             return "codegen";
         }
-        return FORWARDING.contains(shapeUnderTest) ? "forwarding" : null;
+        if (FORWARDING.contains(shape)) {
+            return "forwarding";
+        }
+        return COMPOSING.contains(shape) ? "composing" : null;
     }
-
-    /** Set by the caller so familyOf can recognise a self-built shape by its address. */
-    private static String shapeUnderTest = "";
 
     /** door kind -> family, derived. */
     private static Map<String, String> familyByShape() {
         Map<String, String> byShape = new TreeMap<>();
         for (AbstractTool door : RefactoringDoors.all(() -> null, new RefactoringChangeCache())) {
             delegatesOf(door).forEach((kind, delegate) -> {
-                shapeUnderTest = door.getName() + " " + kind;
-                byShape.put(shapeUnderTest, familyOf(delegate));
+                String shape = door.getName() + " " + kind;
+                byShape.put(shape, familyOf(shape, delegate));
             });
         }
         return byShape;
@@ -176,10 +209,6 @@ class DegradationStampMarkingTest {
     void everyShapeIsMarked() {
         Map<String, String> byShape = familyByShape();
 
-        assertTrue(byShape.size() >= 70,
-            "PROOF OF LIFE: the assertions below pass over an empty map. Derived: "
-                + byShape.size());
-
         TreeSet<String> unfamiliar = new TreeSet<>();
         byShape.forEach((shape, family) -> {
             if (family == null || !MARK_BY_FAMILY.containsKey(family)) {
@@ -191,10 +220,16 @@ class DegradationStampMarkingTest {
                 + "for them. A new operation on a new base must be marked deliberately, never "
                 + "absorbed into another family's verdict: " + unfamiliar);
 
-        assertTrue(new TreeSet<>(MARK_BY_FAMILY.values().stream().map(Enum::name).toList())
-                .size() >= 2,
-            "every family got the SAME verdict, so the marking is one judgement wearing "
-                + "several names: " + MARK_BY_FAMILY);
+        TreeSet<String> verdictsInUse = new TreeSet<>();
+        byShape.values().forEach(f -> {
+            Mark m = MARK_BY_FAMILY.get(f);
+            if (m != null) {
+                verdictsInUse.add(m.name());
+            }
+        });
+        assertTrue(verdictsInUse.size() >= 2,
+            "every SHAPE derived to one verdict, so the marking is one judgement wearing "
+                + "several names. In use: " + verdictsInUse);
 
         assertEquals(78, byShape.size(),
             "the marked count must EQUAL the census population of 78 — C2b's exit clause. "
@@ -212,7 +247,15 @@ class DegradationStampMarkingTest {
         assertTrue(counts.size() >= 2,
             "every shape derived to ONE family, so the walk is not discriminating and the "
                 + "per-family verdicts are one verdict wearing three names. Got: " + counts);
-        counts.forEach((family, n) -> assertTrue(n > 0, family + " has no members"));
+        // The former "n > 0 per family" assertion was a tautology: counts is built by
+        // merge(f, 1, sum) over the derived values, so every key present has n >= 1 by
+        // construction. What it MEANT to check is a marked family with no members, which
+        // needs the other map — and that is what this does.
+        TreeSet<String> markedButEmpty = new TreeSet<>(MARK_BY_FAMILY.keySet());
+        markedButEmpty.removeAll(counts.keySet());
+        assertEquals(new TreeSet<String>(), markedButEmpty,
+            "these families carry a verdict and no shape derives to them, so the verdict is "
+                + "about nothing: " + markedButEmpty);
     }
 
     private static Map<String, Integer> countByFamily(Map<String, String> byShape) {
