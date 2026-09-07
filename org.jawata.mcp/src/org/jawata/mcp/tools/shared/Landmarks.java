@@ -16,6 +16,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Sprint 24 (D4) — <b>a session starts oriented</b>. A human who has worked in a
@@ -78,6 +82,65 @@ public final class Landmarks {
     private Landmarks() {
     }
 
+    /**
+     * ONE ranking per workspace, however many callers ask for it — jawata-mcp#41.
+     *
+     * <p>Ranking is O(source types) full-index reference searches: on a 29-project,
+     * 2,646-source workspace that measured ~7 minutes and 225 CPU-seconds, and the request
+     * did not stop when the client gave up at 30 s. So two timed-out calls left TWO
+     * seven-minute computations burning, and a third would have made three — the cost grew
+     * with the number of people who had already given up waiting.</p>
+     *
+     * <p>A caller now JOINS the computation already running instead of starting another.
+     * That is the half that makes abandonment cheap: work an impatient client walked away
+     * from is still the work the next one needs, and it lands in the cache either way.</p>
+     */
+    private static final Map<String, CompletableFuture<Entry>> INFLIGHT =
+        new ConcurrentHashMap<>();
+
+    /** One daemon thread: the ranking is long, and it must never hold the JVM open. */
+    private static final ExecutorService RANKER = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "jawata-landmarks");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /**
+     * How long a caller waits before being told the ranking is still running.
+     *
+     * <p>Short enough to sit well inside every client timeout — the 30 s one this issue was
+     * found against, and the shorter ones agents impose on themselves — and long enough that
+     * a small workspace, which ranked in well under a second, never notices the change.</p>
+     */
+    private static final long FIRST_WAIT_MILLIS = 4_000;
+
+    /** How many source types are ranked so far, per in-flight key — for the honest answer. */
+    private static final Map<String, int[]> PROGRESS = new ConcurrentHashMap<>();
+
+    /**
+     * How many rankings this process has STARTED.
+     *
+     * <p>Coalescing is the headline of mcp#41 and it is invisible from outside: five callers
+     * that share one ranking and five that each start their own return the same landmarks,
+     * differing only in what the machine spent. This is the one fact that separates them, so
+     * it is published to the tests rather than left as a claim in a comment. It counts
+     * STARTS, not finishes, because starting is the thing the fix prevents.</p>
+     */
+    static final java.util.concurrent.atomic.AtomicInteger RANKINGS_STARTED =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * What the caller gets, ready or not.
+     *
+     * <p>{@code ready} false is a real answer rather than a failure: the ranking is running,
+     * and saying so with a count beats a request that never returns. An empty list with
+     * {@code ready} true is a workspace whose types nothing references; an empty list with
+     * {@code ready} false is a workspace still being read. Those are different facts and a
+     * bare list cannot tell them apart.</p>
+     */
+    public record Ranking(List<Map<String, Object>> landmarks, boolean ready,
+                          int examined, int total) {}
+
     /** Drop the cached ranking (the workspace changed under us). */
     public static void invalidate() {
         CACHE.clear();
@@ -86,20 +149,69 @@ public final class Landmarks {
     /**
      * The workspace's most-referenced project types, most-referenced first.
      *
+     * <p>NEVER BLOCKS. A cached ranking is returned at once; otherwise one computation is
+     * started (or joined) and the caller is told it is running, with how far it has got.</p>
+     *
      * @param limit how many to name (the orientation set, not an inventory).
      */
-    public static List<Map<String, Object>> of(IJdtService service, int limit) {
+    public static Ranking of(IJdtService service, int limit) {
         String key = cacheKey(service);
         Entry entry = CACHE.get(key);
-        if (entry == null || entry.isStale() || !stillResolves(service, entry.ranked(), limit)) {
-            if (CACHE.size() >= MAX_ENTRIES) {
-                CACHE.clear();
-            }
-            entry = new Entry(rank(service), System.currentTimeMillis());
-            CACHE.put(key, entry);
+        if (entry != null && !entry.isStale() && stillResolves(service, entry.ranked(), limit)) {
+            List<Map<String, Object>> ranked = entry.ranked();
+            return new Ranking(
+                ranked.size() > limit ? new ArrayList<>(ranked.subList(0, limit)) : ranked,
+                true, ranked.size(), ranked.size());
         }
-        List<Map<String, Object>> ranked = entry.ranked();
-        return ranked.size() > limit ? new ArrayList<>(ranked.subList(0, limit)) : ranked;
+        // A stale or absent ranking: make sure ONE computation is running for this key, and
+        // report rather than wait. putIfAbsent is what makes the second caller a joiner —
+        // computeIfAbsent would hold a bin lock for the whole seven minutes.
+        CompletableFuture<Entry> fresh = new CompletableFuture<>();
+        CompletableFuture<Entry> running = INFLIGHT.putIfAbsent(key, fresh);
+        if (running == null) {
+            PROGRESS.put(key, new int[] {0, 0});
+            RANKINGS_STARTED.incrementAndGet();
+            RANKER.submit(() -> {
+                try {
+                    Entry computed = new Entry(rank(service, PROGRESS.get(key)),
+                        System.currentTimeMillis());
+                    if (CACHE.size() >= MAX_ENTRIES) {
+                        CACHE.clear();
+                    }
+                    CACHE.put(key, computed);
+                    fresh.complete(computed);
+                } catch (Throwable t) {
+                    // A ranking that failed must not wedge every later caller on a future
+                    // nobody will ever complete.
+                    log.warn("Landmark ranking failed: {}", t.toString());
+                    fresh.complete(new Entry(List.of(), System.currentTimeMillis()));
+                } finally {
+                    INFLIGHT.remove(key);
+                    PROGRESS.remove(key);
+                }
+            });
+        }
+        // WAIT BRIEFLY, then report. Returning "working" the instant a ranking starts would
+        // fix the 2,646-source workspace by breaking the 727-source one, which answered in
+        // well under a second and whose callers rightly expect an answer — a cure that turns
+        // a working case into a two-call handshake is not a cure. The bound is short enough
+        // to sit inside every client timeout and long enough that a small workspace never
+        // notices this change happened.
+        CompletableFuture<Entry> waitOn = running == null ? fresh : running;
+        try {
+            Entry done = waitOn.get(FIRST_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+            List<Map<String, Object>> ranked = done.ranked();
+            return new Ranking(
+                ranked.size() > limit ? new ArrayList<>(ranked.subList(0, limit)) : ranked,
+                true, ranked.size(), ranked.size());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            // TimeoutException is the ordinary case and the whole point: the ranking is
+            // still running, which is an answer rather than a failure.
+        }
+        int[] progress = PROGRESS.getOrDefault(key, new int[] {0, 0});
+        return new Ranking(List.of(), false, progress[0], progress[1]);
     }
 
     /**
@@ -138,9 +250,18 @@ public final class Landmarks {
         return key.toString();
     }
 
-    private static List<Map<String, Object>> rank(IJdtService service) {
+    /**
+     * @param progress {@code [examined, total]}, written as the walk proceeds so a caller
+     *                 that arrives mid-ranking can be told how far it has got. A count with
+     *                 nothing to compare it against says nothing, which is why the total is
+     *                 filled in before the first type is examined.
+     */
+    private static List<Map<String, Object>> rank(IJdtService service, int[] progress) {
         List<Map<String, Object>> landmarks = new ArrayList<>();
-        for (IType type : sourceTypes(service)) {
+        List<IType> types = sourceTypes(service);
+        progress[1] = types.size();
+        for (IType type : types) {
+            progress[0]++;
             try {
                 String fqn = type.getFullyQualifiedName();
                 // A landmark that cannot be ADDRESSED by its name is no landmark: the

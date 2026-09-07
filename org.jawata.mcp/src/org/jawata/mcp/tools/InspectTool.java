@@ -193,11 +193,34 @@ public class InspectTool extends AbstractTool {
         int limit = getIntParam(arguments, "limit", 20);
         limit = Math.min(Math.max(limit, 1), 200);
         try {
-            List<Map<String, Object>> found =
+            org.jawata.mcp.tools.shared.Landmarks.Ranking ranking =
                 org.jawata.mcp.tools.shared.Landmarks.of(service, limit);
+            List<Map<String, Object>> found = ranking.landmarks();
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("landmarks", found);
             data.put("count", found.size());
+            data.put("ready", ranking.ready());
+            if (!ranking.ready()) {
+                // mcp#41: the ranking is O(source types) index searches and took ~7 minutes
+                // on a 2,646-source workspace — past every client's timeout, so the call
+                // never answered at all. It now answers immediately and says it is working.
+                //
+                // The counts are here because an unqualified "not ready" is unactionable: a
+                // caller cannot tell a workspace that needs ten more seconds from one that
+                // needs ten more minutes, and the ratio is the only thing that distinguishes
+                // them.
+                data.put("examined", ranking.examined());
+                data.put("total", ranking.total());
+                return ToolResponse.success(data,
+                    org.jawata.mcp.models.ResponseMeta.builder()
+                        .returnedCount(0)
+                        .steering("Landmarks are being ranked (" + ranking.examined() + " of "
+                            + ranking.total() + " source types). ONE ranking runs per"
+                            + " workspace however many callers ask, so asking again costs"
+                            + " nothing and joins it. Meanwhile search_symbols answers"
+                            + " immediately.")
+                        .build());
+            }
             return ToolResponse.success(data, org.jawata.mcp.models.ResponseMeta.builder()
                 .returnedCount(found.size())
                 .steering("These are the workspace's load-bearing types. Address them by name "

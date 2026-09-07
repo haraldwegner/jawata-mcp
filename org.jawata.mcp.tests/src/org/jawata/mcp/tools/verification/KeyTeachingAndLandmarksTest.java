@@ -150,6 +150,39 @@ class KeyTeachingAndLandmarksTest {
                 + "to use — otherwise we handed out a key that opens nothing: " + resolved.getError());
     }
 
+
+    /**
+     * mcp#41: landmarks is now ASYNC. Ranking is O(source types) index searches — ~7 minutes
+     * on a real 2,646-source workspace — so the call answers within a short bound and says
+     * {@code ready:false} with its progress rather than never returning at all.
+     *
+     * <p>This does what the tool's own steering tells a client to do: ask again. It joins the
+     * one ranking already running rather than starting another, so retrying is free. It FAILS
+     * on timeout rather than handing back an empty list, because an empty list that means
+     * "not finished" is exactly the confusion `ready` exists to remove.</p>
+     */
+    private ToolResponse awaitLandmarksResponse(InspectTool inspect, ObjectNode args) {
+        for (int attempt = 0; attempt < 60; attempt++) {
+            ToolResponse response = inspect.execute(args);
+            if (Boolean.TRUE.equals(data(response).get("ready"))) {
+                return response;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        throw new AssertionError("landmarks never became ready");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> awaitLandmarks(InspectTool inspect, ObjectNode args) {
+        return (List<Map<String, Object>>)
+            data(awaitLandmarksResponse(inspect, args)).get("landmarks");
+    }
+
     // ------------------------------------------------------------------ D4
 
     @Test
@@ -165,9 +198,7 @@ class KeyTeachingAndLandmarksTest {
         ObjectNode args = om.createObjectNode();
         args.put("kind", "landmarks");
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> before =
-            (List<Map<String, Object>>) data(inspect.execute(args)).get("landmarks");
+        List<Map<String, Object>> before = awaitLandmarks(inspect, args);
         assertFalse(before.isEmpty(), "the fixture has landmarks to begin with");
         assertTrue(before.stream().anyMatch(l -> "com.example.Calculator".equals(l.get("qualifiedName"))),
             "Calculator is one of them: " + before);
@@ -182,9 +213,7 @@ class KeyTeachingAndLandmarksTest {
         ToolResponse renamed = rename.execute(renameArgs);
         assertTrue(renamed.isSuccess(), "got: " + renamed.getError());
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> after =
-            (List<Map<String, Object>>) data(inspect.execute(args)).get("landmarks");
+        List<Map<String, Object>> after = awaitLandmarks(inspect, args);
 
         assertTrue(after.stream().noneMatch(l -> "com.example.Calculator".equals(l.get("qualifiedName"))),
             "the old name must NOT still be offered as a landmark: " + after);
@@ -202,7 +231,7 @@ class KeyTeachingAndLandmarksTest {
         args.put("kind", "landmarks");
         args.put("limit", 10);
 
-        ToolResponse r = inspect.execute(args);
+        ToolResponse r = awaitLandmarksResponse(inspect, args);
         assertTrue(r.isSuccess(), "got: " + r.getError());
 
         @SuppressWarnings("unchecked")
