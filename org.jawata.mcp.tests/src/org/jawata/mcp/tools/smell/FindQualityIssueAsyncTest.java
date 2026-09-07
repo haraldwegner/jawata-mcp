@@ -84,6 +84,67 @@ class FindQualityIssueAsyncTest {
         assertEquals("finished", again.get("state"));
     }
 
+    /**
+     * jawata-mcp#72 — A SINGLE SLOW KIND TAKES THE SAME WAY OUT A FAMILY ALREADY HAD.
+     *
+     * <p>Found by dogfooding the released v4.1.0: {@code kind=encapsulation} over 1056 files
+     * timed out twice at the 30-second default, and returned 228 findings inside a family
+     * sweep — so the work was always finishable and only the channel was missing. This branch
+     * REQUIRED a {@code family}, which meant the escape hatch existed for the shape that
+     * refuses in milliseconds and not for the one that burns the caller's whole timeout.</p>
+     *
+     * <p>A bare timeout cannot be told apart from a broken tool, and the two moves it leaves a
+     * caller are to retry — identical result — or to abandon the tool. That is what this
+     * closes; it does not try to predict WHICH kind is slow, because that is a property of the
+     * project rather than of the detector.</p>
+     */
+    @Test
+    @DisplayName("a single kind can be started asynchronously, and answers what the synchronous call would")
+    void asyncSingleKind_isTheSameAnswerByAnotherRoute() throws Exception {
+        ObjectNode start = objectMapper.createObjectNode();
+        start.put("action", "start");
+        start.put("kind", "long_method");
+        Map<String, Object> started = data(tool.execute(start));
+
+        String sweepId = (String) started.get("sweepId");
+        assertNotNull(sweepId, "a single kind must hand out a handle just as a family does");
+        assertEquals("long_method", started.get("kind"),
+            "and the response must say WHAT it started: " + started);
+        assertNull(started.get("family"),
+            "a single-kind sweep has no family, and saying `family: null` would read as one "
+                + "that lost it: " + started);
+        assertEquals(1, started.get("kindsTotal"));
+
+        Map<String, Object> finished = awaitFinished(sweepId);
+        assertEquals("finished", finished.get("state"));
+        assertEquals("long_method", finished.get("kind"),
+            "a retrieved result must describe itself — the handle may be days old: " + finished);
+        assertNotNull(finished.get("findings"), "the full result rides the status response");
+
+        // THE CLAUSE THAT MAKES THIS A FIX RATHER THAN A SECOND CODE PATH. A caller who moved
+        // here because their project is large must get the SAME answer, not a thinner one: the
+        // async route keeps the cure join and the path filter the synchronous route applies.
+        ObjectNode direct = objectMapper.createObjectNode();
+        direct.put("kind", "long_method");
+        Map<String, Object> synchronously = data(tool.execute(direct));
+        assertEquals(synchronously.get("count"), finished.get("count"),
+            "the async route must not answer with a different finding set than `run` does");
+    }
+
+    @Test
+    @DisplayName("start with neither a family nor a kind refuses, and names both ways in")
+    void startNeedsSomethingToSweep() {
+        ObjectNode start = objectMapper.createObjectNode();
+        start.put("action", "start");
+        ToolResponse r = tool.execute(start);
+
+        assertFalse(r.isSuccess(), "there is nothing to start");
+        String message = String.valueOf(r.getError().getMessage());
+        assertTrue(message.contains("family") && message.contains("kind"),
+            "a refusal that names only one of the two ways in sends half its readers nowhere: "
+                + message);
+    }
+
     @Test
     @DisplayName("cancel is honest: state=cancelled + partial:true, kindsDone visible")
     void asyncSweep_cancelIsHonestPartial() throws Exception {

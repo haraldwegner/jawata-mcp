@@ -280,10 +280,14 @@ public class FindQualityIssueTool extends AbstractTool {
         action.put("type", "string");
         action.put("enum", List.of("run", "start", "status", "cancel"));
         action.put("description",
-            "run (default) = synchronous. start = run a FAMILY sweep asynchronously (returns a "
-                + "sweepId immediately — a sweep can outlive a client timeout; the result stays "
-                + "retrievable). status = progress while running, the FULL result once finished "
-                + "(repeatable). cancel = honest partial (partial: true).");
+            "run (default) = synchronous. start = run asynchronously and return a sweepId "
+                + "immediately — pass `family` for a whole family, or `kind` for a SINGLE "
+                + "detector that is too slow to answer synchronously on this project (how slow a "
+                + "kind is depends on the project, not the detector, so nothing predicts it for "
+                + "you: a timed-out `run` is the signal to start the same kind here). Either way "
+                + "the work outlives a client timeout and the result stays retrievable. status = "
+                + "progress while running, the FULL result once finished (repeatable). cancel = "
+                + "honest partial (partial: true).");
         properties.put("action", action);
 
         Map<String, Object> sweepId = new LinkedHashMap<>();
@@ -340,8 +344,15 @@ public class FindQualityIssueTool extends AbstractTool {
                     + "it returns a sweepId immediately — then poll action=\"status\" with "
                     + "that id for progress and, once finished, the full result. The result "
                     + "stays retrievable, so a timed-out poll loses nothing.",
-                "For a synchronous answer, ask for a single `kind` instead of a `family`; "
-                    + "those complete well inside the timeout. This family's kinds: "
+                // THIS HINT USED TO PROMISE THAT SINGLE KINDS ALWAYS FINISH IN TIME, and
+                // jawata-mcp#72 measured it false: `encapsulation` over 1056 files timed out
+                // twice at the 30 s default. The sentence mattered more than an ordinary
+                // inaccuracy would, because it is the one that sent a caller down the only
+                // path that had no way out — so it now names the async form for a single kind
+                // rather than asserting one is never needed.
+                "For a synchronous answer, ask for a single `kind` instead of a `family`; most "
+                    + "complete inside the timeout, and one that does not takes the same way "
+                    + "out — action=\"start\" with that `kind`. This family's kinds: "
                     + catalog.kinds(family));
         }
         if (!hasKind) {
@@ -372,10 +383,13 @@ public class FindQualityIssueTool extends AbstractTool {
     // Sprint 25 Stage 14a — async family sweeps (start / status / cancel)
     // ==================================================================
 
-    /** One background family sweep. Results stay retrievable until evicted. */
+    /** One background sweep — a whole family, or a single slow kind. Results stay retrievable. */
     private static final class SweepSession {
         final String id;
+        /** The family being swept, or null when this session runs a single {@link #kind}. */
         final String family;
+        /** The single kind being run, or null when this session sweeps a {@link #family}. */
+        final String kind;
         final int kindsTotal;
         final AtomicInteger kindsDone = new AtomicInteger();
         final AtomicBoolean cancelRequested = new AtomicBoolean();
@@ -384,9 +398,10 @@ public class FindQualityIssueTool extends AbstractTool {
         volatile ToolResponse result;
         final long startedAtMillis = System.currentTimeMillis();
 
-        SweepSession(String id, String family, int kindsTotal) {
+        SweepSession(String id, String family, String kind, int kindsTotal) {
             this.id = id;
             this.family = family;
+            this.kind = kind;
             this.kindsTotal = kindsTotal;
         }
     }
@@ -400,27 +415,66 @@ public class FindQualityIssueTool extends AbstractTool {
         switch (action) {
             case "start": {
                 String family = getStringParam(arguments, "family");
-                if (family == null || family.isBlank()) {
+                String single = getStringParam(arguments, "kind");
+                boolean hasFamily = family != null && !family.isBlank();
+                boolean hasSingle = single != null && !single.isBlank();
+                // A SINGLE KIND CAN BE STARTED TOO — jawata-mcp#72.
+                //
+                // This branch required a `family`, so the async escape hatch existed for
+                // exactly the shape that did not need it most. A family REFUSES in
+                // milliseconds and hands back the way out; one slow kind just burned the
+                // client's timeout, and a bare timeout teaches a caller nothing — it cannot
+                // be told apart from a broken tool, and the two moves it leaves are to retry
+                // (identical result) or to abandon the tool. Measured: `encapsulation` over
+                // 1056 files timed out twice at the 30 s default and answered 228 findings
+                // inside a family sweep, so the work was always finishable and only the
+                // channel was missing.
+                //
+                // Which kind is slow cannot be known in advance — it is a property of the
+                // project, not of the detector — so this does not try to predict it. It
+                // gives the caller the same one-word way out a family already had.
+                if (!hasFamily && !hasSingle) {
                     return ToolResponse.invalidParameter("family",
-                        "action=start runs a FAMILY sweep asynchronously — provide `family`.");
+                        "action=start runs a sweep asynchronously — provide `family` for a whole "
+                            + "family, or `kind` for a single detector that is too slow to answer "
+                            + "synchronously on this project.");
                 }
-                List<String> kinds = catalog.kinds(family);
+                if (hasSingle && hasFamily && !catalog.kinds(family).contains(single)) {
+                    return ToolResponse.invalidParameter("kind",
+                        "kind '" + single + "' is not in family '" + family + "'. That family: "
+                            + catalog.kinds(family));
+                }
+                if (hasSingle && catalog.get(single).isEmpty()) {
+                    return ToolResponse.invalidParameter("kind",
+                        "Unknown kind '" + single + "'. Allowed: " + catalog.kinds());
+                }
+                List<String> kinds = hasSingle ? List.of(single) : catalog.kinds(family);
                 if (kinds.isEmpty()) {
                     return ToolResponse.invalidParameter("family",
                         "Unknown family '" + family + "'. One of: quality, fowler, solid, kerievsky.");
                 }
                 evictOldestFinishedSweeps();
                 String id = "sweep-" + System.currentTimeMillis() + "-" + SWEEP_COUNTER.incrementAndGet();
-                SweepSession session = new SweepSession(id, family, kinds.size());
+                SweepSession session = new SweepSession(id, hasSingle ? null : family,
+                    hasSingle ? single : null, kinds.size());
                 SWEEP_SESSIONS.put(id, session);
                 Thread worker = new Thread(() -> {
                     ToolResponse r;
                     try {
-                        r = runFamily(service, family, arguments,
-                            session.kindsDone::set, session.cancelRequested);
+                        if (hasSingle) {
+                            r = runSingleKind(service, single, arguments);
+                            session.kindsDone.set(1);
+                        } else {
+                            r = runFamily(service, family, arguments,
+                                session.kindsDone::set, session.cancelRequested);
+                        }
                         String baseline = getStringParam(arguments, "baseline");
+                        // BASELINE STAYS FAMILY-ONLY, and that is its existing contract rather
+                        // than an omission here: a baseline is a snapshot of a family's whole
+                        // finding set, and diffing one kind against it would report every OTHER
+                        // kind as fixed.
                         if (r.isSuccess() && baseline != null && !baseline.isBlank()
-                                && !session.cancelRequested.get()) {
+                                && !hasSingle && !session.cancelRequested.get()) {
                             r = applyBaseline(service, family, baseline, r);
                         }
                         // jawata-mcp#6 (Sprint 27a Stage 8): store UNSHAPED.
@@ -449,7 +503,9 @@ public class FindQualityIssueTool extends AbstractTool {
                 data.put("operation", "find_quality_issue");
                 data.put("action", "start");
                 data.put("sweepId", id);
-                data.put("family", family);
+                // WHICHEVER THIS SWEEP IS OF. Emitting `family: null` for a single-kind sweep
+                // would read as a family sweep that lost its family.
+                data.put(hasSingle ? "kind" : "family", hasSingle ? single : family);
                 data.put("kindsTotal", kinds.size());
                 data.put("hint", "Poll find_quality_issue(action=status, sweepId=…); the finished "
                     + "result stays retrievable — a client timeout loses nothing.");
@@ -467,7 +523,8 @@ public class FindQualityIssueTool extends AbstractTool {
                     data.put("action", "status");
                     data.put("sweepId", session.id);
                     data.put("state", "running");
-                    data.put("family", session.family);
+                    data.put(session.kind != null ? "kind" : "family",
+                        session.kind != null ? session.kind : session.family);
                     data.put("kindsDone", session.kindsDone.get());
                     data.put("kindsTotal", session.kindsTotal);
                     data.put("elapsedMillis", System.currentTimeMillis() - session.startedAtMillis);
@@ -486,6 +543,12 @@ public class FindQualityIssueTool extends AbstractTool {
                     Map<String, Object> data = new LinkedHashMap<>();
                     data.put("sweepId", session.id);
                     data.put("state", session.cancelled ? "cancelled" : "finished");
+                    // WHAT THIS SWEEP WAS OF, so a retrieved result says so itself. A family
+                    // sweep's own result carries `family` and overwrites this with the same
+                    // value below; a single kind's does not carry `kind` at the top level, so
+                    // without this a stored handle came back describing nothing.
+                    data.put(session.kind != null ? "kind" : "family",
+                        session.kind != null ? session.kind : session.family);
                     if (session.cancelled) {
                         data.put("kindsDone", session.kindsDone.get());
                         data.put("kindsTotal", session.kindsTotal);
@@ -520,6 +583,26 @@ public class FindQualityIssueTool extends AbstractTool {
                 return ToolResponse.invalidParameter("action",
                     "Unknown action '" + action + "'. One of: run (default), start, status, cancel.");
         }
+    }
+
+    /**
+     * ONE detector, run for a background session — the synchronous path minus the shaping.
+     *
+     * <p>Deliberately does NOT call {@code boundResponse}: a started sweep stores its result
+     * UNSHAPED and {@code action=status} shapes it with the RETRIEVING call's own
+     * summary/limit/offset. Shaping here would freeze the start call's view into every later
+     * retrieval, which is the defect jawata-mcp#6 recorded for the family path.</p>
+     *
+     * <p>The cure join and the path filter stay, because they are what makes this the SAME
+     * answer the synchronous call would have given — a caller who switched to the async path
+     * because their project is large must not get a thinner result for it.</p>
+     */
+    private ToolResponse runSingleKind(IJdtService service, String kind, JsonNode arguments) {
+        return catalog.get(kind)
+            .map(detector -> attachCures(
+                filterExcludedPaths(detector.detect(service, arguments), arguments), kind))
+            .orElseGet(() -> ToolResponse.invalidParameter("kind",
+                "Unknown kind '" + kind + "'. Allowed: " + catalog.kinds()));
     }
 
     private SweepSession sweepFor(JsonNode arguments) {

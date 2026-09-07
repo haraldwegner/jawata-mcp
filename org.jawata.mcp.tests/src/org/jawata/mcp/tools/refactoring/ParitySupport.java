@@ -66,7 +66,7 @@ final class ParitySupport {
         assertTrue(Files.exists(golden), () ->
             "missing golden " + golden + " — run with -Djawata.test.parity.record=true to create it, "
                 + "then commit. Actual result was:\n" + actual);
-        assertEquals(Files.readString(golden), actual, () ->
+        assertEquals(sameEndings(Files.readString(golden)), sameEndings(actual), () ->
             "PARITY DIVERGENCE for '" + tool + "/" + id + "': output differs from the archived "
                 + "(pre-migration) golden. Classify it — (1) JDT resolved more, (2) formatting drift, "
                 + "(3) JDT refused a precondition — record it in parity/" + tool + "/DIVERGENCES.md, and "
@@ -90,10 +90,41 @@ final class ParitySupport {
         assertTrue(Files.exists(golden), () ->
             "missing golden " + golden + " — run with -Djawata.test.parity.record=true to create it, "
                 + "then commit. Actual source was:\n" + source);
-        assertEquals(Files.readString(golden), source, () ->
+        assertEquals(sameEndings(Files.readString(golden)), sameEndings(source), () ->
             "PARITY DIVERGENCE for '" + tool + "/" + id + "': the rewrite produces different "
                 + "source than the archived golden. Read the difference before refreshing it — "
                 + "a regression lock is only worth the reading it forces.");
+    }
+
+    /**
+     * THE SAME TEXT WITH THE PLATFORM'S LINE-ENDING CONVENTION TAKEN OFF BOTH SIDES.
+     *
+     * <p>jawata-mcp#68. On Windows one golden diverged from its archive by line endings alone:
+     * the actual output was CARRIAGE-RETURN + NEWLINE where the golden is NEWLINE. The
+     * checkout was not the cause and that was measured rather than assumed —
+     * {@code git ls-files --eol} reports the fixture as {@code i/lf w/lf attr/text=auto eol=lf}
+     * and no file in the repository carries carriage returns in its stored blob, because
+     * {@code .gitattributes} has pinned them since Sprint 28a, after the first Windows matrix
+     * run failed nineteen of these tests on exactly that. So the INPUTS were already
+     * normalised and the OUTPUT was not.</p>
+     *
+     * <p><b>What this claims, and it is deliberately narrow:</b> a golden's subject is the
+     * source a refactoring PRODUCES, and the convention for ending a line is a property of the
+     * platform rather than of that source. Taking it off both sides removes a variable from a
+     * content comparison — it is not a refresh, which would bake one platform's output into the
+     * expectation and is what this file's own message warns against. On Linux, where both sides
+     * are already newline-only, it is a no-op, so it cannot turn a red comparison green here.</p>
+     *
+     * <p><b>What it does NOT settle, stated so nobody reads a green Windows run as an answer:</b>
+     * whether a Windows user should get carriage returns written into a file that has none is a
+     * product question about somebody's real workspace, and it is open. Nothing in this product
+     * sets a line-delimiter policy — measured: neither {@code lineSeparator} nor
+     * {@code line.separator} occurs as a literal anywhere in it — so the Eclipse engine that
+     * generates this row's code takes the platform default while our own rewrites keep the
+     * document's. That inconsistency is real and survives this change.</p>
+     */
+    private static String sameEndings(String text) {
+        return text == null ? null : text.replace("\r\n", "\n").replace('\r', '\n');
     }
 
     @SuppressWarnings("unchecked")

@@ -96,6 +96,12 @@ public final class GatedApply {
             return new Result(outcome, List.of(), outcome.validationError(), true);
         }
 
+        // SETTLE THE MODEL FIRST — jawata-mcp#69. A change that CREATES a file leaves the
+        // Java model briefly not knowing about it, and a modified file re-parsed in that
+        // window resolves the new type to nothing. The gate then reports an error the change
+        // did not cause and undoes correct work. Reading errors before this is reading them
+        // from a model that has not caught up with the disk.
+        CompileVerify.settle(service, outcome.modifiedFilePaths());
         List<String> introduced = CompileVerify.introducedErrors(before,
             CompileVerify.errorMessagesByFile(service, outcome.modifiedFilePaths()));
         boolean anySyntax = introduced.stream()
@@ -103,6 +109,13 @@ public final class GatedApply {
         if (introduced.isEmpty() || (mode == Mode.REPORT && !anySyntax)) {
             return new Result(outcome, introduced, null, false);
         }
+
+        // READ THE CREATED FILES BEFORE UNDOING THEM. This is the last moment they exist,
+        // and when the introduced error is "refers to the missing type X" about a type the
+        // change just created, what the reader needs is the created file's own package and
+        // imports. Gathering it after the undo would be gathering it from nothing.
+        String created = CompileVerify.createdFileContext(service, before,
+            outcome.modifiedFilePaths());
 
         boolean undone = false;
         if (outcome.undoChange() != null) {
@@ -114,7 +127,8 @@ public final class GatedApply {
                 + " new error(s), e.g. " + introduced.get(0) + "). "
                 + (undone
                     ? "The change was UNDONE — no files remain modified."
-                    : "UNDO FAILED — the broken change IS on disk; restore from VCS."),
+                    : "UNDO FAILED — the broken change IS on disk; restore from VCS.")
+                + created,
             undone);
     }
 }
