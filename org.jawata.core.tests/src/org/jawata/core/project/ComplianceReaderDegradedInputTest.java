@@ -49,6 +49,33 @@ class ComplianceReaderDegradedInputTest {
         >>>>>>> origin/master
         """;
 
+    /**
+     * Markers present, compliance AGREEING — the conflict is in the other keys.
+     *
+     * <p>This is the only shape the marker check alone can catch, and it exists because a
+     * mutation said so: disabling that check left every other case green, since the conflicted
+     * fixture's two sides also disagree on compliance and the disagreement branch answered
+     * first. A mutation that does not fail has found something, and what it found here was an
+     * unverified rule rather than an unnecessary one.</p>
+     *
+     * <p>Why the file is still untrusted when this one key happens to match: the question is
+     * not whether compliance survived the merge but whether the file records a decision, and a
+     * file mid-conflict records that nobody has made one. The source level below disagrees with
+     * the compliance level on the HEAD side, which is exactly the kind of damage that rides
+     * along invisibly when only the key you asked about is checked.</p>
+     */
+    private static final String CONFLICTED_BUT_AGREEING = """
+        eclipse.preferences.version=1
+        org.eclipse.jdt.core.compiler.compliance=21
+        <<<<<<< HEAD
+        org.eclipse.jdt.core.compiler.source=12
+        org.eclipse.jdt.core.formatter.tabulation.char=space
+        =======
+        org.eclipse.jdt.core.compiler.source=21
+        org.eclipse.jdt.core.formatter.tabulation.char=tab
+        >>>>>>> origin/master
+        """;
+
     /** The same disagreement WITHOUT markers — a hand-merged file that kept both lines. */
     private static final String DISAGREEING = """
         eclipse.preferences.version=1
@@ -110,6 +137,19 @@ class ComplianceReaderDegradedInputTest {
         // both lines reads as valid and still cannot say which level the project wants.
         assertEquals(Optional.of("17"), ProjectImporter.readComplianceLevel(project),
             "two disagreeing compliance keys must not be resolved by picking the first");
+    }
+
+    @Test
+    @DisplayName("mcp#39: markers distrust the file even where the compliance keys AGREE")
+    void conflictMarkersDistrustTheFileEvenWhenTheKeyAgrees(@TempDir Path root) throws Exception {
+        Path project = projectWith(root, "conflicted-agreeing", CONFLICTED_BUT_AGREEING);
+
+        // THE ONLY CASE THE MARKER CHECK ALONE DECIDES. Every other conflicted input here also
+        // disagrees on compliance, so the disagreement branch answers first and the marker
+        // check is never the reason — measured, by a mutation that disabled it and stayed
+        // green across all four earlier cases.
+        assertEquals(Optional.of("17"), ProjectImporter.readComplianceLevel(project),
+            "a file mid-merge records that nobody has decided, whatever this one key says");
     }
 
     @Test
