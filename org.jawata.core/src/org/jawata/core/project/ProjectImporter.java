@@ -304,12 +304,43 @@ public class ProjectImporter {
             return Optional.empty();
         }
         try {
-            return readLinesLenient(prefs, 4096).stream()
+            java.util.List<String> lines = readLinesLenient(prefs, 4096);
+
+            // mcp#39: a file carrying merge-conflict markers cannot say what the project
+            // declares — it is a record of two answers nobody chose between. Reading the
+            // first match takes whichever side git happened to write on top, and the value
+            // it yields is VALID, so nothing downstream can catch it: found live where a
+            // committed conflict applied a sub-14 level to code the build compiles at 21,
+            // producing 48 language-level errors with nothing naming the cause.
+            if (hasConflictMarkers(lines)) {
+                log.warn("{} contains merge-conflict markers, so it cannot say which Java level"
+                    + " this project declares. Falling through to the next source (pom.xml,"
+                    + " build.gradle, MANIFEST.MF) rather than picking a side. Resolve the"
+                    + " conflict to have this file decide again.", prefs);
+                return Optional.empty();
+            }
+
+            java.util.List<String> declared = lines.stream()
                         .map(String::trim)
                         .filter(l -> l.startsWith("org.eclipse.jdt.core.compiler.compliance="))
-                        .findFirst()
                         .map(l -> l.substring(l.indexOf('=') + 1).trim())
-                        .filter(v -> !v.isEmpty());
+                        .filter(v -> !v.isEmpty())
+                        .distinct()
+                        .toList();
+
+            // DISTINCT, deliberately: the rule is DISAGREEMENT, not repetition. A key written
+            // twice with the same value states one level and is believed; a guard on "appears
+            // twice" would refuse a file that says one thing clearly, which is a tidiness rule
+            // wearing a correctness rule's clothes.
+            if (declared.size() > 1) {
+                log.warn("{} declares the Java language level more than once and the values"
+                    + " disagree ({}). Falling through to the next source rather than picking"
+                    + " the first — a file that states two levels states none.",
+                    prefs, String.join(" vs ", declared));
+                return Optional.empty();
+            }
+
+            return declared.stream().findFirst();
         } catch (IOException e) {
             // The settings file EXISTS and could not be read — that is not the
             // same fact as "this project declares no level", and returning the
@@ -319,6 +350,28 @@ public class ProjectImporter {
                 prefs, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    /**
+     * A committed merge conflict, in the three shapes git writes (mcp#39).
+     *
+     * <p>The separator is matched as a WHOLE LINE of exactly seven equals signs. A properties
+     * file is full of {@code =}, and a value may legitimately start with one; only the line git
+     * writes on its own is a marker, so anchoring both ends is what keeps this from refusing
+     * ordinary settings.</p>
+     *
+     * <p>Any marker disqualifies the file, even where the compliance keys happen to agree: the
+     * question is not whether this one key survived the conflict but whether the file records a
+     * decision at all, and a file mid-merge records that nobody has made one.</p>
+     */
+    private static boolean hasConflictMarkers(java.util.List<String> lines) {
+        for (String line : lines) {
+            if (line.startsWith("<<<<<<< ") || line.startsWith(">>>>>>> ")
+                    || line.strip().equals("=======")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** {@code <maven.compiler.release>} wins over {@code <maven.compiler.source>}. */
