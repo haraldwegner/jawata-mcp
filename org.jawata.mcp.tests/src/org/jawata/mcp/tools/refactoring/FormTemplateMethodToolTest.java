@@ -72,9 +72,10 @@ class FormTemplateMethodToolTest {
     /**
      * A NESTED HIERARCHY, END TO END — the guard this door's repair shipped without.
      *
-     * <p>C8b round 4 repaired TWO doors the same way: the superclass lookup was repointed at
-     * {@code tools.shared.TypeLookup} so a nested superclass resolves, and the sibling-subclass
-     * collection beside it was moved off {@code CompilationUnit#types()} so the siblings
+     * <p>The repair came in two commits, and attributing both to one of them was itself a
+     * round-6 finding. Round 3 (`5d2366e2`) repointed the superclass lookup at
+     * {@code tools.shared.TypeLookup} so a nested superclass resolves; round 4 (`7cd7d3a0`)
+     * moved the sibling-subclass collection off {@code CompilationUnit#types()} so the siblings
      * declared next to it are visible too. Only the visitor door got an end-to-end case; round
      * 5 reverted this one's repair in full and every test still passed, so the commit's "5/5
      * over both doors" counted tests executed rather than guards — a distinction worth the

@@ -42,20 +42,40 @@ class FindNamingViolationsToolTest {
      * response with {@code findings} rows built from {@code Finding}, which documents 1-based,
      * so one {@code find_quality_issue} answer carried two bases. C8b round 4 measured it.</p>
      *
-     * <p><b>Why 1-based is required rather than preferred:</b> {@code Cures.attach} rebuilds a
-     * {@code Finding} from the RAW row and calls {@code CodeAddress.of(Finding)}, which
-     * subtracts one — so a 0-based merged row renders every cure address a line above its
-     * subject. A round-4 version of this paragraph argued it from {@code largeClasses}
-     * instead ("it never pre-converted"), and round 5 read that tool: it emits no line at all,
-     * so it witnessed nothing.</p>
+     * <p><b>Why 1-based, at the strength it actually holds.</b> The reason that binds these
+     * rows is CONSISTENCY: they are merged into one {@code find_quality_issue} response beside
+     * {@code findings} rows built from {@code Finding}, which documents 1-based, and one answer
+     * carrying two bases is the defect. The stronger cure-address argument — {@code
+     * Cures.attach} rebuilds a {@code Finding} and {@code CodeAddress.of} subtracts one — does
+     * NOT reach here: {@code CureCatalog} declares no cure for {@code naming}, so no cure
+     * address is ever rendered from a {@code violations} row. It would bind the day a route is
+     * declared, silently.</p>
+     *
+     * <p>Two earlier versions of this paragraph gave witnesses that were void: {@code
+     * largeClasses} "never pre-converted" (it emits no line at all), then the cure-address
+     * argument written in three places, two of which it does not reach. Recorded rather than
+     * quietly replaced, because a correction that carries the defect it corrects is this
+     * checkpoint's own recurring shape.</p>
      *
      * <p><b>The scope is the point, and it is why this is not the whole-catalogue check that
      * was written and thrown away.</b> Four of the six sites address {@code
      * node.getStartPosition()} — a declaration's start INCLUDES its javadoc and annotations,
      * so the identifier is legitimately not on that line and "the name is on the line" would
      * report a defect where there is none. The two FIELD sites address the fragment itself,
-     * where the name genuinely is at that position. Only those rows are checked, and the rest
-     * are counted so a reader can see what is NOT covered rather than assume it is.</p>
+     * where the name genuinely is at that position.</p>
+     *
+     * <p><b>The field clause below is LATENT on this project, and that is stated because two
+     * earlier versions of this paragraph implied otherwise.</b> It first gated on a {@code
+     * kind} key the tool never writes — the tool writes {@code elementType} — so the branch
+     * was DEAD, which a C8b round-6 audit proved by replacing the assertion with an
+     * unconditional failure and watching the class stay green. The key is corrected; the
+     * branch still does not execute here, because {@code simple-maven} contains no
+     * badly-named field. It fires the day one appears. <b>The field case is really covered by
+     * {@code NamingViolationCoordinateTest}</b>, which writes its own.</p>
+     *
+     * <p>What this class does assert on every row is the blank-line check, which discriminates
+     * — restoring the pre-decrement at all six sites turns it red on {@code serialVersionUID}
+     * at a blank line 21.</p>
      */
     @Test
     @DisplayName("a field violation's line is 1-based: the identifier is on it")
@@ -105,8 +125,14 @@ class FindNamingViolationsToolTest {
 
             // Where the tool addresses the FRAGMENT rather than a declaration start, the
             // identifier really is at that position and the stronger claim holds.
-            String kind = String.valueOf(row.get("kind"));
-            if ("field".equals(kind) || "constant".equals(kind)) {
+            //
+            // READ `elementType`, WHICH IS THE KEY THE TOOL ACTUALLY WRITES. This gated on
+            // `kind` — a key `checkName` never puts on a violation row — so the branch was
+            // DEAD and the javadoc above claimed it covered the field rows. A C8b round-6
+            // audit proved it by replacing the assertion with an unconditional failure and
+            // watching the class stay green.
+            String elementType = String.valueOf(row.get("elementType"));
+            if ("field".equals(elementType) || "constant".equals(elementType)) {
                 assertTrue(at.contains(name),
                     "'" + name + "' is a field row, which addresses the fragment itself, so"
                         + " the identifier must be ON its line; that line reads: " + at);

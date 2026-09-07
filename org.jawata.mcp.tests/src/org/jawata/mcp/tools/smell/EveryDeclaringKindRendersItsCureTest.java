@@ -90,7 +90,9 @@ class EveryDeclaringKindRendersItsCureTest {
      * promised one and its only loop was over eight names.
      *
      * <p><b>An architect watch measured the gap and it is bigger than the audit reported.</b>
-     * {@link CureCatalog} declares TWENTY-TWO kinds and {@code WERE_SILENT} covers eight, so
+     * {@link CureCatalog} declares TWENTY-NINE kinds (measured at C8b round 6, against
+     * "twenty-two" written here when the table was smaller) and {@code WERE_SILENT} covers
+     * eight, so
      * <b>fourteen declaring kinds had their rendering asserted by nothing at all</b>,
      * including every kind Stage 8 added. The class name says "every declaring kind"; this
      * method is what makes that true.</p>

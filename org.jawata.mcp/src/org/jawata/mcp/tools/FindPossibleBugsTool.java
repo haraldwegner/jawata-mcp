@@ -276,11 +276,26 @@ public class FindPossibleBugsTool extends AbstractTool {
         // `FindUnusedCodeTool` while calling that tool "the sole outlier" — a population claim
         // made by reading four detectors instead of searching the expression. Round 4 found it.
         //
-        // WHY 1-BASED IS THE REQUIRED BASE HERE, and this is the argument that actually holds:
-        // `Cures.attach` builds a `Finding` out of the RAW row and hands it to
-        // `CodeAddress.of(Finding)`, which subtracts one. So a row merged into a
-        // `find_quality_issue` response must be 1-based or every cure address rendered from it
-        // names the line above its subject.
+        // WHY 1-BASED, and stated at the strength it actually holds — which took three goes.
+        //
+        // The reason that binds THIS file is CONSISTENCY: these rows are merged into one
+        // `find_quality_issue` response beside `findings` rows built from `Finding`, which
+        // documents 1-based. One answer carrying two bases is the defect, whoever reads it.
+        //
+        // The stronger cure-address argument does NOT bind here, and a round-5 version of this
+        // comment claimed it did. `Cures.attach` rebuilds a `Finding` from the raw row and
+        // calls `CodeAddress.of(Finding)`, which subtracts one — so a 0-based row would render
+        // every cure address a line high. But `CureCatalog` declares no cure for `bugs`, so
+        // `Cures.attachTo` returns before writing anything and no cure address is ever
+        // rendered from an `issues` row. Of the three merged line-carrying keys only `unused`
+        // declares one today; this file's rows would be bound the day a route is declared for
+        // `bugs`, silently.
+        //
+        // THAT IS THE THIRD WITNESS THIS COMMENT HAS TRIED. Round 4 argued from `largeClasses`
+        // "never pre-converting", which emits no line at all; round 5 replaced it with the
+        // cure-address argument and wrote it in three places, two of which it does not reach.
+        // Both were properties asserted about output nobody had read — the defect each round
+        // was convened to fix, committed inside the fix.
         //
         // A ROUND-4 COMMENT ARGUED IT FROM `largeClasses` INSTEAD — "it never pre-converted,
         // so 1-based is a derived convention rather than my preference" — and round 5 read

@@ -654,8 +654,8 @@ public class FindQualityIssueTool extends AbstractTool {
                 .map(d -> attachCures(d.detect(service, arguments), k))
                 .orElse(null);
             // Sprint 28 C4 (audit finding 7) — this read data.get("findings")
-            // ONLY. Six of the analyzers return their list under a different
-            // key (unusedItems, violations, issues, cycles, largeClasses), so
+            // ONLY. FIVE keys other than `findings` are returned under
+            // (unusedItems, violations, issues, cycles, largeClasses), so
             // they contributed NOTHING to any family sweep and said nothing
             // about it: large_classes reported 101 violations when named by
             // kind and 0 through family="quality". A sweep that structurally
@@ -886,10 +886,12 @@ public class FindQualityIssueTool extends AbstractTool {
     /**
      * WHERE A DETECTOR PUT ITS ROWS — the product's own answer, so a caller need not guess.
      *
-     * <p>Six of the analyzers answer under a key of their own ({@code unusedItems},
-     * {@code violations}, {@code issues}, {@code cycles}, {@code largeClasses}) rather than
-     * under {@code findings}, and a reader that assumes one key silently sees nothing from a
-     * third of the catalog. That defect has now been found twice: once in the family sweep
+     * <p>FIVE keys other than {@code findings} are answered under — {@code unusedItems},
+     * {@code violations}, {@code issues}, {@code cycles}, {@code largeClasses} — and a reader
+     * that assumes one key silently sees nothing from a third of the catalog. (The count said
+     * SIX above a list of five, in the javadoc of the very list that settles it; corrected at
+     * C8b round 6, where the same conflation was found in this file's family-sweep comment
+     * too.) That defect has now been found twice: once in the family sweep
      * (C4, audit finding 7) and once in the cure join (C8b round 2), which is why this stopped
      * being private — a gate that has to know where the rows are should ASK rather than carry
      * a second copy of the list.</p>
