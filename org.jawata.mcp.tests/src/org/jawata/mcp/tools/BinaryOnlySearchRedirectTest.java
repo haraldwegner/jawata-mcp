@@ -111,6 +111,28 @@ class BinaryOnlySearchRedirectTest {
                 "a workspace hit must not be told to look elsewhere: " + steering));
     }
 
+    @Test
+    @DisplayName("THE CONTROL — an EMPTY page carries the redirect exactly once, not twice")
+    void anEmptyPageIsNotRedirectedTwice() {
+        // The all-binary test must exclude the empty page, because allMatch is vacuously TRUE
+        // on one — so a page of nothing satisfies "every row is a binary" and would have the
+        // redirect appended to the D11 line that already carries it.
+        //
+        // This case exists because the claim was made in a javadoc before anything checked it,
+        // which is the shape this sprint keeps finding. Counting is what makes it a control: a
+        // containment assertion passes at one occurrence and at two.
+        ToolResponse response = search("NoSuchClassExistsAnywhereHere");
+
+        assertTrue(response.isSuccess(), "got: " + response.getError());
+        assertTrue(resultsOf(response).isEmpty(), "precondition: nothing matched");
+
+        String steering = String.valueOf(response.getMeta().getSteering());
+        int occurrences = steering.split(java.util.regex.Pattern.quote(REDIRECT), -1).length - 1;
+        assertTrue(occurrences == 1,
+            "the empty-result path already redirects; it must not be told twice (" + occurrences
+                + " occurrences): " + steering);
+    }
+
     private ToolResponse search(String query) {
         ObjectNode args = OM.createObjectNode();
         args.put("query", query);
