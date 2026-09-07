@@ -173,6 +173,13 @@ public class SearchSymbolsTool extends AbstractTool {
             data.put("query", query);
             if (kind != null) data.put("kind", kind);
             data.put("results", org.jawata.mcp.tools.shared.FieldsProjection.project(page, fields));
+            // mcp#20: WHICH line. This tool reports the offset of the NAME TOKEN the search
+            // engine matched; inspect(kind=document_symbols) reports JDT's declaration range,
+            // which begins at the doc comment and is therefore higher up the file by however
+            // long the javadoc is. Both were correct and both shipped under `line`, so a reader
+            // reconciling the two had no way to know they answer different questions. The
+            // degradation stamp's first rule, applied to a coordinate: a value is never bare.
+            data.put("lineAnchor", "name");
             data.put("pagination", Map.of(
                 "offset", offset,
                 "returned", page.size(),

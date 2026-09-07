@@ -111,6 +111,13 @@ public class GetDocumentSymbolsTool extends AbstractTool {
             data.put("file", service.getPathUtils().formatPath(filePath));
             data.put("symbols", symbols);
             data.put("totalSymbols", symbolCount[0]);
+            // mcp#20: WHICH line. This tool reports JDT's declaration range, which begins at
+            // the doc comment; search_symbols reports the name token and is lower by however
+            // long the javadoc is. Both were correct and both shipped under `line`, so a
+            // reader reconciling the two had no way to know they answer different questions.
+            // The degradation stamp's first rule, applied to a coordinate: a value is never
+            // bare.
+            data.put("lineAnchor", "declaration");
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(symbolCount[0])
