@@ -738,6 +738,79 @@ class BuildSystemLoadTest {
             "the project did not keep the default level");
     }
 
+    /**
+     * jawata-mcp#69 — a project declaring no level takes the workspace default, and on the
+     * platform where nothing had raised that default, a record in it did not parse.
+     *
+     * <p>This REPRODUCES the macOS failure on every platform. The workspace is lowered to
+     * JDT's own built-in level; the vendored collection-pipeline slice — two records, no
+     * build file — is loaded; and the method whose signature names the record {@code Car}
+     * has NO binding, which is the condition JDT's own refactoring engine refused on
+     * ("Cannot resolve binding of enclosing method declaration") and the compile gate
+     * reported as "refers to the missing type Car". Then the level is raised the way the
+     * fallback now raises it, and the same declaration resolves.</p>
+     *
+     * <p>Bindings recovery is OFF on purpose: that is how JDT's engine parses. With it on,
+     * the binding is recovered and the defect is invisible — which is why the row that
+     * parses with recovery got past its own binding check and failed only at the gate.</p>
+     */
+    @Test
+    @DisplayName("an undeclared project with a record resolves under the running JVM's level and not under JDT's built-in one (jawata-mcp#69)")
+    void undeclaredProjectWithARecordNeedsTheRaisedLevel() throws Exception {
+        java.util.Hashtable<String, String> before = JavaCore.getOptions();
+        try {
+            String builtIn = JavaCore.getDefaultOptions().get(JavaCore.COMPILER_COMPLIANCE);
+            java.util.Hashtable<String, String> lowered = JavaCore.getOptions();
+            JavaCore.setComplianceOptions(builtIn, lowered);
+            JavaCore.setOptions(lowered);
+
+            IJavaProject jp = load("fork-collection-pipeline");
+            assertEquals(builtIn, jp.getOption(JavaCore.COMPILER_COMPLIANCE, true),
+                "precondition: the slice declares no level and inherits the workspace's");
+            assertNull(bindingOfGetModelsAfter2000(jp),
+                "THE REPRODUCTION: at JDT's built-in level " + builtIn + " the method whose "
+                    + "signature names the record Car must have no binding — this is what "
+                    + "macOS reported for three releases");
+
+            assertTrue(ProjectImporter.raiseWorkspaceLevelToRunningJvm().isPresent(),
+                "the raise must apply from the built-in level");
+            assertNotNull(bindingOfGetModelsAfter2000(jp),
+                "after the raise the same declaration must resolve");
+        } finally {
+            JavaCore.setOptions(before);
+        }
+    }
+
+    /**
+     * The binding of the slice's {@code FunctionalProgramming.getModelsAfter2000(List<Car>)},
+     * parsed as JDT's refactoring engine parses it — bindings recovery OFF.
+     */
+    private static org.eclipse.jdt.core.dom.IMethodBinding bindingOfGetModelsAfter2000(
+            IJavaProject jp) throws Exception {
+        org.eclipse.jdt.core.IType type =
+            jp.findType("com.iluwatar.collectionpipeline.FunctionalProgramming");
+        assertNotNull(type, "PROOF OF LIFE: the slice's FunctionalProgramming must be in the model");
+        org.eclipse.jdt.core.dom.ASTParser parser =
+            org.eclipse.jdt.core.dom.ASTParser.newParser(org.eclipse.jdt.core.dom.AST.getJLSLatest());
+        parser.setSource(type.getCompilationUnit());
+        parser.setResolveBindings(true);
+        parser.setBindingsRecovery(false);
+        org.eclipse.jdt.core.dom.CompilationUnit ast =
+            (org.eclipse.jdt.core.dom.CompilationUnit) parser.createAST(null);
+        org.eclipse.jdt.core.dom.MethodDeclaration[] found = { null };
+        ast.accept(new org.eclipse.jdt.core.dom.ASTVisitor() {
+            @Override
+            public boolean visit(org.eclipse.jdt.core.dom.MethodDeclaration node) {
+                if ("getModelsAfter2000".equals(node.getName().getIdentifier())) {
+                    found[0] = node;
+                }
+                return false;
+            }
+        });
+        assertNotNull(found[0], "PROOF OF LIFE: getModelsAfter2000 must be declared in the slice");
+        return found[0].resolveBinding();
+    }
+
     // ================= helpers =================
 
     private IJavaProject load(String fixture) throws Exception {

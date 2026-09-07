@@ -15,6 +15,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -549,10 +550,56 @@ public class ProjectImporter {
             }
             JavaRuntime.setDefaultVMInstall(vm, new NullProgressMonitor());
             log.info("jawata-mcp#3: registered the running JVM as the default VM: {}", javaHome);
+            raiseWorkspaceLevelToRunningJvm();
         } catch (Exception e) {
             log.warn("jawata-mcp#3: could not register a default VM ({}: {}); "
                 + "JRE_CONTAINER may stay unbound", e.getClass().getSimpleName(), e.getMessage());
         }
+    }
+
+    /**
+     * Raise the workspace's default Java language level to the running JVM's — what JDT
+     * does itself on the platforms where it detects that JVM (jawata-mcp#69).
+     *
+     * <p>Only macOS reaches this, for the reason {@link #ensureDefaultVm()} gives: JDT's
+     * launching plug-in raises the workspace level when ITS detection registers the default
+     * VM, its standard VM type detects nothing on macOS, and the registration above ran
+     * instead — and registered the VM without the level. A project that declares no level
+     * of its own inherits the workspace default, which therefore stayed at JDT's built-in
+     * value. In such a project a record did not parse, so the record type was reported
+     * missing and a method whose signature named it had no binding: two fork-slice rows
+     * failed on macOS at v4.1.0, v4.1.1 and v4.1.2 on exactly that, while the identical
+     * tests passed on Linux in the same runs. The two earlier patches fixed other things.</p>
+     *
+     * <p>The level is the running JVM's own {@code java.specification.version} — {@code 21},
+     * or {@code 1.8} on Java 8 — which is JDT's own spelling of a level, and the JVM
+     * registered above IS the running JVM. It is validated like every declared level and it
+     * never LOWERS a workspace already at or above it.</p>
+     *
+     * @return the level applied, or empty when the workspace already had it or the JVM's
+     *         version is not a level JDT can be set to
+     */
+    static Optional<String> raiseWorkspaceLevelToRunningJvm() {
+        String level = System.getProperty("java.specification.version", "");
+        if (!COMPLIANCE_LEVEL.matcher(level).matches()) {
+            log.warn("jawata-mcp#69: the running JVM reports java.specification.version \"{}\","
+                + " which is not a level JDT can be set to; the workspace keeps its default",
+                level);
+            return Optional.empty();
+        }
+        Hashtable<String, String> options = JavaCore.getOptions();
+        String current = options.get(JavaCore.COMPILER_COMPLIANCE);
+        if (current != null && JavaCore.compareJavaVersions(current, level) >= 0) {
+            log.debug("Workspace Java language level {} is already at or above the running"
+                + " JVM's {}", current, level);
+            return Optional.empty();
+        }
+        JavaCore.setComplianceOptions(level, options);
+        JavaCore.setOptions(options);
+        log.info("jawata-mcp#69: workspace Java language level raised from {} to {}, the"
+            + " running JVM's — JDT does this where it detects the JVM; here we registered it",
+            current, level);
+        return Optional.of(level);
     }
 
     /**
