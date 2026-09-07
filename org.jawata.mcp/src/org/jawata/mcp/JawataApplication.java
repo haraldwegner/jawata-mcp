@@ -1010,8 +1010,11 @@ public class JawataApplication implements IApplication {
         // Needs no loaded project: it answers about jawata's own use, and a
         // workspace whose projects failed to load is exactly when an agent
         // most wants to report that.
-        toolRegistry.register(
-            new org.jawata.mcp.tools.FieldTool(() -> jdtService, this::fieldDir));
+        // mcp#42: the registry's own in-flight registry, so `pile` can report the calls
+        // that never came back — the failure the pile itself structurally cannot record,
+        // because the pile is written when a call FINISHES.
+        toolRegistry.register(new org.jawata.mcp.tools.FieldTool(
+            () -> jdtService, this::fieldDir, toolRegistry::inFlight));
 
         // Batch 1: Core Navigation Tools
         toolRegistry.register(new SearchSymbolsTool(() -> jdtService));

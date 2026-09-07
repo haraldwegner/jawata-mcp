@@ -50,9 +50,23 @@ public class FieldTool extends AbstractTool {
 
     private final Supplier<Path> fieldDir;
 
+    /**
+     * mcp#42: the in-flight registry, so {@code pile} can report calls that never came
+     * back. Nullable — a FieldTool built without one answers about the pile alone, and
+     * says so by reporting an empty {@code neverReturned} rather than omitting the key.
+     */
+    private final Supplier<org.jawata.mcp.field.InFlightCalls> inFlight;
+
     public FieldTool(Supplier<IJdtService> serviceSupplier, Supplier<Path> fieldDir) {
+        this(serviceSupplier, fieldDir, null);
+    }
+
+    /** mcp#42: the wiring the application uses — the registry's own in-flight registry. */
+    public FieldTool(Supplier<IJdtService> serviceSupplier, Supplier<Path> fieldDir,
+            Supplier<org.jawata.mcp.field.InFlightCalls> inFlight) {
         super(serviceSupplier);
         this.fieldDir = fieldDir;
+        this.inFlight = inFlight;
     }
 
     @Override
@@ -166,12 +180,38 @@ public class FieldTool extends AbstractTool {
                 ranked.add(row);
             });
 
+        // mcp#42: THE CALLS THAT NEVER CAME BACK. Everything above is folded from the
+        // pile, and the pile is written when a call FINISHES — so a hang contributes
+        // nothing to any of it, and the worst failure mode a user can hit was the one
+        // shape /report structurally could not surface. Measured 2026-08-21: two hung
+        // inspect(kind=landmarks) calls, and a pile reporting three shapes over 1303
+        // events with no inspect/landmarks row at all.
+        //
+        // Reported as its own list rather than folded into `shapes`, because these are
+        // not a count of past events: they are outstanding NOW, and the number that
+        // matters is how long each has been stuck.
+        List<Map<String, Object>> stuck = new ArrayList<>();
+        if (inFlight != null) {
+            long now = System.currentTimeMillis();
+            for (org.jawata.mcp.field.InFlightCalls.Call call
+                    : inFlight.get().outstanding(
+                        org.jawata.mcp.field.InFlightCalls.DEFAULT_STUCK_MS)) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("shape", call.shape());
+                row.put("outstandingMs", call.outstandingMs(now));
+                stuck.add(row);
+            }
+        }
+
         long failures = events.stream().filter(e -> !e.ok()).count();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("shapes", ranked);
         data.put("shapeCount", shapes.size());
         data.put("events", events.size());
         data.put("failures", failures);
+        // Always present, even when empty: an absent key would make "nothing is stuck"
+        // and "this build cannot tell" the same answer, which is the defect one level up.
+        data.put("neverReturned", stuck);
         data.put("droppedWrites", pileFile.failedWrites());
         data.put("nudges", state.nudges());
         data.put("silenced", state.silenced());

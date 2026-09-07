@@ -97,6 +97,20 @@ public class ToolRegistry {
         this.storeNotice = notice;
     }
 
+    /**
+     * mcp#42: calls that started and have not come back. Non-null by DEFAULT and not
+     * optional wiring, because the whole defect is that a hang leaves no trace — a
+     * mechanism that only records when someone remembered to install it would reproduce
+     * that exactly one level up.
+     */
+    private final org.jawata.mcp.field.InFlightCalls inFlight =
+        new org.jawata.mcp.field.InFlightCalls();
+
+    /** mcp#42: the in-flight registry, read by {@code field(action=pile)}. */
+    public org.jawata.mcp.field.InFlightCalls inFlight() {
+        return inFlight;
+    }
+
     /** Sprint 26: install the server-side checks (application wiring). */
     public void setServerChecks(org.jawata.mcp.learn.ServerChecks checks) {
         this.serverChecks = checks;
@@ -443,6 +457,13 @@ public class ToolRegistry {
         // A paid override is a meta-argument of the CHOKE, not of the tool.
         arguments = withoutOverride(arguments);
 
+        // mcp#42: mark the call in flight. The recorder fires on the RESPONSE, so a call
+        // that never returns produced no row and no shape — the worst failure mode was the
+        // one the recording could not see. Released in the finally below, so no return
+        // path, exception or JVM Error can leave a false hang behind.
+        long ticket = inFlight.started(name,
+            org.jawata.mcp.field.FieldEvent.discriminatorOf(arguments));
+
         try {
             ToolResponse response = tool.execute(arguments);
             long duration = System.currentTimeMillis() - startTime;
@@ -538,6 +559,12 @@ public class ToolRegistry {
             ToolResponse error = ToolResponse.internalError(err);
             tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
             return stamped(error);
+        } finally {
+            // mcp#42: the call came back, however it came back. In a finally rather than
+            // beside each return, because a ticket left behind by a path someone forgot is
+            // a FALSE hang — and a mechanism whose whole subject is untrustworthy silence
+            // must not become a source of untrustworthy noise.
+            inFlight.finished(ticket);
         }
     }
 

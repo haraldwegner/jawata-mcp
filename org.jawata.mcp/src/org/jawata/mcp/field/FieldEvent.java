@@ -39,6 +39,32 @@ public record FieldEvent(
         return 6;
     }
 
+    /**
+     * The tool's own discriminator argument, raw and unsanitized — {@code kind},
+     * {@code action} or {@code direction}, whichever it publishes, else null.
+     *
+     * <p>Here rather than inline at each reader (mcp#42): {@link FieldRecorder} needs it
+     * when a call FINISHES and {@link InFlightCalls} needs the same value when one
+     * STARTS, and two copies of "which argument names the operation" would drift the day
+     * a door publishes a fourth discriminator — the door list in this repository has
+     * already been that lesson more than once.</p>
+     *
+     * <p>The caller sanitizes with {@link Token#of}; this returns the raw value so the
+     * one place that coerces stays the one place that coerces.</p>
+     */
+    public static String discriminatorOf(com.fasterxml.jackson.databind.JsonNode arguments) {
+        if (arguments == null) {
+            return null;
+        }
+        for (String key : new String[] {"kind", "action", "direction"}) {
+            String value = arguments.path(key).asText(null);
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     /** The dedupe key for recurring-error grouping (D4's nudge, D3's ranking).
      *  Canonical by construction — every part is an allowlisted token, so no
      *  further normalization is needed or possible. */

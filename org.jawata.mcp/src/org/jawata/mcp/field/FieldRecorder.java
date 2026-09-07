@@ -35,16 +35,10 @@ public final class FieldRecorder {
      *  {@code direction}); the value is sanitized by {@link Token#of}. */
     public void onCall(String sessionId, String name, JsonNode arguments,
             ToolResponse response, long durationMs) {
-        String rawKind = null;
-        if (arguments != null) {
-            for (String key : new String[] {"kind", "action", "direction"}) {
-                String value = arguments.path(key).asText(null);
-                if (value != null && !value.isEmpty()) {
-                    rawKind = value;
-                    break;
-                }
-            }
-        }
+        // mcp#42: shared with InFlightCalls, which needs the same value at call START.
+        // Two copies of "which argument names the operation" would drift the day a door
+        // publishes a fourth discriminator.
+        String rawKind = FieldEvent.discriminatorOf(arguments);
         pile.append(new FieldEvent(
             System.currentTimeMillis(),
             Token.of(name),
