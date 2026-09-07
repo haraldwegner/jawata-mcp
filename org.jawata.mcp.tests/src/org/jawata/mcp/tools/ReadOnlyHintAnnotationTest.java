@@ -89,24 +89,39 @@ class ReadOnlyHintAnnotationTest {
     @Test
     @DisplayName("mcp#36: the REAL refactoring tools say they rewrite source")
     void realRefactoringToolsSayTheyRewriteSource() {
-        ToolRegistry registry = new ToolRegistry();
-        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-            new org.jawata.mcp.refactoring.RefactoringChangeCache();
-        // The SAME call the application registers from, so this cannot drift from what ships.
-        List<AbstractTool> real = new java.util.ArrayList<>(
-            RefactoringDoors.all(() -> null, cache));
-        real.addAll(RefactoringDoors.standalone(() -> null, cache));
-        real.forEach(registry::register);
+        // BORROW AND RETURN. ToolRegistry.register publishes into the PROCESS-WIDE
+        // OperationRegistry, so registering the real doors here changes what every later
+        // test in this JVM sees. The first version of this test omitted the restore and
+        // the full suite went red in CureTierTest — composition_over_inheritance derived
+        // RUN instead of CONSIDER, because this test had registered the very operation its
+        // cure names. The class run passed in isolation; only the whole suite, in order,
+        // could see it.
+        org.jawata.mcp.refactoring.OperationRegistry ops =
+            org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
+        org.jawata.mcp.refactoring.OperationRegistry.Snapshot borrowed = ops.snapshot();
+        try {
+            ToolRegistry registry = new ToolRegistry();
+            org.jawata.mcp.refactoring.RefactoringChangeCache cache =
+                new org.jawata.mcp.refactoring.RefactoringChangeCache();
+            // The SAME call the application registers from, so this cannot drift from what
+            // actually ships.
+            List<AbstractTool> real = new java.util.ArrayList<>(
+                RefactoringDoors.all(() -> null, cache));
+            real.addAll(RefactoringDoors.standalone(() -> null, cache));
+            real.forEach(registry::register);
 
-        assertFalse(real.isEmpty(), "the derivation must yield tools, or this proves nothing");
-        for (AbstractTool tool : real) {
-            Map<String, Object> annotations = annotationsOf(registry, tool.getName());
-            assertEquals(Boolean.FALSE, annotations.get("readOnlyHint"),
-                tool.getName() + " rewrites source, so it is not read-only");
-            assertEquals(Boolean.TRUE, annotations.get("destructiveHint"),
-                tool.getName() + " rewrites existing files; reversible is not additive");
-            assertEquals(Boolean.FALSE, annotations.get("openWorldHint"),
-                tool.getName() + " operates on the loaded workspace, a closed domain");
+            assertFalse(real.isEmpty(), "the derivation must yield tools, or this proves nothing");
+            for (AbstractTool tool : real) {
+                Map<String, Object> annotations = annotationsOf(registry, tool.getName());
+                assertEquals(Boolean.FALSE, annotations.get("readOnlyHint"),
+                    tool.getName() + " rewrites source, so it is not read-only");
+                assertEquals(Boolean.TRUE, annotations.get("destructiveHint"),
+                    tool.getName() + " rewrites existing files; reversible is not additive");
+                assertEquals(Boolean.FALSE, annotations.get("openWorldHint"),
+                    tool.getName() + " operates on the loaded workspace, a closed domain");
+            }
+        } finally {
+            ops.restore(borrowed);
         }
     }
 
