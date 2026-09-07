@@ -97,6 +97,24 @@ public final class HeadlessJdtConfig {
             defaults.put("org.eclipse.jdt.ui.importorder", "java;javax;org;com");
             defaults.put("org.eclipse.jdt.ui.ondemandthreshold", "99");
             defaults.put("org.eclipse.jdt.ui.staticondemandthreshold", "99");
+            // jawata-mcp#16 — the ADD-missing-import half of organize_imports.
+            //
+            // `TypeNameMatchCollector.getStringMatchers` reads this and passes it STRAIGHT
+            // into `new StringTokenizer(str, ";")`, so unset means null means NPE — and the
+            // add path is the only one that reaches it, because only an add runs a type-name
+            // SEARCH. That is why removing and sorting always worked and adding never did.
+            //
+            // It was not found by reading OrganizeImportsOperation, JavaPreferencesSettings
+            // or CodeStyleConfiguration — the recorded divergence says so in as many words.
+            // It is in none of them: it is a TYPE FILTER, an IDE convenience for hiding
+            // names from a search, and the import machinery only touches it by going
+            // through the search engine.
+            //
+            // EMPTY is the correct value rather than a placeholder: it tokenizes to nothing,
+            // so no type is filtered out of the search, which is what a headless server
+            // should do. A non-empty default here would silently hide types from every
+            // add-import the product performs.
+            defaults.put("org.eclipse.jdt.ui.typefilter.enabled", "");
 
             // Member-order cache: in the IDE, jdt.ui installs it on activation;
             // headless embedders must install() it themselves or member
