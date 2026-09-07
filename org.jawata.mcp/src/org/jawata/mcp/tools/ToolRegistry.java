@@ -211,11 +211,34 @@ public class ToolRegistry {
     /**
      * Get tool definitions for the tools/list response.
      * Returns a list of tool definitions in MCP format.
+     *
+     * <h2>READ-ONLY TOOLS COME FIRST — jawata-mcp#22, and it is a safety property</h2>
+     *
+     * <p>The published order used to be registration order, which put {@code load_project}
+     * (REPLACES the workspace) and {@code project} (add/remove) in slots 2 and 3, ahead of
+     * every analysis tool this product exists to provide. A client that truncates a tool list
+     * by position — and they do — saw two workspace-mutating tools and almost none of the
+     * analysis. Observed live on 2026-08-15: an agent that could not find a class reached for
+     * the workspace-replacing tool, because that was what it had been shown.</p>
+     *
+     * <p><b>The order is DERIVED, not hand-written.</b> It is the same read-only
+     * classification already published in each tool's {@code annotations}, so there is no
+     * second list to keep in step — this file has repeatedly paid for exactly that. Two tiers
+     * only: read-only, then everything else. A third tier ranking a workspace replacement
+     * against a reversible refactoring would claim a comparison this product has not
+     * established, and {@link #rewritesSource} is deliberately narrower than "mutates".</p>
+     *
+     * <p>The sort is STABLE, so registration order still decides within each tier — the fix
+     * moves the boundary and rearranges nothing else.</p>
      */
     public List<Map<String, Object>> getToolDefinitions() {
         List<Map<String, Object>> definitions = new ArrayList<>();
 
-        for (Tool tool : tools.values()) {
+        List<Tool> published = new ArrayList<>(tools.values());
+        published.sort(java.util.Comparator.comparingInt(
+            t -> isReadOnly(((Tool) t).getName()) ? 0 : 1));
+
+        for (Tool tool : published) {
             Map<String, Object> def = new LinkedHashMap<>();
             def.put("name", tool.getName());
             def.put("description", tool.getDescription());
