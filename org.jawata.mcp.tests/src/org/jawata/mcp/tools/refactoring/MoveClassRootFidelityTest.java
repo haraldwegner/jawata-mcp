@@ -113,6 +113,33 @@ class MoveClassRootFidelityTest {
     }
 
     @Test
+    @DisplayName("mcp#50: a package that exists in NO root is created in the class's own root, not the first")
+    void aBrandNewPackageIsCreatedInTheClassesOwnRoot() throws Exception {
+        // A DIFFERENT BRANCH from the case above, and the one that produced mcp#50. There the
+        // package already existed in another root, so the scan returned it; here it exists
+        // nowhere, so the old code fell through to `firstSourceRoot` — whichever root JDT
+        // happens to report first.
+        //
+        // In a Maven project that is src/main/java, which is bad enough. In a PDE workspace
+        // it is another BUNDLE: jawata-mcp itself loads as ONE JDT project with nine source
+        // roots, one per bundle, and the first is org.jawata.core/src — which is how a class
+        // moved out of org.jawata.mcp was written into org.jawata.core, creating a split
+        // package across two bundles. Same line, two symptoms.
+        Path source = projectRoot.resolve("src/test/java/com/example/RootFidelityTarget.java");
+        ToolResponse response = move(source, "RootFidelityTarget", "com.example.brandnew");
+
+        assertTrue(response.isSuccess(), "got: " + response.getError());
+
+        assertAll(
+            () -> assertTrue(Files.exists(
+                    projectRoot.resolve("src/test/java/com/example/brandnew/RootFidelityTarget.java")),
+                "a new package belongs in the moved class's own root"),
+            () -> assertFalse(Files.exists(
+                    projectRoot.resolve("src/main/java/com/example/brandnew/RootFidelityTarget.java")),
+                "and not in whichever root the model happens to list first"));
+    }
+
+    @Test
     @DisplayName("THE CONTROL — a PRODUCTION class keeps the production root, so the rule is its OWN root")
     void aProductionClassKeepsItsOwnSourceRoot() throws Exception {
         // Without this, a fix that simply preferred src/test/java would pass the case above
