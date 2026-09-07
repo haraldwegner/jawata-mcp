@@ -785,11 +785,48 @@ public class JdtServiceImpl implements IJdtService {
 
     @Override
     public ICompilationUnit getCompilationUnit(Path filePath) {
-        // Try the default project first (fast path, also the only path
-        // pre-Sprint 10), then fan out across the rest of the workspace
-        // so a tool call without projectKey can resolve files in any
-        // loaded project — required for the single-workspace mode where
-        // one jawata process holds N projects.
+        ICompilationUnit cu = lookupAcrossWorkspace(filePath);
+        if (cu != null) {
+            return cu;
+        }
+        // ONE DIRECTORY, TWO SPELLINGS — and the lookup above compares them as strings.
+        //
+        // On macOS /var is a symlink to /private/var, so a path handed in as
+        // /var/folders/…/x and the same directory as the resource layer knows it,
+        // /private/var/folders/…/x, are unequal to every comparison in this product while
+        // naming one file. Measured in the v4.1.1 matrix run: 2376 log lines carry the first
+        // spelling and 1906 the second, in the SAME run — a project loaded from /var while
+        // its workspace initialised at /private/var. Linux has no such symlink for the temp
+        // directory, so both spellings are /tmp/… and the question never arises: the two
+        // fork-slice rows that fail on macOS pass there in the same CI run.
+        //
+        // THIS IS THE THIRD INSTANCE OF ONE FRAGILITY, and the cure is copied rather than
+        // invented: HostPathsImpl.relativizeOrAbsolute does exactly this two-step for the
+        // DISPLAY side, and its comment records the first two (a packaged resident leaking
+        // its mount path at v2.14.1, and nineteen Windows parity tests at Sprint 28a). What
+        // was missing is the same step where paths are compared for IDENTITY.
+        //
+        // Safe by construction: it runs only where the lookup has already failed and would
+        // have returned null, so it can turn a miss into a hit and never a hit into a miss.
+        // Canonicalising touches the filesystem and can fail on a path that does not exist,
+        // which is why it is attempted second and never throws.
+        Path real = toRealQuietly(filePath);
+        if (!real.equals(filePath)) {
+            cu = lookupAcrossWorkspace(real);
+            if (cu != null) {
+                return cu;
+            }
+        }
+        log.debug("Compilation unit not found for: {}", filePath);
+        return null;
+    }
+
+    /**
+     * The default project first (the fast path, and the only path pre-Sprint 10), then the
+     * rest of the workspace — so a tool call without a {@code projectKey} can resolve files
+     * in any loaded project, which single-workspace mode requires.
+     */
+    private ICompilationUnit lookupAcrossWorkspace(Path filePath) {
         if (javaProject != null) {
             ICompilationUnit cu = lookupCompilationUnit(javaProject, filePath);
             if (cu != null) return cu;
@@ -799,8 +836,16 @@ public class JdtServiceImpl implements IJdtService {
             ICompilationUnit cu = lookupCompilationUnit(other.javaProject(), filePath);
             if (cu != null) return cu;
         }
-        log.debug("Compilation unit not found for: {}", filePath);
         return null;
+    }
+
+    /** Canonical form of {@code path}, or {@code path} itself when it cannot be resolved. */
+    private static Path toRealQuietly(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (java.io.IOException | RuntimeException unresolvable) {
+            return path;
+        }
     }
 
     /**
