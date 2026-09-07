@@ -22,10 +22,21 @@ public class ToolRegistry {
      * marked {@code readOnlyHint} so restricted client modes (Cursor Ask
      * mode) can allow them without switching to an agent mode. Name-driven:
      * the four detect prefixes plus the read-only tools whose names match no
-     * prefix. Anything that mutates source, project configuration, build
-     * output, or workspace state stays unannotated — when in doubt, leave a
-     * tool unannotated (a missing hint is "unknown", a wrong hint lets a
-     * restricted mode mutate the workspace).
+     * prefix.
+     *
+     * <p><b>This paragraph used to end "anything that mutates … stays unannotated —
+     * when in doubt, leave a tool unannotated (a missing hint is unknown)". mcp#36
+     * overturned that, so it is corrected here rather than left standing.</b> Leaving a
+     * mutator unannotated does not make a client cautious; it makes the client guess,
+     * and measured in the Cursor dogfood the guess was not even stable across one
+     * session. A missing hint reads as "unknown" to a spec reader and as "probably fine"
+     * to a heuristic. Every tool is annotated now — see {@link #annotationsFor} — and the
+     * caution the old rule wanted is stated as {@code destructiveHint} rather than
+     * implied by silence.</p>
+     *
+     * <p>What has NOT changed is the weakness: which tools are read-only is decided from
+     * these NAME literals, and a policy expressed as names fails open when a tool is
+     * renamed or added, because no reference-updating refactoring touches a string.</p>
      */
     private static final Set<String> READ_ONLY_PREFIXES =
         Set.of("find_", "get_", "analyze_", "search_");
