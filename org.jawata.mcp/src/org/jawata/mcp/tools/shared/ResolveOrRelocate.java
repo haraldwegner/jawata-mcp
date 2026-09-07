@@ -93,7 +93,8 @@ public final class ResolveOrRelocate {
                         + (members.size() >= MAX_MEMBERS_LISTED ? ", …" : "") + ".";
                 return ToolResponse.symbolNotFound(
                     "'" + typePart + "' exists, but it has no member '" + member(name)
-                        + "' — the type did not move; that member is not on it." + has);
+                        + "' — the type did not move; that member is not on it." + has,
+                    name);
             }
             if (typePart != null) {
                 // A member form whose TYPE would not resolve. We know we could not
@@ -102,11 +103,13 @@ public final class ResolveOrRelocate {
                 // we cannot prove, so state only what was actually observed.
                 return ToolResponse.symbolNotFound(
                     "'" + name + "' did not resolve in " + scopeLabel + " scope: no type '"
-                        + typePart + "' was found, and nothing similarly named either.");
+                        + typePart + "' was found, and nothing similarly named either.",
+                    name);
             }
             return ToolResponse.symbolNotFound(
                 "'" + name + "' not found in " + scopeLabel + " scope, and nothing "
-                    + "similarly named exists — it is gone, not moved.");
+                    + "similarly named exists — it is gone, not moved.",
+                name);
         }
         String best = candidates.get(0);
         String others = candidates.size() > 1

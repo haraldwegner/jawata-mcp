@@ -237,7 +237,16 @@ public final class WorkspaceIdentity {
             type = type.substring(0, params);
         }
         type = type.trim();
-        return type.contains(".") && !type.endsWith(".") ? type : null;
+        // WHITESPACE IS THE DISCRIMINATOR, and it is here because the live two-resident probe
+        // found prose reaching this method: `ToolResponse.symbolNotFound` takes a MESSAGE, and
+        // its callers pass sentences like "'com.foo.Bar' not found in workspace scope … it is
+        // gone, not moved." An earlier version refused that sentence only because it happened
+        // to end in a full stop — the right answer for the wrong reason, and a sentence
+        // without trailing punctuation would have been asked about verbatim.
+        if (type.isEmpty() || type.chars().anyMatch(Character::isWhitespace)) {
+            return null;
+        }
+        return type.contains(".") && !type.endsWith(".") && !type.startsWith(".") ? type : null;
     }
 
     /** The workspace sentence without the sibling tail, so the peek's answer can replace it. */

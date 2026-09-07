@@ -325,24 +325,110 @@ class WorkspaceIdentityTest {
     }
 
     @Test
-    @DisplayName("mcp#27 THE WIRING - the SYMBOL_NOT_FOUND response itself carries the answer")
-    void theMissPathItselfAsksTheSiblings() {
-        // Every test above drives elsewhereHint(String) directly, which proves the OVERLOAD
-        // works and says nothing about whether anything calls it. That gap is this project's
-        // recorded three-time failure: a capability built, tested, and reached by nothing in
-        // the live process. This one enters through the miss a client actually receives.
+    @DisplayName("mcp#27: the ONE-argument form does not peek, because it has no symbol")
+    void theOneArgumentFormCannotAsk() {
+        // This test asserted the opposite until the live probe corrected it. The parameter is
+        // a MESSAGE; treating it as a symbol is what made every production miss fall back
+        // silently. The honest behaviour for a caller with no name in hand is to name the
+        // siblings and stop.
+        twoSiblings();
+        java.util.concurrent.atomic.AtomicInteger asked =
+            new java.util.concurrent.atomic.AtomicInteger();
+        WorkspaceIdentity.installPeek(fqn -> {
+            asked.incrementAndGet();
+            return held("orb-strategy", "p");
+        });
+
+        ToolResponse response = ToolResponse.symbolNotFound("No symbol found at position");
+
+        assertAll(
+            () -> assertEquals(0, asked.get(), "nothing to ask about"),
+            () -> assertTrue(response.getError().getHint().contains("Running here:"),
+                "it still names them: " + response.getError().getHint()));
+    }
+
+    @org.junit.jupiter.api.extension.RegisterExtension
+    org.jawata.mcp.fixtures.TestProjectHelper projectHelper =
+        new org.jawata.mcp.fixtures.TestProjectHelper();
+
+    @Test
+    @DisplayName("mcp#27 THE PRODUCTION SEAM - a real FQN miss carries the sibling's answer")
+    void anFqnMissAsksTheSiblings() throws Exception {
+        // The live two-resident probe found the peek never firing: it hung off
+        // ToolResponse.symbolNotFound, whose parameter is a MESSAGE, while a symbol-form miss
+        // takes a different route entirely (ResolveOrRelocate). Driving the TOOL rather than
+        // the response builder is what makes this the wiring assertion - the version this
+        // replaced drove the builder, passed, and said nothing about any real caller.
+        //
+        // It lives in THIS class because the identity reset is a package-private test hook,
+        // and widening it to public so a test in another package could call it would put a
+        // test's convenience into the bundle's API.
+        org.jawata.core.JdtServiceImpl service = projectHelper.loadProjectCopy("simple-maven");
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/tmp/jawata-mcp")));
+        WorkspaceIdentity.installSiblings(() -> List.of(
+            new SiblingRegistry.Sibling("orb-strategy", 8082, "t")));
+        WorkspaceIdentity.installPeek(fqn -> new SiblingPeek.Sweep(
+            java.util.Optional.of(new SiblingPeek.Found("orb-strategy", "com-jats2-model")),
+            1, 1, false));
+
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            new ObjectMapper().createObjectNode();
+        args.put("kind", "references");
+        args.put("symbol", "com.nowhere.NotHere");
+        ToolResponse response =
+            new org.jawata.mcp.tools.FindRefsTool(() -> service).execute(args);
+
+        assertFalse(response.isSuccess(), "the symbol really is absent here");
+        String hint = response.getError().getHint();
+        assertTrue(hint.contains("orb-strategy") && hint.contains("com-jats2-model"),
+            "the miss must carry the sibling's answer, not merely name it: " + hint);
+    }
+
+    @Test
+    @DisplayName("mcp#27 THE PROBE'S FINDING - a MESSAGE is never asked about")
+    void proseIsNotASymbol() {
+        // symbolNotFound's one-argument parameter is a MESSAGE, not a symbol, and every
+        // production caller passes prose. The live two-resident probe found the peek silently
+        // falling back on every real miss for exactly this reason. These are the sentences
+        // ResolveOrRelocate actually emits, verbatim.
+        twoSiblings();
+        java.util.concurrent.atomic.AtomicInteger asked =
+            new java.util.concurrent.atomic.AtomicInteger();
+        WorkspaceIdentity.installPeek(fqn -> {
+            asked.incrementAndGet();
+            return held("orb-strategy", "p");
+        });
+
+        ToolResponse.symbolNotFound(
+            "'com.probe.beta.OnlyInBeta' not found in workspace scope, and nothing similarly"
+                + " named exists - it is gone, not moved.");
+        ToolResponse.symbolNotFound("No symbol found at position");
+
+        assertAll(
+            () -> assertEquals(0, asked.get(),
+                "a sentence must never be sent to a sibling as a type name"),
+            // ...and the reason must be the WHITESPACE, not a trailing full stop. A sentence
+            // with its punctuation stripped is still a sentence.
+            () -> assertNull(WorkspaceIdentity.askableTypeName(
+                "'com.probe.beta.OnlyInBeta' not found in workspace scope")));
+    }
+
+    @Test
+    @DisplayName("mcp#27: the caller that HOLDS the name gets the peek")
+    void theTwoArgumentFormAsks() {
+        // The cure for the finding above: a caller with the resolved name in hand passes it,
+        // and only then is there something to ask about.
         twoSiblings();
         WorkspaceIdentity.installPeek(fqn -> held("orb-strategy", "com-jats2-model"));
 
-        ToolResponse response = ToolResponse.symbolNotFound("com.jats2.model.Order");
+        ToolResponse response = ToolResponse.symbolNotFound(
+            "'com.jats2.model.Order' not found in workspace scope.", "com.jats2.model.Order");
 
-        assertFalse(response.isSuccess(), "still a miss: " + response.getError());
         String hint = response.getError().getHint();
         assertAll(
             () -> assertTrue(hint.contains("orb-strategy"), "got: " + hint),
             () -> assertTrue(hint.contains("com-jats2-model"), "got: " + hint),
-            // The original not-found guidance is not thrown away to make room for it.
-            () -> assertTrue(hint.contains("own jawata server"), "got: " + hint));
+            () -> assertFalse(hint.contains("Running here:"), "got: " + hint));
     }
 
     @Test

@@ -209,14 +209,34 @@ public class ToolResponse {
      * when the truth is "does not exist HERE" — the enriched hint sends the agent
      * to its other workspace servers instead of to a wrong conclusion.</p>
      */
-    public static ToolResponse symbolNotFound(String symbol) {
-        ErrorInfo base = ErrorInfo.symbolNotFound(symbol);
-        // mcp#27 stage 1: this miss knows WHICH symbol was not found, so the hint can ASK the
-        // other residents rather than only naming them. This is the miss path the peek is for
-        // — an FQN that resolved nowhere here — and it is the only elsewhereHint caller that
-        // has a symbol to ask about: the search-steering callers hold a PATTERN, which no
-        // sibling can answer by resolving a type.
-        String elsewhere = WorkspaceIdentity.elsewhereHint(symbol);
+    public static ToolResponse symbolNotFound(String message) {
+        return symbolNotFound(message, null);
+    }
+
+    /**
+     * The same not-found, told WHICH name failed to resolve (mcp#27 stage 1).
+     *
+     * <p>THE PARAMETER OF THE ONE-ARGUMENT FORM IS A MESSAGE, NOT A SYMBOL, and every one of
+     * its production callers passes prose — {@code "No symbol found at position"},
+     * {@code "'com.foo.Bar' not found in workspace scope … it is gone, not moved."}. That is
+     * why the sibling peek could not simply be hung off it: it was handed a sentence and had
+     * nothing to ask another resident about. Measured live against two residents, not
+     * reviewed — a unit test that calls the one-argument form with an FQN passes while every
+     * real caller falls back.</p>
+     *
+     * <p>So a caller that HOLDS the resolved name passes it here as well, and only then can
+     * the miss become "not here — workspace X has it". A caller that has only a message keeps
+     * the one-argument form and gets the naming-only hint, which is the honest answer when
+     * there is nothing to ask about.</p>
+     *
+     * @param message what the human reads — unchanged, and still the error's message
+     * @param symbol  the name that failed to resolve, or null when the caller has none
+     */
+    public static ToolResponse symbolNotFound(String message, String symbol) {
+        ErrorInfo base = ErrorInfo.symbolNotFound(message);
+        String elsewhere = symbol == null
+            ? WorkspaceIdentity.elsewhereHint()
+            : WorkspaceIdentity.elsewhereHint(symbol);
         if (elsewhere == null) {
             return error(base);
         }
