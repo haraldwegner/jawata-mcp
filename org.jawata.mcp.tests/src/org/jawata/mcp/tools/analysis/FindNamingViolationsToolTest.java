@@ -23,12 +23,94 @@ class FindNamingViolationsToolTest {
 
     private FindNamingViolationsTool tool;
     private ObjectMapper objectMapper;
+    /** Kept so a test can read the FILE a row points at — the only way to see a base error. */
+    private JdtServiceImpl service;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProject("simple-maven");
+        service = helper.loadProject("simple-maven");
         tool = new FindNamingViolationsTool(() -> service);
         objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * THE REPORTED LINE IS 1-BASED — checked against the file, and SCOPED to the rows where
+     * that claim is true.
+     *
+     * <p>This tool emitted {@code getLineNumber(...) - 1} at all six of its emission sites, so
+     * every {@code naming} row a caller read sat one line above its subject. It shares a
+     * response with {@code findings} rows built from {@code Finding}, which documents 1-based,
+     * so one {@code find_quality_issue} answer carried two bases. C8b round 4 measured it; a
+     * sibling merged producer, {@code largeClasses}, never pre-converted, which is what makes
+     * 1-based the convention here rather than a preference.</p>
+     *
+     * <p><b>The scope is the point, and it is why this is not the whole-catalogue check that
+     * was written and thrown away.</b> Four of the six sites address {@code
+     * node.getStartPosition()} — a declaration's start INCLUDES its javadoc and annotations,
+     * so the identifier is legitimately not on that line and "the name is on the line" would
+     * report a defect where there is none. The two FIELD sites address the fragment itself,
+     * where the name genuinely is at that position. Only those rows are checked, and the rest
+     * are counted so a reader can see what is NOT covered rather than assume it is.</p>
+     */
+    @Test
+    @DisplayName("a field violation's line is 1-based: the identifier is on it")
+    void theReportedLineIsOneBasedForFieldRows() throws Exception {
+        // THE WHOLE PROJECT, and each row read against ITS OWN file. Scoping this to one
+        // fixture was the first attempt and its own proof-of-life refused it: that file's
+        // three violations are all declaration-start addressed, so the test asserted nothing
+        // and said so rather than passing. Which fixture happens to carry a badly-named FIELD
+        // is not something this test should depend on.
+        ToolResponse r = tool.execute(objectMapper.createObjectNode());
+        assertTrue(r.isSuccess(), "the detector must run; got: " + r.getError());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows =
+            (List<Map<String, Object>>) getData(r).get("violations");
+        assertTrue(rows != null && !rows.isEmpty(),
+            "PROOF OF LIFE: the project must produce violations, or this checks nothing");
+
+        int checked = 0;
+        for (Map<String, Object> row : rows) {
+            java.nio.file.Path file = service.getProjectRoot()
+                .resolve(String.valueOf(row.get("filePath"))).normalize();
+            if (!java.nio.file.Files.exists(file)) {
+                continue;
+            }
+            List<String> lines = java.nio.file.Files.readAllLines(file);
+            int line = (Integer) row.get("line");
+            String name = String.valueOf(row.get("name"));
+            assertTrue(line >= 1 && line <= lines.size(),
+                "a 1-based line must be inside the file: " + name + " at " + line);
+            checked++;
+
+            String at = lines.get(line - 1).strip();
+            // A DECLARATION'S FIRST LINE IS NEVER BLANK, which is what makes this sound in the
+            // direction that matters: `getStartPosition()` is the javadoc, annotation or
+            // modifier that opens the declaration, so a correct 1-based row always lands on
+            // text. One line short lands ABOVE that — on the blank line or closing brace that
+            // usually separates members — which is exactly what the audit measured: ten of ten
+            // rows on blank lines before the fix.
+            assertFalse(at.isEmpty(),
+                "'" + name + "' is reported on 1-based line " + line + ", which is BLANK."
+                    + " The line below reads: "
+                    + (line < lines.size() ? lines.get(line).strip() : "(end of file)")
+                    + "\n  A declaration's first line is never blank, so a blank one means the"
+                    + " row is one short — the 0-based base this tool emitted at all six"
+                    + " sites, while the `findings` rows it shares a response with are 1-based.");
+
+            // Where the tool addresses the FRAGMENT rather than a declaration start, the
+            // identifier really is at that position and the stronger claim holds.
+            String kind = String.valueOf(row.get("kind"));
+            if ("field".equals(kind) || "constant".equals(kind)) {
+                assertTrue(at.contains(name),
+                    "'" + name + "' is a field row, which addresses the fragment itself, so"
+                        + " the identifier must be ON its line; that line reads: " + at);
+            }
+        }
+        int drove = checked;
+        assertTrue(checked >= 3,
+            () -> "only " + drove + " violation rows were read against their files; with that"
+                + " few an empty failure list says nothing about the coordinate base");
     }
 
     @SuppressWarnings("unchecked")

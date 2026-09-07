@@ -150,14 +150,14 @@ public class FindNamingViolationsTool extends AbstractTool {
                     @Override
                     public boolean visit(TypeDeclaration node) {
                         checkName(node.getName().getIdentifier(), "class", PASCAL_CASE, "PascalCase",
-                            ast.getLineNumber(node.getStartPosition()) - 1, formattedPath, violations);
+                            ast.getLineNumber(node.getStartPosition()), formattedPath, violations);
                         return true;
                     }
 
                     @Override
                     public boolean visit(EnumDeclaration node) {
                         checkName(node.getName().getIdentifier(), "enum", PASCAL_CASE, "PascalCase",
-                            ast.getLineNumber(node.getStartPosition()) - 1, formattedPath, violations);
+                            ast.getLineNumber(node.getStartPosition()), formattedPath, violations);
                         return true;
                     }
 
@@ -165,7 +165,7 @@ public class FindNamingViolationsTool extends AbstractTool {
                     public boolean visit(MethodDeclaration node) {
                         if (!node.isConstructor()) {
                             checkName(node.getName().getIdentifier(), "method", CAMEL_CASE, "camelCase",
-                                ast.getLineNumber(node.getStartPosition()) - 1, formattedPath, violations);
+                                ast.getLineNumber(node.getStartPosition()), formattedPath, violations);
                         }
                         return true;
                     }
@@ -180,10 +180,10 @@ public class FindNamingViolationsTool extends AbstractTool {
                                 String name = varFrag.getName().getIdentifier();
                                 if (isConstant) {
                                     checkName(name, "constant", UPPER_SNAKE_CASE, "UPPER_SNAKE_CASE",
-                                        ast.getLineNumber(varFrag.getStartPosition()) - 1, formattedPath, violations);
+                                        ast.getLineNumber(varFrag.getStartPosition()), formattedPath, violations);
                                 } else {
                                     checkName(name, "field", CAMEL_CASE, "camelCase",
-                                        ast.getLineNumber(varFrag.getStartPosition()) - 1, formattedPath, violations);
+                                        ast.getLineNumber(varFrag.getStartPosition()), formattedPath, violations);
                                 }
                             }
                         }
@@ -193,7 +193,7 @@ public class FindNamingViolationsTool extends AbstractTool {
                     @Override
                     public boolean visit(SingleVariableDeclaration node) {
                         checkName(node.getName().getIdentifier(), "parameter", CAMEL_CASE, "camelCase",
-                            ast.getLineNumber(node.getStartPosition()) - 1, formattedPath, violations);
+                            ast.getLineNumber(node.getStartPosition()), formattedPath, violations);
                         return false;
                     }
                 });

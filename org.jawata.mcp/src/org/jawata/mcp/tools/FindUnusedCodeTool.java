@@ -245,13 +245,28 @@ public class FindUnusedCodeTool extends AbstractTool {
 
                 if (node instanceof VariableDeclarationFragment vdf) {
                     // 1-BASED, BOTH, because that is what `Finding` documents and what the
-                    // single conversion site subtracts from. This tool was the ONE producer
-                    // that pre-converted — `getLineNumber(...) - 1` plus a raw
-                    // `getColumnNumber(...)`, which JDT answers 0-based — so once C8b round 2
-                    // widened the cure join past the `findings` key, every `unused` cure was
-                    // decremented a SECOND time and named the line above the member.
-                    // `CodeAddress`'s own javadoc describes that outcome one paragraph from
-                    // the code that caused it, written about the other factory.
+                    // single conversion site subtracts from. This tool pre-converted —
+                    // `getLineNumber(...) - 1` plus a raw `getColumnNumber(...)`, which JDT
+                    // answers 0-based — so once C8b round 2 widened the cure join past the
+                    // `findings` key, every `unused` cure was decremented a SECOND time and
+                    // named the line above the member. `CodeAddress`'s own javadoc describes
+                    // that outcome one paragraph from the code that caused it, written about
+                    // the other factory.
+                    //
+                    // IT WAS NOT THE ONLY ONE, AND THE COMMIT THAT FIXED IT SAID IT WAS.
+                    // "The sole outlier" was a population claim made by reading four detectors
+                    // instead of searching for the expression — the same mistake that commit
+                    // was correcting one section earlier, repeated in the correction. Searched
+                    // properly the pre-decrement appears at 29 sites in 14 files, and MOST are
+                    // right: the base a coordinate needs depends on where it is GOING, and a
+                    // value bound for a door is 0-based and correctly pre-converted
+                    // (`ApplyQuickFixTool`, `ReplaceTempWithQueryTool`, `SplitPhaseTool`).
+                    //
+                    // The population that matters is the rows `FindQualityIssueTool` MERGES
+                    // into one response, where a 0-based row would sit beside 1-based
+                    // `findings` rows. Of its five merge keys: `largeClasses` never
+                    // pre-converted, `cycles` emits no line, and the three that did — here,
+                    // `violations`, `issues` — are all 1-based as of C8b round 4.
                     int line = lineOf(ast, vdf.getName());
                     int column = columnOf(ast, vdf.getName());
                     item.put("line", line);
@@ -279,8 +294,8 @@ public class FindUnusedCodeTool extends AbstractTool {
      *
      * <p>Wrapped rather than inlined so the base is stated ONCE instead of at each of the two
      * emission sites. Two sites each spelling their own arithmetic is how this tool came to
-     * disagree with every other finding producer and go unnoticed for as long as nothing
-     * joined its rows to a door.</p>
+     * disagree with the rows it is merged beside, and go unnoticed for as long as nothing
+     * joined those rows to a door.</p>
      */
     private static int lineOf(CompilationUnit ast, ASTNode name) {
         return ast.getLineNumber(name.getStartPosition());

@@ -268,8 +268,19 @@ public class FindPossibleBugsTool extends AbstractTool {
         issue.put("severity", severity);
         issue.put("filePath", service.getPathUtils().formatPath(file));
 
-        int line = ast.getLineNumber(node.getStartPosition()) - 1;
-        int column = ast.getColumnNumber(node.getStartPosition());
+        // 1-BASED, BOTH — the base every row merged into a `find_quality_issue` response
+        // carries. `getLineNumber` is already 1-based and `getColumnNumber` is not, which is
+        // why the two read asymmetrically here rather than by oversight.
+        //
+        // This pair was character-for-character the one C8b round 3 cured in
+        // `FindUnusedCodeTool` while calling that tool "the sole outlier" — a population
+        // claim made by reading four detectors instead of searching the expression. Round 4
+        // found it. The census that settles it is in `FindQualityIssueTool.RESULT_LIST_KEYS`:
+        // of the five merged keys, `largeClasses` never pre-converted, `cycles` emits no line,
+        // and the three that did — `unusedItems`, `violations`, `issues` — are now 1-based
+        // like the `findings` rows they are merged beside.
+        int line = ast.getLineNumber(node.getStartPosition());
+        int column = ast.getColumnNumber(node.getStartPosition()) + 1;
         issue.put("line", line);
         issue.put("column", column);
 
