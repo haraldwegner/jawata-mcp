@@ -155,12 +155,21 @@ class PerformedRefactoringCountTest {
      * Everything the product publishes that can perform a refactoring, in the spelling a
      * caller would type.
      *
-     * <p>The door half is DERIVED — {@link RefactoringDoors#all} is the same call the
-     * application registers from, and each door is asked for its own discriminator, so
-     * {@code hierarchy} renders {@code direction=} rather than a guess. The standalone half
-     * is a NAMED set of one, because exactly one Fowler row's operation is not a front-door
-     * kind: {@code rename_symbol}, which performs rows 39 and 40. It is instantiated rather
-     * than spelled, so a rename of the tool fails here rather than drifting.</p>
+     * <p><b>BOTH halves are DERIVED, and the first version of this method got that wrong.</b>
+     * The door half comes from {@link RefactoringDoors#all}, the same call the application
+     * registers from, and each door is asked for its own discriminator so {@code hierarchy}
+     * renders {@code direction=} rather than a guess. The standalone half — the tools that
+     * perform a refactoring without dispatching on a discriminator, of which exactly one
+     * carries a Fowler row ({@code rename_symbol}, rows 39 and 40) — now comes from
+     * {@link RefactoringDoors#standalone}, which the application registers from too.</p>
+     *
+     * <p><b>It used to say {@code new RenameSymbolTool(...)}, and a C9 architect watch measured
+     * what that cost.</b> Sixty rows were counted from the shipped list and two were counted
+     * from a tool this test CONSTRUCTED — so deleting the registration would have left the test
+     * green while {@code rename_symbol} shipped to nobody. C9's clause is "counted from the
+     * shipped tool list", and for two rows it was not. This is the vacuity shape the whole
+     * checkpoint is about, in the test written to close a deviation about it, and no gate could
+     * have caught it: the vacuous half passes.</p>
      */
     private static Set<String> shippedOperations() {
         Supplier<IJdtService> none = () -> null;
@@ -172,7 +181,9 @@ class PerformedRefactoringCountTest {
                 ops.add(door.getName() + " " + discriminator + "=" + kind);
             }
         }
-        ops.add(new RenameSymbolTool(none, cache).getName());
+        for (AbstractTool tool : RefactoringDoors.standalone(none, cache)) {
+            ops.add(tool.getName());
+        }
         return ops;
     }
 

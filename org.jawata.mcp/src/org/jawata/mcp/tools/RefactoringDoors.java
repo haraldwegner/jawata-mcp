@@ -73,4 +73,34 @@ public final class RefactoringDoors {
             new DataTool(service, cache),
             new ApplyCleanupTool(service, cache));
     }
+
+    /**
+     * The standalone refactoring tools — the ones that PERFORM a refactoring without
+     * dispatching on a discriminator, so they are not front doors and {@link #all} does not
+     * carry them.
+     *
+     * <p><b>Why this is here rather than in a class of its own, stated because the class name
+     * says "Doors" and these are not doors.</b> What this class actually owns is <i>the
+     * refactoring tools the application registers</i>, and the door set is the large half of
+     * that. Splitting the small half into a second file would put two halves of one
+     * registration in two places, which is the shape the paragraphs above exist to remove.</p>
+     *
+     * <p><b>What it cost while these two were registered inline — measured at C9.</b>
+     * {@code PerformedRefactoringCountTest} counts Fowler's 62 by joining each catalogue row
+     * against what the product publishes, and it took the door half from {@link #all} and the
+     * {@code rename_symbol} half from a tool IT CONSTRUCTED. So rows 39 and 40 counted toward
+     * 62 on the strength of a tool the test instantiated rather than one the application
+     * registers: deleting the registration would have left the test green while
+     * {@code rename_symbol} shipped to nobody. Sixty rows were counted from the shipped list
+     * and two were not, in the test written to close a deviation about exactly that. An
+     * architect watch found it; nothing else could have, because the vacuous half passes.</p>
+     *
+     * <p>New instances each call, for the reason {@link #all} gives.</p>
+     */
+    public static List<AbstractTool> standalone(Supplier<IJdtService> service,
+                                                RefactoringChangeCache cache) {
+        return List.of(
+            new RenameSymbolTool(service, cache),
+            new OrganizeImportsTool(service, cache));
+    }
 }

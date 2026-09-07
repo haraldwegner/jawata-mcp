@@ -5,32 +5,24 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
-import org.jawata.mcp.knowledge.ExperienceAdvisor;
-import org.jawata.mcp.knowledge.ExperienceStore;
-import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
 import org.jawata.mcp.knowledge.CatalogueSources;
+import org.jawata.mcp.knowledge.ExperienceAdvisor;
+import org.jawata.mcp.knowledge.ExperienceStore;
+import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AnalyzeTool;
-import org.jawata.mcp.tools.ApplyCleanupTool;
 import org.jawata.mcp.tools.ApplyNullAnnotationsTool;
-import org.jawata.mcp.tools.ChangeMethodSignatureTool;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.DebugTool;
-import org.jawata.mcp.tools.ConvertAnonymousToLambdaTool;
-import org.jawata.mcp.tools.DataTool;
 import org.jawata.mcp.tools.ExperienceTool;
-import org.jawata.mcp.tools.ExtractTool;
 import org.jawata.mcp.tools.FindDuplicateCodeTool;
 import org.jawata.mcp.tools.FindFieldWritesTool;
 import org.jawata.mcp.tools.FindModernizationTool;
@@ -44,35 +36,29 @@ import org.jawata.mcp.tools.GetCallHierarchyTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.GoToDefinitionTool;
 import org.jawata.mcp.tools.HealthCheckTool;
-import org.jawata.mcp.tools.InlineTool;
 import org.jawata.mcp.tools.InspectTool;
 import org.jawata.mcp.tools.LoadProjectTool;
-import org.jawata.mcp.tools.HierarchyTool;
-import org.jawata.mcp.tools.MoveMethodTool;
-import org.jawata.mcp.tools.MoveTool;
-import org.jawata.mcp.tools.OrganizeImportsTool;
 import org.jawata.mcp.tools.ProfileTool;
 import org.jawata.mcp.tools.ProjectTool;
 import org.jawata.mcp.tools.QuickFixTool;
-import org.jawata.mcp.tools.RefactorToPatternTool;
 import org.jawata.mcp.tools.RefactoringTool;
 import org.jawata.mcp.tools.RefreshWorkspaceTool;
-import org.jawata.mcp.tools.RenameSymbolTool;
-import org.jawata.mcp.tools.ReplaceDuplicatesTool;
 import org.jawata.mcp.tools.RunTestsTool;
 import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.ToolRegistry;
 import org.jawata.mcp.tools.ValidateSyntaxTool;
 import org.jawata.mcp.tools.build.DependencyTool;
-import org.jawata.mcp.tools.codegen.GenerateTool;
 import org.jawata.mcp.tools.workflow.FormatTool;
 import org.jawata.mcp.transport.HttpTransport;
-import org.jawata.mcp.transport.StdioTransport;
 import org.jawata.mcp.transport.ResolvedToken;
+import org.jawata.mcp.transport.StdioTransport;
 import org.jawata.mcp.transport.Transport;
 import org.jawata.mcp.transport.TransportConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * OSGi application entry point for JAWATA MCP server.
@@ -1030,9 +1016,15 @@ public class JawataApplication implements IApplication {
         toolRegistry.register(new FindFieldWritesTool(() -> jdtService));
         toolRegistry.register(new FindTestsTool(() -> jdtService));
 
-        // Refactoring tools
-        toolRegistry.register(new RenameSymbolTool(() -> jdtService, refactoringChangeCache));
-        toolRegistry.register(new OrganizeImportsTool(() -> jdtService, refactoringChangeCache));
+        // Refactoring tools that dispatch on nothing — same source as the doors below, so a
+        // gate can join against what is REGISTERED rather than against a tool it constructed
+        // itself. C9 found the difference: the Fowler count took `rename_symbol` from a fresh
+        // instance, so deleting this registration would have left it green.
+        for (org.jawata.mcp.tools.AbstractTool tool
+                : org.jawata.mcp.tools.RefactoringDoors.standalone(
+                    () -> jdtService, refactoringChangeCache)) {
+            toolRegistry.register(tool);
+        }
 
         // S8b step 8: THE NINE REFACTORING DOORS COME FROM ONE SOURCE.
         // They used to be nine scattered register(...) calls here, and three test
