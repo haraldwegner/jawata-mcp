@@ -4,9 +4,13 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,55 +21,50 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Deliverable D2 asks for "one list of every response shape, each marked carries the
  * stamp or cannot degrade". That is unmeasurable until the set is derived, so this class
- * is the derivation and its output.</p>
+ * is the derivation and its committed output.</p>
  *
- * <h2>WHAT THIS COUNTS, AND WHAT IT DOES NOT — read this before using the number</h2>
+ * <h2>THE UNIT IS DOOR x PUBLISHED KIND, not the door</h2>
  *
- * <p>It counts the <b>nine refactoring doors</b>, because {@link RefactoringDoors} is the
- * only registration list a test can reach. The product publishes <b>42</b> tools: the
- * analysis family, the store, debug, profile and the rest register directly in
- * {@code JawataApplication.registerTools()}, which is <b>private, has one caller, and
- * exposes no accessor</b> — so nothing outside the application can ask which tools ship,
- * and every test hand-registers whatever it needs.</p>
+ * <p>An earlier version of this class counted the nine refactoring doors and called that
+ * the population. An audit refused it, correctly: a door DISPATCHES, and each kind it
+ * publishes puts a different payload in {@code data}. Nine is not the number of shapes,
+ * it is the number of dispatchers. The justification offered for nine — "every tool
+ * returns one by its own signature" — proves the opposite of what it was used for: the
+ * signature returns {@code ToolResponse} for all 42 published tools, so a type-system
+ * argument yields ONE, never nine.</p>
  *
- * <p><b>So Stage 2b must NOT compare its marked count against this number.</b> Nine is a
- * subset with a known boundary, not the response-shape population. Completing the census
- * needs the registration seam — extract the list out of {@code registerTools()} into
- * something a caller can invoke with test dependencies — already homed as the plan's
- * Stage 9 work and as the architect's standing finding that nothing can ask which tools
- * ship.</p>
+ * <p>The finer unit needs no new seam: {@link KindedTool#publishedKinds()} is a public
+ * interface method the nine doors implement. The population is one loop further in.</p>
  *
- * <p>The boundary is stated here rather than left implicit because a count that measures a
- * subset under a whole-population name is this sprint's own recurring defect, and a 9 that
- * reads as "every response shape" would be exactly that.</p>
+ * <h2>WHAT THIS COUNTS, AND WHAT IT DOES NOT</h2>
  *
- * <h2>What a response SHAPE is, and why the population is the doors</h2>
+ * <p>It covers the kinds of the nine REFACTORING doors, because {@link RefactoringDoors}
+ * is the only registration list a test can reach. The product publishes <b>42</b> tools;
+ * the analysis family, the store, debug and profile register directly inside
+ * {@code JawataApplication.registerTools()}, which is private with one caller and no
+ * accessor. Completing the census needs that registration seam, already homed to the
+ * plan's Stage 9.</p>
  *
- * <p>There is exactly ONE response type — {@code ToolResponse}, carrying success, data,
- * error and meta. A "shape" is therefore the payload a tool puts in {@code data}, not a
- * class per tool. Every tool returns one by its own signature, so the population is the
- * set of tools, derived from {@link RefactoringDoors} — the same call
- * {@code JawataApplication.registerTools()} registers from, so a door that stops
- * shipping stops counting HERE too.</p>
+ * <p><b>So Stage 2b marks against THIS number for the refactoring surface only</b>, and
+ * the rest of the 42 tools' shapes are outside what any test can currently enumerate.
+ * Stated because a count that measures a subset under a whole-population name is this
+ * sprint's own recurring defect.</p>
  *
- * <h2>Two instruments that do NOT answer this, recorded because both were tried</h2>
+ * <h2>Two instruments that do NOT answer this, recorded with their numbers</h2>
  *
  * <ol>
- *   <li><b>Counting references to a response factory.</b> {@code ToolResponse#success}
- *       resolves to 12 production classes; {@code #symbolNotFound} to far more;
- *       {@code #invalidParameter} returns 757 references and truncates. Those measure
- *       WHERE a response is built — a larger and different question. A tool that builds
- *       its response through {@code error} rather than {@code success} still has exactly
- *       one shape.</li>
- *   <li><b>Asking the index for subtypes.</b> {@code find_references(kind=implementations)}
- *       on the tool base answers <b>206</b>, which is 103 distinct types listed TWICE —
- *       once at their source path and once under a workspace cache path for the same
- *       project. The number is plausible, which is what makes it dangerous. Anything
- *       deriving a population from that query must de-duplicate by type identity.</li>
+ *   <li><b>Counting references to a response factory</b> measures WHERE a response is
+ *       built. {@code ToolResponse#success} resolves to 12 production classes;
+ *       {@code #invalidParameter} returns 757 references and truncates. A tool building
+ *       its response through {@code error} rather than {@code success} still has its
+ *       shapes.</li>
+ *   <li><b>Asking the index for subtypes</b> answers <b>206</b> for the direct subtypes
+ *       of {@code AbstractTool} — 103 distinct types listed twice, once at their source
+ *       path and once under a workspace cache path. It is also only the DIRECT subtypes:
+ *       {@code inspect(kind=type_hierarchy)} reports 169, because tools extending
+ *       {@code AbstractRefactoringTool} are not in the 103. Both numbers are plausible,
+ *       which is what makes them dangerous.</li>
  * </ol>
- *
- * <p>This class is immune to both: it counts OBJECTS the application constructs, so a
- * duplicate index entry cannot inflate it and a factory choice cannot deflate it.</p>
  */
 class ResponseShapeCensusTest {
 
@@ -79,76 +78,111 @@ class ResponseShapeCensusTest {
         return RefactoringDoors.all(() -> null, new RefactoringChangeCache());
     }
 
-    /** Every response shape, keyed by the type that produces it. */
-    private static Set<String> shapePopulation() {
-        Set<String> shapes = new LinkedHashSet<>();
+    /** Door name to its published kinds — the enumeration, off the objects themselves. */
+    private static Map<String, List<String>> shapesByDoor() {
+        Map<String, List<String>> shapes = new TreeMap<>();
         for (AbstractTool door : registeredDoors()) {
-            shapes.add(door.getClass().getName());
+            if (door instanceof KindedTool kinded) {
+                shapes.put(door.getName(), new ArrayList<>(kinded.publishedKinds()));
+            }
         }
         return shapes;
     }
 
+    /** Every shape, as "door kind" — the flat population Stage 2b marks against. */
+    private static Set<String> shapePopulation() {
+        Set<String> flat = new LinkedHashSet<>();
+        shapesByDoor().forEach((door, kinds) -> kinds.forEach(k -> flat.add(door + " " + k)));
+        return flat;
+    }
+
     /**
-     * THE PARTIAL CENSUS — the refactoring doors, which is what is reachable today.
+     * THE COMMITTED OUTPUT. Not just a count — the enumeration itself, so a reader sees
+     * WHAT the population is without checking out the tree and breaking something.
      *
-     * <p>The number is written down rather than derived from the same list it counts: a
-     * count taken from its own subject cannot fail. Drop a door from
-     * {@code RefactoringDoors.all} and this falls and names what went.</p>
+     * <p>Pinned per door rather than as one total: a total alone cannot say which door
+     * moved, and the audit that refused the first version of this class refused exactly
+     * that.</p>
      */
+    private static final Map<String, Integer> EXPECTED_KINDS_PER_DOOR = new LinkedHashMap<>();
+    static {
+        EXPECTED_KINDS_PER_DOOR.put("extract", 11);
+        EXPECTED_KINDS_PER_DOOR.put("inline", 5);
+        EXPECTED_KINDS_PER_DOOR.put("move", 6);
+        EXPECTED_KINDS_PER_DOOR.put("hierarchy", 7);
+        EXPECTED_KINDS_PER_DOOR.put("generate", 7);
+        EXPECTED_KINDS_PER_DOOR.put("refactor_to_pattern", 11);
+        EXPECTED_KINDS_PER_DOOR.put("change_method_signature", 11);
+        EXPECTED_KINDS_PER_DOOR.put("data", 10);
+        EXPECTED_KINDS_PER_DOOR.put("apply_cleanup", 10);
+    }
+
+    /** 11+5+6+7+7+11+11+10+10. Summed here so the two cannot drift apart silently. */
+    private static int expectedTotal() {
+        return EXPECTED_KINDS_PER_DOOR.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
     @Test
-    @DisplayName("the refactoring-door population is derived from the registration list, not counted by hand")
+    @DisplayName("the population is door x published kind, derived, and it names what moved")
     void thePopulationIsDerived() {
-        Set<String> shapes = shapePopulation();
+        Map<String, List<String>> derived = shapesByDoor();
 
-        assertTrue(shapes.size() >= 8,
-            "PROOF OF LIFE: the door list must be non-trivial, or every assertion below "
-                + "passes over an empty set. Got: " + shapes);
+        assertEquals(EXPECTED_KINDS_PER_DOOR.keySet(), new TreeSet<>(derived.keySet()),
+            "the DOOR SET moved. Missing: "
+                + missing(EXPECTED_KINDS_PER_DOOR.keySet(), derived.keySet())
+                + " · unexpected: " + missing(derived.keySet(), EXPECTED_KINDS_PER_DOOR.keySet()));
 
-        assertEquals(new TreeSet<>(shapes).size(), shapes.size(),
-            "a type appearing twice would mean the derivation is counting index entries "
-                + "rather than constructed objects — the 206-versus-103 defect");
+        Map<String, Integer> counts = new TreeMap<>();
+        derived.forEach((door, kinds) -> counts.put(door, kinds.size()));
+        assertEquals(new TreeMap<>(EXPECTED_KINDS_PER_DOOR), counts,
+            "a door's KIND COUNT moved; the map above names which and by how much");
 
-        assertEquals(9, shapes.size(),
-            "the registered refactoring-door count moved. Doors now: " + new TreeSet<>(shapes));
+        assertEquals(expectedTotal(), shapePopulation().size(),
+            "the flat population must equal the per-door sum, or two doors publish a kind "
+                + "of the same name and the flat set silently merges them");
     }
 
     /**
-     * The boundary, asserted rather than left in prose.
-     *
-     * <p>If a future change makes the full registered set reachable, this fails and
-     * whoever made it reachable widens the census — instead of the subset quietly
-     * continuing to stand in for the whole.</p>
+     * A door registered TWICE would be invisible to a set-based count, so the check is
+     * List against Set — not Set against Set, which is an identity that cannot fail.
      */
     @Test
-    @DisplayName("the full registered tool set is still NOT reachable from a test")
-    void theFullSetIsStillUnreachable() {
-        boolean reachable = false;
-        for (java.lang.reflect.Method m
-                : org.jawata.mcp.JawataApplication.class.getDeclaredMethods()) {
-            if (m.getName().equals("registerTools")
-                    && java.lang.reflect.Modifier.isPublic(m.getModifiers())) {
-                reachable = true;
-            }
+    @DisplayName("no door is registered twice")
+    void noDoorIsRegisteredTwice() {
+        List<AbstractTool> doors = registeredDoors();
+        Set<String> distinct = new LinkedHashSet<>();
+        for (AbstractTool d : doors) {
+            distinct.add(d.getClass().getName());
         }
-        assertTrue(!reachable,
-            "registerTools() has become publicly reachable, so the response-shape census "
-                + "can now cover all 42 published tools rather than the 9 refactoring "
-                + "doors. Widen shapePopulation() and delete this test.");
+        assertEquals(doors.size(), distinct.size(),
+            "a class appears twice in RefactoringDoors.all, so every set-based count of "
+                + "the doors is silently short. Registered: " + doors.size()
+                + ", distinct: " + distinct);
     }
 
     /**
-     * Each door answers for its own shape, so the population needs no hand-written list.
-     *
-     * <p>This is the clause that makes the census re-derivable by anyone: the names come
-     * off the objects, never off a literal beside them.</p>
+     * Every door names itself, and the guard against a vacuous loop lives HERE — this is
+     * the method that passes over an empty population, not the pinned one above.
      */
     @Test
-    @DisplayName("every door in the population names itself")
+    @DisplayName("every door names itself and publishes at least one kind")
     void everyDoorNamesItself() {
-        for (AbstractTool door : registeredDoors()) {
-            assertTrue(door.getName() != null && !door.getName().isBlank(),
-                door.getClass().getName() + " publishes no name, so its shape cannot be "
-                    + "attributed to it in Stage 2b's list");
-        }
+        Map<String, List<String>> derived = shapesByDoor();
+
+        assertTrue(derived.size() >= 8,
+            "PROOF OF LIFE: the loop below asserts nothing on an empty map. Got: " + derived);
+
+        derived.forEach((name, kinds) -> {
+            assertTrue(name != null && !name.isBlank(),
+                "a door publishes no name, so its shapes cannot be attributed to it");
+            assertTrue(!kinds.isEmpty(),
+                name + " publishes no kinds, so it contributes no shape to the census");
+        });
+    }
+
+    private static String missing(Set<String> from, Set<String> in) {
+        Set<String> gone = new TreeSet<>(from);
+        gone.removeAll(in);
+        return gone.isEmpty() ? "(none)" : gone.toString();
     }
 }
