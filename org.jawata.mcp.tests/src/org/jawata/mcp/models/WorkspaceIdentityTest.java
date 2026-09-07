@@ -233,4 +233,133 @@ class WorkspaceIdentityTest {
         assertDoesNotThrow(WorkspaceIdentity::describe);
         assertTrue(WorkspaceIdentity.describe().contains("p"), "falls back to the boot list");
     }
+
+    // ---- mcp#27 stage 1: the hint that ASKS the siblings rather than naming them ----
+
+    private static SiblingPeek.Sweep held(String workspace, String project) {
+        return new SiblingPeek.Sweep(
+            java.util.Optional.of(new SiblingPeek.Found(workspace, project)), 2, 2, false);
+    }
+
+    private void twoSiblings() {
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/tmp/jawata-mcp")));
+        WorkspaceIdentity.installSiblings(() -> List.of(
+            new SiblingRegistry.Sibling("orb-strategy", 8082, "t2"),
+            new SiblingRegistry.Sibling("patterns", 8083, "t3")));
+    }
+
+    @Test
+    @DisplayName("mcp#27: a symbol we do not have is ANSWERED — the workspace and the project")
+    void theHintNamesWhoHasIt() {
+        twoSiblings();
+        WorkspaceIdentity.installPeek(fqn -> held("orb-strategy", "com-jats2-model"));
+
+        String hint = WorkspaceIdentity.elsewhereHint("com.jats2.model.Order");
+
+        assertAll(
+            () -> assertTrue(hint.contains("orb-strategy"), "got: " + hint),
+            () -> assertTrue(hint.contains("com-jats2-model"), "got: " + hint),
+            // The naming-only tail is REPLACED, not appended to: having asked them, listing who
+            // is up and then saying what they said is two answers to one question.
+            () -> assertFalse(hint.contains("Running here:"), "got: " + hint),
+            // ...and the sentence that says why this server cannot see it survives, because the
+            // reader still needs to know which server answered.
+            () -> assertTrue(hint.contains("own jawata server"), "got: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#27 THE CONTROL - nobody holding it still says how many were asked")
+    void theHintSaysWhatItExamined() {
+        twoSiblings();
+        WorkspaceIdentity.installPeek(fqn ->
+            new SiblingPeek.Sweep(java.util.Optional.empty(), 2, 2, false));
+
+        String hint = WorkspaceIdentity.elsewhereHint("com.jats2.model.Order");
+
+        // Without this, an implementation that answered "no sibling has it" after asking NONE
+        // of them would pass the test above and be indistinguishable from one that asked.
+        assertTrue(hint.contains("2 of 2"), "the answer must say what it examined: " + hint);
+    }
+
+    @Test
+    @DisplayName("mcp#27: a peek that THROWS leaves the naming hint standing")
+    void aBrokenPeekNeverBreaksTheMiss() {
+        twoSiblings();
+        WorkspaceIdentity.installPeek(fqn -> { throw new IllegalStateException("boom"); });
+
+        String hint = assertDoesNotThrow(
+            () -> WorkspaceIdentity.elsewhereHint("com.jats2.model.Order"));
+
+        // The caller is already reporting a miss; enriching it can only add, never fail.
+        assertTrue(hint.contains("orb-strategy"), "falls back to naming them: " + hint);
+    }
+
+    @Test
+    @DisplayName("mcp#27: with no peek installed the hint is exactly the naming hint")
+    void noPeekIsTheOldBehaviour() {
+        twoSiblings();
+
+        assertEquals(WorkspaceIdentity.elsewhereHint(),
+            WorkspaceIdentity.elsewhereHint("com.jats2.model.Order"),
+            "a resident with no peek wired must answer as it did before");
+    }
+
+    @Test
+    @DisplayName("mcp#27: only an askable TYPE is asked about")
+    void whatCanBeAsked() {
+        assertAll(
+            // A sibling is asked inspect(kind=source, typeName=...), which resolves a type - so
+            // a member form is a question about its type.
+            () -> assertEquals("com.foo.Bar",
+                WorkspaceIdentity.askableTypeName("com.foo.Bar#run")),
+            () -> assertEquals("com.foo.Bar",
+                WorkspaceIdentity.askableTypeName("com.foo.Bar#run(int,java.lang.String)")),
+            () -> assertEquals("com.foo.Bar", WorkspaceIdentity.askableTypeName("com.foo.Bar")),
+            // A name with no package resolves nowhere, so asking would spend the whole budget
+            // to learn nothing.
+            () -> assertNull(WorkspaceIdentity.askableTypeName("Bar")),
+            () -> assertNull(WorkspaceIdentity.askableTypeName("#run")),
+            () -> assertNull(WorkspaceIdentity.askableTypeName("com.foo.")),
+            () -> assertNull(WorkspaceIdentity.askableTypeName("   ")),
+            () -> assertNull(WorkspaceIdentity.askableTypeName(null)));
+    }
+
+    @Test
+    @DisplayName("mcp#27 THE WIRING - the SYMBOL_NOT_FOUND response itself carries the answer")
+    void theMissPathItselfAsksTheSiblings() {
+        // Every test above drives elsewhereHint(String) directly, which proves the OVERLOAD
+        // works and says nothing about whether anything calls it. That gap is this project's
+        // recorded three-time failure: a capability built, tested, and reached by nothing in
+        // the live process. This one enters through the miss a client actually receives.
+        twoSiblings();
+        WorkspaceIdentity.installPeek(fqn -> held("orb-strategy", "com-jats2-model"));
+
+        ToolResponse response = ToolResponse.symbolNotFound("com.jats2.model.Order");
+
+        assertFalse(response.isSuccess(), "still a miss: " + response.getError());
+        String hint = response.getError().getHint();
+        assertAll(
+            () -> assertTrue(hint.contains("orb-strategy"), "got: " + hint),
+            () -> assertTrue(hint.contains("com-jats2-model"), "got: " + hint),
+            // The original not-found guidance is not thrown away to make room for it.
+            () -> assertTrue(hint.contains("own jawata server"), "got: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#27: a bare simple name is NOT asked - no sibling is contacted at all")
+    void aSimpleNameIsNotAsked() {
+        twoSiblings();
+        java.util.concurrent.atomic.AtomicInteger asked =
+            new java.util.concurrent.atomic.AtomicInteger();
+        WorkspaceIdentity.installPeek(fqn -> {
+            asked.incrementAndGet();
+            return held("orb-strategy", "p");
+        });
+
+        String hint = WorkspaceIdentity.elsewhereHint("Bar");
+
+        assertAll(
+            () -> assertEquals(0, asked.get(), "an unaskable name must not start a walk"),
+            () -> assertTrue(hint.contains("Running here:"), "it still names them: " + hint));
+    }
 }

@@ -553,6 +553,19 @@ public class JawataApplication implements IApplication {
             org.jawata.mcp.models.WorkspaceIdentity.installSiblings(() ->
                 org.jawata.mcp.models.SiblingRegistry.around(
                     identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()));
+            // mcp#27 stage 1: and ASK them. One HttpClient for the process — building one per
+            // miss would create a connection pool and two threads each time, on the path that
+            // is already the slow one. The client's own connect timeout bounds the handshake;
+            // SiblingPeek bounds the request and the whole walk.
+            final java.net.http.HttpClient peekClient = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofMillis(500))
+                .build();
+            org.jawata.mcp.models.WorkspaceIdentity.installPeek(fqn ->
+                org.jawata.mcp.models.SiblingPeek.sweep(
+                    fqn,
+                    org.jawata.mcp.models.SiblingRegistry.around(
+                        identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()),
+                    peekClient));
             org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> {
                 IJdtService s = this.jdtService;
                 if (s == null) {

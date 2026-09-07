@@ -211,7 +211,12 @@ public class ToolResponse {
      */
     public static ToolResponse symbolNotFound(String symbol) {
         ErrorInfo base = ErrorInfo.symbolNotFound(symbol);
-        String elsewhere = WorkspaceIdentity.elsewhereHint();
+        // mcp#27 stage 1: this miss knows WHICH symbol was not found, so the hint can ASK the
+        // other residents rather than only naming them. This is the miss path the peek is for
+        // — an FQN that resolved nowhere here — and it is the only elsewhereHint caller that
+        // has a symbol to ask about: the search-steering callers hold a PATTERN, which no
+        // sibling can answer by resolving a type.
+        String elsewhere = WorkspaceIdentity.elsewhereHint(symbol);
         if (elsewhere == null) {
             return error(base);
         }

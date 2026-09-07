@@ -81,6 +81,18 @@ public final class WorkspaceIdentity {
         siblings = supplier;
     }
 
+    /**
+     * mcp#27 stage 1: ASKING the siblings, supplied for the same reason the list is — the
+     * question goes over the network, and this class states who this server is. Null until
+     * installed, and a server with no peek installed still names its siblings.
+     */
+    private static volatile java.util.function.Function<String, SiblingPeek.Sweep> peek;
+
+    /** mcp#27: install the sibling-peek function (application wiring). */
+    public static void installPeek(java.util.function.Function<String, SiblingPeek.Sweep> fn) {
+        peek = fn;
+    }
+
     /** Test hook — a static holder that cannot be cleared poisons every later test. */
     static void reset() {
         workspaceName = null;
@@ -88,6 +100,7 @@ public final class WorkspaceIdentity {
         liveProjectKeys = null;
         loadFailure = null;
         siblings = null;
+        peek = null;
     }
 
     /** The siblings this server knows of, or empty — a broken supplier answers empty. */
@@ -162,6 +175,76 @@ public final class WorkspaceIdentity {
             + others.stream().map(SiblingRegistry.Sibling::workspaceName)
                 .collect(java.util.stream.Collectors.joining(", "))
             + ".";
+    }
+
+    /**
+     * mcp#27 stage 1 — the same redirect for a NAMED symbol, which can be asked about rather
+     * than merely pointed at.
+     *
+     * <p>{@link #elsewhereHint()} can only say who else is running. Given the symbol, this asks
+     * them, and a miss becomes <i>"workspace X has it, in project Y"</i> — the difference
+     * between a true statement about how jawata is deployed and an answer.</p>
+     *
+     * <p>Falls back to the naming-only hint whenever the question cannot be asked: no peek
+     * installed, no siblings known, or a symbol no sibling could resolve. It never fails and
+     * never throws — the caller is already reporting a miss, and this can only add to it.</p>
+     */
+    public static String elsewhereHint(String symbol) {
+        String named = elsewhereHint();
+        if (named == null) {
+            return null;
+        }
+        java.util.function.Function<String, SiblingPeek.Sweep> ask = peek;
+        String typeName = askableTypeName(symbol);
+        if (ask == null || typeName == null || readSiblings().isEmpty()) {
+            return named;
+        }
+        SiblingPeek.Sweep sweep;
+        try {
+            sweep = ask.apply(typeName);
+        } catch (Exception e) {
+            // A miss must not become a failure because the hint could not be enriched.
+            return named;
+        }
+        if (sweep == null || sweep.listed() == 0) {
+            return named;
+        }
+        // Replaces the "Running here: …" tail rather than appending to it: having ASKED them,
+        // naming who is up and then saying what they said is two answers to one question.
+        return elsewhereHintBase() + " " + sweep.describe();
+    }
+
+    /**
+     * The type a sibling could actually look up, or null when there is nothing askable.
+     *
+     * <p>A sibling is asked {@code inspect(kind=source, typeName=…)}, which resolves a
+     * fully-qualified TYPE. So a member form is trimmed to its type — {@code com.foo.Bar#run}
+     * is a question about {@code com.foo.Bar} — and a name with no package is refused rather
+     * than asked, because it resolves nowhere and the walk would spend the whole budget to
+     * learn nothing.</p>
+     */
+    static String askableTypeName(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            return null;
+        }
+        String type = symbol.trim();
+        int member = type.indexOf('#');
+        if (member >= 0) {
+            type = type.substring(0, member);
+        }
+        int params = type.indexOf('(');
+        if (params >= 0) {
+            type = type.substring(0, params);
+        }
+        type = type.trim();
+        return type.contains(".") && !type.endsWith(".") ? type : null;
+    }
+
+    /** The workspace sentence without the sibling tail, so the peek's answer can replace it. */
+    private static String elsewhereHintBase() {
+        return "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
+            + " workspace (" + projectSummary() + ") — a symbol that lives in another"
+            + " project tree is served by that tree's own jawata server, not this one.";
     }
 
     /** The terminal failure reason, or null — a broken supplier answers null. */
