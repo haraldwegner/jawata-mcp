@@ -153,10 +153,18 @@ public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool
         String methodName = mA.getName().getIdentifier();
         String returnType = mA.getReturnType2() != null ? mA.getReturnType2().toString() : "void";
 
-        // Find the single sibling subclass with a matching no-arg method.
+        // Find the single sibling subclass with a matching no-arg method — IN `a`'S OWN SCOPE
+        // rather than the unit's top level. Same defect as the visitor row and found by the
+        // same C8b round-4 audit: the superclass lookup above was repointed at
+        // `tools.shared.TypeLookup` so a nested superclass resolves, and this loop was left
+        // reading `ast.types()`, so a nested sibling could not be seen and the row refused
+        // about a hierarchy it had not actually looked at.
+        List<?> scope = a.getParent() instanceof org.eclipse.jdt.core.dom.AbstractTypeDeclaration enclosing
+            ? enclosing.bodyDeclarations()
+            : ast.types();
         List<TypeDeclaration> siblings = new ArrayList<>();
         List<MethodDeclaration> siblingMethods = new ArrayList<>();
-        for (Object o : ast.types()) {
+        for (Object o : scope) {
             if (!(o instanceof TypeDeclaration t) || t == a) {
                 continue;
             }

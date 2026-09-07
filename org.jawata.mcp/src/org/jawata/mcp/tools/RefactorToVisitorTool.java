@@ -122,8 +122,17 @@ public class RefactorToVisitorTool extends AbstractApplyingRefactoringTool
         }
         ITypeBinding baseBinding = base.resolveBinding();
 
+        // THE SUBTYPES ARE COLLECTED FROM THE BASE'S OWN SCOPE, not from the unit's top level,
+        // and a C8b round-4 audit is why. Repointing the BASE lookup above at
+        // `tools.shared.TypeLookup` let a nested base resolve — and left this loop reading
+        // `ast.types()`, so the subtypes beside it stayed invisible and the row refused with
+        // "found 0", a count that is factually wrong about the file. Half a fix reads worse
+        // than none: the refusal now claimed something a reader can check and be misled by.
+        List<?> scope = base.getParent() instanceof org.eclipse.jdt.core.dom.AbstractTypeDeclaration enclosing
+            ? enclosing.bodyDeclarations()
+            : ast.types();
         List<TypeDeclaration> subtypes = new ArrayList<>();
-        for (Object o : ast.types()) {
+        for (Object o : scope) {
             if (o instanceof TypeDeclaration t && t != base && t.getSuperclassType() != null
                 && baseBinding != null && baseBinding.isEqualTo(t.getSuperclassType().resolveBinding())) {
                 subtypes.add(t);
