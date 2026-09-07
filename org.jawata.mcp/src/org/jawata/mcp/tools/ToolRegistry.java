@@ -24,19 +24,28 @@ public class ToolRegistry {
      * the four detect prefixes plus the read-only tools whose names match no
      * prefix.
      *
-     * <p><b>This paragraph used to end "anything that mutates … stays unannotated —
-     * when in doubt, leave a tool unannotated (a missing hint is unknown)". mcp#36
-     * overturned that, so it is corrected here rather than left standing.</b> Leaving a
-     * mutator unannotated does not make a client cautious; it makes the client guess,
-     * and measured in the Cursor dogfood the guess was not even stable across one
-     * session. A missing hint reads as "unknown" to a spec reader and as "probably fine"
-     * to a heuristic. Every tool is annotated now — see {@link #annotationsFor} — and the
-     * caution the old rule wanted is stated as {@code destructiveHint} rather than
-     * implied by silence.</p>
+     * <p><b>This paragraph used to end "anything that mutates … stays unannotated — when in
+     * doubt, leave a tool unannotated (a missing hint is unknown, a wrong hint lets a
+     * restricted mode mutate the workspace)". mcp#36 overturned HALF of that, and the half
+     * it kept is the important one.</b></p>
+     *
+     * <p>What was wrong: a tool the product KNOWS rewrites source said nothing, so a client
+     * had to guess, and measured in the Cursor dogfood the guess was not even stable across
+     * one session. Those tools now say so — see {@link #annotationsFor}.</p>
+     *
+     * <p>What was RIGHT, and what a first attempt at this fix broke before an architect
+     * watch caught it: <b>when the product genuinely does not know, silence is the correct
+     * answer.</b> That attempt derived {@code destructiveHint} as the negation of the
+     * read-only name match, which has only two values for a question with three — read-only,
+     * rewrites source, and neither — so every unclassified tool began asserting it was
+     * destructive. {@code compile_workspace}, the tool this file's own {@link #steeringFor}
+     * tells every agent to run, was published as destructive. The third state is restored:
+     * a hint is emitted where the product can vouch and OMITTED where it cannot.</p>
      *
      * <p>What has NOT changed is the weakness: which tools are read-only is decided from
      * these NAME literals, and a policy expressed as names fails open when a tool is
-     * renamed or added, because no reference-updating refactoring touches a string.</p>
+     * renamed or added, because no reference-updating refactoring touches a string. The
+     * destructive side does NOT share it — {@link #rewritesSource} asks the type.</p>
      */
     private static final Set<String> READ_ONLY_PREFIXES =
         Set.of("find_", "get_", "analyze_", "search_");
