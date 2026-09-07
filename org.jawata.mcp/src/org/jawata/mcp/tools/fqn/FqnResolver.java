@@ -73,17 +73,49 @@ public final class FqnResolver {
      */
     public static Optional<IJavaElement> resolve(String fqn, IJdtService service,
                                                   Scope scope, String projectKey) {
-        if (fqn == null || fqn.isBlank()) return Optional.empty();
+        return resolveAll(fqn, service, scope, projectKey).stream().findFirst();
+    }
+
+    /**
+     * EVERY element the FQN names — which for the bare {@code Type#member} form means
+     * every overload, not the first one (jawata-mcp#46).
+     *
+     * <p>The schema documents that form as <i>"com.foo.Bar#member (method any overload /
+     * field)"</i>, and {@link #resolveMemberByName}'s own comment said "method (any
+     * overload) first" — but its loop returned on the first name match. So a search over a
+     * member with two overloads searched ONE and reported its correct zero as the answer
+     * for the member. Measured: {@code find_references} on
+     * {@code FindDuplicateCodeTool#collectPool} answered {@code totalReferences: 0} while
+     * a caller of the four-argument overload existed.</p>
+     *
+     * <p><b>A bare zero is indistinguishable from a genuine absence</b>, which is the
+     * defect class this product fights first — an agent deciding whether a member is safe
+     * to delete gets a confident empty answer from a partial search. Returning the union
+     * is the fix rather than a caveat, because the published contract already promised it.</p>
+     *
+     * <p>{@link #resolve} is derived from this rather than the other way round, so the
+     * single-answer callers and the complete answer cannot disagree: the first element of
+     * this list is exactly what that method returned before, including the
+     * methods-before-fields precedence.</p>
+     */
+    public static List<IJavaElement> resolveAllWorkspace(String fqn, IJdtService service) {
+        return resolveAll(fqn, service, Scope.WORKSPACE, null);
+    }
+
+    /** {@link #resolveAllWorkspace}, scoped. */
+    public static List<IJavaElement> resolveAll(String fqn, IJdtService service,
+                                                 Scope scope, String projectKey) {
+        if (fqn == null || fqn.isBlank()) return List.of();
 
         List<IJavaProject> projects = collectProjects(service, scope, projectKey);
-        if (projects.isEmpty()) return Optional.empty();
+        if (projects.isEmpty()) return List.of();
 
         int hashIdx = fqn.indexOf('#');
         if (hashIdx < 0) {
             // Type-only form (e.g. "com.foo.Bar").
             Optional<IType> typeOnly = resolveType(fqn, projects);
             if (typeOnly.isPresent()) {
-                return typeOnly.map(t -> (IJavaElement) t);
+                return List.of(typeOnly.get());
             }
             // Sprint 15 DX#1: dot-form member fallback. Agents naturally write
             // "com.foo.Bar.method" / "com.foo.Bar.field" instead of the
@@ -94,17 +126,19 @@ public final class FqnResolver {
             if (lastDot > 0) {
                 Optional<IType> outer = resolveType(fqn.substring(0, lastDot), projects);
                 if (outer.isPresent()) {
-                    return resolveMemberByName(outer.get(), fqn.substring(lastDot + 1));
+                    // The dot form is ambiguous for exactly the same reason (mcp#46):
+                    // "com.foo.Bar.method" names every overload of `method`.
+                    return resolveMembersByName(outer.get(), fqn.substring(lastDot + 1));
                 }
             }
-            return Optional.empty();
+            return List.of();
         }
 
         String typeFqn = fqn.substring(0, hashIdx);
         String memberPart = fqn.substring(hashIdx + 1);
 
         Optional<IType> typeOpt = resolveType(typeFqn, projects);
-        if (typeOpt.isEmpty()) return Optional.empty();
+        if (typeOpt.isEmpty()) return List.of();
         IType type = typeOpt.get();
 
         int parenIdx = memberPart.indexOf('(');
@@ -114,35 +148,55 @@ public final class FqnResolver {
             int closeIdx = memberPart.lastIndexOf(')');
             if (closeIdx <= parenIdx) {
                 log.debug("FQN method form missing ')': {}", fqn);
-                return Optional.empty();
+                return List.of();
             }
             String paramList = memberPart.substring(parenIdx + 1, closeIdx).trim();
             String[] paramFqns = paramList.isEmpty()
                 ? new String[0]
                 : paramList.split("\\s*,\\s*");
-            return resolveMethod(type, methodName, paramFqns).map(m -> (IJavaElement) m);
+            return resolveMethod(type, methodName, paramFqns)
+                .<IJavaElement>map(m -> m)
+                .map(List::of)
+                .orElseGet(List::of);
         }
 
-        // Member name alone — method first (any overload), then field.
-        return resolveMemberByName(type, memberPart);
+        // Member name alone — EVERY method overload of that name, else the field.
+        return resolveMembersByName(type, memberPart);
     }
 
-    /** Resolve a bare member name on a type: method (any overload) first, then field. */
-    private static Optional<IJavaElement> resolveMemberByName(IType type, String memberName) {
+    /**
+     * Every member of {@code type} that a bare name denotes: ALL method overloads of that
+     * name, or — only when no method matches — the field.
+     *
+     * <p><b>This used to return the FIRST overload and its comment called that "any
+     * overload" (jawata-mcp#46).</b> The two readings differ exactly when it matters: a
+     * reference search over a member with two overloads searched one of them and reported
+     * its correct zero as the member's answer. A bare zero is indistinguishable from a real
+     * absence, and an agent deciding whether a member is safe to delete acts on it.</p>
+     *
+     * <p>The methods-before-fields precedence is unchanged, and is why a field is only
+     * consulted when the method list is empty: {@link #resolve} takes the first element of
+     * this list, so every existing single-answer caller sees exactly what it saw before.</p>
+     */
+    private static List<IJavaElement> resolveMembersByName(IType type, String memberName) {
+        List<IJavaElement> overloads = new ArrayList<>();
         try {
             for (IMethod m : type.getMethods()) {
                 if (memberName.equals(m.getElementName())) {
-                    return Optional.of(m);
+                    overloads.add(m);
                 }
             }
         } catch (Exception e) {
             log.debug("Error iterating methods of {}: {}", type.getElementName(), e.getMessage());
         }
+        if (!overloads.isEmpty()) {
+            return List.copyOf(overloads);
+        }
         IField field = type.getField(memberName);
         if (field != null && field.exists()) {
-            return Optional.of(field);
+            return List.of(field);
         }
-        return Optional.empty();
+        return List.of();
     }
 
     private static List<IJavaProject> collectProjects(IJdtService service,

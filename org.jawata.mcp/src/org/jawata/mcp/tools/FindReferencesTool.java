@@ -1,12 +1,18 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
-import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.jawata.core.IJdtService;
@@ -16,13 +22,7 @@ import org.jawata.mcp.tools.fqn.FqnResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Find all references to a symbol across the project.
@@ -116,6 +116,10 @@ public class FindReferencesTool extends AbstractTool {
             // position-based form (kept verbatim — additive change).
             String symbol = getStringParam(arguments, "symbol");
             IJavaElement element;
+            // mcp#46: every element the caller's address denotes. One for a position or a
+            // specific overload; several when a bare `Type#member` names an overload set,
+            // which is the form the schema promises covers "any overload".
+            List<IJavaElement> targets;
             if (symbol != null && !symbol.isBlank()) {
                 String scopeRaw = getStringParam(arguments, "scope", "workspace");
                 FqnResolver.Scope scope;
@@ -126,13 +130,17 @@ public class FindReferencesTool extends AbstractTool {
                         "Must be 'workspace' or 'project'; got '" + scopeRaw + "'");
                 }
                 String projectKey = getStringParam(arguments, "projectKey");
-                Optional<IJavaElement> resolved = FqnResolver.resolve(symbol, service, scope, projectKey);
-                if (resolved.isEmpty()) {
+                // mcp#46: EVERY element the name denotes, which for a bare `Type#member`
+                // means every overload. Resolving to one and reporting its correct zero as
+                // the member's answer made a partial search indistinguishable from a real
+                // absence — measured on a two-overload method with a live caller.
+                targets = FqnResolver.resolveAll(symbol, service, scope, projectKey);
+                if (targets.isEmpty()) {
                     // Sprint 24 (D2): the miss carries its own correction.
                     return org.jawata.mcp.tools.shared.ResolveOrRelocate.miss(
                         service, symbol, scopeRaw);
                 }
-                element = resolved.get();
+                element = targets.get(0);
             } else {
                 String filePath = getStringParam(arguments, "filePath");
                 if (filePath == null || filePath.isBlank()) {
@@ -152,14 +160,27 @@ public class FindReferencesTool extends AbstractTool {
                 if (element == null) {
                     return ToolResponse.symbolNotFound("No symbol found at position");
                 }
+                // A POSITION names exactly one element — there is nothing to union.
+                targets = List.of(element);
             }
 
             // Use SearchService for indexed reference search. The COUNTED form:
             // this tool publishes a total, and the capped list's size is not one.
-            org.jawata.core.search.ReferenceSearch found = service.getSearchService()
-                .searchReferences(element,
-                    org.eclipse.jdt.core.search.IJavaSearchConstants.REFERENCES, maxResults);
-            List<SearchMatch> matches = found.matches();
+            // mcp#46: the UNION over every overload the address named. One target is the
+            // overwhelmingly common case and behaves exactly as before; the loop exists
+            // because the alternative was searching one overload and publishing its zero
+            // as the member's answer.
+            List<SearchMatch> matches = new ArrayList<>();
+            int totalMatched = 0;
+            boolean truncated = false;
+            for (IJavaElement target : targets) {
+                org.jawata.core.search.ReferenceSearch perTarget = service.getSearchService()
+                    .searchReferences(target,
+                        org.eclipse.jdt.core.search.IJavaSearchConstants.REFERENCES, maxResults);
+                matches.addAll(perTarget.matches());
+                totalMatched += perTarget.totalMatched();
+                truncated |= perTarget.truncated();
+            }
 
             // Convert matches to reference info
             List<Map<String, Object>> references = new ArrayList<>();
@@ -190,15 +211,22 @@ public class FindReferencesTool extends AbstractTool {
             //
             // `returnedCount` stays the page. `find_quality_issue` is the model:
             // count is the population, returnedCount is what came back.
-            data.put("totalReferences", found.totalMatched());
+            data.put("totalReferences", totalMatched);
             data.put("returnedReferences", references.size());
+            // mcp#46 — the DENOMINATOR, so a zero is trustworthy. The degradation stamp's
+            // rule 1: a count is never bare, it states what was examined to produce it.
+            // Present only when the address named more than one element, because on the
+            // ordinary single-target call it would be noise.
+            if (targets.size() > 1) {
+                data.put("overloadsSearched", targets.size());
+            }
             data.put("references",
                 org.jawata.mcp.tools.shared.FieldsProjection.project(references, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
-                .totalCount(found.totalMatched())
+                .totalCount(totalMatched)
                 .returnedCount(references.size())
-                .truncated(found.truncated())
+                .truncated(truncated)
                 .suggestedNextTools(List.of(
                     "go_to_definition to see the symbol definition",
                     "get_type_hierarchy for type symbols"
