@@ -136,6 +136,20 @@ public class HealthCheckTool implements Tool {
         }
         status.put("project", projectStatus);
 
+        // mcp#12: health_check MIRRORS the same notices every response carries, so the
+        // two channels cannot disagree. Both read ResidentDegradation, which derives the
+        // workspace half from the load state above rather than copying it — a second
+        // copy is what let health_check and the tool gate answer differently in the
+        // first place (mcp#35).
+        //
+        // The key is present ONLY when something is degraded. An always-present empty
+        // array would make "nothing is wrong" and "we did not look" render identically,
+        // which is the confusion this whole mechanism exists to remove.
+        List<String> degraded = org.jawata.mcp.ResidentDegradation.notices();
+        if (!degraded.isEmpty()) {
+            status.put("degraded", degraded);
+        }
+
         // Multi-project workspace summary (Sprint 10). Adds a `projects`
         // array with one entry per loaded project plus the default key,
         // independent of the legacy single-project status above. Empty

@@ -119,6 +119,13 @@ public class LoadProjectTool implements Tool {
             }
             service.loadProject(path);
 
+            // mcp#35: the load succeeded, so whatever the BOOT concluded about the
+            // workspace is now false. This path never wrote the state, so a failed boot
+            // followed by a successful load left health_check reporting the boot's error
+            // for the rest of the process — an alarm that outlived its cause and that
+            // nothing could clear.
+            org.jawata.mcp.JawataApplication.noteWorkspaceLoaded();
+
             // Build response
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("loaded", true);

@@ -2,6 +2,7 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.mcp.ResidentDegradation;
 import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -385,7 +386,7 @@ public class ToolRegistry {
         // agent may ignore". v3.3.0 worded the cost but never charged it.
         ToolResponse unpaid = precedentCharge(sessionId, name, arguments);
         if (unpaid != null) {
-            return unpaid;
+            return stamped(unpaid);
         }
         // A paid override is a meta-argument of the CHOKE, not of the tool.
         arguments = withoutOverride(arguments);
@@ -450,22 +451,31 @@ public class ToolRegistry {
             // v3.2.1 (dogfood #1): a degraded store announces itself on EVERY
             // answer — a degraded result presented as normal is the recorded
             // top-bug class; nobody should have to NOTICE a missing file size.
+            //
+            // mcp#12: it now announces itself THROUGH THE ONE REGISTRY rather than
+            // beside it. This site used appendSteering, which no-ops on a refusal —
+            // so the degraded store was silent on exactly the answers most likely to
+            // be misread as a fact about the caller's code. Declaring it makes it a
+            // resident state that health_check mirrors and that every response
+            // carries, and the supplier answering null is what cures it.
             if (storeNotice != null) {
                 try {
                     String degraded = storeNotice.get();
                     if (degraded != null) {
-                        response.appendSteering(degraded);
+                        ResidentDegradation.declare("experience-store", degraded);
+                    } else {
+                        ResidentDegradation.cure("experience-store");
                     }
                 } catch (Exception e) {
                     log.error("Store-notice supplier failed after {}", name, e);
                 }
             }
-            return response;
+            return stamped(response);
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
             ToolResponse error = ToolResponse.internalError(e);
             tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
-            return error;
+            return stamped(error);
         } catch (Error err) {
             // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
             // pathological scan) escaped every catch(Exception), killed the
@@ -475,8 +485,28 @@ public class ToolRegistry {
             log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
             ToolResponse error = ToolResponse.internalError(err);
             tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
-            return error;
+            return stamped(error);
         }
+    }
+
+    /**
+     * THE DEGRADATION STAMP, applied to every answer this registry hands back (mcp#12).
+     *
+     * <p>One method rather than the rule written at each of the four return points: this
+     * method dispatches, refuses on an unpaid precedent charge, catches an exception and
+     * catches a JVM Error, and a caller has no way to tell which of those they got. The
+     * resident's degraded state is equally true of all four, so the answer is equally
+     * owed on all four.</p>
+     *
+     * <p>A no-op when nothing is degraded — {@code stamp()} answers null then, so an
+     * ordinary response is byte-unchanged and the whole mechanism is invisible until it
+     * has something to say.</p>
+     */
+    private static ToolResponse stamped(ToolResponse response) {
+        if (response != null) {
+            response.stampDegradation(ResidentDegradation.stamp());
+        }
+        return response;
     }
 
     /**

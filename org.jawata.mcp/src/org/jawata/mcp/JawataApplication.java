@@ -122,6 +122,28 @@ public class JawataApplication implements IApplication {
     }
 
     /**
+     * A LOAD OUTSIDE THE BOOT PATH SUCCEEDED — clear whatever the boot concluded (mcp#35).
+     *
+     * <p>{@code loadingState} was written on the boot paths only, and {@code load_project}
+     * and {@code add_project} install a service through the setter without touching it. So
+     * after a FAILED boot followed by a successful {@code load_project} the workspace was
+     * genuinely fine and {@code health_check} still answered <i>"Project load failed"</i>,
+     * with the original boot error, indefinitely — a stale alarm nothing could clear, which
+     * teaches a caller to disregard the one channel that reports real failures.</p>
+     *
+     * <p>The tool gate at {@code AbstractTool.execute} could not see it either, because it
+     * consults this state only when NO project is loaded — so the moment a load succeeded,
+     * the stale verdict became invisible to every tool and visible only in health_check.</p>
+     */
+    public static void noteWorkspaceLoaded() {
+        JawataApplication app = instance;
+        if (app != null) {
+            app.loadingState = ProjectLoadingState.LOADED;
+            app.loadingError = null;
+        }
+    }
+
+    /**
      * Test hook — stand in a workspace-load state without booting Equinox.
      *
      * <p>The tool gate's answer depends on this application-wide state

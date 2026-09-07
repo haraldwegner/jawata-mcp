@@ -71,6 +71,36 @@ public class ToolResponse {
     }
 
     /**
+     * THE DEGRADATION STAMP (jawata-mcp#12) — a one-line notice that this resident is in
+     * a degraded state, carried on EVERY response until the state is cured.
+     *
+     * <p><b>It applies to refusals as well as successes, and that is the whole point of
+     * having a separate method rather than reusing {@link #applySteering}.</b> Steering
+     * is advice about the next step and is meaningless on a refusal, so it no-ops there.
+     * A degradation notice is the opposite: a refusal issued while the workspace is half
+     * loaded is exactly the answer a caller is most likely to MISREAD as a fact about
+     * their code, and the notice is what tells them it is a fact about the resident.</p>
+     *
+     * <p>Prepended rather than appended, so it is the first thing in the block a caller
+     * reads. No-op when {@code notice} is null, which is what
+     * {@code ResidentDegradation.stamp()} returns when nothing is degraded — an empty
+     * {@code DEGRADED:} line would make "nothing is wrong" and "we did not check" render
+     * identically.</p>
+     */
+    public void stampDegradation(String notice) {
+        if (notice == null || notice.isBlank()) {
+            return;
+        }
+        if (meta == null) {
+            meta = ResponseMeta.builder().steering(notice).build();
+            return;
+        }
+        String current = meta.getSteering();
+        meta.setSteering(current == null || current.isBlank()
+            ? notice : notice + "\n" + current);
+    }
+
+    /**
      * Sprint 26: APPEND a steering block — composes with (never replaces) the
      * tool's own steering line. Used by the watch engine and the server-side
      * checks; no-op on errors and blank blocks.
