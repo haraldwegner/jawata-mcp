@@ -219,12 +219,55 @@ public class ToolRegistry {
             Map<String, Object> def = new LinkedHashMap<>();
             def.put("name", tool.getName());
             def.put("description", tool.getDescription());
-            def.put("inputSchema", tool.getInputSchema());
+            def.put("inputSchema", declaringPrecedentOverride(tool.getInputSchema()));
             def.put("annotations", annotationsFor(tool));
             definitions.add(def);
         }
 
         return definitions;
+    }
+
+    /**
+     * THE CHOKE DECLARES ITS OWN META-ARGUMENT — jawata-mcp#31.
+     *
+     * <p>{@code precedentOverride} is read here and STRIPPED before dispatch, so no tool ever
+     * sees it and no tool's own schema mentioned it. A client reading {@code tools/list} could
+     * therefore not discover it: the only place it appeared was inside the refusal text that
+     * tells an agent to use it — the parameter documented by the failure it causes, learnable
+     * only once you have already been blocked.</p>
+     *
+     * <p>It is declared HERE rather than in each tool because this is what owns it. It applies
+     * to every call, it is consumed by this class, and it never reaches a delegate — so
+     * putting it in forty-odd hand-written schemas would be forty copies of one fact, and the
+     * forty-first tool would be the one that forgot.</p>
+     *
+     * <p>The maps are COPIED rather than mutated. A tool's schema is its own, several are
+     * built with {@code Map.of(...)} and are immutable, and a published view has no business
+     * writing into the object it is describing.</p>
+     */
+    private static Map<String, Object> declaringPrecedentOverride(Map<String, Object> schema) {
+        Map<String, Object> published =
+            schema == null ? new LinkedHashMap<>() : new LinkedHashMap<>(schema);
+
+        Object existing = published.get("properties");
+        Map<String, Object> properties = existing instanceof Map<?, ?> map
+            ? new LinkedHashMap<>(castProperties(map))
+            : new LinkedHashMap<>();
+
+        properties.put("precedentOverride", Map.of(
+            "type", "string",
+            "description", "Optional. One line saying why THIS case differs from a past call"
+                + " of this tool on this target that was reverted or errored. Required only"
+                + " when that precedent has already been surfaced to you and you are calling"
+                + " anyway; the reason is logged with the call. Never reaches the tool."));
+
+        published.put("properties", properties);
+        return published;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castProperties(Map<?, ?> map) {
+        return (Map<String, Object>) map;
     }
 
     /**

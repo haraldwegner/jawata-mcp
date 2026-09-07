@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jawata.mcp.learn.ToolExperience;
 import org.jawata.mcp.models.ToolResponse;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -67,6 +68,52 @@ class PrecedentEnforcementTest {
         }));
         reg.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
         return reg;
+    }
+
+    /**
+     * mcp#31 — <b>the choke's own meta-argument is DECLARED, not merely accepted.</b>
+     *
+     * <p>{@code precedentOverride} is read by the registry and stripped before any tool sees
+     * it, so no tool's own schema ever mentioned it. A client reading {@code tools/list} could
+     * not discover it at all: the only place it appeared was inside the refusal text that
+     * tells an agent to use it — which is the one moment the agent has already been blocked.
+     * That is the parameter documented by the failure it causes.</p>
+     *
+     * <p>It is declared HERE rather than in each tool because the choke owns it. It applies to
+     * every call, it is consumed by the registry, and it is removed before dispatch — so
+     * putting it in forty-odd hand-written schemas would be forty copies of one fact, which is
+     * the shape this sprint spent a stage deriving away.</p>
+     */
+    @Test
+    @DisplayName("mcp#31: every published schema declares precedentOverride, with a description")
+    void theChokesOwnMetaArgumentIsDeclared() {
+        ToolRegistry reg = registryWarningAbout("move", new boolean[1]);
+
+        List<Map<String, Object>> definitions = reg.getToolDefinitions();
+
+        // Proof of life: without it the loop below asserts nothing and reads as a pass.
+        assertFalse(definitions.isEmpty(), "no tools published — the loop would prove nothing");
+
+        for (Map<String, Object> def : definitions) {
+            String name = String.valueOf(def.get("name"));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> schema = (Map<String, Object>) def.get("inputSchema");
+            assertNotNull(schema, name + " publishes no inputSchema at all");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
+            assertNotNull(properties,
+                name + " publishes a schema with no properties, so it can declare nothing");
+            assertTrue(properties.containsKey("precedentOverride"),
+                name + " accepts precedentOverride and does not declare it: " + properties.keySet());
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> declared = (Map<String, Object>) properties.get("precedentOverride");
+            String description = String.valueOf(declared.get("description"));
+            // A declared name with no description is discoverable and still unusable: the
+            // caller learns a key exists without learning what to put in it.
+            assertFalse(description.isBlank(), name + " declares it with no description");
+        }
     }
 
     @Test
