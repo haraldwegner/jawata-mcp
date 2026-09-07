@@ -91,6 +91,45 @@ class SiblingRegistryTest {
     }
 
     @Test
+    @DisplayName("mcp#27: the registry is found from the data dir, with or without a session subdir")
+    void theRegistryIsFoundFromEitherDataDirShape(@TempDir Path root) throws Exception {
+        // Studio's layout: <data_root>/workspaces/<workspace>/, with the registry one level
+        // above every workspace. The launcher MAY inject a session subdir, so the resident does
+        // not know its own depth — which is exactly why JawataApplication already walks up for
+        // its own workspace.json rather than resolving a fixed path.
+        Path workspaces = Files.createDirectories(root.resolve("workspaces"));
+        Path direct = Files.createDirectories(workspaces.resolve("javata-dev"));
+        Path withSession = Files.createDirectories(direct.resolve("a1b2c3-session"));
+        registry(workspaces, """
+            {"residents": [{"workspaceName": "patterns", "port": 8090, "token": "t"}]}
+            """);
+
+        assertAll(
+            () -> assertEquals(workspaces, SiblingRegistry.locate(direct),
+                "found from the workspace dir itself"),
+            () -> assertEquals(workspaces, SiblingRegistry.locate(withSession),
+                "and from the session subdir the launcher injects"),
+            () -> assertEquals(1, SiblingRegistry.around(withSession, "javata-dev").size(),
+                "and `around` joins the walk to the read"));
+    }
+
+    @Test
+    @DisplayName("mcp#27: the walk is BOUNDED — it must not adopt a stranger's registry")
+    void theWalkDoesNotClimbToTheRoot(@TempDir Path root) throws Exception {
+        // An unbounded walk would keep climbing until it found SOME residents.json — one
+        // belonging to a different install, or to nobody. A wrong registry is worse than none,
+        // because every address in it is confidently askable.
+        registry(root, """
+            {"residents": [{"workspaceName": "stranger", "port": 9999, "token": "t"}]}
+            """);
+        Path deep = Files.createDirectories(
+            root.resolve("a").resolve("b").resolve("c").resolve("d").resolve("e"));
+
+        assertEquals(null, SiblingRegistry.locate(deep),
+            "a registry five levels up is not this server's registry");
+    }
+
+    @Test
     @DisplayName("THE CONTROL — a null self name excludes NOBODY, rather than excluding everyone")
     void anUnnamedServerExcludesNothing(@TempDir Path dir) throws Exception {
         // Without this, an implementation comparing names with `selfName.equals(...)` would

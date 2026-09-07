@@ -63,7 +63,43 @@ public final class SiblingRegistry {
      */
     public record Sibling(String workspaceName, int port, String token) {}
 
+    /**
+     * How far up from the data dir to look. The resident's Eclipse {@code -data} is
+     * {@code <data_root>/workspaces/<workspace>/} when studio spawns it directly, and
+     * {@code <data_root>/workspaces/<workspace>/<uuid>/} when the launcher injects a session
+     * subdirectory — so the registry is one or two levels up. Three is that plus one, and it is
+     * BOUNDED rather than walked to the filesystem root on purpose: an unbounded search would
+     * happily find a {@code residents.json} belonging to a different install, or to nobody, and
+     * a wrong registry is worse than none because every address in it is confidently askable.
+     */
+    private static final int SEARCH_DEPTH = 3;
+
     private SiblingRegistry() {}
+
+    /**
+     * The directory holding {@link #FILE_NAME}, found by walking up from the resident's data
+     * dir, or null when there is none within {@link #SEARCH_DEPTH}.
+     *
+     * <p>This mirrors the parent-fallback {@code JawataApplication} already performs for its own
+     * {@code workspace.json}, and for the same reason: the launcher may or may not have injected
+     * a session subdirectory, so the depth is not known to the process that has to find the
+     * file.</p>
+     */
+    public static Path locate(Path dataDir) {
+        Path dir = dataDir;
+        for (int up = 0; up <= SEARCH_DEPTH && dir != null; up++) {
+            if (Files.isRegularFile(dir.resolve(FILE_NAME))) {
+                return dir;
+            }
+            dir = dir.getParent();
+        }
+        return null;
+    }
+
+    /** {@link #others(Path, String)} against the registry {@link #locate}d from a data dir. */
+    public static List<Sibling> around(Path dataDir, String selfName) {
+        return others(locate(dataDir), selfName);
+    }
 
     /**
      * Every resident in the registry EXCEPT this one, or empty when there is no registry.
