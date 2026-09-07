@@ -27,10 +27,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * <h2>What it does, and what it deliberately does not</h2>
  *
  * <p>{@link #started} on the way in, {@link #finished} on the way out, both from the one
- * choke that already wraps every call. Whatever is left is outstanding. {@link #outstanding}
- * answers the ones older than a threshold, so an ordinary in-progress call — every call is
- * in flight for its own duration, including the one asking the question — is not reported
- * as a hang.</p>
+ * choke that already wraps every call. {@link #outstanding} answers the ones older than a
+ * threshold, so an ordinary in-progress call — every call is in flight for its own
+ * duration, including the one asking the question — is not reported as a hang.</p>
+ *
+ * <p><b>The ticket starts at the TOOL, not at the registry's pre-work, and this class does
+ * not get to pretend otherwise.</b> An earlier version of this paragraph said "whatever is
+ * left is outstanding", which was false: {@code ToolRegistry.callTool} runs the strict-disk-
+ * sync reconcile and the precedent charge BEFORE the ticket is taken, so a call hung inside
+ * the reconcile — which walks the workspace, and is exactly the sort of thing that hangs —
+ * is not tracked. An architect watch found it by reading that sentence against the code
+ * twenty lines below it. For a class whose entire subject is honest bounds, an unstated
+ * bound of its own is the defect it exists to remove.</p>
  *
  * <p><b>It holds SHAPES, like everything else in this package: a tool name and a
  * discriminator, both already sanitized by {@link Token}, and a start time.</b> No

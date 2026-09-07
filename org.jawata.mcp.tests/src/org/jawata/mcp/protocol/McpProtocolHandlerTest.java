@@ -238,8 +238,12 @@ class McpProtocolHandlerTest {
         assertNotNull(mutate.get("annotations"), "a mutating tool must be annotated too");
         assertFalse(mutate.get("annotations").get("readOnlyHint").asBoolean(),
             "and its annotation must say it is NOT read-only");
-        assertTrue(mutate.get("annotations").get("destructiveHint").asBoolean(),
-            "a refactoring rewrites existing files — reversible is not additive");
+        // NOT asserted here: destructiveHint. This registers a MOCK named rename_symbol,
+        // and the product vouches for destructiveness by TYPE rather than by name — so a
+        // mock is exactly a tool it cannot vouch for, and omitting the hint is the correct
+        // answer. Asserting it here would only prove the mock's name matched a literal.
+        // The real refactoring tools are asserted in ReadOnlyHintAnnotationTest, which
+        // registers what the application registers.
     }
 
     @Test

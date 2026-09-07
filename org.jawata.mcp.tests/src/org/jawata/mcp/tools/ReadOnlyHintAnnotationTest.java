@@ -71,41 +71,71 @@ class ReadOnlyHintAnnotationTest {
      * Cursor dogfood, the guess was not even stable, gating three of eight identical calls
      * in one session and letting five through.</p>
      *
-     * <p>The caution that reasoning wanted is real and is now STATED instead of implied:
-     * {@code readOnlyHint: false} and {@code destructiveHint: true}. Saying nothing was
-     * never the safe answer; it was the ambiguous one.</p>
+     * <p><b>THE FIRST REWRITE OVER-CORRECTED, and an architect watch caught it.</b> It
+     * derived {@code destructiveHint} as the negation of the read-only name match — which
+     * collapses a THREE-valued domain (read-only · rewrites source · neither) into two, so
+     * every tool the classifier had no opinion about began affirmatively claiming to be
+     * destructive. That is worse than the silence it replaced: {@code compile_workspace} is
+     * the tool this product's own steering line tells every agent to run and it was being
+     * published as destructive; so was {@code experience}, for its {@code recall} half,
+     * which is the exact tool the dogfood measured being over-gated.</p>
+     *
+     * <p><b>And this test could not have caught either, which is why it now drives REAL
+     * TOOLS.</b> It registered name-only stubs while the classifier read only the name — so
+     * both sides of the comparison were one literal list written by one author, a guard over
+     * a fact the class already owns. It asks the registry about the tools the application
+     * actually registers instead.</p>
      */
     @Test
-    @DisplayName("mcp#36: mutating tools SAY they mutate — an absence made clients guess")
-    void mutatingTools_sayTheyMutate() {
+    @DisplayName("mcp#36: the REAL refactoring tools say they rewrite source")
+    void realRefactoringToolsSayTheyRewriteSource() {
         ToolRegistry registry = new ToolRegistry();
-        List<String> mutating = List.of(
-            // refactor
-            "rename_symbol", "extract_method", "move_class", "pull_up",
-            "change_method_signature", "organize_imports", "format",
-            // codegen
-            "generate_constructor", "override_methods",
-            // apply/undo primitives (they mutate; inspect is the read-only one)
-            "apply_refactoring", "undo_refactoring",
-            // project + workspace state
-            "load_project", "add_project", "remove_project", "refresh_workspace",
-            // build / test / fix / dependencies
-            "compile_workspace", "run_tests", "apply_quick_fix",
-            "add_dependency", "update_dependency");
-        mutating.forEach(name -> registry.register(stub(name)));
+        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
+            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        // The SAME call the application registers from, so this cannot drift from what ships.
+        List<AbstractTool> real = new java.util.ArrayList<>(
+            RefactoringDoors.all(() -> null, cache));
+        real.addAll(RefactoringDoors.standalone(() -> null, cache));
+        real.forEach(registry::register);
 
-        for (String name : mutating) {
-            Map<String, Object> def = definitionOf(registry, name);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> annotations = (Map<String, Object>) def.get("annotations");
-            assertNotNull(annotations, name + " must carry annotations — silence is what "
-                + "made clients guess");
+        assertFalse(real.isEmpty(), "the derivation must yield tools, or this proves nothing");
+        for (AbstractTool tool : real) {
+            Map<String, Object> annotations = annotationsOf(registry, tool.getName());
             assertEquals(Boolean.FALSE, annotations.get("readOnlyHint"),
-                name + " mutates, and must say so rather than decline to say anything");
+                tool.getName() + " rewrites source, so it is not read-only");
             assertEquals(Boolean.TRUE, annotations.get("destructiveHint"),
-                name + " rewrites existing state; reversible is not additive");
+                tool.getName() + " rewrites existing files; reversible is not additive");
             assertEquals(Boolean.FALSE, annotations.get("openWorldHint"),
-                name + " operates on the loaded workspace, a closed domain");
+                tool.getName() + " operates on the loaded workspace, a closed domain");
         }
+    }
+
+    @Test
+    @DisplayName("mcp#36: a tool the product cannot vouch for OMITS destructiveHint — the third state")
+    void anUnvouchedToolSaysNothingRatherThanSomethingFalse() {
+        // compile_workspace makes this concrete: not read-only by name, does not rewrite
+        // source, and this product's own steering line tells every agent to run it. Claiming
+        // it destructive would have jawata telling clients to gate the tool jawata tells
+        // agents to use.
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(stub("compile_workspace"));
+
+        Map<String, Object> annotations = annotationsOf(registry, "compile_workspace");
+
+        assertEquals(Boolean.FALSE, annotations.get("readOnlyHint"),
+            "it is still not a read-only tool, and says so");
+        assertFalse(annotations.containsKey("destructiveHint"),
+            "but the product cannot vouch that it rewrites anything, so it says NOTHING "
+                + "rather than something false — a missing hint reads as unknown, which is "
+                + "exactly what this is. got: " + annotations);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> annotationsOf(ToolRegistry registry, String name) {
+        Map<String, Object> annotations =
+            (Map<String, Object>) definitionOf(registry, name).get("annotations");
+        assertNotNull(annotations, name + " must carry annotations — silence is what "
+            + "made clients guess");
+        return annotations;
     }
 }

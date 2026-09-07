@@ -112,6 +112,13 @@ public class AddProjectTool implements Tool {
             log.info("Appending project to workspace: {}", path);
             LoadedProject loaded = service.addProject(path);
 
+            // mcp#35, SECOND DOOR. noteWorkspaceLoaded()'s own javadoc names BOTH
+            // load_project and add_project as paths that install a service without
+            // touching the load state — and the first fix wired only load_project, so
+            // the stale boot alarm survived through here. Found by an architect watch
+            // reading that javadoc against its one call site.
+            org.jawata.mcp.JawataApplication.noteWorkspaceLoaded();
+
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "loaded");
             result.put("projectKey", loaded.projectKey());

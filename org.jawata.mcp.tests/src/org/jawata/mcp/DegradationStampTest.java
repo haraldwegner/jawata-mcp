@@ -226,6 +226,32 @@ class DegradationStampTest {
                 "so later responses stop carrying it too"));
     }
 
+    @Test
+    @DisplayName("mcp#35, THE SECOND DOOR: project(action=add) clears it too")
+    void addingAProjectAlsoClearsAStaleFailure() throws Exception {
+        // The first fix wired load_project ALONE, while noteWorkspaceLoaded()'s own javadoc
+        // named BOTH doors — so the stale boot alarm survived through this one. An architect
+        // watch found it by reading that javadoc against its single call site, which is
+        // exactly the check a green suite cannot perform.
+        JdtServiceImpl service = projects.loadProjectCopy("simple-maven");
+        java.nio.file.Path root = service.getProjectRoot();
+
+        JawataApplication.setLoadingStateForTest(ProjectLoadingState.FAILED,
+            "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
+        assertNotNull(((Map<?, ?>) health().getData()).get("degraded"), "the alarm is standing");
+
+        ToolResponse added = new org.jawata.mcp.tools.AddProjectTool(() -> service).execute(
+            OM.createObjectNode().put("projectPath", root.toString()));
+        assertTrue(added.isSuccess(), "the add itself must succeed: " + added.getError());
+
+        Map<?, ?> after = (Map<?, ?>) health().getData();
+        assertAll(
+            () -> assertEquals("Ready", after.get("status"),
+                "the boot's verdict is gone through THIS door too: " + after),
+            () -> assertFalse(after.containsKey("degraded"),
+                "and nothing is stamped any more: " + after.get("degraded")));
+    }
+
     // ================================================================= helper
 
     /** health_check over the live application state, which is what both channels read. */

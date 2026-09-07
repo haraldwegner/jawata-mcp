@@ -211,7 +211,7 @@ public class ToolRegistry {
             def.put("name", tool.getName());
             def.put("description", tool.getDescription());
             def.put("inputSchema", tool.getInputSchema());
-            def.put("annotations", annotationsFor(tool.getName()));
+            def.put("annotations", annotationsFor(tool));
             definitions.add(def);
         }
 
@@ -251,14 +251,39 @@ public class ToolRegistry {
      * change does not fix that and does not make it worse: it publishes the classification
      * that already existed. Moving the fact onto the tool itself is its own work.</p>
      */
-    private static Map<String, Object> annotationsFor(String toolName) {
-        boolean readOnly = isReadOnly(toolName);
+    private static Map<String, Object> annotationsFor(Tool tool) {
+        boolean readOnly = isReadOnly(tool.getName());
         Map<String, Object> annotations = new LinkedHashMap<>();
         annotations.put("readOnlyHint", readOnly);
-        annotations.put("destructiveHint", !readOnly);
         annotations.put("idempotentHint", readOnly);
         annotations.put("openWorldHint", Boolean.FALSE);
+        if (readOnly) {
+            annotations.put("destructiveHint", Boolean.FALSE);
+        } else if (rewritesSource(tool)) {
+            annotations.put("destructiveHint", Boolean.TRUE);
+        }
+        // else: OMITTED. See the javadoc — this is the third state, and it is real.
         return annotations;
+    }
+
+    /**
+     * Whether this tool is one the product can VOUCH rewrites existing source.
+     *
+     * <p>Asked of the TYPE, not of the name: a refactoring front door
+     * ({@link KindedTool}) or a tool on one of the two refactoring bases. That set is
+     * self-populating — a new refactoring tool joins it by extending what refactoring
+     * tools extend, which no string literal can be forgotten out of.</p>
+     *
+     * <p>It is deliberately NARROWER than "mutates". {@code format}, {@code load_project}
+     * and {@code apply_quick_fix} also change things and are not in it, so they fall to the
+     * unknown state and say nothing. That is the right trade: the cost of omitting a true
+     * hint is a client that keeps guessing about that tool, and the cost of asserting a
+     * false one is a client that gates a tool it should not.</p>
+     */
+    private static boolean rewritesSource(Tool tool) {
+        return tool instanceof KindedTool
+            || tool instanceof org.jawata.mcp.tools.AbstractRefactoringTool
+            || tool instanceof org.jawata.mcp.tools.AbstractApplyingRefactoringTool;
     }
 
     /**
