@@ -88,8 +88,45 @@ class PrecedentEnforcementTest {
     @DisplayName("mcp#31: every published schema declares precedentOverride, with a description")
     void theChokesOwnMetaArgumentIsDeclared() {
         ToolRegistry reg = registryWarningAbout("move", new boolean[1]);
+        // A tool whose schema ALREADY has properties. Without it, every published schema here
+        // is empty, the "no properties" assertion answers first, and the containsKey below is
+        // never reached — so removing the declaration would fail on the wrong line and prove
+        // less than it appears to. It also pins the half an empty schema cannot: the tool's
+        // own parameters must SURVIVE, not be replaced by the one being added.
+        reg.register(new Tool() {
+            @Override public String getName() {
+                return "already_has_properties";
+            }
+            @Override public String getDescription() {
+                return "a tool with a schema of its own";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object",
+                    "properties", Map.of("filePath", Map.of("type", "string")));
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of("ok", true));
+            }
+        });
 
         List<Map<String, Object>> definitions = reg.getToolDefinitions();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ownProperties = (Map<String, Object>)
+            ((Map<String, Object>) definitions.stream()
+                .filter(d -> "already_has_properties".equals(d.get("name")))
+                .findFirst().orElseThrow()
+                .get("inputSchema")).get("properties");
+        assertTrue(ownProperties.containsKey("filePath"),
+            "the tool's own parameters must survive the declaration: " + ownProperties.keySet());
+        // Asserted HERE, before the loop, and deliberately. The loop meets an empty-schema
+        // mock first, so its own "no properties" assertion answers before it ever reaches a
+        // populated schema — meaning a mutation that removed the declaration would fail on
+        // the empty case and never exercise this one. This is the assertion the loop cannot
+        // reach, on the only tool here that has a schema worth adding to.
+        assertTrue(ownProperties.containsKey("precedentOverride"),
+            "a tool with a schema of its own must gain the declaration too: "
+                + ownProperties.keySet());
 
         // Proof of life: without it the loop below asserts nothing and reads as a pass.
         assertFalse(definitions.isEmpty(), "no tools published — the loop would prove nothing");
