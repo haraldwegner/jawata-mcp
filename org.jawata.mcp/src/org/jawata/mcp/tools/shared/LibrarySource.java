@@ -83,6 +83,33 @@ public final class LibrarySource {
             result.put("projectKey", project.projectKey());
 
             if (type.getCompilationUnit() != null) {
+                // mcp#26: attribute the source to the project that OWNS the compilation unit,
+                // not to the one this loop happened to reach first. `findType` asks whether a
+                // project's classpath can RESOLVE the name, and a project that merely depends
+                // on the declaring one answers yes — so the key above is iteration-order luck
+                // presented as provenance. Measured in the v3.9.0 dogfood: a type declared in
+                // com.jats2.model was attributed to a UI project that only depends on it.
+                org.eclipse.jdt.core.IJavaProject declarer =
+                    type.getCompilationUnit().getJavaProject();
+                if (declarer != null) {
+                    for (LoadedProject candidate : service.allProjects()) {
+                        if (candidate.javaProject() != null
+                                && declarer.getElementName()
+                                    .equals(candidate.javaProject().getElementName())) {
+                            result.put("projectKey", candidate.projectKey());
+                            break;
+                        }
+                    }
+                }
+                // ...and NAME THE FILE. Of the three agents who ran the original probe, one
+                // took the path from a separate search call and one INFERRED it from the
+                // package name — an answer that says which project but not which file invites
+                // exactly that. Absent when the resource is not on disk, rather than guessed.
+                if (type.getCompilationUnit().getResource() != null
+                        && type.getCompilationUnit().getResource().getLocation() != null) {
+                    result.put("filePath", service.getPathUtils().formatPath(
+                        type.getCompilationUnit().getResource().getLocation().toOSString()));
+                }
                 result.put("origin", "workspace-source");
                 result.put("source", page(type.getCompilationUnit().getSource(), result, maxChars, offset));
                 return result;

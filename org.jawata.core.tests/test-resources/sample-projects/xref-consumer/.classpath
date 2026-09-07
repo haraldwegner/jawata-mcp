@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- mcp#26 fixture: this project DECLARES nothing shared. The leading '/' makes the
+     entry a REQUIRED PROJECT rather than a source folder (mcp#3) — Eclipse's own
+     spelling for a project reference — so com.example.xref.Declared RESOLVES here
+     while living in xref-declarer. That gap is the whole defect. -->
+<classpath>
+    <classpathentry kind="src" path="src/main/java"/>
+    <classpathentry kind="src" path="/xref-declarer"/>
+    <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+    <classpathentry kind="output" path="bin"/>
+</classpath>

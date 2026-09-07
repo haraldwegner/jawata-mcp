@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- mcp#26 fixture: the project that DECLARES the shared type. Its sibling
+     xref-consumer merely RESOLVES it through a project reference, which is the
+     situation inspect(kind=source) attributed to whichever project it met first. -->
+<classpath>
+    <classpathentry kind="src" path="src/main/java"/>
+    <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+    <classpathentry kind="output" path="bin"/>
+</classpath>
