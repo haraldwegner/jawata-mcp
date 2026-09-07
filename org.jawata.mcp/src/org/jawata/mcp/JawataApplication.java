@@ -545,6 +545,14 @@ public class JawataApplication implements IApplication {
                     org.jawata.mcp.models.WorkspaceIdentity.install(null, java.util.List.of(root));
                 }
             }
+            // mcp#27 stage 1: the other residents on this machine, read from the registry
+            // studio publishes beside the workspace directories. A SUPPLIER rather than a
+            // snapshot, because residents start and stop while this one runs — a list read
+            // once at boot would name servers that have since gone and miss ones that arrived.
+            final Path identityDataDir = dataDir;
+            org.jawata.mcp.models.WorkspaceIdentity.installSiblings(() ->
+                org.jawata.mcp.models.SiblingRegistry.around(
+                    identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()));
             org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> {
                 IJdtService s = this.jdtService;
                 if (s == null) {

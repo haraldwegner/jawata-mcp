@@ -70,12 +70,49 @@ public final class WorkspaceIdentity {
         loadFailure = supplier;
     }
 
+    /**
+     * mcp#27 stage 1: the other residents on this machine, supplied rather than read here so
+     * this class stays a pure statement of identity. Null until installed.
+     */
+    private static Supplier<List<SiblingRegistry.Sibling>> siblings;
+
+    /** mcp#27: install the sibling-resident supplier (application wiring). */
+    public static void installSiblings(Supplier<List<SiblingRegistry.Sibling>> supplier) {
+        siblings = supplier;
+    }
+
     /** Test hook — a static holder that cannot be cleared poisons every later test. */
     static void reset() {
         workspaceName = null;
         configuredProjects = List.of();
         liveProjectKeys = null;
         loadFailure = null;
+        siblings = null;
+    }
+
+    /** The siblings this server knows of, or empty — a broken supplier answers empty. */
+    private static List<SiblingRegistry.Sibling> readSiblings() {
+        Supplier<List<SiblingRegistry.Sibling>> supplier = siblings;
+        if (supplier == null) {
+            return List.of();
+        }
+        try {
+            List<SiblingRegistry.Sibling> found = supplier.get();
+            return found == null ? List.of() : found;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * This server's workspace name, or null when it has none.
+     *
+     * <p>mcp#27: the sibling registry keys on this — it is how a resident recognises ITSELF in
+     * a list of every resident on the machine, and a server that peeked itself would report its
+     * own miss back as a sibling's answer.</p>
+     */
+    public static String name() {
+        return workspaceName;
     }
 
     /** True once {@link #install} gave this server something to say about itself. */
@@ -105,9 +142,26 @@ public final class WorkspaceIdentity {
         if (!installed()) {
             return null;
         }
-        return "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
+        String hint = "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
             + " workspace (" + projectSummary() + ") — a symbol that lives in another"
             + " project tree is served by that tree's own jawata server, not this one.";
+
+        // mcp#27 stage 1: NAME them when we know them. The sentence above is a true statement
+        // about how jawata is deployed and useless as an instruction — it tells an agent that
+        // some other server might help without saying whether one is running or which. Where
+        // studio has published a registry we can say exactly who else is up.
+        List<SiblingRegistry.Sibling> others = readSiblings();
+        if (others.isEmpty()) {
+            // NOT "no other servers are running" — an absent registry means we do not KNOW of
+            // any, which is a different fact and the one this codebase keeps having to
+            // separate. A hand-launched resident has no studio behind it and no registry, and
+            // its machine may still be full of siblings.
+            return hint;
+        }
+        return hint + " Running here: "
+            + others.stream().map(SiblingRegistry.Sibling::workspaceName)
+                .collect(java.util.stream.Collectors.joining(", "))
+            + ".";
     }
 
     /** The terminal failure reason, or null — a broken supplier answers null. */

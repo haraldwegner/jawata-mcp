@@ -29,6 +29,56 @@ class WorkspaceIdentityTest {
     }
 
     @Test
+    @DisplayName("mcp#27: when siblings are known, the hint NAMES them instead of gesturing")
+    void theHintNamesTheOtherResidents() {
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/tmp/jawata-mcp")));
+        WorkspaceIdentity.installSiblings(() -> List.of(
+            new SiblingRegistry.Sibling("orb-strategy", 8082, "t2"),
+            new SiblingRegistry.Sibling("patterns", 8083, "t3")));
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+
+        assertAll(
+            () -> assertTrue(hint.contains("orb-strategy"), "got: " + hint),
+            () -> assertTrue(hint.contains("patterns"), "got: " + hint),
+            // The original sentence survives — this ADDS an answer, it does not replace the
+            // statement about how jawata is deployed.
+            () -> assertTrue(hint.contains("own jawata server"), "got: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#27 THE CONTROL — no registry means we do not KNOW of siblings, not that there are none")
+    void withoutARegistryTheHintIsUnchangedAndClaimsNothing() {
+        // The distinction this codebase keeps having to make. A hand-launched resident has no
+        // studio behind it and no registry, and its machine may still be full of siblings — so
+        // the hint must not acquire a sentence asserting that none are running.
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/tmp/jawata-mcp")));
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+
+        assertAll(
+            () -> assertFalse(hint.contains("Running here"),
+                "an absent registry must not become a claim about what is running: " + hint),
+            () -> assertTrue(hint.contains("own jawata server"),
+                "and the original hint is untouched: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#27: a supplier that throws is survivable — a hint must not fail a search")
+    void aBrokenSupplierDoesNotBreakTheHint() {
+        WorkspaceIdentity.install("javata-dev", List.of(Path.of("/tmp/jawata-mcp")));
+        WorkspaceIdentity.installSiblings(() -> {
+            throw new IllegalStateException("registry unreadable");
+        });
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+
+        assertNotNull(hint, "the hint still answers");
+        assertFalse(hint.contains("Running here"),
+            "and claims nothing it could not read: " + hint);
+    }
+
+    @Test
     @DisplayName("uninstalled identity keeps every surface exactly as before")
     void uninstalled_isSilent() {
         assertFalse(WorkspaceIdentity.installed());
