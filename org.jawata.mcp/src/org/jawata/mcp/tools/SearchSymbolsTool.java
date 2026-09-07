@@ -182,9 +182,8 @@ public class SearchSymbolsTool extends AbstractTool {
             return ToolResponse.success(data, ResponseMeta.builder()
                 .returnedCount(page.size())
                 .truncated(page.size() == maxResults)
-                .steering(total == 0
-                    ? emptyResultSteering(query)
-                    : teachTheAddress(query, page, address -> resolves(service, address)))
+                .steering(searchSteering(query, page, total,
+                    address -> resolves(service, address)))
                 .suggestedNextTools(List.of(
                     "get_symbol_info at a result location for detailed info",
                     "get_type_members for type results",
@@ -196,6 +195,55 @@ public class SearchSymbolsTool extends AbstractTool {
             log.error("Error searching symbols: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * The whole steering line for one search — the three things a page can be.
+     *
+     * <p>It was two: empty, or found. mcp#25 is the third, and it hid between them. A bare-name
+     * query falls back to a substring retry, which matches JDK and dependency types by the
+     * dozen — so a workspace containing nothing of that name answers with a full, plausible
+     * page and the D11 redirect never fires. Measured in the v3.9.0 dogfood:
+     * {@code query="Order"} returned <b>32</b> rows, every one a classpath binary
+     * ({@code ByteOrder}, {@code SortOrder}, …), while the truly-empty query on the same run
+     * correctly redirected. <b>The successful-looking answer was the misleading one.</b></p>
+     *
+     * <p>The redirect is APPENDED rather than substituted, because both facts are true at once
+     * and nothing here can tell which the caller wanted: a JDK type IS the address it teaches,
+     * AND this workspace holds no source of that name. Intent is not on the wire, so the line
+     * states what it saw and lets the reader take the half that applies.</p>
+     *
+     * <p>NON-EMPTY is required before the all-binary test, and that is not defensive:
+     * {@code allMatch} is vacuously TRUE on an empty page, which would append the redirect to
+     * the D11 line that already carries it and say the same thing twice.</p>
+     */
+    static String searchSteering(String query, List<Map<String, Object>> page, int total,
+                                 java.util.function.Predicate<String> resolver) {
+        String found = total == 0
+            ? emptyResultSteering(query)
+            : teachTheAddress(query, page, resolver);
+        if (!onlyClasspathBinaries(page)) {
+            return found;
+        }
+        String elsewhere = org.jawata.mcp.models.WorkspaceIdentity.elsewhereHint();
+        if (elsewhere == null) {
+            return found;
+        }
+        String binaryOnly = "Every match for '" + query + "' is a CLASSPATH BINARY — this"
+            + " workspace declares no source of that name. " + elsewhere;
+        return found == null || found.isBlank() ? binaryOnly : found + " " + binaryOnly;
+    }
+
+    /**
+     * Every row on the page came from a jar, jmod or the JDK image — nothing from source.
+     *
+     * <p>Empty is excluded deliberately; see {@link #searchSteering}. The flag itself is set in
+     * {@code createSymbolInfo}, so this reads a fact the row already publishes rather than
+     * re-deriving one.</p>
+     */
+    private static boolean onlyClasspathBinaries(List<Map<String, Object>> page) {
+        return !page.isEmpty()
+            && page.stream().allMatch(row -> Boolean.TRUE.equals(row.get("binary")));
     }
 
     /**
