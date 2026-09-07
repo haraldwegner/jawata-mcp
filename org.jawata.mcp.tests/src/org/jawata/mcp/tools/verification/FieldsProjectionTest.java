@@ -95,6 +95,53 @@ class FieldsProjectionTest {
             "non-string entries are rejected");
     }
 
+    // ------------------------------------------------- the honesty keys (mcp#14, #43)
+
+    @Test
+    @DisplayName("mcp#14/#43: a projection never strips a row's own statement that it is unresolved")
+    void anUnresolvedRowKeepsItsAdmission() {
+        // The two shapes production actually emits, copied from their emission sites:
+        // FindReferencesTool:266 writes resolved:false, AbstractTool:377/391 writes
+        // unresolved:true. Neither carries a filePath — which is the whole defect,
+        // because that is precisely the key a caller economising asks for.
+        Map<String, Object> resolvedFalse = new java.util.LinkedHashMap<>();
+        resolvedFalse.put("resolved", false);
+        resolvedFalse.put("unresolvedReason", "no source file for this match");
+        resolvedFalse.put("referenceKind", "read");
+
+        Map<String, Object> unresolvedTrue = new java.util.LinkedHashMap<>();
+        unresolvedTrue.put("unresolved", true);
+        unresolvedTrue.put("unresolvedReason", "the match could not be tied to a source file");
+
+        Map<String, Object> ordinary = new java.util.LinkedHashMap<>();
+        ordinary.put("filePath", "/src/com/example/Real.java");
+        ordinary.put("line", 12);
+        ordinary.put("context", "  callee();");
+
+        List<Map<String, Object>> projected = FieldsProjection.project(
+            List.of(resolvedFalse, unresolvedTrue, ordinary), List.of("filePath"));
+
+        // Before the fix each of the first two projected to {} — a blank object beside
+        // a real one, indistinguishable from a row that simply lacks the key.
+        assertFalse(projected.get(0).isEmpty(),
+            "an unresolved row must not render as {} — that is a different claim, not a smaller row");
+        assertEquals(false, projected.get(0).get("resolved"),
+            "the row's own resolved:false survives the projection: " + projected.get(0));
+        assertEquals("no source file for this match", projected.get(0).get("unresolvedReason"),
+            "and so does the reason, which is the only thing telling the caller what it is");
+
+        assertEquals(true, projected.get(1).get("unresolved"),
+            "the other production spelling survives too: " + projected.get(1));
+        assertEquals("the match could not be tied to a source file",
+            projected.get(1).get("unresolvedReason"), "got: " + projected.get(1));
+
+        // THE CONTROL, and it is what keeps this from being a licence to ignore fields:
+        // a row that claims nothing gets nothing back. Without it, a fix that simply
+        // stopped projecting would pass every assertion above.
+        assertEquals(Map.of("filePath", "/src/com/example/Real.java"), projected.get(2),
+            "a row that does not declare itself unresolved keeps ONLY what was asked for");
+    }
+
     // ------------------------------------------------- the five tools live
 
     @Test
