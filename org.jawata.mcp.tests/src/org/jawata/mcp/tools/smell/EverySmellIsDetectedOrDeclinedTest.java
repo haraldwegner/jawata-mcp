@@ -65,7 +65,7 @@ class EverySmellIsDetectedOrDeclinedTest {
     private static Map<String, String> chapterThree() {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("Mysterious Name", null);                             // declined
-        m.put("Duplicated Code", "DUPLICATED_CODE_IS_ITS_OWN_TOOL");
+        m.put("Duplicated Code", "duplicated_code");
         m.put("Long Function", "long_method");
         m.put("Long Parameter List", "long_parameter_list");
         m.put("Global Data", "global_data");
@@ -91,13 +91,20 @@ class EverySmellIsDetectedOrDeclinedTest {
         return java.util.Collections.unmodifiableMap(m);
     }
 
-    /**
-     * Duplicated Code ships as {@code find_duplicate_code}, a TOOL rather than a
-     * {@code find_quality_issue} kind, because its answer is clone GROUPS — a set of
-     * locations that are the same — and the findings shape carries one location each. It is
-     * detected, so it is not declined; it is simply not in the catalog this test reads.
-     */
-    private static final String OWN_TOOL = "DUPLICATED_CODE_IS_ITS_OWN_TOOL";
+    // DUPLICATED CODE USED TO BE EXEMPT HERE, AND THE EXEMPTION OUTLIVED ITS REASON.
+    //
+    // It read: "Duplicated Code ships as find_duplicate_code, a TOOL rather than a
+    // find_quality_issue kind, because its answer is clone GROUPS and the findings shape
+    // carries one location each. It is detected, so it is not declined; it is simply not in
+    // the catalog this test reads." Every word of that was true when written, and S8b step 9
+    // made it false: DuplicatedCodeSmell reshapes those groups into findings and
+    // FowlerDetectors:151 registers the detector, whose kind() answers `duplicated_code`.
+    //
+    // What the sentinel COST while it stood is the point rather than the staleness. It
+    // short-circuited the registered-kind check for this one row, so the row was accepted
+    // without anything being asked of the shipped list — an exemption is indistinguishable
+    // from a passing check from outside, which is the state this whole file exists to forbid.
+    // Row 2 now joins like every other row.
 
     private static List<String> registeredKinds() {
         return FowlerDetectors.registerInto(new DetectorCatalog(), () -> null).kinds();
@@ -118,7 +125,7 @@ class EverySmellIsDetectedOrDeclinedTest {
             String name = smell.getKey();
             String kind = smell.getValue();
             boolean declined = FowlerDetectors.DECLINED.containsKey(name);
-            boolean detected = kind != null && (OWN_TOOL.equals(kind) || kinds.contains(kind));
+            boolean detected = kind != null && kinds.contains(kind);
 
             if (!declined && !detected) {
                 thirdState.add(name + (kind == null
@@ -181,5 +188,61 @@ class EverySmellIsDetectedOrDeclinedTest {
                 + " moves in the same change that adds or removes a declination, which is"
                 + " what the four stale-count findings in this sprint were all about: "
                 + FowlerDetectors.DECLINED.keySet());
+    }
+
+    /**
+     * TWENTY-TWO OF TWENTY-FOUR, COUNTED FROM THE SHIPPED KIND LIST — C9's clause.
+     *
+     * <p>The plan's C9 exit asks for <i>"62 of 66 and 22 of 24 recomputed from the shipped
+     * lists"</i>, and until now this class asserted the partition without ever producing the
+     * figure. The two tests above are not this one: {@code theTwentyFourArePartitioned}
+     * proves no smell is in a third state, and {@code theBookHasTwentyFour} pins the book's
+     * size and today's declination count. Neither counts what is DETECTED, and 22 is that
+     * count.</p>
+     *
+     * <p><b>Nothing here is written down.</b> 24 is the book's and 22 is what remains after
+     * asking the shipped catalog, kind by kind, whether it registers the detector each row
+     * claims. A detector dropped or a kind renamed lowers it and names the smell that
+     * silently stopped being reported — which is the one thing a partition check cannot
+     * say, because dropping a detector AND writing a declination for it keeps the partition
+     * whole while the product detects one fewer.</p>
+     *
+     * <p>The counterpart for the refactorings is
+     * {@code org.jawata.mcp.tools.PerformedRefactoringCountTest}, which does the same join
+     * against the shipped operation surface for Fowler's 66.</p>
+     */
+    @Test
+    @DisplayName("22 of 24, COUNTED from the shipped kind list rather than asserted")
+    void theDetectedCountIsRecomputed() {
+        List<String> kinds = registeredKinds();
+        assertFalse(kinds.isEmpty(),
+            "PROOF OF LIFE: over an empty catalog every row reads as undetected, the count"
+                + " is zero, and the failure would look like a missing smell rather than a"
+                + " broken registration");
+
+        List<String> claimedButUnregistered = new ArrayList<>();
+        int detected = 0;
+        for (Map.Entry<String, String> smell : FOWLER_CHAPTER_3.entrySet()) {
+            String kind = smell.getValue();
+            if (kind == null) {
+                continue;                       // declined in writing; checked above
+            }
+            if (kinds.contains(kind)) {
+                detected++;
+            } else {
+                claimedButUnregistered.add(smell.getKey() + " claims kind '" + kind + "'");
+            }
+        }
+
+        assertTrue(claimedButUnregistered.isEmpty(),
+            "each row's kind is joined against what FowlerDetectors actually registers, so a"
+                + " rename shows up here naming the smell it stopped reporting: "
+                + claimedButUnregistered);
+        assertEquals(22, detected,
+            "C9's clause: jawata detects 22 of Fowler's 24. Neither side of this is the"
+                + " number 22 — the left is chapter 3 and the right is the registered kind"
+                + " list, and 22 is what counting the join produces. Counted " + detected
+                + " of " + FOWLER_CHAPTER_3.size() + " over " + kinds.size()
+                + " registered kinds");
     }
 }
