@@ -289,7 +289,6 @@ public final class OperationRegistry {
         return tool + " " + discriminatorOf.getOrDefault(tool, "kind") + "=" + kind;
     }
 
-    /** Empty it. For tests that need a registry with known contents. */
     /**
      * Everything this registry holds, as a value that can be handed back to
      * {@link #restore(Snapshot)}.

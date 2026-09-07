@@ -47,6 +47,16 @@ import java.util.function.Supplier;
  * over a change the doors above produced rather than transformations of code, and it
  * deliberately implements {@link FrontDoor} and not {@link KindedTool} so its verbs never
  * enter the operation namespace. Including it here would put them there through the back.</p>
+ *
+ * <p><b>And {@code apply_null_annotations}, which is NOT an oversight and is worth naming
+ * because the sentence above would otherwise read as a complete enumeration.</b> It extends
+ * the apply/undo refactoring base and the application registers it, but it declares no
+ * discriminator and publishes no operation kinds, so it belongs to neither {@link #all} nor
+ * {@link #standalone}. It costs nothing today because no Fowler row names it — and a C9
+ * round-2 auditor pointed out that this is exactly F1's LATENT form: a future standalone
+ * refactoring tool that DID carry a Fowler row could be registered inline, and a count
+ * joining against these two methods would silently not see it. Whoever adds one adds it
+ * to {@link #standalone} rather than to a register line.</p>
  */
 public final class RefactoringDoors {
 
