@@ -195,7 +195,8 @@ public class MoveClassTool extends AbstractRefactoringTool
                     "Unknown targetProjectKey '" + targetProjectKey + "'. Use list_projects.");
             }
 
-            IPackageFragment destination = ensurePackageInProject(targetProject, targetPackage);
+            IPackageFragment destination = ensurePackageInProject(targetProject, targetPackage,
+                (IPackageFragmentRoot) sourcePkg.getParent());
             if (destination == null) {
                 return ToolResponse.invalidParameter("targetPackage",
                     "Could not resolve or create target package '" + targetPackage
@@ -271,11 +272,34 @@ public class MoveClassTool extends AbstractRefactoringTool
 
     /**
      * Find or create {@code targetPackage} in a source root of
-     * {@code targetProject}. Prefers an existing fragment; if none exists,
-     * creates the package in the first source root.
+     * {@code targetProject}.
+     *
+     * <p>{@code preferredRoot} — the root the moved class already lives in — WINS whenever
+     * it belongs to {@code targetProject}, whether or not it already declares the package.
+     * That is mcp#17: a package name in one root says nothing about the other.
+     * {@code src/main/java} and {@code src/test/java} are separate compilation scopes that
+     * routinely declare the same package, so "this root already has {@code com.example.service}"
+     * is not evidence about where a TEST class belongs — and acting on it wrote the class into
+     * the production root, reported success, and passed the compile gate, because production
+     * code compiling against a moved test class is valid Java. The two roots exist to prevent
+     * exactly that.</p>
+     *
+     * <p>A CROSS-project move has no such preference to honour — the source root is not in the
+     * destination project at all — so it falls through to the scan below, which is what keeps
+     * the auto-detect relocation in {@code MoveClassToolCrossProjectTest} working.</p>
+     *
+     * <p>Otherwise: prefer an existing fragment; if none exists, create the package in the
+     * first source root.</p>
      */
     private static IPackageFragment ensurePackageInProject(IJavaProject targetProject,
-                                                            String targetPackage) throws Exception {
+                                                            String targetPackage,
+                                                            IPackageFragmentRoot preferredRoot)
+            throws Exception {
+        if (preferredRoot != null && targetProject.equals(preferredRoot.getJavaProject())) {
+            IPackageFragment inOwnRoot = preferredRoot.getPackageFragment(targetPackage);
+            if (inOwnRoot != null && inOwnRoot.exists()) return inOwnRoot;
+            return preferredRoot.createPackageFragment(targetPackage, true, new NullProgressMonitor());
+        }
         IPackageFragmentRoot firstSourceRoot = null;
         for (IPackageFragmentRoot root : targetProject.getPackageFragmentRoots()) {
             if (root.getKind() != IPackageFragmentRoot.K_SOURCE) continue;
