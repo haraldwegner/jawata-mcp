@@ -263,10 +263,18 @@ public class FindUnusedCodeTool extends AbstractTool {
                     // (`ApplyQuickFixTool`, `ReplaceTempWithQueryTool`, `SplitPhaseTool`).
                     //
                     // The population that matters is the rows `FindQualityIssueTool` MERGES
-                    // into one response, where a 0-based row would sit beside 1-based
-                    // `findings` rows. Of its five merge keys: `largeClasses` never
-                    // pre-converted, `cycles` emits no line, and the three that did — here,
-                    // `violations`, `issues` — are all 1-based as of C8b round 4.
+                    // into one response. `RESULT_LIST_KEYS` holds SIX — `findings` plus five
+                    // others — and of those five, `cycles` and `largeClasses` emit no line at
+                    // all, so the three that carried one are `unusedItems` (here),
+                    // `violations` and `issues`. All three are 1-based as of C8b round 4.
+                    //
+                    // AND THE REASON IT MUST BE 1-BASED IS `Cures.attach`, not a convention I
+                    // inferred: it rebuilds a `Finding` from the RAW row and calls
+                    // `CodeAddress.of(Finding)`, which subtracts one. A 0-based row therefore
+                    // renders every cure address a line above its subject. A round-4 version
+                    // of this comment argued instead that `largeClasses` "never pre-converted",
+                    // which round 5 disproved by reading that tool: it emits no line, so it
+                    // could not have witnessed anything.
                     int line = lineOf(ast, vdf.getName());
                     int column = columnOf(ast, vdf.getName());
                     item.put("line", line);

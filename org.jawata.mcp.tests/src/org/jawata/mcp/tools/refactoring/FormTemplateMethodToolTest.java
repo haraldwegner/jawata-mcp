@@ -69,6 +69,95 @@ class FormTemplateMethodToolTest {
         return n;
     }
 
+    /**
+     * A NESTED HIERARCHY, END TO END — the guard this door's repair shipped without.
+     *
+     * <p>C8b round 4 repaired TWO doors the same way: the superclass lookup was repointed at
+     * {@code tools.shared.TypeLookup} so a nested superclass resolves, and the sibling-subclass
+     * collection beside it was moved off {@code CompilationUnit#types()} so the siblings
+     * declared next to it are visible too. Only the visitor door got an end-to-end case; round
+     * 5 reverted this one's repair in full and every test still passed, so the commit's "5/5
+     * over both doors" counted tests executed rather than guards — a distinction worth the
+     * sentence, because the two read identically in a summary.</p>
+     *
+     * <p>The fixture is written into the project COPY this class already works on, so nothing
+     * is added to the shared sample project — which has moved a counted population four times
+     * in this sprint. Both halves of the repair are asserted, and the refusal each must not
+     * produce is named, so a regression cannot hide behind a different one.</p>
+     */
+    @Test
+    @DisplayName("a NESTED superclass and its nested sibling are both found, end to end")
+    void formTemplateMethod_findsANestedHierarchy() throws Exception {
+        String source = """
+            package com.example;
+
+            /** Written by the test, into its own project copy. */
+            public class NestedTemplateTargets {
+                abstract static class Report {
+                    abstract String build();
+                }
+
+                static class HtmlDoc extends Report {
+                    String build() {
+                        String head = "<h1>";
+                        String body = "html body";
+                        return head + body;
+                    }
+                }
+
+                static class TextDoc extends Report {
+                    String build() {
+                        String head = "==";
+                        String body = "text body";
+                        return head + body;
+                    }
+                }
+            }
+            """;
+        Path nested = helper.getTempDirectory()
+            .resolve("simple-maven/src/main/java/com/example/NestedTemplateTargets.java");
+        Files.writeString(nested, source);
+        service.getJavaProject().getProject().refreshLocal(
+            org.eclipse.core.resources.IResource.DEPTH_INFINITE,
+            new org.eclipse.core.runtime.NullProgressMonitor());
+
+        // The caret is derived from the text rather than hard-coded, so editing the fixture
+        // above cannot silently point this somewhere else.
+        String[] lines = source.split("\n", -1);
+        int line = -1;
+        int column = -1;
+        for (int i = 0; i < lines.length; i++) {
+            int at = lines[i].indexOf("String build()");
+            if (at >= 0 && lines[i].contains("    String build()")) {
+                line = i;
+                column = at + "String ".length();
+                break;
+            }
+        }
+        assertTrue(line >= 0, "the fixture must declare a nested subclass's build()");
+
+        ObjectNode n = mapper.createObjectNode();
+        n.put("kind", "form_template_method");
+        n.put("filePath", nested.toString());
+        n.put("line", line);
+        n.put("column", column);
+        n.put("auto_apply", false);
+        ToolResponse r = tool.execute(n);
+
+        String failure = String.valueOf(r.getError());
+        assertFalse(failure.contains("requires the superclass to be in the same file"),
+            "the door must RESOLVE a nested superclass — that lookup was repointed at the"
+                + " shared type lookup and nothing was watching it: " + failure);
+        assertFalse(failure.contains("sibling"),
+            "the door must see the sibling subclass declared BESIDE the nested one. Refusing"
+                + " about siblings means the superclass resolved and the sibling scan still"
+                + " read the unit's top-level types — the same half-repair the visitor door"
+                + " had: " + failure);
+        assertTrue(r.isSuccess(),
+            "a nested abstract superclass with two nested subclasses sharing a no-arg method"
+                + " is this row's own stated precondition, so it must be accepted: " + failure);
+    }
+
     private long compileErrors() throws Exception {
         ICompilationUnit cu = service.getCompilationUnit(targetFile);
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

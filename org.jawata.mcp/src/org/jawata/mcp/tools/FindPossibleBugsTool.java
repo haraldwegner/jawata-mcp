@@ -273,12 +273,21 @@ public class FindPossibleBugsTool extends AbstractTool {
         // why the two read asymmetrically here rather than by oversight.
         //
         // This pair was character-for-character the one C8b round 3 cured in
-        // `FindUnusedCodeTool` while calling that tool "the sole outlier" — a population
-        // claim made by reading four detectors instead of searching the expression. Round 4
-        // found it. The census that settles it is in `FindQualityIssueTool.RESULT_LIST_KEYS`:
-        // of the five merged keys, `largeClasses` never pre-converted, `cycles` emits no line,
-        // and the three that did — `unusedItems`, `violations`, `issues` — are now 1-based
-        // like the `findings` rows they are merged beside.
+        // `FindUnusedCodeTool` while calling that tool "the sole outlier" — a population claim
+        // made by reading four detectors instead of searching the expression. Round 4 found it.
+        //
+        // WHY 1-BASED IS THE REQUIRED BASE HERE, and this is the argument that actually holds:
+        // `Cures.attach` builds a `Finding` out of the RAW row and hands it to
+        // `CodeAddress.of(Finding)`, which subtracts one. So a row merged into a
+        // `find_quality_issue` response must be 1-based or every cure address rendered from it
+        // names the line above its subject.
+        //
+        // A ROUND-4 COMMENT ARGUED IT FROM `largeClasses` INSTEAD — "it never pre-converted,
+        // so 1-based is a derived convention rather than my preference" — and round 5 read
+        // that tool's emission site: `largeClasses` rows carry NO LINE AT ALL. Its
+        // `getLineNumber` call feeds a `lineCount` subtraction and is never emitted. The
+        // witness was void, and citing it was the same defect the round was convened to
+        // fix — a property asserted about output nobody had read.
         int line = ast.getLineNumber(node.getStartPosition());
         int column = ast.getColumnNumber(node.getStartPosition()) + 1;
         issue.put("line", line);

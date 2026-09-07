@@ -30,12 +30,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       refused it.</li>
  *   <li>Widened to the whole shared project: still zero, because {@code simple-maven} contains
  *       no badly-named field at all.</li>
- *   <li>Relaxed to "the reported line is not blank" — sound in the passing direction, and on
- *       these fixtures it does not discriminate: restoring the pre-decrement left it GREEN.
- *       The audit's ten-of-ten blank-line measurement was over the jawata sources, not over
- *       this project, and carrying that number here would have been evidence about one corpus
- *       used as evidence about another.</li>
+ *   <li>Relaxed to "the reported line is not blank". I recorded this one as unable to fail,
+ *       having restored the pre-decrement and watched it stay GREEN. <b>That conclusion was
+ *       wrong, and the fault was in my mutation rather than in the test.</b> The tool has SIX
+ *       emission sites in two spellings — four addressing {@code node}, two addressing
+ *       {@code varFrag} — and the mutation replaced only the four. Every field row therefore
+ *       kept the corrected base, and the field rows are the ones that land on a blank line.
+ *       A C8b round-5 audit restored all six and the check went RED, naming
+ *       {@code serialVersionUID} on blank line 21.</li>
  * </ol>
+ *
+ * <p><b>So the sibling control in {@code FindNamingViolationsToolTest} does discriminate, and
+ * this class is a second guard rather than its replacement.</b> The lesson is not about either
+ * test: "a mutation that stays green has found something" holds only when the mutation is
+ * COMPLETE, and a partial one produces a false negative that reads exactly like a real one.
+ * Mine covered four of six sites because I reached for one spelling and did not count the
+ * population — the same error, at a smaller scale, that this whole round was convened for.</p>
  *
  * <p><b>What makes this one sound.</b> The tool addresses a FIELD violation at the fragment —
  * {@code varFrag.getStartPosition()} — so the identifier is genuinely at that position and

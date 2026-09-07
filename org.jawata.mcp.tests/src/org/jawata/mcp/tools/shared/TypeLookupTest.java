@@ -38,9 +38,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * asserts that it returns null for the same input. Without that half a reader cannot tell a
  * lookup that descends from one that never needed to.</p>
  *
- * <p>It does not assert that any particular door calls this. That is a fact the compiler
- * already holds: each call site is now a single expression naming this method, not a copied
- * algorithm, so a door that stopped using it would stop compiling rather than drift.</p>
+ * <p><b>It does not assert that any particular door calls this, and NOTHING HERE CAN.</b> An
+ * earlier version of this paragraph said the compiler holds that fact — "a door that stopped
+ * using it would stop compiling rather than drift". That is FALSE, and it was disproved twice
+ * by construction: replace a door's call to this method with its own private top-level walk
+ * and the build succeeds, the door drifts, and this class stays green. A unit test of a shared
+ * cure cannot see a caller that stopped calling it.</p>
+ *
+ * <p>What DOES notice is an end-to-end case at a nested type —
+ * {@code RefactorToVisitorToolTest#refactorToVisitor_findsANestedHierarchy} — which fails with
+ * "Cannot locate Node" under exactly that mutation while this class passes. The two are not
+ * redundant, and that contrast is what each of them is for.</p>
  */
 class TypeLookupTest {
 

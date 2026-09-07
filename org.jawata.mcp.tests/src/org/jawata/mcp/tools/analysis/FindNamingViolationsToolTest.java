@@ -40,9 +40,14 @@ class FindNamingViolationsToolTest {
      * <p>This tool emitted {@code getLineNumber(...) - 1} at all six of its emission sites, so
      * every {@code naming} row a caller read sat one line above its subject. It shares a
      * response with {@code findings} rows built from {@code Finding}, which documents 1-based,
-     * so one {@code find_quality_issue} answer carried two bases. C8b round 4 measured it; a
-     * sibling merged producer, {@code largeClasses}, never pre-converted, which is what makes
-     * 1-based the convention here rather than a preference.</p>
+     * so one {@code find_quality_issue} answer carried two bases. C8b round 4 measured it.</p>
+     *
+     * <p><b>Why 1-based is required rather than preferred:</b> {@code Cures.attach} rebuilds a
+     * {@code Finding} from the RAW row and calls {@code CodeAddress.of(Finding)}, which
+     * subtracts one — so a 0-based merged row renders every cure address a line above its
+     * subject. A round-4 version of this paragraph argued it from {@code largeClasses}
+     * instead ("it never pre-converted"), and round 5 read that tool: it emits no line at all,
+     * so it witnessed nothing.</p>
      *
      * <p><b>The scope is the point, and it is why this is not the whole-catalogue check that
      * was written and thrown away.</b> Four of the six sites address {@code
