@@ -74,7 +74,7 @@ public final class WorkspaceIdentity {
      * mcp#27 stage 1: the other residents on this machine, supplied rather than read here so
      * this class stays a pure statement of identity. Null until installed.
      */
-    private static Supplier<List<SiblingRegistry.Sibling>> siblings;
+    private static volatile Supplier<List<SiblingRegistry.Sibling>> siblings;
 
     /** mcp#27: install the sibling-resident supplier (application wiring). */
     public static void installSiblings(Supplier<List<SiblingRegistry.Sibling>> supplier) {
