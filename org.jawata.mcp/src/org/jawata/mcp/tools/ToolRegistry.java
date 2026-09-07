@@ -186,13 +186,54 @@ public class ToolRegistry {
             def.put("name", tool.getName());
             def.put("description", tool.getDescription());
             def.put("inputSchema", tool.getInputSchema());
-            if (isReadOnly(tool.getName())) {
-                def.put("annotations", Map.of("readOnlyHint", Boolean.TRUE));
-            }
+            def.put("annotations", annotationsFor(tool.getName()));
             definitions.add(def);
         }
 
         return definitions;
+    }
+
+    /**
+     * THE FULL MCP ANNOTATION SET, FOR EVERY TOOL — jawata-mcp#36.
+     *
+     * <p><b>The defect was an ABSENCE, not a wrong value.</b> Read-only tools carried
+     * {@code readOnlyHint: true} and everything else carried no annotations at all, so a
+     * client deciding whether to gate a call had nothing from us to reason about and fell
+     * back to its own heuristic over the tool's NAME and arguments. Measured in the v3.10.0
+     * Cursor dogfood: eight identical {@code experience(kind=record)} calls in one session,
+     * three auto-blocked and five not — same tool, same argument shape, same session.</p>
+     *
+     * <p>jawata cannot make a client deterministic. It can stop being the source of the
+     * ambiguity: a mutating tool now SAYS it mutates rather than declining to say anything,
+     * so a client that gates on the declaration gates consistently.</p>
+     *
+     * <p><b>What each hint claims here, in this product's terms:</b></p>
+     * <ul>
+     *   <li>{@code destructiveHint} — true for a mutator, because a refactoring REWRITES
+     *       existing files. It is reversible (every change carries an undo handle) and
+     *       compile-verified, but reversible is not additive, and a client gating on this
+     *       is asking the second question.</li>
+     *   <li>{@code idempotentHint} — a read-only query asked twice answers the same;
+     *       a refactoring applied twice does not, and usually refuses the second time.</li>
+     *   <li>{@code openWorldHint} — false for every jawata tool. The domain is the loaded
+     *       workspace: a closed, enumerable set, not the open internet.</li>
+     * </ul>
+     *
+     * <p><b>A known weakness, carried rather than extended.</b> Read-only-ness is decided
+     * from the tool's NAME ({@link #READ_ONLY_PREFIXES}, {@link #READ_ONLY_NAMES}) — a
+     * policy expressed as a set of names, which fails open the day a tool is renamed or
+     * added, because no reference-updating refactoring touches a string literal. This
+     * change does not fix that and does not make it worse: it publishes the classification
+     * that already existed. Moving the fact onto the tool itself is its own work.</p>
+     */
+    private static Map<String, Object> annotationsFor(String toolName) {
+        boolean readOnly = isReadOnly(toolName);
+        Map<String, Object> annotations = new LinkedHashMap<>();
+        annotations.put("readOnlyHint", readOnly);
+        annotations.put("destructiveHint", !readOnly);
+        annotations.put("idempotentHint", readOnly);
+        annotations.put("openWorldHint", Boolean.FALSE);
+        return annotations;
     }
 
     /**

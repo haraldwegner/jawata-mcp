@@ -213,7 +213,7 @@ class McpProtocolHandlerTest {
     }
 
     @Test
-    @DisplayName("tools/list marks detect tools readOnlyHint and leaves mutating tools unannotated")
+    @DisplayName("tools/list marks detect tools readOnlyHint and mutating tools as mutating (mcp#36)")
     void toolsList_marksDetectToolsReadOnly() throws Exception {
         toolRegistry.register(new MockTool("find_references", "detect"));
         toolRegistry.register(new MockTool("rename_symbol", "mutate"));
@@ -230,9 +230,16 @@ class McpProtocolHandlerTest {
         assertNotNull(detect.get("annotations"), "detect tool must carry annotations");
         assertTrue(detect.get("annotations").get("readOnlyHint").asBoolean());
 
+        // mcp#36: this asserted "mutating tool must stay unannotated" until the Cursor
+        // dogfood measured what an absence actually buys — the client guesses, and not
+        // even consistently. It now reaches the wire SAYING it mutates.
         JsonNode mutate = tools.get(1);
         assertEquals("rename_symbol", mutate.get("name").asText());
-        assertNull(mutate.get("annotations"), "mutating tool must stay unannotated");
+        assertNotNull(mutate.get("annotations"), "a mutating tool must be annotated too");
+        assertFalse(mutate.get("annotations").get("readOnlyHint").asBoolean(),
+            "and its annotation must say it is NOT read-only");
+        assertTrue(mutate.get("annotations").get("destructiveHint").asBoolean(),
+            "a refactoring rewrites existing files — reversible is not additive");
     }
 
     @Test

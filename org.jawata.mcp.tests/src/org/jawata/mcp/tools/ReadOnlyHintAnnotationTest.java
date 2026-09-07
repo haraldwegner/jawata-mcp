@@ -62,9 +62,22 @@ class ReadOnlyHintAnnotationTest {
         }
     }
 
+    /**
+     * REWRITTEN FOR mcp#36, and the old version of this test WAS the defect written down.
+     *
+     * <p>It asserted that a mutating tool "must NOT carry annotations (it mutates state)".
+     * That is the reasoning the issue overturns: leaving a mutator unannotated does not
+     * make a client cautious, it makes the client GUESS — and measured in the v3.10.0
+     * Cursor dogfood, the guess was not even stable, gating three of eight identical calls
+     * in one session and letting five through.</p>
+     *
+     * <p>The caution that reasoning wanted is real and is now STATED instead of implied:
+     * {@code readOnlyHint: false} and {@code destructiveHint: true}. Saying nothing was
+     * never the safe answer; it was the ambiguous one.</p>
+     */
     @Test
-    @DisplayName("mutating tools carry no annotations")
-    void mutatingTools_carryNoAnnotations() {
+    @DisplayName("mcp#36: mutating tools SAY they mutate — an absence made clients guess")
+    void mutatingTools_sayTheyMutate() {
         ToolRegistry registry = new ToolRegistry();
         List<String> mutating = List.of(
             // refactor
@@ -83,8 +96,16 @@ class ReadOnlyHintAnnotationTest {
 
         for (String name : mutating) {
             Map<String, Object> def = definitionOf(registry, name);
-            assertNull(def.get("annotations"),
-                name + " must NOT carry annotations (it mutates state)");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> annotations = (Map<String, Object>) def.get("annotations");
+            assertNotNull(annotations, name + " must carry annotations — silence is what "
+                + "made clients guess");
+            assertEquals(Boolean.FALSE, annotations.get("readOnlyHint"),
+                name + " mutates, and must say so rather than decline to say anything");
+            assertEquals(Boolean.TRUE, annotations.get("destructiveHint"),
+                name + " rewrites existing state; reversible is not additive");
+            assertEquals(Boolean.FALSE, annotations.get("openWorldHint"),
+                name + " operates on the loaded workspace, a closed domain");
         }
     }
 }
