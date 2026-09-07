@@ -171,8 +171,12 @@ class ReplaceTempWithQueryToolTest {
         // with an address, not only as a Fowler name in a sentence.
         assertEquals("data kind=split_variable", r.getError().getNextStep().operation(),
             "the refusal must hand over the preceding step: " + error);
-        assertTrue(r.getError().getNextStep().arguments().containsKey("filePath"),
-            "pointed at the refused call's own address: "
+        // THE VALUE, NOT THE KEY. This asserted only that `filePath` was PRESENT, so a step
+        // pointing at the wrong file passed it — and every sibling D3a row asserts the value
+        // (row 4 pins the symbol, rows 2 and 10 pin the whole argument map). A C9 auditor
+        // found this the weak one of the nine.
+        assertEquals(fixture.toString(), r.getError().getNextStep().arguments().get("filePath"),
+            "the step must point at the refused call's OWN file, not merely carry the key: "
                 + r.getError().getNextStep().arguments());
         assertEquals(before, read(), "nothing may change on a refusal");
     }

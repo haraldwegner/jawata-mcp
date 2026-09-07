@@ -47,12 +47,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * registers from, so a door that stops shipping stops shipping HERE too. <b>62 is not
  * written on either side; it is counted.</b></p>
  *
- * <h2>What makes it fail</h2>
+ * <h2>What makes it fail, and WHICH assertion does the work</h2>
  *
  * <p>A kind renamed or dropped removes its operation from the shipped set, so its row stops
- * being performed and the count falls below 62 — naming the row. A row added or removed
- * fails the catalogue size. A row claiming an operation that was never published fails the
- * same way, which is what stops the table being filled in from wishes.</p>
+ * being performed: the JOIN assertion fails and names the refactoring that silently stopped
+ * being performed. That is the discriminating half. The count assertion beside it is a size
+ * guard — given an empty unshipped list it is the catalogue's own 66 less its four declines,
+ * so it fails when the TABLE loses a row rather than when the PRODUCT loses an operation.</p>
+ *
+ * <p><b>An earlier version of this paragraph claimed the count itself "falls below 62 —
+ * naming the row", and that was false about the code below it</b>: the two assertions ran in
+ * sequence, so the join threw first and the count was never observed below 62. A C9 auditor
+ * measured it. They now run under {@code assertAll}, so a dropped kind reports both — but the
+ * two remain different claims and this paragraph no longer merges them.</p>
  *
  * <h2>The four declined rows are a CLAIM, not a gap</h2>
  *
@@ -253,15 +260,80 @@ class PerformedRefactoringCountTest {
             }
         }
 
-        assertTrue(notShipped.isEmpty(),
-            "every row above claims an operation, and each claim is joined against what the"
-                + " product ACTUALLY publishes — so a kind renamed or dropped shows up here"
-                + " naming the refactoring it silently stopped performing: " + notShipped);
-        assertEquals(62, performed,
-            "the sprint's headline figure, and C9's clause: jawata performs 62 of Fowler's"
-                + " 66. Neither side of this is the number 62 — the left is the book's"
-                + " catalogue and the right is the shipped operation surface, and 62 is what"
-                + " counting the join produces. Counted " + performed + " of "
-                + FOWLER_CATALOGUE.size() + " over " + shipped.size() + " shipped operations");
+        final int counted = performed;
+
+        // BOTH UNDER assertAll, AND THAT IS A REPAIR RATHER THAN A STYLE CHOICE. They ran in
+        // sequence, so the join assertion threw first and `performed` was never OBSERVED below
+        // 62 — which made this class's own javadoc ("the count falls below 62 — naming the
+        // row") false about the code four lines under it. A C9 auditor found it. Under
+        // assertAll a dropped kind reports BOTH: which refactoring stopped being performed,
+        // and what the count became. Sprint 28d-rescue learned this at row 21 and the lesson
+        // did not reach here.
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertTrue(notShipped.isEmpty(),
+                "every row above claims an operation, and each claim is joined against what"
+                    + " the product ACTUALLY publishes — so a kind renamed or dropped shows up"
+                    + " here naming the refactoring it silently stopped performing: "
+                    + notShipped),
+            () -> assertEquals(62, counted,
+                "the sprint's headline figure, and C9's clause: jawata performs 62 of Fowler's"
+                    + " 66. Counted " + counted + " of " + FOWLER_CATALOGUE.size() + " over "
+                    + shipped.size() + " shipped operations."
+                    + "\n  WHICH HALF OF THIS IS THE DISCRIMINATOR, stated because an earlier"
+                    + " version of this message overstated it: the assertion that carries the"
+                    + " weight is the join above — it is what a renamed or dropped kind fails,"
+                    + " and it names the row. THIS number is a size guard: given an empty"
+                    + " unshipped list it is the catalogue's own 66 less its four declines, so"
+                    + " it fails when the TABLE loses a row rather than when the PRODUCT loses"
+                    + " an operation. Both are worth failing on; they are not the same claim."));
+    }
+
+    /**
+     * C9's PER-DOOR clause, over all eight doors it names — five of which nothing gated.
+     *
+     * <p>The plan's C9 exit assigns a kind count per tool and says why a ceiling would not do:
+     * it <i>"would pass a tool that finished two kinds short"</i>. {@code Stage6ShippedCountTest}
+     * pins three of them, because Stage 6 owned three doors. <b>A C9 auditor searched every
+     * test reading {@code publishedKinds()} and found the other five pinned nowhere</b> —
+     * {@code apply_cleanup}, {@code change_method_signature}, {@code hierarchy}, {@code data}
+     * and {@code refactor_to_pattern}. It read the delegate lists and confirmed all five are
+     * CORRECT, so this was a gate gap rather than a defect; but C9's own sentence condemns an
+     * absent gate for the same reason it condemns a ceiling, and one is what stood.</p>
+     *
+     * <p>The eight numbers are the PLAN's, fixed before the work started, which is what makes
+     * writing them here legitimate rather than the hand-written-list defect this sprint keeps
+     * finding: the left side is a contract we were held to and the right side is read off the
+     * shipped doors. {@code generate} is the ninth door and C9 assigns it no count, so it is
+     * asserted as PRESENT and not as a number — inventing one would be writing a contract
+     * rather than checking one.</p>
+     */
+    @Test
+    @DisplayName("all EIGHT doors publish exactly the kind count C9 assigns — not a ceiling")
+    void everyDoorPublishesItsAssignedKindCount() {
+        Map<String, Integer> assigned = new LinkedHashMap<>();
+        assigned.put("extract", 11);
+        assigned.put("inline", 5);
+        assigned.put("move", 6);
+        assigned.put("apply_cleanup", 10);
+        assigned.put("change_method_signature", 11);
+        assigned.put("hierarchy", 7);
+        assigned.put("data", 10);
+        assigned.put("refactor_to_pattern", 11);
+
+        Map<String, Integer> published = new LinkedHashMap<>();
+        for (AbstractTool door : RefactoringDoors.all(() -> null, new RefactoringChangeCache())) {
+            published.put(door.getName(), door.publishedKinds().size());
+        }
+
+        assertTrue(published.containsKey("generate"),
+            "the ninth door must still ship even though C9 assigns it no count; without this"
+                + " it could vanish and the eight below would not notice: " + published.keySet());
+
+        Map<String, Integer> counted = new LinkedHashMap<>();
+        assigned.keySet().forEach(door -> counted.put(door, published.get(door)));
+        assertEquals(assigned, counted,
+            "C9 names a count per door and rejects a ceiling, because a ceiling 'would pass a"
+                + " tool that finished two kinds short'. These are read off the doors the"
+                + " application registers from. Published: " + published);
     }
 }

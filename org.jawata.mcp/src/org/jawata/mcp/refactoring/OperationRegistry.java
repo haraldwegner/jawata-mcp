@@ -301,9 +301,18 @@ public final class OperationRegistry {
      * registers — each under a comment claiming the singleton was left as found. A borrow
      * is only safe when the thing borrowed can be returned exactly, so the registry hands
      * out its own state rather than asking a caller to reconstruct it.</p>
+     *
+     * <p><b>ALL FOUR maps, and the fourth was missing until C9.</b> {@code discriminatorOf}
+     * was neither captured nor cleared, which made borrow-and-return <i>accidentally</i>
+     * correct — nothing put a discriminator back because nothing had taken one away. A C9
+     * auditor named the trap that left: adding the obvious {@code discriminatorOf.clear()} to
+     * a method whose javadoc reads "Empty it" would have silently reintroduced the S8b step-6
+     * defect, {@code invocationOf} rendering {@code hierarchy kind=up} — an instruction the
+     * product refuses — for every test class after the one that borrowed. The record now holds
+     * what the class holds, so completing {@code clear()} is safe rather than fatal.</p>
      */
     public record Snapshot(Map<String, Set<String>> publishedBy, Set<String> mechanical,
-                           Set<String> structural) {
+                           Set<String> structural, Map<String, String> discriminatorOf) {
     }
 
     /** Capture the whole state, deeply enough that later writes cannot reach it. */
@@ -311,7 +320,8 @@ public final class OperationRegistry {
         Map<String, Set<String>> published = new java.util.LinkedHashMap<>();
         publishedBy.forEach((key, value) -> published.put(key, new java.util.LinkedHashSet<>(value)));
         return new Snapshot(published, new java.util.LinkedHashSet<>(mechanical),
-            new java.util.LinkedHashSet<>(structural));
+            new java.util.LinkedHashSet<>(structural),
+            new java.util.LinkedHashMap<>(discriminatorOf));
     }
 
     /** Put a captured state back, discarding whatever is there now. */
@@ -324,11 +334,14 @@ public final class OperationRegistry {
         });
         mechanical.addAll(snapshot.mechanical());
         structural.addAll(snapshot.structural());
+        discriminatorOf.putAll(snapshot.discriminatorOf());
     }
 
+    /** Empty it — every map the registry holds, which is what makes {@link #restore} exact. */
     public void clear() {
         publishedBy.clear();
         mechanical.clear();
         structural.clear();
+        discriminatorOf.clear();
     }
 }

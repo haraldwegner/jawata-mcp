@@ -32,12 +32,18 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * audit read this test's earlier javadoc as claiming to satisfy that, and the claim was too
  * broad: three hand-written per-tool integers are a contract check, not a recomputation.</p>
  *
- * <p><b>The recomputation clause is UNMET, and the reason is structural rather than an
- * omission.</b> Nothing in the code maps a Fowler row to the kind that performs it — that
- * mapping lives in the spec's 90-row inventory, which is a document. Deriving 62 needs the
- * table to exist IN CODE, and building it is Stage 9's clause. Until it does, any figure
- * this test printed would be a second hand-written copy of the document, which is exactly
- * what "not asserted" forbids.</p>
+ * <p><b>That clause was UNMET when this paragraph was written, and Stage 9 met it.</b> The
+ * reason it stood open for four checkpoints was structural rather than an omission: nothing in
+ * the code mapped a Fowler row to the kind that performs it, because that mapping lived only
+ * in the spec's 90-row inventory, which is a document. {@code
+ * org.jawata.mcp.tools.PerformedRefactoringCountTest} is now that table, and it counts 62 by
+ * joining each row against what {@code RefactoringDoors} publishes.</p>
+ *
+ * <p><b>A C9 auditor found this paragraph still asserting UNMET</b> — a stale claim left
+ * standing by the very commit that met it, and by one whose own subject was deleting a stale
+ * exemption. It also found that the three counts below were the ONLY per-door counts gated
+ * anywhere; the other five now live beside the recomputation, in
+ * {@code PerformedRefactoringCountTest.everyDoorPublishesItsAssignedKindCount()}.</p>
  */
 class Stage6ShippedCountTest {
 

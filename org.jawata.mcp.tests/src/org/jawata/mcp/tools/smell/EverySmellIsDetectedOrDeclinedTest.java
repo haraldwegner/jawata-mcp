@@ -200,12 +200,17 @@ class EverySmellIsDetectedOrDeclinedTest {
      * size and today's declination count. Neither counts what is DETECTED, and 22 is that
      * count.</p>
      *
-     * <p><b>Nothing here is written down.</b> 24 is the book's and 22 is what remains after
-     * asking the shipped catalog, kind by kind, whether it registers the detector each row
-     * claims. A detector dropped or a kind renamed lowers it and names the smell that
-     * silently stopped being reported — which is the one thing a partition check cannot
-     * say, because dropping a detector AND writing a declination for it keeps the partition
-     * whole while the product detects one fewer.</p>
+     * <p>24 is the book's, and every one of the 22 is asked of the shipped catalog kind by
+     * kind rather than taken on trust. A detector dropped or a kind renamed fails the JOIN,
+     * which names the smell that silently stopped being reported — the one thing a partition
+     * check cannot say, because dropping a detector AND writing a declination for it keeps the
+     * partition whole while the product detects one fewer.</p>
+     *
+     * <p><b>The count beside the join is a SIZE GUARD, and an earlier version of this
+     * paragraph blurred the two.</b> Given an empty unregistered list, 22 is chapter 3's own
+     * 24 less its two declines — so it fails when this TABLE loses a row, not when the product
+     * loses a detector. Both are worth failing on and they are different claims; a C9 auditor
+     * found the merged version overstating what the number proves.</p>
      *
      * <p>The counterpart for the refactorings is
      * {@code org.jawata.mcp.tools.PerformedRefactoringCountTest}, which does the same join
@@ -234,15 +239,23 @@ class EverySmellIsDetectedOrDeclinedTest {
             }
         }
 
-        assertTrue(claimedButUnregistered.isEmpty(),
-            "each row's kind is joined against what FowlerDetectors actually registers, so a"
-                + " rename shows up here naming the smell it stopped reporting: "
-                + claimedButUnregistered);
-        assertEquals(22, detected,
-            "C9's clause: jawata detects 22 of Fowler's 24. Neither side of this is the"
-                + " number 22 — the left is chapter 3 and the right is the registered kind"
-                + " list, and 22 is what counting the join produces. Counted " + detected
-                + " of " + FOWLER_CHAPTER_3.size() + " over " + kinds.size()
-                + " registered kinds");
+        final int counted = detected;
+
+        // BOTH UNDER assertAll — in sequence the join threw first and `detected` was never
+        // OBSERVED below 22, which made the paragraph above false about the code beneath it.
+        // A C9 auditor found the identical shape in this class and in its refactoring sibling.
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertTrue(claimedButUnregistered.isEmpty(),
+                "each row's kind is joined against what FowlerDetectors actually registers, so"
+                    + " a rename shows up here naming the smell it stopped reporting: "
+                    + claimedButUnregistered),
+            () -> assertEquals(22, counted,
+                "C9's clause: jawata detects 22 of Fowler's 24. Counted " + counted + " of "
+                    + FOWLER_CHAPTER_3.size() + " over " + kinds.size() + " registered kinds."
+                    + "\n  WHICH HALF IS THE DISCRIMINATOR: the join above, which is what a"
+                    + " dropped or renamed detector fails, and it names the smell. THIS number"
+                    + " is a size guard — given an empty unregistered list it is chapter 3's"
+                    + " own 24 less its two declines, so it fails when the TABLE loses a row"
+                    + " rather than when the PRODUCT loses a detector."));
     }
 }
