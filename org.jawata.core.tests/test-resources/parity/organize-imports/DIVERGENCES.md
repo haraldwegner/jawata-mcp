@@ -58,3 +58,33 @@ in `HeadlessJdtConfig` is the ranked follow-up. Until then the D1a-3 measure
 ("a file with a missing and an unused-static import comes out correct") is
 HALF-met — the gap is recorded here and in the tool's own description/Javadoc
 (release call: Harald, 2026-07-16; disposition in dossier-25 §C7).
+
+## RESOLVED 2026-09-08 — the add path works (jawata-mcp#16 closed)
+
+The null preference is `org.eclipse.jdt.ui.typefilter.enabled`. It is read by
+`TypeNameMatchCollector.getStringMatchers` and handed straight to
+`new StringTokenizer(str, ";")`, so unset headless means null means NPE.
+
+**It is in none of the three classes this record says were read**, which is why
+reading found nothing: it is a TYPE FILTER — an IDE convenience for hiding names
+from a type search — and the import machinery reaches it only by going through
+the search engine. That also explains the symptom exactly: **only the ADD path
+runs a type-name search**, so removing and sorting were never affected.
+
+Found by RUNNING the failing path and reading the stack rather than by reading
+more source. The frame is
+`TypeNameMatchCollector.getStringMatchers(TypeNameMatchCollector.java:75)`.
+
+Seeded empty in `HeadlessJdtConfig` — empty tokenizes to nothing, so no type is
+filtered out, which is what a headless server should do.
+
+**So spec D1a item 3 is now FULLY met**, and the "HALF-met" section above stands
+as the record of what was believed while it was open.
+
+**One thing it still will not do, deliberately:** an AMBIGUOUS name is skipped
+rather than guessed (`List` is `java.util.List` and `java.awt.List`), which is
+what jdt.ls does with no UI to ask. Pinned by
+`OrganizeImportsAddsMissingTest#ambiguityIsNeverGuessed` — a case that was
+unreachable until this fix, because it died in the NPE before any choice was
+offered. The declined name is NOT reported to the caller; that gap is open and
+is not this one.

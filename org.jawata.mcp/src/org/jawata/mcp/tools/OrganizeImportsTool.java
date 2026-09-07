@@ -70,14 +70,18 @@ import java.util.function.Supplier;
  * one bad file, and a skip nobody can see is the silent-degradation class this product
  * exists to refuse.</p>
  *
- * <p>KNOWN LIMIT (v2.14.1, filed): the engine's ADD-missing-imports half is not
- * usable headless yet — a file that needs an import added fails loudly with an
- * NPE deep in JDT's headless import rewrite ({@code StringTokenizer(null)} on
- * an unlocated preference; pre-existing, proven independent of our changes).
- * Nothing is corrupted — the call errors before any edit. Ranked follow-up;
- * record: {@code test-resources/parity/organize-imports/DIVERGENCES.md}. At file
- * scope that is the loud failure; at project or workspace scope it is one of the
- * skips described above.</p>
+ * <p>THE ADD-MISSING-IMPORTS HALF WORKS (jawata-mcp#16, closed). It did not for two
+ * releases: the unlocated preference was {@code org.eclipse.jdt.ui.typefilter.enabled},
+ * which {@code TypeNameMatchCollector.getStringMatchers} hands straight to
+ * {@code new StringTokenizer(str, ";")}. Only the ADD path reaches it, because only an
+ * add runs a type-name SEARCH — which is exactly why removing and sorting always worked.
+ * It is seeded in {@link org.jawata.mcp.tools.shared.HeadlessJdtConfig}; the record in
+ * {@code test-resources/parity/organize-imports/DIVERGENCES.md} carries the hunt.</p>
+ *
+ * <p>What it still will not do is GUESS. An ambiguous simple name — {@code List} is
+ * {@code java.util.List} and {@code java.awt.List} — is left out rather than picked,
+ * which is what jdt.ls does with no UI to ask. The declined name is not reported, so a
+ * file that still does not resolve after a successful run is where to look.</p>
  */
 public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
 
@@ -119,9 +123,12 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             in `skippedFiles` with its reason — a broad run is never all-or-nothing on
             one bad file, and never silently short.
 
-            KNOWN LIMIT (filed): adding MISSING imports is not available yet — a
-            file that needs an import added fails loudly (nothing is modified);
-            use quick_fix(action=suggest_imports) for adds until this is fixed.
+            Missing imports are ADDED as well as unused ones removed (mcp#16). An
+            AMBIGUOUS name is the one thing it will not do: `List` is java.util.List
+            and java.awt.List, and with no human to ask it is left out rather than
+            guessed. `importsAdded` counts what arrived; a name declined for
+            ambiguity is not named, so a file that still does not resolve after a
+            successful run is the case to look at.
             Applies the change directly (default) and returns
             { filesModified, diff, undoChangeId, summary }; when imports are
             already organized, returns hasChanges: false without touching the
