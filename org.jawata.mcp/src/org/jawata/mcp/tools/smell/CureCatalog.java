@@ -292,12 +292,28 @@ public final class CureCatalog {
         // kinds, and naming the bare front door leaves a reader to guess which one. The
         // architecture says extract(class) for both of these, and the registry publishes
         // that spelling as an unambiguous key.
+        // mcp#71: `extract kind=class` cannot run on an address alone, and now says so.
+        //
+        // Its schema documents WHY, deliberately: "fields[] has no default on purpose — WHICH
+        // state travels together is the design decision this carries out", and newTypeName is
+        // the same shape of answer. Both are DECISIONS, so no finding can carry them and the
+        // door is right to require them. What was wrong is upstream: the finding rendered
+        // "TIER: RUN — run extract kind=class" over {symbol, filePath}, and following it
+        // verbatim earns "INVALID_PARAMETER 'newTypeName'".
+        //
+        // Naming them keeps the instruction rather than downgrading it — the step now reads as
+        // runnable once the agent supplies two named things, which is true, instead of
+        // runnable, which was not.
         m.put("god_class", List.of(
-            new Cure("extract kind=class", null)));
+            new Cure("extract kind=class", null, null,
+                List.of("newTypeName", "fields"))));
         m.put("temporary_field", List.of(
+            // mcp#71: the SAME door, so the same two decisions — a discriminator says which
+            // cure to pick, and needs says what the picked one still wants.
             new Cure("extract kind=class", null,
                 "when the field and the methods that use it form a COHERENT JOB — they leave"
-                    + " together as a class of their own"),
+                    + " together as a class of their own",
+                List.of("newTypeName", "fields")),
             new Cure("data kind=special_case", null,
                 "when the field is empty for a RECOGNISABLE CASE and every reader checks for"
                     + " it — the case becomes a subclass that answers for itself")));

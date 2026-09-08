@@ -77,8 +77,12 @@ public final class Cures {
         }
         List<NextStep> steps = new ArrayList<>();
         for (CureCatalog.Cure c : tier.runnable()) {
+            // mcp#71: the needs travel with the discriminator. This line passed one and
+            // dropped the other, which is why `Cure.needs()` existed and no rendered cure
+            // ever carried it.
             steps.add(new NextStep(
-                CureLookup.Cures.invocationOf(c.recipe()), address, c.discriminator()));
+                CureLookup.Cures.invocationOf(c.recipe()), address, c.discriminator(),
+                c.needs()));
         }
         return List.copyOf(steps);
     }
