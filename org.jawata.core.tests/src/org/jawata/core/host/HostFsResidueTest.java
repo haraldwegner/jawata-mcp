@@ -80,4 +80,46 @@ class HostFsResidueTest {
             Files.setPosixFilePermissions(tree, PosixFilePermissions.fromString("rwxr-xr-x"));
         }
     }
+
+    @Test
+    @DisplayName("D5: a tree whose EXISTENCE cannot be determined is not reported as gone either")
+    void aTreeWhoseExistenceCannotBeDeterminedIsNotReportedAsGone() throws Exception {
+        // The case the FIRST test cannot reach, and the reason it needs its own.
+        //
+        // Stripping a directory's own permissions leaves it perfectly stat-able — `exists`
+        // walks the PARENT's execute bit, not the target's — so `Files.exists` still answers
+        // truthfully there and the two guards inside deleteRecursively never see cannot-tell.
+        // Making the PARENT unreadable is what produces it: `Files.exists(child)` then answers
+        // FALSE because it cannot determine, and `!exists` reads that as "gone".
+        //
+        // That fold sat in the entry guard and in the loop's early exit while THIS FILE's
+        // subject was the identical fold in the final catch, and the method's own comment
+        // twenty lines below forbade it. The C8 audit found it; no test could have, because
+        // no test built this case.
+        Path parent = Files.createTempDirectory("jawata-hostfs-parent-");
+        Path tree = parent.resolve("hidden");
+        Files.createDirectories(tree.resolve("nested"));
+        Files.writeString(tree.resolve("nested").resolve("payload.bin"), "0123456789");
+
+        makeUnreadable(parent);
+        long residue;
+        try {
+            // Proof the case was constructed: existence is now UNDETERMINABLE — both queries
+            // answer false, which is the state `!exists` silently reads as absence.
+            assumeTrue(!Files.exists(tree) && !Files.notExists(tree),
+                "the parent is still traversable, so existence is still determinable — this "
+                    + "run could not construct the case and must not report a pass");
+            residue = HostFs.deleteRecursively(tree);
+        } finally {
+            Files.setPosixFilePermissions(parent, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+
+        assertAll(
+            () -> assertTrue(residue > 0,
+                "existence could not be determined, so 'the tree is gone' is a claim we have "
+                    + "not earned — 0 is exactly that claim. got: " + residue),
+            () -> assertTrue(Files.isDirectory(tree),
+                "proof of life, checked after the parent is readable again: the tree really "
+                    + "did survive, so the assertion above is measuring something"));
+    }
 }

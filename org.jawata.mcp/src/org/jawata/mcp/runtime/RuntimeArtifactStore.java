@@ -164,8 +164,18 @@ public final class RuntimeArtifactStore {
         return described;
     }
 
+    /**
+     * Is this artifact here? {@code false} means a CONFIRMED absence.
+     *
+     * <p>D5 (Sprint 28e). This read {@code Files.isRegularFile}, the same fold {@code list()}
+     * was just changed to stop making — so it answered "no such artifact" about one whose
+     * directory merely could not be read. That mattered more than an ordinary instance:
+     * {@link #delete(String)}'s own javadoc names THIS method as the way to tell an absent
+     * artifact from one that survived, so the remedy routed through an unfixed copy of the
+     * defect it was prescribed for. Found by the architect watch over this checkpoint.</p>
+     */
     public boolean exists(String artifactId) {
-        return Files.isRegularFile(root.resolve(artifactId).resolve(MANIFEST_FILE));
+        return manifestMissing(root.resolve(artifactId)) != Boolean.TRUE;
     }
 
     public boolean isExpired(String artifactId) {
@@ -184,8 +194,16 @@ public final class RuntimeArtifactStore {
      * from "I could not look", and both are well-formed numbers, which is why nothing ever
      * caught it. An absence reported as an emptiness, in a number rather than a message.</p>
      *
-     * <p>The per-file {@code 0} inside the sum is a different case and stays: a file that
-     * vanished mid-walk contributes nothing to a total, which is true.</p>
+     * <p><b>This paragraph used to read</b> <i>"The per-file 0 inside the sum is a different
+     * case and stays: a file that vanished mid-walk contributes nothing to a total, which is
+     * true."</i> It was written when that was so, and the next commit made it false without
+     * touching it — the per-file catch now throws, so the whole call answers EMPTY rather
+     * than a total short by a file. A javadoc false about the code twelve lines beneath it,
+     * created by the pass whose subject is that defect and found by the architect watch, not
+     * by me. It is left visible rather than quietly replaced.</p>
+     *
+     * <p>What holds now: a file that cannot be sized — vanished mid-walk, or unreadable —
+     * makes the TOTAL unknowable, and an unknowable total is reported as absent.</p>
      */
     public java.util.OptionalLong sizeOf(String artifactId) {
         Path dir = root.resolve(artifactId);

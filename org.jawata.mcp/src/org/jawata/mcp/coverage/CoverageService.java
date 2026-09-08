@@ -276,7 +276,14 @@ public final class CoverageService {
      * <p>Empty is not a number the caller can mistake for a reading, and it fails toward
      * DOING the work rather than skipping it.</p>
      */
-    private static java.util.OptionalLong rootsFingerprint(CoverageManifest manifest) {
+    // Package-visible for ONE reason, and it is a correction rather than a convenience: this
+    // method's per-file swallow was fixed and then claimed to be "unguarded by construction",
+    // on the ground that reaching the inner catch needs a race. That is true of its twin in
+    // RuntimeArtifactStore, whose walk filters on Files::isRegularFile — and FALSE here, where
+    // the filter is a string test on the file NAME and no stat happens before the accessor.
+    // A dangling symlink called *.class reaches it deterministically. Found by the C8 audit;
+    // StaleFingerprintIsNotFreshTest is the guard the claim said could not exist.
+    static java.util.OptionalLong rootsFingerprint(CoverageManifest manifest) {
         long newest = 0;
         for (String root : manifest.classRoots) {
             Path rootPath = Path.of(root);

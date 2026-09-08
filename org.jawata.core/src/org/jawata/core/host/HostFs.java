@@ -44,7 +44,12 @@ public final class HostFs {
      *     {@code 0} means the tree is gone
      */
     public static long deleteRecursively(Path dir) {
-        if (dir == null || !Files.exists(dir)) {
+        // notExists, not !exists — for the reason spelled out at the final catch below, which
+        // is where this pass first wrote it down and then LEFT THE SAME FOLD in the two
+        // checks above it. `!exists` is true when the filesystem CANNOT SAY, so this returned
+        // 0 — "the tree is gone" — about a directory nobody could look at. Only a confirmed
+        // absence is a no-op; anything else falls through and the count at the end settles it.
+        if (dir == null || Files.notExists(dir)) {
             return 0;
         }
         for (int attempt = 0; attempt < 10; attempt++) {
@@ -59,7 +64,11 @@ public final class HostFs {
             } catch (Exception ignored) {
                 // The dir may already be gone — the check below settles it.
             }
-            if (!Files.exists(dir)) {
+            // Same correction, and THIS is the one that made a named row's disposition false.
+            // The catch above says "the dir may already be gone — the check below settles it",
+            // and it did not: `!exists` answers true for cannot-tell, so an unreadable tree
+            // ended the loop reporting 0. Only notExists==true settles anything.
+            if (Files.notExists(dir)) {
                 return 0;
             }
             try {

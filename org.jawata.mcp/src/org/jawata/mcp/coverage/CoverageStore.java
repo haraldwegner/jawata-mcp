@@ -112,9 +112,18 @@ public final class CoverageStore {
      * {@code list()}. The artifact then does not exist as far as any caller is concerned:
      * {@link #latest()} skips it and it can never be described or deleted by name.</p>
      *
-     * <p>This is the SECOND copy of a defect fixed in {@code RuntimeArtifactStore}, and the
-     * two are byte-identical stores with byte-identical {@code list()} methods — which is
-     * why the cure is applied to both here rather than to the one that was found.</p>
+     * <p>This is the SECOND copy of a cure written in {@code RuntimeArtifactStore}, which is
+     * why it is applied to both rather than to the one that was found. <b>It said "the two
+     * are byte-identical stores with byte-identical list() methods", and that was false when
+     * written</b> — the stores share ten members and differ elsewhere, and the two copies of
+     * THIS helper already differ in their javadoc and their log text. A claim of sameness,
+     * inside the copy that disproves it. The architect watch found it; the honest reading is
+     * that a copy is the beginning of drift and this one had drifted on arrival.</p>
+     *
+     * <p>The proposal on the table is one {@code ArtifactDir} value type owning
+     * {@code manifestState()}, {@code readManifest()}, {@code exists()}, {@code sizeOf()} and
+     * {@code delete()}, held by both stores — a static helper cannot serve, because
+     * {@code MANIFEST_FILE} is per-store, so the fact needs an instance. Raised at C8.</p>
      */
     private static Boolean manifestMissing(Path dir) {
         Path manifest = dir.resolve(MANIFEST_FILE);
@@ -135,8 +144,16 @@ public final class CoverageStore {
         return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
     }
 
+    /**
+     * Is this artifact here? {@code false} means a CONFIRMED absence.
+     *
+     * <p>D5 (Sprint 28e) — the same change and the same reason as
+     * {@code RuntimeArtifactStore#exists}: this read {@code Files.isRegularFile}, so it
+     * answered "no such artifact" about one whose directory could not be read, while
+     * {@link #delete(String)}'s javadoc names it as the way to tell absent from survived.</p>
+     */
     public boolean exists(String artifactId) {
-        return Files.isRegularFile(root.resolve(artifactId).resolve(MANIFEST_FILE));
+        return manifestMissing(root.resolve(artifactId)) != Boolean.TRUE;
     }
 
     /**
