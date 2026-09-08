@@ -28,6 +28,145 @@ class WorkspaceIdentityTest {
         WorkspaceIdentity.reset();
     }
 
+    /** A workspace mid-load: the boot file names three, one is ready. */
+    private void loadingWorkspace() {
+        WorkspaceIdentity.install("patterns", List.of(
+            Path.of("/tmp/patterns/alpha"),
+            Path.of("/tmp/patterns/beta"),
+            Path.of("/tmp/patterns/gamma")));
+        WorkspaceIdentity.installLiveKeys(() -> List.of("alpha"));
+        WorkspaceIdentity.installLoading(() -> true);
+    }
+
+    @Test
+    @DisplayName("mcp#65: mid-load the identity reports PROGRESS, not a roster it does not have")
+    void loadingIsStatedRatherThanPaperedOver() {
+        loadingWorkspace();
+
+        String describe = WorkspaceIdentity.describe();
+
+        assertAll(
+            () -> assertTrue(describe.contains("STILL LOADING"), "got: " + describe),
+            () -> assertTrue(describe.contains("1 of 3"),
+                "both numbers, or a reader cannot tell nearly-done from barely-started: "
+                    + describe),
+            // THE OVER-CLAIM THIS REPLACES. The boot list used to answer for the whole
+            // window, naming projects as present that were not loaded yet — mcp#32 removed
+            // exactly that for a terminal failure, and this is its other side.
+            () -> assertFalse(describe.contains("3 project(s): "),
+                "the configured list must not be presented as loaded: " + describe),
+            // …AND THE ROSTER SURVIVES, labelled. These instructions exist so an agent can
+            // pick the right server; one that answered only "still loading" for minutes
+            // could not be chosen at all, which would trade mcp#65 for mcp#27's defect.
+            () -> assertTrue(describe.contains("configured: alpha, beta, gamma"),
+                "got: " + describe));
+    }
+
+    @Test
+    @DisplayName("mcp#65: mid-load a miss is NOT YET ANSWERABLE — it must not steer elsewhere")
+    void aMissDuringLoadingIsNotANegative() {
+        loadingWorkspace();
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+
+        assertAll(
+            () -> assertTrue(hint.contains("NOT YET ANSWERABLE"), "got: " + hint),
+            () -> assertTrue(hint.contains("health_check"),
+                "and it names how to find out when the load is done: " + hint),
+            // THE HALF THAT MATTERS. The standing sentence sends the reader to ANOTHER
+            // server for a symbol this one is still acquiring — a confident redirect built
+            // on an answer we do not have yet.
+            () -> assertFalse(hint.contains("own jawata server"),
+                "a miss mid-load must not be dressed as a wrong-workspace answer: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#65 THE CONTROL — once loaded, the ordinary hint is back, unchanged")
+    void onceLoadedTheHintIsTheOrdinaryOne() {
+        // Without this the two above would pass just as well against a server that claimed to
+        // be loading forever, which would suppress every wrong-workspace answer jawata gives.
+        WorkspaceIdentity.install("patterns", List.of(
+            Path.of("/tmp/patterns/alpha"),
+            Path.of("/tmp/patterns/beta"),
+            Path.of("/tmp/patterns/gamma")));
+        WorkspaceIdentity.installLiveKeys(() -> List.of("alpha", "beta", "gamma"));
+        WorkspaceIdentity.installLoading(() -> false);
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+
+        assertAll(
+            () -> assertTrue(hint.contains("own jawata server"), "got: " + hint),
+            () -> assertFalse(hint.contains("STILL LOADING"), "got: " + hint),
+            () -> assertFalse(hint.contains("NOT YET ANSWERABLE"), "got: " + hint),
+            () -> assertTrue(hint.contains("3 project(s): "),
+                "and the roster is named, because now it is real: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#65: mid-load the siblings are not asked — 'not yet' outranks a redirect")
+    void theSiblingsAreNotConsultedWhileLoading() {
+        loadingWorkspace();
+        WorkspaceIdentity.installSiblings(() -> List.of(
+            new SiblingRegistry.Sibling("orb-strategy", 8082, "t2")));
+        boolean[] asked = {false};
+        WorkspaceIdentity.installPeek(fqn -> {
+            asked[0] = true;
+            return new SiblingPeek.Sweep(
+                java.util.Optional.of(new SiblingPeek.Found("orb-strategy", "orb")), 1, 1, false);
+        });
+
+        String hint = WorkspaceIdentity.elsewhereHint("com.example.Thing");
+
+        assertAll(
+            () -> assertFalse(asked[0],
+                "a network walk on the miss path at the one moment the machine is busiest, "
+                    + "for an answer that would overwrite the more useful fact: " + hint),
+            () -> assertTrue(hint.contains("NOT YET ANSWERABLE"),
+                "a sibling's answer must not overwrite 'the symbol may be here in a minute': "
+                    + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#65 THE CONTROL — the same peek IS consulted once loading is done")
+    void theSiblingsAreConsultedOnceLoaded() {
+        // The mirror of the case above, and what proves that test measures the LOADING state
+        // rather than a peek that never fires.
+        WorkspaceIdentity.install("patterns", List.of(Path.of("/tmp/patterns/alpha")));
+        WorkspaceIdentity.installLiveKeys(() -> List.of("alpha"));
+        WorkspaceIdentity.installLoading(() -> false);
+        WorkspaceIdentity.installSiblings(() -> List.of(
+            new SiblingRegistry.Sibling("orb-strategy", 8082, "t2")));
+        boolean[] asked = {false};
+        WorkspaceIdentity.installPeek(fqn -> {
+            asked[0] = true;
+            return new SiblingPeek.Sweep(
+                java.util.Optional.of(new SiblingPeek.Found("orb-strategy", "orb")), 1, 1, false);
+        });
+
+        String hint = WorkspaceIdentity.elsewhereHint("com.example.Thing");
+
+        assertAll(
+            () -> assertTrue(asked[0], "got: " + hint),
+            () -> assertTrue(hint.contains("orb-strategy"), "got: " + hint));
+    }
+
+    @Test
+    @DisplayName("mcp#65: a loading supplier that throws is survivable")
+    void aBrokenLoadingSupplierDoesNotBreakTheHint() {
+        WorkspaceIdentity.install("patterns", List.of(Path.of("/tmp/patterns/alpha")));
+        WorkspaceIdentity.installLoading(() -> {
+            throw new IllegalStateException("boom");
+        });
+
+        String hint = WorkspaceIdentity.elsewhereHint();
+
+        assertAll(
+            () -> assertNotNull(hint, "a hint must never fail a search"),
+            () -> assertTrue(hint.contains("own jawata server"),
+                "an unreadable state falls back to the ordinary answer rather than claiming "
+                    + "a load nobody confirmed: " + hint));
+    }
+
     @Test
     @DisplayName("mcp#27: when siblings are known, the hint NAMES them instead of gesturing")
     void theHintNamesTheOtherResidents() {

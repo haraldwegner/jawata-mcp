@@ -71,6 +71,37 @@ public final class WorkspaceIdentity {
     }
 
     /**
+     * mcp#65: whether the async project load is STILL RUNNING. Supplied, like the failure
+     * reason beside it, so this class stays a statement of identity rather than a reader of
+     * the application's lifecycle. Null until installed, and a server without it behaves
+     * exactly as before.
+     *
+     * <p>This is the LOADING state itself and not a count comparison standing in for it. Live
+     * keys shorter than the configured list would be the obvious proxy and it is wrong twice:
+     * a project removed at run time makes it read LOADING forever, and a workspace with no
+     * boot file has no denominator to compare against.</p>
+     */
+    private static volatile Supplier<Boolean> loading;
+
+    /** mcp#65: install the still-loading supplier (application wiring). */
+    public static void installLoading(Supplier<Boolean> supplier) {
+        loading = supplier;
+    }
+
+    /** True while the async load is still running — a broken supplier answers false. */
+    private static boolean readLoading() {
+        Supplier<Boolean> supplier = loading;
+        if (supplier == null) {
+            return false;
+        }
+        try {
+            return Boolean.TRUE.equals(supplier.get());
+        } catch (Exception e) {
+            return false; // never let this break an error response
+        }
+    }
+
+    /**
      * mcp#27 stage 1: the other residents on this machine, supplied rather than read here so
      * this class stays a pure statement of identity. Null until installed.
      */
@@ -99,6 +130,7 @@ public final class WorkspaceIdentity {
         configuredProjects = List.of();
         liveProjectKeys = null;
         loadFailure = null;
+        loading = null;
         siblings = null;
         peek = null;
     }
@@ -155,6 +187,19 @@ public final class WorkspaceIdentity {
         if (!installed()) {
             return null;
         }
+        // mcp#65: DURING THE LOAD, the sentence below is not merely unhelpful, it is wrong.
+        // It sends the agent to another server for a symbol THIS one is in the middle of
+        // acquiring — and on a 194-module workspace that window is minutes long, which is
+        // exactly when a fresh session consults a catalogue address. The miss is not a
+        // negative answer here; it is no answer yet, and the two must not read alike.
+        if (readLoading()) {
+            return "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
+                + " workspace (" + projectSummary() + "). NOT YET ANSWERABLE rather than"
+                + " absent: this workspace may well hold the symbol once its projects finish"
+                + " loading. Ask again, or call health_check, which reports when the load is"
+                + " done — do not conclude from this that the symbol does not exist.";
+        }
+
         String hint = "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
             + " workspace (" + projectSummary() + ") — a symbol that lives in another"
             + " project tree is served by that tree's own jawata server, not this one.";
@@ -200,6 +245,13 @@ public final class WorkspaceIdentity {
         // thread by the transport; honouring it here is what makes sending it a guard rather
         // than a comment.
         if (SiblingPeek.servingAPeek()) {
+            return named;
+        }
+        // mcp#65: and do not peek while THIS workspace is still loading. A sibling's answer
+        // would overwrite "not yet answerable" with a confident redirect, when the more
+        // useful fact is that the symbol may be here in a minute — and the walk would spend
+        // a network budget on the miss path at the one moment the machine is busiest.
+        if (readLoading()) {
             return named;
         }
         java.util.function.Function<String, SiblingPeek.Sweep> ask = peek;
@@ -289,6 +341,29 @@ public final class WorkspaceIdentity {
             }
         }
         boolean nothingLive = live == null || live.isEmpty();
+        // mcp#65: the LOADING window, stated instead of papered over. A 194-module workspace
+        // takes minutes, and for that whole window the boot list below answers as though its
+        // projects were PRESENT — which is the same over-claim mcp#32 removed for a terminal
+        // failure, arriving from the other side. What is true here is a progress figure, and
+        // it is worth more than a list: it tells a reader the workspace is filling up rather
+        // than that it is empty or complete.
+        if (readLoading()) {
+            int ready = nothingLive ? 0 : live.size();
+            if (configuredProjects.isEmpty()) {
+                return "STILL LOADING — " + ready + " project(s) ready so far";
+            }
+            // The ROSTER still travels, because naming it is this line's other job: the
+            // initialize instructions exist so an agent can pick the right server, and a
+            // server that answered only "still loading" for minutes could not be chosen at
+            // all. What changes is that the roster is labelled CONFIGURED rather than
+            // presented as loaded.
+            String shown = configuredProjects.stream().limit(MAX_NAMED_PROJECTS)
+                .collect(java.util.stream.Collectors.joining(", "));
+            int more = configuredProjects.size() - MAX_NAMED_PROJECTS;
+            return "STILL LOADING — " + ready + " of " + configuredProjects.size()
+                + " configured project(s) ready so far; configured: " + shown
+                + (more > 0 ? " … and " + more + " more" : "");
+        }
         if (nothingLive) {
             // mcp#32: a TERMINAL failure ends the boot list's mandate. Naming
             // the configured projects here would claim as present exactly the

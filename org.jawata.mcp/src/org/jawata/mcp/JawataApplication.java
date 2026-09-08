@@ -579,6 +579,11 @@ public class JawataApplication implements IApplication {
             // naming projects this server does not have.
             org.jawata.mcp.models.WorkspaceIdentity.installLoadFailure(() ->
                 getLoadingState() == ProjectLoadingState.FAILED ? getLoadingError() : null);
+            // mcp#65: and the other end of the same window. The load is asynchronous and on
+            // a 194-module workspace takes minutes; until this says false, a miss is "not
+            // yet" rather than "no".
+            org.jawata.mcp.models.WorkspaceIdentity.installLoading(() ->
+                getLoadingState() == ProjectLoadingState.LOADING);
         } catch (Exception e) {
             // Identity is a courtesy layer — a failure here must never stop the server.
             log.warn("Workspace identity not installed: {}", e.getMessage());
