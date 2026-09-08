@@ -381,22 +381,38 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
             List<Map<String, Object>> sample = List.copyOf(byShape.values());
             for (CureCatalog.Cure cure : CureCatalog.curesFor(kind)) {
                 String recipe = cure.recipe();
-                int marker = recipe == null ? -1 : recipe.indexOf(" kind=");
-                if (marker < 0) {
-                    // A design-only cure, or a bare pattern operation that names no door —
-                    // neither is a door call and neither is this invariant's subject.
+                if (recipe == null) {
+                    continue;   // a design-only cure names no door and is not this subject
+                }
+                int marker = recipe.indexOf(" kind=");
+                String doorName;
+                String kindName;
+                if (marker >= 0) {
+                    doorName = recipe.substring(0, marker);
+                    kindName = recipe.substring(marker + " kind=".length());
+                } else if (org.jawata.mcp.tools.RefactorToPatternTool.patternKinds()
+                        .contains(recipe)) {
+                    // A BARE PATTERN OPERATION DOES NAME A DOOR, and this gate used to say it
+                    // did not — "a bare pattern operation that names no door". False:
+                    // Cures.invocationOf renders it as `refactor_to_pattern kind=<recipe>`,
+                    // which is exactly a door call a reader is handed. Skipping them left the
+                    // pattern rows unexamined, which is why the C4 audit had to find
+                    // `type_code -> newTypeName` by driving the live product instead of
+                    // reading this gate's red.
+                    doorName = "refactor_to_pattern";
+                    kindName = recipe;
+                } else {
                     continue;
                 }
-                org.jawata.mcp.tools.AbstractTool door =
-                    doors.get(recipe.substring(0, marker));
+                org.jawata.mcp.tools.AbstractTool door = doors.get(doorName);
                 if (door == null) {
                     continue;
                 }
                 for (Map<String, Object> row : sample) {
                 CodeAddress address = addressOf(row);
                 examined++;
-                String failure = addressRefusalOf(door,
-                    recipe.substring(marker + " kind=".length()), address, mapper);
+                String failure = addressRefusalOf(door, kindName, address, mapper,
+                    cure.needs() == null ? List.of() : cure.needs());
                 if (failure != null) {
                     // The ADDRESS is in the message, not just the refusal: a reader of this
                     // failure needs to see what was handed over, or the only way to find out
@@ -429,7 +445,8 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
      */
     private static String addressRefusalOf(org.jawata.mcp.tools.AbstractTool door,
                                            String kind, CodeAddress address,
-                                           ObjectMapper mapper) {
+                                           ObjectMapper mapper,
+                                           List<String> declaredNeeds) {
         String discriminator = door instanceof org.jawata.mcp.tools.FrontDoor front
             ? front.discriminator() : "kind";
         ObjectNode args = mapper.createObjectNode();
@@ -469,8 +486,67 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
                     return code + " / " + message;
                 }
             }
+            // C4 — THE DOOR'S OWN REFUSAL IS THE ORACLE FOR THE OTHER HALF, and until now it
+            // was filtered out. Every INVALID_PARAMETER that did not name an address field
+            // fell through to `return null` and was counted as ACCEPTED — so `'newTypeName'`,
+            // `'className'`, `'changes'` and `'boundaryLine'` all read as success, and no
+            // assertion anywhere could go red for a cure that renders TIER: RUN with an
+            // instruction the door then refuses. Measured at the C4 audit: 343 findings on
+            // this repository carried one.
+            //
+            // The rule is not "the door refused", which is often correct — a door is right to
+            // require a decision no finding can carry. It is that the CURE must have SAID SO.
+            // So the parameter the door names is read out of its own message and asked of the
+            // cure's declared needs; a need that was declared is the product working.
+            // AND THE RULE IS NARROWER THAN "the door refused with a parameter name", because
+            // the first version of it was not, and RUNNING it is what said so. It reported
+            // eighteen rows, of which most were the door declining THIS TARGET on a
+            // precondition — "position does not resolve to a field", "extends nothing, so
+            // there is no parent to fold it into" — which is the door being right. A gate
+            // whose red does not mean what it says is worse than no gate, and this project
+            // has already thrown one away for exactly that.
+            //
+            // The discriminator is that a DECISION INPUT is a parameter the door PUBLISHES.
+            // `className` and `newTypeName` are in their doors' schemas; `position` and
+            // `push_down` are words a refusal uses, not parameters anyone can pass. The
+            // universal options are excluded by name — they are every door's, so a refusal
+            // naming one is never about this cure.
+            String named = namedParameter(message);
+            if (named != null
+                    && !UNIVERSAL_OPTIONS.contains(named)
+                    && publishedProperties(door).contains(named)
+                    && !declaredNeeds.contains(named)) {
+                return "UNDECLARED NEED '" + named + "' — " + code + " / " + message;
+            }
         }
         return null;
+    }
+
+    /**
+     * The parameter a door's refusal names, read out of its own message.
+     *
+     * <p>Every door spells it the same way — {@code Invalid parameter 'className': …} — because
+     * they all render through {@code ErrorInfo.invalidParameter}. Taking the FIRST quoted token
+     * is deliberate: a message may quote more later (the {@code change_signature} refusal lists
+     * five alternatives), and the parameter being refused is the one the door named first.</p>
+     */
+    /** Every door's own, so a refusal naming one says nothing about this cure. */
+    private static final java.util.Set<String> UNIVERSAL_OPTIONS =
+        java.util.Set.of("auto_apply", "projectKey");
+
+    /** The parameter names a door actually publishes — the schema is the authority. */
+    @SuppressWarnings("unchecked")
+    private static java.util.Set<String> publishedProperties(
+            org.jawata.mcp.tools.AbstractTool door) {
+        Object properties = door.getInputSchema().get("properties");
+        return properties instanceof Map<?, ?> map
+            ? ((Map<String, Object>) map).keySet() : java.util.Set.of();
+    }
+
+    private static String namedParameter(String message) {
+        java.util.regex.Matcher m =
+            java.util.regex.Pattern.compile("'([A-Za-z][A-Za-z0-9_]*)'").matcher(message);
+        return m.find() ? m.group(1) : null;
     }
 
     /**

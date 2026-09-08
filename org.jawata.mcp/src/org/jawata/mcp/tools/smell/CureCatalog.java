@@ -185,7 +185,11 @@ public final class CureCatalog {
             "when the divergence is SEQUENTIAL — the class does one job and then another with"
                 + " its result, so the two phases separate rather than an abstraction being"
                 + " introduced",
-            List.of("line")));
+            // C4 audit N1: this declared `line`, which is the address the finding ALREADY
+            // carries — the one input it can supply — while the door requires `boundaryLine`,
+            // the one it cannot. Where one job ends and the next begins is a judgement nothing
+            // in the syntax marks, which is why that door has no default for it.
+            List.of("boundaryLine")));
         m.put("divergent_change", List.copyOf(divergentChange));
         m.put("shotgun_surgery", OPEN_THE_AXIS);
         // The detector's own sentence says "Consider Replace Conditional with
@@ -220,7 +224,12 @@ public final class CureCatalog {
         m.put("type_code", List.of(
             new Cure("replace_type_code_with_class", "design:type-object",
                 "when the code only needs to stop being an int — a type-safe enum, and"
-                    + " nothing branches on it"),
+                    + " nothing branches on it",
+                // C4 audit B1: this rendered TIER: RUN and the door answered
+                // "INVALID_PARAMETER 'newTypeName': A valid Java type name is required" —
+                // character for character the defect d7cc1782 fixed for `extract kind=class`,
+                // left standing one row away. Naming the enum IS the refactoring.
+                List.of("newTypeName")),
             new Cure("hierarchy kind=replace_type_code_with_subclasses", null,
                 "when BEHAVIOUR branches on the code — each value becomes a subclass that"
                     + " carries its own behaviour"),
@@ -513,7 +522,11 @@ public final class CureCatalog {
             new Cure("change_method_signature kind=introduce_parameter_object", null,
                 "when the parameters name PARTS OF ONE THING — a start and an end, an x"
                     + " and a y — and a name for that thing suggests itself",
-                List.of("newTypeName")),
+                // C4 audit B2: this declared `newTypeName`, which is NOT a parameter of
+                // change_method_signature at all — so the one row that DID declare a need
+                // named an input the door ignores, then refused for a different one. The
+                // door's own word is `className`.
+                List.of("className")),
             new Cure("change_method_signature kind=preserve_whole_object", null,
                 "when the caller already HOLDS an object and is taking it apart to pass"
                     + " the pieces; pass the object it already has",
@@ -524,11 +537,16 @@ public final class CureCatalog {
                 List.of("parameter")),
             new Cure("change_method_signature kind=change_signature", null,
                 "when a parameter is simply unused, or the list only needs reordering —"
-                    + " the smallest answer, and the one to rule out first")));
+                    + " the smallest answer, and the one to rule out first",
+                // C4 audit B3: declared nothing, and the door answers "At least one of
+                // newName, newReturnType, newParameters, visibility, or retargetCallsTo must
+                // be specified". This cure's own discriminator describes supplying the new
+                // parameter list — which is the decision, and no finding carries it.
+                List.of("newParameters"))));
         m.put("data_clumps", List.of(
             new Cure("change_method_signature kind=introduce_parameter_object", null,
                 "when the clump travels through SIGNATURES and has no home yet",
-                List.of("newTypeName")),
+                List.of("className")),   // C4 audit B2, the same wrong name one row over
             new Cure("change_method_signature kind=preserve_whole_object", null,
                 "when the clump is already an object's fields and the caller is unpacking"
                     + " them at the call",
