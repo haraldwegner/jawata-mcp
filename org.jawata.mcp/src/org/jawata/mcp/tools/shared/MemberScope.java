@@ -63,49 +63,6 @@ public final class MemberScope {
     }
 
     /**
-     * The reason a FIELD cannot be narrowed to this rule, or {@code null} — mcp#76.
-     *
-     * <p><b>The case, and why it is not an absence.</b> A caller pointed
-     * {@code remove_dead_code} at {@code FindLargeClassesTool#log} — a field the compiler
-     * itself reports unused. The rule rewrites unreachable STATEMENTS, so it correctly
-     * produced nothing, and the sweep then answered {@code hasChanges: false} carrying its
-     * own sentence: <i>"the scan was COMPLETE (1 file(s) examined), so this is a real absence,
-     * not a failure to look."</i> True of a sweep that found nothing, false here.</p>
-     *
-     * <p>That sentence separates <i>found nothing</i> from <i>could not look</i>. This is a
-     * third case and neither: <i>looked, and cannot act on this kind of target</i>. Because
-     * the address was ACCEPTED, the caller had no signal anything was declined — and the
-     * wording ruled out the one explanation that was true. A refusal at least says the case
-     * was declined; this asserted the opposite, which is what makes it worse.</p>
-     *
-     * <p>The rule is asked rather than guessed at — see {@code CleanupRule.actsOnFields()}.
-     * The message names the field and points at the two operations that CAN remove a member,
-     * so the caller is handed the next step instead of a dead end.</p>
-     *
-     * @param actsOnFields what the rule itself says about whether it can touch a field
-     * @return the refusal, or {@code null} when the target is not a field or the rule handles one
-     */
-    public static String refuseFieldTarget(CompilationUnit ast, int line, int column,
-                                           String kind, boolean actsOnFields) {
-        if (actsOnFields) {
-            return null;
-        }
-        int offset = ast.getPosition(line + 1, Math.max(column, 0));
-        if (offset < 0) {
-            return null;
-        }
-        BodyDeclaration member = enclosingMember(new NodeFinder(ast, offset, 0).getCoveringNode());
-        if (!(member instanceof org.eclipse.jdt.core.dom.FieldDeclaration)) {
-            return null;
-        }
-        return "the target is a FIELD, and " + kind + " rewrites statements — it can never act"
-            + " on one, so reporting 'nothing to clean up' here would state an absence about a"
-            + " case that was not handled. Removing an unused field is not something any"
-            + " cleanup does: use inline kind=variable where the reads can be folded in, or"
-            + " remove it with the declaration's own edit.";
-    }
-
-    /**
      * The part of {@code edit} that falls inside the member at the given position.
      *
      * @return a restricted edit, or {@code null} when the position names no member or the
