@@ -131,14 +131,15 @@ public final class FqnTarget {
                 || cu.getResource().getLocation() == null) {
                 return Optional.of(ToolResponse.symbolNotFound(
                     "Name '" + name + "' resolves to an element with no source "
-                        + "(a binary/class-file element cannot be a refactoring target)."));
+                        + "(a binary/class-file element cannot be a refactoring target).",
+                    name));
             }
             ISourceRange nameRange = element instanceof ISourceReference src
                 ? src.getNameRange()
                 : null;
             if (nameRange == null || nameRange.getOffset() < 0) {
                 return Optional.of(ToolResponse.symbolNotFound(
-                    "Name '" + name + "' resolves to an element with no name range."));
+                    "Name '" + name + "' resolves to an element with no name range.", name));
             }
             int offset = nameRange.getOffset();
             args.put("filePath", cu.getResource().getLocation().toOSString());

@@ -100,17 +100,22 @@ public class $3 {
 JAVA
 }
 
-mk_workspace() {  # $1=name
+mk_workspace() {  # $1=workspace-name  $2=project-dir
     mkdir -p "$WS/workspaces/$1"
     cat > "$WS/workspaces/$1/workspace.json" <<WSJSON
-{ "name": "$1", "projects": ["$WS/projects/$1"] }
+{ "name": "$1", "projects": ["$WS/projects/$2"] }
 WSJSON
 }
 
-mk_project alpha com.probe.alpha OnlyInAlpha
-mk_project beta  com.probe.beta  OnlyInBeta
-mk_workspace alpha
-mk_workspace beta
+# THE WORKSPACE NAME AND THE PROJECT KEY ARE DELIBERATELY DIFFERENT STRINGS. With both
+# called "beta" the answer reads `workspace 'beta' has it, in project 'beta'`, and an
+# implementation that put the project key in the workspace slot — or the same value in
+# both — passes every assertion below. The clause demands BOTH facts, so the fixture has to
+# be able to tell them apart.
+mk_project alpha-proj com.probe.alpha OnlyInAlpha
+mk_project beta-proj  com.probe.beta  OnlyInBeta
+mk_workspace alpha alpha-proj
+mk_workspace beta  beta-proj
 
 # The registry, in the shape Studio's Rust writer emits. The key names are the
 # contract; a wrong spelling is read as a blank name and the row is DROPPED, so
@@ -242,16 +247,28 @@ else:
         ok("the miss ANSWERS — it names the workspace AND the project")
     else:
         bad("not an answer, this is the naming fallback: %s" % hint)
-    if "'beta'" in hint:
-        ok("the workspace named is beta")
+    # BOTH SLOTS, SEPARATELY. The workspace and the project are different strings on
+    # purpose, so an implementation that filled one slot from the other cannot pass.
+    if "workspace 'beta'" in hint:
+        ok("the WORKSPACE slot holds the workspace name")
     else:
-        bad("the answer does not name beta: %s" % hint)
+        bad("the workspace slot is wrong: %s" % hint)
+    if "project 'beta-proj'" in hint:
+        ok("the PROJECT slot holds the project key")
+    else:
+        bad("the project slot is wrong: %s" % hint)
     if "Running here:" in hint:
         bad("the naming fallback is still there, so no peek happened: %s" % hint)
     else:
         ok("the naming-only tail is replaced by the answer")
-    # "with nothing asking for it": the call carried no sibling argument.
-    ok("nothing in the request asked for this — the arguments were kind+symbol only")
+    # "with nothing asking for it" — ASSERTED, not narrated. The first version printed
+    # ok() unconditionally here and counted it among the passes, which is a probe scoring
+    # its own prose. The request literal is the evidence, so the request literal is checked.
+    asked_for = json.dumps({"kind": "references", "symbol": "com.probe.beta.OnlyInBeta"})
+    if "sibling" not in asked_for and "peek" not in asked_for.lower():
+        ok("nothing in the request asked for this — arguments were kind+symbol only")
+    else:
+        bad("the request itself asked for sibling behaviour: %s" % asked_for)
 
 # --- stop the second, and ask again -------------------------------------------
 # BY PID, and confirmed dead. The first version ran `pkill -f "-port 8912"`;

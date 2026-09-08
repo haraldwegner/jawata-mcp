@@ -63,6 +63,40 @@ public final class SiblingPeek {
     /** Set on every peek; a resident serving a request carrying it must not peek onward. */
     public static final String PEEK_HEADER = "X-Jawata-Peek";
 
+    /**
+     * Whether the request THIS THREAD is serving arrived as a peek from another resident.
+     *
+     * <p>A thread-local because the fact belongs to one request and to nothing else: the
+     * transport hands each request to a worker, and the miss path that consults it runs deep
+     * inside that same call. A field on the server would be a fact about whichever request
+     * happened to be latest.</p>
+     *
+     * <p>SENDING the header without honouring it is not a loop guard, it is a comment. Two
+     * residents that each peek on a miss, pointed at one another, recurse until something
+     * runs out — and the recursion is reachable from the first wired call, not from some
+     * later change. That the product does not recurse TODAY is an accident of which overload
+     * one tool happens to call, which is exactly the kind of protection that disappears the
+     * next time somebody improves that tool.</p>
+     */
+    private static final ThreadLocal<Boolean> SERVING_A_PEEK =
+        ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /** Mark the current thread as serving a peek, for the length of one request. */
+    public static void servingAPeek(boolean serving) {
+        if (serving) {
+            SERVING_A_PEEK.set(Boolean.TRUE);
+        } else {
+            // remove() rather than set(FALSE): the worker thread is pooled and outlives the
+            // request, and a thread-local left set is the next request's answer.
+            SERVING_A_PEEK.remove();
+        }
+    }
+
+    /** True when answering a sibling's peek — such an answer must not peek onward. */
+    public static boolean servingAPeek() {
+        return Boolean.TRUE.equals(SERVING_A_PEEK.get());
+    }
+
     /** One sibling's share. Short: this sits on a miss a human is waiting through. */
     static final Duration PER_SIBLING = Duration.ofMillis(750);
 

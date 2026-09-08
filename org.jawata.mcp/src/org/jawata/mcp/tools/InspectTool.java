@@ -76,6 +76,15 @@ public class InspectTool extends AbstractTool {
                                  first: what a human knows from having worked here.
                                  Start a session with it instead of searching your
                                  way in. Optional: limit (default 20).
+                                 ALWAYS CHECK `ready`. Ranking a large workspace
+                                 takes minutes, so the call answers quickly and
+                                 may return `ready:false` with `examined`/`total`
+                                 instead of the list — that is "still working",
+                                 NOT "this workspace has no landmarks", and the
+                                 two are otherwise the same empty list. Ask again
+                                 to get it: one ranking runs per workspace however
+                                 many callers ask, so asking again joins it rather
+                                 than starting another.
             - source           — readable source for ANY type by FQN (JDK,
                                  dependency jars, workspace). Needs: typeName.
                                  Origin is declared: workspace-source |

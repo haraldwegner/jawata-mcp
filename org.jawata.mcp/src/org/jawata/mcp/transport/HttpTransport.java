@@ -291,7 +291,24 @@ public class HttpTransport implements Transport {
                     org.jawata.mcp.field.FieldContract.HEADER,
                     String.valueOf(org.jawata.mcp.field.FieldContract.VERSION));
 
-                String response = handler.handle(body, sessionId);
+                // mcp#27: THE LOOP GUARD'S SERVING HALF. A request carrying this header came
+                // from another resident's miss path; answering it must not start a peek of
+                // our own, or two residents pointed at each other recurse until something
+                // gives. Cleared in the finally below because the worker thread is pooled
+                // and outlives the request.
+                boolean fromASibling = exchange.getRequestHeaders()
+                    .getFirst(org.jawata.mcp.models.SiblingPeek.PEEK_HEADER) != null;
+                if (fromASibling) {
+                    org.jawata.mcp.models.SiblingPeek.servingAPeek(true);
+                }
+                String response;
+                try {
+                    response = handler.handle(body, sessionId);
+                } finally {
+                    if (fromASibling) {
+                        org.jawata.mcp.models.SiblingPeek.servingAPeek(false);
+                    }
+                }
                 if (response != null) {
                     byte[] respBytes = response.getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().add("Content-Type", "application/json");

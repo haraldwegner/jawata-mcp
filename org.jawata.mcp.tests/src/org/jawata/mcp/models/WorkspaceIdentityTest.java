@@ -385,6 +385,53 @@ class WorkspaceIdentityTest {
     }
 
     @Test
+    @DisplayName("mcp#27 THE LOOP GUARD - a resident answering a PEEK does not peek onward")
+    void aPeekedResidentDoesNotPeekOnward() {
+        // Two residents that each peek on a miss, pointed at one another, recurse until
+        // something gives. SENDING the header is not a guard; honouring it is. Until this
+        // existed the product was saved only by which symbolNotFound overload one tool
+        // happened to call - protection that disappears the moment that tool is improved.
+        twoSiblings();
+        java.util.concurrent.atomic.AtomicInteger asked =
+            new java.util.concurrent.atomic.AtomicInteger();
+        WorkspaceIdentity.installPeek(fqn -> {
+            asked.incrementAndGet();
+            return held("orb-strategy", "p");
+        });
+
+        SiblingPeek.servingAPeek(true);
+        try {
+            String hint = WorkspaceIdentity.elsewhereHint("com.jats2.model.Order");
+            assertAll(
+                () -> assertEquals(0, asked.get(),
+                    "answering a sibling's peek must not start another"),
+                // It still NAMES them: the caller is a resident, and knowing who else is up
+                // is useful to it. What it must not do is ask.
+                () -> assertTrue(hint.contains("Running here:"), "got: " + hint));
+        } finally {
+            SiblingPeek.servingAPeek(false);
+        }
+    }
+
+    @Test
+    @DisplayName("mcp#27 THE CONTROL - the same call peeks normally once the flag is cleared")
+    void theGuardIsScopedToTheRequest() {
+        // Without this, a guard that suppressed peeking ALWAYS would pass the test above
+        // while removing the feature entirely. It also pins the clearing: the transport
+        // worker thread is pooled and outlives the request, so a flag left set would make
+        // every later request on that thread refuse to peek.
+        twoSiblings();
+        WorkspaceIdentity.installPeek(fqn -> held("orb-strategy", "com-jats2-model"));
+        SiblingPeek.servingAPeek(true);
+        SiblingPeek.servingAPeek(false);
+
+        String hint = WorkspaceIdentity.elsewhereHint("com.jats2.model.Order");
+
+        assertTrue(hint.contains("com-jats2-model"),
+            "a request that did NOT arrive as a peek must still peek: " + hint);
+    }
+
+    @Test
     @DisplayName("mcp#27 THE PROBE'S FINDING - a MESSAGE is never asked about")
     void proseIsNotASymbol() {
         // symbolNotFound's one-argument parameter is a MESSAGE, not a symbol, and every

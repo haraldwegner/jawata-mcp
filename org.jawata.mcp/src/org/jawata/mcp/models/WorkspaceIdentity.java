@@ -194,6 +194,14 @@ public final class WorkspaceIdentity {
         if (named == null) {
             return null;
         }
+        // THE LOOP GUARD. This request came from another resident's miss path, so answering
+        // it must not start a peek of our own — two residents pointed at each other would
+        // recurse until something gives. The header is sent by SiblingPeek and set on this
+        // thread by the transport; honouring it here is what makes sending it a guard rather
+        // than a comment.
+        if (SiblingPeek.servingAPeek()) {
+            return named;
+        }
         java.util.function.Function<String, SiblingPeek.Sweep> ask = peek;
         String typeName = askableTypeName(symbol);
         if (ask == null || typeName == null || readSiblings().isEmpty()) {
