@@ -127,7 +127,7 @@ ln -sfn "$OUT" "$DIST/suite-shards"
 # JVMs, so what those gates leave behind is swept with everything else rather than being
 # permanently exempt.
 TMP_BEFORE="$OUT/.tmp-before"
-find /tmp -maxdepth 1 -name 'jawata-*' 2>/dev/null | sort > "$TMP_BEFORE"
+"$ROOT/build/tmp-sweep.sh" snapshot /tmp "$TMP_BEFORE"
 
 # The verdict gate proves its own arithmetic before it is trusted to judge a
 # run. It costs milliseconds and runs FIRST so a broken gate costs a re-run
@@ -135,6 +135,14 @@ find /tmp -maxdepth 1 -name 'jawata-*' 2>/dev/null | sort > "$TMP_BEFORE"
 # the last time anything checked it, and this one shipped a unit error twice.
 "$ROOT/build/verdict-gate-test.sh" --quiet \
     || { echo "FATAL: the suite's verdict gate fails its own self-test — refusing to certify a run with it."; exit 2; }
+
+# mcp#44 — and the sweep proves its own rule before it is trusted to DELETE anything. Its
+# first version lived inline here, which meant nothing short of a whole suite run could
+# exercise it: it shipped with no control at all, and carried a defect that would have removed
+# a live process's working directory. A rule that deletes has to be the best-tested thing on
+# this path, not the least.
+"$ROOT/build/tmp-sweep-test.sh" --quiet \
+    || { echo "FATAL: the /tmp sweep fails its own self-test — refusing to run it over /tmp."; exit 2; }
 
 # mcp#52 — and the same argument one level out: the verdict gate's arithmetic is proved
 # above against INVENTED counters, which says nothing about whether the runner ever
@@ -457,16 +465,6 @@ fi
 if [ "${JAWATA_KEEP_TMP:-0}" = "1" ]; then
     echo "note: JAWATA_KEEP_TMP=1 — leaving this run's /tmp working directories in place"
 else
-    TMP_AFTER="$OUT/.tmp-after"
-    find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' 2>/dev/null \
-        | sort > "$TMP_AFTER"
-    TMP_NEW="$OUT/.tmp-new"
-    comm -13 "$TMP_BEFORE" "$TMP_AFTER" > "$TMP_NEW"
-    SWEPT=$(wc -l < "$TMP_NEW")
-    if [ "$SWEPT" -gt 0 ]; then
-        SWEPT_KB=$(xargs -r -a "$TMP_NEW" du -sk 2>/dev/null | awk '{s+=$1} END {print s+0}')
-        xargs -r -a "$TMP_NEW" rm -rf 2>/dev/null
-        echo "swept $SWEPT /tmp working director(ies) this run created ($((SWEPT_KB / 1024)) MB)"
-    fi
+    "$ROOT/build/tmp-sweep.sh" sweep /tmp "$TMP_BEFORE"
 fi
 exit 0

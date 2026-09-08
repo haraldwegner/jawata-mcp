@@ -54,7 +54,11 @@ CABORT="${7:-0}"
 # no bucket, and until now the message below could only tell the reader to go looking.
 CFAIL="${8:-0}"
 
-for n in "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP"; do
+# The two container counters are validated with the rest: they were added later and left out,
+# so a garbled one reached the `-gt` comparisons below, where a non-numeric operand is a shell
+# error rather than a refusal — a gate erroring instead of refusing is the shape this file's
+# own header is about.
+for n in "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$CABORT" "$CFAIL"; do
     case "$n" in
         ''|*[!0-9]*) echo "verdict gate: non-numeric counter '$n'" >&2; exit 2 ;;
     esac

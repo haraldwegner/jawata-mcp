@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,6 +57,16 @@ class EveryCrossBundlePackageIsImportedTest {
         Pattern.compile("^\\s*package\\s+([a-zA-Z0-9_.]+)\\s*;", Pattern.MULTILINE);
     private static final Pattern IMPORT_DECL =
         Pattern.compile("^\\s*import\\s+(?:static\\s+)?([a-zA-Z0-9_.]+)\\s*;", Pattern.MULTILINE);
+    /**
+     * A fully-qualified use, anywhere in the file. Java does not require an import to use a
+     * type: {@code org.jawata.core.host.HostFs.deleteRecursively(p)} is a reference the OSGi
+     * resolver must satisfy and no {@code import} line records. Measured when this was added:
+     * FOUR core packages are reached that way from mcp and none by that route alone, so there
+     * is no live hole — but a check whose name says "references" must see them, or it does not
+     * hold the property it is named for.
+     */
+    private static final Pattern QUALIFIED_USE =
+        Pattern.compile("\\b(org\\.jawata\\.[a-zA-Z0-9_.]+)");
 
     // ---------------------------------------------------------------- the predicate
 
@@ -141,6 +152,22 @@ class EveryCrossBundlePackageIsImportedTest {
 
             Set<String> missing = missingImports(
                 referenced, ownPackages.get(bundle), imported, viaRequire);
+            // ...and the other direction: an IMPORTED package that nothing exports. A mistyped
+            // import name satisfies the check above — it is declared, after all — and then
+            // fails to resolve at boot, which is the same outage from the opposite side.
+            Set<String> exportedByUs = new LinkedHashSet<>();
+            for (String other : BUNDLES) {
+                exportedByUs.addAll(headerPackages(manifestOf(repo.resolve(other)), "Export-Package"));
+            }
+            Set<String> importedButUnexported = new TreeSet<>(imported);
+            importedButUnexported.removeAll(exportedByUs);
+            if (!importedButUnexported.isEmpty()) {
+                complaints.add(bundle + " imports " + importedButUnexported + ", which no"
+                    + " org.jawata bundle EXPORTS — a name that is declared and still cannot"
+                    + " resolve at boot. Check the spelling against the owning bundle's"
+                    + " Export-Package.");
+            }
+
             if (!missing.isEmpty()) {
                 complaints.add(bundle + " uses " + missing + " but neither declares them nor"
                     + " imports them. Add each to Import-Package in " + bundle
@@ -227,26 +254,99 @@ class EveryCrossBundlePackageIsImportedTest {
     }
 
     /**
-     * Which of OUR packages this source tree imports. An import names a TYPE, so the package
-     * is the longest prefix that is actually a package we declare — computing it that way
-     * rather than "drop the last segment" is what keeps a nested type or a static import from
-     * inventing a package that does not exist and failing this check for nothing.
+     * Which of OUR packages this source tree USES — through an import, and through a
+     * fully-qualified name, which needs no import at all. A reference names a TYPE, so the
+     * package is the longest prefix that is actually a package we declare — computing it that
+     * way rather than "drop the last segment" is what keeps a nested type or a static import
+     * from inventing a package that does not exist and failing this check for nothing.
      */
     private static Set<String> ourPackagesReferencedIn(Path src, Set<String> allOurPackages)
             throws Exception {
-        return scan(src, IMPORT_DECL, (imported, all) -> {
-            if (!imported.startsWith("org.jawata")) {
+        Pick longestPackagePrefix = (used, all) -> {
+            if (!used.startsWith("org.jawata")) {
                 return null;
             }
             String best = null;
             for (String candidate : all) {
-                if (imported.startsWith(candidate + ".")
+                if (used.startsWith(candidate + ".")
                         && (best == null || candidate.length() > best.length())) {
                     best = candidate;
                 }
             }
             return best;
-        }, allOurPackages);
+        };
+        Set<String> referenced = new TreeSet<>(scan(src, IMPORT_DECL, longestPackagePrefix, allOurPackages));
+        // ...and the uses no import line records. A package named only in a COMMENT would be
+        // demanded here too; that is the direction to err in, and the failure names the package
+        // so a reader can see which it is. Measured when this was added: widening produced no
+        // new finding, so nothing is currently being demanded that is not genuinely used.
+        referenced.addAll(scan(src, QUALIFIED_USE, longestPackagePrefix, allOurPackages));
+        return referenced;
+    }
+
+    /**
+     * The file with comments and string literals blanked out.
+     *
+     * <p>WITHOUT THIS THE WIDENED SCAN IS WRONG, and it was — measured the moment it ran.
+     * {@code org.jawata.core} carries two javadoc {@code @link}s pointing UP at
+     * {@code org.jawata.mcp}, which is perfectly legitimate prose and not a reference at all;
+     * the check demanded core import them. A comment is not a use.
+     *
+     * <p>Deliberately naive, and safe in the direction it errs: this hunts fully-qualified
+     * TYPE references, so anything inside a comment or a string is prose either way, and
+     * over-stripping can only lose a "reference" that was never one. Characters are replaced
+     * rather than deleted so offsets and line structure survive.
+     */
+    static String codeOnly(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            char next = i + 1 < text.length() ? text.charAt(i + 1) : '\0';
+            if (c == '/' && next == '/') {
+                while (i < text.length() && text.charAt(i) != '\n') { out.append(' '); i++; }
+            } else if (c == '/' && next == '*') {
+                out.append("  "); i += 2;
+                while (i < text.length()
+                        && !(text.charAt(i) == '*' && i + 1 < text.length() && text.charAt(i + 1) == '/')) {
+                    out.append(text.charAt(i) == '\n' ? '\n' : ' '); i++;
+                }
+                if (i < text.length()) { out.append("  "); i += 2; }
+            } else if (c == '"' || c == '\'') {
+                char quote = c;
+                out.append(' '); i++;
+                while (i < text.length() && text.charAt(i) != quote) {
+                    if (text.charAt(i) == '\\' && i + 1 < text.length()) { out.append(' '); i++; }
+                    out.append(text.charAt(i) == '\n' ? '\n' : ' '); i++;
+                }
+                if (i < text.length()) { out.append(' '); i++; }
+            } else {
+                out.append(c); i++;
+            }
+        }
+        return out.toString();
+    }
+
+    @Test
+    @DisplayName("a package named only in a comment or a string is not a reference")
+    void proseIsNotAReference() {
+        String source = """
+            package com.example;
+            // org.jawata.core.commented
+            /** {@link org.jawata.core.javadoc} */
+            class A {
+                String s = "org.jawata.core.stringy";
+                void m() { org.jawata.core.real.Thing.use(); }
+            }
+            """;
+        String code = codeOnly(source);
+        assertAll(
+            () -> assertFalse(code.contains("org.jawata.core.commented"), "a line comment is not a use"),
+            () -> assertFalse(code.contains("org.jawata.core.javadoc"), "a javadoc @link is not a use"),
+            () -> assertFalse(code.contains("org.jawata.core.stringy"), "a string literal is not a use"),
+            // CONTROL: the real reference must survive, or this helper would make the whole
+            // check vacuous by blanking everything.
+            () -> assertTrue(code.contains("org.jawata.core.real.Thing"), "a real reference survives"));
     }
 
     private interface Pick { String of(String match, Set<String> context); }
@@ -263,7 +363,7 @@ class EveryCrossBundlePackageIsImportedTest {
         }
         try (Stream<Path> files = Files.walk(src)) {
             for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
-                String text = Files.readString(file, StandardCharsets.UTF_8);
+                String text = codeOnly(Files.readString(file, StandardCharsets.UTF_8));
                 Matcher m = pattern.matcher(text);
                 while (m.find()) {
                     String picked = pick.of(m.group(1), context);
