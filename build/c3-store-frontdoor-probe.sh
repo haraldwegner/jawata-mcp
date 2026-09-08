@@ -128,7 +128,17 @@ def call(tool, args, timeout=600):
     TRANSCRIPT.write("--- RESPONSE\n%s\n\n" % raw)
     TRANSCRIPT.flush()
     outer = json.loads(raw)
-    return json.loads(outer["result"]["content"][0]["text"])
+    body = json.loads(outer["result"]["content"][0]["text"])
+    # The tool answers a ToolResponse ENVELOPE: {success, data, meta}. The report
+    # is inside `data`. The first version of this probe returned the envelope and
+    # read every field off it as None — which then made the reproducibility arm
+    # below compare None with None and PASS. Unwrap here, once, and refuse an
+    # envelope that did not succeed rather than reading fields off a failure.
+    if isinstance(body, dict) and "data" in body and "success" in body:
+        if not body.get("success"):
+            raise AssertionError("the tool refused: " + json.dumps(body)[:400])
+        return body["data"] if isinstance(body["data"], dict) else body
+    return body
 
 def count_of(v):
     """A report field may be a count or the list it counts. Take either, and
@@ -207,7 +217,14 @@ st2 = call("experience", {"kind": "stats"})
 l2 = count_of(r2.get("loaded"))
 s2 = count_of(r2.get("skipped"))
 a2 = (st2.get("by_status") or {}).get("accepted")
-if (l2, s2, a2) == (loaded, skipped, accepted):
+if None in (loaded, skipped, accepted, l2, s2, a2):
+    # Three nulls equal three nulls. The first version of this arm said "ok" for
+    # exactly that reason, which is the vacuous-assertion shape this checkpoint
+    # spent its whole audit on — committed inside the probe written to prove it.
+    bad("the rebuild cannot be compared: a count was missing "
+        "(first loaded=%r skipped=%r accepted=%r, second loaded=%r skipped=%r accepted=%r)"
+        % (loaded, skipped, accepted, l2, s2, a2))
+elif (l2, s2, a2) == (loaded, skipped, accepted):
     ok("the second reseed is identical: loaded=%r skipped=%r accepted=%r" % (l2, s2, a2))
 else:
     bad("the rebuild is not reproducible: first (loaded=%r skipped=%r accepted=%r), "
