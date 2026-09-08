@@ -129,7 +129,7 @@ class SchemaMigrationsTest {
 
         try (Connection c = connect(dir)) {
             java.util.Map<String, Object> report =
-                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
+                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"), false);
             assertEquals(10, report.get("from"), "it already reports v10");
             // `to` is SchemaMigrations.LATEST by construction — migrate() writes it
             // unconditionally — so a literal here pins today's version and can never
@@ -357,7 +357,7 @@ class SchemaMigrationsTest {
         // asserted directly.
         try (Connection c = connect(dir)) {
             java.util.Map<String, Object> report =
-                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
+                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"), false);
             assertEquals(9, report.get("from"), "the rung ran FROM v9");
             // TO LATEST rather than to 10: a v9 store climbs every remaining rung in
             // one call, so pinning the literal 10 here would have to be edited at
@@ -462,7 +462,7 @@ class SchemaMigrationsTest {
 
         try (Connection c = connect(dir)) {
             java.util.Map<String, Object> report =
-                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"));
+                SchemaMigrations.migrate(c, dir.resolve("jawata-experience"), false);
             assertEquals(10, report.get("from"), "the rung ran FROM v10");
             // LATEST rather than a literal: see the note on the wider-v10 test —
             // migrate() sets `to` to LATEST unconditionally, so a literal pins the

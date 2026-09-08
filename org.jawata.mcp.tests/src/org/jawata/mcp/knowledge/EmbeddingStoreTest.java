@@ -83,7 +83,7 @@ class EmbeddingStoreTest {
             assertTrue(before.counters().keySet().iterator().next().startsWith("(unavailable"),
                 "precondition: this is the v3.4.0 symptom — the ledger cannot record");
 
-            Map<String, Object> report = SchemaMigrations.migrate(c, null);
+            Map<String, Object> report = SchemaMigrations.migrate(c, null, false);
             assertEquals(true, report.get("migrated"), "a v7 store has somewhere to go");
             assertEquals(SchemaMigrations.LATEST, report.get("to"));
 
@@ -103,7 +103,7 @@ class EmbeddingStoreTest {
         try {
             // Migrating an already-current store must be a no-op, not an error:
             // every resident start runs this path.
-            Map<String, Object> again = SchemaMigrations.migrate(store.sharedConnection(), null);
+            Map<String, Object> again = SchemaMigrations.migrate(store.sharedConnection(), null, false);
             assertEquals(false, again.get("migrated"), "a current store re-migrates to nothing");
             assertEquals(SchemaMigrations.LATEST, again.get("to"));
             // v3.4.1: this used to read assertEquals(7, LATEST) — it pinned the

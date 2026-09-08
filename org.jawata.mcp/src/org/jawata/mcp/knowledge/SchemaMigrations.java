@@ -50,14 +50,61 @@ final class SchemaMigrations {
      * ({@code from}/{@code to}/{@code migrated}/{@code backup}). {@code storeDir} is the
      * directory holding the store file ({@code null} for in-memory — no backup possible).
      *
-     * @throws IllegalStateException when the store is from a newer resident.
+     * @param fleetShared whether this is the USER-LEVEL store several residents on this
+     *     machine share. mcp#48: upgrading that one is a fleet-wide event, not a side
+     *     effect of starting a process, so it is refused unless explicitly allowed. An
+     *     isolated store keeps migrating silently — that is where the old behaviour belongs.
+     * @throws IllegalStateException when the store is from a newer resident, or when a
+     *     shared store would be upgraded without {@link #ALLOW_UPGRADE} being set.
      */
-    static Map<String, Object> migrate(Connection conn, Path storeDir) throws SQLException {
+    /**
+     * mcp#48: the operator's explicit consent to upgrade the SHARED store, named in the
+     * {@code jawata.experience.*} family the store mode and directory already use.
+     *
+     * <p>A property rather than a CLI flag on purpose: an unknown CLI flag passes through
+     * this launcher SILENTLY by design — the argv is shared with Eclipse — so a mistyped
+     * flag would read as consent-not-given, which is the safe direction, but a mistyped
+     * flag intended AS consent would be indistinguishable from forgetting it. A property
+     * that is absent is unambiguously absent.</p>
+     */
+    static final String ALLOW_UPGRADE = "jawata.experience.allowSchemaUpgrade";
+
+    private static boolean upgradeAllowed() {
+        return Boolean.parseBoolean(System.getProperty(ALLOW_UPGRADE, "false"));
+    }
+
+    static Map<String, Object> migrate(Connection conn, Path storeDir, boolean fleetShared) throws SQLException {
         int from = detectVersion(conn);
         if (from > LATEST) {
             throw new IllegalStateException("experience store schema is v" + from
                 + ", newer than this resident supports (v" + LATEST
                 + ") — refusing read-write open; upgrade jawata or use the newer resident");
+        }
+        // mcp#48: the refusal above is what STRANDS an older resident. This is the guard on
+        // the act that causes it.
+        //
+        // Three reasonable things line up into one bad outcome: migrate-on-open is
+        // unconditional, `shared` is the DEFAULT store mode, and an unknown CLI flag passes
+        // through silently by design (the argv is shared with the Eclipse launcher, so a
+        // mistyped isolation flag is indistinguishable from a legitimate one). A single
+        // dev-build launch therefore upgrades the fleet's store, and every already-running
+        // resident refuses it at its next restart — with one INFO line as the only warning,
+        // already scrolled past by the time the migration commits.
+        //
+        // `from >= 1` IS THE CLAUSE THAT MATTERS MOST, and the issue does not state it: a
+        // brand-new store is v0 and is not an upgrade of anything, so it migrates freely and
+        // a clean install still starts. It is the same condition that already guards the
+        // pre-migration BACKUP below, because the two are about the same event — an
+        // EXISTING store being moved forward.
+        if (fleetShared && from >= 1 && from < LATEST && !upgradeAllowed()) {
+            throw new IllegalStateException("experience store at " + storeDir + " is the"
+                + " USER-SHARED store and would be upgraded v" + from + " -> v" + LATEST
+                + ". Other residents on this machine may be using it, and every one of them"
+                + " will REFUSE the store after the upgrade until it is rebuilt — a fleet-wide"
+                + " event, so it is not done as a side effect of starting one process."
+                + " Stop the other residents and re-run with -D" + ALLOW_UPGRADE + "=true,"
+                + " or point this process at its own store (-Djawata.experience.store=workspace)."
+                + " A pre-migration backup is written automatically when the upgrade does run.");
         }
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("from", from);

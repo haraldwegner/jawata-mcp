@@ -362,13 +362,13 @@ public final class H2ExperienceStore implements ExperienceStore {
         readConnections.set(0);
     }
 
-    private H2ExperienceStore(Connection conn, String url, Path storeDir, Path storeFile)
-            throws SQLException {
+    private H2ExperienceStore(Connection conn, String url, Path storeDir, Path storeFile,
+            boolean fleetShared) throws SQLException {
         this.conn = conn;
         this.url = url;
         this.storeFile = storeFile;
         boundNetworkWait(conn);
-        Map<String, Object> report = SchemaMigrations.migrate(conn, storeDir);
+        Map<String, Object> report = SchemaMigrations.migrate(conn, storeDir, fleetShared);
         if (Boolean.TRUE.equals(report.get("migrated"))) {
             log.info("Experience store schema: {}", report);
         }
@@ -391,7 +391,7 @@ public final class H2ExperienceStore implements ExperienceStore {
     public static H2ExperienceStore openMemory() {
         String url = "jdbc:h2:mem:jawata-exp-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
         log.info("Experience store is in-memory (non-persistent)");
-        return openUrl(url, null, null);
+        return openUrl(url, null, null, false);
     }
 
     /**
@@ -402,6 +402,17 @@ public final class H2ExperienceStore implements ExperienceStore {
      * through the same URL.
      */
     public static H2ExperienceStore openAt(Path storeDir) {
+        return openAt(storeDir, false);
+    }
+
+    /**
+     * mcp#48: {@code fleetShared} says this is the USER-LEVEL store several residents on
+     * this machine share, so a schema upgrade of it is a fleet-wide event rather than a
+     * side effect of one process starting. Only {@link #openShared()} passes true; the
+     * public one-argument form above keeps every existing caller isolated, which is where
+     * migrate-on-open belongs.
+     */
+    static H2ExperienceStore openAt(Path storeDir, boolean fleetShared) {
         try {
             Files.createDirectories(storeDir);
         } catch (IOException e) {
@@ -426,7 +437,8 @@ public final class H2ExperienceStore implements ExperienceStore {
         // file is "recently modified" and H2 refuses the open. That is TRANSIENT; retry
         // before the caller degrades to a silent, non-persistent in-memory store.
         H2ExperienceStore store = openWithRetry(
-            () -> openUrl(url, storeDir, storeDir.resolve("experience.mv.db")), 5, 1500);
+            () -> openUrl(url, storeDir, storeDir.resolve("experience.mv.db"), fleetShared),
+            5, 1500);
         log.info("Experience store opened (file: {})", storeDir);
         return store;
     }
@@ -478,7 +490,8 @@ public final class H2ExperienceStore implements ExperienceStore {
     public static H2ExperienceStore openShared() {
         Path dir = sharedStoreDir();
         log.info("Experience store mode: user-shared ({})", dir);
-        return openAt(dir);
+        return openAt(dir, true);          // mcp#48: the fleet's store, declared at the one
+                                           // place that knows it is
     }
 
     /** {@code jawata.experience.shared.dir} property › {@code $XDG_DATA_HOME/jawata} › {@code ~/.local/share/jawata}. */
@@ -519,11 +532,12 @@ public final class H2ExperienceStore implements ExperienceStore {
         return dir;
     }
 
-    private static H2ExperienceStore openUrl(String url, Path storeDir, Path storeFile) {
+    private static H2ExperienceStore openUrl(String url, Path storeDir, Path storeFile,
+            boolean fleetShared) {
         Connection conn = null;
         try {
             conn = openBound(url);
-            return new H2ExperienceStore(conn, url, storeDir, storeFile);
+            return new H2ExperienceStore(conn, url, storeDir, storeFile, fleetShared);
         } catch (SQLException e) {
             closeQuietly(conn);
             throw new IllegalStateException("failed to open experience store: " + e.getMessage(), e);
