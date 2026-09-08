@@ -4,6 +4,7 @@ import org.jacoco.core.analysis.Analyzer;
 import org.jacoco.core.analysis.CoverageBuilder;
 import org.jacoco.core.analysis.IClassCoverage;
 import org.jacoco.core.analysis.IMethodCoverage;
+import org.jacoco.core.data.ExecutionData;
 import org.jacoco.core.tools.ExecFileLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,6 +87,23 @@ public final class CoverageAttribution {
                 analyzer.analyzeClass(in, classFile.toString());
             }
             for (IClassCoverage cc : builder.getClasses()) {
+                if (cc.isNoMatch()) {
+                    // mcp#40: the class was REBUILT since this segment was
+                    // recorded, so JaCoCo refuses to map its probes onto these
+                    // bytes and every counter reads zero. Answering "this test
+                    // does not cover it" out of that is an ABSENCE reported as
+                    // an emptiness: the segment plainly holds probe data under
+                    // the class's name, and nothing was read that says the test
+                    // stopped exercising it.
+                    //
+                    // What survives a rebuild is exactly the coarse fact — did
+                    // this test touch the class at all — so that is what is
+                    // answered, method precision included, and the caller is
+                    // told the class is stale by the response that sent them
+                    // here (coverage_impacted_tests reports staleClasses).
+                    if (touched(loader, cc.getName())) return true;
+                    continue;
+                }
                 if (methodName == null) {
                     if (cc.getLineCounter().getCoveredCount() > 0) return true;
                     continue;
@@ -102,6 +120,17 @@ public final class CoverageAttribution {
             log.debug("segment analysis failed for {}: {}", segment, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Did this segment record any probe hit for a class NAME, whatever bytes it
+     * was compiled from? The one question a rebuilt class can still answer.
+     */
+    private static boolean touched(ExecFileLoader loader, String vmName) {
+        for (ExecutionData data : loader.getExecutionDataStore().getContents()) {
+            if (data.getName().equals(vmName) && data.hasHits()) return true;
+        }
+        return false;
     }
 
     /** Every fqn#method a segment covers (bounded), for coverage_of_test. */

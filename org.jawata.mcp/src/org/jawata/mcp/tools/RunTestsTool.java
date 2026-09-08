@@ -1201,10 +1201,20 @@ public class RunTestsTool extends AbstractTool {
             String range = getStringParam(arguments, "range");
             org.jawata.mcp.coverage.GitDiff diff = org.jawata.mcp.coverage.GitDiff.read(
                 Path.of(model.manifest.projectRoot), diffKind, range);
+            java.util.List<String> withoutEvidence = new ArrayList<>();
+            java.util.List<String> staleClasses = new ArrayList<>();
             for (Map.Entry<String, java.util.Set<Integer>> e : diff.changedLinesByFile.entrySet()) {
                 org.jawata.mcp.coverage.CoverageModel.ClassCov clazz =
                     classForPath(model, e.getKey());
-                if (clazz == null) continue;
+                if (clazz == null) {
+                    // mcp#40: NOT the same fact as "this file has no impacted
+                    // test". The evidence has never seen this file, so nothing
+                    // here can speak for it, and a caller narrowing a run must
+                    // be told rather than handed a shorter list.
+                    withoutEvidence.add(e.getKey());
+                    continue;
+                }
+                int derivedBefore = symbols.size();
                 for (org.jawata.mcp.coverage.CoverageModel.MethodCov m : clazz.methods) {
                     for (Integer line : e.getValue()) {
                         if (line >= m.firstLine && line <= m.lastLine) {
@@ -1214,7 +1224,37 @@ public class RunTestsTool extends AbstractTool {
                         }
                     }
                 }
+                if (clazz.state
+                        == org.jawata.mcp.coverage.CoverageModel.State.STALE_BYTES) {
+                    staleClasses.add(clazz.fqn);
+                }
+                if (symbols.size() == derivedBefore) {
+                    // mcp#40: no method range claimed a changed line, and that
+                    // is never evidence that nothing was impacted.
+                    //
+                    // MEASURED — the ordinary case is a class REBUILT since the
+                    // evidence was recorded, which is the state of any file you
+                    // have just edited: JaCoCo matches the class NAME, refuses
+                    // its id, and CoverageModel.fillDetail is skipped for
+                    // STALE_BYTES, so the class arrives here carrying NO methods
+                    // at all. The loop above then runs over an empty list. A
+                    // change BETWEEN methods — a field, an initializer — lands
+                    // here too.
+                    //
+                    // The type is what is known, so the type is what is said.
+                    // Attribution segments are matched by class name, so a
+                    // type-level symbol still selects exactly the tests that
+                    // cover it; over-selection costs time, under-selection
+                    // costs correctness, and only one of those is acceptable
+                    // in a test gate.
+                    if (!symbols.contains(clazz.fqn)) symbols.add(clazz.fqn);
+                }
             }
+            // D2: the list is never bare — what was examined to produce it, and
+            // what could not be spoken for, travel with it.
+            data.put("filesChanged", diff.changedLinesByFile.size());
+            data.put("filesWithoutEvidence", withoutEvidence);
+            data.put("staleClasses", staleClasses);
         }
         data.put("symbols", symbols);
         // Union of tests covering each symbol; count how many symbols each covers.
