@@ -117,3 +117,45 @@ different shape; it is counted in the population and not yet classified.
 
 **NOT YET READ: `ProjectImporter`'s five `walk` sites and its `walkFileTree`.** Stated so the
 table above is not mistaken for the whole family — 8 of 14 are classified, 6 are not.
+
+## Classification — `walk` + `list` families complete (26 of 26)
+
+D5 admits two states per site: it **reports "could not read" in its own result**, or it is
+**listed with a written reason**. This file is that list. Measured, the sites sort into five
+shapes, and only the last needs work.
+
+### A — reports in its own result (the standard)
+`ExperienceMaintenance:205` — `skipped.add(Map.of("source", …, "reason", "cannot list: " + …))`.
+
+### B — written reason present in the code, transcribed here
+- `HostFs:56` — *"Retried by the next pass"*
+- `HostFs:60` — *"The dir may already be gone"*
+- `HostFs:75` — *"Gone between the loop and the count"*
+- `ProjectImporter:1604`, `:2079` — the `UncheckedIOException` note: `Files.walk`/`Files.list`
+  fail LAZILY, so the catch covers the stream's own throw as well as the open
+- `ProjectImporter:1343` — `return null; // unhashable tree → no cache key`
+
+These are races and lazily-thrown wrappers where a degraded answer is the designed behaviour.
+Listing them here is what D5 asks; nothing to change.
+
+### C — the result carries the degradation, the log carries the reason
+`CoverageStore:129`, `RuntimeArtifactStore:200` — set `ok = false`, which IS returned. The
+caller learns it failed; only *which* file is log-only. Partial by design, listed.
+
+### D — logged, result silently degraded
+`ProjectImporter:1013`, `:1623`, `:1647`, `:1875`, `:1879` · `CoverageStore:99`, `:121` ·
+`JawataApplication:845` · `H2ExperienceStore:1787` · `RuntimeArtifactStore:131`, `:192`, `:243`
+
+A human reading a log can recover these; a caller cannot. **Whether each should move to shape A
+is a per-site judgement about whose answer it degrades**, and it is the survey's remaining body.
+
+### E — SILENT, and the answer is a well-formed number
+`CoverageService:272` (`catch (IOException ignored) { }`) · `RuntimeArtifactStore:174`, `:178`
+(`return 0`) · `HostFs:51`, `:72` (`return 0`, though B's comments cover the sibling catches)
+
+**This is the sharpest shape and the reason D5 exists.** A failed directory walk returns a byte
+total of **0**, which is a well-formed answer no caller can tell from an empty directory — an
+absence rendered as an emptiness, in a NUMBER rather than a message, which is why no reader has
+ever caught it. These are the sites to fix first.
+
+## Remaining: the `readString` family (16), unclassified
