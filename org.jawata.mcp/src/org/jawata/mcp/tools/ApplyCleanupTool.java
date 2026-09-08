@@ -396,7 +396,31 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
             data.putAll(scan.describe());
             leavesTo(kind, filePath).ifPresent(step -> data.put("nextStep", step.rendered()));
             return Preparation.fail(ToolResponse.success(data, ResponseMeta.builder()
-                .steering(scan.steering(0, "code to clean up"))
+                // mcp#76: a NARROWED question gets a narrowed answer.
+                //
+                // `scan.steering` says "the scan was COMPLETE (1 file(s) examined), so this
+                // is a real absence, not a failure to look." That is a claim about the FILE,
+                // and it is true of a sweep that found nothing. Asked about ONE member it is
+                // the wrong scope: the rule may have looked at that member and declined it
+                // for a reason of its own, and the caller was told instead that the absence
+                // was real. Because the address had been ACCEPTED, nothing signalled a
+                // decline, and the sentence actively ruled out the true explanation.
+                //
+                // Measured on the reported case: remove_dead_code does NOT act on
+                // FindLargeClassesTool#log, and DOES delete an unused private field with a
+                // constant initializer — so the difference is not the member's kind (an
+                // earlier fix of mine assumed that and was wrong; ba0c4678) but the rule's
+                // own per-member judgement, which this branch was discarding.
+                //
+                // So the sweep's sentence is kept for a sweep, and a narrowing says what it
+                // actually knows: nothing changed HERE, and this rule is the only thing that
+                // looked.
+                .steering(scopedToMember
+                    ? "Nothing to change in the member you named — this is about THAT member,"
+                        + " not the file: " + kind + " examined it and produced no edit, which"
+                        + " can mean it had nothing to do or that it declined this particular"
+                        + " target. Re-run without line/column to ask about the whole file."
+                    : scan.steering(0, "code to clean up"))
                 .suggestedNextTools(List.of("get_diagnostics to check for remaining issues"))
                 .build()));
         }
