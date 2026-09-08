@@ -52,6 +52,9 @@ public final class H2ExperienceStore implements ExperienceStore {
     private final ObjectMapper json = new ObjectMapper();
     /** Non-final: {@link #compact()} shuts the database down and reopens the connection. */
     private Connection conn;
+    /** mcp#38: shut down by its owner, as distinct from a connection that merely dropped.
+     *  Volatile because {@code close()} is synchronized and {@code live()} is not. */
+    private volatile boolean closed;
     private final String url;
     /** The backing {@code .mv.db} file (null for in-memory) — self-exclusion in recovery. */
     private final Path storeFile;
@@ -150,6 +153,26 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     private Connection live() {
+        // mcp#38: a DROPPED connection and a store CLOSED BY ITS OWNER are different facts,
+        // and re-opening was right for only one of them.
+        //
+        // For a FILE store the re-open is the intended resilience: an AUTO_SERVER client
+        // whose connection drops re-attaches to the same database and loses nothing. For an
+        // IN-MEMORY store the same line creates a fresh, EMPTY database — so a closed store
+        // went on answering, and every answer was a clean absence from a corpus that never
+        // existed. Shaped like an observation, never observed.
+        //
+        // That is not only a test construct: the in-memory store is the fallback
+        // RecoveringExperienceStore serves while the real one is unavailable, which is
+        // exactly when a false "nothing known" is most costly. Refusing here surfaces as
+        // RESULT_UNAVAILABLE — "I could not answer", which the caller is already told is NOT
+        // an absence — instead of a confident empty result.
+        //
+        // Terminal by construction rather than by convention: every open* is a STATIC
+        // factory returning a new instance, so nothing re-opens THIS one. compact() reaches
+        // for closeQuietly + openBound directly and never passes through close(), so its
+        // documented shutdown-and-reopen is untouched.
+        refuseIfClosed();
         try {
             if (conn == null || conn.isClosed() || !conn.isValid(1)) {
                 conn = openBound(url);
@@ -247,8 +270,32 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * mcp#38: the refusal ONE place, because the store hands out connections from TWO.
+     *
+     * <p>The issue named {@code live()} and only {@code live()}. It is the WRITE path; every
+     * read goes through {@code withRead} → {@link #borrowRead()} → {@code openBound}, which
+     * after {@code close()} has drained the pool opens a brand-new connection of its own. So
+     * a fix at {@code live()} alone left the commoner half — reads — answering from a fresh
+     * empty in-memory database exactly as before. <b>The test written for the fix is what
+     * found that</b>: it asserted a refusal on {@code count()} and nothing was thrown.</p>
+     *
+     * <p>Stated here rather than duplicated at each site so a THIRD connection path cannot
+     * quietly skip it — which is how this one came to have two.</p>
+     */
+    private void refuseIfClosed() {
+        if (closed) {
+            throw new IllegalStateException(
+                "experience store was CLOSED by its owner — refusing to re-open it behind the"
+                    + " caller's back. This is NOT an absence: nothing has been established"
+                    + " about the cue. (A dropped connection is a different case and is still"
+                    + " re-opened; this store was shut down deliberately.)");
+        }
+    }
+
     /** A pooled read connection, or null when the store cannot give one out. */
     Connection borrowRead() {
+        refuseIfClosed();
         Connection pooled = readPool.poll();
         if (pooled != null) {
             return validOrReplaced(pooled);
@@ -1986,6 +2033,11 @@ public final class H2ExperienceStore implements ExperienceStore {
 
     @Override
     public synchronized void close() {
+        // mcp#38: set BEFORE the connection is touched. live() is not synchronized, so a
+        // reader racing this must not find the connection already shut and helpfully open a
+        // new one — the window between "conn.close() returned" and "flag set" is precisely
+        // the window in which the defect happens.
+        closed = true;
         discardReadPool();
         try {
             if (conn != null && !conn.isClosed()) {
