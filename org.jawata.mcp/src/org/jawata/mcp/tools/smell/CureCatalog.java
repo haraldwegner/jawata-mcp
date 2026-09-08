@@ -282,8 +282,24 @@ public final class CureCatalog {
         // `inline` as well — so a bare mention would name three different operations
         // and the registry refuses it. The qualified spelling is what a reader types.
         m.put("feature_envy", List.of(
+            // mcp#70 instance 2. The message names the destination — "Consider Move Method to
+            // LoadedProject" — and the cure handed over {symbol, filePath}, so the door answered
+            // "several possible targets: pathUtils, projectImporter, searchService,
+            // workspaceManager".
+            //
+            // TWO different gaps, and only the first is fixed by naming the need. The door wants
+            // `target`: the PARAMETER OR FIELD whose type receives the method, because every call
+            // site is rewritten to invoke it there. The detector names a TYPE. So LoadedProject
+            // is not among the four and never could be — the two speak different vocabularies,
+            // and what the agent must supply is the field whose type IS LoadedProject.
+            //
+            // Naming `target` in the door's own word is what makes that legible: the message says
+            // which class, this says what shape of answer the door takes, and the refusal lists
+            // the candidates. The remaining mismatch is the detector's and is recorded, not
+            // papered over here.
             new Cure("move kind=method", null,
-                "when ONE method is envious — it moves to the class whose data it prefers"),
+                "when ONE method is envious — it moves to the class whose data it prefers",
+                List.of("target")),
             new Cure("extract kind=combine_functions", null,
                 "when SEVERAL methods envy the same data — they and the data become one"
                     + " class, rather than moving one at a time",
@@ -387,7 +403,10 @@ public final class CureCatalog {
         // "one change touches many classes", and moving a single field almost never settles
         // it — routing it there would turn a design finding into a one-field instruction.
         m.put("inappropriate_intimacy", List.of(
-            new Cure("move kind=field", null)));
+            // mcp#70: the sibling of the row above. `move kind=field` needs the DESTINATION's
+            // fully-qualified name — nothing in a finding says where a field should go, which is
+            // the decision the refactoring carries out.
+            new Cure("move kind=field", null, null, List.of("targetType"))));
 
         // --- Sprint 28d-rescue, S8: the six kinds stage 8 adds. Batched here rather
         // than written as each detector landed, because this table has one owner and a

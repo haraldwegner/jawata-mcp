@@ -27,13 +27,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * verbatim earned {@code INVALID_PARAMETER 'newTypeName'}. Measured against the released engine
  * before the change.</p>
  *
- * <p><b>Three layers of one gap, and only measuring found all three.</b> {@code Cure} has carried
- * a {@code needs} component since 28d's v4.1 clause — so the issue's title, <i>"needs[] did not
- * ship"</i>, is half wrong. What had not shipped is that NO cure declared one (every construction
- * used the two- or three-argument form), and {@code NextStep} — the wire shape both the findings
- * channel and the refusal channel render through — had no such component at all, so
- * {@code Cures.stepsFor} passed the discriminator and dropped the needs. Declared, carried,
- * rendered: the field existed at one layer and was absent at the other two.</p>
+ * <p><b>ONE layer was broken, and my first account of this said three.</b> {@code Cure} has
+ * carried a {@code needs} component since 28d's v4.1 clause, and <b>fifteen cures already
+ * declared one</b> — {@code sections}, {@code cloneGroupId}, {@code literal}, {@code parameters},
+ * {@code functions}, {@code delegateField} and more. The break was entirely at the wire:
+ * {@code NextStep} — the shape both the findings channel and the refusal channel render through —
+ * had no such component, so {@code Cures.stepsFor} passed the discriminator and dropped the
+ * needs. Every one of those fifteen declarations reached nobody.</p>
+ *
+ * <p><b>The correction matters because I acted on the wrong count.</b> A first pass reported ZERO
+ * declarations, from a single-line search that cannot see a multi-line {@code new Cure(...)}, and
+ * that number went into a commit message and a plan record before the multi-line rows were read.
+ * What this fix is worth is therefore larger than first stated: it did not add a feature for two
+ * cures, it connected fifteen that were already written and silent.</p>
  *
  * <p>Both directions here. A step that renders {@code needs} unconditionally would satisfy the
  * first case and be exactly as wrong as the silence it replaces, so a door that asks for nothing
