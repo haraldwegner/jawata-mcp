@@ -296,14 +296,59 @@ public final class CureLookup {
      *                          because a FOREIGN pin moving is the reason this
      *                          sweep exists and a report that omits the pin
      *                          cannot say which authority moved
+     * @param addresses         operation &rarr; the row's own {@code source_ref}.
+     *                          mcp#67: the sweep re-resolved KEYS and never looked
+     *                          at the ADDRESS it would hand a reader, so "all
+     *                          clean" named nothing anyone could check against the
+     *                          pin
+     * @param movedOperations   declared cures whose ADDRESS differs from the
+     *                          baseline's — the one shape a key check cannot see
+     * @param movedAuthorities  namespaces whose authority differs from the
+     *                          baseline's: the pin itself moved
      */
     public record Audit(int declared, int resolved, int unresolved,
                         List<String> unresolvedOperations, List<String> absentNamespaces,
-                        Map<String, String> authorities) {
+                        Map<String, String> authorities, Map<String, String> addresses,
+                        List<String> movedOperations, List<String> movedAuthorities) {
 
-        /** True when every declared cure still resolves. */
+        /**
+         * True when every declared cure still resolves AND nothing moved under it.
+         *
+         * <p>mcp#67: resolution alone used to be the whole test, so a pin that moved
+         * and renamed a path while keeping the operation key reported
+         * {@code clean: true} while every cure for that kind pointed at a dead
+         * address. With no baseline to compare against, both move lists are empty and
+         * this answers exactly what it always did.</p>
+         */
         public boolean clean() {
-            return unresolved == 0;
+            return unresolved == 0 && movedOperations.isEmpty() && movedAuthorities.isEmpty();
+        }
+    }
+
+    /**
+     * mcp#67 — the previous answer, against which a MOVE can be seen at all.
+     *
+     * <p>The issue reports two gaps — the sweep checks keys rather than addresses,
+     * and nothing detects the pin moving — and they are one gap seen twice. A
+     * renamed path and a correct path are indistinguishable by inspection, so
+     * neither can be judged without a previous value. This is that value.</p>
+     *
+     * <p>It is a SEAM in the sense this class already uses for
+     * {@link #audit(ExperienceStore, List)}: the parameter is what makes the check
+     * falsifiable, because a sweep that has never seen a move and a corpus with no
+     * move to find produce identical output.</p>
+     */
+    public record Baseline(Map<String, String> addresses, Map<String, String> authorities) {
+
+        public Baseline {
+            addresses = addresses == null ? Map.of() : Map.copyOf(addresses);
+            authorities = authorities == null ? Map.of() : Map.copyOf(authorities);
+        }
+
+        /** The baseline a previous sweep leaves behind, or null when there was none. */
+        public static Baseline of(Audit previous) {
+            return previous == null ? null
+                : new Baseline(previous.addresses(), previous.authorities());
         }
     }
 
@@ -335,18 +380,61 @@ public final class CureLookup {
      * the other half of the pair.</p>
      */
     public static Audit audit(ExperienceStore store, List<String> declaredOperations) {
+        return audit(store, declaredOperations, null);
+    }
+
+    /**
+     * The same sweep, told what the answer was LAST time — mcp#67.
+     *
+     * <p>Without a baseline this behaves exactly as it always did, which is what
+     * keeps the two existing entry points honest rather than quietly stricter.</p>
+     */
+    public static Audit audit(ExperienceStore store, List<String> declaredOperations,
+                              Baseline baseline) {
         CatalogueAddresses addresses = CatalogueAddresses.of(store);
         List<String> broken = new ArrayList<>();
+        // mcp#67 — the ADDRESS, not merely the fact that some row carries the key.
+        // `resolves(operation)` answered the weaker question, so a pin that renamed a
+        // path while keeping the key left every affected cure pointing at a dead
+        // address and the sweep reporting clean.
+        Map<String, String> resolvedAddresses = new LinkedHashMap<>();
         int ok = 0;
         for (String operation : declaredOperations) {
-            if (addresses.resolves(operation)) {
-                ok++;
-            } else {
+            CatalogueAddresses.Address address = addresses.address(operation);
+            if (address == null) {
                 broken.add(operation);
+            } else {
+                ok++;
+                resolvedAddresses.put(operation, address.sourceRef());
             }
         }
         Map<String, String> authorities = new LinkedHashMap<>(CatalogueAddresses.authorities());
         return new Audit(declaredOperations.size(), ok, broken.size(), List.copyOf(broken),
-            addresses.absentNamespaces(), Map.copyOf(authorities));
+            addresses.absentNamespaces(), Map.copyOf(authorities), Map.copyOf(resolvedAddresses),
+            moved(baseline == null ? null : baseline.addresses(), resolvedAddresses),
+            moved(baseline == null ? null : baseline.authorities(), authorities));
+    }
+
+    /**
+     * Keys the baseline and the current answer BOTH carry, whose value differs.
+     *
+     * <p>A key the baseline never had is not a move — it is new. A key the current
+     * answer has lost is not a move either: the unresolved count already speaks for
+     * that, and reporting it twice under two names would make one repair look like
+     * two problems. Only a key present on both sides with a different value is a
+     * move, and that is precisely the case resolution cannot see.</p>
+     */
+    private static List<String> moved(Map<String, String> before, Map<String, String> after) {
+        if (before == null || before.isEmpty()) {
+            return List.of();
+        }
+        List<String> changed = new ArrayList<>();
+        for (Map.Entry<String, String> was : before.entrySet()) {
+            String now = after.get(was.getKey());
+            if (now != null && !now.equals(was.getValue())) {
+                changed.add(was.getKey());
+            }
+        }
+        return List.copyOf(changed);
     }
 }

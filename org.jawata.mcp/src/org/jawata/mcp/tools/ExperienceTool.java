@@ -557,6 +557,17 @@ public final class ExperienceTool implements Tool {
         // the reason this check exists, so a report that omits the authority
         // cannot say which one moved.
         block.put("authorities", audit.authorities());
+        // mcp#67 — the ADDRESSES, because the sweep used to re-resolve KEYS and this
+        // block then reported "clean" without naming one thing a reader could check
+        // against the pin. An address check whose addresses are invisible cannot be
+        // acted on, which is the same argument that made unresolvedOperations named
+        // rather than counted.
+        block.put("addresses", audit.addresses());
+        // Empty unless a baseline was supplied. Rendered anyway: absent and empty must
+        // not read alike, and "nothing moved" is an answer where "we never looked" is
+        // not.
+        block.put("movedOperations", audit.movedOperations());
+        block.put("movedAuthorities", audit.movedAuthorities());
         return block;
     }
 
