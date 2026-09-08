@@ -139,7 +139,20 @@ public final class CoverageStore {
         return Files.isRegularFile(root.resolve(artifactId).resolve(MANIFEST_FILE));
     }
 
-    /** Explicit delete — returns false when the artifact does not exist. */
+    /**
+     * Explicit delete. {@code true} means the artifact is GONE.
+     *
+     * <p>D5 (Sprint 28e) — this javadoc used to read <i>"returns false when the artifact does
+     * not exist"</i>, which was false about the code beneath it: {@code false} already meant
+     * absent, OR the tree could not be walked, OR a file in it could not be deleted
+     * ({@code ok = false}). Only the first is "nothing to delete"; the others mean it is
+     * still there.</p>
+     *
+     * <p>Stated the way round that holds for every branch: {@code false} means <b>not
+     * gone</b>. The same wording and the same residual as {@code RuntimeArtifactStore#delete}
+     * — these two stores are byte-identical here, and a correction applied to one of them
+     * would have left the other saying something untrue.</p>
+     */
     public boolean delete(String artifactId) {
         Path dir = root.resolve(artifactId);
         if (!Files.isDirectory(dir)) return false;

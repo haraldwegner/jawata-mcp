@@ -216,7 +216,22 @@ public final class RuntimeArtifactStore {
         }
     }
 
-    /** Explicit delete — false when there was nothing to delete. */
+    /**
+     * Explicit delete. {@code true} means the artifact is GONE.
+     *
+     * <p>D5 (Sprint 28e) — this javadoc used to read <i>"false when there was nothing to
+     * delete"</i>, and that was false about the code beneath it. {@code false} already had
+     * three meanings: the artifact was absent, the tree could not be WALKED, or some file in
+     * it could not be deleted ({@code ok = false}). Only the first is "nothing to delete";
+     * the other two mean the artifact is STILL THERE, which is the opposite fact.</p>
+     *
+     * <p>So the contract is stated the way round that is true of every branch: {@code false}
+     * means <b>not gone</b> — either it was never here, or it survived. A caller that must
+     * tell those apart asks {@link #exists(String)} first; the reason a walk or a delete
+     * failed is in the log. <b>The residual is named rather than hidden</b>: this method
+     * still cannot tell a caller WHICH of the two it was in its own return, and closing that
+     * changes a published return type on two stores — raised at C8, not done here.</p>
+     */
     public boolean delete(String artifactId) {
         Path dir = root.resolve(artifactId);
         if (!Files.isDirectory(dir)) {

@@ -465,3 +465,105 @@ equality signed over a narrower one:
   never RAISE `newest` — a rebuilt-but-unreadable class made the artifact look FRESH and
   coverage was served over stale bytes. Failing open in the one direction a staleness check
   must not.
+
+## The mutation ledger — four, each reverted with `git checkout HEAD --` and the tree verified clean
+
+`git checkout HEAD -- <path>`, never the bare `git checkout -- <path>`: a bare revert restores
+from the INDEX, and where the mutation was staged that silently keeps it. The `dirty=` count
+after each revert is what catches that.
+
+| # | Mutation | Went red | What that proves |
+|---|---|---|---|
+| U | `HostFs`'s final catch back to `return 0` | `HostFsResidueTest`, on the aimed assertion, quoting the defect: *"a walk that FAILED must not answer 0: 0 is this method's own word for 'the tree is gone', and the tree is still there. got: 0"* | the check is live, and the test reads the METHOD's own contract rather than a number I chose |
+| V | `RuntimeArtifactStore.list()` back to `Files.isRegularFile` | `UnreadableArtifactIsReportedTest`, 1 of 3, on the assertion that replaced the abort: *"an artifact whose directory cannot be read must still be LISTED"* | the artifact-drop is closed, and the control is a case that used to ABORT in every run and now runs |
+| **W** | `RuntimeArtifactStore`'s per-file `Files.size` back to `return 0` | **NOTHING — 28/28 green** | see below |
+| **X** | `CoverageService`'s per-file `Files.getLastModifiedTime` back to `return 0` | **NOTHING — 28/28 green** | see below |
+
+### W and X stayed green, and that is a finding rather than a formality
+
+Both fixes are correct by reasoning and **neither is guarded**, which is stated here rather
+than left for an auditor to discover.
+
+**The reason is structural, not an oversight in the tests.** Reaching either inner catch needs
+a path that passes `Files.isRegularFile` and then fails `Files.size` — so the file must exist
+at the filter and be gone or unstattable microseconds later at the accessor. That is a RACE,
+and no deterministic fixture produces it. The two ways an unreadable thing is normally built
+both miss it: strip a FILE's permissions and `stat` still succeeds (it needs execute on the
+parent, not read on the file), and strip a DIRECTORY's and `Files.walk` fails lazily at the
+directory, which the OUTER catch takes.
+
+**So the same property that hid these two swallows from every reader also hides them from every
+test**, and it is why they survived the change to the outer catch in the very same method. What
+they are is a real failure mode under a race — a temp file swept mid-walk, an artifact deleted
+by a concurrent sweeper — where the answer was a number that read as complete.
+
+They are recorded here as **fixed by reasoning, unguarded by construction**. That is weaker
+than the other two and is not dressed up as equal to them: this file's own record already
+carries one case (`mutation T`, commit `4494b34a`) where a claim was made for a fix whose effect
+no instrument could see, and the correction cost more than the honesty would have.
+
+## C8's third clause — *"the spec's five named rows are among them"*
+
+The five are the `walk` sites the symbol index missed and the text sweep found, named in the
+plan's own table at the point the overload discrepancy was settled. Each is here with its
+disposition and its CURRENT coordinate — every one of them moved, because this sprint's own
+D5 edits shifted lines in all three files.
+
+| the plan's row | now | shape | disposition |
+|---|---|---|---|
+| `HostFs:51` | 51 | **B** | **written reason, in the code.** Its catch says *"The dir may already be gone — the check below settles it"*, and the check below is a real one at line 62 that returns only on a settled answer. Nothing to change |
+| `HostFs:72` | 72 | E → **A** | **CHANGED**, mutation U |
+| `CoverageStore:118` | 118 | D | **written reason**, see below |
+| `RuntimeArtifactStore:169` | 188 | **A** | already compliant — `sizeOf`'s outer catch answers `OptionalLong.empty()`. Fixed earlier in this stage |
+| `RuntimeArtifactStore:189` | 209 | D | **written reason**, see below |
+
+**All five are in one of C8's two admissible states.** That was not true an hour ago, and the
+correction is worth recording because the wrong answer was the comfortable one.
+
+### The two `delete()` rows — and why "raised" was the wrong disposition
+
+I first parked both as *raised as a contract decision*, which is a THIRD state C8 does not
+admit — a deferral wearing a verdict's clothes, which this plan warns about in those words.
+**Reading the code rather than the javadoc settled it.**
+
+`false` did not mean one thing that I was proposing to split. It ALREADY meant three:
+
+```java
+if (!Files.isDirectory(dir)) return false;                      // absent
+catch (IOException e) { log.warn(...); return false; }          // could not WALK it
+for (Path p : paths) { ... catch (IOException e) { ok = false; } }  // could not delete a file
+return ok;
+```
+
+Only the first is *"there was nothing to delete"* — which is what BOTH javadocs claimed
+{@code false} means, and both were therefore **false about their own methods**, in the two
+places a caller reads to find out. The walk-failure branch was not introducing an ambiguity;
+it was the second of three cases already collapsed into one boolean, and the documentation
+named the wrong one.
+
+So the disposition is a written reason **in the code**, and it is a change rather than a
+deferral: both javadocs now state the contract the way round that holds for every branch —
+`false` means **not gone**. Applied to both stores in one edit, because they are byte-identical
+here and correcting one would have left the other saying something untrue.
+
+**The residual is named and NOT counted as disposed**: the method still cannot tell a caller in
+its own return whether the artifact was absent or survived. Closing that changes a published
+return type on two classes. Raised at C8 — as a residual of a disposed site, not as the site's
+disposition.
+
+## The equality over C8's own scope — THREE families, not the four surveyed
+
+C8 says *across all three families*. The survey covers four: `walkFileTree` was added because
+its two sites were in the population table and classified nowhere. So the equality is stated
+over both scopes, and it must hold over the criterion's scope on its own.
+
+| | three families (`walk`, `list`, `readString`) | + `walkFileTree` |
+|---|---|---|
+| distinct sites | **42** | **44** |
+| compliant before | 28 (P 18 · A 8 · B 2) | 29 (B 3) |
+| changed | 3 — `HostFs:72` · `RuntimeArtifactStore:124` · `CoverageStore:92` | 3 |
+| written exceptions | 11 — 8 shape-D · both `delete()` javadocs · `PlanRefactoringTool:570` | 12 |
+| **total** | 28 + 3 + 11 = **42** | 29 + 3 + 12 = **44** |
+
+Both close. The one site the wider scope adds to *changed or excepted* is
+`ProjectImporter:1693` (`walkPruned`), whose reason its own javadoc already carried.
