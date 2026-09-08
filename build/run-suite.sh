@@ -129,6 +129,13 @@ fi
 rm -rf "$OUT"; mkdir -p "$OUT"
 ln -sfn "$OUT" "$DIST/suite-shards"
 
+# mcp#44 — the marker this run's /tmp debris is measured against. Every temp dir created
+# from here on is this run's; anything older belongs to a previous run, another process, or
+# the user, and is never touched. See the sweep at the end for why it is a backstop rather
+# than the cure.
+TMP_MARKER="$OUT/.tmp-sweep-marker"
+: > "$TMP_MARKER"
+
 # 1. Discover test classes exactly like the boot does (org.jawata.* test
 #    bundles, top-level *Test.class).
 ALL_CLASSES="$OUT/all-classes.txt"
@@ -405,5 +412,42 @@ if [ "$CFAIL" -gt 0 ]; then
          "passed; the class still blew up. Find it in the shard logs:"
     echo "    grep -n '\\^\\^ FAILED' $OUT/shard-*.log"
 fi
-[ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] && [ "$CFAIL" -eq 0 ] || exit 1
+[ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] && [ "$CFAIL" -eq 0 ] || {
+    # mcp#44: a FAILED run keeps its debris. Those directories are frequently the only
+    # evidence of what the failure did, and destroying evidence to reclaim disk is the
+    # wrong trade every time.
+    echo "note: this run's /tmp working directories were KEPT for diagnosis (the run failed)."
+    exit 1
+}
+
+# mcp#44 — SWEEP THIS RUN'S OWN /tmp DEBRIS. Measured 2026-09-08: 8886 jawata-* directories,
+# 51 GB, still accumulating; the issue measured 120 GB over four days. On a distro where
+# /tmp is a tmpfs this is RAM, and the suite starts failing with no-space errors that read
+# like product defects.
+#
+# THIS IS A BACKSTOP, NOT THE CURE, and the difference is worth stating: the creators are
+# spread across the debug/profile tests that launch target JVMs (each launch makes one to
+# three directories), and each of those still owns its own delete. What a backstop buys that
+# per-test cleanup cannot is the run that CRASHES half way, which leaks whatever it had made
+# — the issue says so in as many words. What it does NOT cover is a developer running one
+# test from an IDE; that path never comes through here.
+#
+# It is scoped three ways so it can only remove what this run made:
+#   - newer than the marker written at the start of THIS run;
+#   - directly in /tmp, never recursively;
+#   - never jawata-runtime, which is the persistent artifact store rather than run debris.
+if [ "${JAWATA_KEEP_TMP:-0}" = "1" ]; then
+    echo "note: JAWATA_KEEP_TMP=1 — leaving this run's /tmp working directories in place"
+else
+    SWEPT=$(find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' \
+                -newer "$TMP_MARKER" 2>/dev/null | wc -l)
+    if [ "$SWEPT" -gt 0 ]; then
+        SWEPT_KB=$(find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' \
+                       -newer "$TMP_MARKER" -exec du -sk {} + 2>/dev/null \
+                   | awk '{s+=$1} END {print s+0}')
+        find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' \
+             -newer "$TMP_MARKER" -exec rm -rf {} + 2>/dev/null
+        echo "swept $SWEPT /tmp working director(ies) this run created ($((SWEPT_KB / 1024)) MB)"
+    fi
+fi
 exit 0
