@@ -1163,13 +1163,6 @@ public final class ExperienceRetrieval {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries =
             (List<Map<String, Object>>) result.getOrDefault("entries", List.of());
-        StringBuilder sb = new StringBuilder();
-        for (Map<String, Object> e : entries) {
-            if (sb.length() > 0) {
-                sb.append('\n');
-            }
-            sb.append(renderEntryLine(e));
-        }
         // Sprint 27: analogies render BELOW the gated facts and are visibly
         // different in kind — advisory framing, basis and provenance in words,
         // and never a similarity number (a score in the text invites treating
@@ -1177,6 +1170,38 @@ public final class ExperienceRetrieval {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> analogies =
             (List<Map<String, Object>>) result.getOrDefault("analogies", List.of());
+        StringBuilder sb = new StringBuilder();
+
+        // mcp#73: SAY THE ABSENCE, in the body, where format=text can carry it.
+        //
+        // The server already distinguished these two cases and could not say so where it
+        // mattered. A cue the store HAS an entry for renders the anchored row first and gets
+        // the closed-set steering; a cue it has nothing for renders resemblance rows in the
+        // SAME SHAPE, and the only thing separating them was the per-row basis tag and a
+        // steering line carried in `meta` — which the format=text tail never renders, and
+        // format=text is what the hooks inject. So the distinction existed for a JSON reader
+        // and was invisible to the reader it was for.
+        //
+        // Why that is worse than merely unhelpful: the closed-set steering tells an agent to
+        // match its observation to ONE of the rows and not to generate a novel cause. Applied
+        // to a pile that is only near, it aims the agent at whichever unrelated entry ranked
+        // first. This tool's own contract is "an authoritative absence — never a similarity
+        // pile", and the sibling case already honours it — RESULT_UNAVAILABLE above says
+        // outright "this is NOT an absence". This is that rule, applied to its other half.
+        if (entries.isEmpty() && !analogies.isEmpty()) {
+            sb.append("NOTHING IS ANCHORED TO THIS CUE — the store holds no entry for it.")
+                .append(" What follows are NOMINEES ranked by resemblance, not answers:")
+                .append(" judge each on its own situation and decide whether it transfers.")
+                .append(" Selecting none is a real answer, and is often the right one — do")
+                .append(" NOT match your observation to a row because it ranked first.");
+        }
+
+        for (Map<String, Object> e : entries) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(renderEntryLine(e));
+        }
         for (Map<String, Object> a : analogies) {
             if (sb.length() > 0) {
                 sb.append('\n');
