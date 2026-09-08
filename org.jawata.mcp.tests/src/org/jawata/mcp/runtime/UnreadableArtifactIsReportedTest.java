@@ -153,14 +153,20 @@ class UnreadableArtifactIsReportedTest {
         try {
             List<Map<String, Object>> rows = store.describeAll();
 
-            // RECORDED RATHER THAN ASSERTED AWAY: an unreadable artifact is still INVISIBLE to
-            // list(), which asks `Files.isRegularFile` exactly as the orphan filter did, so
-            // describeAll never reaches it. That is the same defect in its non-destructive
-            // form, it is NOT fixed here, and this assumption is what keeps the file honest
-            // about which half shipped.
-            assumeTrue(!rows.isEmpty(),
-                "list() drops the unreadable artifact, so no row exists to describe — the "
-                    + "surviving half of the same defect, recorded in the D5 dossier");
+            // THIS WAS AN assumeTrue, AND ITS REMOVAL IS THE CONTROL FOR THE list() FIX.
+            //
+            // It read: "list() drops the unreadable artifact, so no row exists to describe —
+            // the surviving half of the same defect". That was true and this test ABORTED on
+            // it in every run, which is how the gap stayed visible instead of passing quietly.
+            // list() now filters on manifestMissing() rather than Files.isRegularFile, so the
+            // artifact survives and there IS a row.
+            //
+            // Asserted, not assumed: restore the isRegularFile filter and this line fails
+            // with an empty list, which is exactly what the abort used to say in prose.
+            assertFalse(rows.isEmpty(),
+                "an artifact whose directory cannot be read must still be LISTED — "
+                    + "Files.isRegularFile folds 'cannot determine' into 'no manifest', which "
+                    + "made it invisible to every caller rather than merely unmeasurable");
             Map<String, Object> row = rows.get(0);
             assertAll(
                 // The half that matters: the number is ABSENT rather than wrong. A row

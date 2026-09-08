@@ -122,8 +122,16 @@ public final class RuntimeArtifactStore {
             return List.of();
         }
         try (Stream<Path> dirs = Files.list(root)) {
+            // D5 (Sprint 28e): NOT isRegularFile, which folds "cannot determine" into
+            // "no manifest" and so DROPPED an artifact whose directory could not be read
+            // — making it invisible to every caller rather than merely unmeasurable.
+            // manifestMissing answers three ways; only a CONFIRMED absence excludes.
+            //
+            // This is the half UnreadableArtifactIsReportedTest recorded as surviving:
+            // its third case carried an assumeTrue saying list() drops the artifact so no
+            // row exists to describe. That assumption is what this removes.
             return dirs.filter(Files::isDirectory)
-                .filter(d -> Files.isRegularFile(d.resolve(MANIFEST_FILE)))
+                .filter(d -> manifestMissing(d) != Boolean.TRUE)
                 .sorted(Comparator.comparing((Path d) -> d.getFileName().toString()).reversed())
                 .map(d -> d.getFileName().toString())
                 .toList();
@@ -190,10 +198,19 @@ public final class RuntimeArtifactStore {
                 try {
                     return Files.size(p);
                 } catch (IOException e) {
-                    return 0;
+                    // D5 (Sprint 28e): a file whose size cannot be READ must not contribute
+                    // 0 to a total that is then returned as a real number. This catch is
+                    // one line inside the method whose OUTER catch was changed for exactly
+                    // this defect, and it survived the change — so the sum could still be
+                    // short by a whole file while answering isPresent().
+                    //
+                    // Unchecked, so the outer catch below turns the whole call into "no
+                    // size taken" rather than "the artifact is smaller than it is". A
+                    // partial total is the answer with no honest reading.
+                    throw new java.io.UncheckedIOException(e);
                 }
             }).sum());
-        } catch (IOException e) {
+        } catch (IOException | java.io.UncheckedIOException e) {
             log.warn("cannot size runtime artifact {}: {}", dir, e.getMessage());
             return java.util.OptionalLong.empty();
         }

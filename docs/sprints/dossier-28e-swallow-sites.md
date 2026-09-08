@@ -206,3 +206,262 @@ control that a genuinely unmanifested aged directory is still swept.
 **A mutation that stays green has found something** — here, that I had asserted a consequence I
 had not measured, in a commit message, one turn after the C7 record made exactly that point
 about someone else's code.
+
+---
+
+# CORRECTION, 2026-09-08 — the population was 45 and is 44, and the classification was not a partition
+
+Everything above stands as the record of what was believed at the time. It is superseded by
+this section, which is measured rather than recalled. **The reason it matters is C8's own
+wording:** *changed sites plus written exceptions EQUAL the enumerated population.* An equality
+is arithmetic, and three faults above make the arithmetic unrunnable.
+
+## Fault 1 — 45 counts OCCURRENCES; there are 44 SITES
+
+`ExperienceMaintenance.java:194` is a ternary containing both openers on ONE line:
+
+```java
+try (Stream<Path> s = recursive ? Files.walk(root, Math.max(1, maxDepth)) : Files.list(root)) {
+```
+
+The population table ran four separate greps and counted it twice — once under `walk`, once
+under `list`. One combined sweep, deduplicated by `file:line`, answers **44**, and the raw
+occurrence count of that same sweep is also 44:
+
+```sh
+SRC="org.jawata.core/src org.jawata.mcp/src"
+grep -rn "Files\.walk(\|Files\.walkFileTree(\|Files\.list(\|Files\.readString(" --include=*.java $SRC \
+  | awk -F: '{print $1":"$2}' | sort -u | wc -l      # 44
+```
+
+The two instruments agree at 44. **This is the same defect the file's own opening section
+describes** — an enumeration taken per-overload rather than once — arriving one section later
+in the document that names it.
+
+## Fault 2 — the shapes overlap, so no site can be counted
+
+`HostFs:51` and `:72` are listed under **B** (as their catches `:56`, `:60`, `:75`) *and* under
+**E**. They are two sites, and a site has one shape. Under a partition:
+
+- `:51`'s catch carries a written reason AND the check below settles it → **B**
+- `:72`'s catch claimed the same reason and it was FALSE for the case that matters → **E**
+
+## Fault 3 — the `walkFileTree` family was classified nowhere
+
+The file says *"All 45 sites are enumerated and classified"*. Both `walkFileTree` sites were
+not: `DiskSyncGuard:173` is called *"not yet classified"* and `ProjectImporter:1693` is never
+mentioned outside the population list. Read now, they are **B** and **D** respectively.
+
+**And the shape-D count was RIGHT for the wrong reason.** Its list holds 12 entries under a
+heading of 13. Adding `ProjectImporter:1693` makes it 13 — so the number was correct about a
+population its own list excluded. `5 + 13 + 27 = 45` closed on two errors cancelling.
+
+## The partition — all 44 sites, each appearing exactly once
+
+Coordinates are **current** (the ones above have drifted: this sprint's own D5 edits moved lines
+in `HostFs`, `CoverageService` and `RuntimeArtifactStore`). Shapes, as one test each:
+
+| shape | the test | n |
+|---|---|---|
+| **P** propagates | no local catch; the method throws and its caller reports | 18 |
+| **A** reports in its own result | the failure is in the value the caller receives | 8 |
+| **B** written reason | the degraded answer IS the designed one, stated in the code | 3 |
+| **D** logged, result silently degraded | a human with the log can recover it; a caller cannot | 14 |
+| **E** silent, well-formed value | an absence rendered as a number or a null | 1 |
+
+18 + 8 + 3 + 14 + 1 = **44**. Shape C is empty under a per-site partition: the two sites it held
+(`CoverageStore`, `RuntimeArtifactStore` per-file `Files.delete` catches) are not in any of D5's
+four families at all.
+
+### P — propagates (18, nothing to do)
+`CoverageService:174` · `RunnerClasspath:213` · `FieldState:159` · `HostFs:147` ·
+`JawataApplication:875`, `:900` · `SiblingRegistry:126` · `ExternalBundlePool:205`, `:210`,
+`:212` · `ProjectImporter:1459` · `HsErrParser:63` · `AddDependencyTool:136`, `:247` ·
+`GradleBuildSupport:91` · `UpdateDependencyTool:120`, `:208` ·
+`ReplaceConstructorWithFactoryTool:180`
+
+**The `readString` family is 12 of these, not 13.** Measured: exactly 4 of its 16 sites carry a
+local catch (`ResolvedToken:128`, `ExperienceTool:1258`, `PlanRefactoringTool:570`,
+`ExperienceMaintenance:246`), so 12 propagate — and 12 + 2 + 1 + 1 = 16 closes, where 13 did not.
+
+### A — reports in its own result (8, the standard)
+`ExperienceMaintenance:194` · `ExperienceTool:1258` · `ResolvedToken:128` ·
+`RuntimeArtifactStore:188` (outer) · `RuntimeArtifactStore:280` · `CoverageService:284` (outer) ·
+`HostFs:72` (fixed in this pass) · `ProjectImporter:1453`
+
+`ProjectImporter:1453` is the strongest of them and was previously unclassified: on zero files
+found after an exit-0 Maven run it **refuses to answer** — *"Refusing to treat that as 'no
+dependencies'"* — which is D5's principle stated by code written before D5 existed.
+
+### B — written reason (3, listed, nothing to change)
+`HostFs:51` · `ProjectImporter:1333` · `DiskSyncGuard:173`
+
+`DiskSyncGuard:173` is newly classified and is correct as it stands: the guard answers *did
+anything change between scans*, and an unreadable root is not a change. Its comment says so —
+*"Unreadable root: surface nothing false; the next scan retries."*
+
+## D — the 14 dispositions
+
+The test applied, once, to every site: **does a caller act on this value as if it were
+complete?** Yes → the result must carry the failure. No → a written exception, with its reason.
+
+### Move to reporting (5)
+
+| site | why the caller acts on it as complete |
+|---|---|
+| `CoverageStore:92`, `RuntimeArtifactStore:124` | `list()` answers `List.of()`, so an unreadable store is byte-identical to an empty one. `latest()` then reads `all.get(0)` and the orphan sweeper acts on the same list. **This is the surviving half already recorded**: `UnreadableArtifactIsReportedTest` carries an `assumeTrue` saying so in its own words |
+| `CoverageStore:118`, `RuntimeArtifactStore:209` | `delete()` answers `false`, which each javadoc defines as *"there was nothing to delete"*. Two different facts, one boolean |
+| `ExperienceMaintenance:246` | the cheapest of the five: its SIBLING at `:194` is shape A and already builds a `skipped` list with a reason per source. The mechanism is in the same class and this call does not use it |
+
+### Written exception (9)
+
+| site | the reason |
+|---|---|
+| `ProjectImporter:1008` | the result is a SAMPLE by construction — capped at 500 files × 120 lines — so no caller can read it as a census, and a short sample is what the cap already guarantees |
+| `ProjectImporter:1598` | a missing jar surfaces downstream as an unresolved type, which `compile_workspace` reports at the place a reader is looking |
+| `ProjectImporter:1620`, `:1638` | `countSourceFiles` / `findPackages` feed the project summary a human reads, and the `log.warn` lands in the same session for the same human. The consumer of the number is the consumer of the log |
+| `ProjectImporter:1693` | `walkPruned`, whose javadoc already states the reason: *"an unreadable directory must not end the scan of a project"* — and its `visitFileFailed` continues by design |
+| `ProjectImporter:1867`, `:2076` | discovery heuristics; a wrong answer surfaces as a missing source root, which the load report's own file count carries |
+| `JawataApplication:842` | memory-root discovery — the ingest report already carries a per-source count, which is where a dropped root shows |
+| `H2ExperienceStore:1781` | **the weakest of the nine, and said so rather than dressed up.** Its report carries `imported: 0`, and "could not list" versus "nothing to recover" are the same 0. It is excepted only because it is a recovery path a human invokes deliberately and reads the log of; if one of these nine should move, it is this one |
+
+## E — and the LIVE ones are not in D5's four families at all
+
+`PlanRefactoringTool:570` (`return null`) is the only in-family E left. **Both sites this file
+named as shape E have been fixed** — and the second was fixed before this pass, so the entry
+`CoverageService:272 (catch (IOException ignored) { })` was already stale when it was written:
+that catch reads `OptionalLong.empty()` today, with a message naming why.
+
+**But two live swallows of exactly D5's shape sit INSIDE the walk lambdas, where the four
+families never looked:**
+
+```java
+// RuntimeArtifactStore:191 — inside sizeOf, whose OUTER catch was fixed for this very defect
+.mapToLong(p -> { try { return Files.size(p); } catch (IOException e) { return 0; } }).sum()
+
+// CoverageService:289 — inside rootsFingerprint, same
+.mapToLong(p -> { try { return Files.getLastModifiedTime(p).toMillis(); }
+                  catch (IOException e) { return 0; } }).max()
+```
+
+The first under-counts a byte total that is then returned as PRESENT and authoritative — the
+exact defect the outer catch was changed to stop, surviving one line inside it.
+
+The second is worse than under-counting because of the direction. It is a STALENESS
+fingerprint reduced with `max()`, so a class file that cannot be stat'd contributes epoch and
+**cannot raise `newest`** — a rebuilt-but-unreadable class makes the artifact look FRESH, and
+coverage is then served over stale bytes. That is the `isNoMatch` class of defect this sprint
+already fixed in this same file, arriving through the accessor rather than the loader.
+
+**The finding under both:** D5's population was scoped to the four OPENERS and never to the
+per-element READERS invoked inside them. Measured, that adjacent family is 12 sites —
+`Files.size(` 6 (a naive grep answers 8; two are `javaFiles.size()`, a `List` call, which is why
+a text sweep is read and not counted), `Files.getLastModifiedTime(` 5, `Files.readAttributes(`
+1. Two of the twelve are the swallows above. **The family is named here and is NOT claimed as
+enumerated-and-classified**; scoping it is a decision, not a task, because it widens D5's
+population after the spec fixed it.
+
+## The equality, restated over the measured population
+
+**And the first version of this table was WRONG, in the section whose subject is wrong tables.**
+It read `29 + 6 + 9 = 44` while claiming `PlanRefactoringTool:570` was "counted among the
+changed" — it was in none of the three rows, and `already compliant` counted `HostFs:72` as
+compliant when it is compliant *because of* this pass. Two errors that summed to the right
+total, which is exactly how `5 + 13 + 27 = 45` survived above. Corrected, and left visible:
+
+| | n | which |
+|---|---|---|
+| compliant BEFORE this pass | **28** | P 18 + A 7 + B 3 |
+| changed in this pass | **7** | `HostFs:72` (E→A) · 5 shape-D moving to reporting · `PlanRefactoringTool:570` (E→A) |
+| written exceptions | **9** | the shape-D table above |
+
+28 + 7 + 9 = **44**. The equality holds over 44 and could not have held over 45.
+
+**What is NOT in it, said plainly rather than folded in:** the two live swallows inside the walk
+lambdas (`RuntimeArtifactStore:191`, `CoverageService:289`) belong to the accessor family, which
+D5 never scoped. Counting them here would let a widened population be smuggled in under an
+equality that was signed over a narrower one.
+
+---
+
+## CORRECTION TO THE CORRECTION — `ExperienceMaintenance:246` is shape A, and shape D is 13
+
+I classified it **D** on its `log.warn` line. **The next line adds a `skipped` row with the
+reason**, which is the standard this whole file measures against:
+
+```java
+} catch (IOException e) {
+    log.warn("load: cannot read {}: {}", f, e.getMessage());
+    skipped.add(Map.of("source", f.toString(), "reason", "unreadable: " + e.getMessage()));
+    continue;
+}
+```
+
+Classifying a catch on its first statement is how a site that already reports gets filed as
+one that does not. **P 18 · A 9 · B 3 · D 13 · E 1 = 44.**
+
+**And shape D is 13 for a THIRD different population.** The original list held 12 under a
+heading of 13; adding `ProjectImporter:1693` made 13; removing `ExperienceMaintenance:246`
+makes it 13 again by a different route. Three populations, one number — which is precisely why
+a hand-written count beside a hand-written list proves nothing, and why the count is now
+derived from the partition rather than stated beside it.
+
+## The disposition ledger — every one of the 44, in exactly one state
+
+| state | n | sites |
+|---|---|---|
+| **compliant before this pass** | 29 | P 18 · A 8 · B 3 |
+| **changed in this pass** | 3 | `HostFs:72` · `RuntimeArtifactStore:124` · `CoverageStore:92` |
+| **written exception** | 10 | the 9 shape-D above · `PlanRefactoringTool:570` |
+| **raised as a contract decision** | 2 | `CoverageStore:118` · `RuntimeArtifactStore:209` |
+
+29 + 3 + 10 + 2 = **44**.
+
+### What each changed site does now
+
+- **`HostFs:72`** — the final walk's catch claimed *"gone between the loop and the count"* and
+  returned 0, which its own javadoc defines as *the tree is gone*. It now CHECKS, with
+  `Files.notExists` rather than `!Files.exists`: both answer false when the filesystem cannot
+  say, so only `notExists == true` is confirmed absence, and reading `!exists` would put the
+  same defect back inside the check written to remove it. Still there, or cannot tell → 1, a
+  floor rather than a count.
+- **`RuntimeArtifactStore:124` and `CoverageStore:92`** — `list()` filtered on
+  `Files.isRegularFile(manifest)`, which folds *cannot determine* into *no manifest*, so an
+  unreadable artifact was not merely unmeasurable, it was INVISIBLE: `latest()` skipped it and
+  no caller could describe or delete it by name. Both now filter on `manifestMissing(d) !=
+  TRUE`. **Closed as a class**: the two stores are byte-identical here, and the helper existed
+  in one and was copied to the other rather than left to be found again.
+
+### The two raised, and why they are not changed here
+
+`delete()` in both stores answers `false` on an unreadable directory, and each javadoc defines
+`false` as *"there was nothing to delete"*. Two facts, one boolean — D5's defect exactly. The
+fix is a change to a **published return contract** on two classes, which is a design decision,
+not a mid-stage edit. Specified, raised at C8, not applied.
+
+The same is true of the residual half of `list()`: an unreadable ROOT still answers `List.of()`.
+The artifact-level swallow is closed; the store-level one is the same contract question.
+
+### `PlanRefactoringTool:570` — the exception, and the finding under it
+
+The site is a private parse helper whose `null` is consumed by an **opportunistic** purity
+diff, correctly skipped for a step that is not method-scoped. **The defect is at the consumer**:
+a step that IS method-scoped whose file cannot be read takes the same branch, so the purity
+check never runs and the plan response renders its findings as though it had — *"found
+nothing"* and *"did not happen"* being the same answer, on the gate this sprint's parity story
+rests on. Closing it means adding a row to what a gate reports. **Raised at C8.** The site
+itself now logs which of read-or-parse failed, so the failure is no longer invisible.
+
+## Outside the signed population — two accessor-family swallows, fixed
+
+Not counted in the 44, because counting them would smuggle a widened population under an
+equality signed over a narrower one:
+
+- **`RuntimeArtifactStore` `Files.size` → 0**, one line inside the method whose OUTER catch was
+  changed for this very defect. A file whose size cannot be read contributed 0 to a total then
+  returned as a real number. Now unchecked, so the whole call answers "no size taken".
+- **`CoverageService` `Files.getLastModifiedTime` → 0**, and the DIRECTION is what makes it
+  serious: a staleness fingerprint reduced with `max()`, so an unstattable class file could
+  never RAISE `newest` — a rebuilt-but-unreadable class made the artifact look FRESH and
+  coverage was served over stale bytes. Failing open in the one direction a staleness check
+  must not.

@@ -288,10 +288,21 @@ public final class CoverageService {
                         try {
                             return Files.getLastModifiedTime(p).toMillis();
                         } catch (IOException e) {
-                            return 0;
+                            // D5 (Sprint 28e), and the DIRECTION is what makes this one
+                            // dangerous rather than merely imprecise. This is a STALENESS
+                            // fingerprint reduced with max(): a class file that cannot be
+                            // stat'd contributed the epoch, so it could never RAISE
+                            // `newest` — a rebuilt-but-unreadable class made the artifact
+                            // look FRESH and coverage was then served over stale bytes.
+                            // Failing open in the one direction a staleness check must not.
+                            //
+                            // Unchecked, so the outer catch does what its own message
+                            // already promises: re-analyze rather than trust a cache entry
+                            // nothing could check.
+                            throw new java.io.UncheckedIOException(e);
                         }
                     }).max().orElse(0));
-            } catch (IOException e) {
+            } catch (IOException | java.io.UncheckedIOException e) {
                 log.warn("cannot fingerprint class root {} ({}) — re-analyzing rather than"
                     + " trusting a cache entry nothing could check", rootPath, e.getMessage());
                 return java.util.OptionalLong.empty();

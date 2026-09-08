@@ -90,14 +90,43 @@ public final class CoverageStore {
     public List<String> list() {
         if (!Files.isDirectory(root)) return List.of();
         try (Stream<Path> dirs = Files.list(root)) {
+            // D5 (Sprint 28e): NOT isRegularFile — see manifestMissing below.
             return dirs.filter(Files::isDirectory)
-                .filter(d -> Files.isRegularFile(d.resolve(MANIFEST_FILE)))
+                .filter(d -> manifestMissing(d) != Boolean.TRUE)
                 .sorted(Comparator.comparing((Path d) -> d.getFileName().toString()).reversed())
                 .map(d -> d.getFileName().toString())
                 .toList();
         } catch (IOException e) {
             log.warn("cannot list coverage store {}: {}", root, e.getMessage());
             return List.of();
+        }
+    }
+
+    /**
+     * Is this directory's manifest MISSING ({@code TRUE}), genuinely present
+     * ({@code FALSE}), or could we not tell ({@code null})?
+     *
+     * <p>D5 (Sprint 28e). {@code Files.isRegularFile} answers false when a file is absent,
+     * is not a regular file, OR CANNOT BE DETERMINED — its own javadoc says so — so the
+     * filter it fed read an unreadable artifact as having no manifest and dropped it from
+     * {@code list()}. The artifact then does not exist as far as any caller is concerned:
+     * {@link #latest()} skips it and it can never be described or deleted by name.</p>
+     *
+     * <p>This is the SECOND copy of a defect fixed in {@code RuntimeArtifactStore}, and the
+     * two are byte-identical stores with byte-identical {@code list()} methods — which is
+     * why the cure is applied to both here rather than to the one that was found.</p>
+     */
+    private static Boolean manifestMissing(Path dir) {
+        Path manifest = dir.resolve(MANIFEST_FILE);
+        try {
+            return !Files.readAttributes(manifest,
+                java.nio.file.attribute.BasicFileAttributes.class).isRegularFile();
+        } catch (java.nio.file.NoSuchFileException e) {
+            return Boolean.TRUE;    // genuinely absent — not an artifact
+        } catch (IOException e) {
+            log.warn("cannot tell whether {} has a manifest ({}) — listing it rather than"
+                + " hiding something that may be a real artifact", dir, e.getMessage());
+            return null;            // unreadable — NOT evidence of absence
         }
     }
 

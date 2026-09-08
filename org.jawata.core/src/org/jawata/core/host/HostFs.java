@@ -71,9 +71,22 @@ public final class HostFs {
         }
         try (Stream<Path> walk = Files.walk(dir)) {
             return walk.count();
-        } catch (Exception ignored) {
-            // Gone between the loop and the count — the goal state after all.
-            return 0;
+        } catch (Exception e) {
+            // D5 (Sprint 28e): "gone" and "could not count" are different facts, and THIS
+            // method's contract turns on the difference — 0 means the tree is gone, and the
+            // javadoc above forbids claiming that without looking.
+            //
+            // notExists, not !exists: both `exists` and `notExists` answer false when the
+            // filesystem cannot say, so only notExists==true is CONFIRMED absence. Reading
+            // !exists here would put the same cannot-tell-means-no defect back in the check
+            // written to remove it.
+            if (Files.notExists(dir)) {
+                return 0;   // gone between the loop and the count — the goal state after all
+            }
+            // Still there, or we cannot even tell. Either way "nothing was left behind" is a
+            // claim we have not earned. One is a FLOOR rather than a count: the tree exists,
+            // so at least one entry does.
+            return 1;
         }
     }
 

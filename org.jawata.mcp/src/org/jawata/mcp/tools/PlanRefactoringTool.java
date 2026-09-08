@@ -565,6 +565,22 @@ class PlanRefactoringTool extends AbstractTool {
         return r.getData() instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 
+    /**
+     * The AST of {@code filePath}, or {@code null} when it could not be produced.
+     *
+     * <p>D5 (Sprint 28e) — WHY THE NULL IS STILL HERE, and what it costs. The two callers
+     * feed the OPPORTUNISTIC purity diff, which is legitimately skipped for a step that is
+     * not method-scoped. But a step that IS method-scoped and whose file cannot be READ
+     * takes the same branch: {@code before} is null, {@code methodName} stays null, the
+     * purity check never runs, and the plan response reports its findings as though it
+     * had. "The check found nothing" and "the check did not happen" are the same answer.</p>
+     *
+     * <p>That gap is at the CONSUMER, not here, and closing it means adding a row to the
+     * response the plan gate renders — a change to what a gate reports, which is a design
+     * decision rather than a mid-stage edit. It is RAISED at C8 rather than made here.
+     * What changes here is only that the failure stops being invisible: the cause is
+     * logged with which of the two it was, so a human is not left with silence.</p>
+     */
     private CompilationUnit parseFile(String filePath) {
         try {
             String src = Files.readString(Path.of(filePath));
@@ -572,7 +588,13 @@ class PlanRefactoringTool extends AbstractTool {
             p.setSource(src.toCharArray());
             p.setKind(ASTParser.K_COMPILATION_UNIT);
             return (CompilationUnit) p.createAST(null);
+        } catch (java.io.IOException e) {
+            log.warn("plan: cannot READ {} ({}) — any purity diff on it will be skipped,"
+                + " which is not the same as finding nothing", filePath, e.getMessage());
+            return null;
         } catch (Exception e) {
+            log.warn("plan: cannot PARSE {} ({}: {}) — any purity diff on it will be skipped",
+                filePath, e.getClass().getSimpleName(), e.getMessage());
             return null;
         }
     }
