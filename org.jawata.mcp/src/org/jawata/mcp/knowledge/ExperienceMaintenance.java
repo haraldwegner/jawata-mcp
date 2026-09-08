@@ -401,7 +401,7 @@ public final class ExperienceMaintenance {
             }
             ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
                 .status(ExperienceEntry.ACCEPTED)
-                .language(ingestLanguage(doc))
+                .language(doc.language)
                 // Sprint 28c: a file that declared its form keeps it. The gate
                 // above already refused an experience type that declared none, so
                 // reaching here with a null situation means the type owed nothing.
@@ -465,7 +465,7 @@ public final class ExperienceMaintenance {
                 // channel they have.
                 ExperienceEntry.Builder sb = ExperienceEntry.of(sf.build())
                     .status(ExperienceEntry.ACCEPTED)
-                    .language(ingestLanguage(doc))
+                    .language(doc.language)
                     .scopeKind("section")
                     .situation(doc.situation)
                     .cause(doc.cause)
@@ -617,50 +617,6 @@ public final class ExperienceMaintenance {
      * per-loop {@code item.depth() < maxDepth} guards the four silent branches carried are
      * gone with it: that condition WAS the silent drop.</p>
      */
-    /**
-     * What language to stamp on a row this ingest writes — mcp#57.
-     *
-     * <p>The store's insert defaults a null language to {@code "java"}, so a reseed of a
-     * directory of prose produced 89 rows all stamped {@code java}, including ones about
-     * USB-C ports and a broker's order book. That is not cosmetic: {@code language} GATES
-     * maintenance — the contract is that non-Java anchors are opaque to the JDT resolver and
-     * are never staled — so those rows were exposed to resolution designed not to apply to
-     * them, and {@code by_language} in {@code stats} became unreadable.</p>
-     *
-     * <p><b>The issue's preferred cure does not survive contact with the column.</b> It
-     * proposes that {@code null} mean "unclassified, and unclassified is not Java". But
-     * {@link StoredEntry#isJavaResolvable()} documents the opposite deliberately —
-     * <i>"Null/blank = Java-era rows"</i> — because rows written before the column existed
-     * have no language and ARE Java. Redefining null would silently exempt every legacy row
-     * from maintenance, which is a bigger and quieter change than the one being fixed.</p>
-     *
-     * <p>So the cure is the issue's OTHER option, and it belongs here: the caller says what
-     * it is ingesting rather than letting a column default decide. The rule separates the two
-     * facts the old code conflated — what a document is ABOUT, and whether it has a Java
-     * anchor to maintain:</p>
-     *
-     * <ul>
-     *   <li>the author declared a language → use it, always;</li>
-     *   <li>no language but a {@code symbol:} → leave it null. A declared symbol IS a Java
-     *       anchor, so this row must stay resolvable; stamping it otherwise would stop the
-     *       staleness check that exists for exactly these rows;</li>
-     *   <li>neither → {@code markdown}. Prose with no anchor has nothing for the resolver to
-     *       do, so the honest stamp is what the file actually is.</li>
-     * </ul>
-     *
-     * <p>Auto-anchored SECTIONS keep passing {@code doc.language} to {@code autoAnchor}, so
-     * that path is unchanged and sections are still anchored. A section that gains a guessed
-     * anchor is then exempt from staleness, which is the direction the issue itself asks for
-     * — <i>fails toward leaving entries alone</i> — and the right one for an anchor nobody
-     * declared.</p>
-     */
-    private static String ingestLanguage(MemoryDoc doc) {
-        if (doc.language != null && !doc.language.isBlank()) {
-            return doc.language;
-        }
-        return doc.symbol != null && !doc.symbol.isBlank() ? null : "markdown";
-    }
-
     private static List<Path> linksToFollow(List<Path> targets, Path f, int depth, int maxDepth,
             List<Map<String, Object>> skipped) {
         if (!targets.isEmpty() && depth >= maxDepth) {
