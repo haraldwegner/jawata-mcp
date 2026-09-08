@@ -567,3 +567,259 @@ over both scopes, and it must hold over the criterion's scope on its own.
 
 Both close. The one site the wider scope adds to *changed or excepted* is
 `ProjectImporter:1693` (`walkPruned`), whose reason its own javadoc already carried.
+
+---
+
+# THE ARCHITECT WATCH — `MIXED`, and three of its findings are about text written in this pass
+
+Read-only, over `4494b34a`, `f78e1cbb`, `e94d9860`. Its verdict separates the set: `HostFs`,
+its test and the `4494b34a` retraction are DESIGN FIXES; `list()`, the copied helper, the two
+`UncheckedIOException` throws and both `delete()` javadocs are BANDAGES over one structure.
+
+**Every claim below was CHECKED against the source before acting. All three held.**
+
+## F-A — a javadoc false about the code twelve lines beneath it, created by this pass
+
+`sizeOf`'s javadoc read *"The per-file 0 inside the sum is a different case and stays: a file
+that vanished mid-walk contributes nothing to a total, which is true."* True when written;
+`f78e1cbb` made the per-file catch THROW and did not touch the paragraph.
+
+**That is the exact defect `e94d9860` was written to fix on `delete()`, created by the commit
+before it and unnoticed by the commit that fixed its twin.** Corrected, with the old sentence
+left visible rather than quietly replaced.
+
+## F-B — the copies were already divergent, under a javadoc asserting they were identical
+
+`CoverageStore.manifestMissing`'s javadoc said *"the two are byte-identical stores with
+byte-identical list() methods"*. Neither half was true when written: the stores share ten
+members and differ elsewhere, and the two copies of the helper differ in javadoc, in log text
+and in one `Files` qualification. **A claim of sameness inside the copy that disproves it.**
+Corrected.
+
+The architect's ruling on the copy itself, which answers the question put to it: it is the
+beginning of the drift, and *"capability was copied; need was not"* —
+`RuntimeArtifactStore` genuinely uses all three states (`list()` reads `!= TRUE`,
+`pruneOrphans` reads `== TRUE`, opposite defaults from one helper), while `CoverageStore` has
+one consumer that treats `null` and `FALSE` alike.
+
+## F-C — the remedy my own javadoc prescribed routed through an unfixed copy of the defect
+
+`delete()`'s new javadoc says *"A caller that must tell those apart asks `exists(String)`
+first"*. **`exists()` was `Files.isRegularFile`** — the same fold, on the same path, in both
+stores. So the disambiguator named as the cure answered "no such artifact" for exactly the case
+it was named to distinguish.
+
+**FIXED in both**, using the helper that already existed: `manifestMissing(dir) != TRUE`.
+
+## F1 — and this one is NOT closed: the `list()` fix is inert at `CoverageStore`'s consumers
+
+Derived by the architect with the reference tools, not recalled: `CoverageStore#list` has seven
+references — one in-class (`latest()`) and six production sites in `RunTestsTool` and
+`CoverageLackDetector` — **and all seven resolve the id through `readManifest`**, which carries
+the identical `Files.isRegularFile` fold on the identical path and drops what it cannot read.
+
+So an unreadable coverage artifact now survives `list()` and is dropped one method later.
+**The `CoverageStore` half of "closed as a class" changes nothing a caller can see.**
+`RuntimeArtifactStore` fares better only because `describeAll` uses `orElse(Map.of())` and still
+emits a row — which is the single observable effect of the whole change, and is what the test
+asserts.
+
+**Why it is raised rather than fixed here:** `readManifest`'s fold is `Files.isRegularFile`,
+which is NOT one of D5's four enumerated families. Fixing it widens the signed population, and
+this file has already declined that once for the accessor family on the same ground. What is
+recorded instead is that **C8's equality is over OPENER SITES, not over lies removed** — the
+architect's own words — and two of the three changed rows are inert or observable only
+indirectly. That belongs in the ledger rather than left for an auditor.
+
+## An undeclared behaviour change, found by the architect and not by me
+
+`latest()` returns `list().get(0)`. With an unreadable artifact now surviving `list()`, if it is
+the NEWEST one then `RunTestsTool` → `coverage.model(id)` → `readManifest` → null →
+**"Unknown coverage artifact 'X'."**, and the whole default-artifact coverage query fails.
+Before the change it was skipped and the query quietly answered about an OLDER artifact.
+
+**The direction is right** — silently answering about the wrong artifact is worse — but it was
+neither intended nor declared, and the message names the wrong cause.
+
+## F2 — for C8, and one question only Harald can answer
+
+`delete()`'s corrected javadoc (`false` means NOT GONE) is contradicted by three tool handlers
+that render `false` as `symbolNotFound` — `DebugTool`, `ProfileTool`, `RunTestsTool` — an error
+KIND meaning *not found*. **So the correction did not remove the falsehood; it moved it from a
+comment developers read to a wire response users read.** A fourth site, `ProfileTool`:665,
+discards the return entirely and can now silently leave a directory it reports as cleaned up.
+
+The architect measured the in-workspace consumer set rather than escalating it:
+`org.jawata.mcp.coverage` and `org.jawata.mcp.runtime` appear in **no `Export-Package`**, so the
+nine references are complete, enforced by the manifest.
+
+**THE QUESTION IT COULD NOT ANSWER, raised at C8:** changing `symbolNotFound` to a "could not
+delete, it is still there" response alters an MCP error kind that agents and clients see, and
+that set is outside this workspace by construction. *Is any client keying on `symbolNotFound`
+for `artifact_delete` / `coverage_delete`?*
+
+## F3 — RULE 12 FIRES, and the alarm is measured rather than asserted
+
+Asked whether these fixes are one defect being moved around, the architect clustered by
+structure instead of counting: **six different symptoms, one structure — a partial function
+forced into a total codomain.** The failure state has no representation in the return type, so
+it is aliased onto a legal success value: `false`, `0`, `List.of()`, `null`. The JDK performs
+the fold first (`isRegularFile`, `exists`), so the codebase inherits it free at every use.
+
+**The proof it is structural is in the cures, which are five mutually inconsistent inventions of
+"cannot tell", all authored in one pass:** a three-valued `Boolean`; a sentinel floor
+(`return 1`); `OptionalLong.empty()` reached by throwing; a corrected javadoc with no code
+change; and a `log.warn` with the value unchanged. *A fifth site will invent a fifth.*
+
+And the tri-state is the surveyed defect in miniature: `Boolean` is a two-state type plus
+`null` — an absence rendered as a legal value — chosen as the cure for two-state-plus-fold.
+
+**The proposal, raised at C8 and NOT built here:** one `ArtifactDir(Path, String manifestFile)`
+value type owning `manifestState() : PRESENT | ABSENT | UNKNOWN`, `readManifest()`,
+`exists()`, `sizeOf()` and `delete()`, held by both stores. A static helper cannot serve —
+`MANIFEST_FILE` is per-store, so the fact needs an instance rather than a utility. That is what
+makes the fold impossible to reintroduce at the fourth method.
+
+---
+
+# THE C8 FRESH-CONTEXT AUDIT — `REFUSE`, six blocking findings, and the ledger above is WRONG
+
+Every finding was checked against source before acting. **All six held.** Three drove code and
+three drove this arithmetic. The tables above stand as the record of what was believed; what
+follows supersedes them.
+
+## B1 + B2 — the equality closed on two cancelling errors, for the THIRD time in this file
+
+`ee9bba8d` — *"S8/D5: 'I could not read your manifest' was becoming 'delete it'"*, a Stage-8/D5
+commit **of this pass** — changed `RuntimeArtifactStore.sizeOf` and
+`CoverageService.rootsFingerprint` from `return 0` / `catch (IOException ignored) { }` to
+`OptionalLong.empty()`. Both were shape **E** before it. I counted them under *compliant before
+this pass*, because they were compliant by the time I wrote the ledger.
+
+**+2 in one row, −2 in another, same total.** Exactly the fault this document was opened to
+correct, in the document correcting it, for the third time.
+
+**And the reason I gave for excluding them is false.** I wrote that the E entry
+`CoverageService:272` was *"already stale when it was written"*. Measured from the commit
+timestamps:
+
+```
+39232214 04:16:00  S8: the walk and list families fully classified — shape E is the target
+ee9bba8d 04:23:03  S8/D5: "I could not read your manifest" was becoming "delete it"
+```
+
+The entry was written at 04:16:00 and the fix landed **seven minutes later**. It was accurate
+when written and was made stale by this stage's own work — the opposite of what I claimed, in
+both halves.
+
+## B3 — `HostFs:51` was disposed on a claim the same method refutes 21 lines below
+
+I filed it **B**, *"the check below is a real one at line 62 that returns only on a settled
+answer"*. Line 62 was `if (!Files.exists(dir)) return 0;` — and `!exists` is **true when
+existence cannot be determined**, so it returned the number this method's javadoc defines as
+*the tree is gone*, about a directory nobody could look at. Line 47's entry guard had it too.
+
+**The comment I wrote at line 79, in this same pass, forbids exactly that** — *"reading
+`!exists` here would put the same cannot-tell-means-no defect back in the check written to
+remove it."* I wrote the correct reasoning at one guard and left the identical defect at the
+two above it, then disposed a NAMED ROW on the claim that they were sound.
+
+**FIXED**: both read `Files.notExists`. **Guarded**: a second case in `HostFsResidueTest`, and
+the first case could never have caught it — stripping a directory's own permissions leaves it
+stat-able, because `exists` walks the PARENT's execute bit. Making the parent unreadable is
+what produces cannot-tell.
+
+**Mutation Y** (both guards reverted, the final catch's fix left alone so a red cannot be
+credited to the already-proved change): `total=2 succeeded=1 failed=1` — case 1 correctly
+green, case 2 red on *"existence could not be determined, so 'the tree is gone' is a claim we
+have not earned — 0 is exactly that claim. got: 0"*.
+
+## B6 — "unguarded by construction" was FALSE for one of the two, and it is the serious one
+
+The claim: reaching either inner catch needs a file to pass `Files.isRegularFile` and then fail
+the accessor — a race no fixture produces.
+
+**True of `RuntimeArtifactStore.sizeOf`**, whose walk really does filter on
+`Files::isRegularFile`. **False of `CoverageService.rootsFingerprint`**, which filters on
+
+```java
+.filter(p -> p.getFileName().toString().endsWith(".class"))
+```
+
+— a string test on the file NAME that performs no stat at all. A **dangling symlink named
+`*.class`** reaches the accessor deterministically: `Files.walk` does not follow links so it
+yields the link itself and the name test passes; `Files.getLastModifiedTime` does follow it and
+throws. One `createSymbolicLink` call, no race, no mock.
+
+That is the one this file called the more serious of the two. **`StaleFingerprintIsNotFreshTest`
+is the guard the claim said could not exist**, with a readable control that runs first.
+
+**Mutation X2** (the swallow restored): RED, and the message is the defect —
+*"got: OptionalLong[1788836944146]"*, a real-looking timestamp answered for a class file that
+could not be read.
+
+**The transferable lesson, and it is why this sits in the test rather than a commit message:**
+*"no test can reach this" is a claim about a FILTER, and it must be checked against the filter
+that is actually written* — not against the sibling it resembles.
+
+## B4 — `RuntimeArtifactStore.pruneOrphans` is D, not A
+
+Its catch is `log.warn(...); return List.of();` — byte-identical to *"no orphans found"*, which
+is this file's own shape-**D** test, and the reading it applied to `CoverageStore:92` and
+`RuntimeArtifactStore:124` before changing them.
+
+**Disposition: written exception.** Its only production caller is `sweep()`, which discards the
+list; the one caller that reads it is a test. The value no caller consumes cannot mislead one.
+That is thinner than the other exceptions and is said plainly rather than dressed up.
+
+## B5 — already fixed before the audit read it
+
+`sizeOf`'s javadoc saying the per-file `0` *"stays"* was corrected when the architect watch
+found it. The audit read HEAD, which did not yet carry the fix. Recorded so the two reports do
+not read as two defects.
+
+## Non-blocking, all confirmed
+
+- **Coordinates are NOT current** where the tables claim to be — the five-rows "now" column and
+  the E section give the `ee9bba8d` snapshot, already stale when written and stale again after
+  `e94d9860` shifted two of them. Measured at HEAD: 160, 196, 241, 586. **Site identity is by
+  file+method, so the equality is unaffected**, but the word "current" is not earned.
+- `ProjectImporter:1453` is filed A and is **P** — the walk has no catch; the zero-files refusal
+  is a separate check.
+- **"Closed as a class" over two stores, and there is a THIRD**: `H2ExperienceStore:1783`
+  carries the same cannot-determine-reads-as-absent predicate on a manifest-equivalent, inside
+  an enumerated site. Unremarked until now.
+- `DiskSyncGuard:173`'s B fails open in the direction this pass called serious — an unreadable
+  root makes a change-detector answer "nothing changed". It carries a written reason so D5
+  admits it; the asymmetry of judgement is recorded.
+
+## THE LEDGER, corrected — and this time the rows are derived, not assembled
+
+Current shapes over the 44: **P 19 · A 7 · B 3 · D 14 · E 1**. (`ProjectImporter:1453` A→P;
+`pruneOrphans` A→D.)
+
+| state | n | which |
+|---|---|---|
+| **compliant before this pass** | **25** | P 19 · B 2 (`ProjectImporter:1333`, `DiskSyncGuard:173`) · A 4 (`ExperienceMaintenance:194`, `:246`, `ExperienceTool:1258`, `ResolvedToken:128`) |
+| **changed in this pass** | **6** | `HostFs:51` (its guards, so its written reason is now true) · `HostFs:72` · `RuntimeArtifactStore` sizeOf · `CoverageService` rootsFingerprint · `RuntimeArtifactStore` list · `CoverageStore` list |
+| **written exceptions** | **13** | the 12 remaining shape-D · `PlanRefactoringTool` (E) |
+
+25 + 6 + 13 = **44**.
+
+**What makes this one different from the two that closed on cancelling errors:** the shape
+counts are a partition of the measured 44, and each ledger row is that partition sliced by a
+single question — *did this site need code changed in this pass?* — rather than three numbers
+totted up to a target. The previous version reached 44 by adding two errors; this one reaches
+it because 19 + 7 + 3 + 14 + 1 does.
+
+## The four named rows re-checked, since B3 moved one
+
+| the plan's row | disposition |
+|---|---|
+| `HostFs:51` | **CHANGED** — was disposed on a false written reason; its guards now settle what its comment claims |
+| `HostFs:72` | **CHANGED**, mutation U |
+| `CoverageStore` delete | **written exception** — the javadoc now true of every branch |
+| `RuntimeArtifactStore` sizeOf | **CHANGED** in this pass (was miscounted as compliant-before) |
+| `RuntimeArtifactStore` delete | **written exception**, same |
+
+All five in one of C8's two admissible states, and now for reasons that survive reading the code.
