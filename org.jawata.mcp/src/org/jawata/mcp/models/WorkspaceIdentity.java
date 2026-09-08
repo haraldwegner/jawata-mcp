@@ -84,12 +84,12 @@ public final class WorkspaceIdentity {
     private static volatile Supplier<Boolean> loading;
 
     /** mcp#65: install the still-loading supplier (application wiring). */
-    public static void installLoading(Supplier<Boolean> supplier) {
+    public static void installLoadPending(Supplier<Boolean> supplier) {
         loading = supplier;
     }
 
     /** True while the async load is still running — a broken supplier answers false. */
-    private static boolean readLoading() {
+    private static boolean readLoadPending() {
         Supplier<Boolean> supplier = loading;
         if (supplier == null) {
             return false;
@@ -174,7 +174,7 @@ public final class WorkspaceIdentity {
             return null;
         }
         return "THIS SERVER'S WORKSPACE" + (workspaceName == null ? "" : " ('" + workspaceName + "')")
-            + ": " + projectSummary()
+            + ": " + projectSummary(readLoadPending())
             + ". A machine can run several jawata servers, one per workspace — pick the one"
             + " whose projects match your question; the others cannot see this code.";
     }
@@ -192,16 +192,29 @@ public final class WorkspaceIdentity {
         // acquiring — and on a 194-module workspace that window is minutes long, which is
         // exactly when a fresh session consults a catalogue address. The miss is not a
         // negative answer here; it is no answer yet, and the two must not read alike.
-        if (readLoading()) {
+        return hintFor(readLoadPending());
+    }
+
+    /**
+     * The miss sentence, rendered from ONE observation of the load phase.
+     *
+     * <p>The phase is a parameter rather than a second call because it is written by the
+     * loader thread while this runs. Read twice, one message could carry a complete roster
+     * AND "not yet answerable", or a progress figure AND the wrong-workspace redirect — the
+     * server contradicting itself inside a single sentence, which is mcp#32's recorded defect
+     * (two answers disagreeing) with the two answers fused into one.</p>
+     */
+    private static String hintFor(boolean loadPending) {
+        if (loadPending) {
             return "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
-                + " workspace (" + projectSummary() + "). NOT YET ANSWERABLE rather than"
+                + " workspace (" + projectSummary(true) + "). NOT YET ANSWERABLE rather than"
                 + " absent: this workspace may well hold the symbol once its projects finish"
                 + " loading. Ask again, or call health_check, which reports when the load is"
                 + " done — do not conclude from this that the symbol does not exist.";
         }
 
         String hint = "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
-            + " workspace (" + projectSummary() + ") — a symbol that lives in another"
+            + " workspace (" + projectSummary(false) + ") — a symbol that lives in another"
             + " project tree is served by that tree's own jawata server, not this one.";
 
         // mcp#27 stage 1: NAME them when we know them. The sentence above is a true statement
@@ -235,10 +248,14 @@ public final class WorkspaceIdentity {
      * never throws — the caller is already reporting a miss, and this can only add to it.</p>
      */
     public static String elsewhereHint(String symbol) {
-        String named = elsewhereHint();
-        if (named == null) {
+        if (!installed()) {
             return null;
         }
+        // ONE observation, shared by the sentence and by the decision whether to peek. The
+        // first version asked twice — once through elsewhereHint(), which then threw its
+        // verdict away by returning only prose, and again below.
+        boolean loadPending = readLoadPending();
+        String named = hintFor(loadPending);
         // THE LOOP GUARD. This request came from another resident's miss path, so answering
         // it must not start a peek of our own — two residents pointed at each other would
         // recurse until something gives. The header is sent by SiblingPeek and set on this
@@ -251,7 +268,7 @@ public final class WorkspaceIdentity {
         // would overwrite "not yet answerable" with a confident redirect, when the more
         // useful fact is that the symbol may be here in a minute — and the walk would spend
         // a network budget on the miss path at the one moment the machine is busiest.
-        if (readLoading()) {
+        if (loadPending) {
             return named;
         }
         java.util.function.Function<String, SiblingPeek.Sweep> ask = peek;
@@ -271,7 +288,7 @@ public final class WorkspaceIdentity {
         }
         // Replaces the "Running here: …" tail rather than appending to it: having ASKED them,
         // naming who is up and then saying what they said is two answers to one question.
-        return elsewhereHintBase() + " " + sweep.describe();
+        return elsewhereHintBase(loadPending) + " " + sweep.describe();
     }
 
     /**
@@ -309,11 +326,15 @@ public final class WorkspaceIdentity {
         return type.contains(".") && !type.endsWith(".") && !type.startsWith(".") ? type : null;
     }
 
-    /** The workspace sentence without the sibling tail, so the peek's answer can replace it. */
-    private static String elsewhereHintBase() {
+    /**
+     * The workspace sentence without the sibling tail, so the peek's answer can replace it.
+     * Takes the phase rather than re-reading it, for the reason {@link #hintFor(boolean)}
+     * gives: one message, one observation.
+     */
+    private static String elsewhereHintBase(boolean loadPending) {
         return "This is the" + (workspaceName == null ? "" : " '" + workspaceName + "'")
-            + " workspace (" + projectSummary() + ") — a symbol that lives in another"
-            + " project tree is served by that tree's own jawata server, not this one.";
+            + " workspace (" + projectSummary(loadPending) + ") — a symbol that lives in"
+            + " another project tree is served by that tree's own jawata server, not this one.";
     }
 
     /** The terminal failure reason, or null — a broken supplier answers null. */
@@ -330,7 +351,7 @@ public final class WorkspaceIdentity {
         }
     }
 
-    private static String projectSummary() {
+    private static String projectSummary(boolean loadPending) {
         List<String> live = null;
         Supplier<List<String>> supplier = liveProjectKeys;
         if (supplier != null) {
@@ -347,7 +368,7 @@ public final class WorkspaceIdentity {
         // failure, arriving from the other side. What is true here is a progress figure, and
         // it is worth more than a list: it tells a reader the workspace is filling up rather
         // than that it is empty or complete.
-        if (readLoading()) {
+        if (loadPending) {
             int ready = nothingLive ? 0 : live.size();
             if (configuredProjects.isEmpty()) {
                 return "STILL LOADING — " + ready + " project(s) ready so far";

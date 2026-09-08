@@ -2,6 +2,7 @@ package org.jawata.mcp.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jawata.mcp.ProjectLoadingState;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.ToolRegistry;
@@ -35,7 +36,7 @@ class WorkspaceIdentityTest {
             Path.of("/tmp/patterns/beta"),
             Path.of("/tmp/patterns/gamma")));
         WorkspaceIdentity.installLiveKeys(() -> List.of("alpha"));
-        WorkspaceIdentity.installLoading(() -> true);
+        WorkspaceIdentity.installLoadPending(() -> true);
     }
 
     @Test
@@ -50,16 +51,58 @@ class WorkspaceIdentityTest {
             () -> assertTrue(describe.contains("1 of 3"),
                 "both numbers, or a reader cannot tell nearly-done from barely-started: "
                     + describe),
-            // THE OVER-CLAIM THIS REPLACES. The boot list used to answer for the whole
-            // window, naming projects as present that were not loaded yet — mcp#32 removed
-            // exactly that for a terminal failure, and this is its other side.
-            () -> assertFalse(describe.contains("3 project(s): "),
-                "the configured list must not be presented as loaded: " + describe),
-            // …AND THE ROSTER SURVIVES, labelled. These instructions exist so an agent can
-            // pick the right server; one that answered only "still loading" for minutes
-            // could not be chosen at all, which would trade mcp#65 for mcp#27's defect.
+            // THE ROSTER SURVIVES, labelled. These instructions exist so an agent can pick
+            // the right server; one that answered only "still loading" for minutes could not
+            // be chosen at all, which would trade mcp#65 for mcp#27's defect.
             () -> assertTrue(describe.contains("configured: alpha, beta, gamma"),
                 "got: " + describe));
+    }
+
+    @Test
+    @DisplayName("mcp#65: with NOTHING ready yet, the roster is not presented as loaded")
+    void theZeroReadyWindowDoesNotNameTheRosterAsLoaded() {
+        // THE SHAPE THE REPORT ACTUALLY DESCRIBED — "194 project(s): …" with 0 ready — and
+        // it needs live keys EMPTY, not merely short. The sibling test above installs one
+        // live key, so `projectSummary` there takes the LIVE branch and could only ever
+        // render "1 project(s)": the assertion that used to sit there naming the over-claim
+        // was unreachable under every mutation. Found by the C7 audit; the fixture is the
+        // repair, because the needle only becomes real once the boot list is what would be
+        // rendered.
+        WorkspaceIdentity.install("patterns", List.of(
+            Path.of("/tmp/patterns/alpha"),
+            Path.of("/tmp/patterns/beta"),
+            Path.of("/tmp/patterns/gamma")));
+        WorkspaceIdentity.installLiveKeys(List::of);
+        WorkspaceIdentity.installLoadPending(() -> true);
+
+        String describe = WorkspaceIdentity.describe();
+
+        assertAll(
+            () -> assertFalse(describe.contains("3 project(s): "),
+                "the configured list must not be presented as loaded — this is the exact "
+                    + "over-claim mcp#32 removed for a terminal failure, from the other "
+                    + "side: " + describe),
+            () -> assertTrue(describe.contains("0 of 3"), "got: " + describe),
+            () -> assertTrue(describe.contains("configured: alpha, beta, gamma"),
+                "got: " + describe));
+    }
+
+    @Test
+    @DisplayName("mcp#65: the load is PENDING before it has even started, not only while it runs")
+    void theHandshakeWindowCountsAsPending() {
+        // The state the first version missed. JawataApplication installs the identity,
+        // DISPATCHES the async load and starts serving before the load task sets LOADING —
+        // so the initialize handshake, the first message every client sends, runs at
+        // NOT_LOADED. Asserted here exhaustively over the enum rather than at the wiring
+        // site, because a lambda inside start() is reachable by no test.
+        assertAll(
+            () -> assertTrue(ProjectLoadingState.NOT_LOADED.loadPending(),
+                "the handshake window runs here, and it is not a finished load"),
+            () -> assertTrue(ProjectLoadingState.LOADING.loadPending()),
+            () -> assertFalse(ProjectLoadingState.LOADED.loadPending()),
+            () -> assertFalse(ProjectLoadingState.FAILED.loadPending(),
+                "FAILED is finished — it is the load-failure supplier's case, and answering "
+                    + "'not yet' about it would promise something that will never arrive"));
     }
 
     @Test
@@ -90,7 +133,7 @@ class WorkspaceIdentityTest {
             Path.of("/tmp/patterns/beta"),
             Path.of("/tmp/patterns/gamma")));
         WorkspaceIdentity.installLiveKeys(() -> List.of("alpha", "beta", "gamma"));
-        WorkspaceIdentity.installLoading(() -> false);
+        WorkspaceIdentity.installLoadPending(() -> false);
 
         String hint = WorkspaceIdentity.elsewhereHint();
 
@@ -133,7 +176,7 @@ class WorkspaceIdentityTest {
         // rather than a peek that never fires.
         WorkspaceIdentity.install("patterns", List.of(Path.of("/tmp/patterns/alpha")));
         WorkspaceIdentity.installLiveKeys(() -> List.of("alpha"));
-        WorkspaceIdentity.installLoading(() -> false);
+        WorkspaceIdentity.installLoadPending(() -> false);
         WorkspaceIdentity.installSiblings(() -> List.of(
             new SiblingRegistry.Sibling("orb-strategy", 8082, "t2")));
         boolean[] asked = {false};
@@ -154,7 +197,7 @@ class WorkspaceIdentityTest {
     @DisplayName("mcp#65: a loading supplier that throws is survivable")
     void aBrokenLoadingSupplierDoesNotBreakTheHint() {
         WorkspaceIdentity.install("patterns", List.of(Path.of("/tmp/patterns/alpha")));
-        WorkspaceIdentity.installLoading(() -> {
+        WorkspaceIdentity.installLoadPending(() -> {
             throw new IllegalStateException("boom");
         });
 

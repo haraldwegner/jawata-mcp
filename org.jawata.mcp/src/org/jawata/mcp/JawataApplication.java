@@ -582,8 +582,21 @@ public class JawataApplication implements IApplication {
             // mcp#65: and the other end of the same window. The load is asynchronous and on
             // a 194-module workspace takes minutes; until this says false, a miss is "not
             // yet" rather than "no".
-            org.jawata.mcp.models.WorkspaceIdentity.installLoading(() ->
-                getLoadingState() == ProjectLoadingState.LOADING);
+            //
+            // NOT_LOADED COUNTS, and the first version of this omitted it — found by the
+            // architect watch and confirmed by reading start(): the identity is installed,
+            // autoLoadProjects is DISPATCHED, and runMessageLoop begins serving, all before
+            // the async task reaches the line that sets LOADING. So the handshake window —
+            // the first message every client sends — ran with the state still NOT_LOADED and
+            // took the fully-loaded path, which is the very defect mcp#65 is about, one state
+            // earlier.
+            //
+            // The question is therefore "has the load FINISHED", not "is it running".
+            // NOT_LOADED is terminal only when neither workspace.json nor JAVA_PROJECT_PATH
+            // exists — and in exactly that case installWorkspaceIdentity installed nothing,
+            // so installed() is false and every sentence below is unreachable.
+            org.jawata.mcp.models.WorkspaceIdentity.installLoadPending(() ->
+                getLoadingState().loadPending());
         } catch (Exception e) {
             // Identity is a courtesy layer — a failure here must never stop the server.
             log.warn("Workspace identity not installed: {}", e.getMessage());
