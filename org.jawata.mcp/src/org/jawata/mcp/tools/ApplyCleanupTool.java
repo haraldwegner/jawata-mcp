@@ -361,6 +361,21 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
                 // outcomes, and the third is why this is not a null check: a rewrite that
                 // moves code across the member's boundary cannot be narrowed at all, and
                 // reporting that as "nothing to change here" would be a silent lie.
+                // mcp#76: a FIELD narrowed to a rule that cannot act on one is DECLINED by
+                // name, never swept and reported as an absence.
+                //
+                // Sweeping it produced `hasChanges: false` carrying the scan's own honest
+                // sentence — "the scan was COMPLETE (1 file(s) examined), so this is a real
+                // absence, not a failure to look" — which is true of a sweep that found
+                // nothing and false here. The address was accepted, so nothing told the
+                // caller their case had been declined, and the wording ruled out the one
+                // explanation that was true: looked, and cannot act on this kind of target.
+                // That is worse than a refusal, because it is designed to reassure.
+                String cannotAct = org.jawata.mcp.tools.shared.MemberScope
+                    .refuseFieldTarget(ast, line, column, kind, RULES.get(kind).actsOnFields());
+                if (cannotAct != null) {
+                    return Preparation.fail(ToolResponse.invalidParameter("symbol", cannotAct));
+                }
                 org.jawata.mcp.tools.shared.MemberScope.Result scoped =
                     org.jawata.mcp.tools.shared.MemberScope.restrict(edit, ast, line, column);
                 if (scoped.refusal() != null) {

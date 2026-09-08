@@ -36,6 +36,32 @@ public interface CleanupRule extends org.jawata.mcp.tools.KindDelegate {
     String kind();
 
     /**
+     * Whether this rule can act on a FIELD at all — mcp#76.
+     *
+     * <p><b>The defect this exists to stop.</b> A caller narrows the sweep to one member, the
+     * rule rewrites STATEMENTS, the member is a field, and the rule correctly produces nothing.
+     * The sweep then reported {@code hasChanges: false} with its own honest sentence — <i>"the
+     * scan was COMPLETE (1 file(s) examined), so this is a real absence, not a failure to
+     * look"</i> — which is true of a sweep that found nothing and false here. The address was
+     * accepted, so the caller had no signal anything was declined, and the wording actively
+     * ruled out the explanation that turns out to be true.</p>
+     *
+     * <p>That sentence exists to separate <i>found nothing</i> from <i>could not look</i>, which
+     * is a good distinction. This is a THIRD case it was being applied to and is neither:
+     * <i>looked, and cannot act on this kind of target</i>. Worse than a refusal, because a
+     * refusal at least tells the caller their case was declined.</p>
+     *
+     * <p><b>Why the rule answers rather than a guard elsewhere.</b> Which member kinds a rewrite
+     * can touch is the rule's own fact — a check somewhere else would be a hand-maintained copy
+     * of it, and would go stale the first time a rule changed what it rewrites. Defaulting to
+     * false is the honest default: nine of the ten kinds rewrite statements or the bodies around
+     * them, so a field is outside every one of them.</p>
+     */
+    default boolean actsOnFields() {
+        return false;
+    }
+
+    /**
      * THE ROLE, ANSWERED BY WHAT THIS INTERFACE ALREADY DECLARES (Stage 6a, M3a).
      *
      * <p>A cleanup rule is the one delegate shape that is NOT a tool — no name of its own, no

@@ -43,6 +43,24 @@ public final class JdtCleanupRule implements CleanupRule {
         return summary;
     }
 
+    /**
+     * mcp#76 — this class carries the only kind that acts on a FIELD, and only one of its two.
+     *
+     * <p>{@code redundant_modifiers} strips modifiers that are implicit on interface members,
+     * and an interface field is one of them, so narrowing it to a field is a real request.
+     * {@code add_final} is the opposite and says so in its own contract: it calls JDT with
+     * {@code addFinalFields=false}, so fields are explicitly outside it and a field narrowed
+     * to it can never produce an edit.</p>
+     *
+     * <p>Answering per kind rather than per class is what keeps this honest — the two share an
+     * implementation and not this property, and a class-level answer would have to be wrong
+     * about one of them.</p>
+     */
+    @Override
+    public boolean actsOnFields() {
+        return "redundant_modifiers".equals(kind);
+    }
+
     @Override
     public TextEdit edit(CompilationUnit ast) throws Exception {
         return fix.apply(ast);
