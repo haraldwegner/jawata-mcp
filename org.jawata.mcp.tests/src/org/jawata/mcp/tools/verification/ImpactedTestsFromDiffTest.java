@@ -124,8 +124,10 @@ class ImpactedTestsFromDiffTest {
                     + "cannot tell an exact answer from a widened one; got: " + impacted),
             () -> assertEquals(List.of(), impacted.get("filesWithoutEvidence"), "got: " + impacted),
             () -> assertTrue(namesCoveredTest(impacted),
-                "CoveredTest exercises alwaysCalled, and attribution segments match by class "
-                    + "NAME — stale bytes never stopped that; got: " + impacted));
+                "CoveredTest exercises alwaysCalled — and deriving the symbol is only half "
+                    + "of saying so: a rebuild makes the segment's own analysis refuse this "
+                    + "class too, so without the fallback in CoverageAttribution.covers this "
+                    + "arm names the right symbol and still selects nothing; got: " + impacted));
     }
 
     @Test
