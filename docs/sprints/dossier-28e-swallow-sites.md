@@ -158,4 +158,28 @@ total of **0**, which is a well-formed answer no caller can tell from an empty d
 absence rendered as an emptiness, in a NUMBER rather than a message, which is why no reader has
 ever caught it. These are the sites to fix first.
 
-## Remaining: the `readString` family (16), unclassified
+
+## Classification — the `readString` family (16 of 16)
+
+**This family is largely healthy, and the spec's fear of it was misplaced twice.** It estimated
+">60"; there are 16 production sites. And 13 of them have NO local catch at all — the failure
+propagates to a caller that reports it, which is the correct shape and needs nothing.
+
+| shape | sites |
+|---|---|
+| **propagates** — no local catch; the caller reports | `ProjectImporter` · `FieldState` · `JawataApplication` · `SiblingRegistry` · `HsErrParser` · `AddDependencyTool` · `GradleBuildSupport` · `UpdateDependencyTool` · `ReplaceConstructorWithFactoryTool` |
+| **reports in its own result (A)** | `ExperienceTool:1266` → `ToolResponse.invalidParameter("path", …)` · `ResolvedToken:130` → throws, naming that the token file exists but cannot be read |
+| **logged, result degraded (D)** | `ExperienceMaintenance:249` — `log.warn("load: cannot read {}: {}", …)` |
+| **returns null (E-adjacent)** | `PlanRefactoringTool:576` — `return null;` |
+
+## Where the survey stands
+
+**All 45 sites are enumerated and classified.** What remains is not discovery but disposition:
+
+- **shape E, 5 sites** — `CoverageService:272`, `RuntimeArtifactStore:174`, `:178`,
+  `HostFs:51`, `:72`. A failed walk answers with a byte total of **0**. These are the fix.
+- **shape D, 13 sites** — logged, result silently degraded. Each is a per-site judgement about
+  whose answer it degrades; several are import-time debug logs where the tool's own result
+  already carries a count the caller can read.
+- **shapes A, B, C — 27 sites — are DONE**, either reporting in their result already or listed
+  above with the written reason the code states.
