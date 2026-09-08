@@ -1160,6 +1160,9 @@ public final class ExperienceRetrieval {
             return msg == null
                 ? "Knowledge layer UNAVAILABLE — this is NOT an absence." : msg.toString();
         }
+        if (RESULT_NOMINATED.equals(res)) {
+            return renderNomination(result);
+        }
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries =
             (List<Map<String, Object>>) result.getOrDefault("entries", List.of());
@@ -1207,6 +1210,75 @@ public final class ExperienceRetrieval {
                 sb.append('\n');
             }
             sb.append(renderAnalogyLine(a));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * mcp#61: THE NOMINATED SHAPE RENDERS TOO — it used to answer the empty string.
+     *
+     * <p>{@code renderText}'s tail reads {@code entries}, and a nomination carries
+     * {@code candidates}. Both {@code entries} and {@code analogies} defaulted to empty, the
+     * mcp#73 prefix needs a non-empty {@code analogies}, and every loop had nothing to walk —
+     * so {@code format=text} returned a SUCCESS carrying {@code ""}.</p>
+     *
+     * <p><b>What went missing with it is the half that matters.</b> The nomination's own
+     * {@code message} composes the WORDS-ALONE degraded notice (the meaning lanes failed, so
+     * the ranking is on words alone) and the PARTIAL meaning-coverage warning. Both exist to
+     * say the order is WEAKER than usual. An empty string is not a weaker answer — it is no
+     * answer wearing a success, which is this codebase's own named deepest defect class and
+     * the one {@link #RESULT_UNAVAILABLE} above exists to refuse.</p>
+     *
+     * <p>The {@code query_id} is rendered because the message tells the reader to pass it to
+     * {@code kind=decide}: an instruction naming a value the same text withholds is a
+     * half-answer, and the tool puts that key on the map before this runs.</p>
+     */
+    static String renderNomination(Map<String, Object> result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("NOMINATED — ranked CANDIDATES, never a match. Ranking is an ordering, not a")
+            .append(" claim that anything fits: read each situation and decide which apply.");
+        Object queryId = result.get("query_id");
+        if (queryId != null) {
+            sb.append("\nquery_id: ").append(san(queryId));
+        }
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> candidates =
+            (List<Map<String, Object>>) result.getOrDefault("candidates", List.of());
+        for (Map<String, Object> c : candidates) {
+            sb.append('\n').append(renderCandidateLine(c));
+        }
+        // LAST, and never conditional on there being candidates: an EMPTY nomination is
+        // exactly when the message is the whole answer, and dropping it there would restore
+        // the defect for the one case that most needs words.
+        Object message = result.get("message");
+        if (message != null) {
+            sb.append('\n').append(san(message));
+        }
+        return sb.toString();
+    }
+
+    /** One candidate line: the id {@code decide} takes, what it applies to, how it turned out. */
+    static String renderCandidateLine(Map<String, Object> c) {
+        StringBuilder sb = new StringBuilder("CANDIDATE ").append(san(c.get("id"))).append(": ");
+        sb.append(san(c.get("principle")));
+        Object situation = c.get("situation");
+        if (situation != null) {
+            sb.append("  · applies when ").append(san(situation));
+        }
+        // Same wording as an analogy's cause, and deliberately so: it is the same question —
+        // does this transfer to what I am looking at — and the reader should not have to
+        // learn two vocabularies for one judgement.
+        Object cause = c.get("cause");
+        if (cause != null) {
+            sb.append("  (because ").append(san(cause)).append(')');
+        }
+        Object outcome = c.get("outcome");
+        if (outcome != null) {
+            sb.append("  [").append(san(outcome)).append(']');
+        }
+        Object address = c.get("address");
+        if (address != null) {
+            sb.append("  @ ").append(san(address));
         }
         return sb.toString();
     }

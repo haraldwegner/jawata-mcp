@@ -5,12 +5,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jawata.mcp.tools.ExperienceTool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -116,6 +119,85 @@ class NominationHonestyTest {
         ExperienceRetrieval retrieval =
             new ExperienceRetrieval(store, () -> null, EmbeddingIndex.forStore(store));
         return retrieval.nominate(question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+    }
+
+    /**
+     * The tool puts {@code query_id} on the map before {@code respond()} renders it
+     * ({@code ExperienceTool.nominate}), so a render test that omitted it would be asking
+     * a question the production path never asks.
+     */
+    private static Map<String, Object> asTheToolWouldRenderIt(Map<String, Object> nomination) {
+        Map<String, Object> withId = new java.util.LinkedHashMap<>(nomination);
+        withId.put("query_id", "q-mcp61");
+        return withId;
+    }
+
+    @Test
+    @DisplayName("mcp#61: format=text RENDERS a nomination — it used to answer a success carrying \"\"")
+    void aNominationRendersAsText() {
+        recordWithSituation();
+        recordWithoutSituation();
+
+        Map<String, Object> nomination =
+            nominate("a pelican ledger reconciling while a settlement is open");
+
+        // PROOF OF LIFE, and it runs FIRST. With no candidates this would be the EMPTY
+        // nomination — a different case, covered by the test below — and every assertion
+        // after it would be green while saying nothing about the shape this issue is for.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> candidates =
+            (List<Map<String, Object>>) nomination.get("candidates");
+        assertNotNull(candidates, "nominate must answer the nominated shape");
+        assertFalse(candidates.isEmpty(),
+            "the fixture must actually nominate something, or this test measures the wrong"
+                + " case; got: " + nomination);
+
+        String text = ExperienceRetrieval.renderText(asTheToolWouldRenderIt(nomination));
+
+        assertAll(
+            () -> assertFalse(text.isBlank(),
+                "renderText read `entries`, which a nomination never carries — it carries"
+                    + " `candidates` — so this was \"\": a SUCCESS carrying no answer"),
+            () -> assertTrue(text.contains("NOMINATED"),
+                "the reader must be told which shape this is; got: " + text),
+            () -> assertTrue(text.contains("never a match"),
+                "and that ranking claims nothing — the whole contract of a nomination"),
+            () -> assertTrue(text.contains("q-mcp61"),
+                "the query_id, because the message tells the reader to pass it to"
+                    + " kind=decide and an instruction withholding its own value is a"
+                    + " half-answer; got: " + text),
+            () -> assertTrue(text.contains("CANDIDATE "),
+                "the candidates themselves, which the issue names as the first loss"),
+            // The message is what composes the WORDS-ALONE degraded notice and the PARTIAL
+            // meaning-coverage warning. Those are the losses the issue calls critical, and
+            // they reach the reader only if the message does.
+            () -> assertTrue(text.contains("kind=decide"),
+                "the nomination's own message, which carries the degraded and coverage"
+                    + " notices; got: " + text));
+    }
+
+    @Test
+    @DisplayName("mcp#61's harder half: an EMPTY nomination still renders its message")
+    void anEmptyNominationStillSaysSomething() {
+        // Nothing recorded: nominate finds nobody to rank.
+        Map<String, Object> nomination = nominate("a question about nothing this store holds");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> candidates =
+            (List<Map<String, Object>>) nomination.get("candidates");
+        assertNotNull(candidates, "still the nominated shape");
+        assertTrue(candidates.isEmpty(),
+            "precondition: this is the EMPTY case, or it is not the one this test is for;"
+                + " got: " + candidates);
+
+        String text = ExperienceRetrieval.renderText(asTheToolWouldRenderIt(nomination));
+
+        // This is the case that most needs words: no rows to speak for themselves. Rendering
+        // the message only when there are candidates would restore the defect exactly here,
+        // which is why the renderer appends it unconditionally.
+        assertFalse(text.isBlank(),
+            "an empty nomination is when the message IS the whole answer — returning \"\""
+                + " here is the defect this issue names, not a smaller version of it");
     }
 
     @SuppressWarnings("unchecked")
