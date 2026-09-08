@@ -108,9 +108,39 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      */
     public JdtServiceImpl loadProject(String fixtureName) throws CoreException {
         Path projectPath = getFixturePath(fixtureName);
-        loadedService = new JdtServiceImpl();
+        loadedService = replacingPrevious();
         loadedService.loadProject(projectPath);
         return loadedService;
+    }
+
+    /**
+     * mcp#24 — DISPOSE THE PREVIOUS SERVICE BEFORE TAKING ANOTHER, because this field only
+     * ever held the LAST one. {@code afterEach} disposes {@code loadedService}, so a test
+     * that loads twice leaked its first service for the rest of the JVM: its linked
+     * projects stayed in the JVM-shared Eclipse workspace, all pointing at the same fixture
+     * directories.
+     *
+     * <p>This file already named the consequence in {@code afterEach} — "the substrate of
+     * the load-dependent lookup-failure flakes" — and closed it for the single-load case
+     * only. A stale live handle can still answer a workspace-scoped lookup, which is how a
+     * project root ends up reported as "not on its project's build path" on a run that is
+     * otherwise healthy.
+     *
+     * <p>Disposal failure is swallowed DELIBERATELY: this runs while a test is setting up,
+     * so throwing here would replace a real assertion failure with a teardown error and
+     * hide whatever the test was about. The leak is the thing being fixed; a noisy
+     * disposal is not worth a lost diagnosis.
+     */
+    private JdtServiceImpl replacingPrevious() {
+        if (loadedService != null) {
+            try {
+                loadedService.dispose();
+            } catch (RuntimeException e) {
+                // see above: never mask the test's own failure with a teardown error
+            }
+            loadedService = null;
+        }
+        return new JdtServiceImpl();
     }
 
     /**
@@ -158,7 +188,7 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      */
     public JdtServiceImpl loadProjectCopy(String fixtureName) throws CoreException, IOException {
         Path projectPath = copyFixture(fixtureName);
-        loadedService = new JdtServiceImpl();
+        loadedService = replacingPrevious();      // mcp#24
         loadedService.loadProject(projectPath);
         return loadedService;
     }
@@ -185,7 +215,7 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
         if (fixtureNames == null || fixtureNames.length == 0) {
             throw new IllegalArgumentException("at least one fixture name is required");
         }
-        loadedService = new JdtServiceImpl();
+        loadedService = replacingPrevious();      // mcp#24
         for (String name : fixtureNames) {
             Path projectPath = copyFixture(name);
             loadedService.addProject(projectPath);
