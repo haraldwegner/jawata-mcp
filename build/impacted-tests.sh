@@ -31,21 +31,30 @@ set -uo pipefail
 [ -n "${JAWATA_URL:-}" ]   || { echo "JAWATA_URL is not set" >&2; exit 3; }
 [ -n "${JAWATA_TOKEN:-}" ] || { echo "JAWATA_TOKEN is not set" >&2; exit 3; }
 
-# JAWATA_SYMBOLS bypasses the diff derivation with an explicit list. The
-# derivation is broken for modified files (jawata-mcp#40); the symbols path
-# is the half that works, and it is what the inner loop can use today.
+# JAWATA_SYMBOLS bypasses the diff derivation with an explicit list, for a
+# caller who already knows what changed. It is no longer a workaround: the
+# derivation was broken for MODIFIED files (jawata-mcp#40) and is fixed.
 SYMBOLS="${JAWATA_SYMBOLS:-}"
 DIFF="${JAWATA_DIFF:-worktree}"
 RANGE="${JAWATA_RANGE:-}"
 
-# THE COMPLETENESS CROSS-CHECK (Stage 6b). Measured 2026-08-19: the tool's
-# diff→symbol derivation yields symbols for ADDED files and NOTHING for
-# MODIFIED ones (jawata-mcp#40). A diff that modifies production code and adds
-# a test therefore comes back naming only the test's own symbols — a non-empty,
-# plausible, WRONG narrow answer, which is precisely the false green the safety
-# rule forbids. So the script checks the tool's work against the git diff it
-# was given: every changed .java file must be accounted for in the derived
-# symbol set, or the evidence is incomplete and the run stays full.
+# THE COMPLETENESS CROSS-CHECK (Stage 6b). It was written for jawata-mcp#40 —
+# measured 2026-08-19, the tool's diff→symbol derivation yielded symbols for
+# ADDED files and NOTHING for MODIFIED ones, so a diff that modified production
+# code and added a test came back naming only the test's own symbols: a
+# non-empty, plausible, WRONG narrow answer.
+#
+# THAT DEFECT IS FIXED (2026-09-08) and this check STAYS, because it never was
+# a workaround for one bug. It is the gate's own defence below the tool's
+# abstraction: owning the source does not mean controlling what executes, and
+# the one thing this mechanism must never do is narrow a run on a derivation
+# that silently dropped a file. Independence is the whole value — it re-derives
+# the changed set from git rather than believing the answer it is checking.
+#
+# The tool now also SAYS what it could not speak for (filesWithoutEvidence) and
+# where it could only answer coarsely (staleClasses). Neither is read here:
+# the first is what this check already catches from the other side, and the
+# second is over-selection, which is safe for a gate.
 case "$DIFF" in
     worktree) CHANGED="$(git diff --name-only -- '*.java')" ;;
     staged)   CHANGED="$(git diff --cached --name-only -- '*.java')" ;;
@@ -139,7 +148,7 @@ derived = {s.split("#", 1)[0].rsplit(".", 1)[-1] for s in (data.get("symbols") o
 unaccounted = [f for f in changed_files
                if f.rsplit("/", 1)[-1][:-len(".java")] not in derived]
 if unaccounted:
-    print("the derivation dropped %d of %d changed file(s) (e.g. %s) — see jawata-mcp#40;"
+    print("the derivation dropped %d of %d changed file(s) (e.g. %s);"
           " narrowing on this would skip the tests that cover them"
           % (len(unaccounted), len(changed_files),
              unaccounted[0].rsplit("/", 1)[-1]), file=sys.stderr)
