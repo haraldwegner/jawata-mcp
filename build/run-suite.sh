@@ -340,5 +340,18 @@ echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS fail
 # unloadable-vs-total unit error was unreachable by any test and shipped.
 "$ROOT/build/verdict-gate.sh" "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$OUT/shard-*.log" || exit $?
 
+# mcp#45 — AND EVERY ABORT MUST BE A DECISION SOMEBODY MADE. The gate above proves
+# every planned test produced a verdict; it says nothing about whether the aborts
+# among them are ones we agreed to. build/abort-budget.sh has existed and worked
+# since Sprint 28a and NOTHING CALLED IT on this path, so the count was printed and
+# never checked — a skip could join the run and no one would hear about it.
+#
+# That is not hypothetical, and wiring it is what showed so: run against the shard
+# logs of the suite that had just passed, it named an UNBUDGETED abort
+# ("[mcp#26 ATTRIBUTION] NOT RUN") which had been firing in every local run
+# unremarked. Its reason is now committed in build/expected-aborts.<os>, which is
+# the decision this gate exists to force.
+"$ROOT/build/abort-budget.sh" "$OUT" || exit $?
+
 [ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] || exit 1
 exit 0

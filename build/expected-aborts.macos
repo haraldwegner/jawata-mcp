@@ -40,3 +40,22 @@ Mach-O/lldb unimplemented
 # absent the honest answer is "not measured", not "passed". Supplying
 # -Djawata.test.fork=<path> turns it back on.
 no fork checkout at
+
+# mcp#26's DECLARING-PROJECT half. SourceIsAttributedToItsDeclarerTest asks which
+# project a type is attributed to when one project RESOLVES a type another
+# DECLARES — and it aborts rather than passing when the fixture cannot pose that
+# question, in its own words: "a green line here would say 'the attribution is
+# right' when what happened is that no project ever claimed a type it does not
+# own, so the loop was never asked to choose." The kind="src"
+# path="/xref-declarer" reference does not put the shared type on xref-consumer's
+# classpath, so the condition never arises here.
+#
+# Acceptable because refusing an unearned green is the behaviour we want, and the
+# SIBLING case in the same class DOES run, covering the issue's other half (the
+# payload naming the declaring FILE). The cost is stated rather than hidden: on
+# this fixture the declaring-project assertion is unverified.
+#
+# Budgeted at Sprint 28e Stage 5 (mcp#45). It had been aborting in every local run
+# and nothing reported it, because run-suite.sh never called this gate — which is
+# exactly the defect mcp#45 filed.
+[mcp#26 ATTRIBUTION] NOT RUN
