@@ -88,14 +88,25 @@ class UnreadableArtifactIsReportedTest {
     }
 
     @Test
-    @DisplayName("D5: an artifact we CANNOT READ is not swept as an abandoned one")
+    @DisplayName("D5: the sweeper still sweeps a REAL orphan — the unreadable one is untested")
     void anUnreadableArtifactIsNotSweptAsAbandoned() throws Exception {
-        // THE SHARPEST INSTANCE THIS SURVEY FOUND, and it is data loss rather than a wrong
-        // number. `Files.isRegularFile` returns false when a file is absent, is not a regular
-        // file, OR CANNOT BE DETERMINED — its own javadoc says so. The orphan filter asked it
-        // whether a manifest was there, so a directory that became unreadable answered "no
-        // manifest", which is this store's definition of an abandoned capture. Past the grace
-        // period it was deleted.
+        // WHAT THIS TEST PROVES, AND WHAT IT DOES NOT — corrected by a mutation that stayed
+        // green, which is the only instrument that would have caught it.
+        //
+        // The classification defect is real and is fixed: `Files.isRegularFile` returns false
+        // when a file is absent, is not a regular file, OR CANNOT BE DETERMINED (its own
+        // javadoc), so the orphan filter read an unreadable directory as HAVING NO MANIFEST —
+        // this store's definition of an abandoned capture.
+        //
+        // BUT THE CONSEQUENCE I FIRST CLAIMED — that it was therefore DELETED — is not
+        // demonstrated, and in the only case constructible here it is false: `delete(id)`
+        // walks the directory too, so on a directory that cannot be read the deletion fails
+        // as well and the artifact survives either way. Restoring the old behaviour leaves
+        // every assertion below passing.
+        //
+        // So the fix is right by reasoning (do not act on "I could not tell") and its effect
+        // is UNOBSERVABLE from outside in this fixture. The assertions on `kept` are kept as
+        // a regression lock, NOT as proof, and only the control below discriminates anything.
         Path root = storeWithOneArtifact();
         RuntimeArtifactStore store = new RuntimeArtifactStore(root);
         Path kept = root.resolve("art-1");
@@ -115,14 +126,17 @@ class UnreadableArtifactIsReportedTest {
             List<String> pruned = store.pruneOrphans();
 
             assertAll(
-                () -> assertTrue(Files.isDirectory(kept),
-                    "an artifact whose manifest could not be READ must survive — 'I could not "
-                        + "tell' is not evidence that it was abandoned, and acting on it "
-                        + "destroys a real capture"),
+                // REGRESSION LOCK, not proof — see the note above. Both of these also hold
+                // under the pre-fix behaviour, because the delete fails for the same reason
+                // the read did.
+                () -> assertTrue(Files.isDirectory(kept), "got: " + pruned),
                 () -> assertFalse(pruned.contains("art-1"), "got: " + pruned),
+                // THE ONLY DISCRIMINATING ASSERTION HERE: the sweeper still does its job. It
+                // is what stops the fix from being "switch the sweeper off", which WOULD have
+                // satisfied everything above.
                 () -> assertTrue(pruned.contains("art-orphan"),
-                    "a genuinely unmanifested, aged directory must still be swept, or this fix "
-                        + "has simply switched the sweeper off; got: " + pruned),
+                    "a genuinely unmanifested, aged directory must still be swept; got: "
+                        + pruned),
                 () -> assertFalse(Files.isDirectory(realOrphan), "got: " + pruned));
         } finally {
             restore(kept);

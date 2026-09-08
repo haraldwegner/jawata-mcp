@@ -183,3 +183,26 @@ propagates to a caller that reports it, which is the correct shape and needs not
   already carries a count the caller can read.
 - **shapes A, B, C — 27 sites — are DONE**, either reporting in their result already or listed
   above with the written reason the code states.
+
+## A CORRECTION, caught by a mutation that stayed green
+
+The `RuntimeArtifactStore` orphan-sweep fix was committed (`ee9bba8d`) claiming **data loss**:
+that an unreadable artifact was classified as abandoned and therefore DELETED.
+
+**The classification half is true and is fixed.** `Files.isRegularFile` returns false when a
+file is absent, is not a regular file, or CANNOT BE DETERMINED — so an unreadable directory
+read as having no manifest, which is this store's definition of an abandoned capture.
+
+**The deletion half is NOT demonstrated, and in the only case constructible here it is false.**
+Mutation T restored the old behaviour and **every assertion stayed green**: `delete(id)` walks
+the directory too, so on a directory that cannot be READ the deletion fails for the same reason,
+and the artifact survives either way.
+
+So the fix is right by reasoning — do not act on "I could not tell" — and its effect is
+**unobservable from outside** in this fixture. The test's assertions on the kept artifact are a
+regression lock, not proof, and the file says so; the only discriminating assertion in it is the
+control that a genuinely unmanifested aged directory is still swept.
+
+**A mutation that stays green has found something** — here, that I had asserted a consequence I
+had not measured, in a commit message, one turn after the C7 record made exactly that point
+about someone else's code.
