@@ -563,11 +563,21 @@ public final class ExperienceTool implements Tool {
         // acted on, which is the same argument that made unresolvedOperations named
         // rather than counted.
         block.put("addresses", audit.addresses());
-        // Empty unless a baseline was supplied. Rendered anyway: absent and empty must
-        // not read alike, and "nothing moved" is an answer where "we never looked" is
-        // not.
-        block.put("movedOperations", audit.movedOperations());
-        block.put("movedAuthorities", audit.movedAuthorities());
+        // C4 architect finding F1 — AND THIS BLOCK USED TO COMMIT THE DEFECT ITS OWN COMMENT
+        // NAMES. It rendered both move lists unconditionally, under a note reading "absent and
+        // empty must not read alike, and 'nothing moved' is an answer where 'we never looked'
+        // is not". On the ONLY production path there is no baseline, so `moved(null, …)`
+        // returns an empty list by construction — and the block stated "nothing moved" about a
+        // comparison nobody had made. That is mcp#76's defect, in the diff that closed it: a
+        // sentence asserted over a case that was not handled.
+        //
+        // So the flag comes first and the lists follow only when there was something to
+        // compare against, which is the shape `NextStep` already uses for `needs`.
+        block.put("movesChecked", audit.compared());
+        if (audit.compared()) {
+            block.put("movedOperations", audit.movedOperations());
+            block.put("movedAuthorities", audit.movedAuthorities());
+        }
         return block;
     }
 

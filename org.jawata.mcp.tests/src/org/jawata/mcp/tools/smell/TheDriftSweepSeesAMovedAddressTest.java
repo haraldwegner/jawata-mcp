@@ -147,7 +147,33 @@ class TheDriftSweepSeesAMovedAddressTest {
                 "nothing can have moved against no baseline: " + audit),
             () -> assertEquals(List.of(), audit.movedAuthorities(), "the same for authorities"),
             () -> assertTrue(audit.clean(),
-                "so the two existing entry points answer exactly what they always did"));
+                "so the two existing entry points answer exactly what they always did"),
+            // C4 architect finding F1. The two empty lists above are empty BY CONSTRUCTION,
+            // and an empty list renders exactly like "nothing moved" — which would state an
+            // answer where the truth is that nobody looked. Without this flag the report
+            // committed that, on its ONLY production path, under a comment condemning it.
+            () -> assertFalse(audit.compared(),
+                "and the sweep says it never compared, rather than implying it found nothing: "
+                    + audit));
+    }
+
+    /**
+     * The other half of F1's distinction: a sweep that DID compare says so, whatever it found.
+     * Without this, "compared" could be hard-wired false and the case above would pass.
+     */
+    @Test
+    @DisplayName("mcp#67 / F1: a sweep given a baseline reports that it compared, even finding nothing")
+    void aSweepGivenABaselineSaysItCompared() {
+        CureLookup.Audit before = sweep();
+
+        CureLookup.Audit after = CureLookup.audit(store, CureCatalog.declaredOperations(),
+            new CureLookup.Baseline(before.addresses(), before.authorities()));
+
+        assertAll(
+            () -> assertTrue(after.compared(), "the baseline was supplied: " + after),
+            () -> assertEquals(List.of(), after.movedOperations(),
+                "and nothing moved, because the baseline IS the current answer"),
+            () -> assertTrue(after.clean(), "so the sweep is clean, and means it"));
     }
 
     /**

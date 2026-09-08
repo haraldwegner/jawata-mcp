@@ -305,11 +305,17 @@ public final class CureLookup {
      *                          baseline's — the one shape a key check cannot see
      * @param movedAuthorities  namespaces whose authority differs from the
      *                          baseline's: the pin itself moved
+     * @param compared          whether a baseline was supplied at all. Without one the two
+     *                          move lists are empty BY CONSTRUCTION, and an empty list
+     *                          renders identically to "nothing moved" — stating an answer
+     *                          where the truth is that nobody looked. The lists cannot tell
+     *                          a reader which; this says it
      */
     public record Audit(int declared, int resolved, int unresolved,
                         List<String> unresolvedOperations, List<String> absentNamespaces,
                         Map<String, String> authorities, Map<String, String> addresses,
-                        List<String> movedOperations, List<String> movedAuthorities) {
+                        List<String> movedOperations, List<String> movedAuthorities,
+                        boolean compared) {
 
         /**
          * True when every declared cure still resolves AND nothing moved under it.
@@ -345,11 +351,11 @@ public final class CureLookup {
             authorities = authorities == null ? Map.of() : Map.copyOf(authorities);
         }
 
-        /** The baseline a previous sweep leaves behind, or null when there was none. */
-        public static Baseline of(Audit previous) {
-            return previous == null ? null
-                : new Baseline(previous.addresses(), previous.authorities());
-        }
+        // A `Baseline.of(Audit)` factory was written here and DELETED at C4: find_references
+        // measured it at zero, including in the test, which builds a Baseline directly. This
+        // file's own history is the precedent — `31348e85`, "Delete what nothing calls, and
+        // correct a reason I invented", removed exactly this shape from these classes. The
+        // convenience returns when a caller persists a previous sweep and needs it.
     }
 
     /**
@@ -412,7 +418,8 @@ public final class CureLookup {
         return new Audit(declaredOperations.size(), ok, broken.size(), List.copyOf(broken),
             addresses.absentNamespaces(), Map.copyOf(authorities), Map.copyOf(resolvedAddresses),
             moved(baseline == null ? null : baseline.addresses(), resolvedAddresses),
-            moved(baseline == null ? null : baseline.authorities(), authorities));
+            moved(baseline == null ? null : baseline.authorities(), authorities),
+            baseline != null);
     }
 
     /**
