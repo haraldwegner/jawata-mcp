@@ -130,14 +130,6 @@ public final class FormMigration {
     }
 
     /**
-     * A situation derived from a cue the row ALREADY carries, or null.
-     *
-     * <p>A symptom is how the problem looked, which is a condition; an operation
-     * is what was being done, which is also one. A summary is the principle, and
-     * a principle restated as a condition is a sentence about the system rather
-     * than about when to apply it — so no summary is ever used here.</p>
-     */
-    /**
      * mcp#60: NOTHING IS DERIVED FOR AN INGESTED ROW, and that is two refusals in one.
      *
      * <p><b>Its symptoms are not observations.</b> The derivation takes the first symptom
@@ -162,6 +154,17 @@ public final class FormMigration {
         return e.facets() != null && "ingested".equals(e.facets().provenanceKind());
     }
 
+    /**
+     * A situation derived from a cue the row ALREADY carries, or null.
+     *
+     * <p>A symptom is how the problem looked, which is a condition; an operation
+     * is what was being done, which is also one. A summary is the principle, and
+     * a principle restated as a condition is a sentence about the system rather
+     * than about when to apply it — so no summary is ever used here.</p>
+     *
+     * <p>mcp#60: and a HARVESTED cue is not a symptom at all, so an ingested row derives
+     * nothing — see {@link #isHarvested}.</p>
+     */
     static String situationFor(StoredEntry e) {
         if (isHarvested(e)) {
             return null;
