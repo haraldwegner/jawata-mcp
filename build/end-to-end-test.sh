@@ -287,11 +287,20 @@ case "$FL" in
 esac
 # One entry is ONE line: a stored newline must not split an entry and hand the
 # second half to a reader as though it were an entry of its own.
+# mcp#55 — THE PASSING ARM DEMANDS POSITIVE EVIDENCE, because a bare `*)` passed on an
+# empty body, a transport error, or any response that simply failed to contain the string:
+# an absence read as a success. It was safe only because the two assertions ABOVE already
+# demand positive content from the same response — and a probe that is safe because of its
+# neighbours stops being safe the moment somebody reorders them. Same cure as
+# `ingest-carries-the-form` one screen down, which had the identical arm.
 case "$FL" in
     *"when when"*)
         fail "form-line the line's own 'when' doubled the author's" ;;
-    *)
+    *"when a load is drawn below 600C in under an hour"*)
         pass "form-line the condition reads once, not twice" ;;
+    *)
+        fail "form-line nothing to judge — the recall returned no line carrying the condition,"\
+"so 'not doubled' would have been true of an empty response: $(printf '%s' "$FL" | head -c 200)" ;;
 esac
 
 # --- write-dedup: recording a near-duplicate proposes a merge ------------------------
