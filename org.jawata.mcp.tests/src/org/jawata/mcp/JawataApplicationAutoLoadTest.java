@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -125,28 +126,89 @@ class JawataApplicationAutoLoadTest {
 
     // --- Sprint 21a (item C): default memory roots -----------------------------------------
 
-    @Test
-    @DisplayName("defaultMemoryRoots layers CLAUDE.md up to $HOME, adds memory-dir convention + extra roots")
-    void defaultMemoryRoots_layering(@TempDir Path home) throws Exception {
+    /**
+     * The layered discovery fixture: every legacy root this machine's conventions define,
+     * genuinely present on disk. Shared by the two tests below, which is what makes them a
+     * PAIR rather than two readings — the same five roots exist in both, so the second
+     * test's assertion that none of them is returned is about the mode, not the fixture.
+     */
+    private Path layeredCorpus(Path home) throws Exception {
         Path proj = Files.createDirectories(home.resolve("CursorProjects").resolve("proj"));
         Files.writeString(home.resolve("CLAUDE.md"), "home rules");
         Files.writeString(home.resolve("CursorProjects").resolve("CLAUDE.md"), "dir rules");
         Files.writeString(proj.resolve("CLAUDE.md"), "project rules");
         Files.createDirectories(home.resolve(".claude"));
         Files.writeString(home.resolve(".claude").resolve("CLAUDE.md"), "global rules");
-        Path memDir = Files.createDirectories(home.resolve(".claude").resolve("projects")
+        Files.createDirectories(home.resolve(".claude").resolve("projects")
             .resolve(JawataApplication.sanitizeProjectDir(proj)).resolve("memory"));
-        Path extra = Files.createDirectories(home.resolve("extra-root"));
+        return proj;
+    }
 
-        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj), extra.toString());
+    @Test
+    @DisplayName("UNCONFIGURED: defaultMemoryRoots layers CLAUDE.md up to $HOME + the memory-dir convention")
+    void defaultMemoryRoots_layering(@TempDir Path home) throws Exception {
+        Path proj = layeredCorpus(home);
+        Path memDir = home.resolve(".claude").resolve("projects")
+            .resolve(JawataApplication.sanitizeProjectDir(proj)).resolve("memory");
 
-        assertTrue(roots.contains(extra), "explicit extra root first");
-        assertTrue(roots.contains(home.resolve(".claude").resolve("CLAUDE.md")), "global CLAUDE.md");
-        assertTrue(roots.contains(proj.resolve("CLAUDE.md")), "project CLAUDE.md");
-        assertTrue(roots.contains(home.resolve("CursorProjects").resolve("CLAUDE.md")), "ancestor CLAUDE.md");
-        assertTrue(roots.contains(home.resolve("CLAUDE.md")), "home-level CLAUDE.md");
-        assertTrue(roots.contains(memDir), "Claude per-project memory dir convention");
-        assertEquals(6, roots.size(), "nothing beyond the existing layered set");
+        // Sprint 28e (mcp#58): this test used to pass an extra root here and expect SIX —
+        // the extra PLUS the five below. Discovery is now the unconfigured mode, so the
+        // extra root moved to its own test and this one keeps its real subject: layering.
+        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj), null);
+
+        assertAll(
+            () -> assertTrue(roots.contains(home.resolve(".claude").resolve("CLAUDE.md")),
+                "global CLAUDE.md"),
+            () -> assertTrue(roots.contains(proj.resolve("CLAUDE.md")), "project CLAUDE.md"),
+            () -> assertTrue(roots.contains(home.resolve("CursorProjects").resolve("CLAUDE.md")),
+                "ancestor CLAUDE.md"),
+            () -> assertTrue(roots.contains(home.resolve("CLAUDE.md")), "home-level CLAUDE.md"),
+            () -> assertTrue(roots.contains(memDir), "Claude per-project memory dir convention"),
+            () -> assertEquals(5, roots.size(), "nothing beyond the existing layered set"));
+    }
+
+    @Test
+    @DisplayName("mcp#58 CONFIGURED: a substrate REPLACES discovery — the legacy corpus is not crawled beside it")
+    void defaultMemoryRoots_configuredSubstrateIsAuthoritative(@TempDir Path home) throws Exception {
+        Path proj = layeredCorpus(home);
+        Path substrate = Files.createDirectories(home.resolve("enterprise").resolve("knowledge"));
+
+        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj),
+            substrate.toString());
+
+        assertAll(
+            () -> assertEquals(java.util.List.of(substrate), roots,
+                "a configured substrate is the WHOLE answer. Until 28e this channel was"
+                    + " ADDITIVE, so a deployment that had cut over to a curated substrate"
+                    + " went on re-importing the corpus it had retired on every no-path load"),
+            // Each of these EXISTS on disk (layeredCorpus wrote it), so its absence is the
+            // mode being exclusive — not a fixture that happens to be missing the file.
+            () -> assertFalse(roots.contains(home.resolve(".claude").resolve("CLAUDE.md")),
+                "the global CLAUDE.md exists here and must NOT be crawled beside the substrate"),
+            () -> assertFalse(roots.contains(proj.resolve("CLAUDE.md")),
+                "nor the project CLAUDE.md"),
+            () -> assertFalse(roots.contains(home.resolve(".claude").resolve("projects")
+                    .resolve(JawataApplication.sanitizeProjectDir(proj)).resolve("memory")),
+                "nor the per-project memory dir — studio#34's auto-seed-on-deploy is the"
+                    + " caller this one is about"));
+    }
+
+    @Test
+    @DisplayName("mcp#58: a substrate configured but ABSENT yields nothing — load/reseed refuse rather than silently seeding the legacy corpus")
+    void defaultMemoryRoots_configuredButMissingDoesNotFallBack(@TempDir Path home) throws Exception {
+        Path proj = layeredCorpus(home);
+
+        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj),
+            home.resolve("no-such-substrate").toString());
+
+        // The branch is on "was a substrate CONFIGURED", never on "did it resolve". Falling
+        // through to discovery here would seed the legacy corpus while the operator believed
+        // they had named a substrate — the defect this closes, arriving through the back door.
+        // Empty means hasDefaultRoots() is false, so the tools answer with the refusal they
+        // already publish ("needs configured default memory roots ... — none found").
+        assertTrue(roots.isEmpty(),
+            "a configured-but-missing substrate must yield NO roots, so the caller is told."
+                + " Got: " + roots);
     }
 
     @Test

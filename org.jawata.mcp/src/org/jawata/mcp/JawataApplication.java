@@ -792,11 +792,21 @@ public class JawataApplication implements IApplication {
     // --- Sprint 21a (item C): default memory roots for load/reseed ------------------------
 
     /**
-     * The default roots the no-path {@code experience(kind=load|reseed)} seeds from:
-     * extra roots from {@code -Djawata.memory.roots} (path-separator list — the studio
-     * config channel), the layered {@code CLAUDE.md} set (global {@code ~/.claude} +
-     * each workspace project dir and its ancestors up to {@code $HOME}), and the Claude
-     * per-project memory dirs ({@code ~/.claude/projects/<sanitized-path>/memory}).
+     * The default roots the no-path {@code experience(kind=load|reseed)} seeds from, in
+     * one of TWO mutually exclusive modes (Sprint 28e, mcp#58).
+     *
+     * <p><b>Configured:</b> {@code -Djawata.memory.roots} (path-separator list — the
+     * studio config channel) names the substrate, and those roots are the WHOLE answer.
+     * Nothing is discovered beside them.</p>
+     *
+     * <p><b>Unconfigured:</b> discovery — the layered {@code CLAUDE.md} set (global
+     * {@code ~/.claude} + each workspace project dir and its ancestors up to
+     * {@code $HOME}), the Claude per-project memory dirs
+     * ({@code ~/.claude/projects/<sanitized-path>/memory}), and the other agents'
+     * per-project conventions.</p>
+     *
+     * <p>The two were ADDITIVE until 28e, which is why a deployment that had cut over to
+     * a curated substrate went on re-importing the corpus it had retired.</p>
      */
     private java.util.List<Path> defaultMemoryRoots() {
         return defaultMemoryRoots(
@@ -815,6 +825,19 @@ public class JawataApplication implements IApplication {
                     addIfExists(roots, Path.of(s.strip()));
                 }
             }
+            // Sprint 28e (mcp#58): a CONFIGURED substrate is AUTHORITATIVE, not additive.
+            // Sprint 28c made a curated directory the substrate the store is rebuilt from,
+            // but this channel stayed an ADDITION to the layered CLAUDE.md discovery below —
+            // so every no-path load re-imported the legacy corpus the cutover retired, the
+            // studio's auto-seed-on-deploy (studio#34) above all.
+            //
+            // The branch is on "was a substrate CONFIGURED", never on "did it resolve".
+            // A configured root that does not exist yields NO roots, so load and reseed
+            // refuse with the message they already publish ("needs configured default
+            // memory roots (-Djawata.memory.roots) — none found"). Falling through to
+            // discovery there would seed the legacy corpus while the operator believed
+            // they had named a substrate: that is the defect this closes, not a safety net.
+            return java.util.List.copyOf(roots);
         }
         addIfExists(roots, home.resolve(".claude").resolve("CLAUDE.md"));
         for (Path proj : projectDirs) {
