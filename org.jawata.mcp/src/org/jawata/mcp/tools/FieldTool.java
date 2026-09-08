@@ -1,12 +1,5 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.field.FieldEvent;
-import org.jawata.mcp.field.FieldPile;
-import org.jawata.mcp.field.FieldState;
-import org.jawata.mcp.models.ToolResponse;
-
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,6 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.field.FieldPile;
+import org.jawata.mcp.field.FieldState;
+import org.jawata.mcp.models.ToolResponse;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * The field lane's ONE front door (Sprint 28b, D3) — the `/report` seat's tool.
@@ -86,6 +86,7 @@ public class FieldTool extends AbstractTool {
             error code, latency bucket, client), never content. The /report seat's tool.
 
             USAGE: field(action="pile")            — recurring error shapes, most first
+                   field(action="pile", sinceDays=7)  — only what is still happening
                    field(action="mark_posted", shape="run_tests/run/RUNNER_TIMEOUT")
                    field(action="silence")          — read both switches
                    field(action="silence", nudges=false)   — stop the in-session line
@@ -93,7 +94,15 @@ public class FieldTool extends AbstractTool {
 
             The two switches are DISTINCT: `nudges` is the one-line pointer inside a
             session; `silenced` is the periodic reminder that failures are accumulating.
-            Turning one off never turns the other off.""";
+            Turning one off never turns the other off.
+
+            RANKING IS NOT RECENCY. `pile` ranks by how OFTEN a shape recurred over the
+            whole recording, which on a long-lived install is cumulative over its entire
+            life — so the top row may be a fault fixed months ago. Every row therefore
+            carries `lastSeenDaysAgo`, and the response carries the span its counts were
+            taken over; `sinceDays` narrows the fold and then reports `lifetimeEvents`
+            beside it, so the two can be compared without a second call. A count read
+            without its span cannot tell a live failure rate from a historical total.""";
     }
 
     @Override
@@ -124,12 +133,22 @@ public class FieldTool extends AbstractTool {
         limit.put("type", "integer");
         limit.put("description", "pile: max shapes returned (default 20).");
 
+        Map<String, Object> sinceDays = new LinkedHashMap<>();
+        sinceDays.put("type", "integer");
+        sinceDays.put("description", "pile: count only events from the last N days"
+            + " (default 0 = the whole recording). Ranking is by RECURRENCE over that"
+            + " span, so on a long-lived install the top shape may be a fault fixed"
+            + " months ago; narrow with this, or read each row's lastSeenDaysAgo. A"
+            + " narrowed call also returns lifetimeEvents, so the two are comparable"
+            + " without a second call.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("action", action);
         properties.put("shape", shape);
         properties.put("nudges", nudges);
         properties.put("silenced", silenced);
         properties.put("limit", limit);
+        properties.put("sinceDays", sinceDays);
 
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -164,18 +183,36 @@ public class FieldTool extends AbstractTool {
         int limit = arguments.path("limit").asInt(20);
         FieldPile pileFile = new FieldPile(dir);
         FieldState state = FieldState.read(dir);
-        List<FieldEvent> events = pileFile.fold();
-        Map<String, Long> shapes = pileFile.countErrorShapes();
+
+        // mcp#74: the pile ranked shapes by a LIFETIME count and said nothing about WHEN, so
+        // a shape at 323 could equally be a live fault or one fixed months ago — and the
+        // issue reporting it could only be filed as a field report for exactly that reason.
+        // sinceDays narrows the fold; 0 (the default) keeps every event, so an existing
+        // caller sees the same population it always did, now with its dates attached.
+        long now = System.currentTimeMillis();
+        int sinceDays = Math.max(0, arguments.path("sinceDays").asInt(0));
+        long sinceMillis = sinceDays == 0 ? 0 : now - (sinceDays * 86_400_000L);
+
+        Map<String, FieldPile.ShapeStat> shapes = pileFile.errorShapes(sinceMillis);
+        FieldPile.Span window = pileFile.span(sinceMillis);
+        FieldPile.Span lifetime = sinceDays == 0 ? window : pileFile.span(0);
 
         List<Map<String, Object>> ranked = new ArrayList<>();
         shapes.entrySet().stream()
-            .sorted(Comparator.<Map.Entry<String, Long>>comparingLong(Map.Entry::getValue)
-                .reversed())
+            .sorted(Comparator.<Map.Entry<String, FieldPile.ShapeStat>>comparingLong(
+                e -> e.getValue().count()).reversed())
             .limit(Math.max(1, limit))
             .forEach(entry -> {
+                FieldPile.ShapeStat stat = entry.getValue();
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("shape", entry.getKey());
-                row.put("count", entry.getValue());
+                row.put("count", stat.count());
+                // THE FIELD mcp#74 IS ABOUT. A rank says which shape recurs most; only this
+                // says whether it is still happening. Days rather than a raw instant because
+                // the question a reader has is "is this current", not "at what o'clock".
+                row.put("lastSeenDaysAgo", stat.daysSinceLast(now));
+                row.put("firstSeenMillis", stat.firstMillis());
+                row.put("lastSeenMillis", stat.lastMillis());
                 row.put("posted", state.posted().contains(entry.getKey()));
                 ranked.add(row);
             });
@@ -192,7 +229,6 @@ public class FieldTool extends AbstractTool {
         // matters is how long each has been stuck.
         List<Map<String, Object>> stuck = new ArrayList<>();
         if (inFlight != null) {
-            long now = System.currentTimeMillis();
             for (org.jawata.mcp.field.InFlightCalls.Call call
                     : inFlight.get().outstanding(
                         org.jawata.mcp.field.InFlightCalls.DEFAULT_STUCK_MS)) {
@@ -203,12 +239,30 @@ public class FieldTool extends AbstractTool {
             }
         }
 
-        long failures = events.stream().filter(e -> !e.ok()).count();
+        long failures = shapes.values().stream().mapToLong(FieldPile.ShapeStat::count).sum();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("shapes", ranked);
         data.put("shapeCount", shapes.size());
-        data.put("events", events.size());
+        data.put("events", window.events());
         data.put("failures", failures);
+        // mcp#74: a count NEVER travels without the span it was taken over. "548 failures"
+        // is not a fact a reader can act on until they know whether it is a week or a year,
+        // and the issue that reported this one had to say so in prose because the response
+        // could not. Zeros mean an empty pile, not 1970 — the events count says which.
+        data.put("coversFromMillis", window.fromMillis());
+        data.put("coversToMillis", window.toMillis());
+        data.put("coversDays", window.events() == 0
+            ? 0 : Math.max(1, (window.toMillis() - window.fromMillis()) / 86_400_000L));
+        data.put("windowDays", sinceDays);           // 0 = the whole recording
+        if (sinceDays > 0) {
+            // Both numbers, so a narrowed call can be compared with the total WITHOUT a
+            // second call — which is the comparison that tells a live fault from a fixed one.
+            data.put("lifetimeEvents", lifetime.events());
+        }
+        // A read that FAILED is not a recording that is empty. Every count above is a floor
+        // when this is non-zero, and the response says so rather than leaving the reader to
+        // infer it from a log they may not have.
+        data.put("failedReads", pileFile.failedReads());
         // Always present, even when empty: an absent key would make "nothing is stuck"
         // and "this build cannot tell" the same answer, which is the defect one level up.
         data.put("neverReturned", stuck);
