@@ -257,9 +257,10 @@ public final class ExperienceMaintenance {
             // knowledge — follow their links, never ingest a junk row.
             boolean indexFile = "MEMORY.md".equalsIgnoreCase(f.getFileName().toString());
             if (indexFile || !doc.hasContent()) {
-                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
+                for (Path t : linksToFollow(resolveLinks(doc, f.getParent(), rootDirs),
+                        f, item.depth(), maxDepth, skipped)) {
                     Path norm = t.toAbsolutePath().normalize();
-                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                    if (!seen.contains(norm)) {
                         queue.add(new Item(norm, item.depth() + 1));
                         linked++;
                     }
@@ -311,15 +312,9 @@ public final class ExperienceMaintenance {
                         ? stampMissing
                         : "form — " + refused.get().field() + ": "
                             + refused.get().message()));
-                List<Path> onward = resolveLinks(doc, f.getParent(), rootDirs);
-                if (!onward.isEmpty() && item.depth() >= maxDepth) {
-                    // The admitted path reports this; so must the refused one, or
-                    // a refusal at the depth boundary drops links SILENTLY, which
-                    // is a worse failure than the refusal it accompanies.
-                    skipped.add(Map.of("source", f.toString(),
-                        "reason", "max-depth (" + maxDepth + ") — " + onward.size()
-                            + " link(s) not followed"));
-                }
+                List<Path> onward = linksToFollow(
+                    resolveLinks(doc, f.getParent(), rootDirs), f, item.depth(), maxDepth,
+                    skipped);
                 for (Path t : onward) {
                     Path norm = t.toAbsolutePath().normalize();
                     if (!seen.contains(norm) && item.depth() < maxDepth) {
@@ -344,9 +339,10 @@ public final class ExperienceMaintenance {
                     "reason", "tombstoned — deliberately removed from this store by an"
                         + " earlier reseed; a reseed of a root containing this file"
                         + " revives it"));
-                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
+                for (Path t : linksToFollow(resolveLinks(doc, f.getParent(), rootDirs),
+                        f, item.depth(), maxDepth, skipped)) {
                     Path norm = t.toAbsolutePath().normalize();
-                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                    if (!seen.contains(norm)) {
                         queue.add(new Item(norm, item.depth() + 1));
                         linked++;
                     }
@@ -361,9 +357,10 @@ public final class ExperienceMaintenance {
             boolean firstOccurrence = seenContent.add(hash);
             if (store.sourceUnchanged(sourceRef, hash)) {
                 unchanged++;
-                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
+                for (Path t : linksToFollow(resolveLinks(doc, f.getParent(), rootDirs),
+                        f, item.depth(), maxDepth, skipped)) {
                     Path norm = t.toAbsolutePath().normalize();
-                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                    if (!seen.contains(norm)) {
                         queue.add(new Item(norm, item.depth() + 1));
                         linked++;
                     }
@@ -377,9 +374,10 @@ public final class ExperienceMaintenance {
                 duplicateContent++;
                 skipped.add(Map.of("source", f.toString(),
                     "reason", "duplicate-content — byte-identical to an already-ingested file this run"));
-                for (Path t : resolveLinks(doc, f.getParent(), rootDirs)) {
+                for (Path t : linksToFollow(resolveLinks(doc, f.getParent(), rootDirs),
+                        f, item.depth(), maxDepth, skipped)) {
                     Path norm = t.toAbsolutePath().normalize();
-                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                    if (!seen.contains(norm)) {
                         queue.add(new Item(norm, item.depth() + 1));
                         linked++;
                     }
@@ -498,12 +496,8 @@ public final class ExperienceMaintenance {
             }
 
             // Item C: follow the link graph.
-            List<Path> targets = resolveLinks(doc, f.getParent(), rootDirs);
-            if (!targets.isEmpty() && item.depth() >= maxDepth) {
-                skipped.add(Map.of("source", f.toString(),
-                    "reason", "max-depth (" + maxDepth + ") — " + targets.size() + " link(s) not followed"));
-                continue;
-            }
+            List<Path> targets = linksToFollow(resolveLinks(doc, f.getParent(), rootDirs),
+                f, item.depth(), maxDepth, skipped);
             for (Path t : targets) {
                 Path norm = t.toAbsolutePath().normalize();
                 if (!seen.contains(norm)) {
@@ -604,6 +598,36 @@ public final class ExperienceMaintenance {
 
     /** {@code [[name]]} → {@code <dir>/name.md} (containing dir first, then root dirs);
      *  {@code [x](rel/path.md)} → resolved against the containing dir. Existing files only. */
+    /**
+     * The links to follow from {@code f}, reporting at the depth boundary rather than
+     * dropping them silently.
+     *
+     * <p>mcp#49. The crawl follows a file's outgoing links from SIX places, and only two of
+     * them said anything when the cap stopped them — so a crawl that halted early was
+     * indistinguishable from one that found nothing more, which is the same defect this
+     * sprint has been closing all week in other shapes.</p>
+     *
+     * <p><b>The issue counted five branches with three silent; measured, it is six with
+     * FOUR.</b> The one it does not list is the TOMBSTONED branch, added after it was filed
+     * — which is the argument for one helper rather than four repairs: a seventh branch
+     * added tomorrow inherits the report instead of having to remember it.</p>
+     *
+     * <p>Returning an empty list at the boundary — rather than a boolean the caller must act
+     * on — is what lets every branch keep its own shape while sharing the one decision. The
+     * per-loop {@code item.depth() < maxDepth} guards the four silent branches carried are
+     * gone with it: that condition WAS the silent drop.</p>
+     */
+    private static List<Path> linksToFollow(List<Path> targets, Path f, int depth, int maxDepth,
+            List<Map<String, Object>> skipped) {
+        if (!targets.isEmpty() && depth >= maxDepth) {
+            skipped.add(Map.of("source", f.toString(),
+                "reason", "max-depth (" + maxDepth + ") — " + targets.size()
+                    + " link(s) not followed"));
+            return List.of();
+        }
+        return targets;
+    }
+
     private static List<Path> resolveLinks(MemoryDoc doc, Path containingDir, List<Path> rootDirs) {
         List<Path> out = new ArrayList<>();
         for (String name : doc.links) {
