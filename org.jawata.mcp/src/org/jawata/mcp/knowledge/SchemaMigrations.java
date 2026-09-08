@@ -46,18 +46,6 @@ final class SchemaMigrations {
     }
 
     /**
-     * Bring the connected database to {@link #LATEST}. Returns a report
-     * ({@code from}/{@code to}/{@code migrated}/{@code backup}). {@code storeDir} is the
-     * directory holding the store file ({@code null} for in-memory — no backup possible).
-     *
-     * @param fleetShared whether this is the USER-LEVEL store several residents on this
-     *     machine share. mcp#48: upgrading that one is a fleet-wide event, not a side
-     *     effect of starting a process, so it is refused unless explicitly allowed. An
-     *     isolated store keeps migrating silently — that is where the old behaviour belongs.
-     * @throws IllegalStateException when the store is from a newer resident, or when a
-     *     shared store would be upgraded without {@link #ALLOW_UPGRADE} being set.
-     */
-    /**
      * mcp#48: the operator's explicit consent to upgrade the SHARED store, named in the
      * {@code jawata.experience.*} family the store mode and directory already use.
      *
@@ -73,6 +61,18 @@ final class SchemaMigrations {
         return Boolean.parseBoolean(System.getProperty(ALLOW_UPGRADE, "false"));
     }
 
+    /**
+     * Bring the connected database to {@link #LATEST}. Returns a report
+     * ({@code from}/{@code to}/{@code migrated}/{@code backup}). {@code storeDir} is the
+     * directory holding the store file ({@code null} for in-memory — no backup possible).
+     *
+     * @param fleetShared whether this is the USER-LEVEL store several residents on this
+     *     machine share. mcp#48: upgrading that one is a fleet-wide event, not a side
+     *     effect of starting a process, so it is refused unless explicitly allowed. An
+     *     isolated store keeps migrating silently — that is where the old behaviour belongs.
+     * @throws IllegalStateException when the store is from a newer resident, or when a
+     *     shared store would be upgraded without {@link #ALLOW_UPGRADE} being set.
+     */
     static Map<String, Object> migrate(Connection conn, Path storeDir, boolean fleetShared) throws SQLException {
         int from = detectVersion(conn);
         if (from > LATEST) {

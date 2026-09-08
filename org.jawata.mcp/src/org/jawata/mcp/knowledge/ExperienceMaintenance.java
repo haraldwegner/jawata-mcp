@@ -317,7 +317,7 @@ public final class ExperienceMaintenance {
                     skipped);
                 for (Path t : onward) {
                     Path norm = t.toAbsolutePath().normalize();
-                    if (!seen.contains(norm) && item.depth() < maxDepth) {
+                    if (!seen.contains(norm)) {
                         queue.add(new Item(norm, item.depth() + 1));
                         linked++;
                     }
@@ -596,8 +596,6 @@ public final class ExperienceMaintenance {
         }
     }
 
-    /** {@code [[name]]} → {@code <dir>/name.md} (containing dir first, then root dirs);
-     *  {@code [x](rel/path.md)} → resolved against the containing dir. Existing files only. */
     /**
      * The links to follow from {@code f}, reporting at the depth boundary rather than
      * dropping them silently.
@@ -628,6 +626,8 @@ public final class ExperienceMaintenance {
         return targets;
     }
 
+    /** {@code [[name]]} → {@code <dir>/name.md} (containing dir first, then root dirs);
+     *  {@code [x](rel/path.md)} → resolved against the containing dir. Existing files only. */
     private static List<Path> resolveLinks(MemoryDoc doc, Path containingDir, List<Path> rootDirs) {
         List<Path> out = new ArrayList<>();
         for (String name : doc.links) {

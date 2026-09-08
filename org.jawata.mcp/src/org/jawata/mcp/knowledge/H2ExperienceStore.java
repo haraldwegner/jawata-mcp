@@ -678,7 +678,22 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setString(16, workspaceId);
                 ps.setString(17, projectId);
                 String lang = entry.language();
-                ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                // mcp#57: an unclassified row stores NULL rather than claiming "java".
+                //
+                // The gate does not move, and that is what makes this safe where the first
+                // attempt was not. StoredEntry.isJavaResolvable() is
+                // `language == null || isBlank() || "java"`, so null and "java" are the SAME
+                // answer at all five of its call sites — the maintenance exemption, the
+                // backfill and the analogy lane included. What changes is only what the row
+                // CLAIMS about itself, which is the half that was lying: `by_language` in
+                // stats counted every unclassified row as Java, so a corpus about hardware
+                // and process reported as 100% java.
+                //
+                // The earlier cure (faafe689, reverted by 9d43005d) made prose rows NON-Java, which does
+                // move the gate — through the backfill, whose job is to DISCOVER anchors in
+                // prose and which then skipped its own candidates. Null keeps every gate
+                // exactly where it was.
+                ps.setString(18, lang == null || lang.isBlank() ? null : lang);
                 ps.setString(19, sourceHash);
                 // Sprint 27 D2: embed on write. The vector is what the entry
                 // MEANS, so it is derived from the same text a reader would see
@@ -1567,7 +1582,7 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ps.setString(16, str(row.get("workspace_id")));
                     ps.setString(17, str(row.get("project_id")));
                     String lang = str(row.get("language"));
-                    ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                    ps.setString(18, lang == null || lang.isBlank() ? null : lang);   // mcp#57
                     // Sprint 28c: the facets, bound in the SAME edit as the
                     // export projection and the write path. An export that
                     // carries a column its import cannot bind loses that column
@@ -1954,7 +1969,10 @@ public final class H2ExperienceStore implements ExperienceStore {
                     String lang = hasFacets ? rs.getString("language") : null;
                     ps.setString(16, ws != null ? ws : workspaceId);
                     ps.setString(17, proj != null ? proj : projectId);
-                    ps.setString(18, lang != null ? lang : "java");
+                    // mcp#57, and the comment BELOW was already arguing for this: a blank
+                    // survived here where the other two sites made it "java", so the three
+                    // write paths disagreed about the same column. All three now store null.
+                    ps.setString(18, lang == null || lang.isBlank() ? null : lang);
                     // A pre-v10 orphan has no facets to carry, and NULL is the
                     // honest value: unclassified, never "classified as legacy".
                     ps.setString(19, hasForm ? rs.getString("situation") : null);
