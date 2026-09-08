@@ -142,7 +142,14 @@ public final class RuntimeArtifactStore {
         List<Map<String, Object>> described = new ArrayList<>();
         for (String id : list()) {
             Map<String, Object> row = new LinkedHashMap<>(readManifest(id).orElse(Map.of()));
-            row.put("bytes", sizeOf(id));
+            // D5: the size travels as a number only when one was actually taken. A caller
+            // deciding what to delete must not read "could not look" as "takes no space".
+            java.util.OptionalLong bytes = sizeOf(id);
+            if (bytes.isPresent()) {
+                row.put("bytes", bytes.getAsLong());
+            } else {
+                row.put("bytesUnavailable", "the artifact directory could not be walked");
+            }
             row.put("expired", isExpired(id));
             described.add(row);
         }
@@ -161,21 +168,34 @@ public final class RuntimeArtifactStore {
             .orElse(false);
     }
 
-    public long sizeOf(String artifactId) {
+    /**
+     * On-disk size of an artifact, or EMPTY when the directory could not be walked.
+     *
+     * <p>D5 (Sprint 28e): this returned {@code 0} on failure — the same answer an EMPTY
+     * artifact gives. A caller deciding what to delete could not tell "this takes no space"
+     * from "I could not look", and both are well-formed numbers, which is why nothing ever
+     * caught it. An absence reported as an emptiness, in a number rather than a message.</p>
+     *
+     * <p>The per-file {@code 0} inside the sum is a different case and stays: a file that
+     * vanished mid-walk contributes nothing to a total, which is true.</p>
+     */
+    public java.util.OptionalLong sizeOf(String artifactId) {
         Path dir = root.resolve(artifactId);
         if (!Files.isDirectory(dir)) {
-            return 0;
+            // Not a failure to read — there is genuinely nothing there.
+            return java.util.OptionalLong.of(0);
         }
         try (Stream<Path> walk = Files.walk(dir)) {
-            return walk.filter(Files::isRegularFile).mapToLong(p -> {
+            return java.util.OptionalLong.of(walk.filter(Files::isRegularFile).mapToLong(p -> {
                 try {
                     return Files.size(p);
                 } catch (IOException e) {
                     return 0;
                 }
-            }).sum();
+            }).sum());
         } catch (IOException e) {
-            return 0;
+            log.warn("cannot size runtime artifact {}: {}", dir, e.getMessage());
+            return java.util.OptionalLong.empty();
         }
     }
 
@@ -216,6 +236,28 @@ public final class RuntimeArtifactStore {
     }
 
     /**
+     * Is this directory's manifest MISSING — {@code TRUE} — genuinely present ({@code FALSE}),
+     * or could we not tell ({@code null})?
+     *
+     * <p>Three answers rather than two, because the caller that decides what to DELETE must be
+     * able to act on the third differently. {@code Files.isRegularFile} folds "cannot
+     * determine" into "false", which is safe for a lister and destructive for a sweeper.</p>
+     */
+    private static Boolean manifestMissing(Path dir) {
+        Path manifest = dir.resolve(MANIFEST_FILE);
+        try {
+            return !java.nio.file.Files.readAttributes(manifest,
+                java.nio.file.attribute.BasicFileAttributes.class).isRegularFile();
+        } catch (java.nio.file.NoSuchFileException e) {
+            return Boolean.TRUE;    // genuinely absent — this IS an abandoned capture
+        } catch (IOException e) {
+            log.warn("cannot tell whether {} has a manifest ({}) — leaving it alone rather than"
+                + " sweeping something that may be a real artifact", dir, e.getMessage());
+            return null;            // unreadable — NOT evidence of absence
+        }
+    }
+
+    /**
      * Delete ABANDONED captures: directories with no manifest, older than the grace period.
      *
      * <p>{@link #list} deliberately ignores an unmanifested directory — it is not evidence,
@@ -237,7 +279,17 @@ public final class RuntimeArtifactStore {
         List<Path> orphans = new ArrayList<>();
         try (Stream<Path> dirs = Files.list(root)) {
             dirs.filter(Files::isDirectory)
-                .filter(d -> !Files.isRegularFile(d.resolve(MANIFEST_FILE)))
+                // D5 (Sprint 28e) — THIS DECIDES WHAT GETS DELETED, so it must not be a
+                // question that answers "no" when it means "I could not tell".
+                //
+                // `Files.isRegularFile` returns false when the file is absent, is not a
+                // regular file, OR it cannot be determined — its own javadoc says so. A
+                // directory that became unreadable therefore read as HAVING NO MANIFEST,
+                // which is this store's definition of an abandoned capture, and past the
+                // grace period it was deleted. "I could not read your manifest" became "you
+                // have no manifest" became "delete it": an absence reported as an emptiness,
+                // ending in data loss rather than a wrong number.
+                .filter(d -> manifestMissing(d) == Boolean.TRUE)
                 .forEach(orphans::add);
         } catch (IOException e) {
             log.warn("cannot scan runtime store {} for abandoned captures: {}", root, e.getMessage());

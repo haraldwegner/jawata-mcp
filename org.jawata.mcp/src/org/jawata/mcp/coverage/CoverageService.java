@@ -240,20 +240,43 @@ public final class CoverageService {
     public synchronized CoverageModel model(String artifactId) throws IOException {
         CoverageManifest manifest = store.readManifest(artifactId).orElse(null);
         if (manifest == null) return null;
-        long fingerprint = rootsFingerprint(manifest);
+        java.util.OptionalLong fingerprint = rootsFingerprint(manifest);
         CoverageModel cached = modelCache.get(artifactId);
         Long cachedFp = cacheFingerprints.get(artifactId);
-        if (cached != null && cachedFp != null && cachedFp == fingerprint) {
+        // D5: an ABSENT fingerprint can match nothing. A root that could not be walked used to
+        // contribute zero and leave the number looking unchanged, which reused the cache — the
+        // one outcome this method's javadoc forbids.
+        if (fingerprint.isPresent() && cached != null && cachedFp != null
+                && cachedFp == fingerprint.getAsLong()) {
             return cached;
         }
         CoverageModel model = CoverageModel.analyze(store.execFile(artifactId), manifest);
         modelCache.put(artifactId, model);
-        cacheFingerprints.put(artifactId, fingerprint);
+        if (fingerprint.isPresent()) {
+            cacheFingerprints.put(artifactId, fingerprint.getAsLong());
+        } else {
+            // And nothing is stored, so the NEXT call cannot match against a reading that was
+            // never taken either.
+            cacheFingerprints.remove(artifactId);
+        }
         return model;
     }
 
-    /** Newest mtime across the class roots' class files — cheap rebuild signal. */
-    private static long rootsFingerprint(CoverageManifest manifest) {
+    /**
+     * Newest mtime across the class roots' class files — cheap rebuild signal, or EMPTY when
+     * a root could not be walked.
+     *
+     * <p>D5 (Sprint 28e): this used to swallow the failure and carry on, so a root it could
+     * not read contributed nothing and the fingerprint came out looking UNCHANGED. The caller
+     * then reused its cached model — which is precisely what {@link #model(String)}'s own
+     * javadoc forbids: <i>"a stale-bytes verdict must never be masked by a pre-rebuild
+     * analysis."</i> The swallow did not merely lose information, it inverted a safety
+     * property the class states one method away.</p>
+     *
+     * <p>Empty is not a number the caller can mistake for a reading, and it fails toward
+     * DOING the work rather than skipping it.</p>
+     */
+    private static java.util.OptionalLong rootsFingerprint(CoverageManifest manifest) {
         long newest = 0;
         for (String root : manifest.classRoots) {
             Path rootPath = Path.of(root);
@@ -268,9 +291,13 @@ public final class CoverageService {
                             return 0;
                         }
                     }).max().orElse(0));
-            } catch (IOException ignored) { }
+            } catch (IOException e) {
+                log.warn("cannot fingerprint class root {} ({}) — re-analyzing rather than"
+                    + " trusting a cache entry nothing could check", rootPath, e.getMessage());
+                return java.util.OptionalLong.empty();
+            }
         }
-        return newest;
+        return java.util.OptionalLong.of(newest);
     }
 
     public synchronized void evict(String artifactId) {
