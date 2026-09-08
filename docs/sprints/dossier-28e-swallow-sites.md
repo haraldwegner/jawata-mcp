@@ -96,3 +96,24 @@ grep -rn "Files\.walk(\|Files\.walkFileTree(\|Files\.list(\|Files\.readString(" 
 One line of the walk output is a COMMENT (`ProjectImporter` — "Files.walk fails
 LAZILY") and is excluded from the count above; a regeneration that includes it reads one
 high.
+
+## Classification — the `walk` family, 8 of 14 sites read
+
+The standard is `ExperienceMaintenance:194`, which the plan names: on failure it adds a row
+to the RESULT — `skipped.add(Map.of("source", …, "reason", "cannot list: " + e.getMessage()))`
+— so the caller sees which root could not be read and why.
+
+Measured against it, the shapes are three, and they are not equally bad:
+
+| shape | sites | what a caller receives |
+|---|---|---|
+| **returns a VALUE that reads as a real answer** | `HostFs:51`, `HostFs:72`, `RuntimeArtifactStore:169` | `catch (Exception ignored) { return 0; }` — a size or count of **0**. "Could not read" and "it is empty" are the same number. This is D5's subject in its purest form |
+| **silent, answer unchanged** | `CoverageService:261` | `catch (IOException ignored) { }`, then returns the newest timestamp found so far — a partial walk reads as a complete one |
+| **logged, but not in the result** | `CoverageStore:118`, `RuntimeArtifactStore:189` | `log.warn(…); return false;` — recoverable by a human reading a log, invisible to the caller |
+| **already compliant** | `ExperienceMaintenance:194` | the standard above |
+
+`DiskSyncGuard`'s `walkFileTree` is a visitor returning `SKIP_SUBTREE`/`CONTINUE` and is a
+different shape; it is counted in the population and not yet classified.
+
+**NOT YET READ: `ProjectImporter`'s five `walk` sites and its `walkFileTree`.** Stated so the
+table above is not mistaken for the whole family — 8 of 14 are classified, 6 are not.
