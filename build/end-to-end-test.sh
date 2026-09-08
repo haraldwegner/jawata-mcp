@@ -54,6 +54,29 @@ trap cleanup EXIT INT TERM HUP
 
 fail() { printf '  FAIL  %s\n' "$1"; FAILED=$((FAILED + 1)); }
 pass() { printf '  ok    %s\n' "$1"; PASSED=$((PASSED + 1)); }
+
+# mcp#55, CLOSED AS A CLASS — a NEGATIVE assertion needs a response to be negative about.
+#
+# "X is absent from the answer" is trivially true of an empty answer, a transport error, or
+# any body that simply failed to contain X. Enumerated over this file, SEVEN catch-all arms
+# end in `pass`; SIX of them are that shape, and one — the query_id check — is already
+# written correctly, handling the empty case explicitly. The instance fixed under mcp#55 was
+# the third sighting; `ingest-carries-the-form` was the second.
+#
+# So the emptiness check stops being something each arm has to remember. Call this FIRST and
+# the absence check that follows can no longer be the only thing standing between an empty
+# response and a green run: the run has already recorded a failure. It does not suppress the
+# arm below — a spurious `ok` may still print — but the suite cannot report success.
+answered() {   # answered <probe-name> <response>
+    case "$2" in
+        "") fail "$1 THE RESPONSE WAS EMPTY — the absence check below would pass having read nothing" ;;
+        *'curl:'*|*'Connection refused'*|*'Failed to connect'*)
+            fail "$1 the call did not reach the server, so the absence check below would pass on a"\
+"transport error: $(printf '%s' "$2" | head -c 160)" ;;
+        *) return 0 ;;
+    esac
+    return 1
+}
 FAILED=0
 PASSED=0
 
@@ -751,6 +774,7 @@ esac
 # --- field-answers-carry-no-path: the seat drafts a PUBLIC issue from these --
 # (28b closing audit, F8: `pile` used to answer with the absolute pile path and
 # `silence` with the state path, both carrying the user's account name.)
+answered "field-answers-carry-no-path" "$FP$FS"
 case "$FP$FS" in
     */home/*|*/Users/*|*"$WS"*)
         fail "field-answers-carry-no-path a field answer carries a filesystem path — the /report seat drafts a public issue body from exactly this" ;;
@@ -861,6 +885,7 @@ no_score "recall(meaning)" "$M"
 N="$(call experience '{"kind":"recall",
   "symptom":"the marzipan barometer forgot its velvet inventory",
   "format":"text"}')"
+answered "nonsense-never-vouched" "$N"
 case "$N" in
     *'"result":"match"'*) fail "nonsense-never-vouched nonsense produced a VOUCHED answer" ;;
     *) pass "nonsense-never-vouched nonsense is never vouched" ;;
@@ -956,6 +981,7 @@ esac
 G="$(call experience '{"kind":"recall",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",
   "format":"text"}')"
+answered "rejected-stays-gone" "$G"
 case "$G" in
     *"moon phase determines"*) fail "rejected-stays-gone the REJECTED note came back through the meaning path" ;;
     *) pass "rejected-stays-gone the rejected note stays gone by meaning" ;;
@@ -1499,6 +1525,7 @@ esac
 no_score "recall(upgraded)" "$UPM"
 
 # --- upgrade-counters-present: the counter tables an old install never had ---
+answered "upgrade-counters-present" "$UPM$UP"
 case "$UPM$UP" in
     *unavailable*) fail "upgrade-counters-present the quality-counter table is missing on the upgraded store" ;;
     *) pass "upgrade-counters-present the upgraded store carries the counter tables it was born without" ;;
@@ -1585,6 +1612,7 @@ no_score "recall(words-only)" "$W"
 N3="$(call experience '{"kind":"recall",
   "symptom":"the marzipan barometer forgot its velvet inventory",
   "format":"text"}')"
+answered "nonsense-never-vouched-degraded" "$N3"
 case "$N3" in
     *'"result":"match"'*) fail "nonsense-never-vouched-degraded nonsense got VOUCHED with the embedder off" ;;
     *) pass "nonsense-never-vouched-degraded nonsense is never vouched, words-only included" ;;
@@ -1592,6 +1620,7 @@ esac
 G3="$(call experience '{"kind":"recall",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",
   "format":"text"}')"
+answered "rejected-stays-gone-degraded" "$G3"
 case "$G3" in
     *"moon phase determines"*) fail "rejected-stays-gone-degraded the rejected note returned through the WORD path" ;;
     *) pass "rejected-stays-gone-degraded the rejected note stays gone by words too" ;;

@@ -109,6 +109,26 @@ if [ -n "$STALE_SRC" ]; then
     exit 2
 fi
 
+rm -rf "$OUT"; mkdir -p "$OUT"
+ln -sfn "$OUT" "$DIST/suite-shards"
+
+# mcp#44 — WHICH /tmp DIRECTORIES EXISTED BEFORE THIS RUN. A SET, not a timestamp.
+#
+# The first version compared mtimes (`find -newer <marker>`) and was WRONG in exactly the
+# state this machine is normally in: a directory's mtime updates when its CONTENTS change, so
+# a directory created long before the marker matches `-newer` the moment anything writes into
+# it. Measured: three jawata residents were live during this checkpoint with jawata-test-ws
+# directories modified inside the hour, and a concurrent suite run would have swept a LIVE
+# resident's working directory. The claim that pre-existing debris was "untouched by
+# construction" was false.
+#
+# A recorded set cannot have that failure: a directory is this run's if and only if its name
+# was absent when the run began. It is taken HERE, before the two gates below launch their own
+# JVMs, so what those gates leave behind is swept with everything else rather than being
+# permanently exempt.
+TMP_BEFORE="$OUT/.tmp-before"
+find /tmp -maxdepth 1 -name 'jawata-*' 2>/dev/null | sort > "$TMP_BEFORE"
+
 # The verdict gate proves its own arithmetic before it is trusted to judge a
 # run. It costs milliseconds and runs FIRST so a broken gate costs a re-run
 # rather than a whole suite. A gate that certifies a run is worth no more than
@@ -125,16 +145,6 @@ fi
 # diligence mechanism offered as an opt-in is chosen by nobody.
 "$ROOT/build/container-marker-gate.sh" --quiet \
     || { echo "FATAL: the runner does not report container aborts/failures correctly — refusing to certify a run with it."; exit 2; }
-
-rm -rf "$OUT"; mkdir -p "$OUT"
-ln -sfn "$OUT" "$DIST/suite-shards"
-
-# mcp#44 — the marker this run's /tmp debris is measured against. Every temp dir created
-# from here on is this run's; anything older belongs to a previous run, another process, or
-# the user, and is never touched. See the sweep at the end for why it is a backstop rather
-# than the cure.
-TMP_MARKER="$OUT/.tmp-sweep-marker"
-: > "$TMP_MARKER"
 
 # 1. Discover test classes exactly like the boot does (org.jawata.* test
 #    bundles, top-level *Test.class).
@@ -433,20 +443,29 @@ fi
 # test from an IDE; that path never comes through here.
 #
 # It is scoped three ways so it can only remove what this run made:
-#   - newer than the marker written at the start of THIS run;
+#   - ABSENT from the name set recorded before the run started;
 #   - directly in /tmp, never recursively;
 #   - never jawata-runtime, which is the persistent artifact store rather than run debris.
+#
+# THE FIRST VERSION USED `find -newer` AND WAS WRONG, in exactly the state this machine is
+# normally in. A directory's mtime moves when its CONTENTS change, so a directory created long
+# before the run matched `-newer` as soon as anything wrote into it — and with jawata residents
+# live (they keep jawata-test-ws and jawata-boot-config directories under /tmp), a concurrent
+# run would have deleted a LIVE resident's working directory. Comparing NAMES against a
+# recorded set cannot fail that way: a directory is this run's if and only if its name was not
+# there when the run began.
 if [ "${JAWATA_KEEP_TMP:-0}" = "1" ]; then
     echo "note: JAWATA_KEEP_TMP=1 — leaving this run's /tmp working directories in place"
 else
-    SWEPT=$(find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' \
-                -newer "$TMP_MARKER" 2>/dev/null | wc -l)
+    TMP_AFTER="$OUT/.tmp-after"
+    find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' 2>/dev/null \
+        | sort > "$TMP_AFTER"
+    TMP_NEW="$OUT/.tmp-new"
+    comm -13 "$TMP_BEFORE" "$TMP_AFTER" > "$TMP_NEW"
+    SWEPT=$(wc -l < "$TMP_NEW")
     if [ "$SWEPT" -gt 0 ]; then
-        SWEPT_KB=$(find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' \
-                       -newer "$TMP_MARKER" -exec du -sk {} + 2>/dev/null \
-                   | awk '{s+=$1} END {print s+0}')
-        find /tmp -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' \
-             -newer "$TMP_MARKER" -exec rm -rf {} + 2>/dev/null
+        SWEPT_KB=$(xargs -r -a "$TMP_NEW" du -sk 2>/dev/null | awk '{s+=$1} END {print s+0}')
+        xargs -r -a "$TMP_NEW" rm -rf 2>/dev/null
         echo "swept $SWEPT /tmp working director(ies) this run created ($((SWEPT_KB / 1024)) MB)"
     fi
 fi

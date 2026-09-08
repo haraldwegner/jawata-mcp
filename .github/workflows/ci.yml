@@ -184,6 +184,22 @@ jobs:
           *"failed=0"*) ;;
           *) echo "FAIL: tests failed"; exit 1 ;;
         esac
+        # mcp#51 — AND A CLASS-LEVEL THROW, which `failed=0` cannot see. An @AfterAll that
+        # throws runs after every test in its class has reported, so testsFailed stays 0 and
+        # the check above passes over a class whose teardown died. The runner's exit code now
+        # carries it, but this step pipes through `tee`, so without pipefail that status is
+        # tee's; the gate must therefore read the field itself rather than rely on it.
+        #
+        # THE CASE OF ONE LETTER IS LOAD-BEARING IN BOTH PATTERNS HERE. `*"failed=0"*` does
+        # not match `containersFailed=0` only because JUnit capitalises the F, and
+        # `*"aborted=0"*` misses `containersAborted=0` only because of its capital A. Neither
+        # is a property this repository controls.
+        case "$line" in
+          *"containersFailed=0"*) ;;
+          *) echo "FAIL: a container failed — a @BeforeAll, @AfterAll or class initializer threw."
+             grep -n '\^\^ FAILED' load-cells.log || true
+             exit 1 ;;
+        esac
         # An abort here is the Gradle Tooling API finding no distribution, or
         # the PDE pool not resolving. On a machine that HAS both, that is a
         # defect in jar resolution wearing an environment skip's clothes.
