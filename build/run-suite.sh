@@ -116,6 +116,16 @@ fi
 "$ROOT/build/verdict-gate-test.sh" --quiet \
     || { echo "FATAL: the suite's verdict gate fails its own self-test — refusing to certify a run with it."; exit 2; }
 
+# mcp#52 — and the same argument one level out: the verdict gate's arithmetic is proved
+# above against INVENTED counters, which says nothing about whether the runner ever
+# PRODUCES them. mcp#54 and mcp#51 each shipped a container-level marker and counter that
+# no class in the suite could exercise, and each recorded the gap rather than implying
+# coverage. This drives classes that really abort and really fail a container, through the
+# real runner, and costs one short JVM. It runs HERE, on the gate path, for the reason a
+# diligence mechanism offered as an opt-in is chosen by nobody.
+"$ROOT/build/container-marker-gate.sh" --quiet \
+    || { echo "FATAL: the runner does not report container aborts/failures correctly — refusing to certify a run with it."; exit 2; }
+
 rm -rf "$OUT"; mkdir -p "$OUT"
 ln -sfn "$OUT" "$DIST/suite-shards"
 
