@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -233,10 +234,17 @@ class AnchorlessRetrievalTest {
             // have identical vectors, so every lane must tie — if any of them read
             // the outcome or the origin, one twin would pull ahead.
             EmbeddingIndex index = EmbeddingIndex.forStore(store);
-            ExperienceRetrieval retrieval = index == null || !index.available()
-                ? new ExperienceRetrieval(store, () -> null)
-                : new ExperienceRetrieval(store, () -> null, index);
-            if (index != null && index.available()) {
+            // mcp#62: which lanes this run ACTUALLY covered, carried into the assertion
+            // message below. Without an embedder this degrades to the word lane and still
+            // proves something real — twins tie on words — but it does NOT cover four
+            // lanes, and the javadoc said it did. A test that overstates its own reach is
+            // read as stronger evidence than it is, which is the whole subject of this
+            // class; the reach is now reported rather than assumed.
+            boolean allFourLanes = index != null && index.available();
+            ExperienceRetrieval retrieval = allFourLanes
+                ? new ExperienceRetrieval(store, () -> null, index)
+                : new ExperienceRetrieval(store, () -> null);
+            if (allFourLanes) {
                 index.backfill(500);   // the twins were written in bulk-free puts,
                                        // but the fixture rows around them may not be
             }
@@ -253,10 +261,20 @@ class AnchorlessRetrievalTest {
                 .filter(c -> failed.equals(c.get("id"))).findFirst().orElseThrow(
                     () -> new AssertionError("the 'failed' twin was not nominated: " + candidates));
 
+            // mcp#62: the scores a candidate carries are ROUNDED to 3 decimals, so this
+            // sees no difference below 0.0005. That is sound HERE and only here — the
+            // twins are byte-identical by construction, so identical text gives identical
+            // vectors and the lanes tie EXACTLY rather than nearly. Said out loud because
+            // the assertion otherwise reads as a general tie check, which it is not: on
+            // two merely-similar entries it would pass over a real difference.
             assertEquals(a.get("scores"), b.get("scores"),
-                "two entries with identical text scored differently, so something other "
-                    + "than proximity is in the ranking — the outcome and the origin are "
-                    + "the only things that differ between them");
+                "two entries with identical text scored differently (to 3 decimals), so "
+                    + "something other than proximity is in the ranking — the outcome and "
+                    + "the origin are the only things that differ between them. Lanes "
+                    + "covered by THIS run: " + (allFourLanes
+                        ? "all four (an embedder was available)"
+                        : "the WORD lane only — no embedder in this JVM, so a meaning-lane "
+                            + "difference could not have been seen"));
 
             // And the display facts ARE still carried, because a candidate nobody
             // can judge is not a shortlist. Dropping them to satisfy the rule above
@@ -321,9 +339,15 @@ class AnchorlessRetrievalTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             seed(store, fx, false);
             EmbeddingIndex index = EmbeddingIndex.forStore(store);
-            if (index == null || !index.available()) {
-                return;   // no embedder here; the degrade path has no lane to lose
-            }
+            // mcp#62: an ASSUMPTION, not a bare return. Without an embedder this gate has
+            // no lane to lose and genuinely cannot run — but a `return` here reported
+            // SUCCESS, so a gate that never executed was indistinguishable from one that
+            // passed. That is the same shape as the calibration gate which aborted silently
+            // for two sprints, and it is the very defect this class exists to test for.
+            // An assumption makes the run SAY it was skipped.
+            assumeTrue(index != null && index.available(),
+                "no embedder in this JVM, so the degrade path has no meaning lane to lose"
+                    + " — this gate did NOT run, and must not be counted as passed");
             ExperienceRetrieval healthy = new ExperienceRetrieval(store, () -> null, index);
             String question = fx.get("positive_questions").get(0).get("question").asText();
             assertEquals("ok",
