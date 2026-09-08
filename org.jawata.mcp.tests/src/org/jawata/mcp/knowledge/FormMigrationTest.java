@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -33,6 +34,89 @@ class FormMigrationTest {
             entry.symptoms(List.of(symptom));
         }
         return entry.build();
+    }
+
+    /** The same legacy row, but harvested out of a file rather than recorded by a person. */
+    private static ExperienceEntry ingested(String type, String summary, String symptom) {
+        return ExperienceEntry.of(
+                SymbolFact.of(type, summary, Confidence.MEDIUM).symbol("com.example.Thing").build())
+            .status(ExperienceEntry.ACCEPTED)
+            .symptoms(List.of(symptom))
+            .provenanceKind("ingested")
+            .build();
+    }
+
+    /**
+     * mcp#59 — a RETIRED row is not repair work, and the walk must not see it.
+     *
+     * <p>Measured on v3.15.0: a catalogue update retired 187 pattern rows and the next
+     * dry run reported the "has a situation, no cause" repair class as 188. The store's
+     * {@code all()} applies no status filter, so every retired row arrived here and was
+     * dispositioned like a live one.</p>
+     */
+    @Test
+    void a_retired_row_is_skipped_and_counted_rather_than_repaired(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            store.put(legacy("failure_mode", "The live one.",
+                "the window froze for the whole scan"));
+            String retired = store.put(legacy("failure_mode", "The retired one.",
+                "the window froze for the whole scan"));
+            store.setStatus(retired, "superseded");
+
+            FormMigration.Report report = new FormMigration(store).plan();
+
+            assertAll(
+                () -> assertEquals(1, report.retired(),
+                    "the superseded row must be COUNTED as retired, not silently dropped —"
+                        + " a number that vanishes is the defect one layer over; got: " + report),
+                () -> assertEquals(1, report.sourceEntries(),
+                    "and the walk must have seen only the LIVE row; got: " + report),
+                () -> assertTrue(report.dispositions().stream()
+                        .noneMatch(d -> retired.equals(d.id())),
+                    "a retired row must get no disposition at all — listing it teaches a"
+                        + " review sweep to repair corpses; got: " + report.dispositions()),
+                // The report's one self-check, which the new count must not have broken:
+                // retired is deliberately OUTSIDE it rather than folded in.
+                () -> assertEquals(report.migrated() + report.legacyKept(),
+                    report.sourceEntries(),
+                    "sourceEntries == migrated + legacyKept still holds; got: " + report));
+        }
+    }
+
+    /**
+     * mcp#60 — an INGESTED row gets no mechanically derived situation.
+     *
+     * <p>Its symptoms are harvested cues, not observations, so the derivation produced
+     * things like "when by construction" — measured on the pre-rebuild corpus, 71 of them,
+     * which a {@code confirm:true} would have stamped as form 1. And a stamp there would
+     * not survive: the row is derived from a file, so the next reseed rebuilds it and the
+     * situation is gone. The fix belongs in the file, and the reason says so.</p>
+     */
+    @Test
+    void an_ingested_row_gets_no_derived_situation_and_the_reason_names_the_file(
+            @TempDir Path dir) throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            // A harvested heading, long enough to pass the length rule that is the ONLY
+            // thing standing between it and becoming "when by construction".
+            String id = store.put(ingested("lesson", "Something about construction.",
+                "by construction, the two are identical"));
+
+            FormMigration.Report report = new FormMigration(store).apply();
+
+            StoredEntry after = store.byIds(List.of(id)).get(0);
+            assertAll(
+                () -> assertEquals(0, report.migrated(),
+                    "an ingested row must not be migrated on a harvested cue; got: " + report),
+                () -> assertNull(after.facets().situation(),
+                    "and nothing may be stamped on it — a reseed would erase it anyway,"
+                        + " silently, because the count afterwards still matches"),
+                () -> assertTrue(
+                    report.keptReasons().containsKey(FormMigration.REASON_HARVESTED_NOT_DERIVABLE),
+                    "the reason must name the provenance and point at the file, not claim"
+                        + " the symptoms were too short — they are not; got: "
+                        + report.keptReasons()));
+        }
     }
 
     @Test

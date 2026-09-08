@@ -864,6 +864,11 @@ public final class ExperienceTool implements Tool {
         data.put("sourceEntries", report.sourceEntries());
         data.put("migrated", report.migrated());
         data.put("legacyKept", report.legacyKept());
+        // mcp#59: the rows the walk SKIPPED as retired. On the wire because a count that
+        // exists only in a Java record decides nothing — the reader of this response is
+        // the one who needs to know that sourceEntries describes the LIVE rows and that
+        // the store's own total is this many more.
+        data.put("retired", report.retired());
         data.put("keptReasons", report.keptReasons());
         data.put("provenanceKinds", report.provenanceKinds());
         data.put("dispositions", shown);

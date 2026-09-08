@@ -48,6 +48,27 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
         }
     }
 
+    /**
+     * mcp#59: TRUE WHEN THIS ROW STILL ANSWERS — it has not been retired.
+     *
+     * <p>A superseded row was replaced by a newer one; a rejected row was judged wrong.
+     * Neither is a candidate and neither is repair work: counting them teaches a review
+     * sweep to repair corpses, which is what {@code migrate_form} did when a catalogue
+     * update retired 187 pattern rows and they came back the next morning as a repair
+     * class of 188.</p>
+     *
+     * <p><b>The rule is not new; a Java caller simply could not reach it.</b> It already
+     * existed as the SQL fragment {@code AND status NOT IN ('rejected', 'superseded')} in
+     * THREE places — {@code EmbeddingIndex} twice, {@code H2ExperienceStore} once — and a
+     * WHERE clause is text the compiler cannot hand to anybody. So a fourth reader
+     * walking {@link ExperienceStore#all()}, which filters nothing, silently got a
+     * different population from every other reader, and nothing said so. This is that
+     * rule where a Java reader can ask for it.</p>
+     */
+    public boolean isLive() {
+        return !"superseded".equals(status) && !"rejected".equals(status);
+    }
+
     /** Never null: a legacy row projects {@link Facets#NONE}. */
     public Facets facets() {
         return facets == null ? Facets.NONE : facets;

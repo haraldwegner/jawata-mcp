@@ -68,14 +68,34 @@ public final class FormMigration {
         "has a situation, no cause; the triad's middle is missing";
 
     /**
+     * mcp#60: an INGESTED row, whose situation is not mechanically derivable and whose
+     * durable fix is not in the store at all.
+     *
+     * <p>Distinct from "symptoms too short" on purpose: an ingested row's symptoms are
+     * frequently long and still unusable, because they are harvested cues rather than
+     * observations. Naming that separately is what stops a reader concluding the corpus
+     * is thin when it is merely the wrong provenance for a mechanical rule.</p>
+     */
+    public static final String REASON_HARVESTED_NOT_DERIVABLE =
+        "ingested from a file; its situation belongs in that file, not derived here";
+
+    /**
      * The whole run: every source id exactly once, and the counts that
      * reconcile against that list.
      *
      * <p>{@code sourceEntries == migrated + legacyKept} is checkable from the
      * report alone, which is the point — a report whose totals can only be
      * taken on trust is not evidence.</p>
+     *
+     * <p>mcp#59: {@code retired} counts the rows the walk SKIPPED — superseded or
+     * rejected, and so not repair work. It is deliberately OUTSIDE the invariant above
+     * rather than folded into it: that equation was the report's one self-check, and
+     * redefining a number consumers already reconcile would have broken the check while
+     * looking like a fix. The store's own total is {@code sourceEntries + retired}, so a
+     * reader can still reconcile against {@code stats} — and a retired row is now VISIBLE
+     * as a number rather than vanishing from a shrinking count with no explanation.</p>
      */
-    public record Report(int sourceEntries, int migrated, int legacyKept,
+    public record Report(int sourceEntries, int migrated, int legacyKept, int retired,
                          List<Disposition> dispositions,
                          Map<String, Integer> keptReasons,
                          Map<String, Integer> provenanceKinds,
@@ -117,7 +137,35 @@ public final class FormMigration {
      * a principle restated as a condition is a sentence about the system rather
      * than about when to apply it — so no summary is ever used here.</p>
      */
+    /**
+     * mcp#60: NOTHING IS DERIVED FOR AN INGESTED ROW, and that is two refusals in one.
+     *
+     * <p><b>Its symptoms are not observations.</b> The derivation takes the first symptom
+     * long enough to read as a condition, which holds for a RECORDED row — a symptom there
+     * is how the problem looked. An ingested row's symptoms are HARVESTED cues: headings,
+     * bold phrases, prosified filename slugs. Measured on the pre-rebuild corpus, the dry
+     * run proposed 71 migrations whose derived situations included "when by construction",
+     * "when 107 seconds stale", "when $8 on one day" and "when race condition" — none of
+     * which tells a later reader whether the entry is for them, which is the entire job of
+     * a situation.</p>
+     *
+     * <p><b>And stamping one would not survive anyway.</b> An ingested row is DERIVED from
+     * a file, so the store is not where it is authored. A reseed rebuilds from those files
+     * and the stamped situation is gone — silently, because the count afterwards still
+     * matches. Its durable fix is to edit the FILE, which {@code sourceRef} names.</p>
+     *
+     * <p>So a confirm:true could once have written 71 junk situations that a routine
+     * reseed would then erase. Both halves point the same way: leave the row alone and
+     * send the reader to the file.</p>
+     */
+    private static boolean isHarvested(StoredEntry e) {
+        return e.facets() != null && "ingested".equals(e.facets().provenanceKind());
+    }
+
     static String situationFor(StoredEntry e) {
+        if (isHarvested(e)) {
+            return null;
+        }
         if (e.symptoms() != null) {
             for (String s : e.symptoms()) {
                 if (s != null && s.strip().length() > 12) {
@@ -156,8 +204,23 @@ public final class FormMigration {
         Map<String, Integer> provenance = new LinkedHashMap<>();
         int migrated = 0;
         int kept = 0;
+        int retired = 0;
 
         for (StoredEntry e : store.all()) {
+            // mcp#59: A RETIRED ROW IS NOT REPAIR WORK. store.all() applies no status
+            // filter, so a superseded or rejected row arrives here and is dispositioned
+            // like a live one — and lands in a keptReasons bucket that StoreQuality reads
+            // as a repair class. Measured on v3.15.0: a catalogue update retired 187
+            // pattern rows and the next dry run reported "has a situation, no cause" = 188.
+            //
+            // Skipped BEFORE the provenance tally, deliberately, so that every map in the
+            // report describes ONE population — the live rows. Counting provenance over
+            // 378 while the reasons describe 191 would make two numbers that cannot be
+            // reconciled by anyone reading them.
+            if (!e.isLive()) {
+                retired++;
+                continue;
+            }
             // provenanceKind is READ here, not merely carried: this report groups
             // on it, and it is the accessor's named consumer.
             String pk = e.facets() == null || e.facets().provenanceKind() == null
@@ -195,9 +258,16 @@ public final class FormMigration {
             String verdict = verdictFor(e.type());
             if (situation == null) {
                 kept++;
-                String why = e.symptoms() == null || e.symptoms().isEmpty()
-                    ? "no symptom and no operation to derive a situation from"
-                    : "symptoms too short to be a condition";
+                // mcp#60: an ingested row is kept for a DIFFERENT reason from a thin one,
+                // and saying "symptoms too short" here would be false about a row whose
+                // symptoms are often long — they are simply harvested cues rather than
+                // observations. The reason names the file instead, because that is where
+                // the fix survives a reseed.
+                String why = isHarvested(e)
+                    ? REASON_HARVESTED_NOT_DERIVABLE
+                    : e.symptoms() == null || e.symptoms().isEmpty()
+                        ? "no symptom and no operation to derive a situation from"
+                        : "symptoms too short to be a condition";
                 keptReasons.merge(why, 1, Integer::sum);
                 out.add(new Disposition(e.id(), Disposition.LEGACY_KEPT, null, null, why));
                 continue;
@@ -215,6 +285,7 @@ public final class FormMigration {
                 store.setForm(e.id(), situation, verdict);
             }
         }
-        return new Report(out.size(), migrated, kept, out, keptReasons, provenance, write);
+        return new Report(out.size(), migrated, kept, retired, out, keptReasons, provenance,
+            write);
     }
 }
