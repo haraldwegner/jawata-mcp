@@ -65,25 +65,62 @@ class AcceptanceFixtureTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
-     * Finds a committed fixture by walking up from the working directory.
+     * Finds a committed fixture by walking up from each search root.
      *
      * <p>Fails loudly rather than skipping when it cannot be found. A gate that
      * skips when its own input is missing reports green while measuring
      * nothing; this project already lost two sprints of a headline gate to
      * exactly that, so an absent fixture is a failure here, never a skip.</p>
+     *
+     * <p>mcp#53: it used to walk up from the JVM's WORKING DIRECTORY alone. That works
+     * today only because {@code build/run-suite.sh} never changes directory — a fact about
+     * the launcher, not a guarantee about the fixture. A CI step with its own
+     * {@code working-directory}, an IDE run configuration or any wrapper that {@code cd}s
+     * would fail these tests for a reason that has nothing to do with the fixture's
+     * contents. {@link #searchRoots()} now offers the test bundle's OWN location first, so
+     * the assertion depends on where the fixture is rather than on where the JVM started.</p>
      */
     static Path fixture(String name) {
         List<String> tried = new ArrayList<>();
-        Path dir = Paths.get("").toAbsolutePath();
-        for (int up = 0; up < 6 && dir != null; up++, dir = dir.getParent()) {
-            Path candidate = dir.resolve("build").resolve("acceptance").resolve(name);
-            tried.add(candidate.toString());
-            if (Files.isRegularFile(candidate)) {
-                return candidate;
+        for (Path root : searchRoots()) {
+            Path dir = root;
+            for (int up = 0; up < 8 && dir != null; up++, dir = dir.getParent()) {
+                Path candidate = dir.resolve("build").resolve("acceptance").resolve(name);
+                tried.add(candidate.toString());
+                if (Files.isRegularFile(candidate)) {
+                    return candidate;
+                }
             }
         }
         fail("the frozen acceptance fixture '" + name + "' was not found; looked in: " + tried);
         throw new IllegalStateException("unreachable");
+    }
+
+    /**
+     * Where to start looking, launcher-independent first.
+     *
+     * <p>The bundle's own code source is the anchor that does not move: this class is
+     * loaded from the test bundle inside the built dist, so walking up from there reaches
+     * the repository whatever directory the JVM was started in. The working directory is
+     * kept as a SECOND root rather than dropped — it is what makes an IDE or a plain
+     * {@code mvn} run work when the code source is a classes directory somewhere else —
+     * and every candidate tried is reported on failure, so a miss names both paths instead
+     * of leaving the reader to guess which root was wrong.</p>
+     */
+    private static List<Path> searchRoots() {
+        List<Path> roots = new ArrayList<>();
+        try {
+            var source = AcceptanceFixtureTest.class.getProtectionDomain().getCodeSource();
+            if (source != null && source.getLocation() != null) {
+                Path here = Path.of(source.getLocation().toURI());
+                // A jar's location is the FILE; start from the directory holding it.
+                roots.add(Files.isRegularFile(here) ? here.getParent() : here);
+            }
+        } catch (Exception e) {
+            // No code source (or an opaque one): the working directory below still applies.
+        }
+        roots.add(Paths.get("").toAbsolutePath());
+        return roots;
     }
 
     private static JsonNode read(String name) throws Exception {
