@@ -313,7 +313,7 @@ done
 WALL=$(( $(date +%s) - START ))
 
 # 4. Merge the summaries.
-TOT=0; PASS=0; FAIL=0; ABORT=0; SKIP=0; UNLOAD=0; CABORT=0; SUMMARIES=0
+TOT=0; PASS=0; FAIL=0; ABORT=0; SKIP=0; UNLOAD=0; CABORT=0; CFAIL=0; SUMMARIES=0
 for s in $(seq 0 $((SHARDS - 1))); do
     line=$(grep 'SPIKE-TESTS' "$OUT/shard-$s.log" | tail -1)
     if [ -z "$line" ]; then
@@ -328,6 +328,21 @@ for s in $(seq 0 $((SHARDS - 1))); do
     ABORT=$((ABORT + $(sed 's/.*aborted=\([0-9]*\).*/\1/' <<< "$line")))
     SKIP=$((SKIP + $(sed 's/.*skipped=\([0-9]*\).*/\1/' <<< "$line")))
     UNLOAD=$((UNLOAD + $(sed 's/.*unloadable=\([0-9]*\).*/\1/' <<< "$line")))
+    # mcp#51 — A MISSING FIELD MUST NOT READ AS ZERO, and without this it does. If a
+    # summary line predates either counter (an old jawata.jar left in the dist), the
+    # GREEDY sed below finds no match and returns THE WHOLE LINE; the arithmetic then
+    # fails on it, and because this script sets no `-e` the assignment is simply skipped
+    # and the counter keeps its initial 0. A gate would then report the healthy value for
+    # a run it could not measure — which is the shape of the hole this issue closes, so
+    # it is refused here rather than defaulted.
+    for field in containersAborted containersFailed; do
+        case "$line" in
+            *"$field="*) ;;
+            *) echo "FATAL: shard $s's summary carries no $field= — the dist is older than" \
+                    "this script. Rebuild it (mvn install). Read as 0, a missing counter" \
+                    "is indistinguishable from a clean run."; exit 2 ;;
+        esac
+    done
     # mcp#54. THE CASE OF ONE LETTER IS LOAD-BEARING HERE, and it is worth saying so
     # because nothing else in this file would tell you. Every pattern above is GREEDY,
     # so `.*aborted=` matches the RIGHTMOST occurrence on the line — and the only
@@ -335,9 +350,15 @@ for s in $(seq 0 $((SHARDS - 1))); do
     # the A. Rename the field to `containers_aborted=` and ABORT silently starts
     # reading the container count instead.
     CABORT=$((CABORT + $(sed 's/.*containersAborted=\([0-9]*\).*/\1/' <<< "$line")))
+    # mcp#51 — and the SAME accident is now load-bearing twice. `.*failed=` above is
+    # greedy too, and `containersFailed=` is safe from it only because JUnit capitalises
+    # the F. Two fields, two capitals, one convention nobody here controls: if either
+    # name is ever spelled lower-case, the counter ABOVE silently starts reading the
+    # container count and the suite reports a failure total it did not measure.
+    CFAIL=$((CFAIL + $(sed 's/.*containersFailed=\([0-9]*\).*/\1/' <<< "$line")))
 done
 
-echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD containersAborted=$CABORT"
+echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD containersAborted=$CABORT containersFailed=$CFAIL"
 [ "$SUMMARIES" -eq "$SHARDS" ] || { echo "FAILED: $((SHARDS - SUMMARIES)) shard(s) produced no summary"; exit 3; }
 
 # Every PLANNED test must have produced a verdict — the runner's blind spot is a
@@ -345,7 +366,7 @@ echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS fail
 # The gate lives in its own script so it can be exercised with counters that a
 # real run almost never produces (see build/verdict-gate-test.sh); inline, its
 # unloadable-vs-total unit error was unreachable by any test and shipped.
-"$ROOT/build/verdict-gate.sh" "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$OUT/shard-*.log" "$CABORT" || exit $?
+"$ROOT/build/verdict-gate.sh" "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$OUT/shard-*.log" "$CABORT" "$CFAIL" || exit $?
 
 # mcp#45 — AND EVERY ABORT MUST BE A DECISION SOMEBODY MADE. The gate above proves
 # every planned test produced a verdict; it says nothing about whether the aborts
@@ -360,5 +381,19 @@ echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS fail
 # the decision this gate exists to force.
 "$ROOT/build/abort-budget.sh" "$OUT" || exit $?
 
-[ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] || exit 1
+# mcp#51 — A FAILED CONTAINER IS A FAILURE, AND IT IS THE ONE THAT BALANCES.
+# An @AfterAll that throws blows up after every test in the class has already run
+# and reported, so PASS+FAIL+ABORT+SKIP == TOT still holds, the verdict gate above is
+# satisfied, and testsFailed is zero. Every gate on this path was therefore green over
+# a class whose teardown died — the only trace a `^^ FAILED` line in a shard log
+# nobody greps. It is NOT folded into the verdict identity for the same units reason
+# containersAborted is not: one failed CONTAINER is not one lost TEST. It is an
+# independent failure condition, and it belongs here beside the other two.
+if [ "$CFAIL" -gt 0 ]; then
+    echo "FAILED: $CFAIL container(s) FAILED — a class-level throw (@BeforeAll," \
+         "@AfterAll, or a class initializer). The tests themselves may all have" \
+         "passed; the class still blew up. Find it in the shard logs:"
+    echo "    grep -n '\\^\\^ FAILED' $OUT/shard-*.log"
+fi
+[ "$FAIL" -eq 0 ] && [ "$UNLOAD" -eq 0 ] && [ "$CFAIL" -eq 0 ] || exit 1
 exit 0

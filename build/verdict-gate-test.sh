@@ -36,8 +36,34 @@ expect "a healthy run passes" 0 - 1986 1983 0 3 0
 
 # The condition the gate exists for: a @BeforeAll throw takes two tests down.
 # They were DISCOVERED (so they are in total) and reach no bucket.
-expect "a container throw is named, with the count" 4 "2 planned test(s) produced NO verdict" \
+#
+# RENAMED at mcp#51, because the old name claimed more than the case checks. It was
+# "a container throw is named, with the count" — and it passes FIVE arguments, so no
+# container counter reaches the gate and nothing about a throw can be named. What it
+# actually pins is the LOSS COUNT, which is the half that was true.
+expect "the count of lost verdicts is reported" 4 "2 planned test(s) produced NO verdict" \
     1986 1982 0 2 0
+# ...and with no cause counters, the gate must say it cannot name one rather than
+# guessing. This is the other half of the case above, and it had none.
+expect "with no cause counters the gate declines to name one" 4 "look further" \
+    1986 1982 0 2 0
+
+# mcp#51 — A CLASS-LEVEL THROW, NOW COUNTED. Same identity shortfall as above; the
+# eighth argument is what turns "look further" into a diagnosis.
+expect "a container failure is named, with the count" 4 "2 container(s) FAILED" \
+    1986 1982 0 2 0 "" 0 2
+# The two causes are DIFFERENT diagnoses and must not shadow each other: an abort is
+# budgetable, a throw is not. A chain would have reported only the first.
+expect "both causes are named when both fired (abort)" 4 "1 container(s) ABORTED" \
+    1986 1982 0 2 0 "" 1 1
+expect "both causes are named when both fired (failure)" 4 "1 container(s) FAILED" \
+    1986 1982 0 2 0 "" 1 1
+# A BALANCED run is the case mcp#51 is really about: an @AfterAll throws AFTER every
+# test in its class has reported, so this identity holds and this gate is silent — by
+# design. run-suite.sh checks containersFailed separately, and this case pins that the
+# gate does NOT start failing balanced runs.
+expect "a container failure does not break a balanced run's identity" 0 - \
+    1986 1983 0 3 0 "" 0 2
 
 # THE UNIT ERROR, case 1. An unloadable class is not in `total` at all — its
 # tests are never discovered. Adding it here produced a NEGATIVE loss count and

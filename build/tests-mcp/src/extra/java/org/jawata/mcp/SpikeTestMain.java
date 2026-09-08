@@ -150,12 +150,23 @@ public final class SpikeTestMain {
         // so PASS+FAIL+ABORT+SKIP+containersAborted == total holds only when every aborted
         // class had exactly one test. Adding it would repeat, in the other direction, the
         // unloadable-vs-total unit error this gate's own header records.
+        // mcp#51 — containersFailed is the OTHER half, and it is the one that could ship a
+        // green suite over a broken class. An @AfterAll that THROWS blows up after every test
+        // in the class has already run and reported, so the counts BALANCE: the verdict gate
+        // is satisfied, testsFailed is zero, and the only trace is a `^^ FAILED` line in a
+        // shard log nobody greps. @BeforeAll is the loud case and was closed; @AfterAll is
+        // the quiet one and was not.
         out.printf("SPIKE-TESTS total=%d succeeded=%d failed=%d aborted=%d skipped=%d"
-                + " unloadable=%d containersAborted=%d%n",
+                + " unloadable=%d containersAborted=%d containersFailed=%d%n",
             s.getTestsFoundCount(), s.getTestsSucceededCount(), s.getTestsFailedCount(),
             s.getTestsAbortedCount(), s.getTestsSkippedCount(), unloadable.size(),
-            s.getContainersAbortedCount());
-        return (int) Math.min(s.getTestsFailedCount() + unloadable.size(), 250);
+            s.getContainersAbortedCount(), s.getContainersFailedCount());
+        // mcp#51: a FAILED CONTAINER is a failure. Without it in this sum a single-class or
+        // targeted run exits 0 while a class's teardown threw — which is how the case stayed
+        // invisible: nothing that reads an exit status could see it, and the sharded runner
+        // reads these summaries rather than this code.
+        return (int) Math.min(
+            s.getTestsFailedCount() + unloadable.size() + s.getContainersFailedCount(), 250);
     }
 
     /**

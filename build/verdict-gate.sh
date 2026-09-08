@@ -22,11 +22,21 @@
 # gated by the caller; it does not belong in the arithmetic.
 #
 # Usage: verdict-gate.sh <total> <passed> <failed> <aborted> <skipped> [shard-glob]
+#                        [containersAborted] [containersFailed]
 # Exit:  0 = every planned test produced a verdict; 4 = some produced none.
+#
+# NEITHER container counter ENTERS THE IDENTITY, and mcp#51 is why the second one is
+# here at all: a container FAILURE frequently leaves the identity intact. An @AfterAll
+# that throws runs after every test in its class has reported, so this gate is
+# satisfied and the class is still broken — which is why run-suite.sh checks
+# containersFailed separately rather than through this arithmetic. What it is read for
+# HERE is the same job containersAborted does: turning the guess below ("look for a
+# throw") into a statement of fact when the identity does break.
 set -uo pipefail
 
 if [ "$#" -lt 5 ]; then
-    echo "usage: $(basename "$0") <total> <passed> <failed> <aborted> <skipped> [shard-glob]" >&2
+    echo "usage: $(basename "$0") <total> <passed> <failed> <aborted> <skipped> [shard-glob]" \
+         "[containersAborted] [containersFailed]" >&2
     exit 2
 fi
 
@@ -38,6 +48,11 @@ TOT="$1"; PASS="$2"; FAIL="$3"; ABORT="$4"; SKIP="$5"; LOGS="${6:-}"
 # the other direction. It is read for one purpose: to turn the speculation in the
 # message below ("IF the named class instead aborts…") into a statement of fact.
 CABORT="${7:-0}"
+# mcp#51 — OPTIONAL EIGHTH, read for one purpose and outside the identity for the same
+# units reason as the seventh. Where CABORT explains a @BeforeAll that ASSUMED ITS WAY
+# OUT, this explains one that THREW: both leave their class's tests discovered and in
+# no bucket, and until now the message below could only tell the reader to go looking.
+CFAIL="${8:-0}"
 
 for n in "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP"; do
     case "$n" in
@@ -53,7 +68,13 @@ if [ "$ACCOUNTED" -ne "$TOT" ]; then
          "throw, or a missing test resource. Search the shard logs for the" \
          "class that reported fewer results than it planned:"
     [ -n "$LOGS" ] && echo "    grep -n 'FAILED:\|Exception\|Error' $LOGS | head"
+    # mcp#51 — the two counters are reported INDEPENDENTLY rather than as a chain. A
+    # first draft made the second an `elif`, which hides a class-level throw whenever an
+    # abort also fired: two different diagnoses, and the reader needs both or they fix
+    # one and re-run into the other.
+    NAMED=0
     if [ "$CABORT" -gt 0 ]; then
+        NAMED=1
         # mcp#54: the summary line carries containersAborted now, so this is no longer a
         # guess the reader has to check. It is still a REPORT rather than a pass — a
         # class whose tests never ran is a loss of coverage — but it names the cause, and
@@ -63,9 +84,21 @@ if [ "$ACCOUNTED" -ne "$TOT" ]; then
              "they reach no bucket. This gate is NOT reporting a phantom: the coverage is" \
              "genuinely gone. Either push the assumption down into the @Test methods,"\
              "where it is counted, or budget the skip in build/expected-aborts.<os>."
-    else
-        echo "  No container abort was reported, so this is not the @BeforeAll" \
-             "assumeTrue(false) case — look for a throw."
+    fi
+    if [ "$CFAIL" -gt 0 ]; then
+        # mcp#51: the throw the last branch used to send the reader looking for is now
+        # counted, so say so. A class-level THROW and a class-level ASSUMPTION are
+        # different diagnoses with the same symptom here, and the two counters are what
+        # separate them — an abort is something to budget, a throw is something to fix.
+        NAMED=1
+        echo "  CAUSE NAMED: $CFAIL container(s) FAILED — a class-level THROW, not an" \
+             "assumption: a @BeforeAll or a class initializer that blew up. Its tests" \
+             "were discovered, so they are in total, and they reach no bucket. Fix the" \
+             "throw; this is not something to budget."
+    fi
+    if [ "$NAMED" -eq 0 ]; then
+        echo "  No container abort or failure was reported, so this is neither the" \
+             "@BeforeAll assumeTrue(false) case nor a class-level throw — look further."
     fi
     exit 4
 fi
