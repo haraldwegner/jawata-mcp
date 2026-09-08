@@ -157,13 +157,72 @@ public class FindUnusedCodeTool extends AbstractTool {
         }
     }
 
+    /**
+     * A binding's identity as a STRING, taken from its DECLARATION — mcp#77.
+     *
+     * <p><b>Why not the binding object.</b> This detector used binding objects as set members
+     * and asked {@code usedBindings.contains(declaration)}. For a GENERIC member that question
+     * is always false: JDT resolves a call site to a parameterized INSTANCE of the method —
+     * {@code causeOf(Throwable, Class<BindException>)} — and the declaration it is measured
+     * against is {@code causeOf(Throwable, Class<T>)}. Two different bindings, never equal, so
+     * every private generic member read as dead however many callers it had.</p>
+     *
+     * <p><b>Measured on this repository before the change</b>, each by call hierarchy:
+     * {@code JawataApplication#causeOf} 1 caller, {@code H2ExperienceStore#withRead} 12,
+     * {@code RefactorToStateTool#enclosing} 4 — all three reported unused, all three generic.
+     * The non-generic findings checked ({@code RefreshWorkspaceTool#isSourceClasspath},
+     * {@code ApplyCleanupTool#log}) are genuinely dead, which is what makes generic-ness the
+     * discriminator rather than a coincidence.</p>
+     *
+     * <p><b>Why this is not merely a bug fix.</b> The cure declining was the only thing between
+     * a false-positive finding and a destructive edit: each of those three carried a rendered,
+     * door-accepted {@code apply_cleanup kind=remove_dead_code} address. Had the cure acted, it
+     * would have deleted a method with twelve callers.</p>
+     *
+     * <p>Going through the declaration is JDT's own way to compare bindings — a key is stable
+     * where an object identity is not, and {@code getMethodDeclaration()} maps an instance back
+     * to the declaration the first pass recorded.</p>
+     */
+    private static String keyOf(IBinding binding) {
+        if (binding instanceof IMethodBinding method) {
+            return method.getMethodDeclaration().getKey();
+        }
+        if (binding instanceof IVariableBinding variable) {
+            return variable.getVariableDeclaration().getKey();
+        }
+        return binding.getKey();
+    }
+
+    /**
+     * Members the SERIALIZATION machinery reads, which no reference count can see — mcp#77.
+     *
+     * <p>{@code serialVersionUID} is read reflectively by {@code ObjectStreamClass} and is
+     * referenced by no Java code anywhere, so it is unused by construction and this detector
+     * reported every one of them: SEVEN of the 22 findings on this repository, each carrying a
+     * cure offering to delete it. Removing one does not make a class smaller — it changes that
+     * class's serialization identity, so streams written by the old version stop deserializing.</p>
+     *
+     * <p>That makes these worse than ordinary false positives. An unused private helper reported
+     * wrongly costs a reader a minute; this one is a finding whose cure is a silent
+     * incompatibility, and it would have been reported forever because no amount of reference
+     * counting can ever find a reader.</p>
+     */
+    private static boolean isSerializationContract(IBinding binding) {
+        return binding instanceof IVariableBinding variable
+            && variable.isField()
+            && "serialVersionUID".equals(variable.getName());
+    }
+
     private void findUnusedInFile(CompilationUnit ast, Path file, IJdtService service,
                                    List<Map<String, Object>> unusedItems,
                                    boolean includeFields, boolean includeMethods) {
 
         // Collect all private members and their usages
         Map<IBinding, ASTNode> privateMembers = new HashMap<>();
-        Set<IBinding> usedBindings = new HashSet<>();
+        // mcp#77: the USED set is keyed by the binding's DECLARATION KEY, never by the binding
+        // OBJECT. See keyOf below — comparing binding objects is what reported live generic
+        // members as dead.
+        Set<String> usedKeys = new HashSet<>();
 
         // First pass: collect private members
         ast.accept(new ASTVisitor() {
@@ -205,7 +264,7 @@ public class FindUnusedCodeTool extends AbstractTool {
                                           || (parent instanceof MethodDeclaration md && md.getName() == node);
 
                     if (!isDeclaration) {
-                        usedBindings.add(binding);
+                        usedKeys.add(keyOf(binding));
                     }
                 }
                 return true;
@@ -215,7 +274,7 @@ public class FindUnusedCodeTool extends AbstractTool {
             public boolean visit(MethodInvocation node) {
                 IMethodBinding binding = node.resolveMethodBinding();
                 if (binding != null) {
-                    usedBindings.add(binding);
+                    usedKeys.add(keyOf(binding));
                 }
                 return true;
             }
@@ -224,7 +283,10 @@ public class FindUnusedCodeTool extends AbstractTool {
         // Find unused members
         for (Map.Entry<IBinding, ASTNode> entry : privateMembers.entrySet()) {
             IBinding binding = entry.getKey();
-            if (!usedBindings.contains(binding)) {
+            if (isSerializationContract(binding)) {
+                continue;
+            }
+            if (!usedKeys.contains(keyOf(binding))) {
                 ASTNode node = entry.getValue();
 
                 Map<String, Object> item = new LinkedHashMap<>();
