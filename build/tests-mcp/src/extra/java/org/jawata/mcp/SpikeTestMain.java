@@ -107,6 +107,19 @@ public final class SpikeTestMain {
                         result.getThrowable().map(Throwable::getMessage).orElse("(no reason given)"));
                     System.out.flush();
                 }
+                // mcp#54 — A CONTAINER ABORT IS A COVERAGE LOSS AND IT WAS INVISIBLE TWICE
+                // OVER. A @BeforeAll calling assumeTrue(false) leaves its class's tests
+                // DISCOVERED — so they sit in `total` — and lands them in no bucket, while
+                // JUnit records the abort in containersAborted, which the summary line below
+                // did not carry. And the class branch printed it under `^^`, where the abort
+                // budget greps `~~ ABORTED`, so the gate that exists to notice a skip joining
+                // the run could not see this kind at all. Same prefix now, so one gate covers
+                // both kinds.
+                if (isClass(id) && result.getStatus() == TestExecutionResult.Status.ABORTED) {
+                    System.out.printf("        ~~ ABORTED %s: %s%n", id.getDisplayName(),
+                        result.getThrowable().map(Throwable::getMessage).orElse("(no reason given)"));
+                    System.out.flush();
+                }
                 if (isClass(id)) {
                     done.incrementAndGet();
                     if (result.getStatus() != TestExecutionResult.Status.SUCCESSFUL) {
@@ -125,9 +138,23 @@ public final class SpikeTestMain {
             out.println("UNLOADABLE test classes (" + unloadable.size() + "):");
             unloadable.forEach(u -> out.println("  " + u));
         }
-        out.printf("SPIKE-TESTS total=%d succeeded=%d failed=%d aborted=%d skipped=%d unloadable=%d%n",
+        // mcp#54: containersAborted is carried because the verdict gate's own error text
+        // already names it as the thing it cannot see — "JUnit counts that in
+        // containersAborted, which the summary line does not carry, so its tests stay in
+        // total and reach no bucket". A gate that documents its blind spot and is given no
+        // way to look is a gate that reports a FALSE failure on the exact case it warns
+        // about.
+        //
+        // It is NOT added into the verdict identity, and that restraint is the point: the
+        // units differ. One aborted CONTAINER costs however many TESTS that class declared,
+        // so PASS+FAIL+ABORT+SKIP+containersAborted == total holds only when every aborted
+        // class had exactly one test. Adding it would repeat, in the other direction, the
+        // unloadable-vs-total unit error this gate's own header records.
+        out.printf("SPIKE-TESTS total=%d succeeded=%d failed=%d aborted=%d skipped=%d"
+                + " unloadable=%d containersAborted=%d%n",
             s.getTestsFoundCount(), s.getTestsSucceededCount(), s.getTestsFailedCount(),
-            s.getTestsAbortedCount(), s.getTestsSkippedCount(), unloadable.size());
+            s.getTestsAbortedCount(), s.getTestsSkippedCount(), unloadable.size(),
+            s.getContainersAbortedCount());
         return (int) Math.min(s.getTestsFailedCount() + unloadable.size(), 250);
     }
 

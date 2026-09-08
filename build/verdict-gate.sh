@@ -31,6 +31,13 @@ if [ "$#" -lt 5 ]; then
 fi
 
 TOT="$1"; PASS="$2"; FAIL="$3"; ABORT="$4"; SKIP="$5"; LOGS="${6:-}"
+# mcp#54 — OPTIONAL SEVENTH, and it does NOT enter the identity below. One aborted
+# CONTAINER costs however many TESTS that class declared, so adding it to
+# PASS+FAIL+ABORT+SKIP would hold only where every aborted class had exactly one
+# test — the unit error this file's own header records for `unloadable`, repeated in
+# the other direction. It is read for one purpose: to turn the speculation in the
+# message below ("IF the named class instead aborts…") into a statement of fact.
+CABORT="${7:-0}"
 
 for n in "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP"; do
     case "$n" in
@@ -46,11 +53,20 @@ if [ "$ACCOUNTED" -ne "$TOT" ]; then
          "throw, or a missing test resource. Search the shard logs for the" \
          "class that reported fewer results than it planned:"
     [ -n "$LOGS" ] && echo "    grep -n 'FAILED:\|Exception\|Error' $LOGS | head"
-    echo "  If the named class instead ABORTS at the container level — a @BeforeAll" \
-         "calling assumeTrue(false) — this gate is reporting a FALSE failure: JUnit" \
-         "counts that in containersAborted, which the summary line does not carry, so" \
-         "its tests stay in total and reach no bucket. Push the assumption down into" \
-         "the @Test methods, where it is counted."
+    if [ "$CABORT" -gt 0 ]; then
+        # mcp#54: the summary line carries containersAborted now, so this is no longer a
+        # guess the reader has to check. It is still a REPORT rather than a pass — a
+        # class whose tests never ran is a loss of coverage — but it names the cause, and
+        # the abort budget is what decides whether that particular skip was agreed.
+        echo "  CAUSE NAMED: $CABORT container(s) ABORTED — a @BeforeAll calling" \
+             "assumeTrue(false). Their tests were discovered, so they are in total, and" \
+             "they reach no bucket. This gate is NOT reporting a phantom: the coverage is" \
+             "genuinely gone. Either push the assumption down into the @Test methods,"\
+             "where it is counted, or budget the skip in build/expected-aborts.<os>."
+    else
+        echo "  No container abort was reported, so this is not the @BeforeAll" \
+             "assumeTrue(false) case — look for a throw."
+    fi
     exit 4
 fi
 exit 0

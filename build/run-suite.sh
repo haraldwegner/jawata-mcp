@@ -313,7 +313,7 @@ done
 WALL=$(( $(date +%s) - START ))
 
 # 4. Merge the summaries.
-TOT=0; PASS=0; FAIL=0; ABORT=0; SKIP=0; UNLOAD=0; SUMMARIES=0
+TOT=0; PASS=0; FAIL=0; ABORT=0; SKIP=0; UNLOAD=0; CABORT=0; SUMMARIES=0
 for s in $(seq 0 $((SHARDS - 1))); do
     line=$(grep 'SPIKE-TESTS' "$OUT/shard-$s.log" | tail -1)
     if [ -z "$line" ]; then
@@ -328,9 +328,16 @@ for s in $(seq 0 $((SHARDS - 1))); do
     ABORT=$((ABORT + $(sed 's/.*aborted=\([0-9]*\).*/\1/' <<< "$line")))
     SKIP=$((SKIP + $(sed 's/.*skipped=\([0-9]*\).*/\1/' <<< "$line")))
     UNLOAD=$((UNLOAD + $(sed 's/.*unloadable=\([0-9]*\).*/\1/' <<< "$line")))
+    # mcp#54. THE CASE OF ONE LETTER IS LOAD-BEARING HERE, and it is worth saying so
+    # because nothing else in this file would tell you. Every pattern above is GREEDY,
+    # so `.*aborted=` matches the RIGHTMOST occurrence on the line — and the only
+    # reason it does not swallow `containersAborted=` is that JUnit's name capitalises
+    # the A. Rename the field to `containers_aborted=` and ABORT silently starts
+    # reading the container count instead.
+    CABORT=$((CABORT + $(sed 's/.*containersAborted=\([0-9]*\).*/\1/' <<< "$line")))
 done
 
-echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD"
+echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD containersAborted=$CABORT"
 [ "$SUMMARIES" -eq "$SHARDS" ] || { echo "FAILED: $((SHARDS - SUMMARIES)) shard(s) produced no summary"; exit 3; }
 
 # Every PLANNED test must have produced a verdict — the runner's blind spot is a
@@ -338,7 +345,7 @@ echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS fail
 # The gate lives in its own script so it can be exercised with counters that a
 # real run almost never produces (see build/verdict-gate-test.sh); inline, its
 # unloadable-vs-total unit error was unreachable by any test and shipped.
-"$ROOT/build/verdict-gate.sh" "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$OUT/shard-*.log" || exit $?
+"$ROOT/build/verdict-gate.sh" "$TOT" "$PASS" "$FAIL" "$ABORT" "$SKIP" "$OUT/shard-*.log" "$CABORT" || exit $?
 
 # mcp#45 — AND EVERY ABORT MUST BE A DECISION SOMEBODY MADE. The gate above proves
 # every planned test produced a verdict; it says nothing about whether the aborts
