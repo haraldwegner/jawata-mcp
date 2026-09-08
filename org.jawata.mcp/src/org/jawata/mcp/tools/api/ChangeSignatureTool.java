@@ -6,9 +6,11 @@ import org.jawata.mcp.tools.ToolKindDelegate;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.ISourceRange;
+import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.Signature;
 import org.eclipse.jdt.core.dom.AST;
@@ -118,6 +120,19 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
     );
 
     private static final Set<String> VISIBILITIES = Set.of("public", "protected", "package", "private");
+
+    /** WHICH precondition declined — see {@link org.jawata.mcp.models.ErrorInfo}. */
+    public static final class Refusal {
+
+        /**
+         * mcp#63 — the target is a RECORD's canonical constructor, whose signature is not
+         * its own.
+         */
+        public static final String RECORD_CANONICAL_CONSTRUCTOR = "RECORD_CANONICAL_CONSTRUCTOR";
+
+        private Refusal() {
+        }
+    }
 
     public ChangeSignatureTool(Supplier<IJdtService> serviceSupplier,
                                      RefactoringChangeCache changeCache) {
@@ -305,6 +320,26 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
                                                String newName, String newReturnType,
                                                List<ParameterInfo> newParameters,
                                                String visibility) throws Exception {
+        // mcp#63 — refuse BEFORE building a change. Without this the JDT engine accepts the
+        // target and emits a rewrite that is wrong for the shape: on a COMPACT canonical
+        // constructor it writes a parameter list over the opening brace, which the compile
+        // gate then refuses as a syntax error and undoes. Nothing corrupt ships either way,
+        // but the caller reads REFACTORING_BROKE_COMPILE — "this tool is broken" — where the
+        // truth is that the operation does not apply to this shape at all.
+        if (isCanonicalRecordConstructor(method)) {
+            IType declaring = method.getDeclaringType();
+            return Preparation.fail(ToolResponse.invalidParameter("position",
+                "'" + declaring.getElementName() + "' is a RECORD and this is its CANONICAL "
+                    + "constructor, whose signature is not its own: the language requires it to "
+                    + "take exactly the record's components, so it is fixed by the header. A "
+                    + "changed signature here would be a constructor that is neither canonical "
+                    + "nor delegating, which does not compile. Adding or removing a component "
+                    + "means editing the HEADER, and that cascades to the accessors, "
+                    + "equals/hashCode/toString and every `new` call site — no operation "
+                    + "performs it today (mcp#63); it is authored by hand. A NON-canonical "
+                    + "constructor of this record can be changed here.",
+                Refusal.RECORD_CANONICAL_CONSTRUCTOR));
+        }
         HeadlessJdtConfig.ensureInitialized();
 
         String oldName = method.getElementName();
@@ -382,6 +417,41 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
      * and mark the ones no longer present as deleted. The non-deleted infos, in
      * request order, become the new signature order.
      */
+    /**
+     * mcp#63 — is this the record's CANONICAL constructor?
+     *
+     * <p>Canonical means its parameters ARE the record's components, and that is the property
+     * the language fixes: a record constructor either takes exactly the components or
+     * delegates to one that does. So the test is the component list rather than the
+     * declaration form — the compact form ({@code public Foo { … }}) carries no parameter
+     * list in source at all and JDT's model synthesizes one, so both forms answer here, as
+     * does an explicitly written full canonical constructor.</p>
+     *
+     * <p>A record's OTHER constructors are ordinary and are NOT refused. That is the control
+     * separating "refuses the canonical one" from "refuses every constructor on a record",
+     * and the two are indistinguishable from a refusal alone.</p>
+     */
+    private static boolean isCanonicalRecordConstructor(IMethod method) throws JavaModelException {
+        if (!method.isConstructor()) {
+            return false;
+        }
+        IType declaring = method.getDeclaringType();
+        if (declaring == null || !declaring.isRecord()) {
+            return false;
+        }
+        IField[] components = declaring.getRecordComponents();
+        String[] parameters = method.getParameterTypes();
+        if (components.length != parameters.length) {
+            return false;
+        }
+        for (int i = 0; i < components.length; i++) {
+            if (!components[i].getTypeSignature().equals(parameters[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static void applyParameterChanges(ChangeSignatureProcessor processor,
                                               List<ParameterInfo> requested) {
         List<org.eclipse.jdt.internal.corext.refactoring.ParameterInfo> infos =

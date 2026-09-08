@@ -83,6 +83,15 @@ public final class ResolveOrRelocate {
             // would be a guess wearing a fact's clothes. So: say the member is not
             // there, and name the ones that ARE. The agent picks; we do not pretend.
             if (typeIsThere) {
+                // mcp#63 — a RECORD's canonical constructor is implicit unless declared, so
+                // the model holds no member to name and the answer below would say the
+                // constructor is not on the type. It IS on the type: `new Foo(...)` compiles.
+                // That is exactly the second truth this method exists to stop telling as the
+                // first, and the issue's own repro is this message.
+                ToolResponse implicit = implicitRecordConstructor(service, typePart, name);
+                if (implicit != null) {
+                    return implicit;
+                }
                 List<String> members = allMembers(service, typePart);
                 String has = members.isEmpty()
                     ? ""
@@ -120,6 +129,57 @@ public final class ResolveOrRelocate {
                 + "renamed. Found: '" + best + "'.",
             "STALE MEMORY: re-issue with '" + best + "' and remember THAT name from now on."
                 + others);
+    }
+
+    /**
+     * mcp#63 — the honest answer when a caller names a RECORD's canonical constructor that
+     * the record does not declare.
+     *
+     * <p>It is not ABSENT, it is IMPLICIT: derived from the component list in the header. The
+     * generic not-found answer lists the members the type does declare, which for a record
+     * reads as "this type has no constructor" — false, and false in the one direction that
+     * matters, since every {@code new Foo(...)} in the workspace compiles against it.</p>
+     *
+     * <p>Returns null when this is not that case, so the caller falls through to the generic
+     * answer. A record that DECLARES its canonical constructor never reaches here — the name
+     * would have resolved.</p>
+     */
+    private static ToolResponse implicitRecordConstructor(IJdtService service, String typeFqn,
+                                                          String name) {
+        try {
+            int hash = name.indexOf('#');
+            if (hash < 0) {
+                return null;
+            }
+            String memberPart = name.substring(hash + 1);
+            int paren = memberPart.indexOf('(');
+            String memberName = paren < 0 ? memberPart : memberPart.substring(0, paren);
+
+            Optional<IJavaElement> typeEl = FqnResolver.resolveWorkspace(typeFqn, service);
+            if (typeEl.isEmpty() || !(typeEl.get() instanceof IType type) || !type.isRecord()) {
+                return null;
+            }
+            if (!type.getElementName().equals(memberName)) {
+                return null;
+            }
+            for (IMethod declared : type.getMethods()) {
+                if (declared.isConstructor()) {
+                    return null;
+                }
+            }
+            return ToolResponse.symbolNotFound(
+                "'" + typeFqn + "' is a RECORD and its canonical constructor is IMPLICIT — "
+                    + "derived from the component list in the header and declared nowhere, so "
+                    + "there is no member for a refactoring to address, even though `new "
+                    + type.getElementName() + "(...)` compiles. Its signature is not its own "
+                    + "either: a record's canonical constructor must take exactly the "
+                    + "components, so adding or removing one means editing the HEADER, which no "
+                    + "operation performs today (mcp#63) — it is authored by hand.",
+                name);
+        } catch (Exception e) {
+            log.debug("Implicit-record-constructor check for '{}' failed: {}", name, e.getMessage());
+            return null;
+        }
     }
 
     /**
