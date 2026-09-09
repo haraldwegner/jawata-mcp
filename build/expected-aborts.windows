@@ -81,3 +81,23 @@ cannot make a directory unreadable
 #
 # DELETE THIS ENTRY when #18 is fixed. A green run then means something.
 [mcp#18] NOT RUN
+
+# The D5 unreadable-tree tests build a directory the process CANNOT READ, to prove
+# that a tree which cannot be walked is reported as UNKNOWN rather than as empty —
+# "a tree that could not be COUNTED does not answer 0, which means removed". They
+# construct that state with POSIX permission bits.
+#
+# Windows has no POSIX permissions, so the state cannot be built and the tests say
+# so and abort, rather than passing over a case they never created. Five of them:
+# the count, the existence check, the real-orphan control, the artifact size, and
+# the caller's row.
+#
+# Acceptable because the alternative is worse in both directions — a green line
+# would claim the unreadable case was checked when no unreadable directory ever
+# existed, and deleting the tests would lose the coverage on the two platforms that
+# CAN build it. Linux and macOS run all five.
+#
+# The cost, stated: on Windows the unreadable-tree behaviour is UNVERIFIED. Closing
+# it would need the ACL equivalent (DENY on the current user), which is a different
+# mechanism and a separate piece of work.
+no POSIX permissions here
