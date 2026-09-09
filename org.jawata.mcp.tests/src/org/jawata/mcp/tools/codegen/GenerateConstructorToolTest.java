@@ -85,6 +85,71 @@ class GenerateConstructorToolTest {
     }
 
     @Test
+    @DisplayName("mcp#79: a generic field keeps its TYPE ARGUMENTS, nesting included")
+    void genericFieldKeepsItsTypeArguments() throws Exception {
+        // SearchPatterns already declares List<String>, Map<String, Integer> and
+        // List<Calculator> — chosen over adding a field to RefactoringTarget because
+        // simple-maven is shared and growing, and adding to it has moved a counted
+        // population four times in this sprint.
+        IFile target = findFile("SearchPatterns.java");
+        assertNotNull(target, "SearchPatterns.java must be present in fixture");
+
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", target.getLocation().toFile().toPath().toString());
+        args.put("line", 24);      // the `private List<String> stringList;` declaration
+        args.put("column", 4);
+        ArrayNode fields = args.putArray("fields");
+        fields.add("stringList");
+        fields.add("stringIntMap");
+
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "generate_constructor must succeed; got: " + r.getError());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String generated = (String) data.get("generatedSource");
+        assertNotNull(generated, "generatedSource must be populated");
+
+        // THE WHOLE POINT. Before mcp#79 this read `SearchPatterns(List stringList,
+        // Map stringIntMap)` — raw, legal, compiling, and silently wider than the fields
+        // it was built from. `applied: true` and `fieldsInitialized` reported the NAMES,
+        // which are unaffected by the loss, so nothing in the response could show it.
+        assertTrue(generated.contains(
+                "public SearchPatterns(List<String> stringList, Map<String, Integer> stringIntMap)"),
+            "the generated constructor must carry the field's type arguments, NESTED ones"
+                + " included; got:\n" + generated);
+
+        // And the negative, because a `contains` on the correct text would also pass over
+        // a signature that carried BOTH the raw and the parameterised forms somewhere.
+        assertFalse(generated.contains("SearchPatterns(List stringList"),
+            "no raw List may appear in the generated signature:\n" + generated);
+    }
+
+    @Test
+    @DisplayName("mcp#79: a BLANK field entry is refused, not silently dropped")
+    void blankFieldEntryIsRefused() throws Exception {
+        IFile target = findFile("RefactoringTarget.java");
+        assertNotNull(target, "RefactoringTarget.java must be present in fixture");
+
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", target.getLocation().toFile().toPath().toString());
+        args.put("line", 16);
+        args.put("column", 4);
+        ArrayNode fields = args.putArray("fields");
+        fields.add("userName");
+        fields.add("   ");          // a mistyped entry
+        fields.add("count");
+
+        ToolResponse r = tool.execute(args);
+        assertFalse(r.isSuccess(),
+            "asking for three fields and getting two under applied:true is the defect");
+        ErrorInfo error = r.getError();
+        assertEquals("INVALID_PARAMETER", error.getCode());
+        assertTrue(String.valueOf(error.getMessage()).contains("fields[1]"),
+            "the refusal must name WHICH entry was empty: " + error.getMessage());
+    }
+
+    @Test
     @DisplayName("validation: unknown field returns INVALID_PARAMETER")
     void validation_unknownField_returnsInvalidParameter() throws Exception {
         IFile target = findFile("RefactoringTarget.java");
