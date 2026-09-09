@@ -114,6 +114,27 @@ public class HideDelegateTargets {
     }
 
     /**
+     * A step INTERFACE — the server shape this operation must refuse.
+     *
+     * <p>Found on real code, not here: upstream's step-builder chains dispatch through step
+     * interfaces, and pointing at one produced "Abstract methods do not specify a body" and
+     * the pipeline undid the change. Every fixture written for this row had a CLASS server,
+     * because whoever writes the fixture already knows what the rule does.</p>
+     */
+    public interface Routing {
+        Department nextDepartment();
+    }
+
+    /**
+     * REFUSAL — the server is an interface, so the forwarder would have to be a
+     * {@code default} method, which changes the contract of every implementor. That is a
+     * design decision the caller has not been asked to make, so the operation declines.
+     */
+    public String routedManagerOf(Routing routing) {
+        return routing.nextDepartment().getManager();
+    }
+
+    /**
      * CROSS-PACKAGE: the hidden call returns {@code com.example.service.Lead}, which the server's
      * file does not import. The forwarder generated on Person needs that import, and the
      * first version of this row wrote a bare simple name instead — so the pipeline's compile

@@ -127,6 +127,27 @@ class HideDelegateToolTest {
     }
 
     @Test
+    @DisplayName("REFUSES an INTERFACE server — a forwarder there would be a default method")
+    void refusesAnInterfaceServer() throws Exception {
+        // The case real code supplied and no fixture did: a chain dispatching through a step
+        // INTERFACE. Its only coverage used to be a copied module; it belongs here, on a
+        // fixture of ours, next to the other refusals.
+        String[] lines = Files.readString(targets).split("\n", -1);
+        int line = lineOf("routing.nextDepartment().getManager()");
+        int column = lines[line].indexOf("nextDepartment");
+        assertTrue(column > 0, "PROOF OF LIFE: the interface chain must be in the fixture");
+
+        ToolResponse r = tool.execute(at(line, column));
+        assertFalse(r.isSuccess(), "an interface server cannot take a concrete forwarder");
+        assertTrue(String.valueOf(r.getError()).contains("is an INTERFACE"),
+            "the refusal must name the interface as the reason: " + r.getError());
+        // NEGATIVE, because two refusals could decline this and only one is the subject:
+        // a server with no source declines too, and would prove nothing about interfaces.
+        assertFalse(String.valueOf(r.getError()).contains("no source in"),
+            "it must decline for being an interface, not for being unreachable: " + r.getError());
+    }
+
+    @Test
     @DisplayName("REFUSES a server type this workspace cannot edit, and says which")
     void refusesAServerItCannotEdit() throws Exception {
         // getClass() is declared on java.lang.Object. The SHAPE is a perfect match — two

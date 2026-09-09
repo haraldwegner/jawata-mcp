@@ -743,11 +743,11 @@ class BuildSystemLoadTest {
      * platform where nothing had raised that default, a record in it did not parse.
      *
      * <p>This REPRODUCES the macOS failure on every platform. The workspace is lowered to
-     * JDT's own built-in level; the vendored collection-pipeline slice — two records, no
-     * build file — is loaded; and the method whose signature names the record {@code Car}
+     * JDT's own built-in level; the undeclared-record fixture — a record, no build
+     * file — is loaded; and the method whose signature names the record {@code Vehicle}
      * has NO binding, which is the condition JDT's own refactoring engine refused on
      * ("Cannot resolve binding of enclosing method declaration") and the compile gate
-     * reported as "refers to the missing type Car". Then the level is raised the way the
+     * reported as "refers to the missing type Vehicle". Then the level is raised the way the
      * fallback now raises it, and the same declaration resolves.</p>
      *
      * <p>Bindings recovery is OFF on purpose: that is how JDT's engine parses. With it on,
@@ -764,17 +764,17 @@ class BuildSystemLoadTest {
             JavaCore.setComplianceOptions(builtIn, lowered);
             JavaCore.setOptions(lowered);
 
-            IJavaProject jp = load("fork-collection-pipeline");
+            IJavaProject jp = load("undeclared-record");
             assertEquals(builtIn, jp.getOption(JavaCore.COMPILER_COMPLIANCE, true),
-                "precondition: the slice declares no level and inherits the workspace's");
-            assertNull(bindingOfGetModelsAfter2000(jp),
+                "precondition: the fixture declares no level and inherits the workspace's");
+            assertNull(bindingOfBuiltAfter(jp),
                 "THE REPRODUCTION: at JDT's built-in level " + builtIn + " the method whose "
-                    + "signature names the record Car must have no binding — this is what "
+                    + "signature names the record Vehicle must have no binding — this is what "
                     + "macOS reported for three releases");
 
             assertTrue(ProjectImporter.raiseWorkspaceLevelToRunningJvm().isPresent(),
                 "the raise must apply from the built-in level");
-            assertNotNull(bindingOfGetModelsAfter2000(jp),
+            assertNotNull(bindingOfBuiltAfter(jp),
                 "after the raise the same declaration must resolve");
         } finally {
             JavaCore.setOptions(before);
@@ -782,14 +782,14 @@ class BuildSystemLoadTest {
     }
 
     /**
-     * The binding of the slice's {@code FunctionalProgramming.getModelsAfter2000(List<Car>)},
+     * The binding of the fixture's {@code VehicleReports.builtAfter(List<Vehicle>, int)},
      * parsed as JDT's refactoring engine parses it — bindings recovery OFF.
      */
-    private static org.eclipse.jdt.core.dom.IMethodBinding bindingOfGetModelsAfter2000(
+    private static org.eclipse.jdt.core.dom.IMethodBinding bindingOfBuiltAfter(
             IJavaProject jp) throws Exception {
         org.eclipse.jdt.core.IType type =
-            jp.findType("com.iluwatar.collectionpipeline.FunctionalProgramming");
-        assertNotNull(type, "PROOF OF LIFE: the slice's FunctionalProgramming must be in the model");
+            jp.findType("com.example.undeclared.VehicleReports");
+        assertNotNull(type, "PROOF OF LIFE: the fixture's VehicleReports must be in the model");
         org.eclipse.jdt.core.dom.ASTParser parser =
             org.eclipse.jdt.core.dom.ASTParser.newParser(org.eclipse.jdt.core.dom.AST.getJLSLatest());
         parser.setSource(type.getCompilationUnit());
@@ -801,13 +801,13 @@ class BuildSystemLoadTest {
         ast.accept(new org.eclipse.jdt.core.dom.ASTVisitor() {
             @Override
             public boolean visit(org.eclipse.jdt.core.dom.MethodDeclaration node) {
-                if ("getModelsAfter2000".equals(node.getName().getIdentifier())) {
+                if ("builtAfter".equals(node.getName().getIdentifier())) {
                     found[0] = node;
                 }
                 return false;
             }
         });
-        assertNotNull(found[0], "PROOF OF LIFE: getModelsAfter2000 must be declared in the slice");
+        assertNotNull(found[0], "PROOF OF LIFE: builtAfter must be declared in the fixture");
         return found[0].resolveBinding();
     }
 
