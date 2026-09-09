@@ -59,6 +59,11 @@ public class WorkspaceManager {
             try {
                 this.workspace = ResourcesPlugin.getWorkspace();
                 this.root = workspace.getRoot();
+                // mcp#78: state the Eclipse settings this product depends on, rather than
+                // inheriting whichever default the platform supplies. Here because it is the
+                // one point every workspace passes through, and BEFORE any project loads —
+                // the charset decides how JDT decodes the first file it reads.
+                WorkspaceSettings.applyOwned();
                 log.info("Workspace initialized at: {}", root.getLocation());
                 return;
             } catch (IllegalStateException e) {
