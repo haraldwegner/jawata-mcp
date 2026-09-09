@@ -1592,6 +1592,45 @@ public final class DebugController implements AutoCloseable {
             }
             probe.deferred = null;
         }
+        // mcp#18: RELEASE WHAT THIS PROBE WAS HOLDING WHEN IT WENT.
+        //
+        // A perturbing probe's requests carry SUSPEND_EVENT_THREAD, so an event in flight has
+        // already stopped its thread; handleProbe returns true and the CALLER resumes the
+        // event set. Delete the request in that window and there is no set left to resume —
+        // the thread stays stopped, and nothing in the product ever releases it. The program
+        // is then wedged by a probe nobody holds a handle to any more, which is the exact
+        // opposite of a probe's contract.
+        //
+        // Reported as two load-sensitive flakes. It is not one: either clearing a probe
+        // resumes a thread its own request suspended or it does not, and the machine's speed
+        // only decides whether you find out. The reproduction constructs the window instead
+        // of waiting for it.
+        //
+        // WHICH THREADS, PRECISELY. `suspended` holds the threads this controller
+        // DELIBERATELY keeps — a breakpoint hit, a step. A probe capture never enters it,
+        // because a probe always releases. So a thread that is stopped and absent from that
+        // map is one an in-flight probe event is holding, and it is the only thing resumed
+        // here. A user's breakpoint is untouched.
+        //
+        // The bound on being wrong is small and worth stating: with two perturbing probes
+        // armed, clearing one could release a thread the other's event was holding. That
+        // costs an earlier release and nothing else — no probe holds a thread deliberately,
+        // every probe event resumes — whereas the defect it replaces is a permanently
+        // wedged program.
+        if (probe.perturbs) {
+            for (ThreadReference thread : vm.allThreads()) {
+                try {
+                    if (thread.suspendCount() > 0 && !suspended.containsKey(thread.uniqueID())) {
+                        log.debug("mcp#18: resuming {} — held by probe {} when it was cleared",
+                            thread.name(), probeId);
+                        thread.resume();
+                    }
+                } catch (Exception e) {
+                    log.debug("mcp#18: could not release {} after clearing probe {}: {}",
+                        thread, probeId, e.getMessage());
+                }
+            }
+        }
         return true;
     }
 

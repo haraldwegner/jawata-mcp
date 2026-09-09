@@ -345,26 +345,31 @@ class DevProbeTest {
      * failure, and every future red becomes ambiguous: the reader cannot tell a regression
      * from #18 firing again.</p>
      *
-     * <p><b>It is gated, not deleted or weakened.</b> Run it with
-     * {@code -Djawata.probe.race=true} and it reproduces exactly as before. When #18 is
-     * fixed, delete this gate — a green run then means something.</p>
+     * <h2>THE GATE IS GONE, and what that does and does not mean</h2>
      *
-     * <p>What is NOT established: the mechanism. The first hypothesis — that a cleared
-     * probe's in-flight event is left unresumed — is refuted by the code: {@code probeFor}
-     * returns null, {@code breakpointFor} returns null, and the pump's {@code return true}
-     * resumes the set. The suspect is {@code evaluateOffPump}, which invokes on the
-     * suspended thread while the probe's requests are being deleted underneath it. That is
-     * a suspicion, not a finding, and it is written here as one.</p>
+     * <p>It was gated behind {@code -Djawata.probe.race=true} with the instruction "delete
+     * this gate when #18 is fixed". {@code clearProbe} now releases the threads a perturbing
+     * probe was holding when it went, and this reproduces green — so it asserts a property
+     * the product holds and belongs in the gating suite.</p>
+     *
+     * <p><b>The MECHANISM is still not established, and the cure does not claim to have found
+     * it.</b> The paragraph this replaces refuted the obvious hypothesis from the code —
+     * {@code probeFor} returns null, {@code breakpointFor} returns null, and the pump's
+     * {@code return true} resumes the set — and named {@code evaluateOffPump} as the suspect,
+     * invoking on the suspended thread while the probe's requests are deleted underneath it.
+     * That refutation stands and that suspicion is unexamined.</p>
+     *
+     * <p>What changed is where the invariant is enforced, not what breaks it: {@code
+     * clearProbe} now guarantees its own contract on the way out — a probe never leaves the
+     * target suspended — for whatever suspended the thread. That is a real cure for the
+     * observable defect and it is deliberately mechanism-agnostic. Someone who later
+     * identifies the mechanism should expect this release to become redundant rather than
+     * wrong, and the honest reading until then is that the exit is guarded and the entrance
+     * is not understood.</p>
      */
     @Test
     @DisplayName("mcp#18: clearing a probe that is HOLDING the thread must not leave it suspended")
     void clearingAProbeWhileItHoldsTheThreadLeavesNothingSuspended() throws Exception {
-        if (!Boolean.getBoolean("jawata.probe.race")) {
-            org.junit.jupiter.api.Assumptions.abort(
-                "[mcp#18] NOT RUN — this REPRODUCES an open defect rather than asserting a"
-                    + " property we hold. Run it with -Djawata.probe.race=true. Delete this"
-                    + " gate when #18 is fixed.");
-        }
         // mcp#18 — CONSTRUCTED, not waited for.
         //
         // The sibling test below clears the probe at an arbitrary moment, so an event is
