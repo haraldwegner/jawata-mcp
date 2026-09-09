@@ -438,6 +438,39 @@ fi
     exit 1
 }
 
+# THE HOLLOW-WIRING GATE RUNS HERE, ON THIS MACHINE — 2026-09-09, Harald's ruling:
+# "There shouldn't be a gate in the ci but on this machine! Having the ci in the gate
+# and firing on this as the last step is nonsense."
+#
+# It used to run in ONE place, .github/workflows/release.yml, as the step after the
+# tests — and that was measured being too late on the day it mattered. The v4.2.0
+# release failed on it with FIVE members whose every caller was test code, all five
+# written across the 92 commits of a sprint. So five capabilities shipped unwired,
+# nothing on this machine ever said so, and the first thing to notice was a release
+# job thirty-three minutes in. jawata-studio failed the identical gate in the same
+# hour, for the same reason, after four platforms had already built and uploaded.
+#
+# A gate whose only run is the last step before publishing cannot do the job it exists
+# for. Its subject is code that was BUILT AND NOT WIRED — something you want to hear
+# about while you still remember writing it, not a day later from CI.
+#
+# It needs exactly what this script has already produced: a fresh dist, which the
+# staleness check above guarantees. It costs about two minutes. CI keeps its copy as
+# the backstop; this is where it must fire FIRST.
+#
+# EXIT 2 IS NOT A PASS. The gate answers 2 when it could not run at all — no dist, a
+# dead resident, an empty scan — and reading that as green is how a gate becomes
+# decoration. It is failed here, distinctly, so the reason is visible.
+"$ROOT/build/unwired-gate.sh"
+UNWIRED=$?
+if [ "$UNWIRED" -eq 2 ]; then
+    echo "FAILED: the hollow-wiring gate could NOT RUN (exit 2). That is not a pass —" \
+         "no dist, no resident, or an empty scan means NOTHING was checked."
+    exit 2
+elif [ "$UNWIRED" -ne 0 ]; then
+    exit "$UNWIRED"
+fi
+
 # mcp#44 — SWEEP THIS RUN'S OWN /tmp DEBRIS. Measured 2026-09-08: 8886 jawata-* directories,
 # 51 GB, still accumulating; the issue measured 120 GB over four days. On a distro where
 # /tmp is a tmpfs this is RAM, and the suite starts failing with no-space errors that read
