@@ -120,12 +120,24 @@ public final class WorkspaceSettings {
             }
             try {
                 switch (setting.id()) {
-                    case CHARSET -> ResourcesPlugin.getWorkspace().getRoot()
-                        .setDefaultCharset(setting.value(), null);
+                    // READ BEFORE WRITE, and it is not a micro-optimisation. This runs on
+                    // EVERY workspace init — every resident start, every project load — and
+                    // setDefaultCharset on the workspace ROOT is a resource operation: it
+                    // fires a workspace-wide change and can invalidate the cached content
+                    // description of every file under it. Writing a value that already holds
+                    // pays that for nothing. The first version wrote unconditionally.
+                    case CHARSET -> {
+                        var wsRoot = ResourcesPlugin.getWorkspace().getRoot();
+                        if (!setting.value().equals(wsRoot.getDefaultCharset())) {
+                            wsRoot.setDefaultCharset(setting.value(), null);
+                        }
+                    }
                     case Platform.PREF_LINE_SEPARATOR -> {
-                        InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME)
-                            .put(Platform.PREF_LINE_SEPARATOR, setting.value());
-                        InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME).flush();
+                        var node = InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME);
+                        if (!setting.value().equals(node.get(Platform.PREF_LINE_SEPARATOR, null))) {
+                            node.put(Platform.PREF_LINE_SEPARATOR, setting.value());
+                            node.flush();   // only when it changed; flush writes to disk
+                        }
                     }
                     default -> log.warn("mcp#78: '{}' names this class as its applier and this"
                         + " class does not apply it — the register overstates what is stated",
