@@ -336,6 +336,78 @@ class DevProbeTest {
     }
 
     @Test
+    @DisplayName("mcp#18: clearing a probe that is HOLDING the thread must not leave it suspended")
+    void clearingAProbeWhileItHoldsTheThreadLeavesNothingSuspended() throws Exception {
+        // mcp#18 — CONSTRUCTED, not waited for.
+        //
+        // The sibling test below clears the probe at an arbitrary moment, so an event is
+        // only SOMETIMES in flight, and the failure was recorded as a load-sensitive flake
+        // that "is not reproducible on demand". It is not a flake: either clearProbe
+        // resumes a thread its own request suspended or it does not, and the machine's
+        // speed only decides whether you find out. So this test creates the condition
+        // rather than hoping for it — it OBSERVES the thread suspended by a capture and
+        // clears the probe at that moment.
+        //
+        // The mechanism this is aimed at, from DebugController.clearProbe: the probe is
+        // removed and its event requests deleted, and nothing resumes a thread that one of
+        // those requests has ALREADY suspended and whose event is still in flight.
+        ObjectNode probe = onSession("probe_set");
+        probe.put("kind", "logpoint");
+        probe.put("className", TARGET);
+        probe.put("line", lineOf("int doubled = iteration * 2;"));
+        // WIDEN THE WINDOW DELIBERATELY. The first version captured the sibling's two
+        // expressions and did not reproduce in three runs: observing the suspension costs
+        // a round trip through `threads`, and the capture finishes before probe_clear
+        // lands. Each expression here INVOKES a method in the target, so sixteen of them
+        // hold the thread roughly an order of magnitude longer — long enough for the
+        // observe-then-clear pair to fall inside one suspension. This changes no product
+        // code; it only makes the existing window wide enough to aim at.
+        var capture = probe.putArray("capture");
+        capture.add("iteration");
+        for (int i = 0; i < 15; i++) {
+            capture.add("iteration * 2 + offset()");
+        }
+        Map<String, Object> armed = ok(probe);
+        assertEquals(Boolean.TRUE, armed.get("suspendsTarget"),
+            "this test needs a probe that DOES suspend; a non-suspending one cannot "
+                + "construct the condition: " + armed);
+        String probeId = (String) armed.get("probeId");
+
+        awaitEvents(probeId, 2);
+
+        // PROOF OF LIFE, and without it this test would prove nothing: if the thread is
+        // never observed suspended, the clear below happens in the same arbitrary moment
+        // the sibling already covers, and a green result would mean only that we missed.
+        boolean observedSuspended = false;
+        long watch = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < watch) {
+            if (Boolean.TRUE.equals(mainThread().get("suspended"))) {
+                observedSuspended = true;
+                break;
+            }
+            Thread.sleep(5);
+        }
+        assertTrue(observedSuspended,
+            "the capture must be seen holding the thread, or this test constructs nothing "
+                + "and its result is meaningless");
+
+        // Clear it WHILE it holds the thread.
+        ObjectNode clear = onSession("probe_clear");
+        clear.put("probeId", probeId);
+        assertTrue(tool.execute(clear).isSuccess(), "probe_clear reports success");
+
+        long deadline = System.currentTimeMillis() + 15_000;
+        while (Boolean.TRUE.equals(mainThread().get("suspended"))
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+        }
+        assertEquals(Boolean.FALSE, mainThread().get("suspended"),
+            "probe_clear returned SUCCESS while leaving the target suspended — the operation "
+                + "reports it did something it did not do. 15s after the clear the main "
+                + "thread is still held by a request the probe owned.");
+    }
+
+    @Test
     @DisplayName("a capturing logpoint DOES stop the thread — and says so rather than pretending")
     void aCapturingLogpointDeclaresThatItPerturbs() throws Exception {
         ObjectNode probe = onSession("probe_set");
