@@ -38,7 +38,10 @@ class WorkspaceSettingsTest {
         for (WorkspaceSettings.Setting s : declared) {
             assertNotNull(s.id());
             assertFalse(s.id().isBlank(), "a setting must say how it is spelled");
-            assertFalse(s.value().isBlank(), "a setting must say what we state it to");
+            // EMPTY, not BLANK. A line delimiter's value IS whitespace — "\n".isBlank() is
+            // true — so the obvious assertion rejected the very setting that motivated this
+            // register. The claim being made is that a value was stated, not that it prints.
+            assertFalse(s.value().isEmpty(), "a setting must say what we state it to");
             assertFalse(s.appliedBy().isBlank(), "a setting must say WHO writes it, because"
                 + " not all of them are written here");
             // THE REASON IS THE HALF THAT DECAYS, so it is the one with a length floor: an
