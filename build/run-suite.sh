@@ -471,6 +471,31 @@ elif [ "$UNWIRED" -ne 0 ]; then
     exit "$UNWIRED"
 fi
 
+# AND THE END-TO-END GATE, for the same reason and found the same way. It was the
+# THIRD gate discovered running from exactly one line of release.yml and nowhere
+# else — and unlike the hollow-wiring one it drives the shipped jar over its own
+# JSON-RPC front door, which is the only place several promises are observable at
+# all. 104 of its assertions test code through that door.
+#
+# It costs about four minutes and it is the difference between hearing "the front
+# door stopped answering" while you are writing the change and hearing it from a
+# release job forty-five minutes in, which is where it was actually heard.
+#
+# Opt out with JAWATA_SKIP_E2E=1 when you are iterating on something it cannot
+# reach — and the run SAYS it skipped, because a gate that can be silently
+# skipped is a gate that reports nothing while looking green.
+if [ "${JAWATA_SKIP_E2E:-0}" = "1" ]; then
+    echo "note: JAWATA_SKIP_E2E=1 — the end-to-end gate did NOT run. This run has" \
+         "NOT exercised the product's own front door."
+else
+    "$ROOT/build/end-to-end-test.sh"
+    E2E=$?
+    if [ "$E2E" -ne 0 ]; then
+        echo "FAILED: the end-to-end gate. Read $OUT/../end-to-end.log or re-run it alone."
+        exit "$E2E"
+    fi
+fi
+
 # mcp#44 — SWEEP THIS RUN'S OWN /tmp DEBRIS. Measured 2026-09-08: 8886 jawata-* directories,
 # 51 GB, still accumulating; the issue measured 120 GB over four days. On a distro where
 # /tmp is a tmpfs this is RAM, and the suite starts failing with no-space errors that read

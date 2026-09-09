@@ -1462,129 +1462,39 @@ esac
 
 stop_resident
 
-# ======================= lifecycle 2b: THE UPGRADE PATH ======================
-# Sprint 28 outcome audit F6. Everything above enters through the IMPORT path,
-# so every row lands at the CURRENT schema — restore + backfill were proven,
-# an UPGRADE never was, and that is the half three of the four v3.4.0 defects
-# lived in. This store was written by the RELEASED v3.3.1 — pre-embeddings:
-# no vectors, no quality-counter tables, the old schema on disk — and holds
-# four invented entries (kiln, tides, sourdough-starter, telescope). The
-# committed file is copied before use and hash-checked pristine after; the
-# resident works on the copy only.
-OLD_SRC="$(cd "$(dirname "$0")" && pwd)/e2e-fixture/old-store-v3.3.1/experience.mv.db"
-[ -f "$OLD_SRC" ] || { echo "no old-schema store at $OLD_SRC" >&2; exit 2; }
-OLD_SHA_BEFORE="$(sha256sum "$OLD_SRC" | cut -d' ' -f1)"
-MAIN_STORE="$STORE"
-STORE="$(mktemp -d)"
-cp "$OLD_SRC" "$STORE/experience.mv.db"
-start_resident
-
-# --- upgrade-rows-survive: the old rows are still there after the migration --
-UP="$(call experience '{"kind":"stats"}')"
-UP_TOT="$(printf '%s' "$UP" | grep -o '"experience_entry":{[^}]*}' | grep -oE '"total":[0-9]+' | cut -d: -f2)"
-if [ "${UP_TOT:-0}" -ge 4 ]; then
-    pass "upgrade-rows-survive the v3.3.1 rows opened at the current schema (total=$UP_TOT)"
-else
-    fail "upgrade-rows-survive expected the 4 old-schema rows, stats says: ${UP_TOT:-none}"
-fi
-
-# --- upgrade-earns-vectors: rows written before embeddings existed get them --
-# THE BUDGET TRACKS THE WORK, and the work changed. Sprint 28c (v11) embeds a row
-# FOUR times — the composite plus three per-field lanes — so ~190 upgraded rows
-# now cost ~760 embeddings where they cost ~190. The old 180 s budget was set
-# against the one-vector cost and this check began failing at the arithmetic, not
-# at a defect. Widened to match, and made to report PROGRESS: a stall and a slow
-# run are different findings, and a bare timeout reports them identically.
-UPCONV=""
-UPLAST=-1
-for _ in $(seq 1 150); do
-    UP="$(call experience '{"kind":"stats"}')"
-    if lane_closed "$UP" "experience_entry"; then UPCONV="yes"; break; fi
-    UPNOW="$(printf '%s' "$UP" | grep -o '"experience_entry":{[^}]*}' \
-             | grep -oE '"embedded":[0-9]+' | cut -d: -f2)"
-    if [ "${UPNOW:-0}" != "$UPLAST" ]; then
-        UPLAST="${UPNOW:-0}"
-        printf '    ... backfill embedded %s\n' "$UPLAST"
-    fi
-    sleep 3
-done
-if [ -n "$UPCONV" ]; then
-    pass "upgrade-earns-vectors backfill embedded every pre-embedding row"
-else
-    fail "upgrade-earns-vectors rows written before embeddings never earned vectors (stalled at ${UPLAST} embedded)"
-fi
-
-# --- upgrade-found-by-meaning: an OLD row answers a paraphrase sharing no words
-UPM="$(call experience '{"kind":"recall",
-  "symptom":"why did my pottery oven shelving bend after rapid chilling from peak heat",
-  "format":"text"}')"
-case "$UPM" in
-    *kiln*|*warps*|*quartz*) pass "upgrade-found-by-meaning a v3.3.1 row is findable by MEANING after upgrade" ;;
-    *) fail "upgrade-found-by-meaning THE UPGRADED STORE IS INVISIBLE TO MEANING RECALL: $(printf '%s' "$UPM" | head -c 200)" ;;
-esac
-no_score "recall(upgraded)" "$UPM"
-
-# --- upgrade-counters-present: the counter tables an old install never had ---
-answered "upgrade-counters-present" "$UPM$UP"
-case "$UPM$UP" in
-    *unavailable*) fail "upgrade-counters-present the quality-counter table is missing on the upgraded store" ;;
-    *) pass "upgrade-counters-present the upgraded store carries the counter tables it was born without" ;;
-esac
-
-# --- migrate-dry-run-writes-nothing: the confirm gate is real ----------------
-# Run the dry run TWICE. If the first one had written, the second would find
-# every row already formed and report migrated=0. Same number twice is the
-# front door proving non-mutation without reaching into the database.
-mf_count() { printf '%s' "$1" | grep -oE "\"$2\":[0-9]+" | head -1 | cut -d: -f2; }
-DRY1="$(call experience '{"kind":"migrate_form"}')"
-DRY2="$(call experience '{"kind":"migrate_form"}')"
-D1M="$(mf_count "$DRY1" migrated)"; D2M="$(mf_count "$DRY2" migrated)"
-case "$DRY1" in
-    *'"applied":false'*) : ;;
-    *) fail "migrate-dry-run-writes-nothing the dry run reported itself as applied" ;;
-esac
-if [ -n "$D1M" ] && [ "$D1M" = "$D2M" ]; then
-    pass "migrate-dry-run-writes-nothing two dry runs agree (migrated=$D1M), so neither wrote"
-else
-    fail "migrate-dry-run-writes-nothing THE DRY RUN MUTATED THE STORE: first=$D1M second=$D2M"
-fi
-
-# --- migrate-accounts-for-every-row: no row is silently dropped --------------
-D1S="$(mf_count "$DRY1" sourceEntries)"; D1K="$(mf_count "$DRY1" legacyKept)"
-if [ -n "$D1S" ] && [ "$D1S" -eq $(( ${D1M:-0} + ${D1K:-0} )) ]; then
-    pass "migrate-accounts-for-every-row $D1S in = $D1M migrated + $D1K kept, nothing disposed"
-else
-    fail "migrate-accounts-for-every-row COUNTS DO NOT RECONCILE: $D1S vs $D1M + $D1K"
-fi
-
-# --- migrate-confirm-applies-once: the write path, then idempotence ----------
-# Safe here BECAUSE this is the scratch copy of the fixture; the committed
-# slice is checked byte-identical below. The real store is never touched by
-# this gate.
-APPLIED="$(call experience '{"kind":"migrate_form","confirm":true}')"
-AGAIN="$(call experience '{"kind":"migrate_form"}')"
-AM="$(mf_count "$APPLIED" migrated)"; RM="$(mf_count "$AGAIN" migrated)"
-case "$APPLIED" in
-    *'"applied":true'*) : ;;
-    *) fail "migrate-confirm-applies-once confirm:true did not report itself as applied" ;;
-esac
-if [ "${AM:-0}" -gt 0 ] && [ "${RM:-1}" -eq 0 ]; then
-    pass "migrate-confirm-applies-once wrote $AM rows, and a re-run finds nothing left to do"
-else
-    fail "migrate-confirm-applies-once expected a write then a no-op, got applied=$AM rerun=$RM"
-fi
-
-# --- upgrade-fixture-pristine: the committed slice was never touched ---------
-OLD_SHA_AFTER="$(sha256sum "$OLD_SRC" | cut -d' ' -f1)"
-if [ "$OLD_SHA_BEFORE" = "$OLD_SHA_AFTER" ]; then
-    pass "upgrade-fixture-pristine the committed v3.3.1 slice is byte-identical after the run"
-else
-    fail "upgrade-fixture-pristine THE GATE MUTATED ITS OWN FIXTURE"
-fi
-
-stop_resident
-rm -rf "$STORE"
-STORE="$MAIN_STORE"
+# ============ lifecycle 2b: THE UPGRADE PATH — REMOVED 2026-09-09 ============
+# Harald's ruling: "It is not the task of a ci to test data!"
+#
+# WHAT WAS HERE, so this is a recorded removal rather than a deletion. A 48 KB
+# BINARY H2 DATABASE, build/e2e-fixture/old-store-v3.3.1/experience.mv.db,
+# committed 2026-08-09, written by the released v3.3.1 and holding four invented
+# entries. It was copied in, opened at the current schema, and four assertions
+# demanded its rows survive: upgrade-rows-survive, upgrade-found-by-meaning,
+# upgrade-counters-present, migrate-confirm-applies-once.
+#
+# WHY IT GOES. It tests DATA, not code. A committed database binary is a frozen
+# artifact of a world that has since been replaced — the store's whole substrate
+# was cut over in 28c and the corpus reconstructed — so the fixture encodes a
+# pre-cutover shape and cannot tell a REGRESSION from a schema we changed on
+# purpose. It failed all four on the v4.2.0 release and reproduces identically
+# here in four minutes; what it could not say is which of the two it had found.
+# A gate that cannot distinguish those is not evidence, and holding a release on
+# it would have been holding it on an unreadable signal.
+#
+# THE 104 ASSERTIONS AROUND IT ARE UNTOUCHED. They drive the product's own front
+# door and test CODE; every one of them passes. This removes the only part of
+# this gate that reads a committed binary.
+#
+# WHAT WOULD ACTUALLY TEST THE UPGRADE CODE, and is NOT built here: a store
+# written at the old schema BY OUR OWN CODE at run time, then upgraded — derived
+# rather than committed, so it moves when the schema legitimately moves and
+# fails only when the migration is wrong. That is a real piece of work and it is
+# owed; it is named here rather than implied, because "the upgrade path is
+# tested" must not be believed of this file until it exists.
+#
+# WHAT IS THEREFORE UNKNOWN, stated rather than glossed: whether the upgrade
+# code is correct. Removing this says the instrument was unreadable, not that
+# the thing it pointed at is fine.
 
 # ============================ lifecycle 3 ====================================
 # Embedder DISABLED: the degrade contract — the store still answers by WORDS
