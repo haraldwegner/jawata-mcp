@@ -285,6 +285,21 @@ public class ToolResponse {
     }
 
     /**
+     * The arguments were valid and resolved; the operation does not apply to the code they
+     * name — see {@link ErrorInfo#PRECONDITION_NOT_MET}. Use this rather than
+     * {@code invalidParameter} whenever the caller's inputs were fine.
+     */
+    public static ToolResponse preconditionNotMet(String reason, String reasonCode) {
+        return error(ErrorInfo.preconditionNotMet(reason, reasonCode));
+    }
+
+    /** The same, naming the smaller step or sibling operation that DOES apply. */
+    public static ToolResponse preconditionNotMet(String reason, String reasonCode,
+                                                  NextStep nextStep) {
+        return error(ErrorInfo.preconditionNotMet(reason, reasonCode, nextStep));
+    }
+
+    /**
      * bugs.md #11 (Sprint 14): create a PROJECT_KEY_DROPPED error for a key
      * that was valid earlier in the session but has since been unloaded.
      */

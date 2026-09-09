@@ -240,14 +240,23 @@ public class InlineClassTool extends AbstractRefactoringTool
             }
         }
         if (holders.size() != 1) {
-            return ToolResponse.invalidParameter("position",
+            // A DOMAIN PRECONDITION, NOT A PARAMETER ERROR — the position was valid and
+            // resolved to exactly the class the caller meant. Reported as INVALID_PARAMETER
+            // until the v4.2.0 dogfood, where a `lazy_class` finding on a STATIC UTILITY
+            // class sent the reader here with a hint telling them to re-read the inputSchema.
+            // Nothing in the schema was wrong: the class is called by type name, so no user
+            // holds a field of its type, and no argument the caller could supply changes that.
+            return ToolResponse.preconditionNotMet(
                 holders.isEmpty()
                     ? absorber.getName().getIdentifier() + " holds no field of type "
                         + source.getElementName() + ", so there is nothing to rewrite the"
-                        + " accesses through."
+                        + " accesses through. A class reached only through its type name —"
+                        + " a static utility — is never held as a field, so this operation"
+                        + " cannot fold it; move its members to their caller instead."
                     : absorber.getName().getIdentifier() + " holds " + holders.size()
                         + " fields of type " + source.getElementName()
-                        + ", and the rewrite would have to pick one.");
+                        + ", and the rewrite would have to pick one.",
+                holders.isEmpty() ? "NO_FIELD_OF_THAT_TYPE" : "SEVERAL_FIELDS_OF_THAT_TYPE");
         }
         VariableDeclarationFragment holder = holders.get(0);
         String holderName = holder.getName().getIdentifier();

@@ -169,10 +169,11 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
             }
             IType[] subtypes = service.getSearchService().getAllSubtypes(subclass);
             if (subtypes != null && subtypes.length > 0) {
-                return ToolResponse.invalidParameter("position",
+                return ToolResponse.preconditionNotMet(
                     subclass.getElementName() + " has " + subtypes.length + " subtype(s) of its"
                         + " own, which folding it into its parent would reparent. That is"
-                        + " Collapse Hierarchy, not Remove Subclass.")
+                        + " Collapse Hierarchy, not Remove Subclass.",
+                    "HAS_SUBTYPES")
                     // D3a: the sentence named the sibling by its FOWLER name, which a reader
                     // recognises and a caller cannot run. This is the same answer as an
                     // OPERATION, pointed at the class the caller named — and it is spelled
@@ -210,10 +211,21 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
         }
         Type superclassType = subType.getSuperclassType();
         if (superclassType == null) {
-            return ToolResponse.invalidParameter("position",
+            // THE REFUSAL THE `lazy_class` CURE PAIR ALWAYS HITS, and the dogfood found it by
+            // being sent here. LazyClassDetector returns before emitting for any type that
+            // declares a superclass; this refuses exactly the complement. Same AST predicate,
+            // opposite polarity — so no `lazy_class` finding can ever reach past this line,
+            // and the sibling it names is the one that was always the answer. The pointer is
+            // machine-readable now rather than prose, so the round trip ends in one hop.
+            return ToolResponse.preconditionNotMet(
                 subclass.getElementName() + " extends nothing, so there is no parent to fold"
                     + " it into. A class with no superclass is Inline Class's case"
-                    + " (inline kind=class), not this one.");
+                    + " (inline kind=class), not this one.",
+                "NO_SUPERCLASS")
+                .withNextStep(new org.jawata.mcp.models.NextStep(
+                    "inline kind=class",
+                    new org.jawata.mcp.models.CodeAddress(null, -1, -1,
+                        subclass.getFullyQualifiedName('.')), null));
         }
         ITypeBinding parentBinding = superclassType.resolveBinding();
         if (parentBinding == null || parentBinding.getJavaElement() == null) {

@@ -117,6 +117,22 @@ public class ErrorInfo {
     public static final String TIMEOUT = "TIMEOUT";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
     public static final String REFACTORING_FAILED = "REFACTORING_FAILED";
+    /**
+     * The arguments were VALID and RESOLVED; the operation does not apply to the code they
+     * point at — a DOMAIN precondition, not a parameter error.
+     *
+     * <p>Found by dogfooding v4.2.0 and corroborated by the field recording, where refusals
+     * of this shape are the largest current failure class: 17 of the 52 failures in the last
+     * three days are {@code INVALID_PARAMETER} on refactoring doors. The code was wrong and
+     * the HINT was worse — {@code invalidParameter} tells the caller to "check the tool's
+     * inputSchema for the required parameters and their expected shapes", which for these
+     * sends them to fix arguments that were already correct. An agent that follows that hint
+     * re-reads the schema, finds nothing wrong, and calls again.</p>
+     *
+     * <p>Distinct from {@link #REFACTORING_FAILED}, which means the change was attempted and
+     * did not hold. Nothing is attempted here: the operation declined before building one.</p>
+     */
+    public static final String PRECONDITION_NOT_MET = "PRECONDITION_NOT_MET";
 
     // Factory methods for common errors
     public static ErrorInfo projectNotLoaded() {
@@ -199,6 +215,41 @@ public class ErrorInfo {
             "Internal error: " + message,
             "This may be a bug. Check server logs for details."
         );
+    }
+
+    /**
+     * A domain precondition declined — see {@link #PRECONDITION_NOT_MET}.
+     *
+     * <p>{@code reasonCode} is REQUIRED here, unlike on {@code invalidParameter} where it is
+     * an optional addition to an existing shape. This code exists to be branched on, and a
+     * refusal that names no precondition leaves a caller exactly where the prose-searching
+     * defect in this class's javadoc left them.</p>
+     *
+     * @param nextStep the smaller step or sibling operation that DOES apply, or null when
+     *                 none does — null is a real answer here and is preferred to inventing
+     *                 one, because a pointer at an operation that also refuses is the
+     *                 round trip this whole change is about
+     */
+    public static ErrorInfo preconditionNotMet(String reason, String reasonCode,
+                                               NextStep nextStep) {
+        if (reasonCode == null || reasonCode.isBlank()) {
+            throw new IllegalArgumentException(
+                "a PRECONDITION_NOT_MET refusal must name which precondition declined");
+        }
+        return new ErrorInfo(
+            PRECONDITION_NOT_MET,
+            reason,
+            "The arguments were valid and resolved; this operation does not apply to the code"
+                + " at that address. Read 'reason' for which precondition declined, and"
+                + " 'nextStep' when one is offered. Re-reading the inputSchema will not help.",
+            reasonCode,
+            nextStep
+        );
+    }
+
+    /** The same, where no smaller step applies. */
+    public static ErrorInfo preconditionNotMet(String reason, String reasonCode) {
+        return preconditionNotMet(reason, reasonCode, null);
     }
 
     public static ErrorInfo refactoringFailed(String reason) {
