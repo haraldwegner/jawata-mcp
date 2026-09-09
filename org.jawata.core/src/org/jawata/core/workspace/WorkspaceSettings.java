@@ -7,7 +7,6 @@ import org.osgi.service.prefs.BackingStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -40,6 +39,9 @@ public final class WorkspaceSettings {
     private WorkspaceSettings() {
     }
 
+    /** How Eclipse spells the workspace default charset. */
+    static final String CHARSET = "org.eclipse.core.resources/encoding";
+
     /**
      * One setting the product depends on.
      *
@@ -60,7 +62,7 @@ public final class WorkspaceSettings {
     public static List<Setting> declared() {
         return List.of(
             new Setting(
-                "org.eclipse.core.resources/encoding",
+                CHARSET,
                 "UTF-8",
                 "jawata reads and writes source as UTF-8 explicitly everywhere, while JDT"
                     + " decodes compilation units through the WORKSPACE default charset. Unset,"
@@ -73,7 +75,7 @@ public final class WorkspaceSettings {
                 WorkspaceSettings.class.getSimpleName()),
             new Setting(
                 Platform.PREF_LINE_SEPARATOR,
-                "\\n",
+                "\n",
                 "Stated rather than inherited, which is mcp#78's whole point — but the"
                     + " dependency is NARROWER than mcp#75 assumed. That issue says Eclipse's"
                     + " generator writes using this preference; measured, the two writers"
@@ -105,24 +107,38 @@ public final class WorkspaceSettings {
      * applier has.</p>
      */
     public static void applyOwned() {
-        try {
-            ResourcesPlugin.getWorkspace().getRoot()
-                .setDefaultCharset(StandardCharsets.UTF_8.name(), null);
-        } catch (Exception e) {
-            // Not fatal: an unset charset is the state this exists to improve on, not a
-            // state the product cannot run in. Logged rather than thrown so a workspace
-            // that refuses the write still starts, with the reason visible.
-            log.warn("mcp#78: could not state the workspace charset; JDT will decode source"
-                + " with the platform default ({})", System.getProperty("file.encoding"), e);
-        }
-        try {
-            InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME)
-                .put(Platform.PREF_LINE_SEPARATOR, "\n");
-            InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME).flush();
-        } catch (BackingStoreException | RuntimeException e) {
-            log.warn("mcp#78: could not state the workspace line delimiter; it stays the"
-                + " platform default ({})", System.lineSeparator().replace("\r", "\\r")
-                    .replace("\n", "\\n"), e);
+        // THE LIST IS THE SOURCE, not a description of code that repeats it. The first
+        // version hard-coded the two writes here and kept `declared()` beside them as
+        // metadata — two homes for one fact, and the hollow-wiring gate said so: every
+        // caller of `declared()` was test code. Driving the writes FROM the list makes it
+        // load-bearing in both directions — drop an entry and it stops being applied; add
+        // one this class claims and cannot apply, and the default branch says so rather
+        // than letting the register quietly overstate what it states.
+        for (Setting setting : declared()) {
+            if (!WorkspaceSettings.class.getSimpleName().equals(setting.appliedBy())) {
+                continue;   // written where its value is known — e.g. compliance, per project
+            }
+            try {
+                switch (setting.id()) {
+                    case CHARSET -> ResourcesPlugin.getWorkspace().getRoot()
+                        .setDefaultCharset(setting.value(), null);
+                    case Platform.PREF_LINE_SEPARATOR -> {
+                        InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME)
+                            .put(Platform.PREF_LINE_SEPARATOR, setting.value());
+                        InstanceScope.INSTANCE.getNode(Platform.PI_RUNTIME).flush();
+                    }
+                    default -> log.warn("mcp#78: '{}' names this class as its applier and this"
+                        + " class does not apply it — the register overstates what is stated",
+                        setting.id());
+                }
+            } catch (BackingStoreException | org.eclipse.core.runtime.CoreException
+                     | RuntimeException e) {
+                // Not fatal: an unset setting is the state this exists to improve on, not one
+                // the product cannot run in. Logged rather than thrown so a workspace that
+                // refuses the write still starts, with the reason visible.
+                log.warn("mcp#78: could not state '{}'; it keeps whatever default the platform"
+                    + " supplies", setting.id(), e);
+            }
         }
     }
 }
