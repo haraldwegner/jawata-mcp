@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1026,6 +1027,69 @@ class ExperienceMaintenanceTest {
         assertEquals(0, ((List<?>) report.get("stale")).size(),
             "a Rust anchor is not judged by the JDT resolver at ingest");
         assertEquals("rust", store.all().get(0).language(), "frontmatter language persisted");
+    }
+
+    @Test
+    void load_does_not_stamp_an_undeclared_file_as_java(@TempDir Path dir) throws IOException {
+        // mcp#57: ONE RESEED PRODUCED 89 ENTRIES ALL STAMPED java, including entries about
+        // USB-C port wedging, a broker's open-orders snapshot and GitHub's contributor cache.
+        // Ingest left the language null and the store's insert turns null into "java". The
+        // column is not descriptive — it GATES maintenance, and the store's contract is that
+        // non-Java anchors are opaque to the JDT resolver and never staled, so every one of
+        // those was exposed to resolution designed not to apply to it.
+        // The anchor is deliberately NOT Java-shaped. A file with no declared language but a
+        // Java FQN stays java — two existing tests hold that contract, and the first version
+        // of this fix broke both by treating "undeclared" as "not Java". The anchor is what
+        // answers the second question.
+        writeMemory(dir, "hardware.md",
+            "name: n\ndescription: this note carries a body worth keeping\ntype: reference\n"
+                + "symbol: usb::port_wedge", "body");
+
+        Map<String, Object> report = maint(fqn -> Boolean.FALSE).load(dir);
+
+        assertEquals(1, report.get("loaded"));
+        StoredEntry e = store.all().get(0);
+        assertNotEquals("java", e.language(),
+            "a file that declares no language is not Java, and stamping it java exposes it to"
+                + " JDT staleness the store's own contract exempts it from");
+        assertFalse(e.isJavaResolvable(),
+            "and the exemption must actually follow from the value, not just the label");
+        assertEquals(0, ((List<?>) report.get("stale")).size(),
+            "so an undeclared anchor is not judged by the JDT resolver either — the resolver"
+                + " here answers FALSE for everything, which is what makes this discriminate");
+    }
+
+    @Test
+    void load_keeps_a_java_anchor_java_even_when_undeclared(@TempDir Path dir) throws IOException {
+        // THE CONTROL FOR THE CASE ABOVE, and the reason this fix is shaped the way it is.
+        // Without it, "undeclared means unclassified" passes — and that version silently
+        // stopped the JDT resolver running over every memory file whose author simply did not
+        // type `language: java`, which two pre-existing tests turned red.
+        writeMemory(dir, "java.md",
+            "name: n\ndescription: this note carries a body worth keeping\ntype: reference\n"
+                + "symbol: com.example.Widget#draw", "body");
+
+        Map<String, Object> report = maint(fqn -> Boolean.FALSE).load(dir);
+
+        assertEquals("java", store.all().get(0).language(),
+            "a Java FQN is about Java whether or not its author said so");
+        assertEquals(1, ((List<?>) report.get("stale")).size(),
+            "and it must still reach the JDT resolver at ingest");
+    }
+
+    @Test
+    void load_leaves_the_legacy_null_reading_alone() {
+        // THE CURE THE ISSUE PREFERRED WOULD HAVE BROKEN THIS. mcp#57 proposes "null means
+        // unclassified, and unclassified is not Java" — but StoredEntry#isJavaResolvable's
+        // javadoc says "Null/blank = Java-era rows": null is the LEGACY reading, from before
+        // the column existed. Flipping the readers would quietly make every legacy Java row
+        // opaque to staleness, which is a larger change than the defect and in a direction
+        // nobody asked for. Saying "unclassified" explicitly at ingest leaves this intact.
+        store.put(SymbolFact.of("lesson", "a legacy row with no language at all",
+            Confidence.LOW).symbol("com.a.Foo").build());
+        StoredEntry legacy = store.all().get(0);
+        assertTrue(legacy.isJavaResolvable(),
+            "a row predating the language column stays judgeable by the JDT resolver");
     }
 
     @Test

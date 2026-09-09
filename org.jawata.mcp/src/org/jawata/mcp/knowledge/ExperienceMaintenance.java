@@ -25,6 +25,48 @@ import org.slf4j.LoggerFactory;
  */
 public final class ExperienceMaintenance {
 
+    /**
+     * mcp#57 — the language of an ingested file that declares none.
+     *
+     * <p>A VALUE rather than null, because null already means something else here:
+     * {@code StoredEntry#isJavaResolvable} reads null as "Java-era row", from before the
+     * column existed. This says "we do not know", which is what an undeclared markdown file
+     * actually is — and being neither null nor {@code java}, it is opaque to the JDT
+     * resolver by the same rule that already exempts {@code rust} and {@code ts}.</p>
+     */
+    static final String UNCLASSIFIED = "unclassified";
+
+    /**
+     * A dotted identifier chain with an optional {@code #member} — what a Java anchor looks
+     * like, and what {@code gateway::forward} or {@code usb::port_wedge} does not.
+     */
+    private static final Pattern JAVA_ANCHOR =
+        Pattern.compile("[\\p{L}_$][\\w$]*(\\.[\\p{L}_$][\\w$]*)+(#.*)?");
+
+    /**
+     * mcp#57 — the language an ingested file is stored under.
+     *
+     * <p>A declared {@code language:} wins outright. Where nothing is declared the ANCHOR's
+     * SHAPE decides, and that middle case is the whole fix: a note carrying
+     * {@code com.gone.Removed} is about Java whether or not its author said so, and must stay
+     * judgeable by the JDT resolver; a note carrying {@code usb::port_wedge} or no symbol at
+     * all is not, and stamping it {@code java} exposes it to staleness handling the store's
+     * own contract exempts it from.</p>
+     *
+     * <p>THE FIRST VERSION OF THIS RETURNED UNCLASSIFIED FOR EVERY UNDECLARED FILE, and two
+     * existing tests caught it: {@code load_flags_stale_symbol_on_ingest} and the quoted-symbol
+     * case both ingest a Java FQN with no {@code language:} and require the resolver to run.
+     * That is a contract, not an accident — so "undeclared" is not the same question as "not
+     * Java", and the anchor answers the second one.</p>
+     */
+    private static String languageOf(MemoryDoc doc) {
+        if (doc.language != null && !doc.language.isBlank()) {
+            return doc.language;
+        }
+        return doc.symbol != null && JAVA_ANCHOR.matcher(doc.symbol.strip()).matches()
+            ? "java" : UNCLASSIFIED;
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ExperienceMaintenance.class);
 
     /** v2.9.1 (D2): minimum judged anchors before a zero-resolve pattern is called suspect. */
@@ -386,6 +428,30 @@ public final class ExperienceMaintenance {
             }
             store.deleteBySource(sourceRef);         // idempotent re-seed
 
+            // mcp#57: A FILE THAT DECLARES NO LANGUAGE IS NOT JAVA, AND MUST SAY SO.
+            //
+            // Ingest left this null, and the store's insert turns null into "java" — so one
+            // reseed produced 89 entries all stamped java, including entries about USB-C port
+            // wedging, a broker's open-orders snapshot and GitHub's contributor cache. The
+            // column is not descriptive: it GATES maintenance, and the store's contract is
+            // that non-Java anchors are opaque to the JDT resolver and never staled. Stamped
+            // java, every one of them was exposed to resolution designed not to apply to it.
+            //
+            // WHY NOT THE CURE THE ISSUE PREFERS — "null means unclassified, and unclassified
+            // is not Java". StoredEntry#isJavaResolvable's own javadoc says "Null/blank =
+            // Java-era rows": null is the LEGACY reading, from before the column existed, and
+            // real rows depend on it. Flipping the readers would quietly make every legacy
+            // Java row opaque to staleness — a bigger change than the defect, in the same
+            // direction nobody asked for. Saying "unclassified" explicitly leaves both the
+            // legacy meaning and `record`'s documented default of java untouched, and it is
+            // the only one of the three that also makes by_language in stats readable.
+            //
+            // The cost, stated rather than discovered later: a genuinely-Java memory file
+            // that omits the frontmatter key loses JDT auto-anchoring and ingest-time
+            // staleness. That is the direction the issue asks for — it fails toward leaving
+            // entries alone — and such a file can opt in with `language: java`.
+            String docLanguage = languageOf(doc);
+
             boolean split = !doc.sections.isEmpty();
             SymbolFact.Builder fb = SymbolFact.of(
                 doc.type == null ? "note" : doc.type,
@@ -401,7 +467,7 @@ public final class ExperienceMaintenance {
             }
             ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
                 .status(ExperienceEntry.ACCEPTED)
-                .language(doc.language)
+                .language(docLanguage)
                 // Sprint 28c: a file that declared its form keeps it. The gate
                 // above already refused an experience type that declared none, so
                 // reaching here with a null situation means the type owed nothing.
@@ -439,7 +505,7 @@ public final class ExperienceMaintenance {
             // written COLUMN-ONLY so body_json keeps no `symbol` key (the provenance
             // marker refresh() distinguishes on).
             if (doc.symbol == null) {
-                anchored += autoAnchor(anchors, parentId, split ? doc.preamble : doc.body, doc.language);
+                anchored += autoAnchor(anchors, parentId, split ? doc.preamble : doc.body, docLanguage);
             }
             // Sprint 21c (item B): one entry per section — the atomic FACT the fit
             // gate answers with. The whole family shares the file-level source_ref +
@@ -465,7 +531,7 @@ public final class ExperienceMaintenance {
                 // channel they have.
                 ExperienceEntry.Builder sb = ExperienceEntry.of(sf.build())
                     .status(ExperienceEntry.ACCEPTED)
-                    .language(doc.language)
+                    .language(docLanguage)
                     .scopeKind("section")
                     .situation(doc.situation)
                     .cause(doc.cause)
@@ -483,13 +549,12 @@ public final class ExperienceMaintenance {
                 String sectionId = store.putWithSource(sb.build(), sourceRef, hash);
                 // Sections cannot carry frontmatter — the auto-anchor from their OWN
                 // text is their only symbol channel (the ORB book-flatten gap).
-                anchored += autoAnchor(anchors, sectionId, s.heading() + "\n" + s.body(), doc.language);
+                anchored += autoAnchor(anchors, sectionId, s.heading() + "\n" + s.body(), docLanguage);
             }
             loaded++;
 
             // Item I: only Java anchors are judged by the JDT resolver on ingest.
-            boolean javaAnchor = doc.language == null || doc.language.isBlank()
-                || "java".equalsIgnoreCase(doc.language);
+            boolean javaAnchor = "java".equalsIgnoreCase(docLanguage);
             if (doc.symbol != null && javaAnchor
                     && Boolean.FALSE.equals(resolver.resolves(doc.symbol))) {
                 stale.add(Map.of("source", f.getFileName().toString(), "symbol", doc.symbol));
