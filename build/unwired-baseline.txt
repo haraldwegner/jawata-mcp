@@ -17,7 +17,10 @@ org.jawata.mcp.embed.EmbedderIdentity#requireComparable(EmbedderIdentity,Embedde
 org.jawata.mcp.embed.MatMuls#scalar()
 org.jawata.mcp.embed.MiniLmEmbedder#identity()
 org.jawata.mcp.embed.WordPieceTokenizer#vocabSize()
+org.jawata.mcp.field.FieldPile#countErrorShapes()
+org.jawata.mcp.field.InFlightCalls#liveCount()
 org.jawata.mcp.knowledge.AnalogyPolicy#nominate(Map<String,Double>)
+org.jawata.mcp.knowledge.CatalogueAddresses#resolves(String)
 org.jawata.mcp.knowledge.CatalogueManifest#of(CatalogueOrigin,JsonNode)
 org.jawata.mcp.knowledge.CatalogueManifest#size()
 org.jawata.mcp.knowledge.CatalogueOrigin#inWorkspace()
@@ -92,7 +95,9 @@ org.jawata.mcp.tools.ToolRegistry#registerAll(Tool[])
 org.jawata.mcp.tools.ToolRegistry#retiredNames()
 # v4.1.0: a description fragment one seam test reads; nothing else needs the constant.
 org.jawata.mcp.tools.codegen.GenerateTool#LEGACY_KIND_BLOCK
+org.jawata.mcp.tools.fqn.FqnResolver#resolveAllWorkspace(String,IJdtService)
 org.jawata.mcp.tools.lombok.LombokDetector#importsLombok(CompilationUnit)
+org.jawata.mcp.tools.shared.Landmarks#invalidate()
 org.jawata.mcp.tools.shared.ResolveOrRelocate#relocate(IJdtService,String)
 # v4.1.0: advisory text for a smell with no runnable fix. TEST-ONLY TODAY AND THE ONE
 # WORTH REVISITING: the text has no consumer and never reaches a response (28f).
