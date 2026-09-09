@@ -301,6 +301,14 @@ public class DecomposeConditionalTool extends AbstractTool
             data.put("applied", true);
             data.put("filesModified", result.modifiedFilePaths());
             data.put("undoChangeId", undoChangeId);
+            // mcp#80 — see ComposeMethodTool: the composite's final state was verified by
+            // nothing, and the response carried no diff.
+            data.put("compileVerified", result.compileVerified());
+            data.put("introducedErrors", result.introducedErrors());
+            // Absent rather than null — see ComposeMethodTool.
+            if (result.diff() != null) {
+                data.put("diff", result.diff());
+            }
             data.put("partsExtracted", parts.size());
             data.put("summary", "decompose conditional: extracted " + parts.size()
                 + " named part(s) from the if");

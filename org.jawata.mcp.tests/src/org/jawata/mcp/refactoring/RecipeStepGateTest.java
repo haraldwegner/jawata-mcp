@@ -78,8 +78,26 @@ class RecipeStepGateTest {
 
     /** A step that splices text at the very top of the unit, ahead of its package clause. */
     private static RecipeEngine.Step insert(IFile target, String text) {
+        return insertAt(target, 0, text);
+    }
+
+    /**
+     * A step that splices text at a chosen offset — needed for mcp#80, because the cases
+     * below must land INSIDE the class body. Offset 0 is ahead of the package clause, where
+     * anything but a comment is a SYNTAX error, and a syntax error is undone by the per-step
+     * gate. The state mcp#80 is about is the opposite one: valid Java that does not RESOLVE,
+     * which every step correctly lets through and which nothing used to look at afterwards.
+     */
+    private static RecipeEngine.Step insertAt(IFile target, int offset, String text) {
         return () -> ChangeEngine.fromFileEdits("gate probe",
-            Map.of(target, List.<TextEdit>of(new InsertEdit(0, text))));
+            Map.of(target, List.<TextEdit>of(new InsertEdit(offset, text))));
+    }
+
+    /** The offset just inside the unit's final closing brace — i.e. the last class's body. */
+    private static int insideClassBody(String source) {
+        int brace = source.lastIndexOf('}');
+        assertTrue(brace > 0, "PROOF OF LIFE: the fixture must have a class body to write into");
+        return brace;
     }
 
     @Test
@@ -147,5 +165,101 @@ class RecipeStepGateTest {
             "and it must actually have been applied, or the case above is about an engine"
                 + " that writes nothing rather than about the gate");
         assertNotNull(r.compositeUndo(), "a successful recipe hands back its composite undo");
+    }
+
+    // ---- mcp#80: the state after the LAST step, which nothing verified ------------------
+
+    @Test
+    @DisplayName("mcp#80: a recipe that ENDS red reports what it introduced, and is not compile-verified")
+    void aRecipeEndingRedReportsWhatItIntroduced() throws Exception {
+        Bench b = load();
+
+        // VALID JAVA THAT DOES NOT RESOLVE — the one shape the per-step gate is DESIGNED to
+        // let through. Mode.REPORT undoes a syntax error and nothing else, deliberately,
+        // because a recipe's intermediate state is often legitimately red. So this step
+        // applies, the recipe finishes, and before mcp#80 the caller was told applied:true
+        // over a file that no longer compiles.
+        RecipeEngine.Result r = RecipeEngine.run("gate probe",
+            List.of(insertAt(b.target(), insideClassBody(b.before()),
+                "    void probe80() { NoSuchType80 x = null; }\n")),
+            b.service());
+
+        assertTrue(r.ok(), "PROOF OF LIFE: the step must go THROUGH — this case is not about"
+            + " refusing it. If the gate refused here the assertions below would hold for a"
+            + " completely different reason: " + r.error());
+        assertFalse(r.compileVerified(),
+            "the recipe left the file uncompilable and must SAY so; without the final"
+                + " verification this reads compile-verified, which is the whole defect");
+        assertFalse(r.introducedErrors().isEmpty(),
+            "and it must name what it introduced rather than a bare boolean");
+        assertTrue(String.join(" | ", r.introducedErrors()).contains("NoSuchType80"),
+            "the error must be the one THIS recipe caused, named: " + r.introducedErrors());
+    }
+
+    @Test
+    @DisplayName("mcp#80: the control — a recipe that ends clean is compile-verified and carries its diff")
+    void aRecipeEndingCleanIsCompileVerifiedAndCarriesItsDiff() throws Exception {
+        Bench b = load();
+
+        RecipeEngine.Result r = RecipeEngine.run("gate probe",
+            List.of(insertAt(b.target(), insideClassBody(b.before()),
+                "    void probe80() { int ok = 1; }\n")),
+            b.service());
+
+        assertTrue(r.ok(), "the control must succeed; got: " + r.error());
+        // WITHOUT THIS the case above passes against a verification that reports every recipe
+        // red — which is a different defect wearing the same failure.
+        assertTrue(r.compileVerified(),
+            "a recipe that compiles must be reported compile-verified; got: "
+                + r.introducedErrors());
+        // NOTE WHAT THIS DOES **NOT** PROVE. The fixture compiles to begin with, so an empty
+        // list here is equally consistent with a measurement that reports every error PRESENT
+        // rather than every error INTRODUCED — there are none of either. That distinction is
+        // the case below, on a file that is already red.
+        assertTrue(r.introducedErrors().isEmpty(),
+            "and it must have introduced nothing: " + r.introducedErrors());
+
+        assertNotNull(r.diff(), "mcp#80: the response carried applied:true and NO diff — a"
+            + " caller could not see what the recipe had done to their file");
+        assertTrue(r.diff().contains("probe80"),
+            "and the diff must show the composite's own change: " + r.diff());
+    }
+
+    @Test
+    @DisplayName("mcp#80: a recipe on an ALREADY-RED file is not charged with errors it did not cause")
+    void aRecipeIsNotChargedWithErrorsItDidNotCause() throws Exception {
+        Bench b = load();
+
+        // Recipe ONE leaves the file red, and is the SETUP rather than the subject. Its own
+        // verdict is asserted only as proof of life: if it did not actually break the file,
+        // the case below degenerates into the clean control and measures nothing.
+        RecipeEngine.Result setup = RecipeEngine.run("gate probe",
+            List.of(insertAt(b.target(), insideClassBody(b.before()),
+                "    void alreadyBroken80() { PreExisting80 x = null; }\n")),
+            b.service());
+        assertTrue(setup.ok(), "PROOF OF LIFE: the setup recipe must apply; got: " + setup.error());
+        assertFalse(setup.compileVerified(),
+            "PROOF OF LIFE: the file must actually BE red before the recipe under test runs,"
+                + " or this case is indistinguishable from the clean control");
+
+        String red = Files.readString(b.file(), StandardCharsets.UTF_8);
+
+        // Recipe TWO is the subject: it adds something perfectly valid to a file that is
+        // already broken. The error is PRESENT throughout and was INTRODUCED by neither step
+        // of this recipe, so this recipe must not be charged with it.
+        RecipeEngine.Result r = RecipeEngine.run("gate probe",
+            List.of(insertAt(b.target(), insideClassBody(red),
+                "    void innocent80() { int ok = 1; }\n")),
+            b.service());
+
+        assertTrue(r.ok(), "the second recipe must apply; got: " + r.error());
+        assertTrue(r.introducedErrors().isEmpty(),
+            "the pre-existing error is not this recipe's: measuring what is PRESENT rather"
+                + " than what was INTRODUCED charges every later recipe with the first one's"
+                + " damage, and every correct recipe on a red file then reads as the culprit."
+                + " Got: " + r.introducedErrors());
+        assertTrue(r.compileVerified(),
+            "so it is compile-verified even though the FILE does not compile — which is the"
+                + " distinction this case exists for, and the one the clean control cannot make");
     }
 }

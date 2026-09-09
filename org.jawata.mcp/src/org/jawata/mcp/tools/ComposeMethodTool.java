@@ -183,6 +183,21 @@ public class ComposeMethodTool extends AbstractTool
         data.put("applied", true);
         data.put("filesModified", result.modifiedFilePaths());
         data.put("undoChangeId", undoChangeId);
+        // mcp#80: the composite's OWN verdict. Before this, `applied: true` was asserted over
+        // a final state nothing had looked at — every step ran under Mode.REPORT, which
+        // tolerates an intermediate red state on purpose, and the engine's comment claimed
+        // "the FINAL state is verified by the whole composite the caller applies". No caller
+        // applies one. And the response carried no diff, which every other applying
+        // operation returns.
+        data.put("compileVerified", result.compileVerified());
+        data.put("introducedErrors", result.introducedErrors());
+        // ABSENT rather than null when the diff could not be rendered, which is this
+        // project's own convention for a genuinely nullable field (ErrorInfo.reason and
+        // .nextStep). Every other applying operation guarantees a diff string, so a caller
+        // that had to null-check this one key would be paying for our exception.
+        if (result.diff() != null) {
+            data.put("diff", result.diff());
+        }
         data.put("sectionsExtracted", sections.size());
         data.put("summary", "compose method: extracted " + sections.size() + " sections into named sub-methods");
         return ToolResponse.success(data, ResponseMeta.builder()

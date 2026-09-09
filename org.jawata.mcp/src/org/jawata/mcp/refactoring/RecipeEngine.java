@@ -12,6 +12,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -42,13 +45,46 @@ public final class RecipeEngine {
         Change build() throws Exception;
     }
 
-    /** Outcome of a recipe run. On failure {@code compositeUndo} is null and the workspace is restored. */
-    public record Result(boolean ok, List<String> modifiedFilePaths, Change compositeUndo, String error) {
+    /**
+     * Outcome of a recipe run. On failure {@code compositeUndo} is null and the workspace
+     * is restored.
+     *
+     * <p>mcp#80: {@code introducedErrors} and {@code diff} exist because the composite had
+     * NEITHER. The comment below used to say "the FINAL state is verified by the whole
+     * composite the caller applies" — and no caller applies one. The engine has performed
+     * every step by the time it returns, so nothing verified the end state, and
+     * {@code applied: true} was asserted over it with no diff to read.</p>
+     *
+     * @param introducedErrors errors the recipe ADDED, measured per file against the state
+     *                         before this recipe first touched that file — empty when it
+     *                         added none. Pre-existing errors do not count against it.
+     * @param diff             unified diff of the whole composite, or null when no file's
+     *                         before-text could be read (see {@code textBefore} below)
+     */
+    public record Result(boolean ok, List<String> modifiedFilePaths, Change compositeUndo,
+                         String error, List<String> introducedErrors, String diff) {
+
+        /** The failure shape, keeping every caller's construction short. */
+        static Result failed(String error) {
+            return new Result(false, List.of(), null, error, List.of(), null);
+        }
+
+        /** Nothing was added that was not already broken. */
+        public boolean compileVerified() {
+            return introducedErrors.isEmpty();
+        }
     }
 
     public static Result run(String name, List<Step> steps, IJdtService service) {
         List<Change> undos = new ArrayList<>();
         LinkedHashSet<String> modified = new LinkedHashSet<>();
+        // mcp#80: THE BEFORE-STATE, CAPTURED AT FIRST TOUCH. It cannot be read up front —
+        // which files a recipe ends up modifying is only known once its steps have been
+        // built — and it cannot be read at the end, because by then every step has applied.
+        // Recording each file the first time a step declares it affected gives exactly the
+        // state as of before THIS recipe reached it, which is what "introduced" has to mean.
+        Map<String, Set<String>> errorsBefore = new LinkedHashMap<>();
+        Map<String, String> textBefore = new LinkedHashMap<>();
         for (int i = 0; i < steps.size(); i++) {
             Change change;
             try {
@@ -63,12 +99,12 @@ public final class RecipeEngine {
                 // where a diagnosis has to start.
                 log.warn("recipe '{}' step {} failed", name, i + 1, e);
                 rollback(undos, service);
-                return new Result(false, List.of(), null, "step " + (i + 1) + ": "
+                return Result.failed("step " + (i + 1) + ": "
                     + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             if (change == null) {
                 rollback(undos, service);
-                return new Result(false, List.of(), null, "step " + (i + 1) + ": could not build change");
+                return Result.failed("step " + (i + 1) + ": could not build change");
             }
             // THROUGH THE GATE, PER STEP, since C6. This was a bare ChangeEngine.perform,
             // so a recipe was the way around the compile verification every direct
@@ -84,18 +120,30 @@ public final class RecipeEngine {
             // calls yet, and the temp it will replace is still there — so undoing on any
             // introduced error would refuse every correct recipe. REPORT still undoes a
             // SYNTAX error, which is the step writing something that is not Java, and no
-            // intermediate state excuses that. The FINAL state is verified by the whole
-            // composite the caller applies, and by each row's parity golden.
+            // intermediate state excuses that.
+            //
+            // THIS COMMENT USED TO END "the FINAL state is verified by the whole composite
+            // the caller applies", and that sentence was FALSE — mcp#80. No caller applies
+            // one: the engine has performed every step by the time it returns, so the
+            // composite it hands back is an UNDO, and the state after the last step was
+            // verified by nothing. What verifies it now is the block after this loop, and
+            // that block exists because of this sentence rather than in spite of it.
+            for (String affected : ChangeEngine.affectedFilePaths(change, service)) {
+                errorsBefore.computeIfAbsent(affected, path ->
+                    CompileVerify.errorMessagesByFile(service, List.of(path))
+                        .getOrDefault(path, Set.of()));
+                textBefore.computeIfAbsent(affected, path -> readOrNull(path, service));
+            }
             GatedApply.Result gated =
                 GatedApply.perform(change, service, GatedApply.Mode.REPORT);
             ChangeEngine.ApplyOutcome outcome = gated.outcome();
             if (outcome.validationError() != null) {
                 rollback(undos, service);
-                return new Result(false, List.of(), null, "step " + (i + 1) + ": " + outcome.validationError());
+                return Result.failed("step " + (i + 1) + ": " + outcome.validationError());
             }
             if (gated.refused()) {
                 rollback(undos, service);
-                return new Result(false, List.of(), null, "step " + (i + 1)
+                return Result.failed("step " + (i + 1)
                     + " wrote code that does not parse: " + gated.failure());
             }
             if (outcome.undoChange() != null) {
@@ -115,7 +163,28 @@ public final class RecipeEngine {
         for (int i = undos.size() - 1; i >= 0; i--) {
             compositeUndo.add(undos.get(i));
         }
-        return new Result(true, new ArrayList<>(modified), compositeUndo, null);
+        // mcp#80: VERIFY THE COMPOSITE. Every step ran under Mode.REPORT, which tolerates an
+        // intermediate red state on purpose — Replace Temp with Query extracts a method
+        // nothing calls yet. What no one checked was the state after the LAST step, which is
+        // the only one a caller ever sees. Settle first, for the same reason GatedApply does:
+        // a model that has not caught up with the disk reports errors the recipe did not cause.
+        List<String> modifiedPaths = new ArrayList<>(modified);
+        CompileVerify.settle(service, modifiedPaths);
+        List<String> introduced = CompileVerify.introducedErrors(errorsBefore,
+            CompileVerify.errorMessagesByFile(service, modifiedPaths));
+
+        // And the diff, which the response simply did not carry. Rendered from the text as it
+        // was at first touch, so it shows the WHOLE composite rather than the last step.
+        List<DiffRenderer.FileDiff> diffs = new ArrayList<>();
+        for (String path : modifiedPaths) {
+            String was = textBefore.get(path);
+            String now = readOrNull(path, service);
+            if (was != null && now != null && !was.equals(now)) {
+                diffs.add(new DiffRenderer.FileDiff(path, was, now));
+            }
+        }
+        return new Result(true, modifiedPaths, compositeUndo, null, introduced,
+            diffs.isEmpty() ? null : DiffRenderer.unifiedDiff(diffs));
     }
 
     /** Discard the JDT buffers of every compilation unit the change touched. */
@@ -143,6 +212,36 @@ public final class RecipeEngine {
             for (Change child : composite.getChildren()) {
                 closeModifiedUnits(child);
             }
+        }
+    }
+
+    /**
+     * A file's text, or null when it cannot be read — mcp#80.
+     *
+     * <p>Null rather than an exception, and null rather than an empty string: a file whose
+     * before-text is unavailable is simply left out of the diff, which makes the diff
+     * PARTIAL. Substituting "" would render the whole file as an insertion, which is a
+     * worse answer than an absent one. Verification is unaffected either way — it reads
+     * the compiler's error sets, not the text.</p>
+     *
+     * <p>THE PATH IS RESOLVED THROUGH THE HOST, and the first version of this method did
+     * not do that. {@code ChangeEngine.affectedFilePaths} spells its paths with
+     * {@code HostPaths.formatPath}, which returns a PROJECT-RELATIVE path unless the host
+     * is configured for absolute ones — so reading it directly resolves against the process
+     * working directory, fails, and every file is silently dropped from the diff. The
+     * symptom was a successful recipe reporting a null diff, which is the very shape mcp#80
+     * exists to remove. {@code HostPaths.resolve} is the documented inverse of
+     * {@code formatPath} and returns an absolute path unchanged, so it is correct for both
+     * spellings.</p>
+     */
+    private static String readOrNull(String path, IJdtService service) {
+        try {
+            java.nio.file.Path absolute = service != null
+                ? service.getPathUtils().resolve(path)
+                : java.nio.file.Path.of(path);
+            return java.nio.file.Files.readString(absolute);
+        } catch (Exception e) {
+            return null;
         }
     }
 
