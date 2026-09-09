@@ -317,7 +317,9 @@ class PerformedRefactoringCountTest {
         assigned.put("apply_cleanup", 10);
         assigned.put("change_method_signature", 11);
         assigned.put("hierarchy", 7);
-        assigned.put("data", 10);
+        // ELEVEN since mcp#63: Stage 5's ten plus add_record_component, the operation
+        // change_method_signature refuses and points here.
+        assigned.put("data", 11);
         assigned.put("refactor_to_pattern", 11);
 
         Map<String, Integer> published = new LinkedHashMap<>();

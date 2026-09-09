@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>SCOPED TO EVERY REFACTORING DOOR, because the list is no longer written by hand.</b>
  * S8b step 8 replaced it with {@code RefactoringDoors.all} — the same call the application
- * registers from — so the guard examines all nine doors and their 78 operations, and a door
+ * registers from — so the guard examines all nine doors and their 79 operations, and a door
  * cannot be shipped and unexamined.</p>
  *
  * <p>The history is kept because it is the argument. It was scoped to {@code apply_cleanup}
@@ -75,7 +75,7 @@ class EveryShippedKindIsRoutedOrExplainedTest {
      * the previous four, written in the commit whose own javadoc declares the drift over.
      * There is nothing to keep in step now: the guard reads
      * {@link org.jawata.mcp.tools.RefactoringDoors#all}, so no prose here has to say how many
-     * doors there are, and the one number that remains — {@code examined == 78} — is asserted
+     * doors there are, and the one number that remains — {@code examined == 79} — is asserted
      * against the derived population rather than described beside it.</p>
      *
      * <p><b>This sentence said "three doors at C6" until a C4 audit read it against the list
@@ -189,7 +189,7 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // precise re-narrowing the widening was for. A floor cannot see a door go; a count
         // can, and the sibling guard in FrontDoorDescriptionTest already used one.
         //
-        // 78 = the NINE doors' published kinds, which is the whole operation surface — the
+        // 79 = the NINE doors' published kinds, which is the whole operation surface — the
         // measured start state S8b opened on, reached here for the first time because the
         // door list stopped being hand-written. It was 50 over six doors; `data` (10),
         // `generate` (7) and `refactor_to_pattern` (11) were the three the hand list never
@@ -200,7 +200,7 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // themselves — the tautology this file's sibling guards already record — so the number
         // is what a drifting population cannot fake. It was `examined >= 30` once: a floor
         // cannot see a door LEAVE, because any single departure still lands above it.
-        org.junit.jupiter.api.Assertions.assertEquals(78, examined,
+        org.junit.jupiter.api.Assertions.assertEquals(79, examined,
             "PROOF OF LIFE: the nine doors must publish their kinds here, or this loop runs"
                 + " over nothing and passes. A door removed from RefactoringDoors.all, or a"
                 + " kind added without a route or a reason, changes this number. Examined: "

@@ -16,16 +16,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Sprint 28e, Stage 2b — EVERY SHAPE MARKED, against the rule Stage 2a published.
  *
  * <p>D2 asks that every response shape be marked <i>carries the stamp</i> or <i>cannot
- * degrade</i>. {@link ResponseShapeCensusTest} derived the population: 78, as door x
- * published kind. This class marks all 78 and fails if one is unmarked.</p>
+ * degrade</i>. {@link ResponseShapeCensusTest} derived the population: 79, as door x
+ * published kind. This class marks all 79 and fails if one is unmarked.</p>
  *
  * <h2>The unit of MARKING is the response BUILDER, not the kind</h2>
  *
- * <p>Measured before marking: the 78 operations do not have 78 response builders.
+ * <p>Measured before marking: the 79 operations do not have 79 response builders.
  * {@code AbstractApplyingRefactoringTool.executeWithService} produces the response for
  * <b>42</b> subtypes, and {@code AbstractRefactoringTool.respondForChange} for <b>24</b>
- * more. So a shape is a BRANCH of a shared builder, and marking per kind would be 78
- * copies of a handful of judgements — with 78 chances to write one down differently.</p>
+ * more. So a shape is a BRANCH of a shared builder, and marking per kind would be 79
+ * copies of a handful of judgements — with 79 chances to write one down differently.</p>
  *
  * <p>So the FAMILY of each kind is DERIVED here, by walking its delegate's superclass
  * chain, and only the per-family verdict is written by hand. A kind whose delegate belongs
@@ -205,7 +205,7 @@ class DegradationStampMarkingTest {
      * THE MARKING. Every shape lands in a family with a verdict, or is named.
      */
     @Test
-    @DisplayName("every one of the 78 shapes is marked, and an unmarkable one is named")
+    @DisplayName("every one of the 79 shapes is marked, and an unmarkable one is named")
     void everyShapeIsMarked() {
         Map<String, String> byShape = familyByShape();
 
@@ -231,7 +231,7 @@ class DegradationStampMarkingTest {
             "every SHAPE derived to one verdict, so the marking is one judgement wearing "
                 + "several names. In use: " + verdictsInUse);
 
-        assertEquals(78, byShape.size(),
+        assertEquals(79, byShape.size(),
             "the marked count must EQUAL the census population of 78 — C2b's exit clause. "
                 + "Per family: " + countByFamily(byShape));
     }

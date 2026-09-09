@@ -333,11 +333,15 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
                     + "constructor, whose signature is not its own: the language requires it to "
                     + "take exactly the record's components, so it is fixed by the header. A "
                     + "changed signature here would be a constructor that is neither canonical "
-                    + "nor delegating, which does not compile. Adding or removing a component "
-                    + "means editing the HEADER, and that cascades to the accessors, "
-                    + "equals/hashCode/toString and every `new` call site — no operation "
-                    + "performs it today (mcp#63); it is authored by hand. A NON-canonical "
-                    + "constructor of this record can be changed here.",
+                    + "nor delegating, which does not compile. Adding a component means "
+                    + "editing the HEADER, and `data kind=add_record_component` performs "
+                    + "that: the header gains the component and every `new` passes it. "
+                    + "(This message used to say the change also cascades to the accessors "
+                    + "and to equals/hashCode/toString. Measured over this product's 82 "
+                    + "record declarations, that is wrong twice: both are compiler-generated "
+                    + "and NONE of the 82 declares them, so the call sites are the whole of "
+                    + "the cross-file work.) A NON-canonical constructor of this record can "
+                    + "be changed here.",
                 Refusal.RECORD_CANONICAL_CONSTRUCTOR));
         }
         HeadlessJdtConfig.ensureInitialized();

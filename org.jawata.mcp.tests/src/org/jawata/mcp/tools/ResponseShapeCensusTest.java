@@ -113,7 +113,7 @@ class ResponseShapeCensusTest {
         EXPECTED_KINDS_PER_DOOR.put("generate", 7);
         EXPECTED_KINDS_PER_DOOR.put("refactor_to_pattern", 11);
         EXPECTED_KINDS_PER_DOOR.put("change_method_signature", 11);
-        EXPECTED_KINDS_PER_DOOR.put("data", 10);
+        EXPECTED_KINDS_PER_DOOR.put("data", 11);
         EXPECTED_KINDS_PER_DOOR.put("apply_cleanup", 10);
     }
 

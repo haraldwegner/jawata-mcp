@@ -58,10 +58,16 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     private final RemoveSettingMethodTool removeSettingMethod;
     private final EncapsulateRecordTool encapsulateRecord;
     private final ChangeReferenceToValueTool referenceToValue;
+    private final org.jawata.mcp.tools.data.AddRecordComponentTool addRecordComponent;
 
     public DataTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache) {
         super(serviceSupplier, changeCache);
         this.encapsulateField = new EncapsulateFieldTool(serviceSupplier, changeCache);
+        // mcp#63. The operation change_method_signature REFUSES and points here: a
+        // record's canonical constructor takes exactly the components, so a component is
+        // added by editing the HEADER and the constructor follows.
+        this.addRecordComponent =
+            new org.jawata.mcp.tools.data.AddRecordComponentTool(serviceSupplier, changeCache);
         // Row 16. The largest population any Stage 5 row answers: message_chains reports 273
         // findings on this repository, measured, and its own message already names this
         // refactoring as the cure.
@@ -117,7 +123,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
     /**
      * Built from the typed fields, keyed by what each delegate calls itself.
      *
-     * <p>Ten entries — the count Stage 9 assigns this door, reached when Stage 5's last three
+     * <p>ELEVEN entries — ten from Stage 5 plus mcp#63's add_record_component, reached when Stage 5's last three
      * rows landed. The list is a {@code List.of(...)} of fields for the same reason
      * {@code inline} and {@code generate} hold theirs that way: the delegates are typed fields
      * rather than a map. (It said "one entry today" until 2026-09-05, nine rows after that
@@ -128,7 +134,8 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         Map<String, KindDelegate> published = new LinkedHashMap<>();
         for (KindDelegate delegate : List.of(encapsulateField, hideDelegate, specialCase,
                 replacePrimitive, encapsulateCollection, splitVariable, replaceDerived,
-                removeSettingMethod, encapsulateRecord, referenceToValue)) {
+                removeSettingMethod, encapsulateRecord, referenceToValue,
+                addRecordComponent)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -237,6 +244,8 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
                 removeSettingMethod.executeWithService(service, arguments);
             case "encapsulate_record" ->
                 encapsulateRecord.executeWithService(service, arguments);
+            case "add_record_component" ->
+                addRecordComponent.executeWithService(service, arguments);
             case "reference_to_value" ->
                 referenceToValue.executeWithService(service, arguments);
             // Unreachable: the lookup above already refused an unrouted kind. It is here so

@@ -681,6 +681,16 @@ public final class CureCatalog {
      * the table a reader already opens.</p>
      */
     private static final Map<String, String> SHIPPED_BUT_UNROUTED = mapOf(
+        // mcp#63. UNROUTABLE rather than merely unrouted, and the distinction is the same
+        // one `data kind=split_variable` makes: no detector reports that a record is MISSING
+        // a component, because nothing in the code says what is absent — and even a detector
+        // could not drive this, since the operation's whole input is a TYPE, a NAME and a
+        // default VALUE, none of which a finding carries. A record's shape is a design
+        // decision, so the caller names all three.
+        "data kind=add_record_component",
+        "no detector reports a record missing a component, and none could drive this if it"
+            + " did: the operation's input is a type, a name and a default value, none of"
+            + " which a finding carries. What a record should hold is a design decision.",
         // The two OLDER than stage 3, found by the guard rather than by the review that
         // prompted it. They have shipped unrouted since Sprint 15 and nobody had said why.
         "apply_cleanup kind=add_final",

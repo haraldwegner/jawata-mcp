@@ -174,14 +174,19 @@ class Stage5PerRowContractTest {
     }
 
     /**
-     * The one kind on this door that is NOT a Stage 5 row.
+     * The kinds on this door that are NOT Stage 5 rows, each with the reason it is here.
      *
      * <p>{@code encapsulate_field} is the operation the door was renamed FROM in Stage 1 — the
-     * "1" in the door's 1 to 10. Naming it here is what lets the equality below be an equality
-     * rather than a containment, so an eleventh kind arriving on this door fails this test
-     * instead of passing quietly through a subset check.</p>
+     * "1" in the door's 1 to 10. {@code add_record_component} arrived with mcp#63, AFTER this
+     * stage closed, which is why it is an exemption rather than a row: the table above is the
+     * record of what Stage 5 shipped and must not be rewritten to absorb later work.</p>
+     *
+     * <p>Naming them here is what lets the assertion below be an EQUALITY rather than a
+     * containment, so a kind arriving on this door with no row and no exemption fails this
+     * test instead of passing quietly through a subset check.</p>
      */
-    private static final String PRE_EXISTING = "encapsulate_field";
+    private static final java.util.Set<String> NOT_STAGE_5_ROWS =
+        java.util.Set.of("encapsulate_field", "add_record_component");
 
     @Test
     @DisplayName("the table accounts for every row Stage 5 shipped, and for the whole door")
@@ -196,11 +201,11 @@ class Stage5PerRowContractTest {
         // sprint and lives nowhere in the code, while what the door publishes is code. A
         // containment would accept both a dropped row and a kind nobody wrote a row for.
         TreeSet<String> expected = new TreeSet<>(rows().keySet());
-        expected.add(PRE_EXISTING);
+        expected.addAll(NOT_STAGE_5_ROWS);
         assertEquals(expected, new TreeSet<>(door().publishedKinds()),
-            "the nine Stage 5 rows plus " + PRE_EXISTING + " ARE this door's ten kinds; a"
-                + " difference means either a row is missing from the table above or a kind"
-                + " reached the door with no row and no exemption");
+            "the nine Stage 5 rows plus " + new TreeSet<>(NOT_STAGE_5_ROWS) + " ARE this"
+                + " door's kinds; a difference means either a row is missing from the table"
+                + " above or a kind reached the door with no row and no exemption");
     }
 
     @Test
