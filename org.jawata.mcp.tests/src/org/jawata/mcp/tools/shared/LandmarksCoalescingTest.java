@@ -87,11 +87,50 @@ class LandmarksCoalescingTest {
             // that could not fail, written into the very test that proves the fix. It is
             // recorded here rather than quietly replaced, because that is the defect class
             // this file's own subject keeps producing.)
-            () -> assertEquals(1,
-                answers.stream().filter(Landmarks.Ranking::ready)
-                    .map(r -> r.landmarks().toString()).distinct().count(),
-                "every caller that got a ranking got the SAME ranking: " + answers.size()
-                    + " answers"));
+            //
+            // ITS SECOND VERSION HAD THE OPPOSITE FAULT: `assertEquals(1, ...ready...
+            // distinct().count())` demanded that at least one caller be READY inside the
+            // burst. `ready == false` is a DOCUMENTED answer — Landmarks.Ranking's own
+            // javadoc says an empty list with ready false is "a workspace still being read" —
+            // so on a loaded machine all six are legitimately told "still running", the
+            // count is 0, and the clause fails under a message about agreement. Measured:
+            // it passed at a 749s suite wall and failed at 922s over a byte-identical tree.
+            // A clause that reports machine load as a sharing defect is worse than none.
+            //
+            // So the two facts are now asserted SEPARATELY: the shared computation
+            // FINISHES, and every ready answer is the one it produced.
+            () -> {
+                Landmarks.Ranking settled = awaitReady(service);
+                assertEquals(1, Landmarks.RANKINGS_STARTED.get() - before,
+                    "waiting for the shared ranking must not have started another");
+                List<String> distinct = answers.stream().filter(Landmarks.Ranking::ready)
+                    .map(r -> r.landmarks().toString()).distinct().toList();
+                assertTrue(
+                    distinct.isEmpty()
+                        || distinct.equals(List.of(settled.landmarks().toString())),
+                    "every caller that got a ranking got the SAME ranking the shared"
+                        + " computation produced; saw " + distinct.size() + " distinct among "
+                        + answers.size() + " answers");
+            });
+    }
+
+    /**
+     * Block until the shared ranking has finished, and return it.
+     *
+     * <p>Readiness is not something a loaded machine can promise inside a concurrent burst,
+     * so it is waited for rather than sampled. Asking again is what a caller told "still
+     * running" is supposed to do, and it must not start a second computation — which the
+     * clause after this one asserts.</p>
+     */
+    private static Landmarks.Ranking awaitReady(JdtServiceImpl service) throws Exception {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MINUTES.toNanos(3);
+        Landmarks.Ranking last = Landmarks.of(service, 5);
+        while (!last.ready() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+            last = Landmarks.of(service, 5);
+        }
+        assertTrue(last.ready(), "the shared ranking must FINISH — it did not within 3 minutes");
+        return last;
     }
 
     @Test
