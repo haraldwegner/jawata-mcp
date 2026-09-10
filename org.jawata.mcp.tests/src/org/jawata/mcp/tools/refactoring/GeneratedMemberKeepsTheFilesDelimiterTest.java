@@ -277,6 +277,27 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
         // It rewrites TWO files from one ASTRewrite pass — the record's header and a
         // construction site in another compilation unit — so it is also the only writer here
         // whose blast radius crosses a file.
+        //
+        // AND MUTATION M SAYS THE TAB CLAUSE BELOW CANNOT FAIL AT THIS SITE. Restoring the
+        // null options left 5 of 5 green, and the mutation was COMPLETE — that site's exact
+        // pre-fix state — so it has found something rather than measured nothing. What it
+        // found, probed by dumping the writer's own bytes under both builds: the output is
+        // IDENTICAL. Both of this operation's edits are inline splices into an existing line
+        // — a component into the record header's list, an argument into an argument list —
+        // so it never GENERATES a line, and the options map governs the indentation of
+        // generated lines only. Widening the fixture to a 111-character header did not
+        // change that: JDT spliced the text in and did not wrap, so there is no input at
+        // which this site can emit a tab.
+        //
+        // So the fix is correct by construction and NOT a live defect, and this is mutation
+        // L's finding pointing the other way: there, a parameter annotation generated no
+        // indented line and a FIELD one did; here no input generates one at all. The fix is
+        // kept because it makes the wrong call unspellable at a site that would start
+        // emitting lines the moment anyone gave it a member to generate — but the tab
+        // assertions below are a FUTURE lock, not present coverage, and calling them
+        // coverage is the defect this batch has recorded at every checkpoint. The delimiter
+        // assertions and the cross-file construction rewrite ARE live, and they are what
+        // this case measures today.
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
         Path root = service.allProjects().iterator().next().projectRoot();
         Path recordFile = root.resolve("src/main/java/com/example/CrlfRecordTarget.java");
