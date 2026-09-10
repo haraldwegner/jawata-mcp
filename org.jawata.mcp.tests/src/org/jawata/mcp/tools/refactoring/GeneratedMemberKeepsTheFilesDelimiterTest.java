@@ -60,6 +60,8 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
             + "\r\n"
             + "/** mcp#75 probe: every delimiter in this file is CRLF. */\r\n"
             + "public class CrlfAnnotationTarget {\r\n"
+            + "    String cache;\r\n"
+            + "\r\n"
             + "    String find(String key) {\r\n"
             + "        return key;\r\n"
             + "    }\r\n"
@@ -162,9 +164,13 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "add");
-        args.put("symbol", "com.example.CrlfAnnotationTarget#find");
+        // A FIELD, not a parameter. A parameter annotation is inserted inline
+        // (`@Nullable String key`) and generates no new line, so it produces no
+        // indentation and neither assertion below can observe the writer's options — both
+        // stayed green under a mutation that reverted the writer, which is how that was
+        // found. A field annotation is placed on its own line and must be indented.
+        args.put("symbol", "com.example.CrlfAnnotationTarget#cache");
         args.put("nullness", "nullable");
-        args.put("parameter", "key");
         args.put("style", "JSPECIFY");
         ToolResponse r = new ApplyNullAnnotationsTool(() -> service, new RefactoringChangeCache())
             .execute(args);
