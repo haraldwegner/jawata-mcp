@@ -216,9 +216,31 @@ class LatencySeamTest {
         AssertionError timedOut = assertThrows(AssertionError.class,
             () -> awaitInsideClass(held, "com.example.debug.LatencySeamTarget", 1_500));
 
-        assertTrue(timedOut.getMessage().contains("never reached"),
-            "the failure must say what it waited for, or a caller cannot tell this apart "
-                + "from an ordinary assertion: " + timedOut.getMessage());
+        // THE NEEDLE WAS NOT THE CLAUSE. This asserted `contains("never reached")` under a
+        // message reading "the failure must say WHAT IT WAITED FOR" — and "never reached"
+        // says no such thing; the CLASS NAME does. The two came apart the moment the
+        // timeout learned to distinguish its causes, and the full suite is what showed it.
+        String message = timedOut.getMessage();
+        assertTrue(message.contains("com.example.debug.LatencySeamTarget"),
+            "the failure must say WHAT it waited for, or a caller cannot tell this apart "
+                + "from an ordinary assertion: " + message);
+        assertTrue(message.contains("timed out after"),
+            "and that it is a TIMEOUT rather than a refusal: " + message);
+
+        // EITHER CAUSE IS A CORRECT TIMEOUT HERE, and which one fires is a property of the
+        // machine rather than of the code — which is mcp#18's own subject, measured. Alone,
+        // `profile threads` attaches and reports dumps that never name the class. Under a
+        // four-shard suite it does not attach at all: this run recorded
+        // `AttachNotSupportedException — target process doesn't respond within 10500ms`
+        // against the held JVM, so nothing looked at the target and the honest message says
+        // so. Before the two causes were separated, that case printed "the target never
+        // reached its class" — a claim about a target nothing had managed to observe, and
+        // this assertion accepted it.
+        assertTrue(
+            message.contains("NOT ONE thread dump succeeded")
+                || message.contains("thread dump(s) succeeded and none named it"),
+            "and WHICH of the two it was, because a wait that could not look is not "
+                + "evidence about the target at all: " + message);
     }
 
     // ========================================================== the core exit criterion
