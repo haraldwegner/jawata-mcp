@@ -270,7 +270,10 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
             }
             List<TextEdit> edits = new ArrayList<>();
             edits.add(ir.rewriteImports(null));
-            edits.add(rw.rewriteAST());
+            // mcp#75 / v2.14.1 #5: see the sibling site below.
+            edits.add(rw.rewriteAST(
+                new org.eclipse.jface.text.Document(cu.getSource()),
+                org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(cu, null)));
             editsByFile.put((IFile) cu.getResource(), edits);
             filesChanged++;
         }
@@ -429,7 +432,13 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
 
         List<TextEdit> edits = new ArrayList<>();
         edits.add(importRewrite.rewriteImports(null));
-        edits.add(rewrite.rewriteAST());
+        // mcp#75 / v2.14.1 #5: pass the DOCUMENT. The no-arg rewriteAST() reads the type
+        // root's own options and sees neither the file's indentation nor its line
+        // delimiter, so an annotation added to a space-indented or CRLF file was written
+        // with this platform's defaults instead of the file's.
+        edits.add(rewrite.rewriteAST(
+            new org.eclipse.jface.text.Document(cu.getSource()),
+            org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(cu, null)));
         IFile file = (IFile) cu.getResource();
         Change change = ChangeEngine.fromFileEdits("add @" + ref, Map.of(file, edits));
 

@@ -562,7 +562,15 @@ public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
                 rewrite.remove(m, null);
             }
         }
-        return rewrite.rewriteAST();
+        // mcp#75 / v2.14.1 #5: pass the DOCUMENT, not nothing. The no-arg rewriteAST()
+        // reads the type root's own options, so it emitted JDT's tab default into a
+        // space-indented file and would splice this platform's line delimiter into a file
+        // written with the other one. A rewrite handed the document follows the file it is
+        // editing, which is what the other 54 rewrite sites in this product already do.
+        org.eclipse.jface.text.Document doc =
+            new org.eclipse.jface.text.Document(ast.getTypeRoot().getSource());
+        return rewrite.rewriteAST(doc,
+            org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(ast));
     }
 
     private static String buildParentSource(String pkgName, String parentName, CompilationUnit aAst,
