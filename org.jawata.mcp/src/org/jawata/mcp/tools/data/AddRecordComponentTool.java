@@ -332,7 +332,15 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
                     continue;
                 }
                 Document document = new Document(referencing.getSource());
-                TextEdit edit = rewrite.rewriteAST(document, null);
+                // mcp#75: OPTIONS, not just a Document. A Document carries the file's line
+                // DELIMITER; only the options map carries its INDENTATION, and `null` means
+                // JDT falls back to its own default - tabs - into a space-indented file.
+                // Found by the C12 audit: the batch's population query asked "does it pass a
+                // Document", which this site answers yes, so it read as clean while being a
+                // member of the class actually being closed.
+                TextEdit edit = rewrite.rewriteAST(document,
+                    org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
+                        referencing, null));
                 if (edit.hasChildren() && referencing.getResource() instanceof IFile file) {
                     edits.computeIfAbsent(file, key -> new ArrayList<>()).add(edit);
                 }

@@ -82,6 +82,29 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
             + "    }\r\n"
             + "}\r\n";
 
+
+    /** A CRLF record whose header a new component has to be written into. */
+    private static final String CRLF_RECORD_SOURCE =
+        "package com.example;\r\n"
+            + "\r\n"
+            + "/** mcp#75 probe: every delimiter in this file is CRLF. */\r\n"
+            + "public record CrlfRecordTarget(String name, int size) {\r\n"
+            + "    int doubled() {\r\n"
+            + "        return size * 2;\r\n"
+            + "    }\r\n"
+            + "}\r\n";
+
+    /** A construction site in ANOTHER file, so the rewrite has to reach past the record. */
+    private static final String CRLF_RECORD_USER_SOURCE =
+        "package com.example;\r\n"
+            + "\r\n"
+            + "/** mcp#75 probe: every delimiter in this file is CRLF. */\r\n"
+            + "public class CrlfRecordUser {\r\n"
+            + "    CrlfRecordTarget make() {\r\n"
+            + "        return new CrlfRecordTarget(\"a\", 1);\r\n"
+            + "    }\r\n"
+            + "}\r\n";
+
     @Test
     @DisplayName("the control: a lone LF spliced into the result IS caught")
     void theDetectorCatchesALoneLf() {
@@ -237,6 +260,69 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
         assertEquals(0, countLoneLf(after),
             "An extracted method must be written with the delimiter the FILE uses. File now:\n"
                 + after);
+    }
+
+
+    @Test
+    @DisplayName("mcp#75: a record component added to a CRLF file keeps the file's delimiter")
+    void anAddedRecordComponentKeepsTheFilesDelimiter() throws Exception {
+        // THE FOURTH WRITER, and the one the batch's own population query MISSED. That query
+        // asked "does this site pass a Document" — because the belief at the time was that a
+        // Document carries both the delimiter and the indentation. It does not: the Document
+        // carries the DELIMITER, and only the OPTIONS MAP carries the INDENTATION, which is
+        // what mutations J and L measured. So the population is "passes null options", and on
+        // that axis this site is a member: it passed a Document and `null` for the options,
+        // which reads as clean under the first question and is a defect under the second.
+        //
+        // It rewrites TWO files from one ASTRewrite pass — the record's header and a
+        // construction site in another compilation unit — so it is also the only writer here
+        // whose blast radius crosses a file.
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path root = service.allProjects().iterator().next().projectRoot();
+        Path recordFile = root.resolve("src/main/java/com/example/CrlfRecordTarget.java");
+        Path userFile = root.resolve("src/main/java/com/example/CrlfRecordUser.java");
+        Files.writeString(recordFile, CRLF_RECORD_SOURCE, StandardCharsets.UTF_8);
+        Files.writeString(userFile, CRLF_RECORD_USER_SOURCE, StandardCharsets.UTF_8);
+        ResourcesPlugin.getWorkspace().getRoot()
+            .refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+
+        assertEquals(0, countLoneLf(Files.readString(recordFile, StandardCharsets.UTF_8)),
+            "PROOF OF LIFE: the record file must be pure CRLF before the operation");
+        assertEquals(0, countLoneLf(Files.readString(userFile, StandardCharsets.UTF_8)),
+            "PROOF OF LIFE: the calling file must be pure CRLF before the operation");
+
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode args = mapper.createObjectNode();
+        args.put("typeName", "com.example.CrlfRecordTarget");
+        args.put("componentType", "String");
+        args.put("componentName", "label");
+        args.put("defaultValue", "\"\"");
+        ToolResponse r = new org.jawata.mcp.tools.data.AddRecordComponentTool(
+            () -> service, new RefactoringChangeCache()).execute(args);
+        assertTrue(r.isSuccess(), "PROOF OF LIFE: the component must actually be added, or the"
+            + " byte assertions below hold over unchanged files: "
+            + (r.getError() != null ? r.getError().getCode() + " / " + r.getError().getMessage()
+                                    : "(no error)"));
+
+        String record = Files.readString(recordFile, StandardCharsets.UTF_8);
+        String user = Files.readString(userFile, StandardCharsets.UTF_8);
+        assertTrue(record.contains("String label"),
+            "PROOF OF LIFE: the component must be in the record header: " + record);
+        assertTrue(user.contains("new CrlfRecordTarget(\"a\", 1, \"\")"),
+            "PROOF OF LIFE: the construction site must pass the new value: " + user);
+
+        assertEquals(0, countLoneLf(record),
+            "A record component must be written with the delimiter the FILE uses. File now:\n"
+                + record);
+        assertEquals(0, countLoneLf(user),
+            "A rewritten construction site must keep its own file's delimiter. File now:\n"
+                + user);
+        assertFalse(record.contains("\t"),
+            "A rewrite must indent with what the FILE uses. A tab here means the writer took"
+                + " JDT's default instead of the document's formatter options. File now:\n"
+                + record);
+        assertFalse(user.contains("\t"),
+            "Same, for the file the rewrite reached into. File now:\n" + user);
     }
 
     /** Line feeds NOT preceded by a carriage return — i.e. delimiters foreign to this file. */

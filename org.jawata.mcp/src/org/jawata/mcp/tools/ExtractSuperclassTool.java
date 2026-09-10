@@ -566,7 +566,11 @@ public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
         // reads the type root's own options, so it emitted JDT's tab default into a
         // space-indented file and would splice this platform's line delimiter into a file
         // written with the other one. A rewrite handed the document follows the file it is
-        // editing, which is what the other 54 rewrite sites in this product already do.
+        // editing. The count that used to sit here - "the other 54 rewrite sites" - was
+        // wrong twice over and is gone rather than corrected: it was read off a grep whose
+        // matches included the comments that same commit had just added, and it counted the
+        // wrong axis anyway. What matters is not how many pass a Document but how many pass
+        // OPTIONS, because indentation rides on the options map alone.
         org.eclipse.jface.text.Document doc =
             new org.eclipse.jface.text.Document(ast.getTypeRoot().getSource());
         return rewrite.rewriteAST(doc,
