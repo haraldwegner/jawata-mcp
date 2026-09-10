@@ -105,6 +105,28 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
             + "    }\r\n"
             + "}\r\n";
 
+
+    /** Two CRLF siblings sharing one byte-identical, self-contained method. */
+    private static final String CRLF_FORMAL_SOURCE =
+        "package com.example;\r\n"
+            + "\r\n"
+            + "/** mcp#75 probe: every delimiter in this file is CRLF. */\r\n"
+            + "public class CrlfGreetFormal {\r\n"
+            + "    String salute(String who) {\r\n"
+            + "        return \"Good day, \" + who;\r\n"
+            + "    }\r\n"
+            + "}\r\n";
+
+    private static final String CRLF_CASUAL_SOURCE =
+        "package com.example;\r\n"
+            + "\r\n"
+            + "/** mcp#75 probe: every delimiter in this file is CRLF. */\r\n"
+            + "public class CrlfGreetCasual {\r\n"
+            + "    String salute(String who) {\r\n"
+            + "        return \"Good day, \" + who;\r\n"
+            + "    }\r\n"
+            + "}\r\n";
+
     @Test
     @DisplayName("the control: a lone LF spliced into the result IS caught")
     void theDetectorCatchesALoneLf() {
@@ -344,6 +366,68 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
                 + record);
         assertFalse(user.contains("\t"),
             "Same, for the file the rewrite reached into. File now:\n" + user);
+    }
+
+
+    @Test
+    @DisplayName("mcp#75: the GENERATED superclass file is written with the source file's delimiter")
+    void anExtractedSuperclassFileKeepsTheFilesDelimiter() throws Exception {
+        // THE C12 AUDIT'S BLOCKER 4 — two of the three production changes in this batch
+        // shipped with no control at all, so nothing distinguished those edits from their
+        // absence. Writing the missing control is what found what follows.
+        //
+        // The rewrite this batch fixed edits the SUBCLASS. The PARENT is a different
+        // writer entirely: `buildParentSource` assembles it with a StringBuilder, and
+        // every line it appends ends in a literal "\n" with a hard-coded four-space
+        // indent for each pulled member. So the fix could not reach it, and neither could
+        // the assertion the batch did write — that one reads the subclass.
+        //
+        // This is the same defect the issue is about, one method below the fix, in the
+        // same tool: a writer using its OWN convention rather than the file's.
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path root = service.allProjects().iterator().next().projectRoot();
+        Path pkg = root.resolve("src/main/java/com/example");
+        Path formal = pkg.resolve("CrlfGreetFormal.java");
+        Files.writeString(formal, CRLF_FORMAL_SOURCE, StandardCharsets.UTF_8);
+        Files.writeString(pkg.resolve("CrlfGreetCasual.java"), CRLF_CASUAL_SOURCE,
+            StandardCharsets.UTF_8);
+        ResourcesPlugin.getWorkspace().getRoot()
+            .refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+
+        assertEquals(0, countLoneLf(Files.readString(formal, StandardCharsets.UTF_8)),
+            "PROOF OF LIFE: the probe file must be pure CRLF before the operation");
+
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "superclass");
+        args.put("filePath", formal.toString());
+        args.put("line", 3);       // zero-based: the class declaration
+        args.put("column", 13);
+        args.put("superclassName", "CrlfGreetBase");
+        args.put("mode", "identical");
+        args.putArray("siblings").add("CrlfGreetCasual");
+        ToolResponse r = new org.jawata.mcp.tools.ExtractTool(
+            () -> service, new RefactoringChangeCache()).execute(args);
+        assertTrue(r.isSuccess(), "PROOF OF LIFE: the extraction must succeed, or every"
+            + " assertion below holds over a file that was never written: "
+            + (r.getError() != null ? r.getError().getCode() + " / " + r.getError().getMessage()
+                                    : "(no error)"));
+
+        Path parent = pkg.resolve("CrlfGreetBase.java");
+        assertTrue(Files.exists(parent),
+            "PROOF OF LIFE: the generated superclass file must exist");
+        String generated = Files.readString(parent, StandardCharsets.UTF_8);
+        assertTrue(generated.contains("salute"),
+            "PROOF OF LIFE: the pulled method must be in it: " + generated);
+
+        assertEquals(0, countLoneLf(generated),
+            "A file GENERATED beside a CRLF file must be written with that file's"
+                + " delimiter. Lone LFs here mean the generator used its own literal"
+                + " newlines — the same defect mcp#75 is about, in the writer the fix"
+                + " could not reach, because the parent is assembled as a string rather"
+                + " than by the rewrite. File now:\n" + generated);
+        assertEquals(0, countLoneLf(Files.readString(formal, StandardCharsets.UTF_8)),
+            "and the EDITED file keeps its own delimiter too");
     }
 
     /** Line feeds NOT preceded by a carriage return — i.e. delimiters foreign to this file. */
