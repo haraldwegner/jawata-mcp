@@ -39,8 +39,19 @@ class DeleteAtomTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        target = service.allProjects().iterator().next().projectRoot()
-            .resolve("src/main/java/com/example/DeleteAtomTargets.java");
+        // THE ROOT THIS TEST LOADED, not whichever project happens to be first.
+        // `allProjects().iterator().next()` picks an arbitrary member of a set that is
+        // supposed to hold one project and, when handles leak between tests, does not —
+        // so the root resolved here could belong to another test's copy and the lookup
+        // below returns null for a file that is present. Measured 2026-09-10: this class
+        // passed alone and in three of four full suite runs, and failed the fourth on
+        // exactly that null, with nothing about the code changed between them.
+        target = projectRoot().resolve("src/main/java/com/example/DeleteAtomTargets.java");
+    }
+
+    /** The copy THIS test loaded, addressed by name rather than by set position. */
+    private Path projectRoot() {
+        return helper.getTempDirectory().resolve("simple-maven");
     }
 
     private IType targets() throws Exception {
@@ -63,8 +74,7 @@ class DeleteAtomTest {
     @Test
     @DisplayName("REFUSES a compilation unit declaring more than one top-level type")
     void refusesAFileThatDeclaresMoreThanOneType() throws Exception {
-        Path paired = service.allProjects().iterator().next().projectRoot()
-            .resolve("src/main/java/com/example/PairedInOneFile.java");
+        Path paired = projectRoot().resolve("src/main/java/com/example/PairedInOneFile.java");
         ICompilationUnit unit = service.getCompilationUnit(paired);
         assertNotNull(unit, "the fixture must be in the model");
         assertTrue(unit.getTypes().length == 2,
