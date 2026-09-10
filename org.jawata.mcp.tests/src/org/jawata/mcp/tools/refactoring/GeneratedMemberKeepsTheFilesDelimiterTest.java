@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -180,6 +181,19 @@ class GeneratedMemberKeepsTheFilesDelimiterTest {
                 + " the rewrite used the type root's options rather than the document's —"
                 + " mixed endings spliced into somebody's file, invisible to every parity"
                 + " golden. File now:\n" + after);
+
+        // AND THE HALF THAT ACTUALLY MOVES — measured, after the delimiter half was shown
+        // not to. Mutation J reverted this writer to the no-argument rewriteAST() and this
+        // test stayed GREEN, which says the no-arg form already resolves the delimiter from
+        // the source it is given. What it does NOT resolve is the formatter options, so it
+        // emits JDT's TAB default into a file indented with spaces — which is the open item
+        // `HeadlessJdtConfig` has carried since v2.14.1 #5, and it is about indentation
+        // rather than line endings. The fixture is space-indented, so a tab in the result
+        // can only have come from the writer.
+        assertFalse(after.contains("\t"),
+            "A rewrite must indent with what the FILE uses. A tab here means the writer took"
+                + " JDT's default instead of the document's formatter options, mixing tabs"
+                + " into a space-indented file. File now:\n" + after);
     }
 
     @Test
