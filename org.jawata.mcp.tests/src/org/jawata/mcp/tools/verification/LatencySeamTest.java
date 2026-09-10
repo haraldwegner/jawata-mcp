@@ -22,6 +22,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -99,12 +100,106 @@ class LatencySeamTest {
         ObjectNode resume = debugAction("resume");
         resume.put("sessionId", sessionId);
         assertTrue(debug.execute(resume).isSuccess());
+        // mcp#18: WAIT FOR THE OBSERVABLE PRECONDITION, do not race it.
+        //
+        // `launch` holds the JVM before its first instruction and `resume` starts it, so at
+        // this line the target has not necessarily loaded its own main class yet. Every
+        // caller's next act is an operation ON that class, and on a slower or
+        // differently-scheduled runner it arrived first: the Windows job failed with
+        // "<class> is not loaded yet", on the same commit that passed everywhere else.
+        //
+        // The issue prescribes exactly this and it is the only sound cure: the condition is
+        // a property of the TARGET, so no amount of retrying on our side makes it true
+        // earlier, and a sleep would encode one machine's speed as a constant.
+        awaitInsideClass(sessionId, mainClass);
         return sessionId;
+    }
+
+    /**
+     * Block until a thread of the target is actually executing {@code className}.
+     *
+     * <p>THE OBSERVABLE IS A STACK FRAME, and it is chosen over the alternatives for
+     * reasons worth keeping. A breakpoint would answer "is it loaded" through the
+     * product's own deferral flag, but arming one SUSPENDS the target when it hits, which
+     * is intolerable in a test whose subject is latency. Instance counts cannot answer at
+     * all: {@code main} is static, so a correctly loaded class legitimately has none.</p>
+     *
+     * <p>A frame naming the class is also the STRONGER claim — not merely loaded, but
+     * running — which is what every caller here actually needs.</p>
+     *
+     * <p>Read-only: {@code profile threads} is a process-level dump and suspends
+     * nothing.</p>
+     */
+    private void awaitInsideClass(String sessionId, String className) {
+        awaitInsideClass(sessionId, className, 20_000);
+    }
+
+    /**
+     * The deadline is a PARAMETER so this can be tested on a machine where the race never
+     * happens.
+     *
+     * <p>Here the target reaches its class in milliseconds, so deleting the wait entirely
+     * leaves every test green - the assertion would be satisfied by the machine rather
+     * than by the code, which is the defect class this sprint keeps finding. The control
+     * below constructs the condition instead of hoping for it: a JVM held before its first
+     * instruction NEVER reaches its class, so the wait must be observed timing out.</p>
+     */
+    private void awaitInsideClass(String sessionId, String className, long timeoutMillis) {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        String lastSeen = "(no thread dump yet)";
+        while (System.currentTimeMillis() < deadline) {
+            ObjectNode threads = profileAction("threads");
+            threads.put("sessionId", sessionId);
+            ToolResponse r = profile.execute(threads);
+            if (r.isSuccess()) {
+                lastSeen = String.valueOf(data(r));
+                if (lastSeen.contains(className)) {
+                    return;
+                }
+            }
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted waiting for " + className, e);
+            }
+        }
+        throw new AssertionError(
+            "mcp#18: the target never reached " + className + " in time, so every"
+                + " assertion after this would be about a program that is not there yet."
+                + " Last thread dump: " + lastSeen);
     }
 
     @SuppressWarnings("unchecked")
     private static long millis(Map<String, Object> percentiles, String key) {
         return ((Number) percentiles.get(key)).longValue();
+    }
+
+    // ===== mcp#18: the wait is a wait, and it can be seen to be one =====
+
+    @Test
+    @DisplayName("mcp#18: a target held before its first instruction is NEVER inside its class")
+    void theLaunchWaitActuallyWaits() throws Exception {
+        // CONSTRUCTED, not hoped for. On this machine the target reaches its class in
+        // milliseconds, so a wait that returned immediately would leave every other test in
+        // this class green - the assertion satisfied by the machine, not by the code. A JVM
+        // that has been launched and NOT resumed is held before its first instruction, so
+        // it can never reach the class, and a wait that returns is provably not waiting.
+        ObjectNode launch = debugAction("launch");
+        launch.put("mainClass", "com.example.debug.LatencySeamTarget");
+        launch.put("classpath", targetClasses.toString());
+        ToolResponse launched = debug.execute(launch);
+        assertTrue(launched.isSuccess(), "got: " + launched.getError());
+        String held = (String) data(launched).get("sessionId");
+
+        // A short deadline: the subject is whether it waits at all, and 20s of proving it
+        // would be 20s on every suite run.
+        AssertionError timedOut = assertThrows(AssertionError.class,
+            () -> awaitInsideClass(held, "com.example.debug.LatencySeamTarget", 1_500));
+
+        assertTrue(timedOut.getMessage().contains("never reached"),
+            "the failure must say what it waited for, or a caller cannot tell this apart "
+                + "from an ordinary assertion: " + timedOut.getMessage());
     }
 
     // ========================================================== the core exit criterion
