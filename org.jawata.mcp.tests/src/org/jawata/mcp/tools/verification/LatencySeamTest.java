@@ -146,16 +146,29 @@ class LatencySeamTest {
      */
     private void awaitInsideClass(String sessionId, String className, long timeoutMillis) {
         long deadline = System.currentTimeMillis() + timeoutMillis;
-        String lastSeen = "(no thread dump yet)";
+        String lastSeen = null;
+        String lastRefusal = null;
+        int dumps = 0;
+        int refusals = 0;
         while (System.currentTimeMillis() < deadline) {
             ObjectNode threads = profileAction("threads");
             threads.put("sessionId", sessionId);
             ToolResponse r = profile.execute(threads);
             if (r.isSuccess()) {
+                dumps++;
                 lastSeen = String.valueOf(data(r));
                 if (lastSeen.contains(className)) {
                     return;
                 }
+            } else {
+                // NB-8: KEEP THE REFUSAL. Discarded, a `profile threads` that fails every
+                // time — a dead session, a wrong id — timed out with the same message as a
+                // target that simply never reached its class. Both say "never reached",
+                // and only one of them is about the target at all; the other is this
+                // method asking the wrong question and never being told.
+                refusals++;
+                lastRefusal = r.getError() == null ? "(refused, no error)"
+                    : r.getError().getCode() + " / " + r.getError().getMessage();
             }
             try {
                 Thread.sleep(25);
@@ -164,10 +177,16 @@ class LatencySeamTest {
                 throw new IllegalStateException("interrupted waiting for " + className, e);
             }
         }
+        // The two cases are NAMED rather than left for a reader to infer from an absence.
+        String why = dumps == 0
+            ? "and NOT ONE thread dump succeeded in " + refusals + " attempt(s), so this"
+                + " says nothing about the target — it says this wait could not look."
+                + " Last refusal: " + lastRefusal
+            : dumps + " thread dump(s) succeeded and none named it, so the target was"
+                + " running and had not got there. Last dump: " + lastSeen;
         throw new AssertionError(
-            "mcp#18: the target never reached " + className + " in time, so every"
-                + " assertion after this would be about a program that is not there yet."
-                + " Last thread dump: " + lastSeen);
+            "mcp#18: the wait for " + className + " timed out after " + timeoutMillis
+                + "ms — " + why);
     }
 
     @SuppressWarnings("unchecked")
