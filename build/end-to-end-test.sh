@@ -692,21 +692,69 @@ case "$BADC" in
     *min_times*) pass "demand-and-delete an unreadable threshold is refused by name" ;;
     *) fail "demand-and-delete an unreadable threshold was silently defaulted: $(printf '%s' "$BADC" | head -c 200)" ;;
 esac
-# The SECOND promise: a delete writes its undo before it removes anything. The
-# assertion is that the archive CONTAINS the entry — an archive written after the
-# delete parses, is named correctly, sits where the response says, and is empty.
+# The SECOND promise: a delete takes its undo BEFORE it removes anything.
+#
+# Until Sprint 28f that undo was a JSON archive of the removed rows, and this
+# asserted the archive CONTAINS the entry — the only form that can tell "written
+# before" from "written after", since an archive written afterwards parses, is
+# named correctly, sits where the response says, and is empty. D2 replaced it
+# with a copy of the whole STORE, which cannot be grepped: the rows sit inside a
+# compressed database file.
+#
+# So the equivalent assertion is the LOOP. Restore the copy and the row comes
+# back — a copy taken after the delete would restore a store that never held it.
+# That is strictly more than the grep proved, because it exercises the undo
+# instead of inspecting it, and it drives the new restore verb over the real
+# wire at the same time.
+#
+# THIS WAS THE SECOND PLACE THE REMOVED `archive` KEY WAS READ, and the one no
+# search found. A C1 audit measured "no live consumer of the removed archive key
+# exists in either workspace" — true of .java/.rs/.ts/.md/.json, false here,
+# because this consumer is a shell gate. Only running the suite found it.
 DID="$(call experience '{"kind":"record","type":"lesson",
   "summary":"A zylophantic breeb is filed under nothing at all.",
-  "situation":"when a delete must prove it archived before it removed",
+  "situation":"when a delete must prove it copied before it removed",
   "verdict":"worked"}' | sed -n 's/.*"id"[^"]*"\([^"]*\)".*/\1/p' | head -1)"
 if [ -n "$DID" ]; then
+    # PROOF OF LIFE FIRST. Without it every check below passes against a store
+    # that never held the row, and "it is gone" reads exactly like "recall
+    # cannot see it".
+    LIVE="$(call experience '{"kind":"recall","symptom":"zylophantic breeb","format":"text"}')"
+    case "$LIVE" in
+        *"zylophantic breeb is filed"*)
+            pass "demand-and-delete the row is there before the delete" ;;
+        *)  fail "demand-and-delete the row was never recallable, so nothing below measures anything" ;;
+    esac
+
     DEL="$(call experience "{\"kind\":\"delete\",\"ids\":[\"$DID\"]}")"
-    ARCH="$(printf '%s' "$DEL" | sed -n 's/.*"archive"[^"]*"\([^"]*\)".*/\1/p' | head -1)"
-    if [ -n "$ARCH" ] && [ -f "$ARCH" ] && grep -q "zylophantic breeb is filed" "$ARCH"; then
-        pass "demand-and-delete the pre-delete archive contains what was removed"
+    BK="$(printf '%s' "$DEL" | sed -n 's/.*"backup"[^"]*"\([^"]*\)".*/\1/p' | head -1)"
+    if [ -n "$BK" ] && [ -f "$BK" ]; then
+        pass "demand-and-delete the delete names the copy it took"
     else
-        fail "demand-and-delete no usable archive at '$ARCH' — the delete has no undo"
+        fail "demand-and-delete no usable copy at '$BK' — the delete has no undo"
     fi
+
+    GONE="$(call experience '{"kind":"recall","symptom":"zylophantic breeb","format":"text"}')"
+    case "$GONE" in
+        *"zylophantic breeb is filed"*)
+            fail "demand-and-delete the control: the row survived its own delete" ;;
+        *)  pass "demand-and-delete the control: the row really was removed" ;;
+    esac
+
+    # BY NAME, never by path: the engine resolves it against its own backup
+    # directory, so a caller cannot point the store at an arbitrary file. And
+    # confirm is the engine's own gate — one call replaces every row.
+    RES="$(call experience "{\"kind\":\"restore\",\"name\":\"$(basename "$BK")\",\"confirm\":true}")"
+    BACK="$(call experience '{"kind":"recall","symptom":"zylophantic breeb","format":"text"}')"
+    case "$BACK" in
+        *"zylophantic breeb is filed"*)
+            pass "demand-and-delete restore brings the deleted row back, by version name" ;;
+        *)  fail "demand-and-delete the row did not come back: $(printf '%s' "$RES" | head -c 300)" ;;
+    esac
+
+    # Leave the store as the rest of this gate expects: the restore rolled the
+    # whole store back to the instant before the delete, which put this row back.
+    call experience "{\"kind\":\"delete\",\"ids\":[\"$DID\"]}" >/dev/null
 else
     fail "demand-and-delete could not record the entry the delete promise needs"
 fi

@@ -140,6 +140,17 @@ complete leaves the store as it was; `success=false` whenever removed > loaded.
 ## 6. What must NOT be touched
 
 - `RecoveringExperienceStore`'s reconnect semantics — restore goes THROUGH it (close, swap, reopen), never around it.
+  **DECLARED DEVIATION, S1 as built (2026-09-11), found by the C1 architect watch and declared
+  nowhere until it said so.** `backupTo`/`restoreFrom` went onto the CONCRETE `H2ExperienceStore`
+  and are reached through `currentH2Store()` → `currentDelegate()`, outside the wrapper's lock —
+  so §3's row saying the `ExperienceStore` INTERFACE gains `backup`/`restore` is also unmet.
+  Kept on merits rather than corrected: only H2 can answer "copy yourself while open" (it is a
+  `BACKUP TO` on its own connection), the wrapper is already a thirty-method forwarder that two
+  more would lengthen without adding meaning, and the concrete binding fails SAFE while degraded
+  — an in-memory delegate yields an honest `null` rather than a copy that does not exist. What
+  the deviation costs is that a restore does not hold the wrapper's lock, so a peer reconnecting
+  mid-restore races it; `restoreFrom` reopens the connection down every path, which bounds the
+  damage to a failed call rather than a closed store. Reversing it is a day's work and one word.
 - `CatalogueSeeder`'s supersede lifecycle and `CatalogueSources`' registry — the code lane is not a catalogue source and must not be registered as one.
 - `ToolExperienceStore` (the tool lane) and `UsageLedger`'s counters — only the rendering of observed vs derived changes.
 - The refactoring engines' edits — the anchor notification is a listener on the applied change, not a change to any rewrite.
