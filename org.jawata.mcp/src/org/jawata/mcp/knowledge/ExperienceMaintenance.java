@@ -216,6 +216,14 @@ public final class ExperienceMaintenance {
 
         int loaded = 0;
         int unchanged = 0;
+        // Sprint 28f D3 — EVERY SOURCE THIS RUN VISITED, whether it was rewritten or
+        // found unchanged. `wipe_and_import` retires the file-lane sources a rebuild did
+        // NOT bring back, and it cannot work that out from the store: after D1 the load
+        // deletes nothing, so the store's own ref set afterwards holds the old sources
+        // and the new ones alike, indistinguishable. Only the loader knows where it
+        // went. An UNCHANGED file counts as visited — it is present in the root and
+        // skipped for being identical, which is the opposite of absent.
+        java.util.Set<String> visited = new java.util.LinkedHashSet<>();
         int linked = 0;
         int keywordCapped = 0;
         int keywordsSuppressed = 0;
@@ -357,6 +365,7 @@ public final class ExperienceMaintenance {
             boolean firstOccurrence = seenContent.add(hash);
             if (store.sourceUnchanged(sourceRef, hash)) {
                 unchanged++;
+                visited.add(sourceRef);
                 for (Path t : linksToFollow(resolveLinks(doc, f.getParent(), rootDirs),
                         f, item.depth(), maxDepth, skipped)) {
                     Path norm = t.toAbsolutePath().normalize();
@@ -446,6 +455,7 @@ public final class ExperienceMaintenance {
             for (String link : doc.links) {
                 eb.addLink("related", link);
             }
+            visited.add(sourceRef);
             String parentId = store.upsertBySource(eb.build(), sourceRef, hash);
             // Sprint 21e (item A): frontmatter symbol wins UNCHANGED (asserted, in the
             // fact map); only anchor-less parents get the resolution-gated AUTO anchor —
@@ -525,6 +535,7 @@ public final class ExperienceMaintenance {
             }
         }
 
+        report.put("sources", List.copyOf(visited));
         report.put("files", loaded + unchanged);
         report.put("loaded", loaded);
         report.put("unchanged", unchanged);

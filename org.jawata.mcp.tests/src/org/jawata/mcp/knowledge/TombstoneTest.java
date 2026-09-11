@@ -110,7 +110,7 @@ class TombstoneTest {
         Path legacy = Files.createDirectory(dir.resolve("legacy"));
         Path substrate = Files.createDirectory(dir.resolve("substrate"));
         writeNote(legacy.resolve("note.md"), "the-note", "a note that comes back on purpose");
-        writeNote(substrate.resolve("story.md"), "the-story", "the substrate story");
+        writeNote(substrate.resolve("story.md"), "the-story", "a story the substrate deliberately carries");
 
         call("load", legacy.toString(), false);
         call("wipe_and_import", substrate.toString(), true);
@@ -135,7 +135,7 @@ class TombstoneTest {
         Path legacy = Files.createDirectory(dir.resolve("legacy"));
         Path substrate = Files.createDirectory(dir.resolve("substrate"));
         writeNote(legacy.resolve("old.md"), "old", "the removed legacy note");
-        writeNote(substrate.resolve("story.md"), "story", "the substrate story");
+        writeNote(substrate.resolve("story.md"), "story", "a story the substrate deliberately carries");
 
         call("load", legacy.toString(), false);
         call("wipe_and_import", substrate.toString(), true);   // removes + tombstones old.md
@@ -154,7 +154,7 @@ class TombstoneTest {
         Path legacy = Files.createDirectory(dir.resolve("legacy"));
         Path substrate = Files.createDirectory(dir.resolve("substrate"));
         writeNote(legacy.resolve("old.md"), "old", "the removed legacy note");
-        writeNote(substrate.resolve("story.md"), "story", "the substrate story");
+        writeNote(substrate.resolve("story.md"), "story", "a story the substrate deliberately carries");
         call("load", legacy.toString(), false);
         call("wipe_and_import", substrate.toString(), true);
         assertEquals(1, store.tombstonedRefs().size());

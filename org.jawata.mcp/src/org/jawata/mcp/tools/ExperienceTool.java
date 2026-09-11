@@ -820,28 +820,95 @@ public final class ExperienceTool implements Tool {
                 keptCatalogue++;
             }
         }
-        int removedRows = 0;
-        for (String ref : store.fileSourceRefs()) {
-            removedRows += store.deleteBySource(ref);
-        }
-        // THE REVIVAL HALF of the v14 contract, which used to ride the full
-        // wipe: clear the tombstone table BEFORE the load, so a source the user
-        // deliberately reloads is not skipped by its own old tombstone. The
-        // curation is not lost — `before` carries the old tombstones, and every
-        // ref this reload does NOT bring back is re-tombstoned below. Without
-        // this line a tombstone outlives the user's own decision to reload the
-        // file, which TombstoneTest's revival case caught the moment the wipe
-        // stopped running.
+        // THE REVIVAL HALF of the v14 contract, and it must run BEFORE the load.
+        // Clearing the tombstone table first is what lets a source the user
+        // deliberately reloads past its own old tombstone; the curation is not lost,
+        // because `before` carries the old tombstones and every ref this reload does
+        // not bring back is re-tombstoned below.
+        //
+        // IT CAUGHT THE SAME MISTAKE TWICE. Its own note recorded that TombstoneTest's
+        // revival case found it "the moment the wipe stopped running" — and Sprint 28f
+        // D3 moved the load ahead of this line, so the revival case found it again, for
+        // the same reason, one sprint later. The order is the contract.
         store.clearTombstones();
+
+        // SPRINT 28f D3 — THE LOAD RUNS BEFORE ANYTHING IS REMOVED.
+        //
+        // It used to be the other way round: delete every file-lane row, then load.
+        // A root that yielded nothing then "completed" with loaded=0 having emptied
+        // the lane and tombstoned every ref in it — the 2026-09-08 shape, with an
+        // honest flag on it. The order is the fix, and D1 is what makes it available:
+        // `load` is an upsert now, so running it first removes nothing.
+        //
+        // THE PRE-FLIGHT IS THE LOAD ITSELF, which is a deliberate choice over the
+        // separate walk the plan sketched. "Loadable" is a real question with a real
+        // answer — the stamp gate, the depth and size caps, the parse, the
+        // duplicate-content rule — and a second walk would have to re-decide all of
+        // it and could disagree with the loader it is guarding. One reader, asked
+        // once, and what it accepted is what the decision below is made on.
+        Map<String, Object> loaded = maintenance.load(
+            path == null || path.isBlank() ? null : Path.of(path), recursive, true);
+        long loadedCount = loaded.get("loaded") instanceof Number n ? n.longValue() : 0L;
+        // THE MEASURE IS `files`, NOT `loaded`, and the difference is a real case rather
+        // than pedantry: a rebuild from a root whose stories are all ALREADY in the store
+        // reports loaded=0 and unchanged=N, because the skip-unchanged check does its job.
+        // Refusing there would decline the commonest rebuild there is — the one that
+        // changes nothing — and `files` is loaded + unchanged, which is the honest
+        // question: did this root yield anything the loader accepts?
+        long yielded = loaded.get("files") instanceof Number f ? f.longValue() : loadedCount;
+        // AND IT REFUSES ONLY WHERE THE REFUSAL PREVENTS A LOSS. `before` holds the
+        // file-lane sources this rebuild could retire; when it is empty there is nothing
+        // to lose, the rebuild is a no-op, and refusing would be noise in place of an
+        // answer. The accident this guards is a root yielding nothing while the store
+        // HOLDS sources that the rebuild then retires — so that, exactly, is the
+        // condition. Narrower than "always refuse on zero", and it refuses in every case
+        // where the wider rule would have protected anything.
+        boolean somethingToLose = !before.isEmpty();
+        if (yielded < 1 && somethingToLose) {
+            // NOTHING IS RETIRED AND NOTHING IS TOMBSTONED. The store still holds
+            // everything it held, which is what makes this a refusal rather than a
+            // completed rebuild that happened to find nothing.
+            Map<String, Object> refused = new LinkedHashMap<>(loaded);
+            refused.put("success", false);
+            refused.put("removed", 0L);
+            refused.put("tombstoned", 0);
+            refused.put("reason", "REFUSED before anything was removed: "
+                + (path == null || path.isBlank() ? "the configured roots" : path)
+                + " yielded no loadable file. A rebuild from nothing would empty the"
+                + " file lane and tombstone every source in it, which is exactly the"
+                + " accident this verb is named to make visible. The store is"
+                + " unchanged. Check the `skipped` list — a file present but refused"
+                + " says there what it owes.");
+            return ToolResponse.error("NOTHING_LOADABLE",
+                String.valueOf(refused.get("reason")),
+                "Nothing was removed. " + refused);
+        }
+        // Only now: retire the file-lane sources this rebuild did NOT visit.
+        //
+        // THE SET COMES FROM THE LOADER, not from the store, and the first version of
+        // this got it wrong in a way four existing tests caught. Reading the store's own
+        // refs after the load returns EVERY ref — the ones just written and the ones
+        // nobody touched, indistinguishable, because after D1 a load deletes nothing. So
+        // nothing was ever retired and excluding a source by rebuilding from a narrower
+        // root, which is this store's curation instrument, silently stopped working.
+        @SuppressWarnings("unchecked")
+        java.util.Set<String> broughtBack = new java.util.HashSet<>(
+            loaded.get("sources") instanceof java.util.List<?> l
+                ? (java.util.List<String>) l : java.util.List.<String>of());
+        int removedRows = 0;
+        for (String ref : new java.util.HashSet<>(before)) {
+            if (!broughtBack.contains(ref)) {
+                removedRows += store.deleteBySource(ref);
+            }
+        }
         // A LONG, matching what the old wipe reported. The count's TYPE is part
         // of the response shape, and silently narrowing it to an int would break
         // any consumer comparing against a long for no reason anyone chose.
-        Map<String, Object> wiped = Map.of("removed", (long) removedRows);
-        // D10: a reseed admits stamped stories only. load() does not require it —
-        // loading is how notes reach the store, reseeding is how the store is
-        // REBUILT, and only the second is a claim that what went in was checked.
-        Map<String, Object> loaded = maintenance.load(
-            path == null || path.isBlank() ? null : Path.of(path), recursive, true);
+
+        // D10's stamp gate rode the load above: wipe_and_import admits stamped
+        // stories only, because loading is how notes reach the store and this verb
+        // is how the store is REBUILT — only the second is a claim that what went
+        // in was checked.
         // Revival is the same deliberate act as removal: whatever this reseed
         // re-ingested is alive by definition, so only refs it did NOT bring
         // back get (or keep) a tombstone.
@@ -868,10 +935,20 @@ public final class ExperienceTool implements Tool {
         kept.put("catalogue", keptCatalogue);
         kept.put("recorded", keptRecorded);
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("removed", wiped.get("removed"));
+        data.put("removed", (long) removedRows);
         data.putAll(loaded);
         data.put("tombstoned", tombstoned);
         data.put("kept", kept);
+        // THE VERDICT, and it is the half that was missing. A rebuild that brought
+        // back fewer sources than it retired is a LOSS, and it used to report the
+        // same shape as a clean one — the caller had to compare two numbers nobody
+        // told them to compare. Now the response says so itself.
+        data.put("success", loadedCount >= removedRows);
+        if (loadedCount < removedRows) {
+            data.put("reason", "loaded " + loadedCount + " source(s) and retired "
+                + removedRows + ": this rebuild holds LESS than the store did. The copy"
+                + " named in `backup` is the store as it stood before it ran.");
+        }
         return ToolResponse.success(withRefresh(withBackup(data, backupCopy)));
     }
 

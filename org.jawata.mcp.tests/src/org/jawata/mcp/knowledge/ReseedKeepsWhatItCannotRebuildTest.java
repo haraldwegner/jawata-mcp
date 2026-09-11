@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -90,14 +91,19 @@ class ReseedKeepsWhatItCannotRebuildTest {
         assertTrue(tool.execute(a).isSuccess());
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> reseed(Path dir) {
+    /** The call, built once — so the refusal case drives the SAME request the others do. */
+    private ObjectNode reseedArgs(Path dir) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "wipe_and_import");
         a.put("path", dir.toString());
         a.put("recursive", true);
         a.put("confirm", true);
-        ToolResponse r = tool.execute(a);
+        return a;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> reseed(Path dir) {
+        ToolResponse r = tool.execute(reseedArgs(dir));
         assertTrue(r.isSuccess(), () -> "reseed failed: " + r.getError());
         return (Map<String, Object>) r.getData();
     }
@@ -172,22 +178,64 @@ class ReseedKeepsWhatItCannotRebuildTest {
      * The in-scope row IS removed before being reloaded — otherwise this is not
      * a rebuild at all, and a story deleted from disk would live on in the store
      * forever. The rule is "only what the reload restores", not "nothing".
+     *
+     * <p><b>Sprint 28f D3 changed how this is expressed, and the new form is
+     * stronger.</b> It used to load ONE story, delete its file, and rebuild from the
+     * now-empty root. D3 refuses an empty root — that is the 2026-09-08 shape, where a
+     * rebuild from nothing emptied the lane and reported success — so the case is
+     * written with a SURVIVOR instead. That distinguishes "the rebuild deleted the one
+     * whose file is gone" from "the rebuild deleted everything", which the single-story
+     * version could not tell apart at all.</p>
      */
     @Test
     void a_story_whose_file_is_gone_does_not_survive_the_rebuild(@TempDir Path dir)
             throws Exception {
         story(dir, "here-today");
+        story(dir, "here-tomorrow");
         reseed(dir);
-        assertEquals(1L, withPrefix("memory:"));
+        assertEquals(2L, withPrefix("memory:"));
 
         Files.delete(dir.resolve("here-today.md"));
         Map<String, Object> report = reseed(dir);
 
-        assertEquals(0L, withPrefix("memory:"),
-            "a scoped delete must still DELETE — a reseed that only ever adds"
-                + " would make the store a place things can never leave");
+        assertEquals(1L, withPrefix("memory:"),
+            "a scoped delete must still DELETE — a rebuild that only ever adds would"
+                + " make the store a place things can never leave. And exactly ONE"
+                + " row goes: the survivor is what tells this apart from a rebuild"
+                + " that emptied the lane");
         assertEquals(1, report.get("tombstoned"),
             () -> "and the removal is remembered, so the next crawl does not"
                 + " re-import it: " + report);
+    }
+
+    /**
+     * Sprint 28f D3 — and the form this test used to take is now REFUSED.
+     *
+     * <p>Deleting every file and rebuilding from the empty root used to be how a
+     * caller emptied the file lane. It is also, exactly, the accident of 2026-09-08:
+     * the verb reported {@code loaded=0} and a completed rebuild while the lane it had
+     * just emptied was gone. The capability is not lost — {@code wipe} removes
+     * everything and says so in its name — but it can no longer happen by accident to
+     * someone who pointed a rebuild at the wrong directory.</p>
+     *
+     * <p>Kept HERE, beside the test whose shape it replaced, so the retired capability
+     * is documented where a reader would look for it rather than only in a commit.</p>
+     */
+    @Test
+    void a_rebuild_from_a_root_that_lost_every_file_is_refused(@TempDir Path dir)
+            throws Exception {
+        story(dir, "the-only-one");
+        reseed(dir);
+        assertEquals(1L, withPrefix("memory:"));
+
+        Files.delete(dir.resolve("the-only-one.md"));
+        ToolResponse refused = tool.execute(reseedArgs(dir));
+
+        assertFalse(refused.isSuccess(),
+            "a rebuild from a root with nothing left in it must be refused, not"
+                + " reported as a completed rebuild that happened to find nothing");
+        assertEquals(1L, withPrefix("memory:"),
+            "AND THE ROW IS STILL THERE. That is the whole difference: the old shape"
+                + " deleted first and asked afterwards");
     }
 }
