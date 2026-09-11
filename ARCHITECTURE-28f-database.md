@@ -111,9 +111,12 @@ studio.
 | **rules** | `promote_rule(ids…)` from studio — never from a write | `rule` form: ≥1 `derived_from` link, a version | a new version row; the old one `superseded` | `retired_at` set; readable, never deleted | the read path is 28h's (the enforcer) |
 
 **No normal operation deletes a row.** The one destructive verb is `wipe_and_import` (the old
-`reseed`): backup first, load into a staging set, and only when the load completed does it
-retire the file-lane rows the load did not bring back (tombstoned, as v14 does today); a load that
-does not complete leaves the store as it was; `success=false` whenever removed > loaded.
+`reseed`): backup first; a root yielding zero loadable files is REFUSED before anything is
+staged (otherwise an empty root would "complete" with `loaded=0` and retire every file-lane row —
+the 2026-09-08 shape with an honest flag on it; caught by the plan's round-1 audit); then load
+into a staging set, and only when the load completed with `loaded >= 1` does it retire the
+file-lane rows the load did not bring back (tombstoned, as v14 does today); a load that does not
+complete leaves the store as it was; `success=false` whenever removed > loaded.
 `wipe`, `prune`, `import` (the blob) and `delete` keep their names and take the same backup first.
 
 ---
