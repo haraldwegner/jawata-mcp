@@ -61,7 +61,7 @@ public final class ExperienceTool implements Tool {
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
             "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
             "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
-            "review_sweep", "delete", "set_form");
+            "review_sweep", "delete", "set_form", "backup", "restore");
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -93,6 +93,16 @@ public final class ExperienceTool implements Tool {
      */
     private final org.jawata.mcp.knowledge.UsageLedger usage =
         new org.jawata.mcp.knowledge.UsageLedger(this::currentH2Store);
+
+    /**
+     * Sprint 28f D2 — the copy every destructive verb takes before it acts.
+     *
+     * <p>Resolved through the same supplier as the ledger, and for the same
+     * reason: the delegate can be replaced after a recovery and a held reference
+     * would go on copying a store nobody writes to.</p>
+     */
+    private final org.jawata.mcp.knowledge.StoreBackups backups =
+        new org.jawata.mcp.knowledge.StoreBackups(this::currentH2Store);
 
     /**
      * The concrete H2 store behind whatever wrapper is installed, or null when
@@ -451,6 +461,8 @@ public final class ExperienceTool implements Tool {
             case "set_form" -> setForm(args);
             case "fallback" -> recordFallback(args);
             case "fallback_report" -> fallbackReport();
+            case "backup" -> backup();
+            case "restore" -> restore(args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -717,6 +729,11 @@ public final class ExperienceTool implements Tool {
         // tombstones forward too: a second reseed must not amnesty what the
         // first one removed (without this line, reseed #2's wipe would erase
         // reseed #1's curation and the next deploy would re-pollute).
+        // Sprint 28f D2: the copy comes before the first row goes. This verb is
+        // the one that took 378 rows to 194 on 2026-09-08, and the only copy on
+        // the machine that day was three weeks old.
+        Path backupCopy = backups.before("reseed");
+
         java.util.Set<String> before = new java.util.HashSet<>(store.fileSourceRefs());
         before.addAll(store.tombstonedRefs());
 
@@ -806,7 +823,7 @@ public final class ExperienceTool implements Tool {
         data.putAll(loaded);
         data.put("tombstoned", tombstoned);
         data.put("kept", kept);
-        return ToolResponse.success(withRefresh(data));
+        return ToolResponse.success(withRefresh(withBackup(data, backupCopy)));
     }
 
     /**
@@ -815,9 +832,83 @@ public final class ExperienceTool implements Tool {
      * peer residents survive the shutdown via the store's self-healing connection.
      */
     private ToolResponse wipe() {
+        Path copy = backups.before("wipe");
         Map<String, Object> data = new LinkedHashMap<>(maintenance.wipe());
         data.put("compact", store.compact());
+        return ToolResponse.success(withBackup(data, copy));
+    }
+
+    /**
+     * Sprint 28f D2 — say where the copy went, or say plainly that there is none.
+     *
+     * <p>Both halves matter. A path lets the caller restore without going to
+     * look for it. An explicit absence, with its reason, is what stops "no
+     * backup was taken" from reading exactly like "a backup was taken and I did
+     * not mention it" — which is this codebase's recorded top defect class, one
+     * level down.</p>
+     */
+    private static Map<String, Object> withBackup(Map<String, Object> data, Path copy) {
+        if (copy != null) {
+            data.put("backup", copy.toString());
+        } else {
+            data.put("backup", null);
+            data.put("backupNote", "no copy was taken: this resident has no file store, or the"
+                + " copy could not be written. Nothing here can be restored from.");
+        }
+        return data;
+    }
+
+    /**
+     * Sprint 28f D2 — take a copy now, without destroying anything.
+     *
+     * <p>The destructive verbs take their own; this is for a caller who wants
+     * one before doing something the product does not know about.</p>
+     */
+    private ToolResponse backup() {
+        Path copy = backups.before("manual");
+        if (copy == null) {
+            return ToolResponse.error(KNOWLEDGE_UNAVAILABLE,
+                "no copy could be taken: this resident has no file store, or the copy could not"
+                    + " be written",
+                "An in-memory store has nothing a restore could bring back. Check"
+                    + " experience(kind=stats) for which store this resident has.");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("backup", copy.toString());
+        data.put("kept", backups.list().size());
+        data.put("depth", org.jawata.mcp.knowledge.StoreBackups.depth());
         return ToolResponse.success(data);
+    }
+
+    /**
+     * Sprint 28f D2 — list the copies, or put one back.
+     *
+     * <p>With no {@code name} this LISTS rather than restoring. A restore is not
+     * something to do by accident, and a verb whose no-argument form performs
+     * the destructive reading of its own name is a trap; the list is also how a
+     * caller learns the names in the first place.</p>
+     */
+    private ToolResponse restore(JsonNode args) {
+        String name = text(args, "name");
+        List<String> names = backups.list().stream()
+            .map(p -> p.getFileName().toString()).toList();
+        if (name == null || name.isBlank()) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("backups", names);
+            data.put("depth", org.jawata.mcp.knowledge.StoreBackups.depth());
+            data.put("howToRestore", "experience(kind=restore, name=\"<one of the above>\")");
+            return ToolResponse.success(data);
+        }
+        try {
+            Path used = backups.restore(name);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("restored", used.toString());
+            data.put("rows", store.count());
+            return ToolResponse.success(data);
+        } catch (RuntimeException e) {
+            return ToolResponse.error("RESTORE_FAILED", e.getMessage(),
+                "The store was left open. Known copies: " + names);
+        }
     }
 
     private static boolean bool(JsonNode n, String field) {
@@ -832,11 +923,12 @@ public final class ExperienceTool implements Tool {
     private ToolResponse prune(JsonNode args) {
         int days = args != null && args.has("days") && args.get("days").isInt()
             ? args.get("days").asInt() : 30;
+        Path copy = backups.before("prune");
         int removed = store.pruneAged(days);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("removed", removed);
         data.put("days", days);
-        return ToolResponse.success(data);
+        return ToolResponse.success(withBackup(data, copy));
     }
 
     /**
@@ -1293,7 +1385,12 @@ public final class ExperienceTool implements Tool {
                     "cannot read export file: " + e.getMessage());
             }
         }
-        return ToolResponse.success(withRefresh(store.importEntries(entries)));
+        // Sprint 28f D2: import can overwrite rows that share an id, so it is
+        // destructive in the sense that matters — a row that was there is not
+        // the row that is there afterwards.
+        Path copy = backups.before("import");
+        Map<String, Object> imported = new LinkedHashMap<>(store.importEntries(entries));
+        return ToolResponse.success(withRefresh(withBackup(imported, copy)));
     }
 
     private ToolResponse promote(JsonNode args) {
@@ -1617,22 +1714,33 @@ public final class ExperienceTool implements Tool {
         for (java.util.Map<String, Object> row : archived) {
             missing.remove(String.valueOf(row.get("id")));
         }
-        java.nio.file.Path archive;
-        try {
-            archive = deletionArchivePath(h2, archived.size());
-            writeArchive(archived, archive);
-        } catch (Exception e) {
-            return ToolResponse.error("DELETE_ARCHIVE_FAILED",
-                "the pre-delete archive could not be written: " + e,
-                "NOTHING was deleted. The archive is the undo this delete owes, and a"
-                    + " delete without one is irreversible on every client but the one"
-                    + " that ran the cutover.");
+        // Sprint 28f D2, architecture decision 7: the whole-store copy REPLACES
+        // this verb's own JSON archive. One undo artifact rather than two, and a
+        // stronger one — the archive held the deleted rows, the copy holds the
+        // store they were deleted from.
+        //
+        // THE REFUSAL SURVIVES THE SWAP, and that is the point of doing it by
+        // hand rather than by dropping in `before()` and moving on. This verb
+        // has always cancelled itself when it could not write its undo, because
+        // a delete-by-id is irreversible without one. So: a store that HAS a
+        // file and could not be copied still refuses. A store with no file never
+        // could be copied, and refusing there would make an in-memory resident
+        // unable to delete at all — it proceeds, and the response says plainly
+        // that nothing can be restored.
+        java.nio.file.Path copy = backups.before("delete");
+        boolean restorable = copy != null;
+        if (!restorable && h2.storeDir() != null) {
+            return ToolResponse.error("DELETE_BACKUP_FAILED",
+                "the pre-delete copy of the store could not be written",
+                "NOTHING was deleted. The copy is the undo this delete owes, and a delete"
+                    + " without one is irreversible.");
         }
         int removed = h2.deleteByIds(ids);
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("asked", ids.size());
         out.put("removed", removed);
-        out.put("archive", archive.toString());
+        out.put("deleted", archived.stream().map(r -> String.valueOf(r.get("id"))).toList());
+        withBackup(out, copy);
         if (!missing.isEmpty()) {
             out.put("alreadyAbsent", missing);
             out.put("note", "these ids were not in the store, so they are not in the archive"
@@ -1663,28 +1771,6 @@ public final class ExperienceTool implements Tool {
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new java.io.IOException("could not serialise the export", e);
         }
-    }
-
-    /**
-     * Where a pre-delete archive goes: beside the store, under {@code deleted/},
-     * named by the instant and the count.
-     *
-     * <p>Beside the store because the user must be able to find it without being
-     * told, and because a delete happens on any client while D12's cutover
-     * archive exists only on the machine that ran the reseed. An in-memory store
-     * has no such directory; the archive then goes to the system temp directory
-     * and the response says where, rather than the call failing over a location.</p>
-     */
-    private static Path deletionArchivePath(
-            org.jawata.mcp.knowledge.H2ExperienceStore h2, int count) {
-        Path dir = h2.storeDir();
-        if (dir == null) {
-            dir = Path.of(System.getProperty("java.io.tmpdir"), "jawata-deleted");
-        } else {
-            dir = dir.resolve("deleted");
-        }
-        String stamp = java.time.Instant.now().toString().replace(':', '-');
-        return dir.resolve("deleted-" + stamp + "-" + count + ".json");
     }
 
     private ToolResponse primer(JsonNode args) {

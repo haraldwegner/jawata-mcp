@@ -1737,6 +1737,114 @@ public final class H2ExperienceStore implements ExperienceStore {
         return report;
     }
 
+    /**
+     * Sprint 28f D2 — an ONLINE, consistent copy of this store, taken while it is
+     * open and while other residents may be writing to it.
+     *
+     * <p>H2's {@code BACKUP TO} is the whole mechanism: it writes a zip holding
+     * the database file, without closing the database and without stopping the
+     * writers. A plain file copy of an open MVStore is NOT guaranteed consistent,
+     * which is the alternative the architecture rejects.</p>
+     *
+     * <p><b>What the copy is, measured rather than assumed.</b> Against the
+     * shipped H2 (2.2.224) with 500 rows committed and a second connection
+     * inserting 200 more, three runs restored 540, 531 and 531 rows. So the copy
+     * OPENS, every row reads, and nothing is corrupt — but it is not a snapshot
+     * of the instant the statement ran, and no caller should assert an exact
+     * count against one. Consistent is the promise; frozen-at-an-instant is not.</p>
+     *
+     * <p>An in-memory store has no file to copy and says so by refusing. That is
+     * a real answer rather than a failure: there is nothing that could be
+     * restored, and writing an empty archive would make "nothing was saved" and
+     * "everything was saved" look identical.</p>
+     */
+    public synchronized void backupTo(Path zip) {
+        if (storeFile == null) {
+            throw new IllegalStateException(
+                "this store is in memory and has no file to copy — there is nothing a backup"
+                    + " could restore. Use exportEntries for a portable dump instead.");
+        }
+        try {
+            Path parent = zip.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            try (Statement s = live().createStatement()) {
+                s.execute("BACKUP TO '" + zip.toAbsolutePath() + "'");
+            }
+        } catch (SQLException | IOException e) {
+            throw new IllegalStateException(
+                "failed to back up the experience store to " + zip + ": " + e.getMessage(), e);
+        }
+        log.info("Experience store backed up to {} ({} bytes)", zip, fileSize(zip));
+    }
+
+    /**
+     * Sprint 28f D2 — replace this store's contents with a copy taken earlier.
+     *
+     * <p>The shape is {@link #compact()}'s, deliberately and for the same reason:
+     * shut the database down, swap the file underneath, reopen the connection on
+     * it. That path is already proven to survive attached peers — a shutdown
+     * closes the database for every resident sharing it, and they reconnect
+     * through {@link #live()} rather than dying. Inventing a second lifecycle
+     * here would be a second thing that can be wrong about the same event.</p>
+     *
+     * <p>The copy's single {@code .mv.db} entry is what gets written back; a zip
+     * without one is refused by name rather than restored into an empty store.
+     * <b>The reopen happens whatever the copy did</b>, so a failed restore leaves
+     * a working store rather than a closed one — the alternative is an exception
+     * that takes the resident's store down with it.</p>
+     */
+    public synchronized void restoreFrom(Path zip) {
+        if (storeFile == null) {
+            throw new IllegalStateException(
+                "this store is in memory; there is no file to restore over.");
+        }
+        if (!Files.isRegularFile(zip)) {
+            throw new IllegalStateException("no such backup: " + zip);
+        }
+        discardReadPool();
+        try (Statement s = live().createStatement()) {
+            s.execute("SHUTDOWN");
+        } catch (SQLException e) {
+            log.warn("Shutdown before restore reported: {}", e.getMessage());
+        }
+        closeQuietly(conn);
+        IllegalStateException failure = null;
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.toFile())) {
+            java.util.zip.ZipEntry db = null;
+            for (java.util.zip.ZipEntry e : java.util.Collections.list(zf.entries())) {
+                if (e.getName().endsWith(".mv.db")) {
+                    db = e;
+                    break;
+                }
+            }
+            if (db == null) {
+                failure = new IllegalStateException(
+                    "this is not a store backup: " + zip + " holds no .mv.db entry. The store"
+                        + " was NOT touched.");
+            } else {
+                try (java.io.InputStream in = zf.getInputStream(db)) {
+                    Files.copy(in, storeFile,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        } catch (IOException e) {
+            failure = new IllegalStateException(
+                "failed to restore from " + zip + ": " + e.getMessage(), e);
+        }
+        try {
+            conn = openBound(url);
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                "the store could not be reopened after a restore attempt: " + e.getMessage(), e);
+        }
+        if (failure != null) {
+            throw failure;
+        }
+        log.info("Experience store restored from {}", zip);
+    }
+
     private static long fileSize(Path p) {
         try {
             return Files.size(p);
