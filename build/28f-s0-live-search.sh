@@ -36,7 +36,7 @@ done
                         tail -20 "$LOG" >&2; exit 2; }
 
 S0_PORT="$PORT" S0_TOKEN="$TOKEN" S0_PROJECT="$ROOT" python3 - << 'PY'
-import json, os, statistics, time, urllib.request
+import json, os, statistics, sys, time, urllib.request
 
 PORT = os.environ["S0_PORT"]; TOKEN = os.environ["S0_TOKEN"]
 PROJECT = os.environ["S0_PROJECT"]
@@ -114,4 +114,17 @@ print("S0-MEASUREMENT-1 "
       f"min_ms={times[0]:.1f} max_ms={times[-1]:.1f} "
       f"files_examined={rows[0][2]} queries_with_any_hit={found} total_hits={total_hits} "
       f"control_hits={CONTROL_HITS}")
+
+# THE CONTROL DECIDES THE EXIT CODE, not just the printout. Ten zero-hit
+# queries mean "the prose is unreachable" only while the control proves the
+# scan can reach anything at all; with a dead control they mean nothing, and a
+# run that printed the same table and exited 0 would be indistinguishable.
+# This is the same defect the derived bar had - a labelled conclusion whose
+# own precondition went unevaluated by the thing printing it - fixed in the
+# second of the three places it occurred.
+if CONTROL_HITS < 1:
+    print("S0-MEASUREMENT-1 INVALID: the control needle found nothing, so this run"
+          " says nothing about the queries. The instrument, not the corpus, is what"
+          " failed.")
+    sys.exit(1)
 PY

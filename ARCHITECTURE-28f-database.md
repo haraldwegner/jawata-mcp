@@ -168,7 +168,7 @@ at read, `refresh()` marks `location lost`, and the ledger queues the unit for t
 | retrieval (a cue against experience/domain rows) | the broad band, no cutoff; the floor caps volume | as today |
 | dedup at write (`record`) | `EmbeddingIndex.DEDUP_THRESHOLD` (~0.90) | as today, re-derived from labelled pairs |
 | **the map at task start** (a task against areas + jobs) | **NOT a distance bar — the union of the identity path and meaning, as retrieval already is.** M0 measured the three distributions and they OVERLAP: 3 of 10 genuine task→job pairs score at or below the p95 of unrelated pairs, so no cutoff admits the real answers without admitting noise | AMENDED 2026-09-11 by its own measurement. It read "a distance bar derived from three measured distributions … designated task→job pairs must clear it"; they do not clear it. Sprint 27 met this and shipped a union, recording a cue that "exists precisely because embeddings alone fail it while the symbol path answers it exactly" |
-| **duplicate nomination** (a draft against jobs) | meaning above the map's bar AND/OR the compiler-facts net; a hit names the job; below the bar and no net hit → "nothing" | new; the residue measurement (M0) decides whether facts alone suffice |
+| **duplicate nomination** (a draft against jobs) | the same union as the row above — meaning AND the compiler-facts net; a hit names the job; neither → "nothing" | AMENDED 2026-09-11 with the row above, which deleted the bar this row used to reference. M0 also settled the open question here: overlapping foreign symbols ALONE nominate at **26.6%** precision at full recall, so facts alone do not suffice and the strict rule stands with its residue reported (spec R2 = (b)) |
 
 ---
 

@@ -1,6 +1,7 @@
 package org.jawata.mcp.embed;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -64,7 +65,7 @@ class MapBandDerivationTest {
 
         JsonNode fixture;
         try (InputStream in = getClass().getResourceAsStream(PAIRS)) {
-            assertTrue(in != null, "the frozen pair fixture must be on the test classpath: " + PAIRS);
+            assertNotNull(in, "the frozen pair fixture must be on the test classpath: " + PAIRS);
             fixture = new ObjectMapper().readTree(in);
         }
 

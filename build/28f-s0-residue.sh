@@ -32,7 +32,7 @@ done
 [ "$READY" -eq 1 ] || { echo "resident never ready:" >&2; tail -20 "$LOG" >&2; exit 2; }
 
 S0_PORT="$PORT" S0_TOKEN="$TOKEN" S0_PROJECT="$ROOT" python3 - << 'PY'
-import json, os, itertools, statistics, urllib.request
+import json, os, itertools, statistics, sys, urllib.request
 
 PORT=os.environ["S0_PORT"]; TOKEN=os.environ["S0_TOKEN"]; PROJECT=os.environ["S0_PROJECT"]
 URL=f"http://127.0.0.1:{PORT}/mcp"; _id=[0]
@@ -151,8 +151,22 @@ for N in (1,2,3,4,5,6):
     print(f"{N:>3} {caught:>18}")
 
 sizes=[len(v) for v in sets.values() if v]
+controls=len(keys)-len(true_keys)
 print()
-print(f"S0-MEASUREMENT-2 true={len(true_keys)} control={len(keys)-len(true_keys)} "
+print(f"S0-MEASUREMENT-2 true={len(true_keys)} control={controls} "
       f"pairs={len(list(itertools.combinations(keys,2)))} "
       f"median_foreign_set={statistics.median(sizes):.0f}")
+
+# THE CONTROL POPULATION DECIDES THE EXIT CODE. Precision is real-over-nominated,
+# so it rises to a meaningless 100% the moment the control collapses - which is
+# exactly what the FIRST version of this measurement did: 30 of 34 controls came
+# back with an empty foreign set and every threshold read 100%. A precision table
+# is only a measurement while there is something for the rule to be wrong about.
+# Twice the true set is the floor, stated rather than tuned: below it the noise
+# side is too thin to carry a rate.
+if controls < 2 * len(true_keys):
+    print(f"S0-MEASUREMENT-2 INVALID: only {controls} control methods carry a foreign"
+          f" set, against {len(true_keys)} true ones. The control has collapsed, so"
+          f" every precision figure above is about the corpus and not about the rule.")
+    sys.exit(1)
 PY
