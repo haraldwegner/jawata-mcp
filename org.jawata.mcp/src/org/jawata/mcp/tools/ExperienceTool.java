@@ -943,11 +943,19 @@ public final class ExperienceTool implements Tool {
         // back fewer sources than it retired is a LOSS, and it used to report the
         // same shape as a clean one — the caller had to compare two numbers nobody
         // told them to compare. Now the response says so itself.
-        data.put("success", loadedCount >= removedRows);
-        if (loadedCount < removedRows) {
-            data.put("reason", "loaded " + loadedCount + " source(s) and retired "
-                + removedRows + ": this rebuild holds LESS than the store did. The copy"
-                + " named in `backup` is the store as it stood before it ran.");
+        // IT WEIGHS `yielded`, NOT `loaded`, and getting that wrong here after getting
+        // it right in the pre-flight is the same mistake twice in one method. A source
+        // the rebuild found UNCHANGED was delivered — it is in the root, it is in the
+        // store, the loader skipped rewriting it because the hash matched. Comparing
+        // `loaded` alone reports the commonest correct rebuild there is as a LOSS: one
+        // file deleted, one untouched, and the verb answers "this holds less than the
+        // store did" about a store holding exactly what the folder holds. Its own test
+        // caught it.
+        data.put("success", yielded >= removedRows);
+        if (yielded < removedRows) {
+            data.put("reason", "this rebuild delivered " + yielded + " source(s) and"
+                + " retired " + removedRows + ": it holds LESS than the store did. The"
+                + " copy named in `backup` is the store as it stood before it ran.");
         }
         return ToolResponse.success(withRefresh(withBackup(data, backupCopy)));
     }
