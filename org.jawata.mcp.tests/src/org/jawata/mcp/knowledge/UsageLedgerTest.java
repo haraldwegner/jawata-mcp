@@ -16,6 +16,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -166,14 +167,21 @@ class UsageLedgerTest {
     }
 
     /**
-     * A targeted delete writes its undo BEFORE it removes anything, and the
-     * archive is what proves the order.
+     * A targeted delete SAYS whether it has an undo — here, on a store that has none.
      *
-     * <p>Reversing it — delete, then export — leaves a file that parses, is
-     * named correctly, sits exactly where the response says, and contains
-     * nothing, because the rows were gone by the time it was written. So the
-     * assertion is not "an archive exists" but "the archive contains the entry",
-     * which is the only form that can tell the two orders apart.</p>
+     * <p>Until Sprint 28f the delete wrote its own JSON archive of the removed rows,
+     * and this test proved the ORDER by reading the entry back out of it: reversed —
+     * delete, then export — the file parses, is named correctly, sits where the
+     * response says, and is empty. D2 replaced that archive with a copy of the whole
+     * store, which is a stronger undo and a differently shaped one, so the order is
+     * now proved where the copy is real:
+     * {@code StoreBackupsTest#a_delete_can_be_undone_from_the_copy_it_took} deletes a
+     * row on a FILE store and restores it.</p>
+     *
+     * <p>What is left here is the case that store cannot have. This one is in-memory,
+     * so no copy is possible at all, and the only thing worth asserting is that the
+     * verb says so out loud rather than returning a response in which the absence and
+     * a successful copy look identical.</p>
      *
      * <p>The review seat runs on every client. D12's cutover archive exists only
      * on the one machine that ran the reseed, so a delete that leaned on it
@@ -181,7 +189,7 @@ class UsageLedgerTest {
      * with the delete itself.</p>
      */
     @Test
-    void a_delete_archives_what_it_removes_before_removing_it() throws Exception {
+    void a_delete_says_whether_it_has_an_undo() throws Exception {
         String doomed = call("record",
             "type", "lesson",
             "summary", "A pangolin audits nothing on a Tuesday.",
@@ -203,16 +211,29 @@ class UsageLedgerTest {
         assertEquals(List.of("an-id-that-was-never-here"), out.get("alreadyAbsent"),
             () -> "a stale id must be reported, not counted as a success: " + out);
 
-        java.nio.file.Path archive = java.nio.file.Path.of(String.valueOf(out.get("archive")));
-        assertTrue(java.nio.file.Files.exists(archive),
-            () -> "no archive at " + archive + " — the delete has no undo");
-        String body = java.nio.file.Files.readString(archive);
-        assertTrue(body.contains("A pangolin audits nothing on a Tuesday."),
-            () -> "the archive does not contain the entry it was supposed to save."
-                + " An archive written AFTER the delete looks exactly like this:"
-                + " correctly named, correctly placed, and empty. " + archive);
-        assertFalse(body.contains("A wombat reconciles"),
-            "the archive carries an entry the delete was not asked to remove");
+        // SPRINT 28f D2 CHANGED THE UNDO, AND THIS IS WHERE THAT LANDED.
+        //
+        // The delete used to write its own JSON archive of the removed rows and name
+        // it in an `archive` field; it now takes a copy of the whole STORE and names
+        // it in `backup`. This test asked for `archive`, got null, and built
+        // Path.of("null") — the one failure in a 2967-test suite, and the reason it
+        // survived a stage is that the stage verified itself by running three named
+        // classes rather than the suite.
+        //
+        // THIS STORE IS IN-MEMORY (setUp: H2ExperienceStore.open(null)), so there is
+        // no file to copy and no undo at all. That is the contract asserted here, and
+        // the field must be PRESENT and null rather than absent — "no copy was taken"
+        // and "a copy was taken and nobody said so" must not read alike. The case
+        // where the undo actually works is a FILE store, and it is pinned where it
+        // belongs: StoreBackupsTest#a_delete_can_be_undone_from_the_copy_it_took.
+        assertTrue(out.containsKey("backup"),
+            () -> "the delete must SAY whether it has an undo, even when it has none: " + out);
+        assertNull(out.get("backup"),
+            () -> "an in-memory store has no file to copy, so there is nothing to name: " + out);
+        assertNotNull(out.get("backupNote"),
+            () -> "and the absence carries its reason, or it reads like an oversight: " + out);
+        assertEquals(List.of(doomed), out.get("deleted"),
+            () -> "the response names exactly the row it removed: " + out);
 
         // and the one not named is still there
         Map<String, Object> listed = call("list", "limit", "50");

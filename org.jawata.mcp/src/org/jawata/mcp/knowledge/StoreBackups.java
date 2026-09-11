@@ -166,9 +166,13 @@ public final class StoreBackups {
      * What a restore did: the copy it put back, and the copy of the state it
      * REPLACED, so a restore chosen by mistake is itself undoable.
      *
-     * <p>{@code safetyCopy} is null on the same terms as {@link #before(String)} —
-     * the copy could not be written — and a caller must report that absence
-     * rather than let it read like a copy nobody mentioned.</p>
+     * <p>{@code safetyCopy} is null for exactly ONE reason — the copy could not
+     * be written — and a caller must report that absence rather than let it read
+     * like a copy nobody mentioned. That is NARROWER than
+     * {@link #before(String)}, which is also null when there is no file store at
+     * all: a restore cannot reach here in that state, because {@code restore}
+     * throws on it first. The shared response note names both reasons, which
+     * stays true here without being tight.</p>
      */
     public record Restored(Path from, Path safetyCopy) {}
 

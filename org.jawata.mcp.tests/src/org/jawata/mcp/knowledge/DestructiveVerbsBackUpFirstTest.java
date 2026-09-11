@@ -32,8 +32,12 @@ import org.jawata.mcp.tools.ExperienceTool;
  * door can hold it. This is the one C1's mutation is aimed at.</p>
  *
  * <p>Each case asserts three things, and the third is the one that is easy to
- * leave out: the response NAMES the copy, the named file EXISTS, and it was
- * created by THIS call rather than being some earlier copy still lying about.</p>
+ * leave out: the response NAMES the copy, the named file EXISTS, and its name
+ * carries THIS verb — so a verb reporting a copy that some other verb had taken
+ * fails here. An earlier version of this paragraph claimed the copy was proved to
+ * have been created by this call; nothing compares an instant or a prior listing,
+ * and every case uses a fresh {@code @TempDir} so no earlier copy can exist. A C1
+ * audit caught the overclaim.</p>
  */
 class DestructiveVerbsBackUpFirstTest {
 
@@ -155,6 +159,7 @@ class DestructiveVerbsBackUpFirstTest {
 
             ObjectNode a = args("restore");
             a.put("name", copy.getFileName().toString());
+            a.put("confirm", true);
             copyNamedBy(tool.execute(a), "restore");
             assertEquals(1L, store.count(), "the control: the restore really happened");
         }

@@ -61,9 +61,12 @@ class StoreBackupsTest {
         try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
             put(store, "something worth keeping");
             StoreBackups backups = new StoreBackups(() -> store);
-            // The verbs the spec names, each taking its own copy. The NAME is
-            // what a human reads when choosing which to go back to: "before the
-            // wipe" and "before the prune" are different decisions.
+            // NOTE ON WHAT THIS DOES AND DOES NOT PROVE: it hands `before` five
+            // string literals and never calls a verb, so it pins the NAMING and the
+            // rotation slot, not that any verb calls this. That the verbs call it is
+            // DestructiveVerbsBackUpFirstTest's whole subject, through each verb's own
+            // response. The name is what a human reads when choosing which copy to go
+            // back to: "before the wipe" and "before the prune" are different decisions.
             for (String verb : List.of("wipe", "prune", "import", "delete", "reseed")) {
                 Path copy = backups.before(verb);
                 assertNotNull(copy, "verb must leave a copy: " + verb);
@@ -116,12 +119,21 @@ class StoreBackupsTest {
     }
 
     /**
-     * The copy taken WHILE another connection writes.
+     * The copy taken WHILE ANOTHER CONNECTION writes.
      *
      * <p>This is the case a plain file copy cannot serve, and the reason the
      * architecture chose H2's online backup over one. The assertion is a range,
      * for the measured reason in this class's javadoc: the copy is consistent,
      * not frozen at the statement.</p>
+     *
+     * <p><b>The writer is a SECOND STORE on the same file, and the first version of
+     * this test got that wrong.</b> It started a thread against the same instance —
+     * but {@code put} and {@code backupTo} are both {@code synchronized} on that
+     * instance, so the writer was blocked for the whole copy and nothing was ever in
+     * flight. The range held, the prose claimed a case a file copy could not serve,
+     * and a plain {@code Files.copy} at that quiescent moment would have passed it.
+     * A C1 audit measured the two monitors. The second connection is what makes the
+     * copy concurrent at all, and AUTO_SERVER is what allows it.</p>
      */
     @Test
     void a_copy_taken_under_a_concurrent_writer_still_opens(@TempDir Path dir,
@@ -129,20 +141,23 @@ class StoreBackupsTest {
         Path copy;
         int before = 40;
         int concurrent = 60;
-        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir);
+                H2ExperienceStore other = H2ExperienceStore.openAt(dir)) {
             for (int i = 0; i < before; i++) {
                 put(store, "settled row " + i);
             }
             Thread writer = new Thread(() -> {
                 for (int i = 0; i < concurrent; i++) {
-                    put(store, "late row " + i);
+                    put(other, "late row " + i);
                 }
             }, "backup-concurrency-writer");
             writer.start();
             copy = new StoreBackups(() -> store).before("wipe");
             writer.join();
             assertNotNull(copy);
-            assertEquals(before + concurrent, store.count(), "the writer finished its work");
+            assertEquals(before + concurrent, store.count(),
+                "the control: the writer really was a second connection to the SAME store,"
+                    + " so its rows are visible here");
         }
         Path unpacked = unpackInto(copy, restoreDir);
         try (H2ExperienceStore restored = H2ExperienceStore.openAt(unpacked)) {
@@ -236,6 +251,113 @@ class StoreBackupsTest {
             StoreBackups.Restored done = backups.restore(oldest.getFileName().toString());
             assertEquals(oldest, done.from());
             assertEquals(1L, store.count(), "the oldest copy's single row came back");
+        }
+    }
+
+    /**
+     * A targeted delete can be UNDONE from the copy it took.
+     *
+     * <p>This is the property {@code UsageLedgerTest} used to hold by reading the
+     * deleted rows back out of a per-delete JSON archive. Sprint 28f D2 replaced that
+     * archive with a copy of the whole store, and that store must be a FILE store —
+     * so the case moved here, where one exists, and the in-memory half stayed there,
+     * where the honest answer is that there is no undo at all.</p>
+     *
+     * <p>It is a stronger assertion than the one it replaces: the old test proved an
+     * artifact existed and contained the row, this one proves the row COMES BACK.</p>
+     */
+    @Test
+    void a_delete_can_be_undone_from_the_copy_it_took(@TempDir Path dir) {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            org.jawata.mcp.tools.ExperienceTool tool =
+                new org.jawata.mcp.tools.ExperienceTool(() -> null, store);
+            String doomed = put(store, "the row the delete is about to take");
+            put(store, "the row it was not asked about");
+            assertEquals(2L, store.count());
+
+            com.fasterxml.jackson.databind.node.ObjectNode a =
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            a.put("kind", "delete");
+            a.putArray("ids").add(doomed);
+            org.jawata.mcp.models.ToolResponse response = tool.execute(a);
+            assertTrue(response.isSuccess(), () -> "delete must succeed: " + response);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> out =
+                (java.util.Map<String, Object>) response.getData();
+            assertEquals(1L, store.count(), "the control: the delete really happened");
+
+            String copy = String.valueOf(out.get("backup"));
+            new StoreBackups(() -> store).restore(Path.of(copy).getFileName().toString());
+            assertEquals(2L, store.count(),
+                "the deleted row comes BACK — which is more than the archive this"
+                    + " replaced ever proved, since it only showed a file existed");
+            assertTrue(store.all().stream()
+                    .anyMatch(e -> doomed.equals(e.id())),
+                "and it is the row that was deleted, by id, rather than merely a count");
+        }
+    }
+
+    /**
+     * The depth is a SETTING, and every branch of reading it is exercised here.
+     *
+     * <p>The plan names {@code jawata.backups.depth} as a deliverable — "the setting
+     * exists but is not yet in RuntimeSettings". A C1 audit measured that the property
+     * name occurred exactly once in 1077 files, its own declaration: replacing the
+     * whole method body with {@code return DEFAULT_DEPTH;} left the suite green, so
+     * "the setting exists" was asserted by prose alone.</p>
+     *
+     * <p>The floor at one is the branch worth having: a depth of zero is the single
+     * value that silently turns the whole mechanism off, and somebody setting it has
+     * misunderstood the setting rather than asked for no copies.</p>
+     */
+    @Test
+    void the_depth_setting_is_read_and_zero_is_refused() {
+        String had = System.getProperty(StoreBackups.DEPTH_PROPERTY);
+        try {
+            assertEquals(StoreBackups.DEFAULT_DEPTH, StoreBackups.depth(),
+                "unset means the default");
+
+            System.setProperty(StoreBackups.DEPTH_PROPERTY, "3");
+            assertEquals(3, StoreBackups.depth(), "a configured depth is honoured");
+
+            System.setProperty(StoreBackups.DEPTH_PROPERTY, "0");
+            assertEquals(1, StoreBackups.depth(),
+                "zero would keep nothing, which is what this mechanism exists to end —"
+                    + " floored at one rather than honoured");
+
+            System.setProperty(StoreBackups.DEPTH_PROPERTY, "not a number");
+            assertEquals(StoreBackups.DEFAULT_DEPTH, StoreBackups.depth(),
+                "garbage falls back to the default rather than throwing at a caller who"
+                    + " was only trying to delete a row");
+        } finally {
+            if (had == null) {
+                System.clearProperty(StoreBackups.DEPTH_PROPERTY);
+            } else {
+                System.setProperty(StoreBackups.DEPTH_PROPERTY, had);
+            }
+        }
+    }
+
+    /** The configured depth is what the ROTATION actually keeps, not just what it reports. */
+    @Test
+    void a_configured_depth_is_what_the_rotation_keeps(@TempDir Path dir) {
+        String had = System.getProperty(StoreBackups.DEPTH_PROPERTY);
+        System.setProperty(StoreBackups.DEPTH_PROPERTY, "3");
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            put(store, "one row is enough to copy");
+            StoreBackups backups = new StoreBackups(() -> store);
+            for (int i = 0; i < 5; i++) {
+                assertNotNull(backups.before("wipe"));
+            }
+            assertEquals(3, backups.list().size(),
+                "the SETTING is the ceiling, not DEFAULT_DEPTH — without this the"
+                    + " property could be read, reported, and ignored by the rotation");
+        } finally {
+            if (had == null) {
+                System.clearProperty(StoreBackups.DEPTH_PROPERTY);
+            } else {
+                System.setProperty(StoreBackups.DEPTH_PROPERTY, had);
+            }
         }
     }
 

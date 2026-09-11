@@ -694,6 +694,30 @@ public final class ExperienceTool implements Tool {
         return out;
     }
 
+    /**
+     * Sprint 28f — <b>{@code load} DELETES rows and deliberately takes no copy. The
+     * narrowing is declared here because two fresh readers had to re-derive it.</b>
+     *
+     * <p>{@code ExperienceMaintenance.loadSources} calls {@code deleteBySource} per
+     * file — the idempotent re-seed — so a source edited or truncated since its last
+     * ingest loses those rows. That is the same call which makes {@code reseed}
+     * destructive enough to protect, and by the universal D2 actually states ("every
+     * destructive verb") this verb qualifies.</p>
+     *
+     * <p><b>It is out of scope on purpose, and the choice is to REMOVE the
+     * destruction rather than insure it.</b> Stage 2 replaces that per-file delete
+     * with an upsert, after which {@code load} has nothing to back up. Insuring it
+     * instead would copy the whole store on every story-folder import, ten deep,
+     * forever — and since {@code load} runs on every deploy, the rotation would fill
+     * with pre-load copies and evict the pre-wipe copy that is the one worth having.
+     * The uncovered window is S1 to S2, with no release inside it.</p>
+     *
+     * <p>Mitigating, and stated rather than left to be assumed: the rows a load
+     * removes are file-derived, so the file can re-mint them. That is an argument for
+     * declaring the exclusion, never for leaving it silent — the one WIDENING
+     * ({@code restore}) was declared, and this narrowing was not until a C1 audit and
+     * an architect watch each found it independently.</p>
+     */
     private ToolResponse load(JsonNode args) {
         String path = text(args, "path");
         boolean recursive = boolOr(args, "recursive", true);
@@ -898,6 +922,22 @@ public final class ExperienceTool implements Tool {
             data.put("depth", org.jawata.mcp.knowledge.StoreBackups.depth());
             data.put("howToRestore", "experience(kind=restore, name=\"<one of the above>\")");
             return ToolResponse.success(data);
+        }
+        // THE CONFIRM IS SERVER-SIDE, for the reason the copy is.
+        //
+        // `wipe_and_import` refuses without it and this verb is no less destructive:
+        // one call replaces every row with the ones that version holds. studio asks
+        // the user first, but a confirmation the CALLER performs is a confirmation the
+        // caller can skip — which is the argument this whole class makes about the
+        // backup, applied one level up. An agent reaching this verb over the wire gets
+        // the same gate a human clicking gets. The LISTING form above needs none: it
+        // is how a caller learns the names, and it changes nothing.
+        if (!bool(args, "confirm")) {
+            return ToolResponse.invalidParameter("confirm",
+                "restore REPLACES every entry with the ones '" + name + "' holds —"
+                    + " anything written since it was taken is gone from the store."
+                    + " Pass confirm:true to proceed. A copy of the current state is"
+                    + " taken first, so this is itself undoable.");
         }
         try {
             org.jawata.mcp.knowledge.StoreBackups.Restored done = backups.restore(name);
@@ -1389,9 +1429,16 @@ public final class ExperienceTool implements Tool {
                     "cannot read export file: " + e.getMessage());
             }
         }
-        // Sprint 28f D2: import can overwrite rows that share an id, so it is
-        // destructive in the sense that matters — a row that was there is not
-        // the row that is there afterwards.
+        // Sprint 28f D2 names `import` among the verbs that copy first, so the copy
+        // stays. The REASON first written here — "import can overwrite rows that
+        // share an id" — was false about the method it guards: H2ExperienceStore
+        // .importEntries asks idExists and SKIPS a duplicate, so an import can add
+        // rows and can never lose one. A C1 architect watch measured that.
+        //
+        // The copy is therefore insurance against a verb that cannot currently
+        // destroy anything, and it costs one of ten rotation slots. Kept rather than
+        // cut because the spec enumerates this verb and a narrowing needs his word,
+        // where dropping a false justification does not. Raised at C1.
         Path copy = backups.before("import");
         Map<String, Object> imported = new LinkedHashMap<>(store.importEntries(entries));
         return ToolResponse.success(withRefresh(withBackup(imported, copy)));
@@ -1680,14 +1727,19 @@ public final class ExperienceTool implements Tool {
     }
 
     /**
-     * Sprint 28c D14 — remove exactly the entries a human named, after writing
-     * them somewhere they can come back from.
+     * Sprint 28c D14 — remove exactly the entries a human named, after taking a
+     * copy of the store they can come back from.
      *
-     * <p><b>The archive is written FIRST, and a failure to write it cancels the
+     * <p><b>The copy is taken FIRST, and a failure to take it cancels the
      * delete.</b> The review seat runs on every client, and D12's cutover
      * archive exists only on the one machine that ran the reseed — so a delete
-     * that leaned on it would be irreversible everywhere else. Exporting after
+     * that leaned on it would be irreversible everywhere else. Copying after
      * the delete is not an option: the rows are gone by then.</p>
+     *
+     * <p><b>Sprint 28f D2 replaced the per-delete JSON archive with the whole-store
+     * copy</b>, and this javadoc described the archive for one commit after it was
+     * gone. What changed is the ARTIFACT, not the rule: one undo instead of two, and
+     * the store the rows were deleted from instead of the rows alone.</p>
      *
      * <p>Ids that are not in the store are reported rather than treated as
      * success. "I removed what you named" and "some of what you named was
@@ -1747,18 +1799,21 @@ public final class ExperienceTool implements Tool {
         withBackup(out, copy);
         if (!missing.isEmpty()) {
             out.put("alreadyAbsent", missing);
-            out.put("note", "these ids were not in the store, so they are not in the archive"
-                + " either — your list was stale, which is worth knowing before you act on"
-                + " the rest of it.");
+            out.put("note", "these ids were not in the store, so the copy this delete took"
+                + " does not hold them either — your list was stale, which is worth knowing"
+                + " before you act on the rest of it.");
         }
         return ToolResponse.success(out);
     }
 
     /**
-     * The one place an export file is written. Both the export verb and the
-     * pre-delete archive come through here: the delete's archive IS an export,
-     * and a second writer would drift from the first exactly where it matters
-     * least visibly — in the file nobody opens until they need it.
+     * The one place an export file is written.
+     *
+     * <p>It had TWO callers — the export verb and the pre-delete archive — and
+     * Sprint 28f D2 removed the second, because the store copy is a better undo
+     * than a JSON of the removed rows. Measured with the call hierarchy at that
+     * point: ONE caller, the export verb. The sentence claiming both survived the
+     * commit that made it false, which is why it now says what it is.</p>
      */
     private static void writeArchive(List<Map<String, Object>> entries, Path target)
             throws java.io.IOException {
