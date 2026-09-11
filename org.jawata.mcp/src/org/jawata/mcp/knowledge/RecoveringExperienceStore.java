@@ -147,6 +147,24 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * Sprint 28f D1 — forwarded, and the forwarding is the whole point.
+     *
+     * <p>The interface gives this a DEFAULT that falls back to an insert, so this
+     * class compiles perfectly without the method. That is exactly the hole
+     * {@code H2ExperienceStore#degradedNotice}'s javadoc records — <i>"invisible for
+     * exactly as long as a default answered for it"</i> — and here it would be worse
+     * than invisible: every load through the wrapper, which is every load in
+     * production, would insert instead of updating in place, and the durability this
+     * method exists for would be absent while the store reported success.</p>
+     */
+    @Override
+    public String upsertBySource(ExperienceEntry entry, String sourceRef, String sourceHash) {
+        synchronized (lock) {
+            return delegate.upsertBySource(entry, sourceRef, sourceHash);
+        }
+    }
+
     @Override
     public boolean sourceUnchanged(String sourceRef, String sourceHash) {
         return delegate.sourceUnchanged(sourceRef, sourceHash);

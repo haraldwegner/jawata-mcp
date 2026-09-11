@@ -129,6 +129,25 @@ public interface ExperienceStore extends AutoCloseable {
         return putWithSource(entry, sourceRef);
     }
 
+    /**
+     * Sprint 28f D1 — persist a source's entry IN PLACE, deleting nothing.
+     *
+     * <p>The idempotence {@link #putWithSource(ExperienceEntry, String)} describes is
+     * bought by {@link #deleteBySource} running first, which means a load that dies
+     * between the delete and the re-insert has taken that file's rows with it, and
+     * that every row's id changes on every re-ingest. This is the durable form: an
+     * existing row for the same source and summary is rewritten and KEEPS ITS ID, a
+     * new one is inserted, and nothing is removed.</p>
+     *
+     * <p><b>The default is the honest degradation, not a silent one.</b> A store that
+     * cannot do this falls back to the insert — which is what every implementation but
+     * H2 is, and the interface says so rather than forcing a stub that would lie about
+     * updating in place.</p>
+     */
+    default String upsertBySource(ExperienceEntry entry, String sourceRef, String sourceHash) {
+        return putWithSource(entry, sourceRef, sourceHash);
+    }
+
     /** Sprint 21b: true when an entry for {@code sourceRef} exists with this exact
      *  content hash — the load can skip the source without a single write. */
     default boolean sourceUnchanged(String sourceRef, String sourceHash) {

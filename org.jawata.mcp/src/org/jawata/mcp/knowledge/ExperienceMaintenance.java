@@ -384,7 +384,20 @@ public final class ExperienceMaintenance {
                 }
                 continue;
             }
-            store.deleteBySource(sourceRef);         // idempotent re-seed
+            // Sprint 28f D1 — THE DELETE THAT USED TO BE HERE IS GONE.
+            //
+            // It read `store.deleteBySource(sourceRef); // idempotent re-seed`, and it
+            // bought idempotence at a price nobody had priced: a load that died between
+            // the delete and the re-insert took that file's knowledge with it, and every
+            // row's id changed on every re-ingest, orphaning anything that had recorded a
+            // decision about one. D1's sentence is that no maintenance verb deletes
+            // before it holds what replaces it.
+            //
+            // The writes below are UPSERTS instead, so re-loading a file rewrites its
+            // rows where they stand. A row whose source file has vanished is simply not
+            // visited and therefore stays — which is the rule, not an oversight: `load`
+            // is additive, and forgetting is `wipe_and_import`'s job, behind a backup
+            // and a confirm.
 
             boolean split = !doc.sections.isEmpty();
             SymbolFact.Builder fb = SymbolFact.of(
@@ -433,7 +446,7 @@ public final class ExperienceMaintenance {
             for (String link : doc.links) {
                 eb.addLink("related", link);
             }
-            String parentId = store.putWithSource(eb.build(), sourceRef, hash);
+            String parentId = store.upsertBySource(eb.build(), sourceRef, hash);
             // Sprint 21e (item A): frontmatter symbol wins UNCHANGED (asserted, in the
             // fact map); only anchor-less parents get the resolution-gated AUTO anchor —
             // written COLUMN-ONLY so body_json keeps no `symbol` key (the provenance
@@ -480,7 +493,12 @@ public final class ExperienceMaintenance {
                 for (String link : s.links()) {
                     sb.addLink("related", link);
                 }
-                String sectionId = store.putWithSource(sb.build(), sourceRef, hash);
+                // Matched to its existing row by (source, summary), and a section's
+                // summary is its heading — so editing a section's BODY rewrites that
+                // row in place, while RENAMING its heading is a new row and leaves the
+                // old one. Stated where the section's summary is chosen, because that
+                // choice is what decides it.
+                String sectionId = store.upsertBySource(sb.build(), sourceRef, hash);
                 // Sections cannot carry frontmatter — the auto-anchor from their OWN
                 // text is their only symbol channel (the ORB book-flatten gap).
                 anchored += autoAnchor(anchors, sectionId, s.heading() + "\n" + s.body(), doc.language);

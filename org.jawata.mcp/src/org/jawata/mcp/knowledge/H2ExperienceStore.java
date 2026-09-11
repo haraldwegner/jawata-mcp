@@ -607,6 +607,165 @@ public final class H2ExperienceStore implements ExperienceStore {
         return insert(entry, UUID.randomUUID().toString(), sourceRef, sourceHash);
     }
 
+    /**
+     * Sprint 28f D1 — write a source's row IN PLACE, so a load destroys nothing.
+     *
+     * <p><b>What this replaces.</b> {@code ExperienceMaintenance.loadSources} called
+     * {@code deleteBySource} and then re-inserted, so a load that died between the two
+     * took that file's knowledge with it — and every row's id changed on every
+     * re-ingest, orphaning anything that had recorded a decision about one. D1's
+     * sentence is that no maintenance verb deletes before it holds what replaces it.</p>
+     *
+     * <p><b>WHICH row, when one file yields several.</b> A source produces a FAMILY:
+     * one parent entry plus one per section, all sharing this {@code sourceRef}. So a
+     * source alone does not identify a row, and the match is on
+     * {@code (source_ref, summary)} — the parent's summary is the file's, a section's
+     * is its heading. The alternative considered and rejected was the ORDINAL within
+     * the family: inserting a section in the middle shifts every later one, so ids
+     * would be silently reassigned to different content, which is worse than the
+     * problem being fixed. The cost of matching on summary is stated rather than
+     * hidden — RENAMING a heading orphans the old row and inserts a new one, and the
+     * orphan STAYS, because "a load removes nothing" is the rule.</p>
+     *
+     * <p><b>Vectors clear themselves here.</b> A sourced write binds null vectors and a
+     * null embedder identity by design — that is what hands a row to the background
+     * backfill — so an in-place rewrite of a changed file is re-embedded without this
+     * method asking for it.</p>
+     *
+     * <p><b>Symptoms and links ARE deleted and rewritten,</b> which does not contradict
+     * the rule above: they are child rows of the entry being updated, replaced inside
+     * one call, and the ENTRY — its id, and everything pointing at it — survives. The
+     * rule is about entries.</p>
+     */
+    @Override
+    public synchronized String upsertBySource(ExperienceEntry entry, String sourceRef,
+            String sourceHash) {
+        if (sourceRef == null) {
+            // No source to match on: this is an ordinary write and must behave as one.
+            return insert(entry, UUID.randomUUID().toString(), null, sourceHash);
+        }
+        String summary = str(entry.fact().toMap().get("summary"));
+        String existing = idOfSourcedRow(sourceRef, summary);
+        if (existing == null) {
+            return insert(entry, UUID.randomUUID().toString(), sourceRef, sourceHash);
+        }
+        updateSourcedRow(existing, entry, sourceRef, sourceHash);
+        return existing;
+    }
+
+    /**
+     * The id of this source's row carrying this summary, or null.
+     *
+     * <p>A summary repeated within one source — two sections under the same heading —
+     * makes this ambiguous. The oldest is taken, deterministically, so a re-ingest
+     * keeps returning the same row rather than alternating: an unstable answer here
+     * would reassign ids on every load, which is the defect this method exists to end.</p>
+     */
+    private String idOfSourcedRow(String sourceRef, String summary) {
+        String sql = summary == null
+            ? "SELECT id FROM experience_entry WHERE source_ref = ? AND summary IS NULL"
+                + " ORDER BY created_at, id LIMIT 1"
+            : "SELECT id FROM experience_entry WHERE source_ref = ? AND summary = ?"
+                + " ORDER BY created_at, id LIMIT 1";
+        try (PreparedStatement ps = live().prepareStatement(sql)) {
+            ps.setString(1, sourceRef);
+            if (summary != null) {
+                ps.setString(2, summary);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to look up a sourced row: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Rewrite an existing sourced row where it stands.
+     *
+     * <p><b>Every column {@code insert} writes is written here too, except {@code id}
+     * and {@code created_at}</b> — the two that must not move, since the id is the
+     * entry's identity and the creation instant is when this knowledge first arrived
+     * rather than when its file was last touched. This list is a FOURTH place that has
+     * to be widened when a column is added, beside the three the insert statement's own
+     * comment already names; a column added there and forgotten here does not fail a
+     * build — it makes a re-loaded file quietly lose that value.</p>
+     *
+     * <p>{@code evidence_dead} is deliberately NOT written. It records that a human has
+     * been told the code an entry points at is gone, which is a fact about the world
+     * rather than about the file, and re-reading the file does not unlearn it.</p>
+     */
+    private void updateSourcedRow(String id, ExperienceEntry entry, String sourceRef,
+            String sourceHash) {
+        Map<String, Object> factMap = entry.fact().toMap();
+        String body;
+        try {
+            body = json.writeValueAsString(entry.toMap());
+        } catch (Exception e) {
+            throw new IllegalStateException("failed to serialize entry: " + e.getMessage(), e);
+        }
+        try {
+            try (PreparedStatement ps = live().prepareStatement(
+                    "UPDATE experience_entry SET "
+                    + "type=?,scope_kind=?,symbol_fqn=?,package_name=?,operation=?,status=?,"
+                    + "confidence=?,fault_owner=?,external_system=?,summary=?,body_json=?,"
+                    + "updated_at=?,workspace_id=?,project_id=?,language=?,source_hash=?,"
+                    // The vectors and the identity go to NULL, which is what hands the
+                    // rewritten row back to the backfill. A stale vector would be worse
+                    // than none: the row would rank on text it no longer carries, and
+                    // nothing would ever revisit it.
+                    + "embedding=NULL,embedder_identity=NULL,"
+                    + "embedding_situation=NULL,embedding_summary=NULL,embedding_details=NULL,"
+                    + "situation=?,verdict=?,provenance_kind=?,form=?,cause=? "
+                    + "WHERE id=?")) {
+                ps.setString(1, str(factMap.get("type")));
+                ps.setString(2, entry.scopeKind());
+                ps.setString(3, str(factMap.get("symbol")));
+                ps.setString(4, firstPackage(factMap));
+                ps.setString(5, entry.operation());
+                ps.setString(6, entry.status());
+                ps.setString(7, str(factMap.get("confidence")));
+                ps.setString(8, entry.faultOwner());
+                ps.setString(9, entry.externalSystem());
+                ps.setString(10, str(factMap.get("summary")));
+                ps.setString(11, body);
+                ps.setTimestamp(12, Timestamp.from(Instant.now()));
+                ps.setString(13, workspaceId);
+                ps.setString(14, projectId);
+                String lang = entry.language();
+                ps.setString(15, lang == null || lang.isBlank() ? "java" : lang);
+                ps.setString(16, sourceHash);
+                ps.setString(17, entry.situation());
+                ps.setString(18, entry.verdict());
+                ps.setString(19, entry.provenanceKind());
+                setIntOrNull(ps, 20, entry.form());
+                ps.setString(21, entry.cause());
+                ps.setString(22, id);
+                ps.executeUpdate();
+            }
+            // Replaced wholesale rather than merged: a symptom or a link the file no
+            // longer carries must go, and there is no key to diff them on — the file
+            // IS the statement of what they are.
+            deleteChildRows(id);
+            insertSymptoms(id, entry.symptoms());
+            insertLinks(id, entry.links());
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to update a sourced entry: "
+                + e.getMessage(), e);
+        }
+    }
+
+    /** The symptom and link rows belonging to one entry. */
+    private void deleteChildRows(String id) throws SQLException {
+        for (String table : List.of("experience_symptom", "experience_link")) {
+            try (PreparedStatement ps = live().prepareStatement(
+                    "DELETE FROM " + table + " WHERE entry_id = ?")) {
+                ps.setString(1, id);
+                ps.executeUpdate();
+            }
+        }
+    }
+
     /** Sprint 21b: skip-unchanged — any entry from this source with this exact hash? */
     @Override
     public synchronized boolean sourceUnchanged(String sourceRef, String sourceHash) {
