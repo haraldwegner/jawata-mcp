@@ -177,6 +177,21 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * Sprint 28f — forwarded, and this one the COMPILER made sure of.
+     *
+     * <p>Its sibling {@link #upsertBySource} above has to argue for its own existence,
+     * because the interface gives that one a default and this class would have compiled
+     * without it. This method is declared with no default for exactly that reason: the
+     * forwarding is not something a future implementor has to remember.</p>
+     */
+    @Override
+    public int retainSourcedRows(String sourceRef, java.util.Set<String> keepIds) {
+        synchronized (lock) {
+            return delegate.retainSourcedRows(sourceRef, keepIds);
+        }
+    }
+
     @Override
     public int deleteByIds(java.util.List<String> ids) {
         synchronized (lock) {

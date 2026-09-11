@@ -69,6 +69,34 @@ public final class ExperienceTool implements Tool {
             "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
             "review_sweep", "delete", "set_form", "backup", "restore");
 
+    /**
+     * Sprint 28f D4 — HOW KNOWLEDGE IS ADDED, said once.
+     *
+     * <p>THE INSTRUCTION IS INVERTED FROM WHAT IT USED TO BE, and the inversion is this
+     * sprint's premise. It used to say: write a file, then reseed — because a direct
+     * record had no file behind it and the next reseed would remove it. Two things in
+     * this release make that false. D1 stopped {@code load} deleting, so a recorded row
+     * survives a re-read of the folder; D2 puts a copy of the store beside it before
+     * anything destructive, so "a lost store file takes it permanently" is not the state
+     * either. The folder is a FILL and an EXPORT, never the source of truth.</p>
+     *
+     * <p>It also named a verb that no longer exists — {@code reseed} became
+     * {@code wipe_and_import} in this same release — so the old text sent a reader at an
+     * unknown-verb refusal: the product instructing a caller to do something it declines.</p>
+     *
+     * <p><b>A CONSTANT because both branches of {@code substrateBlock} answer it</b>, and
+     * a machine with no story folder needs it MORE, not less. Written twice it would have
+     * been the seventh copy of this sentence in this workspace, five of which currently
+     * disagree with each other — which is the finding, not a tidiness preference.</p>
+     */
+    private static final String HOW_TO_ADD =
+        "record it: experience(kind=record, type=..., summary=..., situation=...,"
+        + " verdict=...). The store is where knowledge LIVES — a recorded row survives a"
+        + " load, and a copy of the store is taken before any verb that removes rows. A"
+        + " story folder is an export and a fill, not the source: exporting to it is how"
+        + " knowledge leaves this machine, and wipe_and_import is how a folder REPLACES"
+        + " the store, which is a different and deliberately louder act.";
+
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -634,10 +662,24 @@ public final class ExperienceTool implements Tool {
             common = common == null ? dir : commonPrefix(common, dir);
         }
         if (common == null) {
+            // SPRINT 28f D4 — THE DEFAULT CASE, REPORTED AS ONE.
+            //
+            // A machine with no story folder is what MOST of them look like — D1 calls it
+            // every client — so this is the common path rather than a fault. The old note
+            // read as a fault and, worse, told the reader to "load a substrate first":
+            // the file-first instruction this release exists to invert, and one nobody
+            // without a folder can follow.
+            //
+            // It carries the SAME advice as the substrate branch below, from the same
+            // constant. What differs between the two is where knowledge can be EXPORTED
+            // to, never where it is kept — and `record` is what works on both. Two
+            // hand-written copies of one instruction is how the other five copies of this
+            // sentence across this workspace came to disagree with each other.
             block.put("root", null);
-            block.put("note", "no ingested entries, so nothing here came from a file and"
-                + " there is no substrate to add one to. Do NOT choose a directory:"
-                + " ask, or load a substrate first.");
+            block.put("note", "no story folder on this machine, which is the ORDINARY case"
+                + " and not a fault: the store is where knowledge lives and it needs no"
+                + " folder behind it. Do NOT choose a directory to create.");
+            block.put("howToAdd", HOW_TO_ADD);
             return block;
         }
         block.put("root", common.toString());
@@ -655,13 +697,7 @@ public final class ExperienceTool implements Tool {
         // in this same release, so the old text would have sent a reader at an
         // unknown-verb refusal — the product instructing a caller to do something it
         // then declines.
-        block.put("howToAdd", "record it: experience(kind=record, type=..., summary=...,"
-            + " situation=..., verdict=...). The store is where knowledge LIVES — a"
-            + " recorded row survives a load, and a copy of the store is taken before"
-            + " any verb that removes rows. This folder is an export and a fill, not the"
-            + " source: exporting to it is how knowledge leaves this machine, and"
-            + " wipe_and_import is how a folder REPLACES the store, which is a different"
-            + " and deliberately louder act.");
+        block.put("howToAdd", HOW_TO_ADD);
         return block;
     }
 
@@ -865,13 +901,30 @@ public final class ExperienceTool implements Tool {
         // where the wider rule would have protected anything.
         boolean somethingToLose = !before.isEmpty();
         if (yielded < 1 && somethingToLose) {
-            // NOTHING IS RETIRED AND NOTHING IS TOMBSTONED. The store still holds
-            // everything it held, which is what makes this a refusal rather than a
-            // completed rebuild that happened to find nothing.
+            // NOTHING IS RETIRED, AND THE CURATION IS PUT BACK BEFORE WE LEAVE.
+            //
+            // This branch is not free of consequences just because it removes no row:
+            // `clearTombstones` has already run, above, and it had to — a source the
+            // user deliberately reloads must be able to pass its own old tombstone. So
+            // the refusal's job is to leave the store as it found it, which means
+            // WRITING THE TOMBSTONE TABLE, not declining to touch anything.
+            //
+            // It is the SAME rule the success path uses, deliberately, rather than an
+            // undo written for this branch: a ref that was tombstoned is by definition
+            // not among the store's live file refs, so "tombstone everything `before`
+            // knew that is not back" restores exactly the set that was there. One rule,
+            // both exits — an undo that only this branch remembers to call is the shape
+            // that produced the defect in the first place.
+            //
+            // THE COST OF GETTING THIS WRONG, measured: without it a rebuild pointed at
+            // a mistyped root amnestied EVERY tombstone in the store, permanently,
+            // while its own response said the store was unchanged. The curation this
+            // store is cleaned with was one typo away from being silently undone.
+            int restored = reTombstoneWhatIsNotBack(path, before);
             Map<String, Object> refused = new LinkedHashMap<>(loaded);
             refused.put("success", false);
             refused.put("removed", 0L);
-            refused.put("tombstoned", 0);
+            refused.put("tombstoned", restored);
             refused.put("reason", "REFUSED before anything was removed: "
                 + (path == null || path.isBlank() ? "the configured roots" : path)
                 + " yielded no loadable file. A rebuild from nothing would empty the"
@@ -912,16 +965,7 @@ public final class ExperienceTool implements Tool {
         // Revival is the same deliberate act as removal: whatever this reseed
         // re-ingested is alive by definition, so only refs it did NOT bring
         // back get (or keep) a tombstone.
-        java.util.Set<String> after = store.fileSourceRefs();
-        int tombstoned = 0;
-        String why = "wipe_and_import excluded this source (path="
-            + (path == null || path.isBlank() ? "<default roots>" : path) + ")";
-        for (String ref : before) {
-            if (!after.contains(ref)) {
-                store.tombstone(ref, why);
-                tombstoned++;
-            }
-        }
+        int tombstoned = reTombstoneWhatIsNotBack(path, before);
         // WHAT SURVIVED, NAMED. An earlier fix for the catalogue re-seeded it
         // after the wipe; that was the wrong shape — it made a reseed INSTALL
         // the catalogue into stores that deliberately had none, and it paid a
@@ -958,6 +1002,20 @@ public final class ExperienceTool implements Tool {
                 + " copy named in `backup` is the store as it stood before it ran.");
         }
         return ToolResponse.success(withRefresh(withBackup(data, backupCopy)));
+    }
+
+    private int reTombstoneWhatIsNotBack(String path, java.util.Set<String> before) {
+        java.util.Set<String> after = store.fileSourceRefs();
+        int tombstoned = 0;
+        String why = "wipe_and_import excluded this source (path="
+            + (path == null || path.isBlank() ? "<default roots>" : path) + ")";
+        for (String ref : before) {
+            if (!after.contains(ref)) {
+                store.tombstone(ref, why);
+                tombstoned++;
+            }
+        }
+        return tombstoned;
     }
 
     /**

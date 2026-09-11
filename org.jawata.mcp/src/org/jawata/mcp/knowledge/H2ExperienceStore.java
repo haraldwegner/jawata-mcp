@@ -1088,6 +1088,70 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     /**
+     * Drop the rows of one source that the pass which just ingested it did NOT write.
+     *
+     * <p><b>Why a load needs this at all, when D1's whole point is that it deletes
+     * nothing.</b> The two are not in tension: D1 stopped the load deleting a source's
+     * rows BEFORE it had what replaces them. What the file no longer says must still go,
+     * and afterwards is when that is knowable.</p>
+     *
+     * <p><b>The case that forced it.</b> A row is matched to its file by
+     * {@code (source_ref, summary)} — so editing a story's {@code description}, which is
+     * the commonest edit there is, matches nothing, inserts a second row, and leaves the
+     * first. The file then says one thing and the store answers two, one of them a
+     * statement its author has already withdrawn. Renaming a section heading does the
+     * same. {@code ExperienceMaintenanceTest#load_skips_unchanged_files_entirely} is what
+     * caught it: two files, one description edited, three rows.</p>
+     *
+     * <p>The rule is the one {@code updateSourcedRow} already applies to a row's symptoms
+     * and links one level down — <em>the file IS the statement of what they are</em> —
+     * lifted to the family. Whatever this pass wrote for the source is the source's rows;
+     * anything else under that {@code source_ref} is residue.</p>
+     *
+     * @param sourceRef the file's ref; null or blank does nothing
+     * @param keepIds   every id this pass wrote for it — EMPTY IS REFUSED, because an
+     *                  empty set here means "the file yielded nothing", and deleting a
+     *                  whole source on that basis is the accident this sprint exists to
+     *                  end. A caller wanting the source gone says so with
+     *                  {@link #deleteBySource}
+     * @return how many rows were dropped
+     */
+    @Override
+    public synchronized int retainSourcedRows(String sourceRef, java.util.Set<String> keepIds) {
+        if (sourceRef == null || sourceRef.isBlank() || keepIds == null || keepIds.isEmpty()) {
+            return 0;
+        }
+        String holes = String.join(",", java.util.Collections.nCopies(keepIds.size(), "?"));
+        List<String> keep = List.copyOf(keepIds);
+        try {
+            String doomed = "SELECT id FROM experience_entry WHERE source_ref = ?"
+                + " AND id NOT IN (" + holes + ")";
+            for (String table : List.of("experience_symptom", "experience_link")) {
+                try (PreparedStatement ps = live().prepareStatement(
+                        "DELETE FROM " + table + " WHERE entry_id IN (" + doomed + ")")) {
+                    ps.setString(1, sourceRef);
+                    for (int i = 0; i < keep.size(); i++) {
+                        ps.setString(i + 2, keep.get(i));
+                    }
+                    ps.executeUpdate();
+                }
+            }
+            try (PreparedStatement ps = live().prepareStatement(
+                    "DELETE FROM experience_entry WHERE source_ref = ?"
+                    + " AND id NOT IN (" + holes + ")")) {
+                ps.setString(1, sourceRef);
+                for (int i = 0; i < keep.size(); i++) {
+                    ps.setString(i + 2, keep.get(i));
+                }
+                return ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to reconcile a source's rows: "
+                + e.getMessage(), e);
+        }
+    }
+
+    /**
      * The directory this store's file lives in, or null for an in-memory store.
      *
      * <p>Used to put a pre-delete archive BESIDE the store it came from rather

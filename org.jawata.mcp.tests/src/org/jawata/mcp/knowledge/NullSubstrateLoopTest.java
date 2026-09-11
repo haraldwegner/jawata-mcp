@@ -93,20 +93,56 @@ class NullSubstrateLoopTest {
      * to go and write a file under one. It names {@code record}, which is the thing that
      * actually works there.</p>
      */
+    /**
+     * A null substrate root is reported as the DEFAULT, and it is told how to add.
+     *
+     * <p><b>The first version of this test could not fail, and the way it could not is
+     * worth keeping.</b> It asserted two ABSENCES over the whole stats rendering — no
+     * "degraded", no "kind=reseed" — and both were already true of the code before this
+     * sprint touched it, so it passed on the old build as readily as the new one. The
+     * reason is structural rather than careless: {@code substrateBlock} RETURNS EARLY when
+     * no row carries a file source, and the string those assertions were hunting lives
+     * past that return. The branch this test's own fixture takes never emitted it.</p>
+     *
+     * <p>So the assertion is now POSITIVE and on the branch this fixture actually reaches:
+     * the block names {@code record} as the way to add. That is D4's deliverable, and on a
+     * machine with no story folder it is the only advice that can be followed — the note
+     * this branch used to carry said "load a substrate first", which is both the
+     * file-first instruction this release inverts and impossible for the reader it was
+     * shown to.</p>
+     */
     @Test
+    @SuppressWarnings("unchecked")
     void a_missing_story_folder_is_reported_as_ordinary(@TempDir Path dir) {
         try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
             ExperienceTool tool = new ExperienceTool(() -> null, store);
             record(tool, "a store with no folder behind it still holds what it is told");
 
             Map<String, Object> stats = data(tool.execute(args("stats")));
-            String rendered = String.valueOf(stats);
+            Object block = stats.get("substrate");
+            assertTrue(block instanceof Map,
+                () -> "the control: stats must carry the substrate block at all, or every"
+                    + " assertion below is about an absent object: " + stats);
+            Map<String, Object> substrate = (Map<String, Object>) block;
 
+            assertEquals(null, substrate.get("root"),
+                () -> "the control: this fixture records, so nothing came from a file and"
+                    + " the root is genuinely null — the branch under test: " + substrate);
+
+            String advice = String.valueOf(substrate.get("howToAdd"));
+            assertTrue(advice.contains("kind=record"),
+                () -> "A MACHINE WITH NO STORY FOLDER MUST STILL BE TOLD HOW TO ADD, and"
+                    + " `record` is the only answer that works there. This branch used to"
+                    + " return before the advice was written, carrying a note that said to"
+                    + " load a substrate first — advice its own reader cannot follow: "
+                    + advice);
+            assertFalse(advice.contains("kind=reseed"),
+                () -> "and it must not name a verb this release retired: " + advice);
+
+            String rendered = String.valueOf(stats);
             assertFalse(rendered.contains("degraded"),
                 () -> "no folder is the ORDINARY state — D1 calls it every client — and"
                     + " must not be reported as a fault: " + rendered);
-            assertFalse(rendered.contains("kind=reseed"),
-                () -> "and it must not name a verb this release retired: " + rendered);
         }
     }
 }

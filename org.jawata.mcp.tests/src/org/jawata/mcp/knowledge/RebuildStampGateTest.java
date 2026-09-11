@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and a fixture that pretended to would be asserting my imitation of a reader
  * rather than a reader. That half is a live check and is recorded as one.</p>
  */
-class ReseedStampGateTest {
+class RebuildStampGateTest {
 
     private static Path story(Path dir, String name, boolean stamped) throws Exception {
         Path f = dir.resolve(name + ".md");

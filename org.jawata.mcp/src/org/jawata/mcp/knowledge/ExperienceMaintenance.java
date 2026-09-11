@@ -228,6 +228,11 @@ public final class ExperienceMaintenance {
         int keywordCapped = 0;
         int keywordsSuppressed = 0;
         int anchored = 0;
+        // Rows dropped because the file that produced them no longer says them — an
+        // edited description, a renamed section heading. REPORTED rather than silent:
+        // this is the one thing in a load that removes knowledge, and "it withdrew a
+        // statement" and "it withdrew nothing" must not read alike.
+        int removedStale = 0;
         int duplicateContent = 0;
         long bytes = 0;
         // Sprint 21e (item A): one resolver per load run — its token memo spans the run
@@ -456,7 +461,11 @@ public final class ExperienceMaintenance {
                 eb.addLink("related", link);
             }
             visited.add(sourceRef);
+            // EVERY ROW THIS FILE PRODUCES, so the withdrawn ones can be told from the
+            // current ones afterwards — see the reconciliation below the section loop.
+            java.util.Set<String> family = new java.util.LinkedHashSet<>();
             String parentId = store.upsertBySource(eb.build(), sourceRef, hash);
+            family.add(parentId);
             // Sprint 21e (item A): frontmatter symbol wins UNCHANGED (asserted, in the
             // fact map); only anchor-less parents get the resolution-gated AUTO anchor —
             // written COLUMN-ONLY so body_json keeps no `symbol` key (the provenance
@@ -509,10 +518,23 @@ public final class ExperienceMaintenance {
                 // old one. Stated where the section's summary is chosen, because that
                 // choice is what decides it.
                 String sectionId = store.upsertBySource(sb.build(), sourceRef, hash);
+                family.add(sectionId);
                 // Sections cannot carry frontmatter — the auto-anchor from their OWN
                 // text is their only symbol channel (the ORB book-flatten gap).
                 anchored += autoAnchor(anchors, sectionId, s.heading() + "\n" + s.body(), doc.language);
             }
+            // WHAT THE FILE NO LONGER SAYS GOES — and only now is that knowable.
+            //
+            // D1 stopped the load deleting a source's rows BEFORE it had what replaces
+            // them; it never meant a load may only add. The upsert matches on
+            // (source_ref, summary), so an edited `description` or a renamed section
+            // heading matches nothing and INSERTS, leaving the statement the author
+            // withdrew sitting beside the one they wrote — in a store whose whole job is
+            // answering questions, with no way for a reader to tell which is current.
+            //
+            // It is the rule `updateSourcedRow` already applies to a row's symptoms and
+            // links, one level up: the file IS the statement of what its rows are.
+            removedStale += store.retainSourcedRows(sourceRef, family);
             loaded++;
 
             // Item I: only Java anchors are judged by the JDT resolver on ingest.
@@ -539,6 +561,7 @@ public final class ExperienceMaintenance {
         report.put("files", loaded + unchanged);
         report.put("loaded", loaded);
         report.put("unchanged", unchanged);
+        report.put("withdrawn", removedStale);
         report.put("linked", linked);
         report.put("stale", stale);
         report.put("skipped", skipped);

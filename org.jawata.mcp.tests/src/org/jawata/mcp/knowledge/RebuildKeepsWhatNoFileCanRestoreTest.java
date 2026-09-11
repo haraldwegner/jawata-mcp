@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * kept in. An excluded file source is not a silent loss — it is reported, it is
  * tombstoned, the file still exists, and a reseed of its root revives it.</p>
  */
-class ReseedKeepsWhatItCannotRebuildTest {
+class RebuildKeepsWhatNoFileCanRestoreTest {
 
     private ObjectMapper mapper;
     private H2ExperienceStore store;

@@ -114,6 +114,57 @@ class ZeroLoadableFilesTest {
         }
     }
 
+    /**
+     * A REFUSED REBUILD LEAVES THE CURATION ALONE — the half a row count cannot see.
+     *
+     * <p><b>What was broken, and why every other assertion here was blind to it.</b> The
+     * rebuild clears the tombstone table before loading, and it has to: a source somebody
+     * deliberately reloads must be able to get past its own old tombstone. When the load
+     * then yielded nothing, the refusal returned without putting the table back — so a
+     * rebuild pointed at a mistyped root amnestied EVERY tombstone in the store,
+     * permanently, while its own response said the store was unchanged.</p>
+     *
+     * <p>Tombstones live in their own table. {@code count()} and {@code fileSourceRefs()}
+     * both read the ENTRY table, so the two "nothing was removed" assertions above — and
+     * every other one in this checkpoint — are satisfied while the curation is gone. The
+     * only assertion that can see it is one that asks for the tombstones by name.</p>
+     *
+     * <p>That curation is not a detail: excluding a source by rebuilding from a narrower
+     * root is how this store is cleaned, and the tombstone is what stops the next deploy
+     * putting the excluded source straight back.</p>
+     */
+    @Test
+    void a_refused_rebuild_does_not_amnesty_the_curation(@TempDir Path dir,
+            @TempDir Path roots, @TempDir Path empty) throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            ExperienceTool tool = new ExperienceTool(() -> null, store);
+
+            story(roots, "kept", "a story that stays");
+            story(roots, "excluded", "a story somebody is about to curate out");
+            assertTrue(tool.execute(rebuild(roots)).isSuccess(), "the control: both load");
+
+            // The curation itself, performed the way it really is: the file goes and the
+            // root is rebuilt, so the source is tombstoned rather than silently dropped.
+            // It must be the SAME root — a rebuild from a different directory retires
+            // BOTH sources, since neither of that directory's files is one of these.
+            Files.delete(roots.resolve("excluded.md"));
+            assertTrue(tool.execute(rebuild(roots)).isSuccess());
+            java.util.Set<String> curated = store.tombstonedRefs();
+            assertEquals(1, curated.size(),
+                () -> "the control: excluding a source must tombstone it, or this test is"
+                    + " measuring nothing: " + curated);
+
+            ToolResponse refused = tool.execute(rebuild(empty));
+
+            assertFalse(refused.isSuccess(), "the control: this is the refusal path");
+            assertEquals(curated, store.tombstonedRefs(),
+                "THE CURATION SURVIVED THE REFUSAL. A row count cannot see this: tombstones"
+                    + " are their own table, so a rebuild that emptied it would pass every"
+                    + " other assertion in this class while undoing the decision the store"
+                    + " was cleaned with");
+        }
+    }
+
     /** And a root that DOES load still rebuilds — or the refusal above proves nothing. */
     @Test
     void a_root_with_a_loadable_file_still_rebuilds(@TempDir Path dir, @TempDir Path roots)

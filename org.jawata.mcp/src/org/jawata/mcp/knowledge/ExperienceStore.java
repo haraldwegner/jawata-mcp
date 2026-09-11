@@ -158,6 +158,29 @@ public interface ExperienceStore extends AutoCloseable {
     int deleteBySource(String sourceRef);
 
     /**
+     * Sprint 28f — after ingesting a source, drop the rows of it this pass did not write.
+     *
+     * <p>The companion to {@link #upsertBySource}, and the half that keeps "a load deletes
+     * nothing" from meaning "a load accumulates". The upsert matches a row by
+     * {@code (source_ref, summary)}, so an edited description or a renamed section heading
+     * matches nothing and inserts — leaving the row the file used to say beside the row it
+     * says now, with nothing to distinguish the withdrawn statement from the current one.
+     * Passing the ids this pass wrote is what lets the store tell them apart.</p>
+     *
+     * <p><b>Declared with NO default, deliberately.</b> A default would let a delegating
+     * store compile without forwarding it and leak silently through the wrapper every
+     * production load goes through — which is exactly what {@link #upsertBySource}'s
+     * default nearly did, and the reason its own implementation carries a warning. Here
+     * the compiler is the guard: a new implementor cannot forget.</p>
+     *
+     * @param keepIds every id this pass wrote for the source. An EMPTY set does nothing —
+     *                "the file yielded nothing" must never read as "delete the file's
+     *                knowledge"; {@link #deleteBySource} is how a caller asks for that.
+     * @return rows dropped
+     */
+    int retainSourcedRows(String sourceRef, java.util.Set<String> keepIds);
+
+    /**
      * Remove exactly the entries named, by id; returns rows removed.
      *
      * <p>The id form exists because {@link #deleteBySource} cannot express "this

@@ -111,6 +111,11 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public int retainSourcedRows(String sourceRef, java.util.Set<String> keepIds) {
+        throw boom();
+    }
+
+    @Override
     public int deleteByIds(java.util.List<String> ids) {
         throw boom();
     }
