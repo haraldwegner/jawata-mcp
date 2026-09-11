@@ -1,0 +1,39 @@
+Class list: 1 test classes from /tmp/28f-s0-class.txt
+stage: loading runner class
+stage: runner class loaded
+stage: invoking runner
+loaded 1/1 test classes (0s)
+class loading complete: 1/1 (0s)
+[  1/1     0s] MapBandDerivationTest
+[main] INFO org.jawata.mcp.knowledge.EmbeddingService - embedder ready: sentence-transformers/all-MiniLM-L6-v2/384/v3 fp16 backend=scalar in 455 ms
+S0-MEASUREMENT-3 per-pair scores
+    DES 0.5087  job-01  <- I am about to throw away rows - is there anything that keeps wha...
+    DES 0.2786  job-02  <- this function needs one more argument and it is called from ever...
+    DES 0.1839  job-03  <- the file moved since we wrote this down, how do we still point a...
+    DES 0.4949  job-04  <- make a note findable when somebody asks for it in completely dif...
+    DES 0.1988  job-05  <- stop half-written notes from getting in
+    DES 0.5284  job-06  <- this child class adds nothing its parent does not already do
+    DES 0.2888  job-07  <- the same logic seems to exist twice under two different names
+    DES 0.1061  job-08  <- which parts of the product did the checks actually exercise?
+    DES 0.5849  job-09  <- I need to see what a variable holds while the thing is running
+    DES 0.2846  job-10  <- given a question, what do we already know that bears on it?
+    UNR 0.0089  job-08  <- I am about to throw away rows - is there anything that keeps wha...
+    UNR 0.0037  job-05  <- I need to see what a variable holds while the thing is running
+    UNR -0.0238  job-02  <- which parts of the product did the checks actually exercise?
+    UNR 0.0871  job-04  <- this child class adds nothing its parent does not already do
+    UNR 0.1364  job-06  <- make a note findable when somebody asks for it in completely dif...
+    UNR 0.1930  job-09  <- stop half-written notes from getting in
+    UNR 0.2147  job-01  <- the same logic seems to exist twice under two different names
+    UNR -0.0331  job-10  <- this function needs one more argument and it is called from ever...
+    UNR 0.0853  job-07  <- given a question, what do we already know that bears on it?
+    UNR 0.1447  job-08  <- the file moved since we wrote this down, how do we still point a...
+    UNR -0.0010  job-06  <- which parts of the product did the checks actually exercise?
+    UNR 0.0106  job-02  <- stop half-written notes from getting in
+S0-MEASUREMENT-3 map band
+  unrelated  n=12 median=0.0479 p95=0.2027 max=0.2147
+  designated n=10 min=0.1061 median=0.2867 max=0.5849
+  near_dupes n=6 min=0.2405 median=0.4073 max=0.5634
+  DERIVED map_bar=NONE — the weakest designated pair (0.1061) is at or below the floor (0.2027), so no cutoff admits every real answer without admitting noise. A midpoint of an inverted interval would land BELOW the floor and is not reported.
+  OVERLAP designated pairs at or below the floor: 3 of 10
+S0-MEASUREMENT-3 floor=0.2027 designated_min=0.1061 designated_median=0.2867 near_dupe_min=0.2405 below_floor=3 of 10 single_bar_possible=false
+SPIKE-TESTS total=1 succeeded=1 failed=0 aborted=0 skipped=0 unloadable=0 containersAborted=0 containersFailed=0

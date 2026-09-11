@@ -96,11 +96,20 @@ class MapBandDerivationTest {
         double floor = percentile(unrelated, 0.95);
         double designatedMin = designated.get(0);
 
-        // The derived bar sits between the floor and the weakest designated pair.
-        // Midpoint rather than either endpoint: sitting ON the floor admits the
-        // noise the floor measures, and sitting ON the weakest designated pair
-        // leaves it no margin at all.
-        double bar = (floor + designatedMin) / 2.0;
+        // THE BAR EXISTS ONLY IF THE INTERVAL IT SITS IN DOES. The midpoint of
+        // floor and weakest-designated is the right bar when the weakest
+        // designated pair out-scores the floor: above the noise, with margin at
+        // both ends. When it does NOT, that interval is inverted and its
+        // midpoint lands BELOW the floor — in exactly the region this reasoning
+        // calls out as admitting the noise the floor measures.
+        //
+        // A first version computed and printed it unconditionally, and on the
+        // real corpus emitted `map_bar=0.1544` against a floor of 0.2027: a
+        // labelled deliverable, invalid by its own construction, that every
+        // later suite run would have re-printed for someone to pick up. Caught
+        // by the C0 audit. There is no number to report here, and reporting one
+        // anyway is worse than reporting none.
+        boolean barExists = designatedMin > floor;
 
         System.out.println("S0-MEASUREMENT-3 map band");
         System.out.printf("  unrelated  n=%d median=%.4f p95=%.4f max=%.4f%n",
@@ -112,8 +121,15 @@ class MapBandDerivationTest {
         System.out.printf("  near_dupes n=%d min=%.4f median=%.4f max=%.4f%n",
             nearDuplicate.size(), nearDuplicate.get(0), percentile(nearDuplicate, 0.50),
             nearDuplicate.get(nearDuplicate.size() - 1));
-        System.out.printf("  DERIVED map_bar=%.4f (floor=%.4f, weakest designated=%.4f)%n",
-            bar, floor, designatedMin);
+        if (barExists) {
+            System.out.printf("  DERIVED map_bar=%.4f (floor=%.4f, weakest designated=%.4f)%n",
+                (floor + designatedMin) / 2.0, floor, designatedMin);
+        } else {
+            System.out.printf("  DERIVED map_bar=NONE — the weakest designated pair (%.4f) is at"
+                + " or below the floor (%.4f), so no cutoff admits every real answer without"
+                + " admitting noise. A midpoint of an inverted interval would land BELOW the"
+                + " floor and is not reported.%n", designatedMin, floor);
+        }
 
         // THE MEASUREMENT, which is this test's product: how many genuine
         // task-to-job pairs fall at or below the noise floor. Every one of them
@@ -156,18 +172,18 @@ class MapBandDerivationTest {
         // says the bands serve different jobs, never that no pair of them shares a
         // score. Recorded rather than quietly relaxed, because rewriting an
         // assertion until it passes is the defect this project has paid for most.
+        // ONLY the upper half is asserted, and that is deliberate. The lower half
+        // - unrelated median below designated median - is ENTAILED by the
+        // assertion above: percentile is monotone in q, so a designated median
+        // that clears the unrelated p95 clears the unrelated median too. Stating
+        // it anyway would present one check as two, which is the shape that makes
+        // a suite look thorough while proving no more than it did before.
         double nearDupeMedian = percentile(nearDuplicate, 0.50);
-        double unrelatedMedian = percentile(unrelated, 0.50);
-        assertTrue(unrelatedMedian < designatedMedian && designatedMedian < nearDupeMedian,
-            String.format("the three sets must order by median - unrelated (%.4f) below"
-                + " designated (%.4f) below near-duplicate (%.4f). They do not, so these are"
-                + " not three distinguishable distributions and no band read off them means"
-                + " anything.", unrelatedMedian, designatedMedian, nearDupeMedian));
-    }
-
-    private static List<Double> scoresOf(JsonNode pairs, EmbeddingService embedder,
-            Map<String, float[]> jobVectors) {
-        return scoresOf(pairs, embedder, jobVectors, null);
+        assertTrue(designatedMedian < nearDupeMedian,
+            String.format("paraphrases of ONE job (median %.4f) must out-score real"
+                + " task-to-job pairs (median %.4f), or the dedup edge and the map are"
+                + " measuring the same thing and section 8's two bands have no basis to"
+                + " stay apart.", nearDupeMedian, designatedMedian));
     }
 
     /**

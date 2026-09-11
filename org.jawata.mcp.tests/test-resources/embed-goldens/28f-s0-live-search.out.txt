@@ -1,0 +1,16 @@
+loading the project (excluded from every timing below) ...
+  load_project: 19.5s
+warm-up (excluded) ...
+  CONTROL  10895.0 ms   hits=2 examined=1061  literal: osgi.instance.area
+   10810.2 ms   hits=0    examined=1061   backup the store before a destructive verb
+   10668.7 ms   hits=0    examined=1061   resolve a symbol to its declaration
+   10295.9 ms   hits=0    examined=1061   compute a meaning vector for an entry
+   10206.7 ms   hits=0    examined=1061   detect duplicated code across the workspace
+   10251.5 ms   hits=0    examined=1061   rename a symbol and update every reference
+   10204.5 ms   hits=0    examined=1061   parse a compilation unit into an abstract syntax tree
+   10303.9 ms   hits=0    examined=1061   write an archive before deleting entries
+   10031.7 ms   hits=0    examined=1061   measure which lines the tests covered
+   10057.0 ms   hits=0    examined=1061   refuse an entry whose form is incomplete
+   10166.3 ms   hits=0    examined=1061   rank candidates by distance and return the best
+
+S0-MEASUREMENT-1 queries=10 median_ms=10229.1 p95_ms=10746.5 min_ms=10031.7 max_ms=10810.2 files_examined=1061 queries_with_any_hit=0 total_hits=0 control_hits=2
