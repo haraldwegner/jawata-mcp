@@ -67,7 +67,7 @@ class StoreBackupsTest {
             // DestructiveVerbsBackUpFirstTest's whole subject, through each verb's own
             // response. The name is what a human reads when choosing which copy to go
             // back to: "before the wipe" and "before the prune" are different decisions.
-            for (String verb : List.of("wipe", "prune", "import", "delete", "reseed")) {
+            for (String verb : List.of("wipe", "prune", "import", "delete", "wipe_and_import")) {
                 Path copy = backups.before(verb);
                 assertNotNull(copy, "verb must leave a copy: " + verb);
                 assertTrue(copy.getFileName().toString().endsWith("-" + verb + ".zip"),

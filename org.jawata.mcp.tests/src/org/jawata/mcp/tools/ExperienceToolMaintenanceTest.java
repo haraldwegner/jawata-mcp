@@ -209,12 +209,12 @@ class ExperienceToolMaintenanceTest {
         assertEquals(1L, store.count());
 
         ObjectNode noConfirm = mapper.createObjectNode();
-        noConfirm.put("kind", "reseed");
+        noConfirm.put("kind", "wipe_and_import");
         assertFalse(rooted.execute(noConfirm).isSuccess(), "reseed is confirm-gated");
         assertEquals(1L, store.count(), "nothing wiped without confirm");
 
         ObjectNode confirmed = mapper.createObjectNode();
-        confirmed.put("kind", "reseed");
+        confirmed.put("kind", "wipe_and_import");
         confirmed.put("confirm", true);
         // CONTRACT CHANGED DELIBERATELY (2026-08-27), and this is where it is
         // written down. This test used to assert "the hand-recorded entry was

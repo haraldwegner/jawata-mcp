@@ -93,7 +93,7 @@ class ReseedKeepsWhatItCannotRebuildTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> reseed(Path dir) {
         ObjectNode a = mapper.createObjectNode();
-        a.put("kind", "reseed");
+        a.put("kind", "wipe_and_import");
         a.put("path", dir.toString());
         a.put("recursive", true);
         a.put("confirm", true);

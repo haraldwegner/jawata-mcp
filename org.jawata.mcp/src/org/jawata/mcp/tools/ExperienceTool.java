@@ -59,7 +59,13 @@ public final class ExperienceTool implements Tool {
      */
     private static final List<String> KINDS =
         List.of("record", "recall", "nominate", "decide", "primer", "list", "load",
-            "reseed", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
+            // Sprint 28f D1: `reseed` became `wipe_and_import`, and the old name is
+            // NOT kept as an alias. The name is the whole point — "reseed" reads like a
+            // refresh and the verb wipes the store first, which is how it took 378 rows
+            // to 194 with nobody expecting it. A caller on the old name now gets an
+            // unknown-verb refusal listing this one: a loud failure, where an alias
+            // would be a silent continuation of the misreading.
+            "wipe_and_import", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
             "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
             "review_sweep", "delete", "set_form", "backup", "restore");
 
@@ -296,13 +302,16 @@ public final class ExperienceTool implements Tool {
 
         // maintenance
         props.put("path", Map.of("type", "string",
-            "description", "load/reseed: a directory of *.md memory files, or a single file."
+            "description", "load/wipe_and_import: a directory of *.md memory files, or a single"
+                + " file."
                 + " Omit to use the configured default roots."));
         props.put("recursive", Map.of("type", "boolean",
-            "description", "load/reseed: walk subdirectories of directory roots (default TRUE —"
+            "description", "load/wipe_and_import: walk subdirectories of directory roots"
+                + " (default TRUE —"
                 + " the crawl finds everything; pass false to stay flat)."));
         props.put("confirm", Map.of("type", "boolean",
-            "description", "reseed: REQUIRED true (wipes first). dedup: true = merge the groups."));
+            "description", "wipe_and_import: REQUIRED true (wipes first)."
+                + " dedup: true = merge the groups."));
         props.put("days", Map.of("type", "integer",
             "description", "prune: age threshold in days for rejected/superseded (default 30)."));
         props.put("id", Map.of("type", "string", "description",
@@ -443,7 +452,7 @@ public final class ExperienceTool implements Tool {
             case "decide" -> decide(args);
             case "primer" -> primer(args);
             case "load" -> load(args);
-            case "reseed" -> reseed(args);
+            case "wipe_and_import" -> wipeAndImport(args);
             case "refresh" -> ToolResponse.success(maintenance.refresh());
             case "wipe" -> wipe();
             case "promote" -> promote(args);
@@ -633,12 +642,26 @@ public final class ExperienceTool implements Tool {
         }
         block.put("root", common.toString());
         block.put("derivedFrom", from + " entries carrying a memory: source path");
-        block.put("howToAdd", "write the story as a .md file under this root with a"
-            + " `reviewed:` stamp it has EARNED, then experience(kind=reseed, path=<root>,"
-            + " recursive=true, confirm=true). A record written straight to the store has"
-            + " no file behind it: the reseed keeps it, but NOTHING can ever rebuild it —"
-            + " a bare wipe or a lost store file takes it permanently, so anything worth"
-            + " keeping gets a file.");
+        // Sprint 28f D4 — THIS INSTRUCTION IS INVERTED, and the inversion is the
+        // sprint's whole premise. It used to say: write a file, then reseed, because a
+        // direct record had no file behind it and the next reseed would remove it. Two
+        // things in this release make that false. D1 stopped `load` from deleting, so a
+        // recorded row is no longer erased by re-reading the folder; D2 puts a copy of
+        // the store beside it before anything destructive, so "a lost store file takes
+        // it permanently" is no longer the state either. The folder is a FILL and an
+        // EXPORT, never the source of truth.
+        //
+        // It also named a verb that no longer exists. `reseed` became `wipe_and_import`
+        // in this same release, so the old text would have sent a reader at an
+        // unknown-verb refusal — the product instructing a caller to do something it
+        // then declines.
+        block.put("howToAdd", "record it: experience(kind=record, type=..., summary=...,"
+            + " situation=..., verdict=...). The store is where knowledge LIVES — a"
+            + " recorded row survives a load, and a copy of the store is taken before"
+            + " any verb that removes rows. This folder is an export and a fill, not the"
+            + " source: exporting to it is how knowledge leaves this machine, and"
+            + " wipe_and_import is how a folder REPLACES the store, which is a different"
+            + " and deliberately louder act.");
         return block;
     }
 
@@ -736,15 +759,17 @@ public final class ExperienceTool implements Tool {
      * (or path). The wipe half is destructive, so {@code confirm:true} is REQUIRED: a
      * prompt-driven "reset my store" can never fire half-armed.
      */
-    private ToolResponse reseed(JsonNode args) {
+    private ToolResponse wipeAndImport(JsonNode args) {
         if (!bool(args, "confirm")) {
             return ToolResponse.invalidParameter("confirm",
-                "reseed WIPES the whole store before reloading — pass confirm:true to proceed");
+                "wipe_and_import WIPES the whole store before reloading — pass confirm:true"
+                    + " to proceed");
         }
         String path = text(args, "path");
         boolean recursive = boolOr(args, "recursive", true);
         if ((path == null || path.isBlank()) && !maintenance.hasDefaultRoots()) {
-            return ToolResponse.invalidParameter("path", "reseed without 'path' needs configured"
+            return ToolResponse.invalidParameter("path",
+                "wipe_and_import without 'path' needs configured"
                 + " default memory roots (-Djawata.memory.roots) — none found (store NOT wiped)");
         }
         // Sprint 28c (v14): what a reseed deliberately does NOT reload is
@@ -756,7 +781,7 @@ public final class ExperienceTool implements Tool {
         // Sprint 28f D2: the copy comes before the first row goes. This verb is
         // the one that took 378 rows to 194 on 2026-09-08, and the only copy on
         // the machine that day was three weeks old.
-        Path backupCopy = backups.before("reseed");
+        Path backupCopy = backups.before("wipe_and_import");
 
         java.util.Set<String> before = new java.util.HashSet<>(store.fileSourceRefs());
         before.addAll(store.tombstonedRefs());
@@ -822,7 +847,7 @@ public final class ExperienceTool implements Tool {
         // back get (or keep) a tombstone.
         java.util.Set<String> after = store.fileSourceRefs();
         int tombstoned = 0;
-        String why = "reseed excluded this source (path="
+        String why = "wipe_and_import excluded this source (path="
             + (path == null || path.isBlank() ? "<default roots>" : path) + ")";
         for (String ref : before) {
             if (!after.contains(ref)) {

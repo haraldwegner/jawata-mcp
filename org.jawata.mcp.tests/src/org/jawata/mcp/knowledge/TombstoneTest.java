@@ -85,7 +85,7 @@ class TombstoneTest {
         call("load", legacy.toString(), false);
         assertEquals(1, store.fileSourceRefs().size(), "the legacy note is in");
 
-        Map<String, Object> reseed = call("reseed", substrate.toString(), true);
+        Map<String, Object> reseed = call("wipe_and_import", substrate.toString(), true);
         assertEquals(1, reseed.get("tombstoned"),
             "the reseed must SAY it excluded one source — a silent exclusion is"
                 + " indistinguishable from a lost one");
@@ -113,10 +113,10 @@ class TombstoneTest {
         writeNote(substrate.resolve("story.md"), "the-story", "the substrate story");
 
         call("load", legacy.toString(), false);
-        call("reseed", substrate.toString(), true);
+        call("wipe_and_import", substrate.toString(), true);
         assertEquals(1, store.tombstonedRefs().size(), "precondition: the note is dead");
 
-        call("reseed", legacy.toString(), true);
+        call("wipe_and_import", legacy.toString(), true);
         assertTrue(store.tombstonedRefs().stream().noneMatch(r -> r.contains("note.md")),
             "reseeding a root that contains the file is the revival — the"
                 + " tombstone must not outlive the user's own decision to reload it");
@@ -138,8 +138,8 @@ class TombstoneTest {
         writeNote(substrate.resolve("story.md"), "story", "the substrate story");
 
         call("load", legacy.toString(), false);
-        call("reseed", substrate.toString(), true);   // removes + tombstones old.md
-        call("reseed", substrate.toString(), true);   // the routine repair, again
+        call("wipe_and_import", substrate.toString(), true);   // removes + tombstones old.md
+        call("wipe_and_import", substrate.toString(), true);   // the routine repair, again
 
         assertTrue(store.tombstonedRefs().stream().anyMatch(r -> r.contains("old.md")),
             "reseed #2 erased reseed #1's curation — the next deploy re-imports"
@@ -156,7 +156,7 @@ class TombstoneTest {
         writeNote(legacy.resolve("old.md"), "old", "the removed legacy note");
         writeNote(substrate.resolve("story.md"), "story", "the substrate story");
         call("load", legacy.toString(), false);
-        call("reseed", substrate.toString(), true);
+        call("wipe_and_import", substrate.toString(), true);
         assertEquals(1, store.tombstonedRefs().size());
 
         store.wipe();

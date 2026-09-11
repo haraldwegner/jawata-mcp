@@ -151,7 +151,7 @@ def count_of(v):
     return None
 
 def reseed():
-    return call("experience", {"kind": "reseed", "recursive": True, "confirm": True})
+    return call("experience", {"kind": "wipe_and_import", "recursive": True, "confirm": True})
 
 # --- CLAUSE 1: a reseed from the substrate root rebuilds the store -----------
 print("\n--- clause 1: the reseed rebuilds from the configured substrate ---")

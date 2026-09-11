@@ -132,10 +132,10 @@ class DestructiveVerbsBackUpFirstTest {
         try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
             ExperienceTool tool = new ExperienceTool(() -> null, store);
             put(store, "a row the rebuild is about to work around");
-            ObjectNode a = args("reseed");
+            ObjectNode a = args("wipe_and_import");
             a.put("confirm", true);
             a.put("path", from.toString());
-            copyNamedBy(tool.execute(a), "reseed");
+            copyNamedBy(tool.execute(a), "wipe_and_import");
         }
     }
 
