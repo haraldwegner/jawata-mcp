@@ -900,10 +900,14 @@ public final class ExperienceTool implements Tool {
             return ToolResponse.success(data);
         }
         try {
-            Path used = backups.restore(name);
+            org.jawata.mcp.knowledge.StoreBackups.Restored done = backups.restore(name);
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("restored", used.toString());
+            data.put("restored", done.from().toString());
             data.put("rows", store.count());
+            // The restore is destructive too — it replaces every row — so it
+            // reports the copy of what it replaced, in the same field and with
+            // the same explicit-absence rule as the other five.
+            withBackup(data, done.safetyCopy());
             return ToolResponse.success(data);
         } catch (RuntimeException e) {
             return ToolResponse.error("RESTORE_FAILED", e.getMessage(),

@@ -163,14 +163,38 @@ public final class StoreBackups {
     }
 
     /**
+     * What a restore did: the copy it put back, and the copy of the state it
+     * REPLACED, so a restore chosen by mistake is itself undoable.
+     *
+     * <p>{@code safetyCopy} is null on the same terms as {@link #before(String)} —
+     * the copy could not be written — and a caller must report that absence
+     * rather than let it read like a copy nobody mentioned.</p>
+     */
+    public record Restored(Path from, Path safetyCopy) {}
+
+    /**
      * Put a named copy back, through the store's own close-and-reopen path.
      *
      * <p>The name is resolved against the backup directory rather than taken as
      * a path, so a caller cannot be talked into restoring an arbitrary file over
      * the store. A name that does not match a copy this class knows about is
      * refused with the list of the ones it does.</p>
+     *
+     * <p><b>A restore is a destructive verb and takes its own copy first,</b>
+     * which is a WIDENING of the spec's enumeration (<i>wipe_and_import, wipe,
+     * prune, import</i>) under that same sentence's universal — "every
+     * destructive verb". Restoring replaces every row with the ones the copy
+     * holds, so anything written since that copy is gone; that is the hazard the
+     * clause exists for, and it is worst in the one verb whose whole purpose is
+     * recovery.</p>
+     *
+     * <p><b>The order is load-bearing:</b> the chosen copy is resolved BEFORE the
+     * safety copy is taken. Taken first, the safety copy would run the rotation
+     * and — at the depth — evict the oldest copy, which is the one a caller
+     * reaching back furthest is most likely to have asked for. The restore would
+     * then fail on a name that was valid when they read it.</p>
      */
-    public Path restore(String name) {
+    public Restored restore(String name) {
         H2ExperienceStore h2 = store.get();
         if (h2 == null || h2.storeDir() == null) {
             throw new IllegalStateException(
@@ -187,8 +211,29 @@ public final class StoreBackups {
             List<String> known = list().stream().map(p -> p.getFileName().toString()).toList();
             throw new IllegalStateException("no backup named '" + name + "'. Known: " + known);
         }
+        Path safety = safetyCopy(h2);
         h2.restoreFrom(chosen);
-        return chosen;
+        return new Restored(chosen, safety);
+    }
+
+    /**
+     * The copy of the state a restore is about to replace.
+     *
+     * <p><b>It deliberately does not evict.</b> Eviction is what makes the order
+     * above matter, and running it here would re-open the same hole one step
+     * later — the copy being restored from is still needed by the very next
+     * line. Going one over the depth is self-correcting: the next
+     * {@link #before(String)} rotates back down.</p>
+     */
+    private Path safetyCopy(H2ExperienceStore h2) {
+        Path target = backupDir(h2).resolve(name("restore"));
+        try {
+            h2.backupTo(target);
+            return target;
+        } catch (RuntimeException e) {
+            log.warn("Could not take the pre-restore backup at {}: {}", target, e.getMessage());
+            return null;
+        }
     }
 
     static Path backupDir(H2ExperienceStore h2) {

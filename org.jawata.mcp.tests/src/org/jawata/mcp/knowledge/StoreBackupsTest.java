@@ -175,6 +175,70 @@ class StoreBackupsTest {
         }
     }
 
+    /**
+     * A restore is destructive too, so it leaves a copy of what it REPLACED.
+     *
+     * <p>The discriminator is the row written after the copy was taken. It is in
+     * neither the copy nor the store once the restore has run, so the safety copy
+     * is the only place it can be. Asserting the copy merely EXISTS would pass
+     * against a copy of the restored state, which would undo nothing.</p>
+     */
+    @Test
+    void restoring_leaves_a_copy_of_what_it_replaced(@TempDir Path dir, @TempDir Path unpackDir)
+            throws Exception {
+        Path copy;
+        StoreBackups.Restored done;
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            put(store, "the row both states share");
+            StoreBackups backups = new StoreBackups(() -> store);
+            copy = backups.before("wipe");
+            assertNotNull(copy);
+
+            put(store, "the row that exists ONLY in the state being replaced");
+            assertEquals(2L, store.count());
+
+            done = backups.restore(copy.getFileName().toString());
+            assertEquals(copy, done.from(), "it put back the copy it was asked for");
+            assertEquals(1L, store.count(), "the control: the restore really replaced the state");
+            assertNotNull(done.safetyCopy(),
+                "a restore replaces every row, so it owes a copy of what it replaced");
+        }
+        try (H2ExperienceStore replaced = H2ExperienceStore.openAt(
+                unpackInto(done.safetyCopy(), unpackDir))) {
+            assertEquals(2L, replaced.count(),
+                "the safety copy holds the state the restore REPLACED, not the one it restored");
+        }
+    }
+
+    /**
+     * The OLDEST copy is still restorable when the depth is full.
+     *
+     * <p>This is what resolving the chosen copy BEFORE taking the safety copy
+     * buys. The other order runs the rotation first, which at the depth evicts
+     * the oldest — the copy a caller reaching back furthest is likeliest to have
+     * asked for — and the restore then fails on a name that was valid when they
+     * read it off the list.</p>
+     */
+    @Test
+    void the_oldest_copy_is_still_restorable_at_the_depth(@TempDir Path dir) {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            put(store, "the one row the oldest copy holds");
+            StoreBackups backups = new StoreBackups(() -> store);
+            Path oldest = backups.before("wipe");
+            assertNotNull(oldest);
+            for (int i = 1; i < StoreBackups.DEFAULT_DEPTH; i++) {
+                put(store, "row " + i);
+                assertNotNull(backups.before("wipe"));
+            }
+            assertEquals(StoreBackups.DEFAULT_DEPTH, backups.list().size(),
+                "the control: the depth is FULL, which is the only state the order matters in");
+
+            StoreBackups.Restored done = backups.restore(oldest.getFileName().toString());
+            assertEquals(oldest, done.from());
+            assertEquals(1L, store.count(), "the oldest copy's single row came back");
+        }
+    }
+
     @Test
     void an_unknown_name_is_refused_with_the_names_that_exist(@TempDir Path dir) {
         try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {

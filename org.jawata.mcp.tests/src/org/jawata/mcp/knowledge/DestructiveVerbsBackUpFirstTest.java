@@ -136,6 +136,31 @@ class DestructiveVerbsBackUpFirstTest {
     }
 
     /**
+     * A restore is destructive over the wire too, and reports it in the same field.
+     *
+     * <p>Not one of the four verbs the spec enumerates — this is a WIDENING under
+     * that same sentence's universal, "every destructive verb". Restoring throws
+     * away every row written since the copy was taken, which is the hazard the
+     * clause exists for, in the one verb a caller reaches for when something has
+     * already gone wrong.</p>
+     */
+    @Test
+    void restore_copies_first(@TempDir Path dir) {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            ExperienceTool tool = new ExperienceTool(() -> null, store);
+            put(store, "the row the copy holds");
+            Path copy = new StoreBackups(() -> store).before("wipe");
+            assertNotNull(copy);
+            put(store, "the row the restore is about to throw away");
+
+            ObjectNode a = args("restore");
+            a.put("name", copy.getFileName().toString());
+            copyNamedBy(tool.execute(a), "restore");
+            assertEquals(1L, store.count(), "the control: the restore really happened");
+        }
+    }
+
+    /**
      * An in-memory resident says the absence out loud.
      *
      * <p>"No copy was taken" and "a copy was taken and I did not mention it" must
