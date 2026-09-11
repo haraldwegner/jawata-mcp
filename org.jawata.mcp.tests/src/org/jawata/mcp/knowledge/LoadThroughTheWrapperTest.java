@@ -34,11 +34,29 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class LoadThroughTheWrapperTest {
 
-    /** A story file the loader accepts; re-writing it with a new summary is the case. */
-    private static void story(Path dir, String name, String summary) throws Exception {
+    /**
+     * A story file the loader accepts.
+     *
+     * <p>The BODY is a parameter and the description is not, which is the whole design of
+     * this test and was arrived at by being wrong twice. {@code upsertBySource} matches an
+     * existing row by {@code (source_ref, summary)}, so editing the DESCRIPTION legitimately
+     * matches nothing and legitimately mints a new id — a test built on that edit fails
+     * against correct code. The rewrite-in-place this class is about is the other edit: the
+     * same description, a changed body.</p>
+     */
+    private static void story(Path dir, String name, String body) throws Exception {
         Files.writeString(dir.resolve(name + ".md"),
-            "---\nname: " + name + "\ndescription: " + summary
-                + "\ntype: domain_fact\n---\n\nThe body.\n");
+            "---\nname: " + name + "\ndescription: a story whose wording is settled"
+                + "\ntype: domain_fact\n---\n\n" + body + "\n");
+    }
+
+    /** Every entry id the store holds, which is what an in-place rewrite preserves. */
+    private static java.util.Set<String> idsIn(ExperienceStore store) {
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        for (StoredEntry e : store.all()) {
+            ids.add(e.id());
+        }
+        return ids;
     }
 
     /**
@@ -69,24 +87,37 @@ class LoadThroughTheWrapperTest {
         try {
             ExperienceMaintenance maintenance =
                 new ExperienceMaintenance(wrapped, fqn -> null);
-            story(roots, "a-story", "what this story said when it was first written");
+            story(roots, "a-story", "The body as it was first written.");
             Map<String, Object> first = maintenance.load(roots, true);
             assertEquals(1, first.get("loaded"), () -> "the control: it loaded — " + first);
-            long afterFirst = wrapped.count();
-            assertTrue(afterFirst >= 1, () -> "the control: rows landed, got " + afterFirst);
+            java.util.Set<String> before = idsIn(wrapped);
+            assertTrue(!before.isEmpty(), "the control: rows landed");
 
-            // The edit that finds the defect: a NEW summary matches no existing row by
-            // (source_ref, summary), so a store that inserts instead of reconciling ends
-            // up holding both the old statement and the new one.
-            story(roots, "a-story", "what the same story says after somebody corrected it");
+            // The edit that reaches the defect: the description is UNCHANGED, so the row
+            // is found and must be rewritten where it lies. This is the case
+            // `upsertBySource` exists for, and the case the interface default gets wrong.
+            story(roots, "a-story", "The body after somebody corrected it.");
             Map<String, Object> second = maintenance.load(roots, true);
             assertEquals(1, second.get("loaded"), () -> "the control: it re-ingested — " + second);
 
-            assertEquals(afterFirst, wrapped.count(),
-                "THE ROW COUNT DID NOT GROW. One file still says one thing, so the store"
-                    + " holds one statement of it. Without the wrapper's own forward this"
-                    + " is where a production re-ingest silently accumulates, while every"
-                    + " test that builds the H2 store directly stays green");
+            // THE ASSERTION IS ON THE IDS, AND THE ROW COUNT WOULD NOT DO.
+            //
+            // A mutation is what settled that. With the wrapper's forward deleted — the
+            // very defect this class exists for — the count is UNCHANGED and the first
+            // version of this test stayed green: the interface default inserts a second
+            // row, and the family reconciliation added in this same fold then deletes the
+            // first, so the arithmetic comes out the same by two wrongs.
+            //
+            // What the two cannot fake is identity. An in-place rewrite KEEPS THE ID,
+            // which is the durability `upsertBySource` was written to provide and is what
+            // every link, every vouch and every ledger row pointing at that entry depends
+            // on. Insert-then-clean-up silently renumbers it.
+            assertEquals(before, idsIn(wrapped),
+                "THE IDS SURVIVED THE RE-INGEST. Without the wrapper's own forward the"
+                    + " interface default inserts instead of rewriting, so the row is"
+                    + " renumbered and everything pointing at it is left pointing at"
+                    + " nothing — while the row COUNT, and every direct-store test, stays"
+                    + " exactly as it was");
         } finally {
             wrapped.close();
         }
