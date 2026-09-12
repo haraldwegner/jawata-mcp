@@ -2799,7 +2799,16 @@ public final class ExperienceTool implements Tool {
         List<String> moreSymptoms = strings(args, "symptoms");
         Map<String, Object> result;
         if (moreSymbols.isEmpty() && moreSymptoms.isEmpty()) {
-            result = retrieval.recall(q, counted, budgetIn(args));
+            // Sprint 28f C8: the caller's `limit`, which recall did not read at all. The
+            // fit set is capped at five for the hook, which injects into a prompt and has
+            // a budget; a POPULATION question is the other case, and the architect seat
+            // asks one — "what does the store say this package does" — precisely to notice
+            // one job written twice. Measured: fourteen jobs in a package, five returned,
+            // and the five carried a re-derived job without the job it re-derives. Passing
+            // 50 changed nothing, because nothing here looked.
+            int asked = args != null && args.has("limit") && args.get("limit").isInt()
+                ? args.get("limit").asInt() : 0;
+            result = retrieval.recall(q, counted, budgetIn(args), asked);
         } else {
             List<RecallQuery> cues = new java.util.ArrayList<>();
             if (!q.isEmpty()) {

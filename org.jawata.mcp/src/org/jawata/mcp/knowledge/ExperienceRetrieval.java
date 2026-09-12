@@ -162,7 +162,28 @@ public final class ExperienceRetrieval {
      * caller's budget silently became every later caller's.</p>
      */
     public Map<String, Object> recall(RecallQuery q, String surface, long budgetMillis) {
+        return recall(q, surface, budgetMillis, MAX_TERMINAL);
+    }
+
+    /**
+     * Recall with the caller's own CAP on the fit set (Sprint 28f, C8).
+     *
+     * <p>{@link #MAX_TERMINAL} stops a pathological cue returning a pile, which is right
+     * for the hook — it injects into a prompt and has a budget. It is wrong for a caller
+     * asking a POPULATION question. The architect seat asks "what does the store say this
+     * package does" precisely to notice one job written twice, and a five-row sample can
+     * hand back one half of a pair and drop the other: measured at C8 on a package holding
+     * fourteen jobs, the five returned carried a re-derived job and not the job it
+     * re-derives. A detector shown half a pair cannot find a pair.</p>
+     *
+     * <p>The cap does not go away, it becomes the CALLER's. `capped_from` still travels
+     * whenever one bites, because a sample that does not say it is a sample is the
+     * absence-not-spoken this sprint exists to end.</p>
+     */
+    public Map<String, Object> recall(RecallQuery q, String surface, long budgetMillis,
+            int maxEntries) {
         long budget = clampBudget(budgetMillis);
+        int cap = maxEntries > 0 ? maxEntries : MAX_TERMINAL;
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("cue", cueMap(q));
         if (q == null || q.isEmpty()) {
@@ -180,7 +201,8 @@ public final class ExperienceRetrieval {
         // outage. That is the exact lie this whole change exists to remove, reintroduced
         // by the mechanism removing it.
         try {
-            return within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out)), out, budget);
+            return within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out), cap),
+                out, budget);
         } catch (RuntimeException e) {
             // #37: the store was reached and could not answer. Everything below this
             // line is the knowledge layer, so a failure here is that layer being
@@ -195,7 +217,7 @@ public final class ExperienceRetrieval {
 
     /** The store-backed half of {@link #recall(RecallQuery, String)} — everything that can fail. */
     private Map<String, Object> recallFromStore(RecallQuery q, String surface,
-            Map<String, Object> out) {
+            Map<String, Object> out, int cap) {
         List<StoredEntry> candidates = store.query(q);
 
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
@@ -325,8 +347,8 @@ public final class ExperienceRetrieval {
                 (StoredEntry e) -> meaningBand(meaning.getOrDefault(e.id(), 0.0))).reversed())
             .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
 
-        boolean capped = fitting.size() > MAX_TERMINAL;
-        List<StoredEntry> top = capped ? withNewestKept(fitting) : fitting;
+        boolean capped = fitting.size() > cap;
+        List<StoredEntry> top = capped ? withNewestKept(fitting, cap) : fitting;
 
         List<Map<String, Object>> entries = new ArrayList<>();
         for (StoredEntry e : top) {
@@ -506,8 +528,8 @@ public final class ExperienceRetrieval {
      * did not already include it. The cap is unchanged; one row of it is
      * reserved.
      */
-    private static List<StoredEntry> withNewestKept(List<StoredEntry> ranked) {
-        List<StoredEntry> top = new ArrayList<>(ranked.subList(0, MAX_TERMINAL));
+    private static List<StoredEntry> withNewestKept(List<StoredEntry> ranked, int cap) {
+        List<StoredEntry> top = new ArrayList<>(ranked.subList(0, Math.min(cap, ranked.size())));
         StoredEntry newest = null;
         for (StoredEntry e : ranked) {
             if (e.createdAt() == null) {
@@ -517,10 +539,10 @@ public final class ExperienceRetrieval {
                 newest = e;
             }
         }
-        if (newest == null || top.contains(newest)) {
+        if (newest == null || top.isEmpty() || top.contains(newest)) {
             return top;
         }
-        top.set(MAX_TERMINAL - 1, newest);
+        top.set(top.size() - 1, newest);
         return top;
     }
 

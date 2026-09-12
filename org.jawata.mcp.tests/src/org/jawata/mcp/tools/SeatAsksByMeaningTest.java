@@ -286,12 +286,19 @@ class SeatAsksByMeaningTest {
      * on a cue that matched nothing — which is the distinction this whole retrieval path
      * exists to keep.</p>
      */
-    @SuppressWarnings("unchecked")
     private List<String> populationQuery(String pkg) {
+        return populationQuery(pkg, 0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> populationQuery(String pkg, int limit) {
         ObjectNode a = json.createObjectNode();
         a.put("kind", "recall");
         a.put("package", pkg);
         a.put("lane", "code");
+        if (limit > 0) {
+            a.put("limit", limit);
+        }
         ToolResponse r = tool.execute(a);
         assertTrue(r.isSuccess(), "got " + r.getError());
         Map<String, Object> data = (Map<String, Object>) r.getData();
@@ -341,29 +348,22 @@ class SeatAsksByMeaningTest {
     }
 
     /**
-     * THE CLAUSE IT CANNOT MEET, PINNED AS A DEFECT RATHER THAN LEFT AS A PASS.
+     * C8's CLAUSE, NOW MET — the population query returns the population when asked for it.
      *
-     * <p>C8 asks that "the architect seat run on a package holding a known duplicate names
-     * it from the population query". Building that test MEASURED why it cannot: a package
-     * recall answers at most FIVE anchored rows, and {@code limit} does not lift it —
-     * probed at {@code limit=50}, which returned the same five. So the seat's "population
-     * query" does not return a population, it returns a ranked five.</p>
+     * <p>Writing this test is what measured the defect: a package recall answered five rows
+     * and {@code limit} did nothing, because {@code recall} never read it. The default cap
+     * is right for the hook, which injects into a prompt and has a budget; it is wrong for
+     * a caller asking a POPULATION question, and the architect seat asks one precisely to
+     * notice a job written twice.</p>
      *
-     * <p>What that costs D-SIX is the whole point rather than a rounding error. The fixture
-     * below records fourteen jobs in one package, two of which are ONE JOB written twice —
-     * and the five that come back carry the new implementation and NOT its partner. The
-     * seat would read that answer and see nothing to refuse, on a package whose duplicate
-     * it was pointed at. A detector that reports the second half of a pair and drops the
-     * first cannot find a pair.</p>
-     *
-     * <p>This test ASSERTS the defect, so it is visible and so it turns RED the day the cap
-     * moves — at which point whoever moved it re-reads this and C8's clause becomes
-     * meetable. Raising or paging that cap is a change to a published retrieval surface and
-     * is the architect's call, not a mid-stage edit at a stage's close.</p>
+     * <p>The failure it produced is the reason the fix is not cosmetic. Of fourteen jobs in
+     * this package the five returned carried the RE-DERIVED job and not the job it
+     * re-derives — a detector shown the second half of a pair and not the first cannot find
+     * a pair. Both halves come back now, so the seat has something to refuse.</p>
      */
     @Test
-    @DisplayName("a package recall caps at five, so a duplicate's two halves are split")
-    void the_population_query_is_capped_below_its_package() {
+    @DisplayName("asked for the package, the population query returns the whole population")
+    void the_population_query_returns_its_population_when_asked() {
         recordTheCorpus();
         final String firstImplementation =
             "Turns a source file into a tree the rest of the tool can walk.";
@@ -371,19 +371,45 @@ class SeatAsksByMeaningTest {
             "Reads a source file and answers the syntax tree for it.";
         recordJob("com.example.PlanTool#buildTree", secondImplementation);
 
-        List<String> anchored = populationQuery("com.example");
+        List<String> anchored = populationQuery("com.example", 50);
 
-        assertEquals(5, anchored.size(),
-            "fourteen jobs are anchored in this package and five come back. If this is no"
-                + " longer 5, the cap moved: re-read this test, because C8's clause about"
-                + " naming a duplicate from the population query may now be meetable: "
+        assertTrue(anchored.contains(secondImplementation),
+            "the re-derived job must come back: " + anchored);
+        assertTrue(anchored.contains(firstImplementation),
+            "AND SO MUST THE JOB IT RE-DERIVES. This is the assertion the defect failed:"
+                + " D-SIX's finding is the PAIR, and one half of it is not a duplicate: "
                 + anchored);
-        assertTrue(anchored.contains(secondImplementation)
-                && !anchored.contains(firstImplementation),
-            "and the pair is SPLIT — the second implementation is returned and the job it"
-                + " re-derives is not. This is the defect, stated as the failure the seat"
-                + " would actually suffer: it is shown one half and has nothing to refuse: "
-                + anchored);
+    }
+
+    /**
+     * THE DEFAULT STILL CAPS, AND STILL SAYS SO — the other half of the same fix.
+     *
+     * <p>The cap did not go away, it became the caller's. A caller that names no limit is
+     * the hook, and it keeps the five-row page it was designed around. What makes that
+     * honest rather than silent is {@code capped_from}: a sample that does not say it is a
+     * sample is the absence-not-spoken this whole sprint exists to end.</p>
+     */
+    @Test
+    @DisplayName("unasked, the page still caps at five and reports what it capped from")
+    @SuppressWarnings("unchecked")
+    void the_default_page_still_caps_and_says_so() {
+        recordTheCorpus();
+        recordJob("com.example.PlanTool#buildTree",
+            "Reads a source file and answers the syntax tree for it.");
+
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "recall");
+        a.put("package", "com.example");
+        a.put("lane", "code");
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "got " + r.getError());
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+
+        assertEquals(5, ((List<?>) data.get("entries")).size(),
+            "a caller naming no limit keeps the hook's page: " + data.keySet());
+        assertEquals(14, data.get("capped_from"),
+            "and the response must SAY what it capped from, or the five read as the whole"
+                + " package — which is exactly how the seat was misled: " + data);
     }
 
     /**
