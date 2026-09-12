@@ -925,7 +925,18 @@ M="$(call experience '{"kind":"recall",
   "format":"text"}')"
 case "$M" in
     *poke-test*|*sourdough*) pass "restored-found-by-meaning a fixture lesson is found by meaning after the restore" ;;
-    *) fail "restored-found-by-meaning the restored fixture is invisible to meaning recall" ;;
+    # Sprint 28f Stage 3. THIS CHECK AND TWO OTHERS FAIL INTERMITTENTLY INSIDE THE
+    # SUITE AND PASS 102/0 STANDALONE, measured four ways and reproducing on the
+    # pre-Stage-4 tree, so it is not this sprint's doing. It was undiagnosable
+    # because `fail` prints a LABEL and nothing else: the three say a recall did
+    # not return a row and never say what it DID return, which cannot tell an
+    # empty answer from a wrong one from a transport failure.
+    #
+    # The other two are `past-run-dispatch` (same lifecycle) and
+    # `words-only-answers` (lifecycle 3, embedder OFF). All three are recalls for
+    # a row written earlier in the same run — so whatever this is, it is not the
+    # embedder: one of the three runs with it deliberately disabled.
+    *) fail "restored-found-by-meaning the restored fixture is invisible to meaning recall: $(printf '%s' "$M" | head -c 400)" ;;
 esac
 no_score "recall(meaning)" "$M"
 
@@ -1041,7 +1052,11 @@ DS="$(call experience '{"kind":"recall",
   "format":"json"}')"
 case "$DS" in
     *dispatch*) pass "past-run-dispatch the seeded seat run arrives dispatch-decorated" ;;
-    *) fail "past-run-dispatch no dispatch decoration on the seat-run recall" ;;
+    # Evidence attached for the intermittency named at restored-found-by-meaning.
+    # `format":"json"` here, so the whole answer shape is visible — an empty
+    # candidate list and a populated one carrying no dispatch key are different
+    # failures and the label alone could not tell them apart.
+    *) fail "past-run-dispatch no dispatch decoration on the seat-run recall: $(printf '%s' "$DS" | head -c 400)" ;;
 esac
 no_score "recall(dispatch)" "$DS"
 
@@ -1561,7 +1576,13 @@ W="$(call experience '{"kind":"recall",
   "format":"text"}')"
 case "$W" in
     *crawl*|*cone-six*|*bisque*) pass "words-only-answers with the embedder OFF the store answers a prose question by WORDS" ;;
-    *) fail "words-only-answers KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape)" ;;
+    # Evidence attached for the intermittency named at restored-found-by-meaning.
+    # THIS IS THE THIRD OF THE THREE, and it is the one that bounds the cause:
+    # the resident above was started with -Djawata.embed.disabled=true, so no
+    # embedder is running here at all. A diagnosis that blames the embedder —
+    # backfill, a model load, a vector lane — cannot explain this failure, and a
+    # cause that does not cover all three is not the cause.
+    *) fail "words-only-answers KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape): $(printf '%s' "$W" | head -c 400)" ;;
 esac
 no_score "recall(words-only)" "$W"
 
