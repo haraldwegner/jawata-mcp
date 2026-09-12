@@ -81,7 +81,12 @@ public final class ExperienceTool implements Tool {
             // text. NOT named `catalogue`, which on this store already means the imported
             // PATTERN catalogue (five Catalogue* classes, a catalogue provenance and a
             // catalogueBlock in this very tool's stats) — see DescribedUnits.
-            "describe");
+            "describe",
+            // Sprint 28f Stage 8 D3: the question the duplicate gate asks before a write
+            // lands — "is this job already done?" It is a QUESTION about a draft rather
+            // than a record of anything, which is why it is a verb here and not a flag on
+            // `recall`: the thing it asks about does not exist yet and has no anchor.
+            "duplicate_check");
 
     /**
      * Sprint 28f D4 — HOW KNOWLEDGE IS ADDED, said once.
@@ -599,6 +604,8 @@ public final class ExperienceTool implements Tool {
             case "amend_rule" -> amendRule(args);
             case "retire_rule" -> retireRule(args);
             case "describe" -> describe(args);
+            case "duplicate_check" -> duplicateCheck(
+                serviceSupplier == null ? null : serviceSupplier.get(), args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -2365,6 +2372,162 @@ public final class ExperienceTool implements Tool {
                 + " name restated>)");
         }
         return respond(args, out);
+    }
+
+    /**
+     * Sprint 28f Stage 8 D3 — IS THIS JOB ALREADY DONE?
+     *
+     * <p>The question the duplicate gate asks at the only moment answering it is free:
+     * before the write lands. The caller hands over the path and the DRAFT — the text a
+     * {@code Write} or an {@code Edit} would put on disk — and gets back the jobs NEAREST
+     * IN MEANING to what it is about to write, each with a live location to go and open.</p>
+     *
+     * <h2>It answers with NOMINEES, and that is a limit rather than a hedge</h2>
+     *
+     * <p>The ranking applies no score threshold, because Stage 0 measured that this corpus
+     * admits none: three of ten genuine task-to-job pairs score at or below the noise
+     * floor, so any cutoff that admits the real answers admits noise with them. Rank one is
+     * therefore ALWAYS something, and is never by itself evidence that the job is the same.
+     * The first version of this verb called them matches and its own test caught it,
+     * pairing a money-rounding draft with a source-parsing job.</p>
+     *
+     * <p>So the verb nominates and the AGENT decides, which is the store's own documented
+     * contract for anchorless retrieval. What it buys the gate is a LOOK — the agent is
+     * shown work that may already do this, with addresses — and what it does not buy is a
+     * denial, because denying on an ordering is how a gate earns its way out of existence.</p>
+     *
+     * <h2>Asked BY MEANING, and it has to be</h2>
+     *
+     * <p>A re-derived job is precisely the one whose name and structure differ from the
+     * original — that is what makes it re-derived rather than copied. So the question put
+     * to the code lane is the method's NAME plus its DOC COMMENT, which is where whoever
+     * is writing it said what it is for, and the lane answers on meaning. A name-equality
+     * check here would find only the duplicates that were never a problem.</p>
+     *
+     * <h2>What it subtracts first, and what it says when it cannot</h2>
+     *
+     * <p>A method the file ALREADY declares is not a new job — an edit that rewrites an
+     * existing body must not be asked about, or every touch of a described member becomes
+     * a denial. So the current file's members are subtracted when they can be read.</p>
+     *
+     * <p>When they cannot — no project loaded, the file not in one, a brand-new file that
+     * does not exist yet — every drafted method is treated as new and the answer SAYS SO
+     * in {@code existingKnown}. That direction is chosen deliberately: a false match costs
+     * the agent one read and a disposition, a missed one costs the codebase a second
+     * implementation that drifts. But it is reported rather than hidden, because a caller
+     * reading an empty answer must be able to tell "nothing like this exists" from "I
+     * could not check" — which is the distinction this whole sprint is about.</p>
+     */
+    private ToolResponse duplicateCheck(IJdtService service, JsonNode args) {
+        String draft = text(args, "draft");
+        if (draft == null || draft.isBlank()) {
+            return ToolResponse.invalidParameter("draft",
+                "Required — the text the write would put on disk. A whole file or the"
+                    + " fragment an Edit carries; both are read for the methods they"
+                    + " declare.");
+        }
+        String filePath = text(args, "filePath");
+        List<org.jawata.mcp.tools.shared.DraftSource.DraftMethod> drafted =
+            org.jawata.mcp.tools.shared.DraftSource.methodsIn(draft);
+
+        java.util.Set<String> already = new java.util.HashSet<>();
+        boolean existingKnown = false;
+        String notKnownWhy = null;
+        if (filePath == null || filePath.isBlank()) {
+            notKnownWhy = "no filePath was given";
+        } else if (service == null) {
+            notKnownWhy = "no project is loaded";
+        } else {
+            try {
+                org.eclipse.jdt.core.ICompilationUnit cu =
+                    service.getCompilationUnit(java.nio.file.Path.of(filePath));
+                if (cu == null || !cu.exists()) {
+                    // A file that does not exist YET is the commonest case for a Write,
+                    // and it is not a failure: there is simply nothing to subtract.
+                    notKnownWhy = "the file is not in a loaded project (a new file, or"
+                        + " outside the workspace)";
+                } else {
+                    for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
+                        for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
+                            already.add(m.getElementName());
+                        }
+                    }
+                    existingKnown = true;
+                }
+            } catch (Exception e) {
+                notKnownWhy = "the file could not be read (" + e.getMessage() + ")";
+            }
+        }
+
+        List<Map<String, Object>> nominees = new java.util.ArrayList<>();
+        List<String> asked = new java.util.ArrayList<>();
+        long budget = budgetIn(args);
+        for (org.jawata.mcp.tools.shared.DraftSource.DraftMethod m : drafted) {
+            if (already.contains(m.name())) {
+                continue;
+            }
+            asked.add(m.name());
+            Map<String, Object> nomination = retrieval.nominate(
+                m.asQuestion(), org.jawata.mcp.knowledge.KnowledgeLane.CODE.wire(), budget);
+            Map<String, Object> hit = firstAnchored(nomination);
+            if (hit != null) {
+                Map<String, Object> nominee = new java.util.LinkedHashMap<>();
+                nominee.put("method", m.name());
+                nominee.put("job", String.valueOf(hit.get("principle")));
+                nominee.put("location", String.valueOf(hit.get("symbol")));
+                nominees.add(nominee);
+            }
+        }
+
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("nominees", nominees);
+        // THE KEY IS `nominees` AND NOT `matches`, AND THE DIFFERENCE IS THE WHOLE
+        // HONESTY OF THIS VERB. The ranking applies NO score threshold — Stage 0 measured
+        // that this corpus admits none, because three of ten genuine task-to-job pairs
+        // score at or below the noise floor — so rank one is ALWAYS something and is never
+        // by itself a claim that the job is the same. Calling these matches would let a
+        // caller deny a write on an ordering, which is how a gate earns its way out of
+        // existence in a day; the first version of this verb did exactly that and its own
+        // test caught it, matching a money-rounding draft against a source-parsing job.
+        out.put("ranking", "NOMINEES, not matches — an ordering is not a claim that any of"
+            + " these is the same job. Read them and decide; selecting none is a real"
+            + " answer and is often the right one.");
+        out.put("draftMethods", drafted.size());
+        out.put("asked", asked);
+        // WHAT COULD NOT BE CHECKED travels with the answer. An empty `matches` has two
+        // causes — the lane knows no such job, or this could not tell a new member from an
+        // existing one — and a gate acting on the first when the second is true is the
+        // silent failure this sprint exists to end.
+        out.put("existingKnown", existingKnown);
+        if (notKnownWhy != null) {
+            out.put("existingUnknownWhy", notKnownWhy
+                + ", so every drafted method was treated as new");
+        }
+        return respond(args, out);
+    }
+
+    /**
+     * The first nominee that carries a LIVE LOCATION.
+     *
+     * <p>A nominee without a symbol cannot be opened, and "something like this exists"
+     * without an address is the half of the answer that helps nobody — it is dropped
+     * rather than denied on, which is the same rule the gate applies at its own end.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> firstAnchored(Map<String, Object> nomination) {
+        Object raw = nomination == null ? null : nomination.get("candidates");
+        if (!(raw instanceof List<?> candidates)) {
+            return null;
+        }
+        for (Object c : candidates) {
+            if (c instanceof Map<?, ?> candidate) {
+                Object symbol = candidate.get("symbol");
+                if (symbol != null && !String.valueOf(symbol).isBlank()) {
+                    return (Map<String, Object>) candidate;
+                }
+            }
+        }
+        return null;
     }
 
     /**
