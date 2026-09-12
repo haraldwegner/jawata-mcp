@@ -82,7 +82,23 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
     /**
      * Sprint 21a (item I): true when this entry's anchor may be judged by the JDT
      * resolver. Non-Java anchors (rust, ts, …) are OPAQUE to maintenance — never staled
-     * or superseded by a resolver that cannot see them. Null/blank = Java-era rows.
+     * or superseded by a resolver that cannot see them.
+     *
+     * <p><b>Null/blank stays Java-resolvable, and Sprint 28f E6 DELIBERATELY LEFT IT SO
+     * after trying the other way.</b> E6 stopped the insert sites defaulting an absent
+     * language to {@code "java"}, so null now means the author named no language — and the
+     * obvious next step, requiring an explicit "java" here, was written and measured:
+     * <b>seventeen tests went red</b>, every one of them a row with a JAVA FQN ANCHOR and
+     * no stated language. They were right and the change was wrong.</p>
+     *
+     * <p>The reason is what this method actually asks. Not <i>"what language is this note
+     * written in"</i> but <i>"may the JDT resolver judge THIS ANCHOR"</i> — and a row
+     * carrying {@code com.example.Type#member} has a Java anchor whoever wrote it and in
+     * whatever prose. A markdown story that deliberately anchors itself to a symbol is
+     * making a claim about code, and when that symbol goes the story IS stale; exempting
+     * it would have removed the staleness signal from exactly the notes that point at
+     * code. What E6 fixes is the row with NO anchor, which this method never sees —
+     * {@code refresh} skips it for having no FQN long before the language is consulted.</p>
      */
     public boolean isJavaResolvable() {
         return language == null || language.isBlank() || "java".equalsIgnoreCase(language);

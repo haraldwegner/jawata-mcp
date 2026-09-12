@@ -732,8 +732,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setTimestamp(12, Timestamp.from(Instant.now()));
                 ps.setString(13, workspaceId);
                 ps.setString(14, projectId);
-                String lang = entry.language();
-                ps.setString(15, lang == null || lang.isBlank() ? "java" : lang);
+                // Sprint 28f E6 — AN ABSENT LANGUAGE IS NULL, NOT "java".
+                // A markdown story declares no language; calling it Java made every
+                // staleness sweep try to resolve its anchor as a Java symbol and
+                // report it stale when that failed. See the note at `insert`.
+                ps.setString(15, blankToNull(entry.language()));
                 ps.setString(16, sourceHash);
                 ps.setString(17, entry.situation());
                 ps.setString(18, entry.verdict());
@@ -753,6 +756,23 @@ public final class H2ExperienceStore implements ExperienceStore {
             throw new IllegalStateException("failed to update a sourced entry: "
                 + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Sprint 28f E6 — an absent or blank value is NULL, never a guessed default.
+     *
+     * <p>ONE helper because there are FOUR insert sites, and the plan that scheduled this
+     * work had measured THREE — the fourth arrived in this same sprint, copying the
+     * defaulting from its neighbours as new code always does. A rule spelled four times is
+     * a rule three of them will eventually stop following.</p>
+     *
+     * <p>It is named for the QUESTION rather than for the column, because the question is
+     * general: a blank string and a value are different statements, and writing a default
+     * where the author said nothing destroys the difference at the one moment it could
+     * still have been recorded.</p>
+     */
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     /** The symptom and link rows belonging to one entry. */
@@ -836,8 +856,21 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setTimestamp(15, now);
                 ps.setString(16, workspaceId);
                 ps.setString(17, projectId);
-                String lang = entry.language();
-                ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                // SPRINT 28f E6 — AN ABSENT LANGUAGE IS NULL, NOT "java".
+                //
+                // This column used to default to "java" for any entry that declared no
+                // language, which is most of them: a markdown story states a claim and
+                // names no language at all. The consequence was not cosmetic. The
+                // staleness sweep re-resolves a row's anchor THROUGH JDT when the row
+                // says java — so every note written in prose was handed to a Java symbol
+                // resolver, failed to resolve, and was reported stale. The store told its
+                // reader that correct knowledge had rotted.
+                //
+                // NULL is the honest value and it is a different statement from "java":
+                // one says the author named no language, the other says they named this
+                // one. A store that cannot tell those apart cannot decide which rows a
+                // Java-symbol sweep is even about — which is the whole of E6.
+                ps.setString(18, blankToNull(entry.language()));
                 ps.setString(19, sourceHash);
                 // Sprint 27 D2: embed on write. The vector is what the entry
                 // MEANS, so it is derived from the same text a reader would see
@@ -1789,8 +1822,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ps.setTimestamp(15, parseInstant(row.get("updated_at")));
                     ps.setString(16, str(row.get("workspace_id")));
                     ps.setString(17, str(row.get("project_id")));
-                    String lang = str(row.get("language"));
-                    ps.setString(18, lang == null || lang.isBlank() ? "java" : lang);
+                    // E6 — an imported row that names no language keeps saying so.
+                    ps.setString(18, blankToNull(str(row.get("language"))));
                     // Sprint 28c: the facets, bound in the SAME edit as the
                     // export projection and the write path. An export that
                     // carries a column its import cannot bind loses that column
@@ -2285,7 +2318,21 @@ public final class H2ExperienceStore implements ExperienceStore {
                     String lang = hasFacets ? rs.getString("language") : null;
                     ps.setString(16, ws != null ? ws : workspaceId);
                     ps.setString(17, proj != null ? proj : projectId);
-                    ps.setString(18, lang != null ? lang : "java");
+                    // SPRINT 28f E6 — AND THIS SITE IS THE EXCEPTION, deliberately.
+                    //
+                    // The other three insert sites write NULL for an absent language,
+                    // because there the absence is the AUTHOR saying nothing. Here it can
+                    // mean something else entirely: an orphan below v2 has no `language`
+                    // COLUMN, so its rows could not have named a language even if their
+                    // authors had wanted to — and everything this store held before the
+                    // facets rung was Java. Carrying those across as NULL would silently
+                    // exempt a whole legacy corpus from the staleness sweep.
+                    //
+                    // So the distinction is the orphan's SCHEMA, not the value: with the
+                    // column present the value is carried through exactly as it stands,
+                    // NULL included; without it, these are Java-era rows and are written
+                    // as such.
+                    ps.setString(18, hasFacets ? blankToNull(lang) : "java");
                     // A pre-v10 orphan has no facets to carry, and NULL is the
                     // honest value: unclassified, never "classified as legacy".
                     ps.setString(19, hasForm ? rs.getString("situation") : null);
