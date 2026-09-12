@@ -2074,7 +2074,11 @@ public final class ExperienceTool implements Tool {
         // question with no candidates is demand without supply, and that row is
         // the writing backlog. Skipping it because there is nothing to count
         // would delete the one signal that says what to write next.
-        usage.nominated(queryId, "question", question, ids);
+        // v20: the surface that asked. Hard-coded because this IS the surface — the
+        // anchorless nomination path — and it is the only caller that opens a demand row.
+        // When `recall` starts recording one, it passes its own `counted` surface here and
+        // `backlogRecordedBy` in the sweep gains a second entry.
+        usage.nominated(queryId, "question", question, ids, "nominate");
         return respond(args, result);
     }
 
@@ -2155,8 +2159,29 @@ public final class ExperienceTool implements Tool {
                     + " argument.");
         }
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("deletionList", usage.deletionList(minShown, limit));
-        out.put("writingBacklog", usage.writingBacklog(minTimes, limit));
+        // Sprint 28f Stage 5 — PER LANE and PER TRIGGER, and the flat lists are GONE.
+        //
+        // The aggregate is dropped rather than kept beside the groups: a list that mixes
+        // lifecycles is one a reader cannot rule on, because dropping a stale experience
+        // and dropping a domain fact nobody consulted are different acts, and offering
+        // both shapes invites the reader to use whichever is shorter.
+        //
+        // The KEYS are renamed rather than retyped under the old names. A consumer reading
+        // `deletionList` now gets nothing and notices; a consumer reading a map where it
+        // expected a list fails somewhere further on, if at all. That is this file's own
+        // precedent — `reseed` became `wipe_and_import` with no alias, for the same reason.
+        out.put("deletionListByLane",
+            org.jawata.mcp.knowledge.UsageLedger.groupBy(
+                usage.deletionList(minShown, limit), "lane"));
+        out.put("writingBacklogByTrigger",
+            org.jawata.mcp.knowledge.UsageLedger.groupBy(
+                usage.writingBacklog(minTimes, limit), "surface"));
+        // MEASURED, and said in the response because a reader cannot see it from the groups:
+        // only ONE surface opens a demand row today. `UsageLedger.nominated` has a single
+        // caller — the `nominate` verb — so a backlog with one group is the ledger working,
+        // not four surfaces with nothing to report. Without this line the absent groups read
+        // as "nobody asked from there", which is a claim nothing here can support.
+        out.put("backlogRecordedBy", java.util.List.of("nominate"));
         out.put("droppedWrites", usage.failedWrites());
         // Sprint 28f D4 — WHAT THIS LEDGER WITNESSED, apart from what it inferred,
         // AT THE POINT OF DISPLAY.
@@ -2185,11 +2210,17 @@ public final class ExperienceTool implements Tool {
         q.put("findingsTotal", quality.findingsTotal());
         q.put("findingsTruncated", quality.findingsTruncated());
         out.put("quality", q);
-        out.put("howToRead", "Neither list deletes anything. deletionList: shown at least "
-            + minShown + " times and chosen never — offer these to the user and remove only"
-            + " what they name. writingBacklog: asked at least " + minTimes + " times with"
-            + " nothing chosen — this is demand with no supply, and the only item here that"
-            + " is acted on by WRITING. droppedWrites is how many ledger writes were lost:"
+        out.put("howToRead", "Neither list deletes anything. deletionListByLane: shown at"
+            + " least " + minShown + " times and chosen never, GROUPED BY LANE — offer these"
+            + " to the user and remove only what they name. Read one lane at a time: dropping"
+            + " a stale experience and dropping a domain fact nobody consulted are different"
+            + " acts, which is why there is no combined list any more."
+            + " writingBacklogByTrigger: asked at least " + minTimes + " times with"
+            + " nothing chosen, GROUPED BY THE SURFACE THAT ASKED — this is demand with no"
+            + " supply, and the only item here that is acted on by WRITING. backlogRecordedBy"
+            + " names every surface that OPENS a demand row, and today it is one: a group"
+            + " missing from the backlog means that surface records nothing, NOT that nobody"
+            + " asked from there. droppedWrites is how many ledger writes were lost:"
             + " a low engagement rate over lost rows means 'we failed to record it', not"
             + " 'nobody engaged'. conformance: how much of THIS LEDGER was witnessed —"
             + " observed counts nominations a disposition actually arrived for, derived"

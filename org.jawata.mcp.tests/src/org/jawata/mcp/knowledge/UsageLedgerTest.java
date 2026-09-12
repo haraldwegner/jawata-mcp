@@ -90,12 +90,17 @@ class UsageLedgerTest {
             "an empty store should nominate nothing — the case this test needs");
 
         Map<String, Object> sweep = call("review_sweep", "min_times", "1");
+        // Sprint 28f Stage 5: the backlog is GROUPED BY THE SURFACE that asked, and the
+        // combined list is gone. One surface records demand today, so one group.
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> backlog =
-            (List<Map<String, Object>>) sweep.get("writingBacklog");
+        Map<String, List<Map<String, Object>>> backlog =
+            (Map<String, List<Map<String, Object>>>) sweep.get("writingBacklogByTrigger");
         assertEquals(1, backlog.size(),
             () -> "the unanswered question is missing from the backlog: " + sweep);
-        assertEquals(q, backlog.get(0).get("question"));
+        List<Map<String, Object>> fromNominate = backlog.get("nominate");
+        assertEquals(1, fromNominate.size(),
+            () -> "and it was asked from the nominate surface: " + sweep);
+        assertEquals(q, fromNominate.get(0).get("question"));
         assertEquals(0L, sweep.get("droppedWrites"),
             "a ledger write was dropped — the counts below it are under-reported");
     }
@@ -127,14 +132,17 @@ class UsageLedgerTest {
 
         call("decide", "query_id", queryId, "selected_ids", id);
         Map<String, Object> sweep = call("review_sweep", "min_times", "1", "min_shown", "1");
+        // Grouped now: NO group has rows, which is what "not backlog" means once the
+        // combined list is gone. An empty map is the stronger statement — a flattened
+        // list could be empty while a group existed holding an empty list.
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> backlog =
-            (List<Map<String, Object>>) sweep.get("writingBacklog");
+        Map<String, List<Map<String, Object>>> backlog =
+            (Map<String, List<Map<String, Object>>>) sweep.get("writingBacklogByTrigger");
         assertTrue(backlog.isEmpty(),
             () -> "a question that WAS answered is not backlog: " + sweep);
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> deletion =
-            (List<Map<String, Object>>) sweep.get("deletionList");
+        Map<String, List<Map<String, Object>>> deletion =
+            (Map<String, List<Map<String, Object>>>) sweep.get("deletionListByLane");
         assertTrue(deletion.isEmpty(),
             () -> "an entry that was chosen is not a deletion candidate: " + sweep);
     }

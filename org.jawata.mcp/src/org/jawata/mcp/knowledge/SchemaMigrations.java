@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 19;
+    static final int LATEST = 20;
 
     private SchemaMigrations() {
     }
@@ -181,6 +181,9 @@ final class SchemaMigrations {
         }
         if (from < 19) {
             migrateToV19(conn);
+        }
+        if (from < 20) {
+            migrateToV20(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -1028,6 +1031,31 @@ final class SchemaMigrations {
      * {@code rule_version} is legitimately NULL. A backfill writing 1 everywhere would claim
      * every entry in the store is a first-version rule.</p>
      */
+    /**
+     * v20 — {@code usage_query.surface}: WHICH surface opened a demand row.
+     *
+     * <p>The writing backlog is what the corpus was asked for and could not answer.
+     * Grouping it by the surface that asked turns one number into an answerable question:
+     * is the gap in what agents type, or in what a hook fires on?</p>
+     *
+     * <p><b>MEASURED BEFORE BUILDING, and it BOUNDS what this column can mean today:</b>
+     * {@code UsageLedger.nominated} has exactly ONE caller — the {@code nominate} verb — so
+     * only the anchorless path opens a demand row at all, and {@code recall} records nothing
+     * here. The column therefore carries one value until that changes, and the sweep SAYS SO
+     * rather than rendering five empty groups that would read as "nobody asked from there"
+     * when the truth is "that surface never records".</p>
+     *
+     * <p>No backfill: a pre-v20 row's surface is genuinely unknown, and stamping today's one
+     * writer across history would invent a fact about rows nobody recorded it for.</p>
+     */
+    private static void migrateToV20(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE usage_query ADD COLUMN IF NOT EXISTS surface VARCHAR(32)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_usage_query_surface "
+                + "ON usage_query(surface)");
+        }
+    }
+
     private static void migrateToV19(Connection conn) throws SQLException {
         try (Statement s = conn.createStatement()) {
             s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS rule_version INT");

@@ -72,7 +72,7 @@ public final class UsageLedger {
      * "there is nothing to count" would delete the signal.</p>
      */
     public void nominated(String queryId, String cueKind, String question,
-                          List<String> shownIds) {
+                          List<String> shownIds, String surface) {
         if (queryId == null || question == null) {
             return;
         }
@@ -86,12 +86,16 @@ public final class UsageLedger {
             synchronized (store) {
                 try (PreparedStatement ps = c.prepareStatement(
                         "MERGE INTO usage_query (query_id, asked_at, cue_kind, question,"
-                            + " shown_count, chosen) KEY(query_id)"
-                            + " VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, FALSE)")) {
+                            + " shown_count, chosen, surface) KEY(query_id)"
+                            + " VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, FALSE, ?)")) {
                     ps.setString(1, queryId);
                     ps.setString(2, cueKind);
                     ps.setString(3, clip(question));
                     ps.setInt(4, ids.size());
+                    // Sprint 28f Stage 5 (v20): WHICH surface asked. Null is a real value
+                    // and means the caller did not say — reported as `unrecorded` rather
+                    // than folded into whichever group happens to be first.
+                    ps.setString(5, surface);
                     ps.executeUpdate();
                 }
                 bumpShown(c, ids);
@@ -178,7 +182,11 @@ public final class UsageLedger {
      */
     public List<Map<String, Object>> deletionList(long minShown, int limit) {
         return read("deletionList",
-            "SELECT u.entry_id, u.shown, u.chosen, e.summary FROM usage_entry u"
+            // Sprint 28f Stage 5: the LANE rides along. The join to experience_entry was
+            // already here for the summary, so the lane costs one column — and a deletion
+            // list mixing lifecycles is one a reader cannot rule on: dropping a stale
+            // experience and dropping a domain fact nobody consulted are different acts.
+            "SELECT u.entry_id, u.shown, u.chosen, e.summary, e.lane FROM usage_entry u"
                 + " JOIN experience_entry e ON e.id = u.entry_id"
                 + " WHERE u.chosen = 0 AND u.shown >= ?"
                 + " ORDER BY u.shown DESC LIMIT ?",
@@ -189,9 +197,20 @@ public final class UsageLedger {
                 row.put("shown", rs.getLong(2));
                 row.put("chosen", rs.getLong(3));
                 row.put("summary", rs.getString(4));
+                row.put("lane", rs.getString(5) == null ? UNRECORDED : rs.getString(5));
                 return row;
             });
     }
+
+    /**
+     * What a row says when the fact was never recorded — NOT a group of its own invention.
+     *
+     * <p>A pre-v18 row has no lane and a pre-v20 query has no surface. Folding either into
+     * a real group would report rows under a heading nobody wrote them with; naming the
+     * absence keeps the groups honest and makes the backfill gap visible in the output
+     * instead of only in a migration log.</p>
+     */
+    public static final String UNRECORDED = "unrecorded";
 
     /**
      * Questions asked at least {@code minTimes} times that nothing answered,
@@ -200,18 +219,47 @@ public final class UsageLedger {
      */
     public List<Map<String, Object>> writingBacklog(int minTimes, int limit) {
         return read("writingBacklog",
-            "SELECT question, COUNT(*) AS times, MAX(asked_at) AS last_asked"
+            // Sprint 28f Stage 5: grouped by question AND by the surface that asked it, so
+            // the same question asked from two surfaces is two rows rather than one. That
+            // is the point of the breakdown — a gap in what agents TYPE and a gap in what a
+            // HOOK fires on are different corpus problems with different repairs.
+            "SELECT question, surface, COUNT(*) AS times, MAX(asked_at) AS last_asked"
                 + " FROM usage_query WHERE chosen = FALSE"
-                + " GROUP BY question HAVING COUNT(*) >= ?"
+                + " GROUP BY question, surface HAVING COUNT(*) >= ?"
                 + " ORDER BY times DESC LIMIT ?",
             minTimes, limit,
             rs -> {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("question", rs.getString(1));
-                row.put("timesUnanswered", rs.getLong(2));
-                row.put("lastAsked", String.valueOf(rs.getTimestamp(3)));
+                row.put("surface", rs.getString(2) == null ? UNRECORDED : rs.getString(2));
+                row.put("timesUnanswered", rs.getLong(3));
+                row.put("lastAsked", String.valueOf(rs.getTimestamp(4)));
                 return row;
             });
+    }
+
+    /**
+     * Group rows by one of their own keys, preserving the order they arrived in.
+     *
+     * <p>The sweep reports PER LANE and PER TRIGGER rather than as one list, and the
+     * grouping is done here rather than at the reader so both lists group identically —
+     * two callers grouping the same rows their own way is how two views of one table start
+     * disagreeing about it.</p>
+     *
+     * <p>A group appears only if it has a row. Emitting every known lane and surface with an
+     * empty list would be worse than saying nothing: an empty group reads as "nobody used
+     * this" where the truth may be "that surface never records", and the two are opposite
+     * instructions to whoever reads the sweep.</p>
+     */
+    public static Map<String, List<Map<String, Object>>> groupBy(
+            List<Map<String, Object>> rows, String key) {
+        Map<String, List<Map<String, Object>>> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object v = row.get(key);
+            out.computeIfAbsent(v == null ? UNRECORDED : String.valueOf(v),
+                k -> new java.util.ArrayList<>()).add(row);
+        }
+        return out;
     }
 
     /**

@@ -91,10 +91,25 @@ class LedgerObservedVsDerivedTest {
         return c;
     }
 
+    /**
+     * The backlog rows, flattened across surfaces.
+     *
+     * <p>Sprint 28f Stage 5 grouped the backlog by the surface that asked and dropped the
+     * combined list. This class's subject is the CONFORMANCE figure — observed against
+     * derived — which is a property of the whole ledger and not of any one surface, so it
+     * flattens deliberately rather than picking a group. {@code SweepPerTriggerTest} is
+     * what asserts the grouping itself.</p>
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> backlog() {
         Map<String, Object> sweep = call("review_sweep", "min_times", "1", "min_shown", "1");
-        return (List<Map<String, Object>>) sweep.get("writingBacklog");
+        Map<String, List<Map<String, Object>>> byTrigger =
+            (Map<String, List<Map<String, Object>>>) sweep.get("writingBacklogByTrigger");
+        List<Map<String, Object>> all = new java.util.ArrayList<>();
+        if (byTrigger != null) {
+            byTrigger.values().forEach(all::addAll);
+        }
+        return all;
     }
 
     private static long num(Map<String, Object> m, String key) {
