@@ -35,8 +35,9 @@ class AnalogyCarriesTheCauseTest {
         return new StoredEntry("id-1", "lesson", null, null, null, "accepted",
             "high", "java", null, "read the order status with a REST GET", List.of(),
             null, null, null, java.time.Instant.EPOCH, Map.of(),
+            // v19's rule lifecycle is null here: a lesson is not a rule.
             new StoredEntry.Facets("when an ack has not arrived in time", cause,
-                "worked", "recorded", 1, null, null));
+                "worked", "recorded", 1, null, null, null, null));
     }
 
     private static Map<String, Object> mapOf(StoredEntry e) {

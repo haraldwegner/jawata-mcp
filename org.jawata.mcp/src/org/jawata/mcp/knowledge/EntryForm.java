@@ -108,7 +108,13 @@ public final class EntryForm {
         "handled_by", "fixed_by", "detected_by", "supersedes", "cured_by",
         // Written by the engine itself, not by an author: a markdown link between
         // ingested notes, and the rollback handle the advisor records for a plan.
-        "related", "undo");
+        "related", "undo",
+        // Sprint 28f Stage 5: a promoted RULE points back at the entries it was
+        // drawn from. It is not `supersedes` — the sources are not replaced and go
+        // on answering as themselves; the rule is a general instruction distilled
+        // from them, and deleting the sources would leave it unaccountable rather
+        // than merely unlinked.
+        "derived_from");
 
     /** The link vocabulary as prose, derived so the schema cannot drift from the set. */
     public static String linkVocabulary() {

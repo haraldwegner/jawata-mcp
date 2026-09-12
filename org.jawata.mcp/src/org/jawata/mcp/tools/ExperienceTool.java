@@ -1,20 +1,5 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.jdt.core.IType;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.knowledge.Confidence;
-import org.jawata.mcp.knowledge.EntryForm;
-import org.jawata.mcp.knowledge.ExperienceEntry;
-import org.jawata.mcp.knowledge.ExperienceMaintenance;
-import org.jawata.mcp.knowledge.ExperienceRetrieval;
-import org.jawata.mcp.knowledge.FormMigration;
-import org.jawata.mcp.knowledge.ExperienceStore;
-import org.jawata.mcp.knowledge.RecallQuery;
-import org.jawata.mcp.knowledge.StoryTemplate;
-import org.jawata.mcp.knowledge.SymbolFact;
-import org.jawata.mcp.models.ToolResponse;
-
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,6 +8,24 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+
+import org.eclipse.jdt.core.IType;
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.knowledge.Confidence;
+import org.jawata.mcp.knowledge.EntryForm;
+import org.jawata.mcp.knowledge.ExperienceEntry;
+import org.jawata.mcp.knowledge.ExperienceMaintenance;
+import org.jawata.mcp.knowledge.ExperienceRetrieval;
+import org.jawata.mcp.knowledge.ExperienceStore;
+import org.jawata.mcp.knowledge.FormMigration;
+import org.jawata.mcp.knowledge.KnowledgeLane;
+import org.jawata.mcp.knowledge.RecallQuery;
+import org.jawata.mcp.knowledge.StoredEntry;
+import org.jawata.mcp.knowledge.StoryTemplate;
+import org.jawata.mcp.knowledge.SymbolFact;
+import org.jawata.mcp.models.ToolResponse;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 21 (v2.0): the parametric front door over the local experience/knowledge store —
@@ -67,7 +70,11 @@ public final class ExperienceTool implements Tool {
             // would be a silent continuation of the misreading.
             "wipe_and_import", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
             "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
-            "review_sweep", "delete", "set_form", "backup", "restore", "vectorise");
+            "review_sweep", "delete", "set_form", "backup", "restore", "vectorise",
+            // Sprint 28f Stage 5: the rule lifecycle. Three verbs rather than flags on
+            // `record` and `promote`, because a rule does not share their lifecycle —
+            // it is derived from sources, versioned, and retired on a date.
+            "promote_rule", "amend_rule", "retire_rule");
 
     /**
      * Sprint 28f D4 — HOW KNOWLEDGE IS ADDED, said once.
@@ -477,6 +484,16 @@ public final class ExperienceTool implements Tool {
             "description", "recall: which surface is asking — 'seat' when a driven seat"
                 + " run recalls, omitted for an ordinary question. Affects only the"
                 + " quality counters (stats), never what is retrieved."));
+        props.put("rule_lifecycle_note", Map.of("type", "string",
+            "description", "NOT AN INPUT — the rule verbs, said once. promote_rule(ids,"
+                + " summary[, situation]) distils entries into a RULE at version 1, linked"
+                + " derived_from each source; the sources are NOT superseded and go on"
+                + " answering as themselves. amend_rule(id, summary) writes a NEW version"
+                + " and supersedes the old one, which stays readable — what a rule USED to"
+                + " say is what a version number is for. retire_rule(id) records that it"
+                + " stopped applying, as of now: recall stops offering it, list and get"
+                + " still answer. Retiring is not rejecting and not superseding — the rule"
+                + " was right, nothing replaced it, and it stopped applying."));
         props.put("lane", Map.of("type", "string",
             "enum", List.of("experience", "domain", "code", "rules"),
             "description", "recall: which LIFECYCLE may answer — a FILTER, not a cue."
@@ -534,6 +551,9 @@ public final class ExperienceTool implements Tool {
             case "backup" -> backup();
             case "restore" -> restore(args);
             case "vectorise" -> vectorise();
+            case "promote_rule" -> promoteRule(args);
+            case "amend_rule" -> amendRule(args);
+            case "retire_rule" -> retireRule(args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -1782,6 +1802,134 @@ public final class ExperienceTool implements Tool {
             data.put("unembedded", index.remainingUnembedded());
         }
         return data;
+    }
+
+    /**
+     * Sprint 28f Stage 5 — promote entries into a RULE: version 1, linked to its sources.
+     *
+     * <p>The sources are NOT superseded and go on answering as themselves. A rule is a
+     * general instruction distilled from them, which is why the link is {@code derived_from}
+     * rather than {@code supersedes} — and why every source id is checked to EXIST before
+     * anything is written. A rule pointing at ids that are not there is not merely
+     * unlinked, it is unaccountable: nobody can ever ask what it was drawn from.</p>
+     */
+    private ToolResponse promoteRule(JsonNode args) {
+        String summary = text(args, "summary");
+        if (summary == null || summary.isBlank()) {
+            return ToolResponse.invalidParameter("summary",
+                "promote_rule needs the rule itself as 'summary' — one sentence a reader"
+                    + " can follow. It is not derived from the sources: distilling them IS"
+                    + " the promotion, and a generated line would deliver none of it.");
+        }
+        List<String> sources = strings(args, "ids");
+        if (sources.isEmpty()) {
+            return ToolResponse.invalidParameter("ids",
+                "promote_rule needs the 'ids' it is drawn from. A rule with no sources is"
+                    + " an assertion nobody can check — record it as an entry instead.");
+        }
+        List<String> missing = new java.util.ArrayList<>();
+        for (String source : sources) {
+            if (store.get(source).isEmpty()) {
+                missing.add(source);
+            }
+        }
+        if (!missing.isEmpty()) {
+            return ToolResponse.invalidParameter("ids",
+                "these ids are not in the store: " + missing + ". Checked BEFORE anything is"
+                    + " written, because a rule whose sources cannot be read is one nobody"
+                    + " can hold to account.");
+        }
+        ExperienceEntry.Builder b = ExperienceEntry.of(
+                SymbolFact.of(KnowledgeLane.RULE_TYPE, summary, Confidence.HIGH).build())
+            .status(ExperienceEntry.ACCEPTED)
+            .situation(text(args, "situation"));
+        for (String source : sources) {
+            b.addLink("derived_from", source);
+        }
+        String id = store.put(b.build());
+        store.setRuleVersion(id, 1);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", id);
+        data.put("rule_version", 1);
+        data.put("derived_from", sources);
+        data.put("lane", KnowledgeLane.RULES.wire());
+        return ToolResponse.success(data);
+    }
+
+    /**
+     * Sprint 28f Stage 5 — a NEW version of a rule; the old one is superseded and stays.
+     *
+     * <p>The old version is not edited and not deleted. What a rule USED to say is the
+     * question a version number exists to answer, and rewriting it in place would destroy
+     * exactly that — leaving a store that can say what the rule is and never what it was.</p>
+     */
+    private ToolResponse amendRule(JsonNode args) {
+        String id = text(args, "id");
+        if (id == null || id.isBlank()) {
+            return ToolResponse.invalidParameter("id", "amend_rule needs the rule's 'id'");
+        }
+        String summary = text(args, "summary");
+        if (summary == null || summary.isBlank()) {
+            return ToolResponse.invalidParameter("summary",
+                "amend_rule needs the amended rule as 'summary' — what it says NOW");
+        }
+        List<StoredEntry> found = store.byIds(List.of(id));
+        if (found.isEmpty()) {
+            return ToolResponse.invalidParameter("id", "no entry with id " + id);
+        }
+        StoredEntry current = found.get(0);
+        if (!KnowledgeLane.RULE_TYPE.equals(current.type())) {
+            return ToolResponse.invalidParameter("id",
+                "entry " + id + " is a '" + current.type() + "', not a rule. Amending"
+                    + " versions a standing instruction; an ordinary entry is corrected"
+                    + " with `record` or superseded, which are different lifecycles.");
+        }
+        Integer version = current.facets().ruleVersion();
+        int next = (version == null ? 1 : version) + 1;
+        ExperienceEntry amended = ExperienceEntry.of(
+                SymbolFact.of(KnowledgeLane.RULE_TYPE, summary, Confidence.HIGH).build())
+            .status(ExperienceEntry.ACCEPTED)
+            .situation(text(args, "situation") == null
+                ? current.facets().situation() : text(args, "situation"))
+            .addLink("supersedes", id)
+            .build();
+        String newId = store.put(amended);
+        store.setRuleVersion(newId, next);
+        store.setStatus(id, ExperienceEntry.SUPERSEDED);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", newId);
+        data.put("rule_version", next);
+        data.put("supersedes", id);
+        data.put("supersededStatus", ExperienceEntry.SUPERSEDED);
+        return ToolResponse.success(data);
+    }
+
+    /**
+     * Sprint 28f Stage 5 — a rule STOPPED APPLYING, as of now. It stays readable.
+     *
+     * <p>Not a status change and not a deletion: {@code superseded} would claim a newer
+     * version replaced it and {@code rejected} that it was wrong, and a retired rule is
+     * neither. Recall stops offering it — that is the whole content of retiring — while
+     * {@code list} and {@code get} still answer, because "what did this rule say, and until
+     * when" is a question the store should be able to answer.</p>
+     */
+    private ToolResponse retireRule(JsonNode args) {
+        String id = text(args, "id");
+        if (id == null || id.isBlank()) {
+            return ToolResponse.invalidParameter("id", "retire_rule needs the rule's 'id'");
+        }
+        boolean retired = store.retire(id);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", id);
+        data.put("retired", retired);
+        if (!retired) {
+            // An unknown id and an already-retired rule are both "nothing changed", and
+            // the caller is told so rather than being handed a success that did nothing.
+            data.put("note", "no row changed: either there is no entry with this id, or it"
+                + " was already retired. A second retirement would move the date and"
+                + " rewrite the answer to 'until when did this apply'.");
+        }
+        return ToolResponse.success(data);
     }
 
     private ToolResponse promote(JsonNode args) {

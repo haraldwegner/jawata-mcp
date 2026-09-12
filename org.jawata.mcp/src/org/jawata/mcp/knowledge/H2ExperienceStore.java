@@ -1368,6 +1368,36 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    @Override
+    public synchronized boolean setRuleVersion(String id, int version) {
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET rule_version = ?, updated_at = ? WHERE id = ?")) {
+            ps.setInt(1, version);
+            ps.setTimestamp(2, Timestamp.from(Instant.now()));
+            ps.setString(3, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to set rule version: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized boolean retire(String id) {
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET retired_at = ?, updated_at = ? "
+                    // Already retired means already retired: re-retiring would move the
+                    // date and quietly rewrite the answer to "until when did this apply".
+                    + "WHERE id = ? AND retired_at IS NULL")) {
+            Timestamp now = Timestamp.from(Instant.now());
+            ps.setTimestamp(1, now);
+            ps.setTimestamp(2, now);
+            ps.setString(3, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to retire: " + e.getMessage(), e);
+        }
+    }
+
     /** Sprint 21e (item A): {@code symbol_fqn} ONLY — never package_name/source_hash/status. */
     @Override
     public synchronized boolean updateSymbolAnchor(String id, String symbolFqn) {
@@ -1515,9 +1545,14 @@ public final class H2ExperienceStore implements ExperienceStore {
             laneClause = " AND lane = ?";
             params.add(q.lane());
         }
+        // Sprint 28f Stage 5: a RETIRED rule stopped applying, so it must not be handed to
+        // an agent as live guidance — that is the whole content of retiring one. It stays
+        // READABLE through `list` and `get`, which do not come through here: retiring is
+        // not deleting, and "what did the rule used to say" is a question worth answering.
         String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE ("
             + String.join(" OR ", clauses)
-            + ") AND status NOT IN ('rejected', 'superseded')" + laneClause
+            + ") AND status NOT IN ('rejected', 'superseded') AND retired_at IS NULL"
+            + laneClause
             + " ORDER BY created_at DESC";
 
         List<StoredEntry> out = new ArrayList<>();
@@ -1599,7 +1634,13 @@ public final class H2ExperienceStore implements ExperienceStore {
             dead,
             // v13; the presence check keeps narrower projections working — an
             // absent column reads as null, same as an unstamped row.
-            cols.contains("origin_client") ? rs.getString("origin_client") : null);
+            cols.contains("origin_client") ? rs.getString("origin_client") : null,
+            // v19, the rule lifecycle; presence-checked for the same reason. NULL is
+            // the honest value on every non-rule row: the type did not exist before
+            // this column did, so nothing here was ever a first-version rule.
+            cols.contains("rule_version") ? intOrNull(rs.getObject("rule_version")) : null,
+            cols.contains("retired_at") && rs.getTimestamp("retired_at") != null
+                ? rs.getTimestamp("retired_at").toInstant() : null);
     }
 
     private List<String> loadSymptoms(String id, Connection c) throws SQLException {
@@ -1697,7 +1738,10 @@ public final class H2ExperienceStore implements ExperienceStore {
         // Sprint 28c (v15) — the diagnosis; the solution binds to it.
         + "cause,"
         // Sprint 28f (v18) — which lifecycle the row lives under.
-        + "lane";
+        + "lane,"
+        // Sprint 28f (v19) — the rule lifecycle: which version, and whether it has
+        // stopped applying. Null on every row that is not a rule.
+        + "rule_version,retired_at";
 
     @Override
     public List<Map<String, Object>> exportEntries(String status, String type) {
@@ -1787,6 +1831,17 @@ public final class H2ExperienceStore implements ExperienceStore {
                     if (!rs.wasNull()) {
                         row.put("evidence_dead", evidenceDead);
                     }
+                    // v19: the rule lifecycle. Carried VERBATIM, unlike the lane above —
+                    // which version a rule is, and the date it stopped applying, are
+                    // authored history and cannot be re-derived from anything in the row.
+                    int ruleVersion = rs.getInt("rule_version");
+                    if (!rs.wasNull()) {
+                        row.put("rule_version", ruleVersion);
+                    }
+                    Timestamp retired = rs.getTimestamp("retired_at");
+                    if (retired != null) {
+                        row.put("retired_at", retired.toInstant().toString());
+                    }
                     Timestamp created = rs.getTimestamp("created_at");
                     Timestamp updated = rs.getTimestamp("updated_at");
                     if (created != null) {
@@ -1837,11 +1892,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
                 try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
-                        // 26 placeholders — one per ALL_COLUMNS entry. Kept in
+                        // 28 placeholders — one per ALL_COLUMNS entry. Kept in
                         // step BY TEST, not by eye: the count is invisible to the
                         // compiler and a surplus throws only at import time.
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                        + "?,?,?,?,?,?,?,?)")) {
+                        + "?,?,?,?,?,?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -1893,6 +1948,13 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // line that has to start preferring the carried value.
                     ps.setString(26, KnowledgeLane.wireOf(
                         str(row.get("type")), str(row.get("provenance_kind"))));
+                    // v19: carried verbatim — a rule's version and its retirement date are
+                    // history, and an import that re-derived them would have nothing to
+                    // derive them FROM.
+                    setIntOrNull(ps, 27, intOrNull(row.get("rule_version")));
+                    // NOT parseInstant: its missing-value default is NOW, and an absent
+                    // retirement date means NOT RETIRED. See parseInstantOrNull.
+                    ps.setTimestamp(28, parseInstantOrNull(row.get("retired_at")));
                     ps.executeUpdate();
                 }
                 if (row.get("symptoms") instanceof List<?> symptoms) {
@@ -2214,6 +2276,32 @@ public final class H2ExperienceStore implements ExperienceStore {
             }
         }
         return links;
+    }
+
+    /**
+     * The same parse, but an ABSENT value stays absent.
+     *
+     * <p>{@link #parseInstant} defaults a missing timestamp to NOW, which is right for
+     * {@code created_at} and {@code updated_at} — every row has them, and an import that
+     * lost one should not invent a date in 1970. It is catastrophic for {@code retired_at},
+     * where absent means NOT RETIRED: bound through the defaulting form, an import would
+     * stamp every row it wrote as retired, and the recall filter would then hide the entire
+     * imported corpus. Nothing would raise; the rows would simply stop answering.</p>
+     *
+     * <p>Measured rather than reasoned: {@code FormRoundTripTest} caught it on the first
+     * run, reporting a LESSON that came back carrying a retirement date.</p>
+     */
+    private static Timestamp parseInstantOrNull(Object iso) {
+        if (iso == null) {
+            return null;
+        }
+        try {
+            return Timestamp.from(Instant.parse(String.valueOf(iso)));
+        } catch (Exception e) {
+            // An unparseable date is not a retirement either. Same direction as above:
+            // this column's absence is meaningful, so a bad value degrades to absent.
+            return null;
+        }
     }
 
     private static Timestamp parseInstant(Object iso) {

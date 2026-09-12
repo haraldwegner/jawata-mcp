@@ -258,6 +258,20 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public boolean setRuleVersion(String id, int version) {
+        synchronized (lock) {
+            return delegate.setRuleVersion(id, version);
+        }
+    }
+
+    @Override
+    public boolean retire(String id) {
+        synchronized (lock) {
+            return delegate.retire(id);
+        }
+    }
+
+    @Override
     public boolean updateSymbolAnchor(String id, String symbolFqn) {
         synchronized (lock) {
             return delegate.updateSymbolAnchor(id, symbolFqn);

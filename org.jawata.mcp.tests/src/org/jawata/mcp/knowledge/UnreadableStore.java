@@ -156,6 +156,16 @@ final class UnreadableStore implements ExperienceStore {
     }
 
     @Override
+    public boolean setRuleVersion(String id, int version) {
+        throw boom();
+    }
+
+    @Override
+    public boolean retire(String id) {
+        throw boom();
+    }
+
+    @Override
     public boolean markEvidenceDead(String id) {
         throw boom();
     }

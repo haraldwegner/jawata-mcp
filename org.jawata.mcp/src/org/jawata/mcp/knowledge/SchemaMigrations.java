@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 18;
+    static final int LATEST = 19;
 
     private SchemaMigrations() {
     }
@@ -178,6 +178,9 @@ final class SchemaMigrations {
         }
         if (from < 18) {
             migrateToV18(conn);
+        }
+        if (from < 19) {
+            migrateToV19(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -1001,6 +1004,38 @@ final class SchemaMigrations {
             log.warn("Lanes: no ruling covers type(s) {} — those rows have NO lane."
                 + " They are not experiences by default; find them with"
                 + " SELECT * FROM experience_entry WHERE lane IS NULL", unclassified);
+        }
+    }
+
+    /**
+     * v19 — {@code rule_version} and {@code retired_at}: the rule lifecycle.
+     *
+     * <h2>Why a rule needs two columns the other lanes do not</h2>
+     *
+     * <p>Every other lane's row is superseded or corrected in place. A RULE is neither: it
+     * is AMENDED, which produces a new version while the old one stays readable as what the
+     * rule used to say, and it is RETIRED, which is not a judgement that it was wrong.</p>
+     *
+     * <p><b>{@code retired_at} is deliberately not a status.</b> The status vocabulary
+     * already carries {@code superseded} (a newer version replaced it) and {@code rejected}
+     * (it was judged wrong), and a retired rule is NEITHER — it was right, nothing replaced
+     * it, and it stopped applying. It therefore keeps its status, which is what keeps it
+     * readable, and records the DATE: "this applied until…" is the fact a reader of a
+     * retired rule actually wants, and a boolean would answer a poorer question.</p>
+     *
+     * <p><b>There is no backfill, and that is a statement rather than an omission.</b> No row
+     * predating this rung is a rule — the type did not exist — so every existing row's
+     * {@code rule_version} is legitimately NULL. A backfill writing 1 everywhere would claim
+     * every entry in the store is a first-version rule.</p>
+     */
+    private static void migrateToV19(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS rule_version INT");
+            s.execute("ALTER TABLE experience_entry "
+                + "ADD COLUMN IF NOT EXISTS retired_at TIMESTAMP");
+            // Read by the recall filter, which excludes a retired rule from live guidance.
+            s.execute("CREATE INDEX IF NOT EXISTS idx_experience_retired "
+                + "ON experience_entry(retired_at)");
         }
     }
 }

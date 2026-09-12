@@ -265,6 +265,27 @@ public interface ExperienceStore extends AutoCloseable {
     boolean setStatus(String id, String status);
 
     /**
+     * Sprint 28f Stage 5 — stamp a rule's version number; true when a row changed.
+     *
+     * <p>Column-only, like {@code updateSymbolAnchor}: it never touches {@code status},
+     * {@code source_hash} or the frozen {@code body_json}. A rule's version is bookkeeping
+     * about the rule's HISTORY, not a change to what the rule says.</p>
+     */
+    boolean setRuleVersion(String id, int version);
+
+    /**
+     * Sprint 28f Stage 5 — mark a rule as having STOPPED APPLYING, as of now.
+     *
+     * <p>Deliberately not a status change, and the entry stays readable afterwards.
+     * {@code superseded} would claim a newer version replaced it and {@code rejected} that
+     * it was judged wrong; a retired rule is neither — it was right and it stopped applying,
+     * which is a DATE rather than a verdict.</p>
+     *
+     * @return true when a row changed; false when the id is unknown or already retired
+     */
+    boolean retire(String id);
+
+    /**
      * Sprint 21e (item A): column-only write of the AUTOMATIC symbol anchor —
      * {@code symbol_fqn} ONLY ({@code null} clears it). Never touches
      * {@code package_name} (the author-asserted {@code packages[]} channel),

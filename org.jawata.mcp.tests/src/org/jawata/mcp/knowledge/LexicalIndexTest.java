@@ -38,7 +38,9 @@ class LexicalIndexTest {
     private static StoredEntry withSituation(String id, String situation, String summary) {
         return new StoredEntry(id, "lesson", null, null, null, "accepted", "medium",
             "java", null, summary, List.of(), null, null, null, Instant.EPOCH, Map.of(),
-            new StoredEntry.Facets(situation, null, "worked", "recorded", 1, null, null));
+            // v19's rule lifecycle is null here: a lesson is not a rule.
+            new StoredEntry.Facets(situation, null, "worked", "recorded", 1, null, null,
+                null, null));
     }
 
     /**

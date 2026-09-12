@@ -575,8 +575,12 @@ public final class ExperienceRetrieval {
      * be returned.</p>
      */
     private static boolean isLive(StoredEntry e) {
-        return !ExperienceEntry.REJECTED.equals(e.status())
-            && !ExperienceEntry.SUPERSEDED.equals(e.status());
+        // Sprint 28f Stage 5: was a second copy of the same two status comparisons the
+        // ENTRY already answers. Delegated rather than extended with a third clause —
+        // the sibling's javadoc records that this rule used to live as a SQL fragment in
+        // three places and that a fourth reader silently got a different population, and
+        // adding retirement to a copy here would have been the fifth.
+        return e.isLive();
     }
 
     /**
@@ -680,6 +684,22 @@ public final class ExperienceRetrieval {
             if (KnowledgeKind.of(e).isExperience() && isLive(e)) {
                 pool.add(e);
             }
+        }
+        // Sprint 28f Stage 5 — THE LANE FILTER REACHES THE RANKED PATH TOO.
+        //
+        // The keyword query filters by lane in SQL. The pool above has TWO OTHER sources —
+        // rows the fit gate turned away, and rows meaning/lexical nominated — and neither
+        // passes through that statement. Filtering only the SQL leaves a caller who asked
+        // for one lane reading rows from every other one, which presents as the filter
+        // half working: `RulePromotionTest` caught exactly that, because its rows are
+        // recorded inline and therefore carry vectors, where the earlier lane fixtures
+        // took the bulk path and had none.
+        //
+        // Applied once over the assembled pool, for the reason the block above gives about
+        // status: a per-source filter is a rule a fourth source can be added without.
+        if (q.hasLane()) {
+            pool.removeIf(e -> !q.lane().equals(
+                KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind())));
         }
         if (pool.isEmpty()) {
             return List.of();
@@ -1605,6 +1625,20 @@ public final class ExperienceRetrieval {
         }
         if (f.verdict() != null && !f.verdict().isBlank()) {
             m.put("verdict", f.verdict());
+        }
+        // Sprint 28f Stage 5 — a RULE says which version of itself this is.
+        //
+        // A standing instruction is amended over time, and a reader acting on one needs to
+        // know they are looking at the current wording rather than an older one somebody
+        // quoted at them. Emitted only for a row that HAS a version, which is only ever a
+        // rule: an absent key says "not a rule", as every other facet here does.
+        //
+        // `retired_at` deliberately has NO clause here. A retired rule cannot reach this
+        // method at all — the store's own query excludes it — so rendering it would be
+        // unreachable code dressed as thoroughness. It is read where it is read: `list`
+        // and `get`, which is what keeps a retired rule readable.
+        if (f.ruleVersion() != null) {
+            m.put("rule_version", f.ruleVersion());
         }
         // Sprint 28f D4 — A ROW WITH NO MEANING VECTOR SAYS SO WHEREVER IT APPEARS.
         //

@@ -32,10 +32,16 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
      */
     public record Facets(String situation, String cause, String verdict,
                          String provenanceKind, Integer form, Boolean evidenceDead,
-                         String originClient) {
+                         String originClient,
+                         // Sprint 28f Stage 5 — the rule lifecycle. Bundled HERE for the
+                         // reason the record was introduced: two more positional components
+                         // on StoredEntry would make every one of its construction sites a
+                         // counting exercise, and there are far more of those than of these.
+                         Integer ruleVersion, Instant retiredAt) {
 
         /** A legacy row: no facets at all, which is what every pre-28c entry is. */
-        public static final Facets NONE = new Facets(null, null, null, null, null, null, null);
+        public static final Facets NONE =
+            new Facets(null, null, null, null, null, null, null, null, null);
 
         /** True when the entry arrived in the 28c form — it carries a situation. */
         public boolean isForm1() {
@@ -45,6 +51,20 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
         /** True when a human has been told the evidence behind this entry is gone. */
         public boolean hasDeadEvidence() {
             return Boolean.TRUE.equals(evidenceDead);
+        }
+
+        /**
+         * True when this rule has been RETIRED — it stopped applying on a date.
+         *
+         * <p>Deliberately not a status. {@code superseded} means a newer version replaced
+         * it and {@code rejected} means it was judged wrong; a retired rule is neither. It
+         * was right, nothing replaced it, and it stopped applying — so it keeps its status,
+         * stays readable, and carries the DATE, which is the fact a reader of a rule
+         * actually wants ("this applied until…"). A boolean would answer a different and
+         * poorer question.</p>
+         */
+        public boolean isRetired() {
+            return retiredAt != null;
         }
     }
 
@@ -66,7 +86,14 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
      * rule where a Java reader can ask for it.</p>
      */
     public boolean isLive() {
-        return !"superseded".equals(status) && !"rejected".equals(status);
+        return !"superseded".equals(status) && !"rejected".equals(status)
+            // Sprint 28f Stage 5: and a RETIRED rule has stopped applying. This sentence
+            // was ALREADY the javadoc above — written when retirement could only be a
+            // status — and a retired rule is the first row for which it is a third thing.
+            // Put here rather than at each reader for the reason the javadoc gives: the
+            // status half lived as a SQL fragment in three places, and the fourth reader
+            // silently got a different population.
+            && !facets().isRetired();
     }
 
     /** Never null: a legacy row projects {@link Facets#NONE}. */
