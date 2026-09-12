@@ -1464,6 +1464,36 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * Sprint 28f Stage 7 — every row anchored at {@code fromFqn} now points at
+     * {@code toFqn}. The same column and the same restraint as the setter above:
+     * {@code symbol_fqn} only, never the asserted {@code package_name} channel, never
+     * {@code source_hash} (a rename is not a content change, and a byte-strict skip must
+     * not see one), never {@code status}.
+     *
+     * <p>Matched on the WHOLE name. A prefix match would look useful — rename a type and
+     * its members follow — and would be wrong in the one direction that costs: it cannot
+     * tell {@code Reports#render} from {@code Reports#renderDaily}, so renaming the first
+     * would silently take the second with it. A caller that renames a type knows the
+     * member names it moved and can say so, once each.</p>
+     */
+    @Override
+    public synchronized int moveSymbolAnchor(String fromFqn, String toFqn) {
+        if (fromFqn == null || fromFqn.isBlank()) {
+            return 0;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                "UPDATE experience_entry SET symbol_fqn = ?, updated_at = ?"
+                + " WHERE symbol_fqn = ?")) {
+            ps.setString(1, toFqn);
+            ps.setTimestamp(2, Timestamp.from(Instant.now()));
+            ps.setString(3, fromFqn);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to move symbol anchor: " + e.getMessage(), e);
+        }
+    }
+
     /** Symptoms are alias-normalized (lower/trim/collapse) so paraphrases index together. */
     private void insertSymptoms(String id, List<String> symptoms) throws SQLException {
         if (symptoms.isEmpty()) {

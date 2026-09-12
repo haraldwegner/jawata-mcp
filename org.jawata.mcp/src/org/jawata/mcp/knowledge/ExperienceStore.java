@@ -297,6 +297,32 @@ public interface ExperienceStore extends AutoCloseable {
         return false;
     }
 
+    /**
+     * Sprint 28f Stage 7 — a member was RENAMED, so every row anchored at its old
+     * fully-qualified name now points at the new one. Answers how many moved.
+     *
+     * <p><b>Not {@link #updateSymbolAnchor}, and the two must never share a name.</b>
+     * That one sets ONE row's anchor, addressed by row id, and is how an unanchored row
+     * GETS a pointer. This one is addressed by the NAME and the caller does not know, or
+     * want to know, which rows were pointing at it. Both are {@code (String, String)}, so
+     * an overload pair would be chosen by what the caller meant rather than by anything
+     * the compiler could check — and picking the wrong one either rewrites one row's
+     * anchor to a fully-qualified name or moves every row anchored at a row id. Neither
+     * fails where it happened.</p>
+     *
+     * <p>The count is the return value because a mover that answers only "done" cannot be
+     * told from one that moved nothing — and moving nothing is the normal case, since
+     * most renamed members have no job describing them.</p>
+     *
+     * <p>Scope: the {@code symbol_fqn} column, which is where an anchor lives. Symbols
+     * named in an entry's SCOPE are a separate population and are not moved here.</p>
+     *
+     * @return the number of rows whose anchor moved; zero when no row named that member
+     */
+    default int moveSymbolAnchor(String fromFqn, String toFqn) {
+        return 0;
+    }
+
     /** Total entry count — diagnostics + tests. */
     long count();
 

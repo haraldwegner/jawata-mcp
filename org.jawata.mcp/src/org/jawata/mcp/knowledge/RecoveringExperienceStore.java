@@ -278,6 +278,19 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * Sprint 28f Stage 7. Forwarded like every other write, and it matters more than most:
+     * the interface gives this a no-op default, so a wrapper that forgot to forward would
+     * answer "nothing moved" — which is also the honest answer when a member really has no
+     * job — and renames would quietly stop following with nothing anywhere to say so.
+     */
+    @Override
+    public int moveSymbolAnchor(String fromFqn, String toFqn) {
+        synchronized (lock) {
+            return delegate.moveSymbolAnchor(fromFqn, toFqn);
+        }
+    }
+
     @Override
     public boolean markEvidenceDead(String id) {
         synchronized (lock) {
