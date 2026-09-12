@@ -37,11 +37,17 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
                          // reason the record was introduced: two more positional components
                          // on StoredEntry would make every one of its construction sites a
                          // counting exercise, and there are far more of those than of these.
-                         Integer ruleVersion, Instant retiredAt) {
+                         Integer ruleVersion, Instant retiredAt,
+                         // Sprint 28f Stage 6 (v21) — WHEN a review happened, bundled here
+                         // for the reason the record exists. NULL means nobody reviewed
+                         // this row, which is what every pre-v21 row honestly is: the
+                         // `reviewed:` stamp was read at ingest, used as the reseed gate,
+                         // and discarded, so no row could carry the answer.
+                         Instant reviewedAt) {
 
         /** A legacy row: no facets at all, which is what every pre-28c entry is. */
         public static final Facets NONE =
-            new Facets(null, null, null, null, null, null, null, null, null);
+            new Facets(null, null, null, null, null, null, null, null, null, null);
 
         /** True when the entry arrived in the 28c form — it carries a situation. */
         public boolean isForm1() {

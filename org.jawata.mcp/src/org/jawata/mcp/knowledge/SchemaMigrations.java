@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 20;
+    static final int LATEST = 21;
 
     private SchemaMigrations() {
     }
@@ -184,6 +184,9 @@ final class SchemaMigrations {
         }
         if (from < 20) {
             migrateToV20(conn);
+        }
+        if (from < 21) {
+            migrateToV21(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -1053,6 +1056,27 @@ final class SchemaMigrations {
             s.execute("ALTER TABLE usage_query ADD COLUMN IF NOT EXISTS surface VARCHAR(32)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_usage_query_surface "
                 + "ON usage_query(surface)");
+        }
+    }
+
+    /**
+     * v21 — WHEN A REVIEW HAPPENED, which nothing recorded.
+     *
+     * <p>The {@code reviewed:} frontmatter stamp has existed since 28c and was read at
+     * ingest, used as the reseed's gate ({@code ExperienceMaintenance:328}), and then
+     * DISCARDED. So no row could say whether anybody had checked it, and the export half
+     * of the story folder could not write the stamp back without inventing a date —
+     * which {@code docs/story-template.md} names as forging the one field the gate
+     * trusts.</p>
+     *
+     * <p>NULL is the honest default and it MEANS something: nobody reviewed this row.
+     * Every pre-v21 row keeps it, and exports no {@code reviewed:} line — rather than a
+     * backfilled timestamp that would claim a review nobody performed.</p>
+     */
+    private static void migrateToV21(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry "
+                + "ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP");
         }
     }
 

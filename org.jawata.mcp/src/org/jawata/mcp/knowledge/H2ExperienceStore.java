@@ -1365,13 +1365,36 @@ public final class H2ExperienceStore implements ExperienceStore {
         });
     }
 
+    /**
+     * Set the status — and where that status is {@code accepted}, STAMP THE REVIEW.
+     *
+     * <p>Sprint 28f Stage 6. The acceptance IS the review event in this product: the
+     * {@code /memorize} flow puts a candidate in front of a cold reader and only a
+     * reader that PASSED it reaches this transition. Recording the timestamp here
+     * therefore records something that happened, which is the whole difference between
+     * this and stamping the file at export time — that would assert a review nobody
+     * performed, and {@code docs/story-template.md} calls it forging the one field the
+     * reseed gate trusts.</p>
+     *
+     * <p><b>An existing stamp is never moved</b>, for the reason {@link #retire} gives
+     * about its own date: re-accepting an already-accepted row would silently rewrite
+     * the answer to "when was this checked", and the honest answer is the FIRST time.
+     * Every other status leaves the column alone — a row demoted to {@code candidate}
+     * and accepted again keeps the review that really happened.</p>
+     */
     @Override
     public synchronized boolean setStatus(String id, String status) {
+        boolean accepting = ExperienceEntry.ACCEPTED.equals(status);
         try (PreparedStatement ps = live().prepareStatement(
-                "UPDATE experience_entry SET status = ?, updated_at = ? WHERE id = ?")) {
+                "UPDATE experience_entry SET status = ?, updated_at = ?, "
+                    + "reviewed_at = CASE WHEN ? AND reviewed_at IS NULL THEN ? "
+                    + "ELSE reviewed_at END WHERE id = ?")) {
+            Timestamp now = Timestamp.from(Instant.now());
             ps.setString(1, status);
-            ps.setTimestamp(2, Timestamp.from(Instant.now()));
-            ps.setString(3, id);
+            ps.setTimestamp(2, now);
+            ps.setBoolean(3, accepting);
+            ps.setTimestamp(4, now);
+            ps.setString(5, id);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to set status: " + e.getMessage(), e);
@@ -1650,7 +1673,12 @@ public final class H2ExperienceStore implements ExperienceStore {
             // this column did, so nothing here was ever a first-version rule.
             cols.contains("rule_version") ? intOrNull(rs.getObject("rule_version")) : null,
             cols.contains("retired_at") && rs.getTimestamp("retired_at") != null
-                ? rs.getTimestamp("retired_at").toInstant() : null);
+                ? rs.getTimestamp("retired_at").toInstant() : null,
+            // v21, the review stamp; presence-checked for the same reason. NULL on every
+            // pre-v21 row is the honest answer rather than a gap: the stamp was read at
+            // ingest and discarded, so nothing about those rows ever said who checked them.
+            cols.contains("reviewed_at") && rs.getTimestamp("reviewed_at") != null
+                ? rs.getTimestamp("reviewed_at").toInstant() : null);
     }
 
     private List<String> loadSymptoms(String id, Connection c) throws SQLException {
@@ -1751,7 +1779,18 @@ public final class H2ExperienceStore implements ExperienceStore {
         + "lane,"
         // Sprint 28f (v19) — the rule lifecycle: which version, and whether it has
         // stopped applying. Null on every row that is not a rule.
-        + "rule_version,retired_at";
+        + "rule_version,retired_at"
+        // Sprint 28f (v21) — when a review happened.
+        //
+        // A COLUMN ADDED TO THE RUNG AND NOT TO THIS LIST FAILS SILENTLY, which is worth
+        // saying here because the failure looks like data rather than like a bug:
+        // `facetsOf` presence-checks every column by name, deliberately, so a projection
+        // that does not name one reads as NULL — and null already MEANS something for
+        // each of these ("unclassified", "not a rule", "nobody reviewed it"). The write
+        // lands, the read says nothing, and both halves look correct in isolation.
+        // Measured here: v21 shipped the rung and the stamp, and every assertion that a
+        // stamp comes BACK failed while the control asserting its absence passed.
+        + ",reviewed_at";
 
     @Override
     public List<Map<String, Object>> exportEntries(String status, String type) {
