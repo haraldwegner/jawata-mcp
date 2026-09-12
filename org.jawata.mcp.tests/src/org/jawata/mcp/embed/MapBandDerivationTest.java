@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,6 +55,10 @@ class MapBandDerivationTest {
 
     private static final String PAIRS = "/test-resources/embed-goldens/28f-band-pairs.json";
 
+    /** Stage 7 deliverable 7's corpus: the first bundle's REAL rows. */
+    private static final String REAL_ROWS =
+        "/test-resources/embed-goldens/28f-s7-real-rows.json";
+
     @Test
     void deriveTheMapBandFromTheThreeDistributions() throws Exception {
         EmbeddingService embedder = EmbeddingService.shared();
@@ -63,9 +68,44 @@ class MapBandDerivationTest {
         Assumptions.assumeTrue(embedder.available(),
             "[28f MAP BAND] NOT RUN — no embedder: " + embedder.unavailableReason());
 
+        deriveOverCorpus(embedder, PAIRS, "S0-MEASUREMENT-3");
+    }
+
+    /**
+     * Sprint 28f Stage 7 deliverable 7 — THE TRANSFER CHECK, over the first
+     * bundle's REAL rows.
+     *
+     * <p>Measurement 3 declared a deviation with an obligation attached: its corpus
+     * used no store rows at all, and both sides of every pair were written by hand
+     * in one session by the party drawing the conclusion. Nothing in it showed the
+     * band transfers to the rows the map will really run over. This is that check,
+     * and it runs the SAME derivation — not a second implementation of it — over a
+     * corpus whose jobs are the twelve rows the first bundle actually recorded and
+     * whose tasks are verbatim fragments of this sprint's own plan.</p>
+     *
+     * <p><b>What it asserts is what deliverable 7 asks: that the three sets still
+     * ORDER BY MEDIAN.</b> If they do not, the map's instrument does not survive
+     * contact with real rows and Stage 8's union needs re-deciding before it ships
+     * — which is why this sits in Stage 7 and not after Stage 8. The overlap count
+     * and both floors are REPORTED rather than asserted, for the reason the sibling
+     * test already argues at length: asserting a measurement turns a true finding
+     * about the metric into a permanently red test, and relaxing it to fit would be
+     * self-marking.</p>
+     */
+    @Test
+    void theBandStillOrdersOverTheFirstBundlesRealRows() throws Exception {
+        EmbeddingService embedder = EmbeddingService.shared();
+        Assumptions.assumeTrue(embedder.available(),
+            "[28f S7 TRANSFER] NOT RUN — no embedder: " + embedder.unavailableReason());
+
+        deriveOverCorpus(embedder, REAL_ROWS, "S7-TRANSFER");
+    }
+
+    private void deriveOverCorpus(EmbeddingService embedder, String resource, String label)
+            throws IOException {
         JsonNode fixture;
-        try (InputStream in = getClass().getResourceAsStream(PAIRS)) {
-            assertNotNull(in, "the frozen pair fixture must be on the test classpath: " + PAIRS);
+        try (InputStream in = getClass().getResourceAsStream(resource)) {
+            assertNotNull(in, "the frozen pair fixture must be on the test classpath: " + resource);
             fixture = new ObjectMapper().readTree(in);
         }
 
@@ -79,9 +119,12 @@ class MapBandDerivationTest {
         }
         assertFalse(jobVectors.isEmpty(), "the fixture must carry jobs");
 
-        System.out.println("S0-MEASUREMENT-3 per-pair scores");
+        System.out.println(label + " per-pair scores");
         List<Double> designated = scoresOf(fixture.get("designated"), embedder, jobVectors, "DES");
         List<Double> unrelated = scoresOf(fixture.get("unrelated"), embedder, jobVectors, "UNR");
+        // Kept in FIXTURE order: the sensitivity line below has to line each score
+        // up with its own pair to drop the flagged ones, and the sort destroys that.
+        List<Double> unrelatedInOrder = new ArrayList<>(unrelated);
 
         List<Double> nearDuplicate = new ArrayList<>();
         for (JsonNode pair : fixture.get("near_duplicates")) {
@@ -112,7 +155,7 @@ class MapBandDerivationTest {
         // anyway is worse than reporting none.
         boolean barExists = designatedMin > floor;
 
-        System.out.println("S0-MEASUREMENT-3 map band");
+        System.out.println(label + " map band");
         System.out.printf("  unrelated  n=%d median=%.4f p95=%.4f max=%.4f%n",
             unrelated.size(), percentile(unrelated, 0.50), floor,
             unrelated.get(unrelated.size() - 1));
@@ -140,10 +183,49 @@ class MapBandDerivationTest {
         long belowFloor = designated.stream().filter(d -> d <= floor).count();
         System.out.printf("  OVERLAP designated pairs at or below the floor: %d of %d%n",
             belowFloor, designated.size());
-        System.out.printf("S0-MEASUREMENT-3 floor=%.4f designated_min=%.4f designated_median=%.4f"
+        System.out.printf(label + " floor=%.4f designated_min=%.4f designated_median=%.4f"
             + " near_dupe_min=%.4f below_floor=%d of %d single_bar_possible=%b%n",
             floor, designatedMin, percentile(designated, 0.50), nearDuplicate.get(0),
             belowFloor, designated.size(), belowFloor == 0);
+
+        // THE SENSITIVITY LINE, and it exists because a single-package corpus
+        // cannot give a clean floor. Where the fixture FLAGS an unrelated pair as
+        // topically adjacent, the floor is recomputed without those pairs and both
+        // numbers are printed. Re-drawing the derangement until no pair is
+        // inconvenient would be the tuning the corpus exists to avoid, so the pairs
+        // are named in the fixture and both floors are reported.
+        //
+        // AND THE FIRST VERSION OF THIS COMMENT PREDICTED THE WRONG DIRECTION,
+        // which is why the line is worth its cost. It said the full floor is an
+        // OVER-estimate because a related pair "scores high and drags p95 up". On
+        // the real-row corpus the trimmed floor came out HIGHER, not lower
+        // (0.2154 against 0.2099), and the overlap count went UP with it, 2 of 11
+        // to 3 of 11. The two flagged pairs were not near the top at all, so they
+        // were inflating nothing. Reasoning about which way a p95 moves when two
+        // of twelve points are removed is guesswork; the number is not. Corrected
+        // here rather than left standing, because a comment that is false about
+        // the code beside it is this sprint's most-repeated defect.
+        List<Double> honest = new ArrayList<>();
+        int flagged = 0;
+        int i = 0;
+        for (JsonNode pair : fixture.get("unrelated")) {
+            if (pair.has("topically_adjacent")) {
+                flagged++;
+            } else {
+                honest.add(unrelatedInOrder.get(i));
+            }
+            i++;
+        }
+        if (flagged > 0) {
+            Collections.sort(honest);
+            double trimmed = percentile(honest, 0.95);
+            long belowTrimmed = designated.stream().filter(d -> d <= trimmed).count();
+            System.out.printf(label + " SENSITIVITY %d of %d unrelated pairs are flagged"
+                + " topically adjacent; floor without them=%.4f (full=%.4f),"
+                + " below_floor=%d of %d%n",
+                flagged, flagged + honest.size(), trimmed, floor,
+                belowTrimmed, designated.size());
+        }
 
         // WHAT IS ASSERTED, and why it is this and not the count above. The
         // assertion's job is to prove the CORPUS is a usable instrument; the

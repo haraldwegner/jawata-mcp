@@ -1,0 +1,247 @@
+{
+  "fixture": "28f-s7-real-rows",
+  "frozen": "2026-09-12",
+  "frozen_before": "any score from it was read",
+  "contract": [
+    "Sprint 28f Stage 7 deliverable 7 - the TRANSFER CHECK Stage 0's corpus cannot",
+    "give itself. Measurement 3 was taken over a corpus whose BOTH SIDES were written",
+    "by hand in one session by the party drawing the conclusion, and it declared that",
+    "as a deviation with an obligation attached: re-derive over the first bundle's",
+    "REAL rows.",
+    "",
+    "WHAT IS REAL HERE, and what is not - stated so no number is read as more:",
+    "",
+    "  jobs        - REAL. The twelve rows the first bundle run recorded, read out of",
+    "                build/28f-s7-first-bundle-run.sh by the generator rather than",
+    "                retyped. They were written to catalogue code, not to be measured.",
+    "  designated  - the TASK text is verbatim plan prose, each carrying the `cite`",
+    "                substring the generator checked against the plan file. Written",
+    "                days earlier, for another purpose, by nobody thinking about",
+    "                cosine. THE PAIRING is mine and that is the residual limit.",
+    "  unrelated   - a mechanical derangement: each task re-paired five positions",
+    "                along. No pair was chosen; every pair is printed to be checked.",
+    "  near_dupes  - the ONE hand-written half, and it cannot be otherwise, because a",
+    "                paraphrase has no source but a writer. `a` is the real row.",
+    "",
+    "TWO CONFOUNDS AGAINST STAGE 0, both of which move scores and neither of which is",
+    "a defect in this corpus:",
+    "",
+    "  REGISTER. Stage 0's tasks are questions a developer would type. These are",
+    "  declarative work items, because that is what the deliverable asked for. A",
+    "  difference from Stage 0 may be the corpus becoming real OR the register",
+    "  changing, and this corpus alone cannot separate them.",
+    "  ONE PACKAGE. Every job here is from org.jawata.mcp.knowledge, so even the",
+    "  unrelated pairs share a topic. The floor should therefore sit HIGHER than",
+    "  Stage 0's, and that is a property of the map's real operating conditions",
+    "  rather than an artefact - the map runs over one bundle's rows at a time."
+  ],
+  "excluded_from_designated": [
+    {
+      "anchor": "SymbolAnchorResolver#resolve",
+      "reason": "the sprint has no work item about turning free prose into an anchor - that machinery predates 28f. Kept in the job pool as a distractor; padding it with a task written for the purpose is what this deliverable exists to avoid."
+    }
+  ],
+  "jobs": [
+    {
+      "id": "job-01",
+      "summary": "Turns an entry's free prose into at most ONE grounded code anchor, so a note somebody typed becomes findable by symbol; it refuses a tie rather than picking, because a wrong anchor sends every later reader to the wrong class.",
+      "anchor": "org.jawata.mcp.knowledge.SymbolAnchorResolver#resolve"
+    },
+    {
+      "id": "job-02",
+      "summary": "The one place that asks whether a type carries a named field or method, shared so the recall path and the anchoring path cannot drift apart on what counts as a member.",
+      "anchor": "org.jawata.mcp.knowledge.SymbolAnchorResolver#memberOn"
+    },
+    {
+      "id": "job-03",
+      "summary": "Rescales one score stream by its own best value so a word-match score can be added to cosines living on a different scale; afterwards a number says which row matches best relative to the others and never how good that match is, which is why nothing filters on it.",
+      "anchor": "org.jawata.mcp.knowledge.RelevanceMerge#normalise"
+    },
+    {
+      "id": "job-04",
+      "summary": "The one judgement a distance alone may make: below it the model reports essentially no shared meaning, so the row is not shown. Deliberately far below the weakest real answer ever measured, because it guards the off-corpus case rather than separating good from bad.",
+      "anchor": "org.jawata.mcp.knowledge.AnalogyPolicy#JUNK_FLOOR"
+    },
+    {
+      "id": "job-05",
+      "summary": "How many nominees reach the agent's context, set where failing to use knowledge we already hold costs more than a glance at a row that does not fit.",
+      "anchor": "org.jawata.mcp.knowledge.AnalogyPolicy#MAX_NOMINEES"
+    },
+    {
+      "id": "job-06",
+      "summary": "Answers which of the source files handed to it still need describing, so a run bounded by a token budget resumes where the last one stopped instead of starting over.",
+      "anchor": "org.jawata.mcp.knowledge.DescribedUnits#outstanding"
+    },
+    {
+      "id": "job-07",
+      "summary": "Records that one file has been described at the exact text it was described at, which is what lets a later edit put that file back in the queue by itself.",
+      "anchor": "org.jawata.mcp.knowledge.DescribedUnits#done"
+    },
+    {
+      "id": "job-08",
+      "summary": "Fingerprints a file's text so two runs can tell whether it changed between them, using the same function the memory files already use for the identical question.",
+      "anchor": "org.jawata.mcp.knowledge.DescribedUnits#hash"
+    },
+    {
+      "id": "job-09",
+      "summary": "Counts finished work per bundle for the progress the studio shows; it reports only what was done, because how much there is to do needs a loaded project this class cannot see.",
+      "anchor": "org.jawata.mcp.knowledge.DescribedUnits#describedPerBundle"
+    },
+    {
+      "id": "job-10",
+      "summary": "Decides which lifecycle governs a row \u2014 reviewed, corrected, versioned or regenerated \u2014 and answers nothing at all for a type no ruling covers, so an unclassified row stays visible instead of being filed under a default.",
+      "anchor": "org.jawata.mcp.knowledge.KnowledgeLane#of"
+    },
+    {
+      "id": "job-11",
+      "summary": "Splits rows into those that can be WRONG because the code moved and those that only transfer more or less well, which is what decides whether a row is gated on its address or offered as an analogy.",
+      "anchor": "org.jawata.mcp.knowledge.KnowledgeKind#of"
+    },
+    {
+      "id": "job-12",
+      "summary": "Answers where an anchored symbol lives in the code in front of you right now, and says plainly when it is no longer there \u2014 the difference between a note you can act on and one pointing at a name the workspace lost.",
+      "anchor": "org.jawata.mcp.knowledge.ExperienceRetrieval#resolvePointer"
+    }
+  ],
+  "designated": [
+    {
+      "task": "action=next(scope, limit) returns unit paths + JDT facts: members, callers, the package",
+      "job": "job-06",
+      "cite": "returns unit paths + JDT facts"
+    },
+    {
+      "task": "done REQUIRES the hash rather than re-reading the file, and the refusal says where the value came from",
+      "job": "job-07",
+      "cite": "REQUIRES the hash rather than re-reading the file"
+    },
+    {
+      "task": "a changed hash re-queues",
+      "job": "job-08",
+      "cite": "a changed hash re-queues"
+    },
+    {
+      "task": "stats reports coverage per bundle (areas described / packages)",
+      "job": "job-09",
+      "cite": "reports coverage per bundle"
+    },
+    {
+      "task": "the of() mapping that puts those two types in the CODE lane",
+      "job": "job-10",
+      "cite": "the `of()` mapping that puts those two types in the CODE lane"
+    },
+    {
+      "task": "job is address-bound by that enum's own definition; area is deliberately not, being scoped to a package with no symbol to check",
+      "job": "job-11",
+      "cite": "address-bound by that enum's own definition"
+    },
+    {
+      "task": "recall renders each anchor's LIVE file+line via PointerResolver; refresh() marks location lost and enqueues the unit in the ledger",
+      "job": "job-12",
+      "cite": "LIVE file+line"
+    },
+    {
+      "task": "the engine returns areas + top jobs, or nothing",
+      "job": "job-05",
+      "cite": "the engine returns areas + top jobs"
+    },
+    {
+      "task": "pairs score at or below the noise floor, so no cutoff admits the real answers without admitting noise",
+      "job": "job-04",
+      "cite": "no cutoff admits the real answers without"
+    },
+    {
+      "task": "the map is therefore the UNION the product's retrieval already uses - the identity/keyword path together with meaning - not a threshold over job texts",
+      "job": "job-03",
+      "cite": "the identity/keyword path together with meaning"
+    },
+    {
+      "task": "the work was not a new seam but making the one that exists answer at member granularity",
+      "job": "job-02",
+      "cite": "answer at member"
+    }
+  ],
+  "unrelated": [
+    {
+      "task": "action=next(scope, limit) returns unit paths + JDT facts: members, callers, the package",
+      "job": "job-11"
+    },
+    {
+      "task": "done REQUIRES the hash rather than re-reading the file, and the refusal says where the value came from",
+      "job": "job-12"
+    },
+    {
+      "task": "a changed hash re-queues",
+      "job": "job-05"
+    },
+    {
+      "task": "stats reports coverage per bundle (areas described / packages)",
+      "job": "job-04"
+    },
+    {
+      "task": "the of() mapping that puts those two types in the CODE lane",
+      "job": "job-03"
+    },
+    {
+      "task": "job is address-bound by that enum's own definition; area is deliberately not, being scoped to a package with no symbol to check",
+      "job": "job-02",
+      "topically_adjacent": "the task says 'no symbol to check' and this job IS the symbol-member check - address-boundness and member existence are the same question one step apart"
+    },
+    {
+      "task": "recall renders each anchor's LIVE file+line via PointerResolver; refresh() marks location lost and enqueues the unit in the ledger",
+      "job": "job-06",
+      "topically_adjacent": "the task ends 'enqueues the unit in the ledger' and this job IS that queue"
+    },
+    {
+      "task": "the engine returns areas + top jobs, or nothing",
+      "job": "job-07"
+    },
+    {
+      "task": "pairs score at or below the noise floor, so no cutoff admits the real answers without admitting noise",
+      "job": "job-08"
+    },
+    {
+      "task": "the map is therefore the UNION the product's retrieval already uses - the identity/keyword path together with meaning - not a threshold over job texts",
+      "job": "job-09"
+    },
+    {
+      "task": "the work was not a new seam but making the one that exists answer at member granularity",
+      "job": "job-10"
+    },
+    {
+      "task": "action=next(scope, limit) returns unit paths + JDT facts: members, callers, the package",
+      "job": "job-01"
+    }
+  ],
+  "near_duplicates": [
+    {
+      "a": "Answers which of the source files handed to it still need describing, so a run bounded by a token budget resumes where the last one stopped instead of starting over.",
+      "b": "Says which of the files it was handed have not been described yet, so a run that stops early picks up from there instead of repeating itself.",
+      "job": "job-06"
+    },
+    {
+      "a": "Fingerprints a file's text so two runs can tell whether it changed between them, using the same function the memory files already use for the identical question.",
+      "b": "Takes a fingerprint of a file's contents so a later run can tell whether the text moved under it.",
+      "job": "job-08"
+    },
+    {
+      "a": "Decides which lifecycle governs a row \u2014 reviewed, corrected, versioned or regenerated \u2014 and answers nothing at all for a type no ruling covers, so an unclassified row stays visible instead of being filed under a default.",
+      "b": "Works out which lifecycle a row is governed by, and answers nothing when no rule covers that type, so the row stays visible rather than being filed under a default.",
+      "job": "job-10"
+    },
+    {
+      "a": "The one judgement a distance alone may make: below it the model reports essentially no shared meaning, so the row is not shown. Deliberately far below the weakest real answer ever measured, because it guards the off-corpus case rather than separating good from bad.",
+      "b": "The distance under which the model is reporting no shared meaning at all, so the row is withheld; set well below the weakest answer ever seen because it guards the off-corpus case.",
+      "job": "job-04"
+    },
+    {
+      "a": "Answers where an anchored symbol lives in the code in front of you right now, and says plainly when it is no longer there \u2014 the difference between a note you can act on and one pointing at a name the workspace lost.",
+      "b": "Answers where an anchored symbol sits in today's code, and says plainly when it is gone.",
+      "job": "job-12"
+    },
+    {
+      "a": "Rescales one score stream by its own best value so a word-match score can be added to cosines living on a different scale; afterwards a number says which row matches best relative to the others and never how good that match is, which is why nothing filters on it.",
+      "b": "Puts one stream of scores on the scale of another by dividing through by its own best, so the two can be added; the result ranks rows against each other and says nothing about how good any match is.",
+      "job": "job-03"
+    }
+  ]
+}
