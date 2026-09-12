@@ -219,9 +219,13 @@ class SchemaMigrationsTest {
         }
         assertEquals(String.valueOf(SchemaMigrations.LATEST),
             scalar(dir, "SELECT version FROM schema_version"), "fresh install is at LATEST");
-        assertEquals("java",
-            scalar(dir, "SELECT language FROM experience_entry WHERE id = '" + id + "'"),
-            "new writes default language=java");
+        // Sprint 28f (E6): this used to read `assertEquals("java", …)` — "new writes
+        // default language=java" — and that default is exactly what E6 removed. The row
+        // above is a plain put: no symbol, no language, nothing to be the language OF. So
+        // the column now behaves like every other one this method checks, present and
+        // null for a plain put, and the store no longer records prose as Java.
+        assertNull(scalar(dir, "SELECT language FROM experience_entry WHERE id = '" + id + "'"),
+            "a plain put names no language, and is no longer guessed to be Java");
         // Sprint 21b (v3): the skip-unchanged hash column exists on a fresh install.
         assertNull(scalar(dir, "SELECT source_hash FROM experience_entry WHERE id = '" + id + "'"),
             "plain put has no source hash (column exists, value null)");

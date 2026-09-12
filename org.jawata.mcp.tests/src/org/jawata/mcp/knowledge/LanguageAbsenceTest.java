@@ -70,22 +70,62 @@ class LanguageAbsenceTest {
     }
 
     /**
-     * AND THE STALENESS SWEEP LEAVES IT.
+     * A RE-INGEST DOES NOT QUIETLY RE-INTRODUCE THE GUESS.
      *
-     * <p>The resolver here answers FALSE for everything — the state of a machine whose
-     * project has moved or was never loaded. Under it, any row the sweep judges is
-     * superseded or marked evidence-dead, so "still accepted afterwards" is a real claim
-     * rather than a quiet one.</p>
+     * <p>The first load writes through {@code insert}; a second load of a CHANGED file
+     * writes through {@code updateSourcedRow}, a different statement with its own copy of
+     * every column binding — and the site this sprint added, which is where the defaulting
+     * came back in new code the first time. A test that loads once exercises one of the
+     * two and says nothing about the path a story takes for the rest of its life.</p>
+     */
+    @Test
+    void a_reloaded_story_still_names_no_language(@TempDir Path dir, @TempDir Path roots)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            ExperienceMaintenance maintenance = new ExperienceMaintenance(store, fqn -> null);
+            prose(roots, "a-claim", "a story whose wording is settled");
+            assertEquals(1, maintenance.load(roots, true).get("loaded"), "the control");
+
+            // Same description, changed body — so the row is REWRITTEN where it lies,
+            // which is the path with its own column bindings.
+            Files.writeString(roots.resolve("a-claim.md"),
+                "---\nname: a-claim\ndescription: a story whose wording is settled"
+                    + "\ntype: domain_fact\n---\n\nThe body, corrected.\n");
+            Map<String, Object> second = maintenance.load(roots, true);
+            assertEquals(1, second.get("loaded"),
+                () -> "the control: it really re-ingested — " + second);
+
+            Map<String, Object> languages = byLanguage(store);
+            assertEquals(1L, store.count(), "the control: still one row");
+            assertNotEquals(1L, languages.get("java"),
+                () -> "A REWRITE MUST NOT RE-GUESS. The update path carries its own copy of"
+                    + " every binding, and it is where a default creeps back in: " + languages);
+        }
+    }
+
+    /**
+     * AND THE STALENESS SWEEP LEAVES IT — a REGRESSION LOCK, and not a test of this change.
      *
-     * <p><b>The story carries NO symbol, and getting that wrong is what this javadoc is
-     * for.</b> The first version of this case gave it {@code symbol: com.example.Gone#method}
-     * "to reach the language branch" — and that manufactured a case where sweeping is
-     * CORRECT: a story that deliberately anchors itself to a Java symbol is making a claim
-     * about code, and when the symbol goes the story really is stale. Satisfying that
-     * assertion meant making the resolver skip explicit Java anchors, which turned
-     * SEVENTEEN existing tests red. They were right; the test was wrong. E6's sentence is
-     * about a story that names no language — not one that names a symbol — and a story of
-     * prose is exactly that.</p>
+     * <p><b>Stated plainly because an auditor had to point it out: this case is invariant
+     * under E6's own mutation.</b> Restore the {@code "java"} literal at the insert and it
+     * stays green. {@code refresh} drops a row at its FQN guard — <i>no anchor, nothing to
+     * resolve</i> — several lines before the language is consulted at all, so a story of
+     * prose was already left alone and E6 did not make it so. What the clause describes was
+     * true before this stage and is true after it.</p>
+     *
+     * <p>It is kept anyway, as the lock on the composed behaviour: a story can be loaded
+     * from a file, carry no language, and survive a sweep run by a resolver that resolves
+     * NOTHING — the state of a machine whose project has moved or was never loaded. The
+     * mechanism is named here so nobody later reads the green as evidence for the change
+     * above it.</p>
+     *
+     * <p><b>And the first version of this case asserted something E6 never claimed.</b> It
+     * gave the story {@code symbol: com.example.Gone#method} "to reach the language branch",
+     * which manufactures a case where sweeping is CORRECT — a story that deliberately
+     * anchors itself to a Java symbol is making a claim about code, and when the symbol
+     * goes the story really is stale. Satisfying it meant making the resolver skip explicit
+     * Java anchors, which turned SEVENTEEN existing tests red. They were right; the test
+     * was wrong.</p>
      */
     @Test
     void the_staleness_sweep_leaves_a_story_that_names_no_language(@TempDir Path dir,

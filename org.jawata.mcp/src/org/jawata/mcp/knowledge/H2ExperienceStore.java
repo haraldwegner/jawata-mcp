@@ -732,10 +732,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setTimestamp(12, Timestamp.from(Instant.now()));
                 ps.setString(13, workspaceId);
                 ps.setString(14, projectId);
-                // Sprint 28f E6 — AN ABSENT LANGUAGE IS NULL, NOT "java".
-                // A markdown story declares no language; calling it Java made every
-                // staleness sweep try to resolve its anchor as a Java symbol and
-                // report it stale when that failed. See the note at `insert`.
+                // Sprint 28f E6 — an absent language is NULL here too, for the reason and
+                // with the bounds written at `insert`. A re-ingest must not quietly
+                // re-introduce the guess the insert stopped making.
                 ps.setString(15, blankToNull(entry.language()));
                 ps.setString(16, sourceHash);
                 ps.setString(17, entry.situation());
@@ -860,16 +859,23 @@ public final class H2ExperienceStore implements ExperienceStore {
                 //
                 // This column used to default to "java" for any entry that declared no
                 // language, which is most of them: a markdown story states a claim and
-                // names no language at all. The consequence was not cosmetic. The
-                // staleness sweep re-resolves a row's anchor THROUGH JDT when the row
-                // says java — so every note written in prose was handed to a Java symbol
-                // resolver, failed to resolve, and was reported stale. The store told its
-                // reader that correct knowledge had rotted.
+                // names no language at all. NULL is a different statement from "java" —
+                // one says the author named nothing, the other says they named this — and
+                // a store that writes the same value for both has destroyed the
+                // difference at the only moment it could have been recorded.
                 //
-                // NULL is the honest value and it is a different statement from "java":
-                // one says the author named no language, the other says they named this
-                // one. A store that cannot tell those apart cannot decide which rows a
-                // Java-symbol sweep is even about — which is the whole of E6.
+                // WHAT THIS BUYS, stated narrowly, because the first version of this
+                // comment claimed more and the code beside it refuted the claim. It buys
+                // the READING surfaces: `by_language` counts prose outside `java`, the
+                // language filter on the list query stops returning it, and export/import
+                // carry the absence rather than manufacturing a value.
+                //
+                // WHAT IT DOES NOT BUY, and this is the half the first version got wrong:
+                // it does not change the staleness sweep. `refresh` drops a row for having
+                // no anchor long before the language is consulted, and
+                // `StoredEntry.isJavaResolvable` still reads a NULL language as
+                // Java-resolvable — deliberately, for the reason written there. A row with
+                // a Java FQN anchor is swept exactly as it was before this change.
                 ps.setString(18, blankToNull(entry.language()));
                 ps.setString(19, sourceHash);
                 // Sprint 27 D2: embed on write. The vector is what the entry

@@ -97,6 +97,30 @@ public final class ExperienceTool implements Tool {
         + " knowledge leaves this machine, and wipe_and_import is how a folder REPLACES"
         + " the store, which is a different and deliberately louder act.";
 
+    /**
+     * Sprint 28f E6 — the language of a recorded entry's ANCHOR, defaulted where the
+     * schema says it is defaulted and nowhere else.
+     *
+     * <p>An explicit value always wins. Absent, the answer depends on whether there is an
+     * anchor at all: a row carrying a symbol gets {@code java}, which is this door's
+     * published default and the assumption every reader of that symbol already makes; a
+     * row carrying none gets NULL, because "anchor language" is not a question a row
+     * without an anchor has an answer to.</p>
+     *
+     * <p>The distinction is the whole of E6. Before it, one literal in the storage layer
+     * answered for both, so a lesson written in prose was recorded, counted and listed as
+     * Java — and the store could not afterwards tell a note ABOUT Java code from a note
+     * that simply never said.</p>
+     */
+    private static String languageOf(com.fasterxml.jackson.databind.JsonNode args) {
+        String declared = text(args, "language");
+        if (declared != null && !declared.isBlank()) {
+            return declared;
+        }
+        String symbol = text(args, "symbol");
+        return symbol == null || symbol.isBlank() ? null : "java";
+    }
+
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -2098,7 +2122,20 @@ public final class ExperienceTool implements Tool {
             .symptoms(strings(args, "symptoms"))
             .faultOwner(text(args, "fault_owner"))
             .externalSystem(text(args, "external_system"))
-            .language(text(args, "language"))
+            // SPRINT 28f E6 — THE DOCUMENTED DEFAULT, APPLIED WHERE IT IS DOCUMENTED.
+            //
+            // This door's own schema has always said "anchor language (default java)",
+            // and no code here applied it: the default lived in the STORAGE layer, as a
+            // literal written for every row whose author named nothing. So the promise
+            // was kept by a side effect two layers down, which also meant it was kept for
+            // rows that have no anchor at all — a story of prose, counted as Java.
+            //
+            // E6 removed that literal, which is what makes this line necessary: the
+            // default belongs to the verb that documents it. And it is CONDITIONAL on a
+            // symbol, because the schema's own words are "ANCHOR language" — with no
+            // anchor there is nothing for a language to be the language OF, and guessing
+            // one is how prose ended up in the Java column in the first place.
+            .language(languageOf(args))
             // Sprint 28c (D3): the facets the gate just validated. `form` is
             // stamped by the ENGINE, not accepted from the caller — it records
             // whether the entry arrived in the 28c shape, and a caller that
