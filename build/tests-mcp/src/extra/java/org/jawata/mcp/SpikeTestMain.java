@@ -170,20 +170,75 @@ public final class SpikeTestMain {
     }
 
     /**
-     * Stall watchdog (2026-07-12, after two blind CI runs — GitHub DISCARDS a
+     * 45 minutes. See {@link #startWatchdog} for why it is not five.
+     *
+     * <p>The floor is DERIVED rather than chosen: this backstop must sit above the
+     * deepest per-test backstop in the suite, or it pre-empts it and replaces a
+     * precise failure with a halted shard. Two tie at 1800 s —
+     * {@code QualityBaselineTest}, whose one test drives three family sweeps each
+     * carrying {@code Sweeps.DEADLINE_MILLIS} of 600 s, and
+     * {@code RebuildKeepsWhatNoFileCanRestoreTest}, whose declared {@code @Timeout}
+     * is 1800 s. Both are 1800 s of legitimate SILENCE, since no test event is
+     * emitted while one test runs. 45 minutes clears that with headroom; nothing in
+     * this suite comes near it.</p>
+     */
+    private static final long DEFAULT_STALL_MILLIS = 45 * 60 * 1000L;
+
+    /**
+     * How long a shard may emit NOTHING before it is declared hung.
+     * {@code -Djawata.suite.stallSeconds=<n>} overrides it; an unreadable or
+     * non-positive value keeps the default rather than disabling the backstop.
+     */
+    private static long stallMillis() {
+        String raw = System.getProperty("jawata.suite.stallSeconds");
+        if (raw == null) {
+            return DEFAULT_STALL_MILLIS;
+        }
+        try {
+            long secs = Long.parseLong(raw.trim());
+            return secs > 0 ? secs * 1000L : DEFAULT_STALL_MILLIS;
+        } catch (NumberFormatException e) {
+            return DEFAULT_STALL_MILLIS;
+        }
+    }
+
+    /**
+     * Stall backstop (2026-07-12, after two blind CI runs — GitHub DISCARDS a
      * cancelled step's log, so the runner must self-diagnose): no event for
-     * 5 minutes → print the stuck location + a full thread dump and halt with
-     * 124. Armed BEFORE class loading — run 3 proved the pre-execution window
-     * is where hangs hide.
+     * {@link #stallMillis()} → print the stuck location + a full thread dump and
+     * halt with 124. Armed BEFORE class loading — run 3 proved the pre-execution
+     * window is where hangs hide.
+     *
+     * <p><b>It is a BACKSTOP, and it was priced as a latency budget (2026-09-12).</b>
+     * At five minutes it sat close enough to real work that a legitimately slow class
+     * tripped it under shard contention, and the shard was HALTED mid-run. What the
+     * run then printed is the dangerous part: {@code failed=0} over half the tests,
+     * which reads green. Seen twice that day — once reporting 1484 of ~3030 tests,
+     * once 2269 — and the only thing that gave it away was the total, not the status.
+     *
+     * <p>The two instruments are priced by different rules, and that is the whole
+     * correction. A budget must sit NEAR the work, or it detects no slowness; a
+     * backstop only has to beat INFINITY, so it sits far above the worst legitimate
+     * run. Priced like a budget, a backstop inherits the budget's false alarms
+     * without its calibration — it fires on any machine slower or busier than the
+     * author's, a different class each time.
+     *
+     * <p>So detecting "this test took too long" is no longer this thread's job. A
+     * test that needs a budget declares its own {@code @Timeout}: that names the
+     * test, fails only that test, and leaves the rest of the shard's results
+     * standing. This halts everything and names nothing, which is why it now fires
+     * only where the alternative is waiting forever.
      */
     private static void startWatchdog(long[] lastEvent, String[] currentClass) {
+        final long stall = stallMillis();
         Thread watchdog = new Thread(() -> {
             while (true) {
                 try { Thread.sleep(30_000); } catch (InterruptedException e) { return; }
                 long idle = System.currentTimeMillis() - lastEvent[0];
-                if (idle > 300_000) {
-                    System.out.printf("%n=== STALL: no event for %ds — stuck in %s ===%n",
-                        idle / 1000, currentClass[0]);
+                if (idle > stall) {
+                    System.out.printf("%n=== STALL: no event for %ds (backstop %ds)"
+                            + " — stuck in %s ===%n",
+                        idle / 1000, stall / 1000, currentClass[0]);
                     Thread.getAllStackTraces().forEach((t, st) -> {
                         System.out.println("--- thread: " + t.getName() + " (" + t.getState() + ")");
                         for (StackTraceElement e : st) System.out.println("    at " + e);

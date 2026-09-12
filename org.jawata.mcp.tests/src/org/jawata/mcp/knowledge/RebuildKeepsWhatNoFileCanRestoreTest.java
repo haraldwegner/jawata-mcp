@@ -7,11 +7,13 @@ import org.jawata.mcp.tools.ExperienceTool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,7 +47,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link TombstoneTest} cases went red because kept-out pollution was suddenly
  * kept in. An excluded file source is not a silent loss — it is reported, it is
  * tombstoned, the file still exists, and a reseed of its root revives it.</p>
+ *
+ * <p><b>This class declares its own hang backstop, and it is the slowest in the
+ * suite (2026-09-12).</b> Measured at a shard's fair share of the cores: 173 s for
+ * the class. That is legitimate work, not a defect — but it was long enough to
+ * out-sit the runner's process-level stall watchdog under shard contention, and
+ * that watchdog HALTS THE WHOLE SHARD: the run then reported {@code failed=0} over
+ * half the tests, which reads green. So the budget is declared HERE, where it can
+ * name the test that blew it and fail only that test.</p>
+ *
+ * <p><b>The 173 s is ONE test, and the average would have mispriced this.</b> The
+ * first cut read 173 s over three tests as ~58 s each and set 600 s, calling it ten
+ * times the measurement. The control disproved it: with the budget cut to 1 s,
+ * exactly ONE test failed and two passed, so the other two finish inside a second
+ * and {@code a_reseed_rebuilds_the_file_lane_and_touches_nothing_else} is
+ * essentially the whole 173 s. A backstop is priced off the WORST run; an average
+ * over an uneven distribution is not that number.</p>
+ *
+ * <p>Hence 1800 s. The multiplier that matters is the slowest machine this runs on,
+ * not this one: {@code Sweeps.DEADLINE_MILLIS} records a two-core CI runner
+ * measuring about five times slower than this twenty-core box, which puts the worst
+ * legitimate run near 865 s. 1800 s clears that with room, and it costs nothing when
+ * things are healthy — a passing test returns when its work is done and never waits
+ * for the deadline.</p>
+ *
+ * <p><b>What this does NOT do, measured rather than assumed: it does not interrupt.</b>
+ * JUnit's default thread mode is {@code SAME_THREAD}, so the deadline is checked
+ * when the method RETURNS. The 1 s control run above still took 176 s — the test
+ * ran its full length and the timeout was reported afterwards. So this catches a
+ * test that is slow and FINISHES, naming it and failing only it; a test that is
+ * genuinely WEDGED never returns, this never fires, and the runner's process-level
+ * backstop is the only thing left. That is the partition on purpose, and it is why
+ * that backstop still exists — see {@code SpikeTestMain.startWatchdog}.</p>
  */
+@Timeout(value = 1800, unit = TimeUnit.SECONDS)
 class RebuildKeepsWhatNoFileCanRestoreTest {
 
     private ObjectMapper mapper;

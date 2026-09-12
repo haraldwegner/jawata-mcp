@@ -20,6 +20,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Sprint 22a P2-c — baseline / trend diffing on a family sweep: a first diff (no
  * baseline) reports every finding as new; after save, a re-run reports them all
  * unchanged.
+ *
+ * <p><b>DELIBERATELY NO {@code @Timeout}, and this is the note that says why
+ * (2026-09-12).</b> This is one of the suite's longest-running classes, so it looks
+ * exactly like a class that wants a declared budget. It already has three: its one
+ * test drives {@code Sweeps.run} three times, and each call carries
+ * {@code Sweeps.DEADLINE_MILLIS} — a 600 s hang backstop that fails the test NAMING
+ * the sweep that never finished.</p>
+ *
+ * <p>A class-level {@code @Timeout} here would be worse than redundant. Priced
+ * below 1800 s it would fire FIRST and replace that precise message with
+ * "the test took too long"; priced above it, it would never fire at all. The budget
+ * belongs at the layer that knows what it is waiting for, and that layer is
+ * {@code Sweeps}.</p>
+ *
+ * <p>What this class does need is the runner's process-level backstop to sit above
+ * its worst legitimate silence — 3 × 600 s, since no test event is emitted while a
+ * sweep polls. {@code SpikeTestMain.DEFAULT_STALL_MILLIS} is derived from exactly
+ * that number.</p>
  */
 class QualityBaselineTest {
 
