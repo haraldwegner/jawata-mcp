@@ -68,36 +68,25 @@ class StatsEmbeddingCoverageTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(
             EmbeddingService.shared().available(),
             "no embedder available — the coverage assertions cannot run");
-        // Seeded through the STORE rather than through the tool's import verb, and
-        // the difference is Sprint 28f E5.
-        //
-        // This used to drive `kind=import` under a comment reading "a live record
-        // embeds on write, but a restored backup does not — the backfill owns its
-        // coverage." That premise is what E5 removed: the import verb now DRAINS
-        // before it answers, precisely so a caller cannot be handed rows it can list
-        // and cannot find. So the tool path no longer produces an n-of-total window
-        // at all, and this test began failing with "3/3" — the change working, seen
-        // from the one test that depended on the old behaviour.
-        //
-        // The partial window is still a REAL state, which is why this test keeps its
-        // subject: a restore, or an embedder identity bump, leaves rows the backfill
-        // owns. The store's own importEntries is that state's honest source — it
-        // writes rows and embeds nothing, which is exactly what a restore does.
-        // Whether the IMPORT VERB embeds on write is a different claim with its own
-        // test; asserting both here would have made one test answer two questions.
+        // Seed THROUGH the tool, as an IMPORT: a live record embeds on write,
+        // but a restored backup does not — the backfill owns its coverage.
+        // That is exactly the real n-of-total state (a restore, or an
+        // identity bump) rather than an artificial one.
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "import");
+        var entries = args.putArray("entries");
         int n = 1;
-        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
         for (String s : new String[] {
                 "the first seeded lesson about queue retries",
                 "the second seeded lesson about socket timeouts",
                 "the third seeded lesson about cache warmup"}) {
-            rows.add(java.util.Map.of(
-                "id", "0a1b2c3d-0000-4000-8000-00000000000" + n++,
-                "type", "lesson",
-                "summary", s,
-                "status", "accepted"));
+            ObjectNode e = entries.addObject();
+            e.put("id", "0a1b2c3d-0000-4000-8000-00000000000" + n++);
+            e.put("type", "lesson");
+            e.put("summary", s);
+            e.put("status", "accepted");
         }
-        ((H2ExperienceStore) store).importEntries(rows);
+        assertTrue(tool.execute(args).isSuccess());
 
         Map<String, Object> before = entryLane(stats());
         long embeddedBefore = ((Number) before.get("embedded")).longValue();
