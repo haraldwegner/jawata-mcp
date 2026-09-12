@@ -140,9 +140,14 @@ class CatalogExtractorReproducesItsArtifactTest {
 
         List<String> order = new ArrayList<>();
         row.fieldNames().forEachRemaining(order::add);
+        // 28f D9 PAID THAT PRICE DELIBERATELY: `type`, `category` and `tags` are gone,
+        // which re-hashes all 187 rows. It is the one edit this comment sanctions — a
+        // change made because it was MEANT, with the artifact regenerated in the same
+        // commit. The guard is unchanged in kind: it still pins the order, so the NEXT
+        // accidental reordering still costs a red test rather than 187 silent rewrites.
         assertEquals(
-            List.of("slug", "type", "situation", "cause", "principle", "details",
-                "source_ref", "entry_point_class", "category"),
+            List.of("slug", "situation", "cause", "principle", "details",
+                "source_ref", "entry_point_class"),
             order,
             () -> "the row hash covers the serialised row, so a reordering supersedes and"
                 + " rewrites all 187 entries while changing nothing. Change this list only"

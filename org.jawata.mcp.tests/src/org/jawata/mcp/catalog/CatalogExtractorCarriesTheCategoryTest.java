@@ -247,13 +247,25 @@ class CatalogExtractorCarriesTheCategoryTest {
         JsonNode row = new CatalogExtractor(root, "java-design-patterns", "22a34127", Map.of())
             .snapshot(records, json).path("patterns").path(0);
 
-        assertEquals("Creational", row.path("category").asText(null),
-            () -> "the declared family must be IN the snapshot — the record holding it is"
-                + " not the deliverable, because nothing downstream reads a record. Row: "
-                + row);
-        assertEquals(List.of("Gang of Four", "Instantiation"),
-            List.of(row.path("tags").get(0).asText(), row.path("tags").get(1).asText()),
-            () -> "and the tags with it, in declaration order. Row: " + row);
+        // REVERSED AT 28f D9, and the reason is this test's own sentence turned on itself:
+        // "nothing downstream reads a record". Measured before removing — no reader for
+        // `category` or `tags` in CatalogueSeeder, CatalogueManifest or CatalogueSources —
+        // and nothing downstream reads the SNAPSHOT's copy either. So the field was moved
+        // from one unread place to another, and it cost every row's hash to do it.
+        assertTrue(row.path("category").isMissingNode(),
+            () -> "the snapshot must NOT carry a family: nothing reads it, and a field"
+                + " written for no reader is weight on 187 row hashes. Row: " + row);
+        assertTrue(row.path("tags").isMissingNode(),
+            () -> "and no tags with it, for the same reason. Row: " + row);
+
+        // WHAT SURVIVES IS THE PARSE, because the measurement behind it was expensive and
+        // is still true: 185 of 187 READMEs write `category:` and 182 write `tag:`. A
+        // later reader that needs the family gets the both-spellings reader rather than
+        // rediscovering the split — the finding is kept, its unread output is not.
+        assertEquals("Creational", records.get(0).category(),
+            () -> "the RECORD still parses the declared family: " + records.get(0));
+        assertEquals(List.of("Gang of Four", "Instantiation"), records.get(0).tags(),
+            () -> "and its tags, in declaration order: " + records.get(0));
     }
 
     /**

@@ -603,7 +603,12 @@ public final class CatalogExtractor {
             // NOTE: the COMMITTED snapshot still carries the old pair. Correcting it
             // means re-running this extraction against the fork checkout, which
             // re-hashes every record and rewrites all 187 rows.
-            n.put("type", "reference");
+            // `type` IS GONE — Sprint 28f D9, taking the raw's smaller option for the
+            // manifest fields nothing reads. Verified before removing rather than
+            // assumed: neither CatalogueSeeder, CatalogueManifest nor CatalogueSources
+            // reads this key, so the catalogue row's `reference` type is set in CODE and
+            // was merely being echoed here. A field written and never read is weight on
+            // every row's hash for nothing.
             n.put("situation", r.situation());
             // EVERY OPTIONAL FIELD GOES THROUGH ONE WRITER, and that is the design fix
             // rather than the three repetitions it replaces. See putIfPresent.
@@ -638,11 +643,17 @@ public final class CatalogExtractor {
             // 187 READMEs name a family, so nothing upstream currently exercises the
             // absent branch — the rule stands regardless, because it is a rule and not a
             // census.
-            putIfPresent(n, "category", r.category());
-            if (!r.tags().isEmpty()) {
-                ArrayNode tags = n.putArray("tags");
-                r.tags().forEach(tags::add);
-            }
+            // `category` AND `tags` ARE GONE, with `type`, for the same reason and by the
+            // same check: no reader in the seeder, the manifest or the sources. They were
+            // added in the previous sprint on the reasoning that a pattern's own family
+            // is worth carrying, and that reasoning was never wrong about the FORK — it
+            // was wrong about this store, which ranks on situation and cause and never
+            // consults either. The readers that would have justified them do not exist.
+            //
+            // `categoryOf` and `tagsOf` are KEPT, reading both spellings, because the
+            // measurement they encode is expensive and true: 185/187 write `category:`
+            // and 182/187 write `tag:`. A later reader gets the parse rather than
+            // rediscovering the split.
             arr.add(n);
         }
         return root;
