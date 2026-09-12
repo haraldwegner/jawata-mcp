@@ -163,6 +163,42 @@ class DescribeVerbTest {
     }
 
     /**
+     * PROGRESS REACHES A READER. A ledger whose counts nothing renders is the same shape as
+     * a verb nothing dispatches — and {@code describedPerBundle} had no caller until this.
+     */
+    @Test
+    @DisplayName("stats reports describing progress, in its own block")
+    void stats_reports_describing_progress() {
+        ObjectNode next = args("next");
+        next.put("scope", "com.example");
+        List<Map<String, Object>> units = unitsOf(tool.execute(next));
+        assertFalse(units.isEmpty(), "proof of life");
+
+        ObjectNode done = args("done");
+        done.put("unit", String.valueOf(units.get(0).get("unit")));
+        done.put("contentHash", String.valueOf(units.get(0).get("contentHash")));
+        done.put("bundle", "compile-clean");
+        assertTrue(tool.execute(done).isSuccess());
+
+        ObjectNode statsArgs = json.createObjectNode();
+        statsArgs.put("kind", "stats");
+        Map<String, Object> stats = dataOf(tool.execute(statsArgs));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> describing = (Map<String, Object>) stats.get("describing");
+        assertNotNull(describing, "stats must carry the describing block: " + stats.keySet());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> perBundle =
+            (Map<String, Object>) describing.get("describedPerBundle");
+        assertEquals(1L, perBundle.get("compile-clean"),
+            "the unit just described is counted under its bundle: " + describing);
+        assertNotNull(stats.get("catalogue"),
+            "and the PATTERN catalogue block is still its own section — two sections of one"
+                + " name meaning different things is what the rename avoids, and folding"
+                + " these together would reintroduce it where a reader compares them");
+    }
+
+    /**
      * The parameters are PUBLISHED. The schema is the only thing an agent can see, so a
      * parameter the code reads and the schema omits is usable and undiscoverable — the
      * sibling of the defect {@code ExperienceTool.KINDS}' own javadoc records for verbs, and

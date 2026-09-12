@@ -870,6 +870,27 @@ public final class ExperienceTool implements Tool {
         }
         out.put("catalogue", catalogueBlock());
         out.put("substrate", substrateBlock());
+        // Sprint 28f Stage 7 — how much of the code has been DESCRIBED, per bundle.
+        //
+        // Named `describing` and NOT folded into `catalogue` above, which on this store means
+        // the imported PATTERN catalogue: two sections of one name meaning different things is
+        // exactly what the deliverable's rename avoids, and putting them in one block would
+        // reintroduce it at the only place a reader compares them.
+        //
+        // The numerator only. The denominator — how many units a bundle HOLDS — is JDT's and
+        // belongs to the reader that has a project loaded (`describe action=next` answers it
+        // as `inScope`, and MemoryView renders the ratio). A count printed here against a
+        // total this method cannot see would be a ratio invented at the point of display.
+        java.util.Map<String, Object> describing = new java.util.LinkedHashMap<>();
+        describing.put("describedPerBundle", describedUnits().describedPerBundle());
+        long lost = describedUnits().failedWrites();
+        if (lost > 0) {
+            // Said beside the counts, never swallowed: progress computed over lost rows reads
+            // as "these units were never described" when the truth is "we failed to write it
+            // down", and the two lead to opposite next actions.
+            describing.put("lostBookkeepingWrites", lost);
+        }
+        out.put("describing", describing);
         // Sprint 27a Stage 6 (D5's first half): embedding coverage per lane,
         // live — n of total while the backfill runs, total of total after.
         // Degrades honestly: no embedder → the block says so with the reason;
