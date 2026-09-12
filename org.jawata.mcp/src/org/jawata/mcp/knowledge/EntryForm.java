@@ -1,6 +1,8 @@
 package org.jawata.mcp.knowledge;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -165,6 +167,36 @@ public final class EntryForm {
      */
     public static Optional<Refusal> check(String type, String summary, List<String> symptoms,
                                           String situation, String verdict) {
+        return check(type, summary, symptoms, situation, verdict, null);
+    }
+
+    /**
+     * As {@link #check(String, String, List, String, String)}, plus the rules a JOB owes
+     * against the member it is anchored to — Sprint 28f Stage 7.
+     *
+     * <p><b>An overload rather than a widened signature, and the reason is the count.</b>
+     * {@code check} has twelve references, four of them production, and none of those
+     * callers holds an anchor or has any use for one. Widening would have made every one
+     * of them pass a null to satisfy a rule about a type they never record. The five-argument
+     * form keeps meaning exactly what it meant and delegates with no anchor, which is also
+     * what makes {@code without_an_anchor_the_job_rules_cannot_fire} a real assertion rather
+     * than a restatement.</p>
+     *
+     * <p><b>What is NOT enforced here, stated rather than left to be discovered.</b> The
+     * stage's deliverable also says a job's summary "has a verb". There is no sound
+     * mechanical test for that — every cheap proxy refuses good summaries — and a guessy
+     * gate on a store an agent writes into all day costs more than the shape it catches.
+     * What IS enforced is the failure that actually occurs: a summary that restates the
+     * identifier instead of saying what it is FOR. That subsumes the common verb case,
+     * because the identifier usually carries the verb already. Raised at C7 rather than
+     * shipped as a check that guesses.</p>
+     *
+     * @param anchor the member this entry hangs on ({@code pkg.Type#member}), or
+     *               {@code null} when there is none — with no anchor there is nothing to
+     *               call a restatement OF, so the comparison stays silent
+     */
+    public static Optional<Refusal> check(String type, String summary, List<String> symptoms,
+                                          String situation, String verdict, String anchor) {
         Optional<AdmissionPolicy.Refusal> shape = AdmissionPolicy.check(summary, symptoms);
         if (shape.isPresent()) {
             return Optional.of(new Refusal(shape.get().field(), shape.get().message()));
@@ -193,6 +225,15 @@ public final class EntryForm {
                 + " file lives — a path answers a question this store is not for."
                 + " REPHRASE: " + SITUATION_SHAPES
                 + " The path belongs in 'details'."));
+        }
+
+        // Sprint 28f Stage 7 — the CODE lane's own form, and it binds BEFORE the
+        // experience branch because a job is neither an experience nor a bare fact: it
+        // owes no situation and no outcome, and it does owe something the others do not
+        // — that it says what the member is FOR rather than what the member is CALLED.
+        Optional<Refusal> derived = checkDerived(type, summary, anchor);
+        if (derived.isPresent()) {
+            return derived;
         }
 
         if (!isExperience(type)) {
@@ -233,6 +274,83 @@ public final class EntryForm {
                 + " choice when it has not been settled."));
         }
         return Optional.empty();
+    }
+
+    /**
+     * The CODE lane's form — Sprint 28f Stage 7. Empty for every other type.
+     *
+     * <p>A job says what one member is FOR. The failure it refuses is the one an agent
+     * cataloguing code falls into by default: writing the signature back in prose. Both
+     * {@code "parse(ICompilationUnit)"} and {@code "parse compilation unit"} restate what
+     * the reader can already see, cost a row, and answer no question — and once stored
+     * they rank against real questions forever.</p>
+     *
+     * <p>The comparison is on WORDS, not on the string: an identifier and its re-spaced
+     * prose are the same statement, and only splitting camel case sees that. A summary
+     * that adds anything the identifier does not carry is admitted, which is the whole
+     * bar — it need not be eloquent, it must say something more than the name.</p>
+     */
+    private static Optional<Refusal> checkDerived(String type, String summary, String anchor) {
+        String t = type == null ? "" : type.strip().toLowerCase(Locale.ROOT);
+        if (!KnowledgeLane.CODE_TYPES.contains(t)) {
+            return Optional.empty();
+        }
+        String said = summary == null ? "" : summary.strip();
+        if (said.indexOf('(') >= 0) {
+            return Optional.of(new Refusal("summary",
+                "summary '" + said + "' carries a signature, so it restates what the reader"
+                + " can already see. RULE: a job says what the member is FOR — the thing a"
+                + " signature cannot tell you — and the parameter list is already in the"
+                + " code this row points at."
+                + " REPHRASE: say what a caller gets out of it, in the words a person would"
+                + " use asking for it."));
+        }
+        if (anchor == null || anchor.isBlank()) {
+            // Nothing to call a restatement OF. The rule that compares them stays silent
+            // rather than guessing — an anchorless job is refused by nothing here.
+            return Optional.empty();
+        }
+        List<String> saidWords = words(said);
+        List<String> nameWords = words(memberOf(anchor));
+        if (!nameWords.isEmpty() && saidWords.equals(nameWords)) {
+            return Optional.of(new Refusal("summary",
+                "summary '" + said + "' restates the member's own name and adds nothing."
+                + " RULE: the identifier is already at the anchor this row carries, so a"
+                + " summary that spells it out — with spaces or without — costs a row and"
+                + " answers no question."
+                + " REPHRASE: say what it is FOR, not what it is called."));
+        }
+        return Optional.empty();
+    }
+
+    /** The member half of {@code pkg.Type#member}, or the whole string when it has none. */
+    private static String memberOf(String anchor) {
+        int hash = anchor.indexOf('#');
+        return hash < 0 ? anchor : anchor.substring(hash + 1);
+    }
+
+    /** Lower-case words, splitting camel case as well as punctuation and spaces. */
+    private static List<String> words(String text) {
+        List<String> out = new ArrayList<>();
+        StringBuilder word = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            boolean boundary = Character.isUpperCase(c) && word.length() > 0
+                && Character.isLowerCase(text.charAt(i - 1));
+            if (!Character.isLetterOrDigit(c) || boundary) {
+                if (word.length() > 0) {
+                    out.add(word.toString().toLowerCase(Locale.ROOT));
+                    word.setLength(0);
+                }
+            }
+            if (Character.isLetterOrDigit(c)) {
+                word.append(c);
+            }
+        }
+        if (word.length() > 0) {
+            out.add(word.toString().toLowerCase(Locale.ROOT));
+        }
+        return out;
     }
 
     /**
