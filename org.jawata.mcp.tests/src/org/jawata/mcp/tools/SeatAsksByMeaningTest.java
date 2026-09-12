@@ -277,6 +277,130 @@ class SeatAsksByMeaningTest {
                 + " a filter that fell back to every lane would return the shortlist here");
     }
 
+    /**
+     * The architect seat's POPULATION QUERY, exactly as `seats/architect.md` instructs it:
+     * a recall carrying the package under review and the code lane.
+     *
+     * <p>The entries are the ANCHORED answer. {@code analogies} beside them are nominees
+     * ranked by resemblance to anything in the store, so asserting over those would pass
+     * on a cue that matched nothing — which is the distinction this whole retrieval path
+     * exists to keep.</p>
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> populationQuery(String pkg) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "recall");
+        a.put("package", pkg);
+        a.put("lane", "code");
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "got " + r.getError());
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        Object raw = data.get("entries");
+        if (!(raw instanceof List)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> e : (List<Map<String, Object>>) raw) {
+            out.add(String.valueOf(e.get("summary")));
+        }
+        return out;
+    }
+
+    /**
+     * D-SIX's DESCRIBED HALF, ON A PACKAGE HOLDING A KNOWN DUPLICATE.
+     *
+     * <p>The architect seat runs two detectors at DETECT: {@code re_derived_job}, which is
+     * structural, and this one, which is what the store already says this code does. This
+     * pins the second — the seat's own call, on a package where two members do one job.</p>
+     *
+     * <p>It exists because that call had never worked. The seat asked for
+     * {@code lane="code", population=true}, which names no CUE: {@code population} is not a
+     * parameter and {@code lane} is a filter over what the cues found, so the store's entire
+     * answer was "No cue — provide symbol / package / operation / symptom." Half of D-SIX's
+     * detection was one round-trip to a refusal, and a seat's instructions are prose, so
+     * nothing compiled and nothing complained.</p>
+     *
+     * <p>The companion guard lives in studio's conductor, over the seat TEXT, and asks
+     * whether an instructed recall names a cue at all. This one asks the other half: that
+     * the call, well-formed, reaches the duplicate.</p>
+     */
+    @Test
+    @DisplayName("the population query answers rows anchored in the package it is given")
+    void the_population_query_answers_its_package() {
+        recordTheCorpus();
+        final String secondImplementation =
+            "Reads a source file and answers the syntax tree for it.";
+        recordJob("com.example.PlanTool#buildTree", secondImplementation);
+
+        List<String> anchored = populationQuery("com.example");
+
+        assertTrue(anchored.contains(secondImplementation),
+            "the call the seat instructs must reach the code lane's rows for this package"
+                + " at all — this is the half that was false while it named no cue: "
+                + anchored);
+    }
+
+    /**
+     * THE CLAUSE IT CANNOT MEET, PINNED AS A DEFECT RATHER THAN LEFT AS A PASS.
+     *
+     * <p>C8 asks that "the architect seat run on a package holding a known duplicate names
+     * it from the population query". Building that test MEASURED why it cannot: a package
+     * recall answers at most FIVE anchored rows, and {@code limit} does not lift it —
+     * probed at {@code limit=50}, which returned the same five. So the seat's "population
+     * query" does not return a population, it returns a ranked five.</p>
+     *
+     * <p>What that costs D-SIX is the whole point rather than a rounding error. The fixture
+     * below records fourteen jobs in one package, two of which are ONE JOB written twice —
+     * and the five that come back carry the new implementation and NOT its partner. The
+     * seat would read that answer and see nothing to refuse, on a package whose duplicate
+     * it was pointed at. A detector that reports the second half of a pair and drops the
+     * first cannot find a pair.</p>
+     *
+     * <p>This test ASSERTS the defect, so it is visible and so it turns RED the day the cap
+     * moves — at which point whoever moved it re-reads this and C8's clause becomes
+     * meetable. Raising or paging that cap is a change to a published retrieval surface and
+     * is the architect's call, not a mid-stage edit at a stage's close.</p>
+     */
+    @Test
+    @DisplayName("a package recall caps at five, so a duplicate's two halves are split")
+    void the_population_query_is_capped_below_its_package() {
+        recordTheCorpus();
+        final String firstImplementation =
+            "Turns a source file into a tree the rest of the tool can walk.";
+        final String secondImplementation =
+            "Reads a source file and answers the syntax tree for it.";
+        recordJob("com.example.PlanTool#buildTree", secondImplementation);
+
+        List<String> anchored = populationQuery("com.example");
+
+        assertEquals(5, anchored.size(),
+            "fourteen jobs are anchored in this package and five come back. If this is no"
+                + " longer 5, the cap moved: re-read this test, because C8's clause about"
+                + " naming a duplicate from the population query may now be meetable: "
+                + anchored);
+        assertTrue(anchored.contains(secondImplementation)
+                && !anchored.contains(firstImplementation),
+            "and the pair is SPLIT — the second implementation is returned and the job it"
+                + " re-derives is not. This is the defect, stated as the failure the seat"
+                + " would actually suffer: it is shown one half and has nothing to refuse: "
+                + anchored);
+    }
+
+    /**
+     * THE CONTROL, and without it the case above passes against a recall that answers with
+     * the whole store whatever package it is handed.
+     */
+    @Test
+    @DisplayName("a package nobody recorded into answers with nothing anchored")
+    void a_package_with_no_rows_anchors_nothing() {
+        recordTheCorpus();
+
+        assertEquals(List.of(), populationQuery("com.elsewhere.untouched"),
+            "nothing is anchored in that package, so the anchored answer is empty. A recall"
+                + " that ignored the cue would hand back the corpus here, and then the"
+                + " duplicate above would have arrived by default rather than by being found");
+    }
+
     /** The text form the hook emits verbatim — Stage 8 D1's `JAWATA MAP —` block. */
     private String mapText(String question) {
         ObjectNode a = json.createObjectNode();
