@@ -2733,15 +2733,27 @@ public final class ExperienceTool implements Tool {
         // "you cannot just form everything upfront into lessons").
         String situation = text(args, "situation");
         String verdict = text(args, "verdict");
+        // Sprint 28f Stage 7 — the ANCHOR reaches the form gate, and the read moved
+        // UP here to make that possible. It was declared below, after the check,
+        // and the check was handed nothing.
+        //
+        // EntryForm.check has two overloads and this path took the five-argument
+        // one, which delegates with anchor = null. So checkDerived returned at its
+        // own null-guard and the job rule's second branch — a summary that restates
+        // the member's own name — was dead on every write the product accepts,
+        // while JobFormTest, which calls the six-argument form directly, stayed
+        // green. That is why a test could not see it: the test and the wire did
+        // not call the same method. The value was already in hand one line down;
+        // nothing was missing but the argument.
+        String symbol = text(args, "symbol");
         var admission = org.jawata.mcp.knowledge.EntryForm.check(
-            type, summary, strings(args, "symptoms"), situation, verdict);
+            type, summary, strings(args, "symptoms"), situation, verdict, symbol);
         if (admission.isPresent()) {
             return ToolResponse.invalidParameter(
                 admission.get().field(), admission.get().message());
         }
 
         SymbolFact.Builder fb = SymbolFact.of(type, summary, confidence(text(args, "confidence")));
-        String symbol = text(args, "symbol");
         List<String> packages = strings(args, "packages");
         List<String> symbols = strings(args, "symbols");
         if (symbol != null && !symbol.isBlank()) {
