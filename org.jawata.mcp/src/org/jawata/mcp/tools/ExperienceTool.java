@@ -3301,7 +3301,18 @@ public final class ExperienceTool implements Tool {
                     + " — this row is admitted unchecked rather than treated as resolved";
             } else {
                 Map<String, Object> pointer = retrieval.resolvePointer(symbol);
-                if (!Boolean.TRUE.equals(pointer.get("resolved"))) {
+                // REFUSE ONLY ON A POSITIVE FINDING OF ABSENCE, and `stale` is what makes
+                // that readable rather than inferred. The resolver answers `resolved:false`
+                // for THREE different reasons and only two of them are "it is not there":
+                // the type was not found, and the type is here but the member is gone. Both
+                // set `stale`. The third is an exception during resolution, which sets no
+                // `stale` key — and reading `resolved` alone would report that to the author
+                // as "this anchor does not exist", which is the exact blur this gate was
+                // added to prevent. A caught exception is "I could not check".
+                //
+                // The architect's C9 watch found this: the fix contradicting its own stated
+                // purpose, in the commit whose message argues the distinction at length.
+                if (Boolean.TRUE.equals(pointer.get("stale"))) {
                     return ToolResponse.invalidParameter("symbol",
                         "anchor '" + symbol + "' does not resolve in the loaded workspace,"
                         + " so this job would point at nothing. RULE: the code lane answers"
@@ -3310,6 +3321,16 @@ public final class ExperienceTool implements Tool {
                         + " FIX: check the fully-qualified name — 'pkg.Type#member' — or"
                         + " record it as a lesson or domain fact if it is not about one"
                         + " member of this code.");
+                }
+                if (!Boolean.TRUE.equals(pointer.get("resolved"))) {
+                    // Not resolved and not stale: the resolver could not reach an answer.
+                    // ADMITTED and SAID, on the same footing as no-project-loaded — the
+                    // row is fine, the CHECK did not happen, and a caller reading only
+                    // `stored: true` would otherwise take this for a verified anchor.
+                    Object why = pointer.get("note");
+                    anchorNote = "'" + symbol + "' was NOT verified — "
+                        + (why == null ? "the resolver reached no answer" : why)
+                        + "; this row is admitted unchecked rather than treated as resolved";
                 }
             }
         }

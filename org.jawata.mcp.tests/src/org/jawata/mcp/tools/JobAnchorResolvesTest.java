@@ -2,6 +2,7 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.lang.reflect.Proxy;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -130,5 +132,50 @@ class JobAnchorResolvesTest {
                 + " anchor, and the two are different facts: " + data);
         assertTrue(String.valueOf(data.get("anchorUncheckedWhy")).contains("no project"),
             "and the reason names which of the two it is: " + data);
+    }
+
+    /**
+     * THE THIRD STATE, and it is the one the first version of this gate got WRONG.
+     *
+     * <p>The resolver answers {@code resolved:false} for three different reasons, and only
+     * two of them mean the anchor is not there: the type was not found, and the type is here
+     * but the member is gone. Both set {@code stale}. The third is an exception thrown during
+     * resolution, which sets no {@code stale} key — and the gate as first written read
+     * {@code resolved} alone, so it told the author their anchor "does not resolve in the
+     * loaded workspace, so this job would point at nothing" when the truth was that the
+     * lookup had failed.</p>
+     *
+     * <p><b>That is this sprint's own distinction, broken by the gate added to protect it</b>
+     * — and the commit message argued the distinction at length while the code below it
+     * blurred exactly that case. The C9 architect watch found it by reading; no test could,
+     * because none existed for a resolver that fails rather than answers.</p>
+     */
+    @Test
+    @DisplayName("a resolver that THROWS is 'could not check', not 'does not exist'")
+    @SuppressWarnings("unchecked")
+    void a_resolution_error_is_admitted_and_said_rather_than_refused() {
+        IJdtService throwing = (IJdtService) Proxy.newProxyInstance(
+            IJdtService.class.getClassLoader(), new Class<?>[] {IJdtService.class},
+            (proxy, method, methodArgs) -> {
+                if ("findType".equals(method.getName())) {
+                    throw new IllegalStateException("the index is rebuilding");
+                }
+                return method.getReturnType().isPrimitive() ? false : null;
+            });
+        ExperienceTool tool = new ExperienceTool(() -> throwing, store);
+
+        ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
+
+        assertTrue(r.isSuccess(),
+            "a lookup that FAILED says nothing about whether the member exists, so refusing"
+                + " here rejects a correct row for an outage the author did not cause: "
+                + (r.getError() == null ? "" : r.getError().getMessage()));
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertEquals(false, data.get("anchorVerified"),
+            "and it is NOT reported as verified either — the check did not happen: " + data);
+        assertTrue(String.valueOf(data.get("anchorUncheckedWhy")).contains("the index is rebuilding"),
+            "and the reason carries what actually went wrong, rather than the absence"
+                + " wording that would send the author looking for a symbol that is there: "
+                + data);
     }
 }

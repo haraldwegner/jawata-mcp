@@ -1880,9 +1880,22 @@ public final class ExperienceRetrieval {
      * how this repository's coordinates came to disagree; there is one site.</p>
      */
     // PUBLIC since 28f C9: the record path must resolve a code-lane anchor before
-    // accepting it, and that path lives in `tools`. D-SIX applies to me too — this
-    // is the one implementation of "does this fully-qualified name resolve", so the
-    // write gate borrows it rather than growing a second one beside it.
+    // accepting it, and that path lives in `tools`.
+    //
+    // AN EARLIER VERSION OF THIS COMMENT CLAIMED THIS IS "the one implementation of
+    // 'does this fully-qualified name resolve'". THAT WAS FALSE, and the C9 architect
+    // watch measured it: `ExperienceTool#resolvesViaJdt` is a SECOND one, and it is the
+    // one the staleness sweep runs on. The two do not agree — it splits `#member` off
+    // and resolves the TYPE only, where this resolves the member as well. So a job
+    // anchored at a member that has been deleted is refused at the WRITE gate by this
+    // method and judged healthy FOREVER by the sweep, which is D7's "location lost"
+    // clause unimplemented for the only anchor shape a job has.
+    //
+    // That divergence is PRE-EXISTING and is not this method's to fix silently: closing
+    // it changes what the sweep marks stale across a live store, which is a change with
+    // its own test and its own checkpoint. It is recorded at C9 and named rather than
+    // folded into a release-gate repair. What IS fixed here is the claim: this is one of
+    // two, and the write gate borrows the member-aware one deliberately.
     public Map<String, Object> resolvePointer(String symbolFqn) {
         if (symbolFqn == null || symbolFqn.isBlank()) {
             return null;
