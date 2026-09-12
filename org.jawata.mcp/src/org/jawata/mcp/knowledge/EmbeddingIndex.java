@@ -217,6 +217,106 @@ public final class EmbeddingIndex {
         return done;
     }
 
+    /** One {@link #backfill} pass inside {@link #drain}. */
+    private static final int DRAIN_BATCH = 500;
+
+    /**
+     * A ceiling on {@link #drain}'s passes, so a caller can never be stalled
+     * forever by a store that keeps producing work. At {@link #DRAIN_BATCH} a
+     * pass, this covers a store far larger than any we ship.
+     */
+    private static final int MAX_DRAIN_PASSES = 1000;
+
+    /**
+     * Run {@link #backfill} to CONVERGENCE, so a row is searchable by meaning the
+     * moment the write that created it returns.
+     *
+     * <p><b>Why a caller needs this and {@code backfill} will not do.</b>
+     * {@code backfill} embeds AT MOST {@code max} rows and leaves the rest for the
+     * next pass — right for startup, where stalling the boot is worse than a late
+     * vector. It is wrong at the end of a WRITE: an import that returns before its
+     * rows reach the meaning lane has produced rows that can be listed and exported
+     * and never FOUND by asking, and nothing in the response says so.</p>
+     *
+     * <p><b>Measured 2026-09-12, which is why this exists.</b> The end-to-end gate
+     * imported 48 rows and then recalled for them; the meaning lane held 189 rows —
+     * the catalogue exactly ({@code java-design-patterns} 187 + {@code jawata-samples}
+     * 2) — and answered every cue with design patterns. Under load the gate reproduced
+     * it about two runs in three; run alone the lane reached 247 and the same checks
+     * passed. The rows were never lost: they were in the store and outside the lane
+     * that answers by meaning.</p>
+     *
+     * <p><b>It terminates three ways and every one of them is honest.</b> Converged
+     * ({@code remainingUnembedded() == 0}); a pass that moved NOTHING while rows
+     * remain; or the pass ceiling. The middle case is not defensive padding — this
+     * class's own {@code remainingUnembedded} javadoc records that <i>"a null-text row
+     * stays selected and is skipped each pass"</i>, so a plain
+     * {@code while (remaining > 0)} loop would spin forever on a store holding one.
+     * A {@code -1} remainder means the count could not be READ, which is never
+     * reported as convergence.</p>
+     *
+     * <p>It returns only what it EMBEDDED. Whether anything is left is a separate
+     * question with a separate answer — {@link #remainingUnembedded()} — because a
+     * caller that needs to say "and N still pending" must not have to infer it from
+     * a count of work done.</p>
+     *
+     * @return how many rows this call embedded
+     */
+    public int drain() {
+        return drain(DRAIN_BATCH, () -> false);
+    }
+
+    /**
+     * The ONE backfill-to-convergence loop in this product, interruptible.
+     *
+     * <p><b>It is parameterised rather than copied because the loop already existed.</b>
+     * {@code JawataApplication.reconcileEmbeddings} ran this exact cycle for the startup
+     * daemon, and a second copy here would have been the fourth instance in this sprint
+     * of one job implemented twice — the shape that cost this repository five copies of a
+     * type lookup and six of a nested-type search. The daemon's two extra needs, a batch
+     * size and an interrupt, are PARAMETERS; they are not a different job. The daemon now
+     * calls this, so a fix taught to one path cannot be missing from the other.</p>
+     *
+     * @param batch       rows per pass
+     * @param interrupted checked before each pass; {@code true} ends the loop with a clean
+     *                    partial, resumable by construction since each row is persisted as
+     *                    it embeds
+     * @return how many rows this call embedded
+     */
+    public int drain(int batch, java.util.function.BooleanSupplier interrupted) {
+        if (!embeddings.available()) {
+            return 0;
+        }
+        int embedded = 0;
+        for (int pass = 0; pass < MAX_DRAIN_PASSES; pass++) {
+            if (interrupted.getAsBoolean()) {
+                return embedded;
+            }
+            long remaining = remainingUnembedded();
+            if (remaining == 0) {
+                return embedded;
+            }
+            if (remaining < 0) {
+                log.warn("drain stopping: the unembedded count could not be read, so"
+                    + " convergence cannot be claimed ({} row(s) embedded so far)", embedded);
+                return embedded;
+            }
+            int done = backfill(batch);
+            if (done == 0) {
+                log.warn("drain stopping: {} row(s) remain and a pass embedded none, so"
+                    + " they are rows the backfill skips — another pass would not end",
+                    remaining);
+                return embedded;
+            }
+            embedded += done;
+            log.info("embedding drain: +{} this pass ({} total), {} remaining",
+                done, embedded, remainingUnembedded());
+        }
+        log.warn("drain hit its pass ceiling after {} row(s); {} still unembedded",
+            embedded, remainingUnembedded());
+        return embedded;
+    }
+
     private int backfillTable(String table, String idColumn, String textColumn,
                              String detailsColumn, int max) {
         if (max <= 0) {

@@ -430,14 +430,20 @@ public class JawataApplication implements IApplication {
      */
     public static int reconcileEmbeddings(org.jawata.mcp.knowledge.EmbeddingIndex index,
                                    int batch, java.util.function.BooleanSupplier interrupted) {
-        int total = 0;
-        int done;
-        while (!interrupted.getAsBoolean() && (done = index.backfill(batch)) > 0) {
-            total += done;
-            log.info("Embedding backfill: +{} this pass ({} total), {} remaining",
-                done, total, index.remainingUnembedded());
-        }
-        return total;
+        // Sprint 28f Stage 3: the loop MOVED to EmbeddingIndex.drain and this forwards.
+        // It is not a tidy-up. The stage has to drain at four WRITE paths inside the
+        // knowledge layer, and they cannot reach a static on the application without
+        // depending upward — so the choice was one loop on the index, or a second copy
+        // beside this one. The second copy is the shape that has already cost this
+        // repository five duplicate type lookups and six duplicate nested-type searches,
+        // each fixed only where somebody happened to look.
+        //
+        // This signature is kept because tests drive it by name; what changes is that
+        // there is now one implementation under it. drain() ALSO checks
+        // remainingUnembedded(), so it can tell "converged" from "the backfill is
+        // skipping rows it cannot embed" — a distinction this loop could not make,
+        // because both looked like backfill returning 0.
+        return index.drain(batch, interrupted);
     }
 
     /** Stage 6 (C6 F3): the -1 "could not look" sentinel renders as
