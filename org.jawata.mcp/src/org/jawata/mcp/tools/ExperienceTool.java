@@ -477,6 +477,15 @@ public final class ExperienceTool implements Tool {
             "description", "recall: which surface is asking — 'seat' when a driven seat"
                 + " run recalls, omitted for an ordinary question. Affects only the"
                 + " quality counters (stats), never what is retrieved."));
+        props.put("lane", Map.of("type", "string",
+            "enum", List.of("experience", "domain", "code", "rules"),
+            "description", "recall: which LIFECYCLE may answer — a FILTER, not a cue."
+                + " 'experience' is what happened in a situation (lessons, failure modes,"
+                + " borrowed patterns); 'domain' is what is true whoever reads it (facts,"
+                + " contracts, conventions); 'rules' are versioned and retired; 'code' is"
+                + " regenerated from the code it came from. It NARROWS what the cues found"
+                + " and never widens it, so a lane on its own retrieves nothing: give a cue"
+                + " as well. Omit it to search every lane, which is the default."));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: exceptions / caveats."));
         props.put(BUDGET_MILLIS, Map.of("type", "integer",
@@ -1828,12 +1837,18 @@ public final class ExperienceTool implements Tool {
     }
 
     private ToolResponse recall(JsonNode args) {
+        // Sprint 28f Stage 5: the lane is carried by EVERY cue below, not only the singular
+        // one. A filter honoured on one query and dropped on the others would narrow the
+        // first cue's answer and let the rest back in — which reads as the filter half
+        // working, the hardest kind of wrong to notice.
+        String lane = text(args, "lane");
         RecallQuery q = new RecallQuery(
             text(args, "symbol"),
             text(args, "package"),
             text(args, "operation"),
             text(args, "symptom"),
-            text(args, "external_system"));
+            text(args, "external_system"),
+            lane);
         // Sprint 27 D6: the caller may name the surface it is asking from
         // ("seat" for a seat run's recall). Absent = the ordinary question hook.
         // Retrieval is identical either way; only the counter differs.
@@ -1860,10 +1875,10 @@ public final class ExperienceTool implements Tool {
             String op = text(args, "operation");
             String ext = text(args, "external_system");
             for (String s : moreSymbols) {
-                cues.add(new RecallQuery(s, pkg, op, null, ext));
+                cues.add(new RecallQuery(s, pkg, op, null, ext, lane));
             }
             for (String s : moreSymptoms) {
-                cues.add(new RecallQuery(null, pkg, op, s, ext));
+                cues.add(new RecallQuery(null, pkg, op, s, ext, lane));
             }
             result = retrieval.recallAll(cues, counted, budgetIn(args), text(args, "session"));
         }

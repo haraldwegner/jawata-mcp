@@ -1503,9 +1503,22 @@ public final class H2ExperienceStore implements ExperienceStore {
                 clauses.add("(" + String.join(" AND ", tokenClauses) + ")");
             }
         }
+        // Sprint 28f Stage 5: the lane NARROWS whatever the cues found — it joins with AND,
+        // outside the OR that gathers candidates, exactly where the status filter sits. As
+        // one more cue inside the OR it would WIDEN the result instead, returning every row
+        // of a lane whether or not anything asked about it.
+        //
+        // Bound after the cue parameters because the clause is appended after them; a lane
+        // clause spliced into the OR would have to renumber every cue bind above.
+        String laneClause = "";
+        if (q.hasLane()) {
+            laneClause = " AND lane = ?";
+            params.add(q.lane());
+        }
         String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE ("
             + String.join(" OR ", clauses)
-            + ") AND status NOT IN ('rejected', 'superseded') ORDER BY created_at DESC";
+            + ") AND status NOT IN ('rejected', 'superseded')" + laneClause
+            + " ORDER BY created_at DESC";
 
         List<StoredEntry> out = new ArrayList<>();
         return withRead("query entries", c -> {
