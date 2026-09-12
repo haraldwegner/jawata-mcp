@@ -701,8 +701,7 @@ public final class ExperienceRetrieval {
         // Applied once over the assembled pool, for the reason the block above gives about
         // status: a per-source filter is a rule a fourth source can be added without.
         if (q.hasLane()) {
-            pool.removeIf(e -> !q.lane().equals(
-                KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind())));
+            pool.removeIf(e -> !inLane(q.lane(), e));
         }
         if (pool.isEmpty()) {
             return List.of();
@@ -861,9 +860,49 @@ public final class ExperienceRetrieval {
      * @param budgetMillis  the caller's deadline
      */
     public Map<String, Object> nominate(String question, long budgetMillis) {
+        return nominate(question, null, budgetMillis);
+    }
+
+    /**
+     * The same nomination, narrowed to ONE LIFECYCLE — Sprint 28f Stage 8, deliverable 1.
+     *
+     * <p>The map a task opens with asks the CODE lane and nothing else: an agent starting
+     * work wants the areas and jobs that describe what it is about to touch, and a lesson
+     * or a domain fact answering the same prose would be a different kind of answer wearing
+     * the same shape. The other lanes keep their own moments.</p>
+     *
+     * <p><b>It is the same FILTER the recall path uses, applied through the same
+     * predicate</b> — {@link #inLane} — and not a second rule that happens to agree today.
+     * A lane NARROWS what the cues found and never widens it, which is what makes it safe
+     * to hang on the ranking rather than on the scoring: nothing about the ORDER changes,
+     * and in particular <b>no score bar is introduced</b>. That matters more here than
+     * anywhere else in this file: Stage 0 measured that this corpus admits no cutoff, and
+     * {@code SeatAsksByMeaningTest} holds a sub-floor pair open against exactly that.</p>
+     *
+     * @param question     the caller's own words
+     * @param lane         the wire name of the lifecycle that may answer, or null for all
+     * @param budgetMillis the caller's deadline
+     */
+    public Map<String, Object> nominate(String question, String lane, long budgetMillis) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("question", question);
-        return within(() -> nominateFromStore(question, out), out, budgetMillis);
+        if (lane != null && !lane.isBlank()) {
+            out.put("lane", lane);
+        }
+        return within(() -> nominateFromStore(question, lane, out), out, budgetMillis);
+    }
+
+    /**
+     * Whether an entry belongs to the lifecycle a caller named.
+     *
+     * <p>ONE predicate, read by the recall path and the nomination path. It was a lambda
+     * body inside recall until the nomination needed the same question asked, and a copied
+     * line is how the two would have drifted — the lane is derived from the entry's type
+     * AND its provenance, so a second spelling that read only the type would agree on
+     * every fixture and disagree on the rows that actually matter.</p>
+     */
+    private static boolean inLane(String lane, StoredEntry e) {
+        return lane.equals(KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind()));
     }
 
     /**
@@ -879,7 +918,8 @@ public final class ExperienceRetrieval {
         return Math.round(v * 1000.0) / 1000.0;
     }
 
-    private Map<String, Object> nominateFromStore(String question, Map<String, Object> out) {
+    private Map<String, Object> nominateFromStore(
+            String question, String lane, Map<String, Object> out) {
         // The question is carried as the SYMPTOM cue: it is prose describing a
         // situation, which is exactly what that slot means. Reusing the existing
         // scorer rather than adding a second one is the point — two ranking paths
@@ -912,8 +952,11 @@ public final class ExperienceRetrieval {
             words);
 
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
+        boolean narrowed = lane != null && !lane.isBlank();
         for (StoredEntry e : store.all()) {
-            if (isLive(e)) {
+            // The lane narrows the POOL and never the scoring, which is the whole of why it
+            // is safe here: the ranking below is untouched, so no bar arrives with it.
+            if (isLive(e) && (!narrowed || inLane(lane, e))) {
                 byId.put(e.id(), e);
             }
         }

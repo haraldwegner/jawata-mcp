@@ -525,7 +525,7 @@ public final class ExperienceTool implements Tool {
                 + " was right, nothing replaced it, and it stopped applying."));
         props.put("lane", Map.of("type", "string",
             "enum", List.of("experience", "domain", "code", "rules"),
-            "description", "recall: which LIFECYCLE may answer — a FILTER, not a cue."
+            "description", "recall/nominate: which LIFECYCLE may answer — a FILTER, not a cue."
                 + " 'experience' is what happened in a situation (lessons, failure modes,"
                 + " borrowed patterns); 'domain' is what is true whoever reads it (facts,"
                 + " contracts, conventions); 'rules' are versioned and retired; 'code' is"
@@ -2486,7 +2486,12 @@ public final class ExperienceTool implements Tool {
                 + "path: no symbol, no package, no operation — say what you are trying "
                 + "to do and the store ranks what might apply.");
         }
-        Map<String, Object> result = retrieval.nominate(question, budgetIn(args));
+        // Sprint 28f Stage 8 D1 — the lane NARROWS which lifecycle may answer, and it is
+        // the same filter recall takes. The map a task opens with asks the code lane and
+        // nothing else; omitting it keeps every lane, which is what every caller before
+        // this stage did and goes on doing.
+        Map<String, Object> result =
+            retrieval.nominate(question, text(args, "lane"), budgetIn(args));
         if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(result.get("result"))) {
             return respond(args, result);
         }

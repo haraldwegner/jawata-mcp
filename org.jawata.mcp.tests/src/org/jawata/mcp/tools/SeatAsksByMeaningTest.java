@@ -124,11 +124,30 @@ class SeatAsksByMeaningTest {
             "Throws away the stored lookup table and derives it from scratch again.");
     }
 
-    @SuppressWarnings("unchecked")
+    /** A LESSON, which lives in another lifecycle — the row the code lane must exclude. */
+    private void recordLesson(String summary) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "record");
+        a.put("type", "lesson");
+        a.put("summary", summary);
+        a.put("situation", "when a forked test run reports fewer classes than were planned");
+        a.put("verdict", "worked");
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "the lesson must be recordable; got " + r.getError());
+    }
+
     private List<Map<String, Object>> nominate(String question) {
+        return nominate(question, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> nominate(String question, String lane) {
         ObjectNode a = json.createObjectNode();
         a.put("kind", "nominate");
         a.put("question", question);
+        if (lane != null) {
+            a.put("lane", lane);
+        }
         ToolResponse r = tool.execute(a);
         assertTrue(r.isSuccess(), "got " + r.getError());
         Map<String, Object> data = (Map<String, Object>) r.getData();
@@ -194,5 +213,56 @@ class SeatAsksByMeaningTest {
         assertTrue(!forTheTask.equals(forSomethingElse),
             "two unrelated questions returning the identical shortlist in the identical"
                 + " order would mean nothing scored anything: " + forTheTask);
+    }
+
+    /**
+     * Sprint 28f Stage 8 D1 — THE MAP ASKS ONE LIFECYCLE.
+     *
+     * <p>An agent opening a task wants the areas and jobs describing what it is about to
+     * touch. A lesson answering the same prose is a different KIND of answer wearing the
+     * same shape, and the other lanes keep their own moments.</p>
+     *
+     * <p>The lesson here is written to be a strong competitor — it names the forked test
+     * run and the classes it reached, so a nomination that ignored the lane would very
+     * likely rank it well. That is what makes its absence evidence.</p>
+     */
+    @Test
+    @DisplayName("the code lane answers with jobs and leaves the other lifecycles out")
+    void the_code_lane_answers_with_jobs_alone() {
+        recordTheCorpus();
+        recordLesson("A forked run that reports fewer classes than it planned has lost"
+            + " a shard, and the missing lines read as untested code.");
+
+        List<String> everyLane = summaries(nominate(TASK));
+        assertTrue(everyLane.contains("A forked run that reports fewer classes than it"
+                + " planned has lost a shard, and the missing lines read as untested code."),
+            "PROOF OF LIFE: unfiltered, the lesson is a strong enough competitor to be"
+                + " nominated at all — without that its absence below proves nothing about"
+                + " the filter: " + everyLane);
+
+        List<String> codeOnly = summaries(nominate(TASK, "code"));
+        assertTrue(codeOnly.contains(TARGET_JOB),
+            "the sub-floor job still arrives — the lane narrows the pool and must not"
+                + " introduce a bar: " + codeOnly);
+        assertTrue(!codeOnly.contains("A forked run that reports fewer classes than it"
+                + " planned has lost a shard, and the missing lines read as untested code."),
+            "and the lesson does not, because it belongs to another lifecycle: " + codeOnly);
+    }
+
+    /**
+     * THE CONTROL FOR THE FILTER ITSELF: a lane nobody recorded into answers with nothing.
+     *
+     * <p>Without it, "the lesson is absent" is satisfied by a filter that drops everything
+     * and by one that drops the right rows, and the two are the same list when the thing
+     * you are looking for is missing.</p>
+     */
+    @Test
+    @DisplayName("a lane with no rows answers empty rather than falling back to all of them")
+    void a_lane_with_no_rows_answers_empty() {
+        recordTheCorpus();
+
+        assertEquals(List.of(), summaries(nominate(TASK, "domain")),
+            "nothing in this store is a domain fact, so the honest answer is nothing —"
+                + " a filter that fell back to every lane would return the shortlist here");
     }
 }
