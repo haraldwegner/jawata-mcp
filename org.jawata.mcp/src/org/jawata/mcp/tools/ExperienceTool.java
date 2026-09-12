@@ -883,6 +883,10 @@ public final class ExperienceTool implements Tool {
         // total this method cannot see would be a ratio invented at the point of display.
         java.util.Map<String, Object> describing = new java.util.LinkedHashMap<>();
         describing.put("describedPerBundle", describedUnits().describedPerBundle());
+        // Adds `areas` and `acceptedSample` — deliverable 5's other two halves, both read
+        // from store rows alone. See the method for what each population IS, which is the
+        // whole of what makes them answerable in a response that has no project.
+        describing.putAll(describingStoreFacts());
         long lost = describedUnits().failedWrites();
         if (lost > 0) {
             // Said beside the counts, never swallowed: progress computed over lost rows reads
@@ -943,6 +947,104 @@ public final class ExperienceTool implements Tool {
             // String.valueOf: Map.of rejects nulls, and a null-message
             // exception must not turn the safety net into the failure (C6 F2).
             out.put("embedding", java.util.Map.of("error", String.valueOf(e.getMessage())));
+        }
+        return out;
+    }
+
+    /** How many rows either describing read will look at before it stops. */
+    private static final int DESCRIBING_ROW_CAP = 10000;
+    /** At most this many sampled rows per declaring type, so one class cannot fill it. */
+    private static final int SAMPLE_PER_TYPE = 2;
+    /** And at most this many rows in total — deliverable 6 showed Harald ten. */
+    private static final int SAMPLE_TOTAL = 10;
+
+    /**
+     * Sprint 28f Stage 7, deliverable 5 — the two facts {@code MemoryView} renders beside
+     * the coverage counts: WHICH AREAS ARE DESCRIBED, and A SAMPLE OF WHAT THE CATALOGUER
+     * ACTUALLY WROTE. Returns {@code describedAreas}, {@code acceptedSample} and, when it
+     * can be stated without lying, {@code acceptedRows}.
+     *
+     * <h2>Which half of the areas question this answers, and which it refuses to</h2>
+     *
+     * <p>It publishes the areas that ARE described and nothing about the ones that are not,
+     * and that boundary is measured rather than chosen. An area row carries its package —
+     * it is recorded with {@code packages[]}, which is what {@code firstPackage} persists —
+     * so the described set is a store fact. The OUTSTANDING set is not: it needs the
+     * population of packages, and which packages exist is JDT's answer, which a response
+     * with no loaded project cannot have. {@code describe action=next} answers it there,
+     * one row per package in scope, and the view names that verb rather than guessing.</p>
+     *
+     * <p><b>The obvious shortcut was built, measured and thrown away, and it is recorded
+     * because it looked right.</b> A package holding JOB rows and no area row would be
+     * "worked on and not summarised yet" — the cataloguer's own state machine. It cannot
+     * be read: {@code symbol} and {@code packages[]} are mutually exclusive at the record
+     * verb, a job is anchored by {@code symbol}, and {@code firstPackage} reads
+     * {@code scope.packages} alone — so EVERY job row's package is null. The loop compiled,
+     * ran, and would have published an empty outstanding list forever, which reads as
+     * "nothing left to do". Deriving the package from the anchor's text instead is the same
+     * defect one step further on: it is a guess about Java packaging that a nested type
+     * silently gets wrong.</p>
+     *
+     * <h2>The sample is UNGROUPED, and the deliverable says per bundle</h2>
+     *
+     * <p><b>A DECLARED DEVIATION, from the same measurement.</b> {@code described_unit}
+     * carries a bundle; {@link org.jawata.mcp.knowledge.StoredEntry} carries neither a
+     * bundle nor — for a job — a package. It carries a SYMBOL. So the rows are listed by
+     * the symbol that identifies each one, and attributing a bundle to them would be the
+     * ratio invented at the point of display, which is the exact defect
+     * {@code describedPerBundle} is the numerator only in order to avoid.</p>
+     *
+     * <p>The one grouping applied is a spread, not an attribution: at most
+     * {@value #SAMPLE_PER_TYPE} rows share a declaring type, so ten members of one class
+     * cannot crowd out the rest. The key is the anchor's own text before {@code #}, which
+     * is the format this tool publishes ({@code com.foo.Bar#member}) rather than an
+     * inference about what the segments mean.</p>
+     *
+     * <p>The sample is of JOB rows. An area row is a package's own summary and the list
+     * above already reports whether one exists, so sampling it would spend the budget
+     * restating that.</p>
+     */
+    private java.util.Map<String, Object> describingStoreFacts() {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+
+        java.util.Set<String> described = new java.util.TreeSet<>();
+        for (org.jawata.mcp.knowledge.StoredEntry e
+                : store.listEntries("area", null, null, null, DESCRIBING_ROW_CAP)) {
+            if (e.packageName() != null && !e.packageName().isBlank()) {
+                described.add(e.packageName());
+            }
+        }
+        out.put("describedAreas", new java.util.ArrayList<>(described));
+
+        List<org.jawata.mcp.knowledge.StoredEntry> jobs =
+            store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP);
+        java.util.Map<String, Integer> takenPerType = new java.util.HashMap<>();
+        List<Map<String, Object>> sample = new java.util.ArrayList<>();
+        for (org.jawata.mcp.knowledge.StoredEntry e : jobs) {
+            if (sample.size() >= SAMPLE_TOTAL) {
+                break;
+            }
+            String symbol = e.symbolFqn() == null ? "" : e.symbolFqn();
+            int hash = symbol.indexOf('#');
+            String declaringType = hash > 0 ? symbol.substring(0, hash) : symbol;
+            int taken = takenPerType.getOrDefault(declaringType, 0);
+            if (taken >= SAMPLE_PER_TYPE) {
+                continue;
+            }
+            takenPerType.put(declaringType, taken + 1);
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            if (!symbol.isBlank()) {
+                row.put("symbol", symbol);
+            }
+            row.put("summary", e.summary());
+            sample.add(row);
+        }
+        out.put("acceptedSample", sample);
+        // The population the sample was drawn from — published ONLY when the read was not
+        // capped, because a capped figure sold as a total is the defect this file already
+        // refuses for `remaining` and for the coverage ratio.
+        if (jobs.size() < DESCRIBING_ROW_CAP) {
+            out.put("acceptedRows", jobs.size());
         }
         return out;
     }
