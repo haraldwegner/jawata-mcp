@@ -250,7 +250,20 @@ END {
 #    machine and they thrash each other (measured: 6 unpinned shards were
 #    SLOWER than 4).
 CORES=$(nproc)
-SLICE=$(( CORES / SHARDS )); [ "$SLICE" -lt 2 ] && SLICE=2
+# The slice divided the WHOLE machine — 4 shards x 5 on a 20-core box is exactly
+# nproc, with nothing left for the OS, the shell, or the resident JVMs that are
+# always up on a developer machine (studio keeps one per workspace). Over-subscribed,
+# a slow class stops emitting events for long enough to trip the runner's own
+# no-event watchdog, and the shard is KILLED: the run then reports failed=0 over
+# half the tests, which reads green and is not. Seen twice on 2026-09-12.
+#
+# So the shards are sized from the cores actually AVAILABLE. RESERVED is what is
+# left to everything that is not this suite; override it when the machine is known
+# to be otherwise idle (a CI box: JAWATA_SUITE_RESERVED=0).
+RESERVED="${JAWATA_SUITE_RESERVED:-4}"
+AVAILABLE=$(( CORES - RESERVED )); [ "$AVAILABLE" -lt 2 ] && AVAILABLE=2
+SLICE=$(( AVAILABLE / SHARDS )); [ "$SLICE" -lt 2 ] && SLICE=2
+echo "cores=$CORES reserved=$RESERVED shards=$SHARDS slice=$SLICE (shards x slice = $(( SHARDS * SLICE )))"
 JVM_OPTS="${JVM_OPTS:--XX:ActiveProcessorCount=$SLICE -Xmx3g}"
 # Sprint 27 D1: the embedder's Vector API backend, GUARDED — a JVM given
 # --add-modules for a module it lacks refuses to start (exit 1), so probing
