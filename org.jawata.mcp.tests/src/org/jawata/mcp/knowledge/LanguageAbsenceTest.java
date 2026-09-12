@@ -18,14 +18,22 @@ import org.junit.jupiter.api.io.TempDir;
  * author named Java" are different facts, and the store used to write the same value for
  * both: every insert site defaulted an absent language to the literal {@code "java"}. So
  * a markdown story — which states a claim in prose and names no language at all — was
- * recorded as Java, counted as Java, and handed to a JAVA SYMBOL RESOLVER by the
- * staleness sweep.</p>
+ * recorded as Java and counted as Java.</p>
  *
- * <p><b>Why that is not cosmetic.</b> The sweep's job is to notice when the code an entry
- * points at has gone, and to say so. Pointed at prose it cannot resolve anything, and the
- * store ends up telling its reader that correct knowledge has rotted — the one thing a
- * knowledge store must not get wrong, because a reader who stops trusting the staleness
- * signal has lost the signal.</p>
+ * <p><b>What that costs, stated as what it actually costs.</b> The READING surfaces are
+ * wrong: {@code stats().by_language} files prose under {@code java} instead of
+ * {@code (none)}, the {@code language} filter on the list query returns it for a caller
+ * who asked for Java, and an export carries the guess out as though the author had made
+ * it. Those are the consumers this change is for.</p>
+ *
+ * <p><b>AND NOT THE STALENESS SWEEP — which an earlier version of this javadoc claimed,
+ * falsely, while the bottom of this same file said the opposite and correctly.</b>
+ * {@code refresh} drops a row at its FQN guard — no anchor, nothing to resolve — several
+ * lines before the language is consulted at all, so a story of prose was already left
+ * alone before E6 and is left alone after it. The claim is corrected here rather than
+ * deleted, because it was refuted twice and written three times: the fold that found it
+ * corrected the two copies in production source and walked past this one — the copy a
+ * reader meets first, and in the most authoritative position in the file.</p>
  */
 class LanguageAbsenceTest {
 
@@ -65,7 +73,15 @@ class LanguageAbsenceTest {
             assertNotEquals(1L, languages.get("java"),
                 () -> "A PROSE STORY IS NOT A JAVA ROW. Every insert site used to default"
                     + " an absent language to \"java\", so a note written in English was"
-                    + " recorded, counted and swept as Java: " + languages);
+                    + " recorded and counted as Java: " + languages);
+            assertEquals(1L, languages.get("(none)"),
+                () -> "AND IT LANDS WHERE ABSENCE IS RENDERED. The clause above is"
+                    + " ONE-SIDED: it passes if the key is missing, if the count is 0 or 2,"
+                    + " and — the case that matters — if the row landed under some third"
+                    + " value entirely. The store already renders the positive fact, so"
+                    + " nothing here has to infer it: groupCount maps a NULL language to"
+                    + " the key \"(none)\". Reading what the object says is strictly"
+                    + " stronger than asserting the absence of one alternative: " + languages);
         }
     }
 
@@ -100,6 +116,11 @@ class LanguageAbsenceTest {
             assertNotEquals(1L, languages.get("java"),
                 () -> "A REWRITE MUST NOT RE-GUESS. The update path carries its own copy of"
                     + " every binding, and it is where a default creeps back in: " + languages);
+            assertEquals(1L, languages.get("(none)"),
+                () -> "AND THE REWRITTEN ROW STILL LANDS UNDER ABSENCE — the positive half,"
+                    + " for the reason spelled out on the sibling case above: the clause"
+                    + " before this one cannot tell \"absent\" from \"some third value\","
+                    + " and the store renders \"(none)\" itself: " + languages);
         }
     }
 
