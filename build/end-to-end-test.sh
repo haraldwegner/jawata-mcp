@@ -897,12 +897,36 @@ lane_closed() {   # lane_closed <stats-payload> <lane-name> -> 0 when embedded==
 # was set against the one-vector cost and this check began failing at the
 # arithmetic, not at a defect. Widened to match, and made to report PROGRESS so
 # that a stall and a slow run are different findings rather than one timeout.
-ENTRY_LANE=""; CONVERGED=""; SEEN=-1
+# AND `embedded == total` IS NOT CONVERGENCE, because `total` is a MOVING
+# DENOMINATOR. Measured 2026-09-12 over a controlled pair — same tree, same dist:
+#
+#   run alone            entry lane converged at 247/247   gate 102 passed, 0 failed
+#   run after the suite  entry lane converged at 189/189   gate  99 passed, 3 failed
+#
+# 189 is the CATALOGUE, exactly: stats reports catalogue.entries 189 =
+# {java-design-patterns 187, jawata-samples 2}. So in the failing run the lane held
+# the catalogue and NOTHING ELSE — the 48 imported fixture rows had not been enqueued
+# into it yet, `total` was still 189, `embedded` caught up to 189, and this loop
+# declared "converged, BOTH lanes" over a lane 58 rows short. Every recall below then
+# ran against a store holding only design patterns, which is why the three failures
+# were all "a row I imported is invisible" and why they looked intermittent.
+#
+# A count compared against ITSELF cannot tell finished from not-started. The store
+# publishes the number that can: the top-level `total`, which equals
+# embedding.experience_entry.total in a healthy store. Comparing the lane to the STORE
+# is drift-proof — it needs no hard-coded fixture or catalogue size, and it fails the
+# moment a row exists that the meaning lane cannot see.
+store_total() {   # store_total <stats-payload> -> the store's own row count
+    printf '%s' "$1" | grep -oE '"data":\{"total":[0-9]+' | grep -oE '[0-9]+$'
+}
+ENTRY_LANE=""; CONVERGED=""; SEEN=-1; STORE_TOT=""
 for _ in $(seq 1 150); do
     S2="$(call experience '{"kind":"stats"}')"
     ENTRY_LANE="$(printf '%s' "$S2" | grep -o '"experience_entry":{[^}]*}')"
     ENTRY_TOT="$(printf '%s' "$ENTRY_LANE" | grep -oE '"total":[0-9]+' | cut -d: -f2)"
+    STORE_TOT="$(store_total "$S2")"
     if [ -n "$ENTRY_TOT" ] && [ "$ENTRY_TOT" -gt 0 ] \
+            && [ -n "$STORE_TOT" ] && [ "$ENTRY_TOT" -eq "$STORE_TOT" ] \
             && lane_closed "$S2" "experience_entry" && lane_closed "$S2" "tool_experience"; then
         CONVERGED="yes"; break
     fi
@@ -914,9 +938,15 @@ for _ in $(seq 1 150); do
     sleep 3
 done
 if [ -n "$CONVERGED" ]; then
-    pass "backfill-closes-both-lanes the startup reconciliation converged, BOTH lanes ($ENTRY_LANE)"
+    pass "backfill-closes-both-lanes the startup reconciliation converged, BOTH lanes, and the entry lane covers EVERY row the store holds ($ENTRY_LANE, store total $STORE_TOT)"
 else
-    fail "backfill-closes-both-lanes the backfill never closed both lanes (entry lane: ${ENTRY_LANE:-absent})"
+    fail "backfill-closes-both-lanes the entry lane never came to cover the whole store.
+          entry lane: ${ENTRY_LANE:-absent}
+          store total: ${STORE_TOT:-unknown}
+          SHORT BY: $(( ${STORE_TOT:-0} - ${ENTRY_TOT:-0} )) row(s).
+          A row the store holds and the meaning lane does not is a row that can be
+          written, listed and exported, and NEVER found by asking — which is what the
+          three recall failures below were, before this check could see the cause."
 fi
 
 # --- restored-found-by-meaning: fixture knowledge is reachable by MEANING ---------------------
@@ -936,7 +966,16 @@ case "$M" in
     # `words-only-answers` (lifecycle 3, embedder OFF). All three are recalls for
     # a row written earlier in the same run — so whatever this is, it is not the
     # embedder: one of the three runs with it deliberately disabled.
-    *) fail "restored-found-by-meaning the restored fixture is invisible to meaning recall: $(printf '%s' "$M" | head -c 400)" ;;
+    # THE SECOND PROBE IS WHAT MAKES THE FIRST READABLE. Measured 2026-09-12: the
+    # response is success:true and the store answers — it simply answers with
+    # NOMINEES instead of this row. So "invisible to meaning recall" has two very
+    # different causes and the label cannot tell them apart: the row is GONE, or the
+    # row is PRESENT AND OUTRANKED. Asking for it in its OWN WORDS separates them —
+    # if the row comes back here, the store holds it and the meaning lane ranked
+    # something else above it, which is a retrieval-quality finding and not a loss.
+    *) fail "restored-found-by-meaning the restored fixture is invisible to meaning recall.
+          WHAT THE MEANING CUE RETURNED: $(printf '%s' "$M" | head -c 1200)
+          AND THE SAME ROW ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","symptom":"the sourdough collapsed after proofing past the poke-test window","format":"text"}' | head -c 400)" ;;
 esac
 no_score "recall(meaning)" "$M"
 
@@ -1056,7 +1095,16 @@ case "$DS" in
     # `format":"json"` here, so the whole answer shape is visible — an empty
     # candidate list and a populated one carrying no dispatch key are different
     # failures and the label alone could not tell them apart.
-    *) fail "past-run-dispatch no dispatch decoration on the seat-run recall: $(printf '%s' "$DS" | head -c 400)" ;;
+    # Measured 2026-09-12: this one answered success:true with result=analogy,
+    # count:0, entries:[] — and the analogy it offered was a CATALOGUE DESIGN
+    # PATTERN ("The Retry pattern in Java transparently retries..."), returned for
+    # the cue "scheduler retry loop". The seeded seat run exists in the fixture
+    # (type seat_run, "covered the scheduler retry loop with characterization tests
+    # before the refactor"), so the second probe below says whether the store can
+    # reach it at all when asked in its own words.
+    *) fail "past-run-dispatch no dispatch decoration on the seat-run recall.
+          WHAT THE CUE RETURNED: $(printf '%s' "$DS" | head -c 1200)
+          AND THE SEAT RUN ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","symptom":"covered the scheduler retry loop with characterization tests before the refactor","format":"text"}' | head -c 400)" ;;
 esac
 no_score "recall(dispatch)" "$DS"
 
@@ -1582,7 +1630,9 @@ case "$W" in
     # embedder is running here at all. A diagnosis that blames the embedder —
     # backfill, a model load, a vector lane — cannot explain this failure, and a
     # cause that does not cover all three is not the cause.
-    *) fail "words-only-answers KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape): $(printf '%s' "$W" | head -c 400)" ;;
+    *) fail "words-only-answers KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape).
+          WHAT THE PROSE CUE RETURNED: $(printf '%s' "$W" | head -c 1200)
+          AND THE SAME ROW ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","symptom":"the cone-six glaze crawled where the bisque was dusty","format":"text"}' | head -c 400)" ;;
 esac
 no_score "recall(words-only)" "$W"
 
