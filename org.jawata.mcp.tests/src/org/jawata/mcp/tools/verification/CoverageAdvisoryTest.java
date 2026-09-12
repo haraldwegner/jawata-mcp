@@ -118,7 +118,8 @@ class CoverageAdvisoryTest {
         int column = offset - (source.lastIndexOf('\n', offset) + 1);
 
         ToolRegistry registry = new ToolRegistry();
-        registry.register(new RenameSymbolTool(() -> service, new RefactoringChangeCache()));
+        registry.register(
+            new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
         ObjectNode rename = om.createObjectNode();
         rename.put("filePath", flip.toString());
         rename.put("line", line);

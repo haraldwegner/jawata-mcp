@@ -111,7 +111,7 @@ class ResolveOrRelocateTest {
     @Test
     @DisplayName("a member renamed to an UNRELATED word: name the real members, do not guess")
     void renamedMember_namesTheRealMembersWithoutGuessing() {
-        RenameSymbolTool rename = new RenameSymbolTool(() -> service, cache);
+        RenameSymbolTool rename = new RenameSymbolTool(() -> service, cache, () -> null);
         ObjectNode renameArgs = om.createObjectNode();
         renameArgs.put("symbol", "com.example.Calculator#multiply");
         renameArgs.put("newName", "times");

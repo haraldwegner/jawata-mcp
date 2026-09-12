@@ -188,7 +188,7 @@ class PerformedRefactoringCountTest {
                 ops.add(door.getName() + " " + discriminator + "=" + kind);
             }
         }
-        for (AbstractTool tool : RefactoringDoors.standalone(none, cache)) {
+        for (AbstractTool tool : RefactoringDoors.standalone(none, cache, () -> null)) {
             ops.add(tool.getName());
         }
         return ops;

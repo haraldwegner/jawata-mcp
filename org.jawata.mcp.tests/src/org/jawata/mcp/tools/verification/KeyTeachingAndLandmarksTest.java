@@ -205,7 +205,7 @@ class KeyTeachingAndLandmarksTest {
 
         // Rename it through the compiler-accurate path an agent would actually use.
         org.jawata.mcp.tools.RenameSymbolTool rename = new org.jawata.mcp.tools.RenameSymbolTool(
-            () -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+            () -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache(), () -> null);
         ObjectNode renameArgs = om.createObjectNode();
         renameArgs.put("symbol", "com.example.Calculator");
         renameArgs.put("newName", "Reckoner");

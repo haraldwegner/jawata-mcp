@@ -1113,9 +1113,14 @@ public class JawataApplication implements IApplication {
         // gate can join against what is REGISTERED rather than against a tool it constructed
         // itself. C9 found the difference: the Fowler count took `rename_symbol` from a fresh
         // instance, so deleting this registration would have left it green.
+        // Sprint 28f Stage 7: the store reaches rename_symbol so a renamed member takes the
+        // knowledge anchored at it. A SUPPLIER, read at call time — registerTools runs
+        // before the store is opened, so a direct reference here would be null forever and
+        // renames would quietly stop following. RenameFollowsIntoTheStoreTest asserts this
+        // wiring against the registry the application builds.
         for (org.jawata.mcp.tools.AbstractTool tool
                 : org.jawata.mcp.tools.RefactoringDoors.standalone(
-                    () -> jdtService, refactoringChangeCache)) {
+                    () -> jdtService, refactoringChangeCache, () -> experienceStore)) {
             toolRegistry.register(tool);
         }
 

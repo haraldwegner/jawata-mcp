@@ -54,17 +54,19 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         final String summary;
         final ToolResponse error;
         final Map<String, Object> extras;
+        final AfterApply afterApply;
 
         private Preparation(Change change, String summary, ToolResponse error,
-                            Map<String, Object> extras) {
+                            Map<String, Object> extras, AfterApply afterApply) {
             this.change = change;
             this.summary = summary;
             this.error = error;
             this.extras = extras;
+            this.afterApply = afterApply;
         }
 
         public static Preparation of(Change change, String summary) {
-            return new Preparation(change, summary, null, Map.of());
+            return new Preparation(change, summary, null, Map.of(), null);
         }
 
         /**
@@ -74,12 +76,59 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
          */
         public static Preparation of(Change change, String summary, Map<String, Object> extras) {
             return new Preparation(change, summary, null,
-                extras == null ? Map.of() : extras);
+                extras == null ? Map.of() : extras, null);
+        }
+
+        /**
+         * Variant carrying work that must happen ONLY IF the change actually lands.
+         *
+         * @see AfterApply
+         */
+        public static Preparation of(Change change, String summary, Map<String, Object> extras,
+                                     AfterApply afterApply) {
+            return new Preparation(change, summary, null,
+                extras == null ? Map.of() : extras, afterApply);
         }
 
         public static Preparation fail(ToolResponse error) {
-            return new Preparation(null, null, error, Map.of());
+            return new Preparation(null, null, error, Map.of(), null);
         }
+    }
+
+    /**
+     * Work a tool wants done AFTER its change has really landed — Sprint 28f Stage 7.
+     *
+     * <p>Some consequences of a refactoring live outside the code: renaming a member moves
+     * the knowledge rows anchored at it. Such a consequence must follow the change and not
+     * merely the intention, so it belongs after the compile gate, the parity check and the
+     * undo — a rename this pipeline ROLLED BACK must leave every anchor where it was, and
+     * the only place that ordering is known is here.</p>
+     *
+     * <h2>Why the tool supplies it rather than the base class performing it</h2>
+     *
+     * <p>The obvious design was to give this base class the knowledge store and have it do
+     * the following itself. It was rejected on measurement: the constructor would reach
+     * every applying tool — 27-plus subtypes — to serve the two that rename anything, and
+     * the alternative of a statically registered follower buys that back with global state.
+     * <b>The split that avoids both is WHEN versus WHAT.</b> This class knows when a change
+     * has truly landed and nothing else; the tool knows what follows from its own
+     * refactoring and holds whatever it needs to do it.</p>
+     *
+     * <p><b>And it makes the failure this sprint keeps meeting impossible by construction.</b>
+     * A declaration that something should follow, on one side, and the capability to follow
+     * it, on the other, is exactly the shape where the two come apart silently — the
+     * allowlist naming eight doors while a ninth existed, {@code KnowledgeLane.CODE} with no
+     * branch reaching it. Here the object that DECLARES the follow-up is the object that
+     * PERFORMS it, so there is no gap for them to come apart in.</p>
+     *
+     * <p>The returned map is merged into the response the way {@code extras} is, so what
+     * followed is reported rather than done invisibly. Implementations own their own error
+     * wording: a failure here must not fail a refactoring that already succeeded, and it
+     * must not vanish either.</p>
+     */
+    @FunctionalInterface
+    protected interface AfterApply {
+        Map<String, Object> run();
     }
 
     /**
@@ -214,6 +263,27 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
                 "undo: " + summary, "", outcome.modifiedFilePaths());
         }
 
+        // THE CHANGE HAS LANDED — and only here is that true. The compile gate ran, the
+        // parity check passed, a refused change was undone above and returned, and the undo
+        // handle is cached. Anything that must follow the change rather than the intention
+        // goes here and nowhere earlier: the staged path returns before this, correctly,
+        // because nothing has been applied there yet. See AfterApply.
+        Map<String, Object> followed = Map.of();
+        if (preparation.afterApply != null) {
+            try {
+                Map<String, Object> ran = preparation.afterApply.run();
+                followed = ran == null ? Map.of() : ran;
+            } catch (RuntimeException e) {
+                // A failure here must not fail a refactoring that already succeeded — and
+                // must not vanish either, which is this codebase's recorded top-bug class.
+                // The tool owns its own wording; this is the last resort for a throw it did
+                // not expect, and it SAYS so in the response rather than in a log nobody
+                // reads.
+                log.warn("{}: after-apply work threw: {}", getName(), e.getMessage(), e);
+                followed = Map.of("afterApplyFailed", String.valueOf(e.getMessage()));
+            }
+        }
+
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("operation", getName());
         data.put("applied", true);
@@ -227,6 +297,7 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         data.put("diff", diff);
         data.put("undoChangeId", undoChangeId);
         data.put("summary", summary);
+        followed.forEach(data::putIfAbsent);
         preparation.extras.forEach(data::putIfAbsent);
         return ToolResponse.success(data, ResponseMeta.builder()
             .totalCount(outcome.modifiedFilePaths().size())

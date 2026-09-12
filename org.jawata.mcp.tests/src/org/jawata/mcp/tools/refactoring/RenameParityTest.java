@@ -100,7 +100,7 @@ class RenameParityTest {
         Path file = projectPath.resolve(c.file());
 
         RefactoringChangeCache cache = new RefactoringChangeCache();
-        RenameSymbolTool tool = new RenameSymbolTool(() -> service, cache);
+        RenameSymbolTool tool = new RenameSymbolTool(() -> service, cache, () -> null);
 
         ObjectNode args = objectMapper.createObjectNode();
         args.put("filePath", file.toString());

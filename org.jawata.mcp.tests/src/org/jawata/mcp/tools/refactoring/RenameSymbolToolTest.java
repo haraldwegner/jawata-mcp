@@ -46,7 +46,7 @@ class RenameSymbolToolTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
-        tool = new RenameSymbolTool(() -> service, cache);
+        tool = new RenameSymbolTool(() -> service, cache, () -> null);
         applyTool = new ApplyRefactoringTool(() -> service, cache);
         undoTool = new UndoRefactoringTool(() -> service, cache);
         objectMapper = new ObjectMapper();

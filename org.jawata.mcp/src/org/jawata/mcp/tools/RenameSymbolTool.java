@@ -1,9 +1,16 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.ILocalVariable;
+import org.eclipse.jdt.core.IMember;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.ITypeParameter;
@@ -24,6 +31,7 @@ import org.eclipse.ltk.core.refactoring.TextChange;
 import org.eclipse.ltk.core.refactoring.participants.RenameRefactoring;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.CheckedChange;
@@ -33,12 +41,7 @@ import org.jawata.mcp.refactoring.RefactoringEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Rename a symbol across the project.
@@ -78,9 +81,33 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
         "record", "sealed", "permits", "non-sealed"
     );
 
+    /**
+     * The knowledge store whose anchors follow a rename — Sprint 28f Stage 7.
+     *
+     * <p>A {@code Supplier} rather than the store itself because the application registers
+     * its tools and opens its store in an order this class must not depend on; reading the
+     * field at call time is the same idiom {@code serviceSupplier} already uses here.</p>
+     *
+     * <p><b>Null is a real state and it is the TESTS', not production's.</b> Most tests
+     * construct this tool with no store at all, and a rename must work there. What must not
+     * happen is production quietly ending up in that state, so the single constructor takes
+     * the parameter — there is no store-less overload to fall into — and
+     * {@code RenameFollowsIntoTheStoreTest} asserts the tool the application actually
+     * registers has one. A capability wired nowhere is this project's recorded headline
+     * defect, and an accessor is what lets a gate ask.</p>
+     */
+    private final Supplier<ExperienceStore> knowledge;
+
     public RenameSymbolTool(Supplier<IJdtService> serviceSupplier,
-                            RefactoringChangeCache changeCache) {
+                            RefactoringChangeCache changeCache,
+                            Supplier<ExperienceStore> knowledge) {
         super(serviceSupplier, changeCache);
+        this.knowledge = knowledge;
+    }
+
+    /** Whether this instance can follow a rename into the knowledge store. */
+    public boolean followsAnchors() {
+        return knowledge != null && knowledge.get() != null;
     }
 
     @Override
@@ -250,7 +277,95 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
 
         String summary = "rename " + symbolKind + " '" + oldName + "' -> '" + newName + "'";
         log.debug("rename_symbol via JDT rename processor: {}", summary);
-        return Preparation.of(change, summary, extras);
+
+        // THE KNOWLEDGE ANCHORED AT THIS NAME FOLLOWS IT — but only if the rename lands.
+        // Deriving both names HERE is the whole reason this is the tool's work and not the
+        // pipeline's: `extras` already carries oldName/newName and they are SIMPLE names
+        // (`renderMonthly`), while an anchor is `com.example.Reports#renderMonthly`. A
+        // follower reading extras would match nothing every time and report zero — which is
+        // also the honest answer when a member has no job, so it would have looked like it
+        // was working. This method holds the IJavaElement and can spell both properly.
+        String fromAnchor = anchorOf(element);
+        AfterApply follow = fromAnchor == null ? null
+            : () -> moveAnchors(fromAnchor, renamedAnchor(fromAnchor, newName));
+        return Preparation.of(change, summary, extras, follow);
+    }
+
+    /**
+     * The element's anchor in the STORE's own spelling, or null when nothing can be
+     * anchored there.
+     *
+     * <p>Dot-separated for a nested type ({@code pkg.Outer.Inner}), because that is what
+     * {@code SymbolAnchorResolver} writes when it anchors a row and what
+     * {@code ExperienceRetrieval} resolves one by; the {@code $} spelling of the no-argument
+     * {@code getFullyQualifiedName} is a different string and would match nothing. Row 54 of
+     * the previous sprint lost a whole migration to exactly that pair.</p>
+     *
+     * <p>A local variable, a package or a compilation unit answers null: the store anchors
+     * types and their members, and nothing else.</p>
+     */
+    private static String anchorOf(IJavaElement element) {
+        if (element instanceof IType type) {
+            return type.getFullyQualifiedName('.');
+        }
+        if (element instanceof IMember member) {
+            IType declaring = member.getDeclaringType();
+            return declaring == null ? null
+                : declaring.getFullyQualifiedName('.') + "#" + member.getElementName();
+        }
+        return null;
+    }
+
+    /** The same anchor with its LAST segment replaced — the member, or the type's own name. */
+    private static String renamedAnchor(String anchor, String newName) {
+        int hash = anchor.indexOf('#');
+        if (hash >= 0) {
+            return anchor.substring(0, hash + 1) + newName;
+        }
+        int dot = anchor.lastIndexOf('.');
+        return dot < 0 ? newName : anchor.substring(0, dot + 1) + newName;
+    }
+
+    /**
+     * Move every row anchored at {@code from} to {@code to}, and say how many moved.
+     *
+     * <p><b>Zero is reported by SILENCE, deliberately.</b> Most renamed members have no job
+     * describing them, so nothing-to-move is the normal case and a {@code anchorsMoved: 0}
+     * on every rename in the product would be noise. The consequence is stated rather than
+     * hidden: this response cannot distinguish "followed, nothing to move" from "no store
+     * was wired". That second state is covered where it belongs — by a test on the tool the
+     * application actually registers, not by a disclaimer on every successful rename.</p>
+     *
+     * <h2>The boundary: a TYPE rename does not carry its members' anchors</h2>
+     *
+     * <p>{@code moveSymbolAnchor} matches a WHOLE name, which is right and was chosen
+     * deliberately — a prefix match cannot tell {@code Reports#render} from
+     * {@code Reports#renderDaily}. So renaming the TYPE {@code Reports} moves a row anchored
+     * at {@code com.example.Reports} and NOT the rows at
+     * {@code com.example.Reports#renderMonthly}. Those are not lost silently: their type no
+     * longer resolves either, so {@code refresh} marks them stale by the machinery that
+     * already exists, and re-cataloguing restores them. A member rename is followed
+     * automatically; a type rename is detected and re-derived. Recorded at C7 rather than
+     * widened here, because widening means a second store verb and its own gate.</p>
+     */
+    private Map<String, Object> moveAnchors(String from, String to) {
+        ExperienceStore store = knowledge == null ? null : knowledge.get();
+        if (store == null) {
+            return Map.of();
+        }
+        try {
+            int moved = store.moveSymbolAnchor(from, to);
+            return moved == 0 ? Map.of() : Map.of("anchorsMoved", moved);
+        } catch (RuntimeException e) {
+            // The rename SUCCEEDED; the store did not follow. Both halves are true and the
+            // caller is told both — an empty result on failure is this codebase's recorded
+            // deepest bug class, and it must be in the RESPONSE rather than a log.
+            log.warn("rename_symbol: anchors did not follow {} -> {}: {}", from, to,
+                e.getMessage(), e);
+            return Map.of("anchorsFollowFailed",
+                "the rename applied; knowledge anchored at " + from + " did NOT move ("
+                    + e.getMessage() + "). Re-anchor or re-catalogue that member.");
+        }
     }
 
     /** Map a resolved Java element to the JDT rename processor for its kind. */

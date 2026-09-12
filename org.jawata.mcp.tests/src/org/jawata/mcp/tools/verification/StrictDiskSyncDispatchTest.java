@@ -45,7 +45,8 @@ class StrictDiskSyncDispatchTest {
         registry = new ToolRegistry();
         registry.register(new SearchSymbolsTool(() -> service));
         registry.register(new GetDiagnosticsTool(() -> service));
-        registry.register(new RenameSymbolTool(() -> service, new RefactoringChangeCache()));
+        registry.register(
+            new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
         registry.setDiskSync(new StrictDiskSync(() -> service));
     }
 

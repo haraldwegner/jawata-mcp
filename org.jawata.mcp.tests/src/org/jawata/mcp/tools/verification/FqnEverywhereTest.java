@@ -168,7 +168,7 @@ class FqnEverywhereTest {
     @Test
     @DisplayName("rename_symbol renames by symbol name alone")
     void renameByName() {
-        RenameSymbolTool tool = new RenameSymbolTool(() -> service, cache);
+        RenameSymbolTool tool = new RenameSymbolTool(() -> service, cache, () -> null);
         ObjectNode args = byName("symbol", "com.example.Calculator#multiply");
         args.put("newName", "times");
         args.put("auto_apply", false);

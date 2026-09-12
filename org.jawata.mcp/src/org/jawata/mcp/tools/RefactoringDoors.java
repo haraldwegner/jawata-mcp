@@ -1,10 +1,11 @@
 package org.jawata.mcp.tools;
 
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
-
 import java.util.List;
 import java.util.function.Supplier;
+
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.knowledge.ExperienceStore;
+import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 /**
  * THE REFACTORING FRONT DOORS, IN ONE PLACE — the population, not a description of it.
@@ -108,9 +109,10 @@ public final class RefactoringDoors {
      * <p>New instances each call, for the reason {@link #all} gives.</p>
      */
     public static List<AbstractTool> standalone(Supplier<IJdtService> service,
-                                                RefactoringChangeCache cache) {
+                                                RefactoringChangeCache cache,
+                                                Supplier<ExperienceStore> knowledge) {
         return List.of(
-            new RenameSymbolTool(service, cache),
+            new RenameSymbolTool(service, cache, knowledge),
             new OrganizeImportsTool(service, cache));
     }
 }

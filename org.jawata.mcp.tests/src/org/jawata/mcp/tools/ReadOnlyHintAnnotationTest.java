@@ -107,7 +107,7 @@ class ReadOnlyHintAnnotationTest {
             // actually ships.
             List<AbstractTool> real = new java.util.ArrayList<>(
                 RefactoringDoors.all(() -> null, cache));
-            real.addAll(RefactoringDoors.standalone(() -> null, cache));
+            real.addAll(RefactoringDoors.standalone(() -> null, cache, () -> null));
             real.forEach(registry::register);
 
             assertFalse(real.isEmpty(), "the derivation must yield tools, or this proves nothing");

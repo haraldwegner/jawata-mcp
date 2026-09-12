@@ -99,7 +99,7 @@ class WorkspaceHealthGuardTest {
             .close(new org.eclipse.core.runtime.NullProgressMonitor());
 
         RenameSymbolTool rename = new RenameSymbolTool(() -> service,
-            new RefactoringChangeCache());
+            new RefactoringChangeCache(), () -> null);
         ObjectNode args = om.createObjectNode();
         args.put("symbol", "com.example.Calculator");
         args.put("newName", "Calc");
