@@ -711,9 +711,19 @@ case "$SWEEP" in
         pass "demand-and-delete an unanswered question reaches the writing backlog" ;;
     *) fail "demand-and-delete the backlog lost the unanswered question: $(printf '%s' "$SWEEP" | head -c 300)" ;;
 esac
+# Sprint 28f S5 renamed these keys (`0f5921d1` — "the combined lists are gone"): the two
+# lists are now GROUPED, `deletionListByLane` and `writingBacklogByTrigger`, because
+# dropping a stale experience and dropping a domain fact nobody consulted are different
+# acts and a mixed list is one nobody can rule on.
+#
+# The rename carries NO ALIAS, deliberately — ExperienceTool says where it builds the
+# response that "a consumer reading `deletionList` now gets nothing and notices". This
+# check was exactly that consumer, and it is what noticed. It went stale for a whole
+# checkpoint only because no incremental build had shipped the rename into the dist for
+# it to fail against; the first CLEAN build after S5 failed it at once.
 case "$SWEEP" in
-    *'"deletionList"'*'"writingBacklog"'*'"droppedWrites"'*)
-        pass "demand-and-delete the sweep carries both lists and its own dropped-write count" ;;
+    *'"deletionListByLane"'*'"writingBacklogByTrigger"'*'"droppedWrites"'*)
+        pass "demand-and-delete the sweep carries both grouped lists and its own dropped-write count" ;;
     *) fail "demand-and-delete the sweep is missing a list or the drop count: $(printf '%s' "$SWEEP" | head -c 300)" ;;
 esac
 # A count that is PRESENT and unreadable is refused, never defaulted: defaulting
