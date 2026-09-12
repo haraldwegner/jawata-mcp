@@ -75,7 +75,13 @@ public final class ExperienceTool implements Tool {
             // Sprint 28f Stage 5: the rule lifecycle. Three verbs rather than flags on
             // `record` and `promote`, because a rule does not share their lifecycle —
             // it is derived from sources, versioned, and retired on a date.
-            "promote_rule", "amend_rule", "retire_rule");
+            "promote_rule", "amend_rule", "retire_rule",
+            // Sprint 28f Stage 7: the describing QUEUE — `action=next` hands out the source
+            // units still to describe, `action=done` records one as described at its current
+            // text. NOT named `catalogue`, which on this store already means the imported
+            // PATTERN catalogue (five Catalogue* classes, a catalogue provenance and a
+            // catalogueBlock in this very tool's stats) — see DescribedUnits.
+            "describe");
 
     /**
      * Sprint 28f D4 — HOW KNOWLEDGE IS ADDED, said once.
@@ -377,11 +383,33 @@ public final class ExperienceTool implements Tool {
         props.put("id", Map.of("type", "string", "description",
             "promote: the entry id to re-status."));
         props.put("limit", Map.of("type", "integer",
-            "description", "primer: max domain nodes (default 20); list: max rows (default 50)."));
+            "description", "primer: max domain nodes (default 20); list: max rows (default 50);"
+                + " describe action=next: max units to hand out (default 10) — this is the"
+                + " token budget for one describing pass."));
         props.put("format", Map.of("type", "string", "enum", List.of("json", "text"),
             "description", "recall/primer/list: text = flat injection-ready lines; default json."));
         props.put("scope", Map.of("type", "string",
-            "description", "list: symbol/package prefix filter."));
+            "description", "list: symbol/package prefix filter. describe action=next: the"
+                + " package to describe, including its subpackages; omit for the whole"
+                + " workspace."));
+        // Sprint 28f Stage 7 — the describing queue's own parameters. They are PUBLISHED
+        // because this schema is the only thing an agent can see: a parameter the code reads
+        // and the schema omits is usable and undiscoverable, which is the sibling of the
+        // defect the KINDS javadoc above records for verbs.
+        props.put("action", Map.of("type", "string", "enum", List.of("next", "done"),
+            "description", "describe: 'next' takes the source units still to describe,"
+                + " 'done' records one as described."));
+        props.put("unit", Map.of("type", "string",
+            "description", "describe action=done: the unit path action=next handed you."));
+        props.put("contentHash", Map.of("type", "string",
+            "description", "describe action=done: the contentHash action=next handed you WITH"
+                + " that unit. Required, and not re-read from the file on purpose — you"
+                + " described the text you were given, and recording today's text instead"
+                + " would claim a description nobody wrote and retire the unit for good."));
+        props.put("bundle", Map.of("type", "string",
+            "description", "describe action=done: which bundle the unit belongs to, for the"
+                + " coverage report. Omitted is a real state and is counted as"
+                + " 'unattributed' rather than folded into another bundle."));
         props.put("entries", Map.of("type", "array", "items", Map.of("type", "object"),
             "description", "import: exported entries (inline alternative to path)."));
 
@@ -555,6 +583,7 @@ public final class ExperienceTool implements Tool {
             case "promote_rule" -> promoteRule(args);
             case "amend_rule" -> amendRule(args);
             case "retire_rule" -> retireRule(args);
+            case "describe" -> describe(args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -2038,6 +2067,191 @@ public final class ExperienceTool implements Tool {
             return args.get(BUDGET_MILLIS).asLong();
         }
         return ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS;
+    }
+
+    /**
+     * Sprint 28f Stage 7 deliverable 3 — the describing QUEUE.
+     *
+     * <p>{@code action=next} hands out the source units in {@code scope} that still need
+     * describing, at most {@code limit} of them, each with the JDT facts an agent needs to
+     * start reading: its package, its bundle, its declared types and their members, and the
+     * CONTENT HASH it must hand back. {@code action=done} records one unit as described at
+     * the text that hash names.</p>
+     *
+     * <h2>Why {@code done} REQUIRES the hash rather than re-reading the file</h2>
+     *
+     * <p>Because the two answers differ exactly when it matters. An agent describes the text
+     * it read; if the file has changed since, recording TODAY's hash would claim the new text
+     * was described, and the unit would never be offered again. Recording the hash it was
+     * GIVEN is the truthful record — and the next {@code next} sees the disagreement and
+     * re-queues the unit, which is the behaviour the ledger exists for. A missing hash is
+     * therefore refused with a pointer to where it came from, rather than filled in with a
+     * value that would quietly over-claim.</p>
+     *
+     * <h2>What it deliberately does NOT return: callers</h2>
+     *
+     * <p>The plan lists callers among the facts. The cataloguer seat's own tool list — the
+     * plan's next deliverable — already includes {@code get_call_hierarchy}, so returning
+     * them here would be a second path to one fact, which this codebase refuses on principle
+     * and has paid for repeatedly. It would also cost one search per member of every unit
+     * handed out, on every call, for members the agent may not describe.</p>
+     */
+    /**
+     * The describing queue over THIS tool's store.
+     *
+     * <p>Lazily built and held, over {@code currentH2Store} rather than over a captured
+     * store — the same reason {@code UsageLedger} takes a supplier: the delegate behind a
+     * {@code RecoveringExperienceStore} is replaced after a recovery, and a reference taken
+     * once would go on writing to a connection that has already died.</p>
+     */
+    private org.jawata.mcp.knowledge.DescribedUnits describedUnits;
+
+    private org.jawata.mcp.knowledge.DescribedUnits describedUnits() {
+        if (describedUnits == null) {
+            describedUnits = new org.jawata.mcp.knowledge.DescribedUnits(this::currentH2Store);
+        }
+        return describedUnits;
+    }
+
+    private ToolResponse describe(JsonNode args) {
+        String action = text(args, "action");
+        if (action == null || action.isBlank()) {
+            return ToolResponse.invalidParameter("action",
+                "Required — 'next' to take units to describe, 'done' to record one.");
+        }
+        IJdtService service = serviceSupplier == null ? null : serviceSupplier.get();
+        return switch (action) {
+            case "next" -> describeNext(service, args);
+            case "done" -> describeDone(args);
+            default -> ToolResponse.invalidParameter("action",
+                "Unknown action '" + action + "'. Allowed: next, done.");
+        };
+    }
+
+    /** The outstanding units in scope, with the facts needed to read one. */
+    private ToolResponse describeNext(IJdtService service, JsonNode args) {
+        if (service == null) {
+            return ToolResponse.error("NO_PROJECT",
+                "describe next needs a loaded project — the units it hands out are the"
+                    + " workspace's own source files.",
+                "Call load_project first.");
+        }
+        String scope = text(args, "scope");
+        int limit = countArg(args, "limit", 10);
+        List<org.jawata.mcp.knowledge.DescribedUnits.Unit> candidates = new java.util.ArrayList<>();
+        List<String> unreadable = new java.util.ArrayList<>();
+        Map<String, Map<String, Object>> facts = new java.util.LinkedHashMap<>();
+        for (java.nio.file.Path file : service.getAllJavaFiles()) {
+            org.eclipse.jdt.core.ICompilationUnit cu = service.getCompilationUnit(file);
+            if (cu == null) {
+                continue;
+            }
+            try {
+                String pkg = packageOf(cu);
+                if (scope != null && !scope.isBlank()
+                        && !pkg.equals(scope) && !pkg.startsWith(scope + ".")) {
+                    continue;
+                }
+                String path = file.toString();
+                String bundle = cu.getJavaProject() == null ? null
+                    : cu.getJavaProject().getElementName();
+                candidates.add(org.jawata.mcp.knowledge.DescribedUnits.Unit.of(
+                    path, cu.getSource(), bundle));
+                facts.put(path, unitFacts(cu, pkg, bundle));
+            } catch (Exception e) {
+                // A unit that cannot be read is NAMED, not silently dropped. A shorter queue
+                // that reads as complete is how a bundle ends up half-described with nothing
+                // pointing at the half that was skipped — this project's own recorded
+                // deepest bug class, one layer down.
+                unreadable.add(file + " (" + e.getMessage() + ")");
+            }
+        }
+        List<org.jawata.mcp.knowledge.DescribedUnits.Unit> outstanding =
+            describedUnits().outstanding(candidates, limit);
+
+        List<Map<String, Object>> units = new java.util.ArrayList<>();
+        for (org.jawata.mcp.knowledge.DescribedUnits.Unit u : outstanding) {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("unit", u.path());
+            row.put("contentHash", u.contentHash());
+            row.put("bundle", u.bundle());
+            row.putAll(facts.getOrDefault(u.path(), Map.of()));
+            units.add(row);
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("scope", scope == null || scope.isBlank() ? "(whole workspace)" : scope);
+        out.put("units", units);
+        out.put("returned", units.size());
+        // The two numbers a caller needs to know whether to come back: how many units the
+        // scope holds at all, and how many of them still need describing. Without the
+        // second, an empty `units` reads identically to "the limit was zero".
+        out.put("inScope", candidates.size());
+        out.put("outstanding",
+            describedUnits().outstanding(candidates, Integer.MAX_VALUE).size());
+        if (!unreadable.isEmpty()) {
+            out.put("unreadable", unreadable);
+        }
+        out.put("next", "read each unit, record a job per member it explains, then"
+            + " experience(kind=describe, action=done, unit=..., contentHash=...)");
+        return ToolResponse.success(out);
+    }
+
+    /** Record one unit as described at the text its hash names. */
+    private ToolResponse describeDone(JsonNode args) {
+        String unit = text(args, "unit");
+        if (unit == null || unit.isBlank()) {
+            return ToolResponse.invalidParameter("unit",
+                "Required — the unit path describe(action=next) handed you.");
+        }
+        String hash = text(args, "contentHash");
+        if (hash == null || hash.isBlank()) {
+            return ToolResponse.invalidParameter("contentHash",
+                "Required — the contentHash describe(action=next) handed you with this unit."
+                    + " It is not re-read from the file on purpose: you described the text you"
+                    + " were given, and if the file has changed since, recording today's text"
+                    + " would claim a description nobody wrote and the unit would never be"
+                    + " offered again.");
+        }
+        boolean recorded = describedUnits().done(unit, hash, text(args, "bundle"));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("unit", unit);
+        out.put("recorded", recorded);
+        if (!recorded) {
+            // Reported rather than swallowed: a resume computed over lost rows reads as
+            // "this unit was never described" when the truth is "we failed to write it down".
+            out.put("note", "the ledger did not accept this row — it will be offered again."
+                + " Lost bookkeeping writes so far: " + describedUnits().failedWrites());
+        }
+        return ToolResponse.success(out);
+    }
+
+    /** The package a unit declares, or the empty string for the default package. */
+    private static String packageOf(org.eclipse.jdt.core.ICompilationUnit cu) throws Exception {
+        org.eclipse.jdt.core.IPackageDeclaration[] declared = cu.getPackageDeclarations();
+        return declared.length == 0 ? "" : declared[0].getElementName();
+    }
+
+    /** What an agent needs to start reading a unit: where it sits and what it declares. */
+    private static Map<String, Object> unitFacts(org.eclipse.jdt.core.ICompilationUnit cu,
+            String pkg, String bundle) throws Exception {
+        Map<String, Object> facts = new java.util.LinkedHashMap<>();
+        facts.put("package", pkg);
+        List<Map<String, Object>> types = new java.util.ArrayList<>();
+        for (org.eclipse.jdt.core.IType type : cu.getTypes()) {
+            Map<String, Object> t = new java.util.LinkedHashMap<>();
+            t.put("type", type.getFullyQualifiedName('.'));
+            List<String> members = new java.util.ArrayList<>();
+            for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
+                members.add(m.getElementName());
+            }
+            for (org.eclipse.jdt.core.IField f : type.getFields()) {
+                members.add(f.getElementName());
+            }
+            t.put("members", members);
+            types.add(t);
+        }
+        facts.put("types", types);
+        return facts;
     }
 
     private ToolResponse recall(JsonNode args) {
