@@ -22,6 +22,7 @@ import org.jawata.mcp.knowledge.KnowledgeLane;
 import org.jawata.mcp.knowledge.RecallQuery;
 import org.jawata.mcp.knowledge.StoredEntry;
 import org.jawata.mcp.knowledge.StoryTemplate;
+import org.jawata.mcp.knowledge.StoryWriter;
 import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ToolResponse;
 
@@ -1982,6 +1983,23 @@ public final class ExperienceTool implements Tool {
         data.put("id", id);
         data.put("status", target);
         data.put("changed", changed);
+        // Sprint 28f Stage 6 — THE ACCEPTANCE IS WHAT WRITES THE STORY FILE.
+        //
+        // Here rather than in `setStatus`, which is the plan's own address and is also
+        // what keeps the export from feeding itself: the loader sets ACCEPTED on its
+        // BUILDER while ingesting a file, so a trigger in the store would re-export every
+        // file it had just imported, and each export would then look like a changed
+        // source to the next load.
+        //
+        // The row is re-read rather than assumed, because `setStatus` is what stamped
+        // `reviewed_at` a moment ago and the file must carry that stamp — rendering from
+        // a pre-update copy would export a story whose re-import demotes it to candidate.
+        if (changed && ExperienceEntry.ACCEPTED.equals(target)) {
+            store.byIds(List.of(id)).stream()
+                .findFirst()
+                .flatMap(StoryWriter::write)
+                .ifPresent(p -> data.put("story", p.toString()));
+        }
         return ToolResponse.success(data);
     }
 
