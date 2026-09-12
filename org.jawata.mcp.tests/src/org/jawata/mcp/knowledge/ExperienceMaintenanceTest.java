@@ -45,8 +45,11 @@ class ExperienceMaintenanceTest {
         writeMemory(dir, "a.md",
             "name: guard-lifecycle\ndescription: guard the workbench lifecycle\nmetadata:\n  type: feedback",
             "Body mentions [[recall-gap]] and [[another-note]].");
+        // Sprint 28f Stage 6: b.md carries a REVIEW STAMP and a.md does not, so this one
+        // load asserts the whole rule rather than one side of it.
         writeMemory(dir, "b.md",
-            "name: billing-dto\ndescription: billing DTOs keep no-arg ctors\ntype: domain_fact",
+            "name: billing-dto\ndescription: billing DTOs keep no-arg ctors\ntype: domain_fact"
+                + "\nreviewed: 2026-09-12",
             "Legacy XML depends on them.");
 
         Map<String, Object> report = maint(fqn -> null).load(dir);
@@ -55,8 +58,20 @@ class ExperienceMaintenanceTest {
 
         List<StoredEntry> feedback = store.query(new RecallQuery(null, null, null, "guard the workbench", null));
         assertFalse(feedback.isEmpty(), "loaded entry is queryable by its summary");
-        assertEquals(ExperienceEntry.ACCEPTED, feedback.get(0).status());
+        // THE STAMP DECIDES THE STATUS (Sprint 28f Stage 6). This used to read ACCEPTED
+        // for every loaded file, which claimed a review of anything anybody put on disk.
+        // a.md carries no `reviewed:` line, so it is a draft somebody wrote — readable,
+        // recallable as a nominee, and not vouched for.
+        assertEquals(ExperienceEntry.CANDIDATE, feedback.get(0).status(),
+            "a.md carries no review stamp, so loading it cannot claim one");
         assertEquals("feedback", feedback.get(0).type());
+
+        List<StoredEntry> stamped =
+            store.query(new RecallQuery(null, null, null, "billing DTOs", null));
+        assertFalse(stamped.isEmpty(), "the stamped note is queryable too");
+        assertEquals(ExperienceEntry.ACCEPTED, stamped.get(0).status(),
+            "b.md carries a stamp, so it arrives accepted — which is what makes the"
+                + " candidate above the rule discriminating rather than a blanket demotion");
 
         // [[wikilinks]] became related edges in the stored document.
         Map<String, Object> doc = store.get(feedback.get(0).id()).orElseThrow();

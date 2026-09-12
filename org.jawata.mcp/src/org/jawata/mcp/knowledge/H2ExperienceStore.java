@@ -1891,6 +1891,15 @@ public final class H2ExperienceStore implements ExperienceStore {
                     if (retired != null) {
                         row.put("retired_at", retired.toInstant().toString());
                     }
+                    // v21: the review stamp, carried verbatim for the same reason — WHEN
+                    // somebody checked this row is history, and an export that dropped it
+                    // would hand back a row that looks unreviewed. Absent stays absent
+                    // rather than becoming a null key: "nobody reviewed this" is what the
+                    // missing key already says, on both sides.
+                    Timestamp reviewed = rs.getTimestamp("reviewed_at");
+                    if (reviewed != null) {
+                        row.put("reviewed_at", reviewed.toInstant().toString());
+                    }
                     Timestamp created = rs.getTimestamp("created_at");
                     Timestamp updated = rs.getTimestamp("updated_at");
                     if (created != null) {
@@ -1941,11 +1950,17 @@ public final class H2ExperienceStore implements ExperienceStore {
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
                 try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
-                        // 28 placeholders — one per ALL_COLUMNS entry. Kept in
+                        // 29 placeholders — one per ALL_COLUMNS entry. Kept in
                         // step BY TEST, not by eye: the count is invisible to the
                         // compiler and a surplus throws only at import time.
+                        //
+                        // AND THAT IS NOT HYPOTHETICAL — v21 proved it. Widening
+                        // ALL_COLUMNS for `reviewed_at` without this line shipped a
+                        // commit in which EVERY import failed as `invalid`, while the
+                        // three classes that commit ran stayed green. The count above
+                        // is the whole warning and it was read only afterwards.
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                        + "?,?,?,?,?,?,?,?,?,?)")) {
+                        + "?,?,?,?,?,?,?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -2004,6 +2019,12 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // NOT parseInstant: its missing-value default is NOW, and an absent
                     // retirement date means NOT RETIRED. See parseInstantOrNull.
                     ps.setTimestamp(28, parseInstantOrNull(row.get("retired_at")));
+                    // v21: carried verbatim, and NOT parseInstant for the same reason one
+                    // line up — an absent stamp means NOBODY REVIEWED THIS, and defaulting
+                    // it to now would mint a review at import time, which is the forgery
+                    // the column exists to prevent. An export written before v21 has no
+                    // such key and correctly lands null.
+                    ps.setTimestamp(29, parseInstantOrNull(row.get("reviewed_at")));
                     ps.executeUpdate();
                 }
                 if (row.get("symptoms") instanceof List<?> symptoms) {

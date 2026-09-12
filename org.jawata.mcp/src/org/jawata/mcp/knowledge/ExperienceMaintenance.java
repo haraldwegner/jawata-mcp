@@ -441,7 +441,22 @@ public final class ExperienceMaintenance {
                 fb.details(parentDetails);
             }
             ExperienceEntry.Builder eb = ExperienceEntry.of(fb.build())
-                .status(ExperienceEntry.ACCEPTED)
+                // Sprint 28f Stage 6 — THE STAMP DECIDES THE STATUS.
+                //
+                // This read `.status(ACCEPTED)` for every file, which said that anything
+                // on disk had been reviewed. It had not: `reviewed:` is exactly the claim
+                // that somebody checked it, and a file without one is a draft somebody
+                // wrote. Marking those accepted is how an unreviewed note reached the
+                // lane that vouches for answers.
+                //
+                // A reseed refuses an unstamped file outright (the gate above); a plain
+                // `load` takes it as a CANDIDATE instead — readable, recallable as a
+                // nominee, and not claiming a review nobody performed. That is also what
+                // makes the export half's round trip closed: the store stamps at
+                // acceptance, the writer renders the stamp, and the stamp is what brings
+                // the row back accepted rather than demoted.
+                .status(doc.reviewed() != null
+                    ? ExperienceEntry.ACCEPTED : ExperienceEntry.CANDIDATE)
                 .language(doc.language)
                 // Sprint 28c: a file that declared its form keeps it. The gate
                 // above already refused an experience type that declared none, so

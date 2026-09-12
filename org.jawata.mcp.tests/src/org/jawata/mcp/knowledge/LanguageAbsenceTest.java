@@ -37,11 +37,19 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class LanguageAbsenceTest {
 
-    /** A story as a human writes one: a claim, and no mention of any language. */
+    /**
+     * A story as a human writes one: a claim, and no mention of any language.
+     *
+     * <p>It carries a {@code reviewed:} stamp because this class's controls need the row
+     * to START ACCEPTED — "it starts accepted, so a change below is the sweep's doing" —
+     * and since Sprint 28f Stage 6 the stamp is what an accepted status means. Dropping
+     * the assertion to {@code candidate} instead would have kept the file green while
+     * destroying the control, since the sweep's own effect is a status change.</p>
+     */
     private static void prose(Path dir, String name, String summary) throws Exception {
         Files.writeString(dir.resolve(name + ".md"),
             "---\nname: " + name + "\ndescription: " + summary
-                + "\ntype: domain_fact\n---\n\nThe body, in prose.\n");
+                + "\ntype: domain_fact\nreviewed: 2026-09-12\n---\n\nThe body, in prose.\n");
     }
 
     @SuppressWarnings("unchecked")
