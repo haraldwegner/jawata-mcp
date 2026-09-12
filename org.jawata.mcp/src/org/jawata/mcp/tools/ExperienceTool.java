@@ -750,7 +750,7 @@ public final class ExperienceTool implements Tool {
      * before they are searchable by meaning, and the gap between those two moments is
      * where this sprint's defect lived: recall answered a question about a scheduler
      * retry loop with a design pattern, because the meaning index held the catalogue
-     * and nothing else. The three bulk writers now drain before they return. This verb
+     * and nothing else. The three bulk writers now INDEX WHAT THEY WROTE before they return — each under its own bound, and none of them is an unbounded drain: `load` runs a pass back to the backlog it started from, `import` and `wipe_and_import` run one pass sized to their own rows, and the catalogue seed runs none at all (its rows are left to the boot reconciler, a declared deviation, because draining at the seeder stalled a class run for 327 s). This verb
      * is the fourth door: it exists for the store that is ALREADY behind — after a
      * restore, after an interrupted run, after an older build wrote rows without one.</p>
      *
@@ -764,10 +764,16 @@ public final class ExperienceTool implements Tool {
     private ToolResponse vectorise() {
         org.jawata.mcp.knowledge.H2ExperienceStore h2 = currentH2Store();
         if (h2 == null) {
-            return ToolResponse.invalidParameter("kind",
+            // NOT invalidParameter: the `kind` the caller sent is perfectly valid and
+            // retrying with a different one would not help. This is the resident's
+            // STATE, and saying otherwise sends a client looking at its own arguments.
+            return ToolResponse.error("VECTORISE_NO_STORE",
                 "vectorise needs the H2 store, and this resident has none behind it."
                     + " Nothing was embedded and nothing is claimed about the remainder —"
-                    + " an empty answer here would read as 'already converged'.");
+                    + " an empty answer here would read as 'already converged'.",
+                "Load a project so the resident opens its store, then call vectorise"
+                    + " again. Retrying with a different kind will not help: the kind you"
+                    + " sent is valid and it is the resident's state that is missing.");
         }
         org.jawata.mcp.knowledge.EmbeddingService svc =
             org.jawata.mcp.knowledge.EmbeddingService.shared();
@@ -1990,12 +1996,16 @@ public final class ExperienceTool implements Tool {
         out.put("writingBacklog", usage.writingBacklog(minTimes, limit));
         out.put("droppedWrites", usage.failedWrites());
         // Sprint 28f D4 — WHAT THIS LEDGER WITNESSED, apart from what it inferred,
-        // AT THE POINT OF DISPLAY. The deletion list above ranks entries by
-        // shown-often-chosen-never, which is evidence about a human's judgement
-        // only over nominations a human actually dispositioned. Over the rest the
-        // rows look identical and mean nothing, and the seat deletes from this
-        // list — so the split rides beside it rather than in a comment nobody
-        // opens.
+        // AT THE POINT OF DISPLAY.
+        //
+        // SCOPE, stated because the first version of the sentence below overclaimed
+        // and a C3 architect watch caught it: this is a count over usage_query, the
+        // QUESTION ledger. The deletion list is per ENTRY, read from usage_entry, and
+        // the two tables share no key — nominated records how many candidates a query
+        // showed but never WHICH. So this figure cannot say which of the list's rows
+        // rest on a judgement; it says how much of the store's steering was answered
+        // at all, which is what a reader needs before trusting the ranking beneath it.
+        // The per-row form needs a shown-to-query link the schema does not have.
         out.put("conformance", usage.conformance());
         // Stage 15 — the QUALITY lane, beside the usage lane. One command, two
         // questions: what does nobody use, and what is badly written. The counts
@@ -2018,12 +2028,14 @@ public final class ExperienceTool implements Tool {
             + " nothing chosen — this is demand with no supply, and the only item here that"
             + " is acted on by WRITING. droppedWrites is how many ledger writes were lost:"
             + " a low engagement rate over lost rows means 'we failed to record it', not"
-            + " 'nobody engaged'. conformance: how much of the deletion list rests on a"
-            + " judgement somebody actually made — observed counts nominations a"
-            + " disposition arrived for, derived counts the ones nobody ever answered,"
-            + " where a zero chosen-count means NOT OBSERVED rather than rejected. Read"
-            + " the deletion list against observed, not against nominations; a high"
-            + " derived count means the list is mostly silence. quality: entries whose form cannot be derived"
+            + " 'nobody engaged'. conformance: how much of THIS LEDGER was witnessed —"
+            + " observed counts nominations a disposition actually arrived for, derived"
+            + " counts the ones nobody ever answered. It is a count over the QUESTION"
+            + " ledger, not a per-entry figure: usage_query carries no entry id, so"
+            + " nothing can say which of the deletion list's rows rest on a judgement and"
+            + " which on silence. Read it as how much of this store's steering was"
+            + " answered at all — a high derived count means the deletion list below is"
+            + " ranked over evidence nobody generated. quality: entries whose form cannot be derived"
             + " mechanically — READ each, judge what it actually applies to, and repair"
             + " with kind=set_form (proposing to the human first). A finding with a"
             + " source_ref is durably fixed in THAT FILE and reseeded — a store write"

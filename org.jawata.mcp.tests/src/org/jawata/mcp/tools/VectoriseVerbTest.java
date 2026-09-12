@@ -29,13 +29,20 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * for a store that is ALREADY behind — after a restore, after an interrupted run, after an
  * older build wrote rows with no vector. Nothing else can reach that state.</p>
  *
- * <p><b>The two cases are complementary on purpose, so exactly one runs and says which.</b>
- * Whether an embedder is installed is a property of the machine, not of the test; a single
- * case would either skip silently on half the machines or assert the wrong branch. The
- * degradation case is the one that runs where there is no embedder, and it is the more
- * important of the two: an answer of {@code remaining: 0} where nothing could be counted
- * would report the work finished, which is the exact shape this stage was opened to
- * remove.</p>
+ * <p><b>ONE case, whose contract depends on the machine — not two that skip past each
+ * other.</b> The first version was a complementary pair guarded by opposite assumptions, so
+ * exactly one ran and the other ABORTED. That reads as a deliberate skip and it is not one:
+ * the pair guarantees an abort on every machine forever, which would have to be budgeted as
+ * lost coverage in {@code build/expected-aborts.linux} while nothing is actually lost. The
+ * question here is single — <i>what does the verb report?</i> — and the answer legitimately
+ * differs by environment, so the test reads the environment, asserts the contract that
+ * applies, and PRINTS which one it checked.</p>
+ *
+ * <p>The degradation half is the more important of the two: an answer of {@code remaining: 0}
+ * where nothing could be counted would report the work finished, which is the exact shape
+ * this stage was opened to remove. Where an embedder IS installed that half is unreachable
+ * in-process, and it is covered instead by a run under the supported embed-disable flag —
+ * recorded in the plan's mutation ledger as control E.</p>
  */
 class VectoriseVerbTest {
 
@@ -92,10 +99,30 @@ class VectoriseVerbTest {
     }
 
     @Test
-    void the_verb_drives_the_remainder_to_zero_and_says_so() {
-        Assumptions.assumeTrue(EmbeddingService.shared().available(),
-            "no embedder on this machine — convergence cannot be asserted, and the"
-                + " degradation case below is what runs instead");
+    void the_verb_reports_what_it_did_and_never_claims_a_remainder_it_could_not_count() {
+        boolean embedderPresent = EmbeddingService.shared().available();
+        System.out.println("=== vectorise: embedder "
+            + (embedderPresent ? "AVAILABLE — asserting convergence"
+                               : "ABSENT — asserting the honest degradation") + " ===");
+
+        if (!embedderPresent) {
+            Map<String, Object> done = call("vectorise");
+
+            // THE CLAIM, and it is about a lie rather than about a number. Nothing can be
+            // vectorised and nothing can be counted, and the one answer that must never be
+            // given is the one that reads as "finished".
+            assertEquals("unknown", done.get("remaining"),
+                () -> "a remainder that could not be counted must say so. A 0 here would"
+                    + " report the backlog cleared on a machine that cannot clear it: " + done);
+            assertNotEquals(Boolean.TRUE, done.get("converged"),
+                () -> "and nothing converged: " + done);
+            assertEquals("unavailable", done.get("embedder"),
+                () -> "the reason is named rather than left for the caller to infer: " + done);
+            assertNotNull(done.get("note"),
+                () -> "and it says what the caller should expect instead — recall runs on the"
+                    + " keyword path alone until an embedder is present: " + done);
+            return;
+        }
 
         seedUnembedded(3);
 
@@ -122,28 +149,5 @@ class VectoriseVerbTest {
         // returned a hopeful number without writing anything would satisfy only the first.
         assertEquals(0L, ((Number) embeddingBlock().get("unembedded")).longValue(),
             "stats must see the same zero the verb claimed");
-    }
-
-    @Test
-    void with_no_embedder_the_remainder_is_unknown_rather_than_zero() {
-        Assumptions.assumeFalse(EmbeddingService.shared().available(),
-            "an embedder IS installed here — the convergence case above is what runs, and"
-                + " this degradation branch is unreachable on this machine");
-
-        Map<String, Object> done = call("vectorise");
-
-        // THE CLAIM, and it is about a lie rather than about a number. Nothing can be
-        // vectorised and nothing can be counted, and the one answer that must never be
-        // given is the one that reads as "finished".
-        assertEquals("unknown", done.get("remaining"),
-            () -> "a remainder that could not be counted must say so. A 0 here would report"
-                + " the backlog cleared on a machine that cannot clear it: " + done);
-        assertNotEquals(Boolean.TRUE, done.get("converged"),
-            () -> "and nothing converged: " + done);
-        assertEquals("unavailable", done.get("embedder"),
-            () -> "the reason is named rather than left for the caller to infer: " + done);
-        assertNotNull(done.get("note"),
-            () -> "and it says what the caller should expect instead — recall runs on the"
-                + " keyword path alone until an embedder is present: " + done);
     }
 }

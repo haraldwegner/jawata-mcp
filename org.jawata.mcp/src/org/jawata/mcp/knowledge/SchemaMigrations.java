@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 16;
+    static final int LATEST = 17;
 
     private SchemaMigrations() {
     }
@@ -168,6 +168,9 @@ final class SchemaMigrations {
         }
         if (from < 16) {
             migrateToV16(conn);
+        }
+        if (from < 17) {
+            migrateToV17(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -864,6 +867,51 @@ final class SchemaMigrations {
                 + "WHERE chosen = TRUE AND decided_at IS NULL");
             s.execute("CREATE INDEX IF NOT EXISTS idx_usage_query_undecided "
                 + "ON usage_query(decided_at)");
+        }
+    }
+
+    /**
+     * v17 — the catalogue rows an EXISTING store already holds become {@code accepted}.
+     *
+     * <h2>Why the seeder alone could not do it, found by the C3 architect watch</h2>
+     *
+     * <p>E5 changed one literal in {@code CatalogueManifest.entryFor} so a seeded pattern
+     * is written {@code accepted} rather than {@code candidate}. That is correct and it
+     * reaches only a store that has never been seeded.</p>
+     *
+     * <p>{@link CatalogueSeeder} skips a row whose content hash is unchanged
+     * ({@code sourceUnchanged(ref, hash) -> continue}), and the hash is taken over the
+     * MANIFEST ROW'S OWN JSON. Status is not in that JSON — it is a derivation decision
+     * made in Java, downstream of the hash. So no row's hash moved, every one of the 187
+     * took the skip branch, and the store the deliverable was MEASURED on (189 of 189
+     * awaiting review) would have kept every one of them.</p>
+     *
+     * <p><b>The general shape, worth more than this instance:</b> staleness was delegated
+     * to a hash over the SOURCE, while the row actually written is source PLUS decisions
+     * the hash cannot see. Any future change to {@code entryFor} has the same problem, and
+     * the same silence — the seeder reports the rows as unchanged, which is true of their
+     * input and false of their output.</p>
+     *
+     * <h2>Scoped by provenance, not by source ref</h2>
+     *
+     * <p>{@code provenance_kind} is what marks a row as somebody else's, it is set by the
+     * one reader every origin is parsed through, and it does not depend on how an origin
+     * spells its addresses. A prefix match on {@code source_ref} would have to enumerate
+     * the registered origins here, which is a second copy of {@code CatalogueSources}.</p>
+     *
+     * <p>Only {@code candidate} rows are touched: a row a human genuinely promoted or
+     * rejected is theirs, and this migration is not entitled to overwrite that.</p>
+     */
+    private static void migrateToV17(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE experience_entry SET status = 'accepted' "
+                    + "WHERE provenance_kind = ? AND status = 'candidate'")) {
+            ps.setString(1, CatalogueManifest.PROVENANCE);
+            int moved = ps.executeUpdate();
+            if (moved > 0) {
+                log.info("Catalogue: {} borrowed pattern(s) left the review queue —"
+                    + " status is a work queue and they were never awaiting a ruling", moved);
+            }
         }
     }
 }
