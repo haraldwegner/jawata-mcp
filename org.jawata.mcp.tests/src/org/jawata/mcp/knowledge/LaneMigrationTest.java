@@ -236,6 +236,58 @@ class LaneMigrationTest {
     }
 
     /**
+     * Sprint 28f Stage 5 — {@code stats} publishes the lane split, and the UNCLASSIFIED set
+     * is one of its groups rather than a rounding error.
+     *
+     * <p>This is the catch-all claim on the REPORTING surface, which is a second place the
+     * default could come back. The mapping may leave a type NULL and
+     * {@link #an_unclassified_type_gets_no_lane_at_all()} watches that; a report that folded
+     * those nulls into a lane would restore the catch-all one layer up, where no test of the
+     * mapping can see it.</p>
+     *
+     * <p>So the assertion is deliberately NOT "every lane has a count" — that is true under a
+     * catch-all too. It is that the unruled row is counted SEPARATELY, and that the groups sum
+     * to the total the same response publishes, so a split cannot quietly drop rows either.</p>
+     */
+    @Test
+    void stats_reports_the_lane_split_and_counts_the_unclassified_separately(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            for (Ruled r : RULED) {
+                write(store, r.type(), r.provenance(), "a " + r.type() + " row for the split");
+            }
+            write(store, UNRULED_TYPE, null, "the row nobody ruled on");
+
+            Map<String, Object> stats = store.stats();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> byLane = (Map<String, Object>) stats.get("by_lane");
+            assertNotNull(byLane, "stats must publish by_lane, or the split has no reader at all");
+
+            List<Executable> checks = new ArrayList<>();
+            for (Ruled r : RULED) {
+                checks.add(() -> assertTrue(byLane.containsKey(r.lane().wire()),
+                    () -> "lane " + r.lane().wire() + " must appear in the split for "
+                        + r.describe() + "; got " + byLane));
+            }
+            // THE DISCRIMINATOR: the unruled row is its OWN group. Reintroduce any default
+            // and this key is gone, because the row is then inside some lane's count.
+            checks.add(() -> assertEquals(1L, byLane.get("(none)"),
+                () -> "the unclassified row must be counted as unclassified rather than folded"
+                    + " into a lane; got " + byLane));
+            long counted = 0;
+            for (Object v : byLane.values()) {
+                counted += ((Number) v).longValue();
+            }
+            final long summed = counted;
+            checks.add(() -> assertEquals(((Number) stats.get("total")).longValue(), summed,
+                () -> "the groups must account for every row — a split that DROPS rows is as"
+                    + " wrong as one that mislabels them, and both read as a shorter list;"
+                    + " got " + byLane));
+            assertAll("the lane split stats publishes", checks);
+        }
+    }
+
+    /**
      * The mapping's experience half IS {@link EntryForm#EXPERIENCE_TYPES}, not a copy of it.
      *
      * <p>Two lists of "which types are experiences" drift the first time either moves, and the

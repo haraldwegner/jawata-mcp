@@ -250,4 +250,78 @@ class RulePromotionTest {
             () -> "and the caller is told so rather than handed a no-op success: " + again);
     }
 
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> rowsOf(ToolResponse r) {
+        return (List<Map<String, Object>>) data(r).get("entries");
+    }
+
+    /** The row for an id, failing with what it searched rather than a bare NPE later. */
+    private Map<String, Object> rowFor(List<Map<String, Object>> rows, String id) {
+        for (Map<String, Object> row : rows) {
+            if (id.equals(row.get("id"))) {
+                return row;
+            }
+        }
+        throw new AssertionError("list did not return " + id + "; it returned "
+            + rows.size() + " row(s): " + rows);
+    }
+
+    /**
+     * Sprint 28f Stage 5 — {@code list} answers the OTHER half of the promise: UNTIL WHEN.
+     *
+     * <p>{@code retire_rule}'s own javadoc says <i>"list and get still answer, because 'what
+     * did this rule say, and until when' is a question the store should be able to
+     * answer"</i>, and the sibling above asserts only the first half. It asserts it through
+     * {@code get}, which returns the FROZEN body — the retirement date is a column written
+     * afterwards and cannot be in there — so no strengthening of THAT assertion could ever
+     * have reached the second half. {@code list} is where a reader meets the SET, and its
+     * rows carried neither the version nor the date: a retired rule and a live one were the
+     * same row to everything that browses.</p>
+     *
+     * <h2>Three controls, because each assertion has a false way to pass</h2>
+     *
+     * <p>The LIVE rule is the control for the date — "the retired row carries one" is equally
+     * true of a list that stamps every row. The AMENDED rule is the control for the version —
+     * a hard-coded 1 satisfies every version assertion until something is on 2. And the
+     * source LESSON is the control for the lane, which a row shape writing "rules" on
+     * everything it lists would otherwise satisfy.</p>
+     */
+    @Test
+    void list_carries_the_lane_the_version_and_the_date_a_rule_stopped_applying() {
+        String src = source("the pangolin ledger settles its totals at dusk");
+        String live = (String) data(promoteRule("keep the numbat ledger open", src)).get("id");
+        String first = (String) data(promoteRule("settle the quokka ledger", src)).get("id");
+        String amended = (String) data(exec("amend_rule", a -> {
+            a.put("id", first);
+            a.put("summary", "settle the quokka ledger before the inspection");
+        })).get("id");
+        assertEquals(true, data(exec("retire_rule", a -> a.put("id", amended))).get("retired"),
+            "proof of life: the row read below must actually have been retired");
+
+        List<Map<String, Object>> rows = rowsOf(exec("list", a -> a.put("limit", 50)));
+        Map<String, Object> liveRow = rowFor(rows, live);
+        Map<String, Object> retiredRow = rowFor(rows, amended);
+        Map<String, Object> lessonRow = rowFor(rows, src);
+
+        assertEquals(KnowledgeLane.RULES.wire(), liveRow.get("lane"),
+            () -> "a rule must browse as the rules lane: " + liveRow);
+        assertEquals(KnowledgeLane.EXPERIENCE.wire(), lessonRow.get("lane"),
+            () -> "AND THE CONTROL: a lesson browses as experience, so the lane is derived"
+                + " per row rather than written on everything this verb lists: " + lessonRow);
+
+        assertEquals(1, ((Number) liveRow.get("rule_version")).intValue(),
+            () -> "a promoted rule browses as version 1: " + liveRow);
+        assertEquals(2, ((Number) retiredRow.get("rule_version")).intValue(),
+            () -> "AND THE CONTROL: an amended one browses as 2, so the version is the row's"
+                + " own and not a constant: " + retiredRow);
+
+        assertNotNull(retiredRow.get("retired_at"),
+            () -> "UNTIL WHEN: a retired rule must browse with the date it stopped applying,"
+                + " which is the half `get` cannot carry: " + retiredRow);
+        assertFalse(liveRow.containsKey("retired_at"),
+            () -> "AND THE CONTROL: a live rule carries no date at all — absent means NOT"
+                + " RETIRED, and a list that stamped every row would satisfy the assertion"
+                + " above while telling a reader nothing: " + liveRow);
+    }
+
 }

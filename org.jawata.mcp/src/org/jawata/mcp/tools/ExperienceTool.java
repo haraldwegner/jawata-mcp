@@ -1372,7 +1372,27 @@ public final class ExperienceTool implements Tool {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", e.id());
             m.put("type", e.type());
+            // Sprint 28f Stage 5 — the lane, DERIVED through the one owner of the
+            // type-to-lane mapping rather than read off the stored column. A browse and
+            // a recall then cannot disagree about which lane an entry is in: there is
+            // one rule, and both ask it.
+            String lane = KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind());
+            if (lane != null) {
+                m.put("lane", lane);
+            }
             m.put("status", e.status());
+            // Sprint 28f Stage 5 — the rule lifecycle, which `retire_rule`'s own javadoc
+            // already promises this verb answers: "list and get still answer, because
+            // 'what did this rule say, and until when' is a question the store should be
+            // able to answer." It could answer the first half and not the second — the
+            // date was written and nothing published it, so a retired rule and a live one
+            // were the same row to every reader of this list.
+            if (e.facets().ruleVersion() != null) {
+                m.put("rule_version", e.facets().ruleVersion());
+            }
+            if (e.facets().retiredAt() != null) {
+                m.put("retired_at", e.facets().retiredAt().toString());
+            }
             if (e.language() != null) {
                 m.put("language", e.language());
             }

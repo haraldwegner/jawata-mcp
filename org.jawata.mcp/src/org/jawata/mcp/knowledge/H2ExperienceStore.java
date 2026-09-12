@@ -2233,6 +2233,15 @@ public final class H2ExperienceStore implements ExperienceStore {
         // v13 or arrived through a surface with no session.
         out.put("by_origin_client",
             withRead("group by origin_client", c -> groupCount("origin_client", c)));
+        // Sprint 28f Stage 5 — the LANE split, which is the first thing a person looking
+        // at this store wants: how much of it is experience, domain, code, rules.
+        //
+        // The "(none)" group is not noise and must not be hidden: v18 classifies by TYPE
+        // and deliberately leaves a type it does not recognise NULL rather than sweeping
+        // it into experience. That catch-all is exactly what Stage 5 removed, and a
+        // reporting layer that folded the nulls into a lane would put it back where no
+        // test of the migration could see it. The number IS the unclassified set.
+        out.put("by_lane", withRead("group by lane", c -> groupCount("lane", c)));
         Map<String, Object> store = new LinkedHashMap<>();
         if (storeFile != null) {
             store.put("file", storeFile.toAbsolutePath().toString());
