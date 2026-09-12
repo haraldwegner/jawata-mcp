@@ -506,6 +506,37 @@ case "$RB" in
     *) fail "review-briefs-a-draft a refused draft lost its brief: $(printf '%s' "$RB" | head -c 200)" ;;
 esac
 
+# --- WAIT FOR THE STORE TO SAY IT IS SEARCHABLE, before asking it anything ---
+# Sprint 28f Stage 3. Every check below this line asserts RETRIEVAL QUALITY — it
+# asks a question and judges the answer. That is only a fair question of a store
+# whose rows are all indexed, and the catalogue's 187 take about three minutes.
+#
+# NOTHING USED TO WAIT, and it passed by ACCIDENT: some write path happened to run
+# the backfill to whole-store convergence on its way past, so by the time these ran
+# the index was closed. Stage 3 bounded those writes to their own rows — correctly,
+# because a write inheriting the store's backlog times out — and the accident went
+# with it. `catalogue-answers-design` then failed on a missing `strategy`, which is
+# not a retrieval defect at all: the row simply had no vector yet.
+#
+# So the gate now ASKS THE PRODUCT whether it is ready, using the number the product
+# publishes for exactly this (`embedding.unembedded`, Sprint 28f E5). A store that
+# says "unknown" is not treated as ready — that sentinel means the count could not be
+# read, and reading it as zero is how a gate reports a green it never measured.
+await_indexed() {   # await_indexed <label> — block until the store is fully indexed
+    local pending=""
+    for _ in $(seq 1 150); do
+        pending="$(call experience '{"kind":"stats"}' \
+            | grep -oE '"unembedded":[0-9]+' | head -1 | cut -d: -f2)"
+        [ "${pending:-x}" = "0" ] && { pass "$1 the store reports itself fully indexed"; return 0; }
+        sleep 3
+    done
+    fail "$1 the store never reported itself fully indexed — last unembedded:"\
+" ${pending:-absent or unknown}. Every retrieval-quality check below would be"\
+" judging answers from a store that cannot yet give them."
+    return 1
+}
+await_indexed "indexed-before-asking"
+
 # --- catalogue-answers-design: D7's half that can fail silently -------------
 # Sprint 28c D7. The seat text can say "consult the catalogue" and the store can
 # still have nothing to give — that is the built-but-unreached shape, and only a

@@ -1047,7 +1047,13 @@ public final class ExperienceTool implements Tool {
                 + " retired " + removedRows + ": it holds LESS than the store did. The"
                 + " copy named in `backup` is the store as it stood before it ran.");
         }
-        return ToolResponse.success(withRefresh(withBackup(data, backupCopy)));
+        // Sprint 28f E5 — bounded by what this rebuild actually delivered, for the
+        // reason spelled out on embedOwnRows: a write indexes its own rows and does not
+        // inherit the store's backlog. `yielded` is the right budget here rather than a
+        // raw row count — it is what this rebuild brought back, loaded plus unchanged,
+        // and it is already the number this method weighs its own verdict on.
+        return ToolResponse.success(
+            withRefresh(withBackup(embedOwnRows(data, yielded), backupCopy)));
     }
 
     private int reTombstoneWhatIsNotBack(String path, java.util.Set<String> before) {
@@ -1655,7 +1661,50 @@ public final class ExperienceTool implements Tool {
         // where dropping a false justification does not. Raised at C1.
         Path copy = backups.before("import");
         Map<String, Object> imported = new LinkedHashMap<>(store.importEntries(entries));
-        return ToolResponse.success(withRefresh(withBackup(imported, copy)));
+        return ToolResponse.success(
+            withRefresh(withBackup(embedOwnRows(imported, entries.size()), copy)));
+    }
+
+    /**
+     * Sprint 28f E5 — a write pays to index ITS OWN rows, and no more.
+     *
+     * <p><b>This is the second shape of this deliverable, and the first one is why.</b>
+     * It began as {@code drain()} — run the backfill to CONVERGENCE at the end of the
+     * write. That is unbounded by construction: its cost is a function of the store's
+     * pending debt, which this caller neither created nor can see. The end-to-end gate
+     * measured the consequence within one run — the freshly seeded catalogue leaves
+     * roughly 190 rows pending, the import inherited all of them at about a second each,
+     * and the call timed out against its 180 s client budget. The verb looked broken
+     * while doing exactly what it had been told.</p>
+     *
+     * <p>So the bound is the WRITE'S OWN SIZE: one backfill pass of at most the number
+     * of rows this call wrote. In the ordinary case those pending rows ARE this write's
+     * rows, and they are indexed before the caller is answered, which is what E5 asks
+     * for. On a store carrying a backlog the pass may spend its budget on older rows
+     * instead — and that case is not hidden: {@code unembedded} in the stats block says
+     * what is left, which is precisely the number published so a caller never has to
+     * derive it.</p>
+     *
+     * <p><b>What this deliberately does NOT do is make a write responsible for the
+     * store's backlog.</b> Converging the whole store is the startup daemon's job, and
+     * it already has it. A write that did it too would be paying somebody else's debt at
+     * the one moment a caller is waiting on an answer.</p>
+     *
+     * @param rows how many rows this write produced — the pass's budget
+     */
+    private Map<String, Object> embedOwnRows(Map<String, Object> data, long rows) {
+        org.jawata.mcp.knowledge.EmbeddingIndex index =
+            org.jawata.mcp.knowledge.EmbeddingIndex.forStore(store);
+        if (index != null) {
+            // Clamped rather than cast: the budget is a row count from a caller, and a
+            // silent overflow would turn a large write into a NEGATIVE budget, which
+            // backfill reads as "do nothing" — the failure would be an index that
+            // quietly stopped being written to on exactly the biggest imports.
+            int budget = (int) Math.max(1, Math.min(rows, 100_000));
+            data.put("embedded", index.backfill(budget));
+            data.put("unembedded", index.remainingUnembedded());
+        }
+        return data;
     }
 
     private ToolResponse promote(JsonNode args) {

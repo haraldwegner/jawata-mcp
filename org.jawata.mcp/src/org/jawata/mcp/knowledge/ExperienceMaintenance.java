@@ -611,9 +611,25 @@ public final class ExperienceMaintenance {
         // to infer "nothing left" from "some work done", which is the inference the
         // gate made and got wrong. An absent index (degraded store, no embedder)
         // leaves both keys off rather than reporting a zero that reads as converged.
+        // BOUNDED BY WHAT THIS LOAD WROTE, not run to whole-store convergence.
+        //
+        // The first version called drain() here, and drain() is unbounded: its cost is
+        // the store's whole pending debt, which this caller neither created nor can see.
+        // The end-to-end gate measured what that costs on the sibling write path — with
+        // a freshly seeded catalogue still pending, an import inherited roughly 190 rows
+        // at about a second each and timed out against its client budget. `load` had not
+        // hit it yet, which is not the same as being safe from it: the two differ only
+        // in how many rows happened to be pending when each ran.
+        //
+        // One pass, sized to the rows this load wrote. In the ordinary case those ARE
+        // the pending rows and they are indexed before the report is handed back, which
+        // is what E5 asks. Where a backlog exists the pass may spend its budget on older
+        // rows, and that is not concealed — `unembedded` says what is left, which is why
+        // the two keys are reported separately rather than as one number a reader would
+        // have to interpret.
         EmbeddingIndex index = EmbeddingIndex.forStore(store);
         if (index != null) {
-            report.put("embedded", index.drain());
+            report.put("embedded", index.backfill(Math.max(loaded, 1)));
             report.put("unembedded", index.remainingUnembedded());
         }
         return report;
