@@ -124,6 +124,17 @@ class SeatAsksByMeaningTest {
             "Throws away the stored lookup table and derives it from scratch again.");
     }
 
+    /** An AREA — the code lane's other kind of row, and what the map lists first. */
+    private void recordArea(String pkg, String summary) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "record");
+        a.put("type", "area");
+        a.put("summary", summary);
+        a.putArray("packages").add(pkg);
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "the area must be recordable; got " + r.getError());
+    }
+
     /** A LESSON, which lives in another lifecycle — the row the code lane must exclude. */
     private void recordLesson(String summary) {
         ObjectNode a = json.createObjectNode();
@@ -264,5 +275,66 @@ class SeatAsksByMeaningTest {
         assertEquals(List.of(), summaries(nominate(TASK, "domain")),
             "nothing in this store is a domain fact, so the honest answer is nothing —"
                 + " a filter that fell back to every lane would return the shortlist here");
+    }
+
+    /** The text form the hook emits verbatim — Stage 8 D1's `JAWATA MAP —` block. */
+    private String mapText(String question) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "nominate");
+        a.put("question", question);
+        a.put("lane", "code");
+        a.put("format", "text");
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "got " + r.getError());
+        return String.valueOf(r.getData());
+    }
+
+    /**
+     * THE MAP IS A DIFFERENT BLOCK FROM THE SHORTLIST, and says which rows are which.
+     *
+     * <p>An area says what a package is for and a job says what one member does; printed as
+     * one ranked list they read as a pile. And the block must not read as {@code NOMINEES}:
+     * a nomination is a shortlist to judge, a map is an orientation written ABOUT this code
+     * — confusing them invites weighing a description of your own codebase the way you weigh
+     * a borrowed pattern.</p>
+     */
+    @Test
+    @DisplayName("the map groups areas and jobs and anchors each job to its member")
+    void the_map_groups_areas_and_jobs() {
+        recordTheCorpus();
+        recordArea("com.example",
+            "The lane between an agent's questions and what this machine already learned.");
+
+        String map = mapText(TASK);
+
+        assertTrue(map.startsWith("JAWATA MAP —"),
+            "the hook emits this verbatim, so the heading is the contract: " + map);
+        assertTrue(map.contains("  area: The lane between an agent's questions"),
+            "an area is labelled as one: " + map);
+        assertTrue(map.contains("  job:  " + TARGET_SYMBOL + " — " + TARGET_JOB),
+            "and a job carries the member it explains — without the anchor the map prints"
+                + " sentences with nothing to attach them to: " + map);
+        assertTrue(map.indexOf("  area:") < map.indexOf("  job:"),
+            "areas first: a reader wants the ground before the detail: " + map);
+    }
+
+    /**
+     * NOTHING IS AN ANSWER AND IS SAID OUT LOUD.
+     *
+     * <p>A blank would leave a reader unable to tell "the store has nothing about this code"
+     * from "the lookup did not run", which is the distinction this whole retrieval path
+     * exists to keep.</p>
+     */
+    @Test
+    @DisplayName("an empty map says so rather than rendering nothing")
+    void an_empty_map_says_so() {
+        // No corpus at all: the code lane is empty.
+        String map = mapText(TASK);
+
+        assertTrue(map.startsWith("JAWATA MAP — nothing"),
+            "the absence is SPOKEN: " + map);
+        assertTrue(map.contains("not a failed lookup"),
+            "and it names which of the two it is, which is the only thing a reader cannot"
+                + " work out for themselves: " + map);
     }
 }

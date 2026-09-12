@@ -984,6 +984,27 @@ public final class ExperienceRetrieval {
             }
             Map<String, Object> c = new LinkedHashMap<>();
             c.put("id", e.id());
+            // Sprint 28f Stage 8 D1 — WHAT KIND OF ROW THIS IS, so a caller can group the
+            // shortlist without asking the store a second time. The code lane's answer is
+            // two different things in one list — the areas that describe a package and the
+            // jobs inside them — and a reader who cannot tell them apart has a pile.
+            // Emitted for every lane because it is a fact about the row, not a code-lane
+            // special case: a nomination mixing a lesson and a borrowed pattern is the
+            // same problem, and the type is what separates them there too.
+            c.put("type", e.type());
+            // And WHAT IT IS ABOUT, when the row is anchored. For a job this is the whole
+            // subject — "what does this member do" is not a question that can be read
+            // without knowing which member — and without it the map prints sentences with
+            // nothing to attach them to. Emitted only where an anchor exists, so an
+            // unanchored row carries no empty key pretending to be one.
+            //
+            // Not the same fact as `address` below: that is a catalogue row's public
+            // location in a pinned fork, deliberately withheld for an experience because a
+            // source_ref is a path on whoever recorded it. A symbol FQN is a code address
+            // and is the row's own subject.
+            if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
+                c.put("symbol", e.symbolFqn());
+            }
             c.put("situation", e.facets().situation());
             // v15: the diagnosis — what discriminates between same-situation
             // candidates (Factory vs Builder both fire on "constructing an
@@ -1226,6 +1247,63 @@ public final class ExperienceRetrieval {
         return out;
     }
 
+    /** The heading the map block opens with — the hook emits these lines verbatim. */
+    public static final String MAP_HEADING = "JAWATA MAP —";
+
+    /**
+     * Sprint 28f Stage 8 D1 — THE MAP A TASK OPENS WITH, rendered.
+     *
+     * <p>The code lane holds two kinds of row and they answer different questions: an AREA
+     * says what a package is for, a JOB says what one member does. Printed as one ranked
+     * list they read as a pile, so they are grouped — areas first, because a reader wants
+     * the ground before the detail.</p>
+     *
+     * <p><b>It is visibly a different block from {@code NOMINEES}</b>, and deliberately so.
+     * A nomination is a shortlist to JUDGE — candidates the store is not vouching for. A
+     * map is an orientation: these rows were written ABOUT this code by the cataloguer, and
+     * confusing the two would invite an agent to weigh a description of its own codebase the
+     * way it weighs a borrowed pattern.</p>
+     *
+     * <p><b>Nothing is an answer and it is said out loud.</b> An empty map renders the
+     * heading and the word, never a blank — a caller that printed nothing would leave a
+     * reader unable to tell "the store has nothing about this" from "the lookup did not
+     * run", which is the distinction this whole file exists to keep.</p>
+     */
+    public static String renderMap(Map<String, Object> result) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> candidates =
+            (List<Map<String, Object>>) result.getOrDefault("candidates", List.of());
+        List<String> areas = new ArrayList<>();
+        List<String> jobs = new ArrayList<>();
+        for (Map<String, Object> c : candidates) {
+            String type = String.valueOf(c.get("type"));
+            String line = san(c.get("principle"));
+            Object address = c.get("symbol");
+            if (address != null && !String.valueOf(address).isBlank()) {
+                line = san(address) + " — " + line;
+            }
+            if ("area".equalsIgnoreCase(type)) {
+                areas.add(line);
+            } else {
+                jobs.add(line);
+            }
+        }
+        if (areas.isEmpty() && jobs.isEmpty()) {
+            return MAP_HEADING + " nothing. The store carries no description of this code"
+                + " yet; this is an absence, not a failed lookup.";
+        }
+        StringBuilder sb = new StringBuilder(MAP_HEADING).append(" what this code is");
+        sb.append("\nThese rows were written ABOUT this codebase by the cataloguer — they")
+            .append(" describe it, they do not advise. Areas first, then the members.");
+        for (String a : areas) {
+            sb.append("\n  area: ").append(a);
+        }
+        for (String j : jobs) {
+            sb.append("\n  job:  ").append(j);
+        }
+        return sb.toString();
+    }
+
     /**
      * Render a recall/primer result as flat, injection-ready lines (Stage 5 {@code
      * format=text}). Rendering lives here (reactor-tested), so the push hooks stay dumb —
@@ -1248,6 +1326,14 @@ public final class ExperienceRetrieval {
                 ? "Knowledge layer UNAVAILABLE — this is NOT an absence." : msg.toString();
         }
         if (RESULT_NOMINATED.equals(res)) {
+            // Sprint 28f Stage 8 D1 — the CODE lane's nomination is the map a task opens
+            // with, and it reads as a map rather than as a shortlist to judge. Keyed on the
+            // lane and not on a separate verb, because it is the same query and the same
+            // ranking; what differs is that the rows are areas and jobs, which have a
+            // shape, where a lesson and a pattern do not.
+            if (KnowledgeLane.CODE.wire().equals(result.get("lane"))) {
+                return renderMap(result);
+            }
             return renderNomination(result);
         }
         @SuppressWarnings("unchecked")
