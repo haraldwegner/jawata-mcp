@@ -716,7 +716,15 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // nothing would ever revisit it.
                     + "embedding=NULL,embedder_identity=NULL,"
                     + "embedding_situation=NULL,embedding_summary=NULL,embedding_details=NULL,"
-                    + "situation=?,verdict=?,provenance_kind=?,form=?,cause=? "
+                    // Sprint 28f Stage 5 — the LANE moves with the type. It is derived from
+                    // `type` and `provenance_kind`, both of which this statement rewrites,
+                    // so leaving it out left a re-loaded file carrying the lane of the type
+                    // it USED to be. A stale lane is worse than a missing one: NULL shows up
+                    // as unclassified, while a stale value is confidently wrong, and the
+                    // readers split — `stats` and recall's keyword arm read this column
+                    // while `list` and the ranked arm derive it, so one verb gave two
+                    // answers about one row. The javadoc above predicted exactly this.
+                    + "situation=?,verdict=?,provenance_kind=?,form=?,cause=?,lane=? "
                     + "WHERE id=?")) {
                 ps.setString(1, str(factMap.get("type")));
                 ps.setString(2, entry.scopeKind());
@@ -742,7 +750,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setString(19, entry.provenanceKind());
                 setIntOrNull(ps, 20, entry.form());
                 ps.setString(21, entry.cause());
-                ps.setString(22, id);
+                ps.setString(22, KnowledgeLane.wireOf(
+                    str(factMap.get("type")), entry.provenanceKind()));
+                ps.setString(23, id);
                 ps.executeUpdate();
             }
             // Replaced wholesale rather than merged: a symptom or a link the file no
@@ -2427,6 +2437,12 @@ public final class H2ExperienceStore implements ExperienceStore {
         boolean hasForm = version >= 10;
         boolean hasOrigin = version >= 13;
         boolean hasCause = version >= 15;
+        // Sprint 28f Stage 5. The LANE is not probed for, because it is DERIVED below from
+        // the type and provenance this recovery already carries — an orphan from before v18
+        // has no lane column and does not need one. The rule lifecycle IS probed, because
+        // a version and a retirement date cannot be derived from anything: they are facts
+        // somebody recorded, and an orphan that predates them simply has neither.
+        boolean hasRules = version >= 19;
         String cols = "id,type,scope_kind,symbol_fqn,package_name,operation,status,confidence,"
             + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at"
             + (hasFacets ? ",workspace_id,project_id,language" : "")
@@ -2450,8 +2466,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                         + "fault_owner,external_system,summary,source_ref,body_json,created_at,updated_at,"
                         + "workspace_id,project_id,language,"
                         + "situation,verdict,provenance_kind,"
-                        + "form,evidence_dead,origin_client,cause)"
-                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                        + "form,evidence_dead,origin_client,cause,"
+                        + "lane,rule_version,retired_at)"
+                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     for (int i = 1; i <= 13; i++) {
                         ps.setString(i, rs.getString(i));
                     }
@@ -2498,6 +2515,20 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ps.setString(24, hasOrigin ? rs.getString("origin_client") : null);
                     // v15: same rule — verbatim when the orphan has it, else NULL.
                     ps.setString(25, hasCause ? rs.getString("cause") : null);
+                    // Sprint 28f Stage 5 — DERIVED rather than carried, because the rule is
+                    // the same rule wherever it is asked and an orphan from before v18 has
+                    // no column to carry. Column 2 is the type, bound by the loop above.
+                    ps.setString(26, KnowledgeLane.wireOf(rs.getString(2),
+                        hasForm ? rs.getString("provenance_kind") : null));
+                    // v19: carried verbatim, NULL from an orphan that predates it — the
+                    // same rule as origin_client and cause above. DERIVING a retirement
+                    // date is impossible, and defaulting it would be catastrophic in one
+                    // direction: a NOW would retire every recovered rule, and dropping it
+                    // silently UN-RETIRES every rule the store had already stopped
+                    // offering. Absent means not retired, and that is the honest default
+                    // only because a pre-v19 orphan genuinely had no way to retire one.
+                    setIntOrNull(ps, 27, hasRules ? intOrNull(rs.getObject("rule_version")) : null);
+                    ps.setTimestamp(28, hasRules ? rs.getTimestamp("retired_at") : null);
                     ps.executeUpdate();
                 }
                 copyChildren(orphan, id);

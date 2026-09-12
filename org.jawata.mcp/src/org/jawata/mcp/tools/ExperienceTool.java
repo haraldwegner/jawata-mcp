@@ -1938,6 +1938,24 @@ public final class ExperienceTool implements Tool {
         if (id == null || id.isBlank()) {
             return ToolResponse.invalidParameter("id", "retire_rule needs the rule's 'id'");
         }
+        // Sprint 28f Stage 5, C5 — REFUSE anything that is not a rule, which `amend_rule`
+        // already did and this did not. The asymmetry mattered: retiring is the one verb
+        // here with no inverse. There is no un-retire, and a retired row is dropped from
+        // every recall (`AND retired_at IS NULL`, plus `StoredEntry.isLive()`), so a
+        // mistyped id silently and permanently removed an ordinary entry from the store's
+        // answers while leaving it readable — the shape hardest to notice.
+        List<StoredEntry> found = store.byIds(List.of(id));
+        if (found.isEmpty()) {
+            return ToolResponse.invalidParameter("id", "no entry with id " + id);
+        }
+        String type = found.get(0).type();
+        if (!KnowledgeLane.RULE_TYPE.equals(type)) {
+            return ToolResponse.invalidParameter("id",
+                "entry " + id + " is a '" + type + "', not a rule. Retiring records that a"
+                    + " standing instruction STOPPED APPLYING, and it cannot be undone; an"
+                    + " ordinary entry is corrected with `record` or superseded, which are"
+                    + " different lifecycles and are reversible.");
+        }
         boolean retired = store.retire(id);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", id);

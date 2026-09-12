@@ -236,6 +236,58 @@ class LaneMigrationTest {
     }
 
     /**
+     * Sprint 28f Stage 5 — EVERY writer sets the lane, which is the clause's own words.
+     *
+     * <p>The deliverable reads "{@code lane} column …, <b>set by every writer</b>". Three do —
+     * the insert, the import, and the migration rung, each asserted above. This asserts the
+     * one that BITES and that nothing else covers: {@code updateSourcedRow}, the merging
+     * re-load. Its own javadoc warns of exactly this, four lines above the statement — <i>"a
+     * column added there and forgotten here does not fail a build — it makes a re-loaded file
+     * quietly lose that value"</i> — and the lane column was added without widening it.</p>
+     *
+     * <h2>Why a stale lane is worse than a missing one</h2>
+     *
+     * <p>Edit a memory file's {@code type:} and re-load. The row's type moves; its stored lane
+     * does not. {@code stats.by_lane} and the KEYWORD arm of {@code recall} read the column,
+     * while {@code list} and the RANKED arm DERIVE the lane from the type — so one verb gives
+     * two answers about one row, and neither is flagged. A NULL lane at least shows up as
+     * unclassified; a stale one is confidently wrong.</p>
+     */
+    @Test
+    void every_writer_sets_the_lane_including_the_merging_reload(@TempDir Path dir)
+            throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            // The merging update matches on (source_ref, SUMMARY) — not on the source alone,
+            // because one file yields a parent plus one row per section. So the re-load below
+            // keeps the summary and changes only the `type:`, which is exactly the edit a
+            // person makes when they realise a note was filed as the wrong kind of thing.
+            String source = "lane-writers/the-same-file.md";
+            String summary = "what the ledger does with its totals at dusk";
+            String id = store.upsertBySource(ExperienceEntry.of(
+                    SymbolFact.of("lesson", summary, Confidence.MEDIUM).build())
+                .status(ExperienceEntry.ACCEPTED)
+                .situation("when the writer population is being measured")
+                .verdict("worked")
+                .build(), source, "hash-before");
+            assertEquals(KnowledgeLane.EXPERIENCE.wire(), laneOf(store, id),
+                "PROOF OF LIFE: the insert lanes it, or the re-load below measures nothing");
+
+            String again = store.upsertBySource(ExperienceEntry.of(
+                    SymbolFact.of("domain_fact", summary, Confidence.MEDIUM).build())
+                .status(ExperienceEntry.ACCEPTED)
+                .build(), source, "hash-after");
+            assertEquals(id, again,
+                "the re-load must UPDATE the row that source already has, or this test drives"
+                    + " the insert a second time and measures the writer that was never broken");
+            assertEquals(KnowledgeLane.DOMAIN.wire(), laneOf(store, again),
+                "THE RE-LOAD MUST RE-LANE. The type moved to a domain type, so the stored lane"
+                    + " must move with it. Left behind, `stats` and recall's keyword arm answer"
+                    + " from the old lane while `list` and the ranked arm derive the new one —"
+                    + " one verb, two answers about one row");
+        }
+    }
+
+    /**
      * Sprint 28f Stage 5 — {@code stats} publishes the lane split, and the UNCLASSIFIED set
      * is one of its groups rather than a rounding error.
      *

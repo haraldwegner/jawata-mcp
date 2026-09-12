@@ -139,6 +139,12 @@ class SweepPerTriggerTest {
     void the_backlog_is_grouped_by_trigger_and_says_which_surfaces_record_at_all() {
         askAndKeepNothing("a question about pangolins that this store cannot answer");
 
+        // The OTHER surface, driven so the declaration below is measured rather than
+        // copied: a recall nothing can answer. Today it opens no demand row, which is the
+        // very bound `backlogRecordedBy` publishes — so this call is what makes that claim
+        // falsifiable instead of a second copy of the production literal.
+        exec("recall", a -> a.put("symptom", "a pangolin symptom this store cannot answer"));
+
         Map<String, Object> out = sweep();
 
         Map<String, List<Map<String, Object>>> byTrigger =
@@ -150,15 +156,27 @@ class SweepPerTriggerTest {
             () -> "the demand row carries the surface that opened it; got "
                 + byTrigger.keySet());
 
-        // THE HONESTY CLAUSE. Four of the product's surfaces are ABSENT from the map above,
-        // and without this line a reader takes that for "nobody asked from there". It is
-        // asserted by EQUALITY against the surfaces that actually open a demand row, so the
-        // day `recall` starts recording one, this goes red and the sentence gets updated
-        // rather than quietly becoming false.
-        assertEquals(List.of("nominate"), out.get("backlogRecordedBy"),
-            "THE SWEEP MUST SAY WHICH SURFACES RECORD DEMAND AT ALL. UsageLedger.nominated"
-                + " has exactly one caller, so a missing group means that surface records"
-                + " nothing — NOT that nobody asked from it. Those are opposite"
+        // THE HONESTY CLAUSE, and it is asserted against what the run OBSERVED rather than
+        // against a copy of the production literal.
+        //
+        // The first version of this compared `List.of("nominate")` with a field whose
+        // production value is `List.of("nominate")` — two hardcoded literals, so the day
+        // `recall` started recording a demand row the map above would gain a group, this
+        // field would keep saying only `nominate`, the published sentence would become a
+        // lie, and the assertion would stay GREEN. It claimed in its own comment to catch
+        // exactly that. A C5 audit found it; it is the unfalsifiable-assertion shape this
+        // sprint has now shipped at six checkpoints, and it was sitting on the one clause
+        // that BOUNDS a narrowed deliverable.
+        //
+        // So the run drives an unanswered RECALL as well as the nominate above. Every
+        // surface that opened a row appears in `byTrigger`; the declaration must name
+        // exactly those. Teach `recall` to record and the observed set grows while the
+        // declaration does not — which is the red this clause was always supposed to give.
+        assertEquals(byTrigger.keySet(),
+            new java.util.LinkedHashSet<>((List<String>) out.get("backlogRecordedBy")),
+            "THE SWEEP MUST SAY WHICH SURFACES RECORD DEMAND AT ALL, and say it about the"
+                + " surfaces that actually recorded. A missing group means that surface"
+                + " records nothing — NOT that nobody asked from it, and those are opposite"
                 + " instructions to whoever is deciding what to write next.");
 
         assertTrue(String.valueOf(out.get("howToRead")).contains("backlogRecordedBy"),

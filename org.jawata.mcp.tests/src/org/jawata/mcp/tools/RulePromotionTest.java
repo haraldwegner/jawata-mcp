@@ -250,6 +250,35 @@ class RulePromotionTest {
             () -> "and the caller is told so rather than handed a no-op success: " + again);
     }
 
+    /**
+     * C5 — retiring something that is not a rule is REFUSED, as amending already was.
+     *
+     * <p>The asymmetry was the defect, and it mattered because retiring is the one verb in
+     * this lifecycle with NO INVERSE. There is no un-retire, and a retired row is dropped
+     * from every recall, so a mistyped id permanently removed an ordinary entry from the
+     * store's answers while leaving it readable — a loss with no error and no way back.</p>
+     *
+     * <p>The needle is wording only THIS branch emits. "not a rule" alone would be
+     * satisfied by {@code amend_rule}'s refusal, which is the substring trap this class
+     * already records once.</p>
+     */
+    @Test
+    void retiring_something_that_is_not_a_rule_is_refused_by_name() {
+        String lesson = source("the pangolin ledger settles its totals at dusk");
+        ToolResponse refused = exec("retire_rule", a -> a.put("id", lesson));
+        assertFalse(refused.isSuccess(), "retiring a lesson must be refused, not performed");
+        String error = String.valueOf(refused.getError());
+        assertTrue(error.contains("'lesson'"),
+            () -> "the refusal must name the type it actually found: " + error);
+        assertTrue(error.contains("cannot be undone"),
+            () -> "and say why this verb is the strict one — it has no inverse: " + error);
+
+        // THE CONTROL: the entry is still live. A refusal that had already retired it would
+        // satisfy every assertion above while doing the exact damage they exist to prevent.
+        assertTrue(recallReturns("pangolin", null, lesson),
+            "and the lesson must still be recalled — the refusal must have changed nothing");
+    }
+
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> rowsOf(ToolResponse r) {
         return (List<Map<String, Object>>) data(r).get("entries");
