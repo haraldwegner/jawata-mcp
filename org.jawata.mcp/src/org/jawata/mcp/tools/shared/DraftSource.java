@@ -24,9 +24,20 @@ import java.util.Map;
  * private {@code parse} helpers in this codebase, which the detector shipped beside this
  * class now reports as one re-derived job. Writing the 35th while building the machinery
  * that finds the first 34 would have been the joke that writes itself. There is no existing
- * owner for "turn source TEXT into an AST" — {@link SourceScan#parse} takes a compilation
- * unit, and the syntax tool does it inline — so this is that owner, and the next caller
+ * owner for "turn source TEXT into an AST" — so this is that owner, and the next caller
  * finds it here.</p>
+ *
+ * <p>WHAT THE NEIGHBOURS ACTUALLY DO, checked rather than asserted, because a C8 audit
+ * read this paragraph and reported the owner claim false on the strength of
+ * {@code PlanRefactoringTool#parseFile} existing. It exists and it does not disprove
+ * anything: it is PRIVATE and its input is a file PATH, so it owns "read that file and
+ * parse it", which is a different job with a different failure mode. {@link
+ * SourceScan#parse} takes a compilation unit. Neither takes text.</p>
+ *
+ * <p>What that audit item IS right about is a number in the sentence it read: the inline
+ * copies are PLURAL. The syntax tool does text-to-AST inline, and so does the tail of
+ * {@code parseFile} once it has the string. Two, not one — and each is inline inside a
+ * method doing something else, which is precisely why neither is reachable as an owner.</p>
  *
  * <h2>A FRAGMENT is wrapped, and the wrapping is visible in the answer</h2>
  *

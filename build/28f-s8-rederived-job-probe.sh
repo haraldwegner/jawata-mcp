@@ -158,8 +158,15 @@ tok_types = {str(p).rsplit("/", 1)[-1].replace(".java", "") for p in grouped}
 mine_types = {s.rsplit("#", 1)[0].rsplit(".", 1)[-1] for s in parse_hits}
 only_mine = sorted(mine_types - tok_types)
 
-print("  the token finder grouped %d parse method(s) at minTokens=5; this detector named %d"
-      % (len(tok_types), len(mine_types)))
+# THE TWO COUNTS DO NOT SUBTRACT, and printing them alone invited exactly that: a C8
+# auditor read "grouped 28 ... named 34" and reported the 7 below as an arithmetic error,
+# because 34 - 28 is 6. The sets OVERLAP PARTIALLY — the token finder also groups parse
+# methods this detector does not name — so the answer is a set difference and the overlap
+# is what makes it legible. It is printed rather than left to be inferred.
+print("  the token finder grouped %d parse method(s) at minTokens=5; this detector named %d;"
+      " they agree on %d, so the token finder groups %d this detector does not name"
+      % (len(tok_types), len(mine_types), len(mine_types & tok_types),
+         len(tok_types - mine_types)))
 if only_mine:
     ok("%d member(s) are named by THIS detector and not grouped by the token finder — "
        "which is what it is for. First few: %s" % (len(only_mine), only_mine[:6]))
