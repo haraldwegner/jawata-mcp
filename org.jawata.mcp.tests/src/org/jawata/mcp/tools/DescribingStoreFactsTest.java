@@ -132,15 +132,22 @@ class DescribingStoreFactsTest {
     }
 
     /**
-     * A JOB ROW ADDS NO PACKAGE, and this pins the measurement the block is built on.
+     * A JOB ROW ADDS NO PACKAGE — the measurement the whole block is built on.
      *
      * <p>A package holding job rows and no area row would be the obvious "worked on, not
      * summarised yet" answer, and it cannot be read: {@code symbol} and {@code packages[]}
      * are mutually exclusive at the record verb, a job is anchored by {@code symbol}, and
      * the store persists a package only from {@code scope.packages}. So every job row's
-     * package is null. Without this case a later reader could wire the outstanding list to
-     * job rows, watch it compile and pass, and ship a list that is empty forever — which
-     * reads as "nothing left to do".</p>
+     * package is null.</p>
+     *
+     * <p><b>THIS CASE RECORDS THAT FACT AND DOES NOT GUARD AGAINST IT, and the difference
+     * was measured rather than assumed.</b> The mutation it invites — fold every job row's
+     * package into the described set — was run, and the class stayed 5 of 5 GREEN, because
+     * folding in a column that is always null is a no-op. So a later reader who wires the
+     * outstanding list to job rows gets a list that is empty forever, reading as "nothing
+     * left to do", and NOTHING here goes red. What stops that is the measurement written
+     * down — here and in the method's own javadoc — not an assertion, and saying so is
+     * what keeps this from being read as coverage it is not.</p>
      */
     @Test
     @DisplayName("a job row does not make its package count as described")
