@@ -220,10 +220,30 @@ public final class CatalogueManifest {
 
         String situation = row.path("situation").asText(null);
         ExperienceEntry.Builder b = ExperienceEntry.of(fact.build())
-            // candidate, never accepted: these are somebody else's patterns and our
-            // own demonstrations, not this user's earned experience. Promotion is
-            // theirs to give.
-            .status(ExperienceEntry.CANDIDATE)
+            // Sprint 28f E5 — ACCEPTED, where this read CANDIDATE with the reasoning
+            // "these are somebody else's patterns … Promotion is theirs to give."
+            //
+            // THE REASONING WAS RIGHT ABOUT MEANING AND WRONG ABOUT THIS FIELD. Candidate
+            // is not a label, it is a QUEUE: `stats.catalogue.awaitingReview` counts it
+            // and the review seat works from it. Seeding 187 rows there put the whole
+            // catalogue into a queue nobody will ever empty — measured on the author's
+            // own store, awaitingReview 189 of 189 — which does not withhold a promotion
+            // so much as destroy the queue's usefulness for the handful of entries that
+            // genuinely await a human.
+            //
+            // WHAT IT DOES NOT DO, derived before changing it rather than assumed:
+            //   · it does not reach the session primer. `primerFromStore` takes ACCEPTED
+            //     rows and then filters by TYPE, and `DOMAIN_TYPES` excludes `reference`,
+            //     which is what these are — its javadoc says references stay cue-gated.
+            //   · it does not make a pattern a vouched answer. That primer filter is the
+            //     ONLY production read of ACCEPTED in the retrieval path, so "nominated,
+            //     never vouched" is enforced somewhere else entirely and is untouched.
+            //
+            // The distinction the old comment protected — borrowed knowledge is not the
+            // user's earned experience — survives where it is actually carried: the
+            // provenance kind below, and the `catalogue:` source ref. Those are what a
+            // reader and the store use to tell the two apart; status never was.
+            .status(ExperienceEntry.ACCEPTED)
             .situation(situation)
             // The design FORCE the row answers — the Minto complication. Factory and
             // Builder share one situation ("constructing an object"); the cause is

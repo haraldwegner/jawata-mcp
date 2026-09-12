@@ -102,9 +102,28 @@ class CatalogueSeederLifecycleTest {
             System.out.println("operation : " + only.operation());
             System.out.println("sourceRef : " + only.sourceRef());
 
+            // The line that carries "somebody else's pattern" is THIS one. It was also
+            // the reason the status assertion below could change without losing anything:
+            // provenance is where borrowed knowledge is marked, and it is asserted here.
             assertEquals(CatalogueManifest.PROVENANCE, only.facets().provenanceKind());
-            assertEquals(ExperienceEntry.CANDIDATE, only.status(),
-                "somebody else's pattern is a candidate, never the user's earned knowledge");
+            // Sprint 28f E5 — ACCEPTED, where this asserted CANDIDATE under the message
+            // "somebody else's pattern is a candidate, never the user's earned knowledge".
+            //
+            // That sentence is true and it was pinned to the wrong field. `candidate` is
+            // not a label on a row, it is a QUEUE: stats.catalogue.awaitingReview counts
+            // it and the review seat works from it. Seeding the whole catalogue there
+            // measured 189 of 189 awaiting review on the author's own store — a queue
+            // that can never be emptied, which costs the few entries genuinely waiting on
+            // a human the one surface built to show them.
+            //
+            // Derived before changing it: the primer takes ACCEPTED rows and then filters
+            // by TYPE, and DOMAIN_TYPES excludes `reference` — so this does not push 187
+            // patterns into the session-start layer. That filter is also the only
+            // production read of ACCEPTED in retrieval, so "nominated, never vouched" is
+            // enforced elsewhere and is untouched.
+            assertEquals(ExperienceEntry.ACCEPTED, only.status(),
+                "a catalogue row is not awaiting anyone's review — provenance above is"
+                    + " what marks it as borrowed, and status is a work queue");
             assertNotNull(only.facets().situation(), "a pattern without a situation is a heading");
             assertEquals(Integer.valueOf(1), only.facets().form(),
                 "form means 'carries a situation', and this row does — rows seeded"
