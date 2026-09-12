@@ -2212,6 +2212,43 @@ public final class ExperienceTool implements Tool {
         if (!unreadable.isEmpty()) {
             out.put("unreadable", unreadable);
         }
+
+        // Sprint 28f Stage 7 (E9) — AN UNREAD AREA ANSWERS, rather than saying nothing.
+        //
+        // A package with no area row is the ordinary state of a store that has just begun
+        // describing, and the thing a reader must be able to tell apart is "nobody has
+        // described this yet" from "we looked and there is nothing to say". Rendering the
+        // first as a blank makes it read as the second, which is the one confusion this
+        // product refuses everywhere else it reports a count — the describing block already
+        // publishes the numerator only, and says so, for exactly this reason.
+        //
+        // It is answered HERE rather than in the view because the view cannot compute it:
+        // which packages a scope holds is JDT's answer and the resident's alone, and a
+        // studio that inferred "not described" from an absent key would be inventing the
+        // half it cannot see. `MemoryView` renders this string; it does not derive it.
+        java.util.Set<String> describedAreas = new java.util.HashSet<>();
+        for (org.jawata.mcp.knowledge.StoredEntry e
+                : store.listEntries("area", null, null, null, 10000)) {
+            if (e.packageName() != null && !e.packageName().isBlank()) {
+                describedAreas.add(e.packageName());
+            }
+        }
+        java.util.Set<String> inScope = new java.util.TreeSet<>();
+        for (Map<String, Object> f : facts.values()) {
+            Object pkg = f.get("package");
+            if (pkg != null && !String.valueOf(pkg).isBlank()) {
+                inScope.add(String.valueOf(pkg));
+            }
+        }
+        List<Map<String, Object>> areas = new java.util.ArrayList<>();
+        for (String pkg : inScope) {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("package", pkg);
+            row.put("area", describedAreas.contains(pkg) ? "described" : "not described yet");
+            areas.add(row);
+        }
+        out.put("areas", areas);
+
         out.put("next", "read each unit, record a job per member it explains, then"
             + " experience(kind=describe, action=done, unit=..., contentHash=...)");
         return ToolResponse.success(out);
