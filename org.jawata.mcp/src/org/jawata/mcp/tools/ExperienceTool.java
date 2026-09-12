@@ -396,10 +396,13 @@ public final class ExperienceTool implements Tool {
         // because this schema is the only thing an agent can see: a parameter the code reads
         // and the schema omits is usable and undiscoverable, which is the sibling of the
         // defect the KINDS javadoc above records for verbs.
-        props.put("action", Map.of("type", "string", "enum", List.of("next", "done", "area"),
+        props.put("action", Map.of("type", "string",
+            "enum", List.of("next", "done", "area", "jobs_for"),
             "description", "describe: 'next' takes the source units still to describe,"
                 + " 'done' records one as described, 'area' answers what the package a"
-                + " given file lives in is FOR — its area and the jobs inside it."));
+                + " given file lives in is FOR — its area and the jobs inside it — and"
+                + " 'jobs_for' says which of the members you name already have a job"
+                + " written and which do not."));
         props.put("filePath", Map.of("type", "string",
             "description", "describe action=area: the source file whose package you want"
                 + " described. The package is derived through JDT rather than from the"
@@ -2247,16 +2250,75 @@ public final class ExperienceTool implements Tool {
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action",
                 "Required — 'next' to take units to describe, 'done' to record one,"
-                    + " 'area' to ask what a file's package is for.");
+                    + " 'area' to ask what a file's package is for, 'jobs_for' to ask"
+                    + " which members already have a job written.");
         }
         IJdtService service = serviceSupplier == null ? null : serviceSupplier.get();
         return switch (action) {
             case "next" -> describeNext(service, args);
             case "done" -> describeDone(args);
             case "area" -> describeArea(service, args);
+            case "jobs_for" -> describeJobsFor(args);
             default -> ToolResponse.invalidParameter("action",
-                "Unknown action '" + action + "'. Allowed: next, done, area.");
+                "Unknown action '" + action + "'. Allowed: next, done, area, jobs_for.");
         };
+    }
+
+    /**
+     * Sprint 28f Stage 8 D4 — WHICH OF THESE SYMBOLS HAVE A JOB WRITTEN, AND WHICH DO NOT.
+     *
+     * <p>The stop rule's question. A turn that added members and described none of them has
+     * left the next reader to work out what they are for by reading them, which is the cost
+     * this whole sprint exists to remove — so the gate asks this and names the ones still
+     * missing.</p>
+     *
+     * <h2>Batched on purpose, and store-only on purpose</h2>
+     *
+     * <p>A turn adds several members at once, and asking per symbol would put N round trips
+     * on a gate that runs at the end of every turn. It needs NO project: a job row is
+     * anchored by an FQN string, and whether one EXISTS is a question about the store. That
+     * is what lets this answer while a resident has nothing loaded — which is the state a
+     * stop gate most often finds.</p>
+     *
+     * <p><b>The match is the anchor's own spelling, and the caller's symbols come from the
+     * observer's edit record.</b> Both sides are FQNs the product produced, so this compares
+     * them as written rather than resolving either — a resolution here would need a project
+     * and would turn an absent job into an unanswerable question at the moment the gate has
+     * to decide.</p>
+     */
+    private ToolResponse describeJobsFor(JsonNode args) {
+        List<String> symbols = strings(args, "symbols");
+        if (symbols.isEmpty()) {
+            return ToolResponse.invalidParameter("symbols",
+                "Required — the fully-qualified members to ask about, as the edit record"
+                    + " named them.");
+        }
+        java.util.Set<String> anchored = new java.util.HashSet<>();
+        for (org.jawata.mcp.knowledge.StoredEntry e
+                : store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP)) {
+            if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
+                anchored.add(e.symbolFqn());
+            }
+        }
+        List<String> described = new java.util.ArrayList<>();
+        List<String> missing = new java.util.ArrayList<>();
+        for (String s : symbols) {
+            if (s == null || s.isBlank()) {
+                continue;
+            }
+            (anchored.contains(s) ? described : missing).add(s);
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("described", described);
+        out.put("missing", missing);
+        // The instruction, rendered ONCE here rather than composed by each caller. A gate
+        // that blocks without saying exactly what to run is a gate that gets worked around.
+        if (!missing.isEmpty()) {
+            out.put("next", "experience(kind=record, type=job, symbol=<one of the missing>,"
+                + " summary=<what that member is FOR, in a sentence that is not its own"
+                + " name restated>)");
+        }
+        return respond(args, out);
     }
 
     /**
