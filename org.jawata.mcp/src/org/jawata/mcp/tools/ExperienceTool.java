@@ -2447,6 +2447,20 @@ public final class ExperienceTool implements Tool {
                     notKnownWhy = "the file is not in a loaded project (a new file, or"
                         + " outside the workspace)";
                 } else {
+                    // SUBTRACTED BY NAME ALONE, AND THAT UNDER-FIRES ON AN OVERLOAD.
+                    // A draft adding `parse(ICompilationUnit)` to a file already declaring
+                    // `parse(String)` is skipped as "already there" — and a new overload
+                    // beside an existing name is one of the commonest shapes a re-derived
+                    // job actually takes, so the gate is quietest exactly where it should
+                    // speak. Measured at C8 and RECORDED rather than changed: the cure is
+                    // an arity on DraftMethod (`node.parameters().size()` against
+                    // `IMethod.getNumberOfParameters()`), which widens a shipped verb's
+                    // behaviour with a release pending; and it cannot be pinned where the
+                    // other cases live, because DuplicateCheckTest loads no project and so
+                    // never reaches this branch at all. Closing it needs a project-loaded
+                    // fixture, which is what makes it a work package and not an edit.
+                    // The direction is at least the safe one: a missed nomination costs a
+                    // reader nothing, a false one costs them the time to disprove it.
                     for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
                         for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
                             already.add(m.getElementName());
