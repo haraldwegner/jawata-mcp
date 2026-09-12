@@ -127,7 +127,14 @@ class SubstrateRootTest {
         Map<String, Object> s = substrate();
         assertTrue(s.get("root") == null,
             () -> "with nothing ingested there is no root to derive: " + s);
-        assertTrue(String.valueOf(s.get("note")).contains("no substrate"),
+        assertTrue(String.valueOf(s.get("note")).contains("no story folder"),
             () -> "and the absence must be stated, not left to be inferred: " + s);
+        // Sprint 28f D4 — AND THE ABSENCE IS NOT A DEAD END. This block used to stop at
+        // the note, which told the reader to "load a substrate first": an instruction
+        // that cannot be followed by the only reader who ever sees it. A machine with no
+        // story folder is the ordinary case, so it gets the same advice as one that has
+        // a folder, from the same constant.
+        assertTrue(String.valueOf(s.get("howToAdd")).contains("kind=record"),
+            () -> "a machine with no folder must still be told how to add: " + s);
     }
 }
