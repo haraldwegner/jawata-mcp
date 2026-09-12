@@ -48,6 +48,22 @@ class UnembeddedRowIsMarkedTest {
     private static final String WITHOUT_VECTOR =
         "the " + SHARED + " warehouse restocks lanterns before the solstice inspection";
 
+    /**
+     * The cue, and WHICH SECTION it lands the row in is not something this test pins.
+     *
+     * <p>Mutation G measured why it must not. The recall answer lists direct hits and then
+     * ranks what is left, and the retrieval path drops an already-listed row from the ranked
+     * section — so a cue that echoes the row's words puts it in the listing and the ranked
+     * branch never runs, while a cue sharing one word fails to surface it at all. Both were
+     * tried; the window between them is a property of the nominator, not of the claim, and a
+     * test balanced on it would break whenever that nominator is tuned.</p>
+     *
+     * <p>So the end-to-end case below asserts the mark WHEREVER the answer put the row, and
+     * the ranked branch gets a deterministic case of its own that supplies the set directly.
+     * Together they cover both renderers without either depending on the nominator's mood.</p>
+     */
+    private static final String CUE = SHARED + " inspection before the solstice";
+
     private ObjectMapper mapper;
     private H2ExperienceStore store;
     private ExperienceTool tool;
@@ -145,7 +161,7 @@ class UnembeddedRowIsMarkedTest {
         // actually sees, which is where D4 asks for the mark.
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
-        a.put("symptom", SHARED + " inspection before the solstice");
+        a.put("symptom", CUE);
         a.put("format", "text");
         ToolResponse recalled = tool.execute(a);
         assertTrue(recalled.isSuccess(), () -> "recall failed: " + recalled.getError());
@@ -164,5 +180,57 @@ class UnembeddedRowIsMarkedTest {
             () -> "THE CONTROL: a row that HAS a vector must not be marked. A renderer that"
                 + " marks everything prints a false warning beside a healthy answer, which"
                 + " is worse than the defect being fixed. Its line was:\n  " + healthy);
+    }
+
+    /** The basis this row was given, by id — so a mark cannot be read off the other row. */
+    private static List<String> basisOf(
+            List<ExperienceAnalogies.Analogy> ranked, String id) {
+        return ranked.stream()
+            .filter(a -> id.equals(a.entry().id()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "the ranking dropped " + id + ", so nothing about it was rendered"))
+            .basis();
+    }
+
+    /**
+     * The RANKED renderer carries the mark too — proved without the nominator in the way.
+     *
+     * <p><b>This case exists because a mutation stayed green.</b> Deleting the ranked mark
+     * left the end-to-end case above passing, because its row reaches the reader through the
+     * direct listing and the retrieval path then excludes it from the ranking. The branch was
+     * written, shipped, and exercised by nothing — the "published surface with no test" shape
+     * this sprint has refused twice at earlier checkpoints.</p>
+     *
+     * <p>The ranker is driven directly with the set supplied, so which section a cue happens
+     * to choose cannot decide whether the branch runs. It needs no embedder either, so unlike
+     * the case above it is covered on every machine.</p>
+     */
+    @Test
+    void the_ranked_renderer_marks_the_row_with_no_vector_and_only_that_row() {
+        call("record", "type", "lesson", "summary", WITH_VECTOR,
+             "situation", "when the ledger is reconciled at an equinox", "verdict", "worked");
+        call("record", "type", "lesson", "summary", WITHOUT_VECTOR,
+             "situation", "when the warehouse is inspected before a solstice",
+             "verdict", "worked");
+
+        List<StoredEntry> pool = store.all();
+        assertTrue(pool.size() >= 2, () -> "both rows must be stored: " + pool.size());
+        StoredEntry doomed = pool.stream()
+            .filter(e -> WITHOUT_VECTOR.equals(e.summary())).findFirst().orElseThrow();
+        StoredEntry healthy = pool.stream()
+            .filter(e -> WITH_VECTOR.equals(e.summary())).findFirst().orElseThrow();
+
+        List<ExperienceAnalogies.Analogy> ranked = ExperienceAnalogies.rank(
+            pool, null, Map.of(), Map.of(), List.of(), 10, () -> null,
+            java.util.Set.of(doomed.id()));
+
+        assertTrue(basisOf(ranked, doomed.id()).contains("no meaning vector yet"),
+            () -> "the ranked line must say the row could not answer by meaning, instead of"
+                + " leaving it at a score of zero that reads as a considered near-miss."
+                + " Basis was: " + basisOf(ranked, doomed.id()));
+        assertFalse(basisOf(ranked, healthy.id()).contains("no meaning vector yet"),
+            () -> "THE CONTROL: a row NOT in the set must not be marked, or the renderer is"
+                + " marking everything. Basis was: " + basisOf(ranked, healthy.id()));
     }
 }
