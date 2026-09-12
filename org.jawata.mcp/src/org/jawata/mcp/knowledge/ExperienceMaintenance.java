@@ -336,13 +336,40 @@ public final class ExperienceMaintenance {
                     + " (experience kind=review) and stamp it, or load it with"
                     + " kind=load, which makes no claim that anybody checked it."
                 : null;
-            if (stampMissing != null || refused.isPresent()) {
+            // Sprint 28f Stage 7 (E9) — A CODE-LANE ROW CANNOT ARRIVE FROM A FILE.
+            //
+            // The CODE lane is REGENERATED from the code it describes; that is the whole
+            // of its contract and the reason it is governed differently from every other
+            // lane. A job or an area typed into a memory file is a row nothing
+            // regenerates and nothing corrects — and it is WORSE than merely unusual,
+            // because it also silently loses the protection real ones have: the reseed
+            // spares a row whose sourceRef is null, and this one would carry `memory:`,
+            // so a later reseed of another root would delete a "job" the cataloguer
+            // never wrote and cannot rebuild.
+            //
+            // It shares this branch for the reason the comment above already gives — a
+            // second refusal path is how the link-following gets forgotten on one of
+            // them. Found by writing the test E9 names: the ingest took such a file and
+            // reported `loaded=1`.
+            String codeLaneAuthored = KnowledgeLane.CODE_TYPES.contains(
+                    doc.type == null ? "" : doc.type.strip().toLowerCase(java.util.Locale.ROOT))
+                ? "type — '" + doc.type + "' belongs to the CODE lane, which is REGENERATED"
+                    + " from the code it describes and never authored by hand. A job says"
+                    + " what one member is FOR and an area what one package is FOR; both"
+                    + " come from the cataloguer reading the source"
+                    + " (experience kind=describe), so a row typed here is one nothing can"
+                    + " regenerate and nothing can correct. Record what you know as a"
+                    + " lesson or a domain_fact instead."
+                : null;
+            if (stampMissing != null || codeLaneAuthored != null || refused.isPresent()) {
                 formRefused++;
                 skipped.add(Map.of("source", f.toString(),
                     "reason", stampMissing != null
                         ? stampMissing
-                        : "form — " + refused.get().field() + ": "
-                            + refused.get().message()));
+                        : codeLaneAuthored != null
+                            ? codeLaneAuthored
+                            : "form — " + refused.get().field() + ": "
+                                + refused.get().message()));
                 List<Path> onward = linksToFollow(
                     resolveLinks(doc, f.getParent(), rootDirs), f, item.depth(), maxDepth,
                     skipped);
