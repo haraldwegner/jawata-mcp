@@ -1,7 +1,15 @@
 package org.jawata.mcp.tools.refactoring;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.Confidence;
@@ -20,14 +28,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 28f Stage 7, deliverable 2 — a rename through jawata takes the knowledge with it.
@@ -50,9 +52,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>What this class does NOT reach, said rather than left to be assumed</h2>
  *
- * <p>{@link #the_standalone_tools_carry_the_store_through} asserts the pass-through from
- * {@code RefactoringDoors.standalone} — the one source the application and every test build
- * these tools from — into the tool itself. The remaining link is the application's own
+ * <p>{@link #the_store_reaches_rename_symbol_through_the_standalone_source} asserts the
+ * pass-through from {@code RefactoringDoors.standalone} — the one source the application and
+ * every test build these tools from — by PERFORMING a rename through the tool that call
+ * built, which is the only form a field being set cannot satisfy. The remaining link is the
+ * application's own
  * argument at that call, and {@code JawataApplication.registerTools} is private with one
  * caller, so no test here can drive it. That line is therefore covered by reading and not by
  * a gate, which is exactly the shape this sprint keeps finding; it is named here so the next
@@ -104,11 +108,18 @@ class RenameFollowsIntoTheStoreTest {
             .symbolFqn();
     }
 
-    /** The caret on {@code greet}'s declaration, read off the fixture rather than pinned. */
-    private ObjectNode renameGreetTo(String newName) throws Exception {
+    /**
+     * The caret on a method's declaration, read off the fixture rather than pinned.
+     *
+     * @param from    the no-argument method to point at, as it is spelled on disk NOW —
+     *                the wiring case renames one member and then renames it back, so the
+     *                needle cannot be a constant
+     * @param newName the name to rename it to
+     */
+    private ObjectNode renameMethod(String from, String newName) throws Exception {
         String[] lines = Files.readString(source).split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
-            int at = lines[i].indexOf("greet()");
+            int at = lines[i].indexOf(from + "()");
             if (at >= 0) {
                 ObjectNode args = json.createObjectNode();
                 args.put("filePath", source.toString());
@@ -118,7 +129,7 @@ class RenameFollowsIntoTheStoreTest {
                 return args;
             }
         }
-        throw new AssertionError("the fixture no longer declares greet()");
+        throw new AssertionError("the fixture no longer declares " + from + "()");
     }
 
     @SuppressWarnings("unchecked")
@@ -132,7 +143,7 @@ class RenameFollowsIntoTheStoreTest {
         String moved = store.put(job("Greets by name for the welcome banner.", GREET));
         String untouched = store.put(job("Adds two figures for the totals row.", SIBLING));
 
-        ToolResponse response = tool.execute(renameGreetTo("salute"));
+        ToolResponse response = tool.execute(renameMethod("greet", "salute"));
 
         assertTrue(response.isSuccess(), "the rename must land; got " + response.getError());
         Map<String, Object> data = dataOf(response);
@@ -160,7 +171,7 @@ class RenameFollowsIntoTheStoreTest {
     void a_staged_rename_moves_no_anchor() throws Exception {
         String job = store.put(job("Greets by name for the welcome banner.", GREET));
 
-        ObjectNode args = renameGreetTo("salute");
+        ObjectNode args = renameMethod("greet", "salute");
         args.put("auto_apply", false);
         ToolResponse response = tool.execute(args);
 
@@ -179,40 +190,67 @@ class RenameFollowsIntoTheStoreTest {
     void a_refused_rename_moves_no_anchor() throws Exception {
         String job = store.put(job("Greets by name for the welcome banner.", GREET));
 
-        ToolResponse response = tool.execute(renameGreetTo("class"));
+        ToolResponse response = tool.execute(renameMethod("greet", "class"));
 
         assertFalse(response.isSuccess(), "'class' is not a Java identifier");
         assertEquals(GREET, anchorOf(job), "and the job still points where it did");
     }
 
     /**
-     * The wiring, as far as a test can follow it — see the class javadoc for where it stops.
+     * THE WIRING, asserted as the REACHED STATE rather than as a declaration.
+     *
+     * <p>This case used to ask the tool whether it HAD a store, through a
+     * {@code followsAnchors()} accessor that existed for no other reason. The unwired gate
+     * refused it — a public member whose only callers are tests is a capability wired
+     * nowhere — and the gate was right for a second reason the accessor could not answer:
+     * a field being set is the DECLARATION, and what this case is for is the EFFECT. A tool
+     * holding a store it never consults would have passed.</p>
+     *
+     * <p>So the accessor is deleted and the question is put the only way a field cannot
+     * satisfy: PERFORM a rename through the tool {@code RefactoringDoors.standalone} built
+     * — the one source the application and every test build these from — and see whether
+     * the anchor moved.</p>
+     *
+     * <p><b>The control is the same call with no store, on the same file renamed back.</b>
+     * The rename must still SUCCEED, because refactoring does not require knowledge, and
+     * the anchor must stay exactly where it was. Without that half, a tool that moved
+     * anchors unconditionally would satisfy the first assertion.</p>
      */
     @Test
-    @DisplayName("the standalone tools carry the store through to rename_symbol")
-    void the_standalone_tools_carry_the_store_through() {
+    @DisplayName("the store REACHES rename_symbol through the source the application builds from")
+    void the_store_reaches_rename_symbol_through_the_standalone_source() throws Exception {
         ExperienceStore wired = store;
-        RenameSymbolTool withStore = null;
-        for (AbstractTool t : RefactoringDoors.standalone(
-                () -> service, new RefactoringChangeCache(), () -> wired)) {
-            if (t instanceof RenameSymbolTool r) {
-                withStore = r;
-            }
-        }
-        assertTrue(withStore != null, "standalone must still build a rename_symbol");
-        assertTrue(withStore.followsAnchors(),
-            "the store reaches the tool through the one source the application builds from");
+        String follows = store.put(job("Greets by name for the welcome banner.", GREET));
 
-        RenameSymbolTool without = null;
+        ToolResponse moved = standaloneRename(() -> wired).execute(renameMethod("greet", "salute"));
+
+        assertTrue(moved.isSuccess(), "the rename itself must land; got " + moved.getError());
+        assertEquals(MOVED, anchorOf(follows),
+            "the store reached the tool through RefactoringDoors.standalone AND was used —"
+                + " which a null check on a field could not have told apart from a store"
+                + " that arrived and was never consulted");
+
+        // THE CONTROL: no store, the same member renamed back, nothing follows.
+        String stays = store.put(job("Greets by name, after the first rename.", MOVED));
+
+        ToolResponse back = standaloneRename(() -> null).execute(renameMethod("salute", "greet"));
+
+        assertTrue(back.isSuccess(),
+            "a rename does not REQUIRE a store — refactoring works with no knowledge at all;"
+                + " got " + back.getError());
+        assertEquals(MOVED, anchorOf(stays),
+            "and with no store nothing followed, so the assertion above is about the WIRING"
+                + " rather than about a tool that rewrites anchors whatever it was given");
+    }
+
+    /** The rename tool as the ONE source the application and every test build these from. */
+    private RenameSymbolTool standaloneRename(Supplier<ExperienceStore> knowledge) {
         for (AbstractTool t : RefactoringDoors.standalone(
-                () -> service, new RefactoringChangeCache(), () -> null)) {
+                () -> service, new RefactoringChangeCache(), knowledge)) {
             if (t instanceof RenameSymbolTool r) {
-                without = r;
+                return r;
             }
         }
-        assertFalse(without.followsAnchors(),
-            "THE CONTROL: the accessor reports the store it was GIVEN rather than answering"
-                + " true for any instance — without it the assertion above would pass"
-                + " against a method that returns a constant");
+        throw new AssertionError("standalone must still build a rename_symbol");
     }
 }

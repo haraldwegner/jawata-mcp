@@ -102,10 +102,21 @@ class JobAnchorReachesTheFormGateTest {
     }
 
     /**
-     * THE CONTROL, and it carries two claims at once. Without it a verb that refused
-     * every job would satisfy the test above — and because it uses the SAME anchor, it
-     * also proves the anchor itself is admissible, so the refusal above cannot be about
-     * the symbol being unresolvable rather than about the summary.
+     * THE CONTROL. Without it a verb that refused every job would satisfy the test above.
+     *
+     * <p><b>An earlier version of this javadoc claimed a SECOND thing and it was false</b> —
+     * that using the same anchor "proves the anchor is admissible, so the refusal cannot be
+     * about the symbol being unresolvable". The C7 audit found it: {@link #ANCHOR} names
+     * {@code computeTotalOrderValue}, and the {@code compile-clean} fixture declares only
+     * {@code greet()}, {@code add(int,int)}, a constructor and one field. <b>That member does
+     * not exist and the store takes it anyway</b> — the record verb never asks whether an
+     * anchor resolves. So the claim guarded a failure mode that cannot occur, which is the
+     * vacuous-assertion shape this sprint has paid for repeatedly, in a javadoc rather than
+     * in an assertion.</p>
+     *
+     * <p>The surviving claim is the real one, and the unverified anchor is raised at C7 as a
+     * finding of its own: deliverable 1 says every anchor resolves through
+     * {@code PointerResolver}, and that resolver is not on this write path at all.</p>
      */
     @Test
     @DisplayName("a job that says what the member is FOR is admitted on that same anchor")

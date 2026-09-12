@@ -222,7 +222,14 @@ for cid, anchor, summary, expect, by in CONTROLS:
         if by.startswith("NOT the job rule"):
             ok = not got.startswith("job rule")
         else:
-            ok = got.startswith("job rule") == by.startswith("job rule")
+            # THE BRANCH, not merely the rule. An earlier version compared
+            # got.startswith("job rule") against by.startswith("job rule"), so a case
+            # aimed at branch (a) would have "held" if branch (b) answered — and this
+            # script's own contract calls a wrong-check refusal a shadow. It could not
+            # bite (A carries a '(' so (b) cannot fire; B carries none so (a) cannot),
+            # which is exactly the kind of assertion that is correct today and vacuous
+            # after the next edit. Found by the C7 audit.
+            ok = got == by.split(":")[0].strip()
     control_rows.append((cid, expect, declined, got, by, msg[:200], summary, anchor))
     if not ok:
         control_failures.append(cid)

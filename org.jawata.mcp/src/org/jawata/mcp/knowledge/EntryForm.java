@@ -174,13 +174,26 @@ public final class EntryForm {
      * As {@link #check(String, String, List, String, String)}, plus the rules a JOB owes
      * against the member it is anchored to — Sprint 28f Stage 7.
      *
-     * <p><b>An overload rather than a widened signature, and the reason is the count.</b>
-     * {@code check} has twelve references, four of them production, and none of those
-     * callers holds an anchor or has any use for one. Widening would have made every one
-     * of them pass a null to satisfy a rule about a type they never record. The five-argument
-     * form keeps meaning exactly what it meant and delegates with no anchor, which is also
-     * what makes {@code without_an_anchor_the_job_rules_cannot_fire} a real assertion rather
-     * than a restatement.</p>
+     * <p><b>An overload rather than a widened signature — and the reason ORIGINALLY given
+     * here was falsified by the commit that fixed this method's own wiring.</b> It read:
+     * {@code check} "has twelve references, four of them production, and none of those
+     * callers holds an anchor or has any use for one". There are now NINETEEN references
+     * over the two overloads, and {@code record} holds an anchor and passes it — it always
+     * held one, on the line below the call, which is exactly how the six-argument form
+     * shipped with no production caller and left the restatement branch dead on every write
+     * path the product accepts. The sentence is corrected rather than quietly swapped,
+     * because a comment false about the code beside it is the defect this file's own rule
+     * exists to catch.</p>
+     *
+     * <p><b>What is true of the remaining three callers, measured rather than asserted.</b>
+     * {@code review} reads no symbol at all. {@code set_form} rewrites a stored row's
+     * situation and verdict and CANNOT change its summary, so the restatement branch is
+     * irrelevant to it by construction. Only the md ingest holds an anchor it does not pass,
+     * and that one is a genuine residual raised at C7. The five-argument form therefore still
+     * earns its place — it means "no anchor to compare against", which is the truth for two
+     * of the three — and it is what makes
+     * {@code without_an_anchor_the_job_rules_cannot_fire} a real assertion rather than a
+     * restatement.</p>
      *
      * <p><b>What is NOT enforced here, stated rather than left to be discovered.</b> The
      * stage's deliverable also says a job's summary "has a verb". There is no sound

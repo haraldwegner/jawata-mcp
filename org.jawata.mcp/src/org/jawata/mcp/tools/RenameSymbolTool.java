@@ -91,10 +91,17 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
      * <p><b>Null is a real state and it is the TESTS', not production's.</b> Most tests
      * construct this tool with no store at all, and a rename must work there. What must not
      * happen is production quietly ending up in that state, so the single constructor takes
-     * the parameter — there is no store-less overload to fall into — and
-     * {@code RenameFollowsIntoTheStoreTest} asserts the tool the application actually
-     * registers has one. A capability wired nowhere is this project's recorded headline
-     * defect, and an accessor is what lets a gate ask.</p>
+     * the parameter — there is no store-less overload to fall into.</p>
+     *
+     * <p><b>There is deliberately NO {@code followsAnchors()} accessor, and the reason is a
+     * gate refusing the one this class used to carry.</b> It existed so
+     * {@code RenameFollowsIntoTheStoreTest} could ask whether the store had arrived, and its
+     * only callers were that test — which the unwired gate reports as a hollow member, a
+     * capability wired nowhere. The gate was right twice over: an accessor reports the
+     * DECLARATION, and a tool holding a store it never consults would have answered true. The
+     * test now PERFORMS a rename through the tool {@code RefactoringDoors.standalone} builds
+     * and asserts the anchor moved, which is the same question put in the one form a field
+     * being set cannot satisfy.</p>
      */
     private final Supplier<ExperienceStore> knowledge;
 
@@ -103,11 +110,6 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
                             Supplier<ExperienceStore> knowledge) {
         super(serviceSupplier, changeCache);
         this.knowledge = knowledge;
-    }
-
-    /** Whether this instance can follow a rename into the knowledge store. */
-    public boolean followsAnchors() {
-        return knowledge != null && knowledge.get() != null;
     }
 
     @Override
