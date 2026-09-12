@@ -1081,13 +1081,28 @@ public final class ExperienceTool implements Tool {
      * destructive enough to protect, and by the universal D2 actually states ("every
      * destructive verb") this verb qualifies.</p>
      *
-     * <p><b>It is out of scope on purpose, and the choice is to REMOVE the
-     * destruction rather than insure it.</b> Stage 2 replaces that per-file delete
-     * with an upsert, after which {@code load} has nothing to back up. Insuring it
-     * instead would copy the whole store on every story-folder import, ten deep,
-     * forever — and since {@code load} runs on every deploy, the rotation would fill
-     * with pre-load copies and evict the pre-wipe copy that is the one worth having.
-     * The uncovered window is S1 to S2, with no release inside it.</p>
+     * <p><b>CORRECTED AT C9, and the correction is the part to read.</b> This used to
+     * say the choice was to REMOVE the destruction rather than insure it — that Stage
+     * 2's upsert left {@code load} with nothing to back up, so the uncovered window
+     * was S1 to S2 with no release inside it. <b>That premise is false about the
+     * shipped code.</b> C2 added {@code store.retainSourcedRows(sourceRef, family)} to
+     * the load path ({@link org.jawata.mcp.knowledge.ExperienceMaintenance}, under
+     * "WHAT THE FILE NO LONGER SAYS GOES") for a sound reason of its own — a withdrawn
+     * statement must not sit beside the one that replaced it — and that call DELETES.
+     * So {@code load} is destructive again, takes no copy, and the sentence excusing
+     * it asserted a property the same sprint had already removed. A fresh-context
+     * implementation audit found it; no gate could, because the claim was prose.</p>
+     *
+     * <p><b>The exclusion still stands, on its OTHER leg, which was always the real
+     * one.</b> Insuring it would copy the whole store on every story-folder import,
+     * ten deep, forever — and since {@code load} runs on every deploy, the rotation
+     * would fill with pre-load copies and evict the pre-wipe copy that is the one
+     * worth having. A backup scheme that evicts the copy you actually need is worse
+     * than the gap it closes. What changes is that the gap is now REAL and permanent
+     * rather than a two-stage window: a copy taken only when a load is about to remove
+     * something would close it without the rotation churn. That is a decision rather
+     * than an oversight, and it is raised as one instead of reading as already
+     * solved.</p>
      *
      * <p>Mitigating, and stated rather than left to be assumed: the rows a load
      * removes are file-derived, so the file can re-mint them. That is an argument for
@@ -3033,7 +3048,7 @@ public final class ExperienceTool implements Tool {
             + " mechanically — READ each, judge what it actually applies to, and repair"
             + " with kind=set_form (proposing to the human first). A finding with a"
             + " source_ref is durably fixed in THAT FILE and reseeded — a store write"
-            + " there is erased by the next reseed; a null source_ref means no file"
+            + " there is erased the next time that file is loaded; a null source_ref means no file"
             + " exists and set_form IS the durable fix. findingsTruncated=true means"
             + " the list is capped at " + limit + " while the counts cover everything.");
         return ToolResponse.success(out);
