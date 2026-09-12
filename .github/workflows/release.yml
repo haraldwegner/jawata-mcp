@@ -56,8 +56,13 @@ jobs:
     - name: Build
       run: mvn -B -f build/pom.xml install
 
+    # 100, not 75 — see the same step in ci.yml for the derivation. Short version:
+    # this step's runner carries a stall backstop that names the stuck test and
+    # halts with 124, and it only helps if it fires BEFORE GitHub's cap, because a
+    # cancelled step's log is discarded. A healthy run is 45 min and the backstop
+    # waits 45, so 75 let GitHub win on any hang past the first half hour.
     - name: Test (in-framework)
-      timeout-minutes: 75
+      timeout-minutes: 100
       run: |
         java -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
              -Djawata.experience.shared.dir="$RUNNER_TEMP/jawata-test-store" \

@@ -40,8 +40,24 @@ jobs:
     # The full suite runs in-framework (the tycho-surefire replacement): the boot
     # module starts Equinox, installs the test fragments, runs JUnit inside.
     # Exit code = failed-test count.
+    # 100, not 75, and the number is DERIVED (2026-09-12). This step's own runner
+    # carries a stall backstop that prints a thread dump and halts with 124 when a
+    # test stops emitting events (SpikeTestMain.startWatchdog). It exists because
+    # GitHub DISCARDS a cancelled step's log, so a run killed from outside
+    # self-diagnoses nothing.
+    #
+    # That only works if the backstop fires FIRST. A healthy run of this step
+    # measured 45 min; the backstop waits 45. At a 75 min cap, any hang past the
+    # first half hour is killed by GitHub before the backstop speaks — so the one
+    # instrument that would name the stuck test never runs.
+    #
+    # The cap is raised rather than the backstop lowered: below 30 min the backstop
+    # would sit under Sweeps.DEADLINE_MILLIS's own 3 x 600 s of legitimate silence
+    # and start failing healthy runs, which is the defect it was just repriced to
+    # remove. A longer cap costs nothing healthy — a passing job returns at 45 min
+    # and never waits for it.
     - name: Test (in-framework)
-      timeout-minutes: 75
+      timeout-minutes: 100
       shell: bash
       run: |
         # Sprint 27 D1: the embedder's Vector API backend, GUARDED. A JVM given
