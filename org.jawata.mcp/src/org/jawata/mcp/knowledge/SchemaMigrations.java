@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 21;
+    static final int LATEST = 22;
 
     private SchemaMigrations() {
     }
@@ -187,6 +187,9 @@ final class SchemaMigrations {
         }
         if (from < 21) {
             migrateToV21(conn);
+        }
+        if (from < 22) {
+            migrateToV22(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -1088,6 +1091,53 @@ final class SchemaMigrations {
             // Read by the recall filter, which excludes a retired rule from live guidance.
             s.execute("CREATE INDEX IF NOT EXISTS idx_experience_retired "
                 + "ON experience_entry(retired_at)");
+        }
+    }
+
+    /**
+     * v22 — {@code described_unit}: which source units have been described, and at what text.
+     *
+     * <p>Sprint 28f Stage 7 deliverable 3. Describing a codebase is not one act: it is a queue
+     * walked over many sessions by an agent with a token budget, and the only thing that makes
+     * it resumable is a record of what has already been done. Without one every run starts at
+     * the first file, which is the shape that turns a bounded job into an unbounded one.</p>
+     *
+     * <h2>The hash is the whole point of the row, not bookkeeping beside it</h2>
+     *
+     * <p>A unit that has been described and then EDITED is not described any more — the jobs
+     * derived from it are about text that has changed. Keying the row on the unit alone would
+     * answer "done" forever; keying it on the unit AND the content hash lets the same query
+     * answer both questions at once: a unit is outstanding when it has no row, or when the row
+     * disagrees with the file in front of you. A changed hash therefore re-queues by
+     * construction rather than by a sweep somebody has to remember to run.</p>
+     *
+     * <h2>Why this table is NOT called {@code catalogue_progress}</h2>
+     *
+     * <p>The plan names it that, and the word is already taken on this very store: five
+     * {@code Catalogue*} classes, a {@code CATALOGUE_TYPE}, a {@code provenance_kind} of
+     * {@code catalogue} and a {@code catalogueBlock} in the tool's own {@code stats} response
+     * all mean the IMPORTED PATTERN CATALOGUE — somebody else's designs, seeded as
+     * {@code reference} rows. This table is about describing OUR code. Two unrelated meanings
+     * of one word on one store is the defect this sprint has already paid for twice by name,
+     * and {@code stats} would have carried two catalogue sections meaning different things.
+     * A DECLARED DEVIATION from the plan's naming, recorded there; the columns are the plan's
+     * unchanged.</p>
+     *
+     * <p>No foreign key and no cascade: this records what an AGENT did, not what a row is. The
+     * described jobs and areas can be deleted, re-derived or wiped, and the record of which
+     * units were walked must survive that — a wipe that silently re-queued the whole workspace
+     * would turn a bounded resume into a full re-run with nothing saying why.</p>
+     */
+    private static void migrateToV22(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("CREATE TABLE IF NOT EXISTS described_unit ("
+                + "unit VARCHAR(1024) PRIMARY KEY, "
+                + "content_hash VARCHAR(64) NOT NULL, "
+                + "bundle VARCHAR(256), "
+                + "done_at TIMESTAMP NOT NULL)");
+            // Read by the coverage report, which groups what is described by bundle.
+            s.execute("CREATE INDEX IF NOT EXISTS idx_described_unit_bundle "
+                + "ON described_unit(bundle)");
         }
     }
 }
