@@ -595,6 +595,27 @@ public final class ExperienceMaintenance {
         if (!skipped.isEmpty()) {
             log.info("load: {} source(s) skipped: {}", skipped.size(), skipped);
         }
+        // Sprint 28f E5 — SEARCHABLE THE MOMENT IT IS WRITTEN. A load that returns
+        // before its rows reach the meaning index has written rows that can be
+        // listed and exported and never FOUND by asking, and the report would say
+        // "loaded: N" with nothing to warn the caller.
+        //
+        // Measured 2026-09-12 on the end-to-end gate, which is why this is here and
+        // not left to the startup daemon: 48 rows were imported and the meaning
+        // index still held only the 189 catalogue rows, so every recall for them
+        // answered with design patterns instead. The gate's own convergence check
+        // could not see it, because it compared a count against itself.
+        //
+        // `embedded` is what THIS call indexed; `unembedded` is what is still
+        // pending. They are reported separately on purpose — a caller must not have
+        // to infer "nothing left" from "some work done", which is the inference the
+        // gate made and got wrong. An absent index (degraded store, no embedder)
+        // leaves both keys off rather than reporting a zero that reads as converged.
+        EmbeddingIndex index = EmbeddingIndex.forStore(store);
+        if (index != null) {
+            report.put("embedded", index.drain());
+            report.put("unembedded", index.remainingUnembedded());
+        }
         return report;
     }
 
