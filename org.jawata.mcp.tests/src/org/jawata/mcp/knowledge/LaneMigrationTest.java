@@ -87,7 +87,26 @@ class LaneMigrationTest {
         new Ruled("naming_convention", null, KnowledgeLane.DOMAIN,
             "a convention is a fact about how we spell things"),
         new Ruled(KnowledgeLane.RULE_TYPE, null, KnowledgeLane.RULES,
-            "Stage 5's own type: a rule versions and retires rather than being superseded"));
+            "Stage 5's own type: a rule versions and retires rather than being superseded"),
+        // Sprint 28f Stage 7 — THE CODE LANE HAD A CONSTANT AND NO WAY IN.
+        //
+        // `KnowledgeLane.CODE` was declared at S5 with its javadoc, and `find_references`
+        // answered ZERO: nothing assigned it, because `of` had no branch returning it. So a
+        // job or an area row would land with lane NULL — the column's own value for "no
+        // ruling covers this type" — and every lane-scoped reader, the Stage 8 map included,
+        // would look straight past the rows this sprint exists to produce, while the enum
+        // constant made the lane read as shipped.
+        //
+        // These two rows are what reaches it, and they belong in THIS table rather than in a
+        // test of their own for the reason the table's own javadoc gives: both halves read
+        // it, so the pure mapping and the migrated database cannot drift apart.
+        new Ruled("job", null, KnowledgeLane.CODE,
+            "RULED: a job is derived FROM the code and regenerated when the code moves. It"
+                + " never turned out any way, so it is not an experience; and it is not a fact"
+                + " about the world either, because rewriting the method rewrites it"),
+        new Ruled("area", null, KnowledgeLane.CODE,
+            "RULED: an area is one package's summary, derived the same way and regenerated"
+                + " the same way"));
 
     /** A type no ruling covers. Deliberately NOT in any of the sets {@link KnowledgeLane} reads. */
     private static final String UNRULED_TYPE = "hazard";

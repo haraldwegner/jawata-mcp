@@ -99,6 +99,24 @@ public enum KnowledgeLane {
     /** Stage 5's own type: a promoted rule, which versions rather than supersedes. */
     public static final String RULE_TYPE = "rule";
 
+    /**
+     * Types whose rows are CODE — derived from the code and REGENERATED when it moves.
+     *
+     * <p>Sprint 28f Stage 7's two: a {@code job}, which is what one member is for, and an
+     * {@code area}, which is what one package is for. Neither is an experience — nothing
+     * turned out any way — and neither is a fact about the world, because rewriting the
+     * method rewrites the row. That third answer is what the lane is.</p>
+     *
+     * <p><b>This set is the thing that was missing, and its absence was invisible.</b>
+     * {@link #CODE} was declared at Stage 5 with its javadoc and NOTHING ASSIGNED IT —
+     * {@code find_references} answered zero — because {@link #of} had no branch returning
+     * it. A job row would have landed with a NULL lane, which is this column's own value
+     * for "no ruling covers this type", and every lane-scoped reader would have looked
+     * straight past the rows the sprint exists to produce while the enum constant made the
+     * lane read as shipped. The constant is not the wiring; the branch below is.</p>
+     */
+    public static final Set<String> CODE_TYPES = Set.of("job", "area");
+
     /** A published pattern the catalogue lent us — somebody else's experience. */
     private static final String REFERENCE_TYPE = "reference";
 
@@ -129,6 +147,9 @@ public enum KnowledgeLane {
         }
         if (REFERENCE_TYPE.equals(t)) {
             return CatalogueManifest.PROVENANCE.equals(provenanceKind) ? EXPERIENCE : DOMAIN;
+        }
+        if (CODE_TYPES.contains(t)) {
+            return CODE;
         }
         if (DOMAIN_TYPES.contains(t)) {
             return DOMAIN;
