@@ -763,6 +763,28 @@ public final class ExperienceTool implements Tool {
                         l.put("total", total < 0 ? "unknown" : total);
                         embedding.put(lane, l);
                     }
+                    // Sprint 28f E5 — ONE number for "is anything still unsearchable?".
+                    //
+                    // The per-lane pairs above already carry the facts, and that WAS the
+                    // problem: answering the question from them means reading a lane and
+                    // subtracting, and that arithmetic is what the end-to-end gate got
+                    // wrong. It compared a lane's `embedded` against that same lane's
+                    // `total` — a count against itself — which stays true while rows are
+                    // still arriving, so it reported convergence over a lane 58 rows
+                    // short, and three recall checks failed two lifecycles downstream
+                    // with nothing to connect them to the cause.
+                    //
+                    // remainingUnembedded sums every lane the backfill reconciles and
+                    // returns -1 — "could not look" — when any count failed, so this can
+                    // never read as zero while the truth is unknown. That sentinel is the
+                    // reason to PUBLISH the number rather than let each caller derive its
+                    // own and lose it.
+                    //
+                    // Addressed as `embedding.unembedded` rather than a top-level
+                    // `unembedded`: the plan's shorthand names the FACT, and the fact
+                    // belongs beside the coverage numbers it summarises.
+                    long pending = index.remainingUnembedded();
+                    embedding.put("unembedded", pending < 0 ? "unknown" : pending);
                 } else {
                     embedding.put("available", false);
                     embedding.put("reason", svc.unavailableReason());
