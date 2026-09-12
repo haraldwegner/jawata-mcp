@@ -54,11 +54,18 @@ a sweep to observe it.
 
 **[measured]** the field removal, the regeneration, the 187/187 counts, and the
 no-reader check — all this session.
+**[measured]** that `audit` re-resolves the ADDRESS rather than the key — the issue's own
+headline gap. `CureLookup.audit` (`CureLookup.java:398-423`) calls
+`addresses.address(operation)` per declared operation and records `address.sourceRef()`,
+with a comment naming the issue: *"the ADDRESS, not merely the fact that some row carries
+the key. `resolves(operation)` answered the weaker question, so a pin that renamed a path
+while keeping the key left every affected cure pointing at a dead address and the sweep
+reporting clean."* It also reports MOVES against a baseline — a key present on both sides
+whose value differs — which is the one case resolution alone cannot see. This was the
+caveat an earlier version of this file carried; it is closed by reading, not by assuming.
+
 **[from the spec]** that two of the four gaps are shipped and that the other two need no
-machinery. I read `CureLookup` far enough to see that a `Cure` now carries an `address`,
-which is consistent with the first gap being closed, and I did **not** verify that
-`audit` re-resolves addresses rather than keys. If you want that nailed before posting,
-it is one read of `CureLookup.audit`.
+machinery, beyond the address half measured above.
 
 ---
 
