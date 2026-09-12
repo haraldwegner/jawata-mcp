@@ -52,7 +52,21 @@ class ReDerivedJobDetectorTest {
         "com.example.BetaTool#parse",
         "com.example.GammaTool#parse");
 
-    /** Population two: a lookup, the shape the five type lookups had before they merged. */
+    /**
+     * Population two: a lookup, the shape the five type lookups had before they merged.
+     *
+     * <p>E11 NAMES THREE POPULATIONS AND THIS FIXTURE CARRIES TWO, which a C8 audit counted
+     * and which is worth answering rather than padding. E11's three are the parse helper,
+     * "the five type lookups" ({@code findTypeDeclaration}, merged in the previous sprint's
+     * Stage 5) and "the eleven copies of one broken lookup" ({@code typeNamed},
+     * {@code findType}, {@code findTypeInCu}, merged at C8b of this one).</p>
+     *
+     * <p>The second and third are ONE JOB — find a type declaration inside a compilation
+     * unit — found by two sprints, months apart, under three different names. That is this
+     * detector's own subject, so counting them as two populations would be the very mistake
+     * it exists to report: a job is one job however many names its re-derivations carry.
+     * This list is that job's shape, and it stands for both.</p>
+     */
     private static final List<String> LOOKUPS = List.of(
         "com.example.FirstDesk#find",
         "com.example.SecondDesk#find",
