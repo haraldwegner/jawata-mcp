@@ -9,8 +9,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Sprint 21a (item B): versioned schema + ordered, additive-first migrations for the
@@ -40,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 17;
+    static final int LATEST = 18;
 
     private SchemaMigrations() {
     }
@@ -171,6 +175,9 @@ final class SchemaMigrations {
         }
         if (from < 17) {
             migrateToV17(conn);
+        }
+        if (from < 18) {
+            migrateToV18(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -912,6 +919,88 @@ final class SchemaMigrations {
                 log.info("Catalogue: {} borrowed pattern(s) left the review queue —"
                     + " status is a work queue and they were never awaiting a ruling", moved);
             }
+        }
+    }
+
+    /**
+     * v18 — {@code experience_entry.lane}: which LIFECYCLE a row lives under.
+     *
+     * <h2>The mapping is not expressed in SQL, and that is the design</h2>
+     *
+     * <p>A {@code CASE WHEN type = …} in a statement string would be a SECOND copy of
+     * {@link KnowledgeLane#of} — the classification this stage exists to give one owner —
+     * and a copy held as text is one no compiler, rename or reference search can reach.
+     * This codebase has paid for that shape repeatedly. So the rung asks the store which
+     * {@code (type, provenance_kind)} pairs actually EXIST and puts each one through the
+     * Java mapping every writer also calls: the migration and the insert path cannot
+     * disagree, because there is only one of them.</p>
+     *
+     * <p>The loop is per DISTINCT pair rather than per row — bounded by the number of
+     * types, not by the size of the store.</p>
+     *
+     * <h2>An unclassified type is left NULL and COUNTED, never defaulted</h2>
+     *
+     * <p>The stage's clause originally ended "the rest &rarr; experience". A catch-all makes
+     * the migration's own test — <i>every row lands in exactly one lane</i> — true whatever
+     * the mapping does, which is an assertion that cannot fail; this sprint has refused that
+     * shape at three checkpoints. A type nobody classified is an unanswered question, so the
+     * column stays NULL, the count is logged at WARN with the type names, and
+     * {@code LaneMigrationTest} asserts the mapping PER TYPE so a new one turns it red.</p>
+     *
+     * <p>NULL rather than a thrown refusal because {@code record} accepts open-ended types:
+     * throwing here would make an upgrade refuse to OPEN a database over a type someone
+     * invented, which is a worse failure than a visible gap. {@code WHERE lane IS NULL} is
+     * the query that finds them.</p>
+     *
+     * <p>Measured on the live store the day this was written: 384 rows over five types —
+     * {@code reference} 190, {@code lesson} 133, {@code domain_fact} 49,
+     * {@code failure_mode} 8, {@code api_contract} 4 — and the ruling that sent
+     * {@code api_contract} and the one non-catalogue {@code reference} to {@code domain}
+     * was taken by READING those five rows, not by defaulting them.</p>
+     */
+    private static void migrateToV18(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE experience_entry ADD COLUMN IF NOT EXISTS lane VARCHAR(16)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_experience_lane "
+                + "ON experience_entry(lane)");
+        }
+        List<String[]> pairs = new ArrayList<>();
+        try (Statement s = conn.createStatement();
+                ResultSet rs = s.executeQuery(
+                    "SELECT DISTINCT type, provenance_kind FROM experience_entry")) {
+            while (rs.next()) {
+                pairs.add(new String[] { rs.getString(1), rs.getString(2) });
+            }
+        }
+        Map<String, Integer> stamped = new LinkedHashMap<>();
+        Set<String> unclassified = new LinkedHashSet<>();
+        for (String[] pair : pairs) {
+            String lane = KnowledgeLane.wireOf(pair[0], pair[1]);
+            if (lane == null) {
+                unclassified.add(String.valueOf(pair[0]));
+                continue;
+            }
+            // type is non-null here: a null type is unclassified and took the branch above.
+            String provenanceClause =
+                pair[1] == null ? "provenance_kind IS NULL" : "provenance_kind = ?";
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE experience_entry SET lane = ? "
+                        + "WHERE lane IS NULL AND type = ? AND " + provenanceClause)) {
+                ps.setString(1, lane);
+                ps.setString(2, pair[0]);
+                if (pair[1] != null) {
+                    ps.setString(3, pair[1]);
+                }
+                stamped.merge(lane, ps.executeUpdate(), Integer::sum);
+            }
+        }
+        if (!stamped.isEmpty()) {
+            log.info("Lanes: {}", stamped);
+        }
+        if (!unclassified.isEmpty()) {
+            log.warn("Lanes: no ruling covers type(s) {} — those rows have NO lane."
+                + " They are not experiences by default; find them with"
+                + " SELECT * FROM experience_entry WHERE lane IS NULL", unclassified);
         }
     }
 }

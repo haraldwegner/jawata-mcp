@@ -835,8 +835,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // Sprint 28c (v15): the diagnosis. Appended LAST so no
                     // existing bind index moves — renumbering a 29-place list is
                     // how this sprint's column defects happened.
-                    + "cause) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "cause,"
+                    // Sprint 28f (v18): which LIFECYCLE the row lives under. Appended
+                    // LAST for the same reason cause was — no existing bind index moves.
+                    + "lane) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -946,6 +949,13 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // v15: the diagnosis, author-supplied like situation — never
                 // derived here.
                 ps.setString(30, entry.cause());
+                // Sprint 28f (v18): the lane, from the SAME mapping the v18 migration
+                // drives — one owner, so a row recorded today and a row migrated
+                // yesterday cannot land in different lanes. NULL when no ruling covers
+                // the type: an unclassified type is an unanswered question, not an
+                // experience by default, and `WHERE lane IS NULL` is what finds them.
+                ps.setString(31, KnowledgeLane.wireOf(
+                    str(factMap.get("type")), entry.provenanceKind()));
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());
@@ -1672,7 +1682,9 @@ public final class H2ExperienceStore implements ExperienceStore {
         // Sprint 28c (v13) — which client recorded the entry.
         + "origin_client,"
         // Sprint 28c (v15) — the diagnosis; the solution binds to it.
-        + "cause";
+        + "cause,"
+        // Sprint 28f (v18) — which lifecycle the row lives under.
+        + "lane";
 
     @Override
     public List<Map<String, Object>> exportEntries(String status, String type) {
@@ -1738,7 +1750,13 @@ public final class H2ExperienceStore implements ExperienceStore {
                             // v13: who recorded it — text, null-skipped like the rest.
                             "origin_client",
                             // v15: the diagnosis — text, null-skipped like the rest.
-                            "cause"}) {
+                            "cause",
+                            // v18: the lane. Exported so an archive says which
+                            // lifecycle a row was in without the reader re-deriving
+                            // it — the round trip is still authoritative because
+                            // importEntries DERIVES the lane from this same row's
+                            // type and provenance, so the two cannot disagree.
+                            "lane"}) {
                         Object v = rs.getString(col);
                         if (v != null) {
                             row.put(col, v);
@@ -1806,11 +1824,11 @@ public final class H2ExperienceStore implements ExperienceStore {
                 body = bodyObj == null ? "{}" : json.writeValueAsString(bodyObj);
                 try (PreparedStatement ps = live().prepareStatement(
                         "INSERT INTO experience_entry (" + ALL_COLUMNS
-                        // 25 placeholders — one per ALL_COLUMNS entry. Kept in
+                        // 26 placeholders — one per ALL_COLUMNS entry. Kept in
                         // step BY TEST, not by eye: the count is invisible to the
                         // compiler and a surplus throws only at import time.
                         + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                        + "?,?,?,?,?,?,?)")) {
+                        + "?,?,?,?,?,?,?,?)")) {
                     ps.setString(1, id);
                     ps.setString(2, str(row.get("type")));
                     ps.setString(3, str(row.get("scope_kind")));
@@ -1852,6 +1870,16 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ps.setString(24, str(row.get("origin_client")));
                     // v15: the diagnosis, carried verbatim like every text facet.
                     ps.setString(25, str(row.get("cause")));
+                    // Sprint 28f (v18): the lane is DERIVED here, not carried — the one
+                    // column on this statement that is not the author's. It is a function
+                    // of type and provenance, both of which arrive in this row, so
+                    // deriving keeps one owner and means an export written before v18
+                    // (which has no lane key at all) still imports fully classified
+                    // instead of landing NULL and waiting for a migration that will not
+                    // run again. The day a human can OVERRIDE a row's lane, this is the
+                    // line that has to start preferring the carried value.
+                    ps.setString(26, KnowledgeLane.wireOf(
+                        str(row.get("type")), str(row.get("provenance_kind"))));
                     ps.executeUpdate();
                 }
                 if (row.get("symptoms") instanceof List<?> symptoms) {

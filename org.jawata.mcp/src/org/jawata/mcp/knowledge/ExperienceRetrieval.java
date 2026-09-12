@@ -59,10 +59,15 @@ public final class ExperienceRetrieval {
     /** Domain-layer entry types + scope kinds — the always-relevant knowledge the primer pushes.
      *  v2.2.3: widened with the standing how-to-work types a real memory corpus maps to
      *  (dogfood find: 97 md-loaded entries, zero {@code domain_fact} — the primer injected
-     *  nothing). References/projects/notes stay cue-gated. */
-    private static final java.util.Set<String> DOMAIN_TYPES = java.util.Set.of(
-        "domain_fact", "domain_concept", "bounded_context", "invariant", "ubiquitous_language",
-        "user", "feedback", "naming_convention", "api_contract", "convention");
+     *  nothing). References/projects/notes stay cue-gated.
+     *
+     *  <p>Sprint 28f Stage 5: the set MOVED to {@link KnowledgeLane#DOMAIN_TYPES} and is read
+     *  from there, unchanged. "Domain-layer entry type" is the fact both readers want — the
+     *  primer pushes these BECAUSE they are domain — and the lane column would otherwise have
+     *  been a second copy of it, which is how the copies in this codebase have always drifted.
+     *  Membership is identical, so nothing the primer does can have moved; this class's own
+     *  tests are the control that says so.</p> */
+    private static final java.util.Set<String> DOMAIN_TYPES = KnowledgeLane.DOMAIN_TYPES;
     // jawata-mcp#7: a memory-file SECTION (the load channel's scope_kind) is
     // standing how-to-work knowledge — the primer's job. Untyped CLAUDE.md
     // sections default to type "note", so without this scope the whole loaded
