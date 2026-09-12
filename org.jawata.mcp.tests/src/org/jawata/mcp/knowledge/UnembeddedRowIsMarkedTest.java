@@ -233,4 +233,91 @@ class UnembeddedRowIsMarkedTest {
             () -> "THE CONTROL: a row NOT in the set must not be marked, or the renderer is"
                 + " marking everything. Basis was: " + basisOf(ranked, healthy.id()));
     }
+
+    /**
+     * The mark reaches a reader through the RANKED path too — the production wiring, not the
+     * renderer.
+     *
+     * <p><b>A C3 audit found this uncovered and it was right.</b> The renderer is proved by a
+     * case that supplies the unembedded set itself; nothing exercised the line that BUILDS
+     * that set. Its discriminator: replace that expression with an empty set and every other
+     * case here stays green.</p>
+     *
+     * <p><b>Two fixtures failed before this one, and the cause is now read off the gate rather
+     * than guessed.</b> A recall splits its keyword candidates in two — those the fit gate
+     * admits are returned directly and then EXCLUDED from ranking by the seen-set, and those
+     * it turns away go into the ranked pool. So a cue that matches a row well enough lands it
+     * in the listing (ranked branch unreached) and a cue that matches too little does not
+     * surface it at all. The window is not a matching strength to be tuned into — it is a
+     * BRANCH, and the gate says which.</p>
+     *
+     * <p><b>The construction.</b> {@code fits} treats {@code operation} as a REFINEMENT: a
+     * subject cue admits the entry, and then an entry declaring a DIFFERENT operation is
+     * dropped. So a cue carrying the row's words AND an operation the row does not declare is
+     * a candidate that cannot fit — turned away, and therefore ranked. Nothing here depends
+     * on how strongly words happen to match.</p>
+     */
+    @Test
+    void the_ranked_path_carries_the_mark_end_to_end() {
+        Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder available — every row would be unembedded, so the control half has"
+                + " nothing to stand on");
+
+        call("record",
+            "type", "lesson",
+            "summary", WITH_VECTOR,
+            "situation", "when the ledger is reconciled at an equinox",
+            "operation", "seat:reconcile",
+            "verdict", "worked");
+
+        String doomedId = String.valueOf(call("record",
+            "type", "lesson",
+            "summary", WITHOUT_VECTOR,
+            "situation", "when the warehouse is inspected before a solstice",
+            "operation", "seat:restock",
+            "verdict", "worked").get("id"));
+
+        Map<String, Object> exported = store.exportEntries(null, null).stream()
+            .filter(row -> doomedId.equals(String.valueOf(row.get("id"))))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("the row must be exportable to be restored"));
+        store.deleteByIds(List.of(doomedId));
+        store.importEntries(List.of(exported));
+
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "recall");
+        a.put("symptom", CUE);
+        // The operation NEITHER row declares. This is the whole construction: both are
+        // admitted on the symptom and then dropped by the refinement, so both are turned
+        // away — and a turned-away experience is exactly what the ranked pool is made of.
+        a.put("operation", "seat:neither-of-them");
+        a.put("format", "text");
+        ToolResponse recalled = tool.execute(a);
+        assertTrue(recalled.isSuccess(), () -> "recall failed: " + recalled.getError());
+        String answer = String.valueOf(recalled.getData());
+
+        String marked = rankedLineFor(answer, "warehouse restocks lanterns");
+        String healthy = rankedLineFor(answer, "ledger reconciles itself");
+
+        assertTrue(marked.contains("no meaning vector yet"),
+            () -> "THE WIRING: the ranked path must be handed the real set. Replace the"
+                + " expression that builds it with an empty set and this is the only"
+                + " assertion in the class that notices. Its line was:\n  " + marked);
+        assertFalse(healthy.contains("no meaning vector yet"),
+            () -> "THE CONTROL: a row that HAS a vector must not be marked, or the set being"
+                + " passed is not the real one either. Its line was:\n  " + healthy);
+    }
+
+    /** This row's RANKED line — the section whose set the wiring builds. */
+    private static String rankedLineFor(String answer, String needle) {
+        for (String line : answer.split("\\R")) {
+            if (line.startsWith("In a similar situation:") && line.contains(needle)) {
+                return line;
+            }
+        }
+        throw new AssertionError(
+            "no RANKED line mentions '" + needle + "' — the cue did not turn the row away, so"
+                + " the ranked pool never saw it and this case measures nothing. Answer was:\n"
+                + answer);
+    }
 }

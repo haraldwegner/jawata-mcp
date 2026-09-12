@@ -104,24 +104,39 @@ class ImportIndexesItsOwnRowsTest {
     void the_verb_leaves_nothing_waiting_while_the_store_path_does() {
         Map<String, Object> report = importThrough("import", rows("verb"));
 
-        // The response says what it did, on every machine — these keys are the caller's
-        // only way to know whether the rows it just handed over are findable yet.
-        assertNotNull(report.get("embedded"),
-            () -> "the import must report how many rows it indexed: " + report);
-        assertNotNull(report.get("unembedded"),
-            () -> "and what it left behind, which is the number a caller acts on: " + report);
+        // UNDER assertAll, so a mutation NAMES every claim it breaks in one run.
+        //
+        // Mutation J removes the indexing from both write verbs, and the first run of it
+        // stopped here — JUnit ends a test at its first failure, so the count assertion
+        // below was never reached and its ability to fail was unproven. That is the
+        // shadowing this sprint has recorded repeatedly, and assertAll is the cure this
+        // repository already adopted for it at Stage 4 row 21.
+        //
+        // The two claims are genuinely different: these keys are the caller's only way to
+        // know whether the rows just handed over are findable, and they are assertable on
+        // every machine; the count below is the state those keys describe.
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertNotNull(report.get("embedded"),
+                () -> "the import must report how many rows it indexed: " + report),
+            () -> assertNotNull(report.get("unembedded"),
+                () -> "and what it left behind, which is the number a caller acts on: "
+                    + report),
+            () -> {
+                if (EmbeddingService.shared().available()) {
+                    assertEquals(0L, ((Number) pending()).longValue(),
+                        () -> "THE CLAIM: a caller handed rows back must be able to FIND"
+                            + " them. This is the defect the stage was opened for — imported"
+                            + " rows sat outside the meaning index while the catalogue sat"
+                            + " inside it, so every recall for them answered with design"
+                            + " patterns. Pending was: " + pending());
+                }
+            });
 
         if (!EmbeddingService.shared().available()) {
             System.out.println("=== import: no embedder — the count assertions below cannot"
                 + " run, and the response-shape assertions above did ===");
             return;
         }
-
-        assertEquals(0L, ((Number) pending()).longValue(),
-            () -> "THE CLAIM: a caller handed rows back must be able to FIND them. This is"
-                + " the defect the stage was opened for — imported rows sat outside the"
-                + " meaning index while the catalogue sat inside it, so every recall for"
-                + " them answered with design patterns. Pending was: " + pending());
 
         // THE CONTROL. The same rows written straight through the store — what a restore
         // does — must be left waiting. Without this the zero above is equally true of a

@@ -681,11 +681,22 @@ public final class ExperienceRetrieval {
         }
         // The ceiling is the policy's, not a fixed two - the cap of two is what
         // hid a correct third answer.
-        // D4 — asked over the rows actually in hand, from the object that owns the
+        // D4 — asked over the rows actually being RANKED, from the object that owns the
         // predicate, so the mark and stats.embedding.unembedded agree by construction.
+        //
+        // OVER THE POOL, NOT OVER `ids`, and the difference is a defect this line shipped
+        // with. The pool has two sources: rows the fit gate TURNED AWAY, added above, and
+        // the ids NOMINATED below. `ids` holds only the second. A turned-away row was
+        // therefore ranked and rendered while never being asked about — and turned away is
+        // the commoner half, because it is every keyword candidate the gate declined.
+        // Found by the case that finally reached this path; nothing before it could.
+        java.util.List<String> rankedIds = new ArrayList<>(pool.size());
+        for (StoredEntry e : pool) {
+            rankedIds.add(e.id());
+        }
         java.util.Set<String> unembedded = index == null
             ? java.util.Set.of()
-            : index.unembeddedAmong(ids);
+            : index.unembeddedAmong(rankedIds);
         return ExperienceAnalogies.rank(pool, q, meaning, lexical, nominated,
             AnalogyPolicy.MAX_NOMINEES, jdt, unembedded);
     }
