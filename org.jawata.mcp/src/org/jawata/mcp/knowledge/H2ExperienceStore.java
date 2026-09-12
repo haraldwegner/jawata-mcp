@@ -2449,7 +2449,15 @@ public final class H2ExperienceStore implements ExperienceStore {
             + (hasForm ? ",situation,verdict,provenance_kind,"
                 + "form,evidence_dead" : "")
             + (hasOrigin ? ",origin_client" : "")
-            + (hasCause ? ",cause" : "");
+            + (hasCause ? ",cause" : "")
+            // Sprint 28f Stage 5 — and the rung group must be SELECTED as well as bound.
+            // The first version of this fix widened the INSERT and its binds and left this
+            // list alone, so `rs.getObject("rule_version")` read a column the query had
+            // never fetched: "Column not found", the whole recovery abandoned, and
+            // `imported=0` — on the one path whose own javadoc says that what it fails to
+            // carry "is gone for good, with no error and no second chance". A ResultSet is
+            // not the table; it is exactly what this string asked for.
+            + (hasRules ? ",rule_version,retired_at" : "");
         int imported = 0;
         int duplicates = 0;
         try (Statement s = orphan.createStatement();

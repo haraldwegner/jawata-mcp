@@ -11,6 +11,7 @@ import java.sql.Statement;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -214,6 +215,60 @@ class ExperienceStoreLocationTest {
      * fixture that wrote the columns by hand could pass while the real writer
      * was broken.</p>
      */
+    @Test
+    void recovery_carries_the_rule_version_and_the_retirement(
+            @TempDir Path workspaceRoot, @TempDir Path storeDir) throws Exception {
+        Path orphanDir = workspaceRoot.resolve("ddd44444").resolve("jawata-experience");
+        Files.createDirectories(orphanDir);
+        String liveText = "keep the numbat ledger open until the close";
+        String retiredText = "settle the quokka ledger before the inspection";
+        try (H2ExperienceStore orphan = H2ExperienceStore.openAt(orphanDir)) {
+            String live = orphan.put(ExperienceEntry.of(
+                    SymbolFact.of(KnowledgeLane.RULE_TYPE, liveText, Confidence.HIGH).build())
+                .status(ExperienceEntry.ACCEPTED).build());
+            orphan.setRuleVersion(live, 1);
+            String retired = orphan.put(ExperienceEntry.of(
+                    SymbolFact.of(KnowledgeLane.RULE_TYPE, retiredText, Confidence.HIGH).build())
+                .status(ExperienceEntry.ACCEPTED).build());
+            orphan.setRuleVersion(retired, 2);
+            assertTrue(orphan.retire(retired),
+                "PROOF OF LIFE: the orphan's rule must actually be retired, or the"
+                    + " assertions below are true of a store that never retired anything");
+        }
+
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(storeDir)) {
+            assertEquals(2, store.recoverOrphans(workspaceRoot).get("imported"),
+                "both rules must be recovered before anything about them is asserted");
+            Map<String, Object> liveRow = null;
+            Map<String, Object> retiredRow = null;
+            for (Map<String, Object> row : store.exportEntries(null, null)) {
+                if (liveText.equals(row.get("summary"))) {
+                    liveRow = row;
+                } else if (retiredText.equals(row.get("summary"))) {
+                    retiredRow = row;
+                }
+            }
+            assertNotNull(liveRow, "the live rule must come back");
+            assertNotNull(retiredRow, "the retired rule must come back");
+
+            assertEquals(1, liveRow.get("rule_version"), "the version is the row's own");
+            assertEquals(2, retiredRow.get("rule_version"),
+                "AND THE CONTROL for the version: an amended rule comes back on 2, so this"
+                    + " is carried rather than defaulted");
+
+            assertNotNull(retiredRow.get("retired_at"),
+                "RECOVERY MUST NOT UN-RETIRE A RULE. This path writes a .jawata-recovered"
+                    + " marker afterwards, so a column it drops is gone with no error and no"
+                    + " second chance — and dropping THIS one does not merely lose a date,"
+                    + " it hands a rule the store had stopped offering back as live guidance."
+                    + " The first version of this stage's recovery fix did exactly that.");
+            assertNull(liveRow.get("retired_at"),
+                "AND THE CONTROL for the date: a live rule comes back with none — absent"
+                    + " means NOT RETIRED, and a recovery that stamped every row would"
+                    + " satisfy the assertion above while saying nothing");
+        }
+    }
+
     @Test
     void recovery_carries_the_form_of_a_v10_orphan(
             @TempDir Path workspaceRoot, @TempDir Path storeDir) throws Exception {
