@@ -542,6 +542,50 @@ public final class EmbeddingIndex {
             : embeddings.identityKey();
     }
 
+    /**
+     * Which of these entry ids cannot yet answer by MEANING.
+     *
+     * <p><b>The same predicate {@link #embeddedCount} uses</b> — a current-identity
+     * vector — so the per-row mark and {@code stats.embedding.unembedded} can never
+     * disagree about one row. A row vectorised by a superseded embedder counts here,
+     * correctly: its vector answers in a space the cue is no longer embedded in.</p>
+     *
+     * <p><b>A FAILED READ RETURNS THE EMPTY SET, and that direction is deliberate.</b>
+     * The two ways to be wrong are not symmetric: marking a healthy row
+     * {@code [no meaning vector yet]} is a false statement printed beside an answer,
+     * while missing a mark withholds a warning. This deliverable exists to stop a
+     * display saying more than the evidence supports, so the failure mode is silence
+     * rather than a lie on every row.</p>
+     */
+    public java.util.Set<String> unembeddedAmong(java.util.Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return java.util.Set.of();
+        }
+        java.util.Set<String> pending = new java.util.LinkedHashSet<>(ids);
+        StringBuilder sql = new StringBuilder(
+            "SELECT id FROM experience_entry WHERE embedder_identity = ? AND id IN (");
+        for (int i = 0; i < pending.size(); i++) {
+            sql.append(i == 0 ? "?" : ",?");
+        }
+        sql.append(')');
+        try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql.toString())) {
+            ps.setString(1, currentIdentity("experience_entry"));
+            int i = 2;
+            for (String id : pending) {
+                ps.setString(i++, id);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    pending.remove(rs.getString(1));   // this one CAN answer by meaning
+                }
+            }
+            return pending;
+        } catch (SQLException e) {
+            log.error("could not read which rows lack a meaning vector", e);
+            return java.util.Set.of();                 // silence, never a false mark
+        }
+    }
+
     /** How many rows carry a vector of the current identity — the honest coverage number. */
     public long embeddedCount(String table) {
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(

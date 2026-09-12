@@ -681,8 +681,13 @@ public final class ExperienceRetrieval {
         }
         // The ceiling is the policy's, not a fixed two - the cap of two is what
         // hid a correct third answer.
+        // D4 — asked over the rows actually in hand, from the object that owns the
+        // predicate, so the mark and stats.embedding.unembedded agree by construction.
+        java.util.Set<String> unembedded = index == null
+            ? java.util.Set.of()
+            : index.unembeddedAmong(ids);
         return ExperienceAnalogies.rank(pool, q, meaning, lexical, nominated,
-            AnalogyPolicy.MAX_NOMINEES, jdt);
+            AnalogyPolicy.MAX_NOMINEES, jdt, unembedded);
     }
 
     /** The text a cue is embedded as — its words, in the order a human would say them. */
@@ -1385,6 +1390,12 @@ public final class ExperienceRetrieval {
         if (verdict != null) {
             sb.append(" · ").append(san(verdict));
         }
+        // Said on the line the reader is looking at, for the same reason the dead-evidence
+        // note below is: a reader cannot infer "this was never indexed" from an answer
+        // that simply does not mention the rows it could not reach.
+        if (Boolean.TRUE.equals(e.get("unembedded"))) {
+            sb.append(" · no meaning vector yet");
+        }
         if (Boolean.TRUE.equals(e.get("evidence_dead"))) {
             // Said, not implied. The knowledge stands; what it was learned from
             // is gone and nobody has ruled on it yet.
@@ -1578,6 +1589,21 @@ public final class ExperienceRetrieval {
         }
         if (f.verdict() != null && !f.verdict().isBlank()) {
             m.put("verdict", f.verdict());
+        }
+        // Sprint 28f D4 — A ROW WITH NO MEANING VECTOR SAYS SO WHEREVER IT APPEARS.
+        //
+        // The ranked path was the obvious half, because there an absent vector becomes a
+        // score of 0.0 that is indistinguishable from a considered near-miss. This half is
+        // the one the first version of the change MISSED, and missing it was a narrowing
+        // of the requirement to fit the code already written: an unembedded row commonly
+        // reaches the reader as a DIRECT hit and is then excluded from the ranked section
+        // by the seen-set, so the ranked mark alone never reaches it. D4's words are
+        // "marked in the recall result it appears in", and this is where it appears.
+        //
+        // One indexed single-row lookup per rendered row. A recall renders a handful, and
+        // the batch form is used on the ranked path where every id is known up front.
+        if (index != null && !index.unembeddedAmong(java.util.List.of(e.id())).isEmpty()) {
+            m.put("unembedded", true);
         }
         if (f.hasDeadEvidence()) {
             // Said plainly rather than left for the reader to infer from a

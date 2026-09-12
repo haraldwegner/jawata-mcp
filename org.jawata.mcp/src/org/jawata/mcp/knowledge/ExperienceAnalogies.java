@@ -81,6 +81,35 @@ public final class ExperienceAnalogies {
                                      Map<String, Double> lexical,
                                      List<String> nominated, int cap,
                                      Supplier<IJdtService> jdt) {
+        return rank(candidates, cue, semantic, lexical, nominated, cap, jdt, Set.of());
+    }
+
+    /**
+     * Sprint 28f D4 — the same ranking, told which rows cannot answer by MEANING yet.
+     *
+     * <p><b>The line this exists for is {@code semantic.getOrDefault(e.id(), 0.0)}.</b>
+     * A row absent from that map scores zero, and TWO different things are absent from
+     * it: a row the meaning path considered and placed below the floor, and a row that
+     * has no vector at all. The first zero is a judgement; the second is the index not
+     * having got to the row yet — and a reader cannot tell them apart, which is the
+     * defect D4 names in its own words: <i>never scored zero silently</i>.</p>
+     *
+     * <p><b>Why the fact is passed in rather than read here.</b> Whether a row has a
+     * current-identity vector is {@link EmbeddingIndex}'s question, and it answers it
+     * for the retrieval path with one query over the rows actually in hand. Re-deriving
+     * it here would put a second copy of that predicate one object away from the first,
+     * which is how the two would come to disagree about a row.</p>
+     *
+     * @param unembedded ids with no current meaning vector; EMPTY when nobody could
+     *                   look, so a failed lookup withholds a mark rather than printing
+     *                   a false one on every row
+     */
+    public static List<Analogy> rank(List<StoredEntry> candidates, RecallQuery cue,
+                                     Map<String, Double> semantic,
+                                     Map<String, Double> lexical,
+                                     List<String> nominated, int cap,
+                                     Supplier<IJdtService> jdt,
+                                     Set<String> unembedded) {
         record Scored(StoredEntry entry, double score, List<String> basis) {
         }
         List<Scored> scored = new ArrayList<>();
@@ -115,6 +144,13 @@ public final class ExperienceAnalogies {
             if (cue != null && cue.hasSymbol() && sameArea(e, cue.symbol())) {
                 score += 0.05;
                 basis.add("same area of the code");
+            }
+            // THE ROW COULD NOT ANSWER BY MEANING AT ALL, and it says so rather than
+            // sitting at 0.0 looking like a considered near-miss. Added BEFORE the
+            // "related" fallback on purpose: the two are different statements, and a
+            // row with no vector is not merely weakly related, it was never ranked.
+            if (unembedded != null && unembedded.contains(e.id())) {
+                basis.add("no meaning vector yet");
             }
             if (basis.isEmpty()) {
                 basis.add("related");        // surfaced by keyword, no stronger claim
