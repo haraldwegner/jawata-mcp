@@ -3277,6 +3277,43 @@ public final class ExperienceTool implements Tool {
                 admission.get().field(), admission.get().message());
         }
 
+        // Sprint 28f D7, CLOSED AT C9 — THE ANCHOR IS RESOLVED, NOT TAKEN ON TRUST.
+        //
+        // The signed deliverable says a job whose anchor does not resolve is refused by
+        // name, and nothing resolved it: `EntryForm` is a pure static gate with no JDT,
+        // so the code lane — the one lane whose whole premise is that the compiler keeps
+        // the anchor honest — accepted jobs pointing at members that do not exist. A
+        // fresh-context implementation audit found it by recording one.
+        //
+        // It is checked HERE because this is where the service is. The refusal is
+        // deliberately narrow: it fires only when the resolver could actually look and
+        // said no. With no project loaded a hook cannot resolve anything, and refusing
+        // there would reject correct rows for an absence of context the author does not
+        // control — so that case is ADMITTED and SAID, never silently treated as
+        // verified. "I could not check" and "it does not exist" are the distinction this
+        // whole sprint is about, and the one place it must not be blurred is the gate.
+        String anchorNote = null;
+        if (symbol != null && !symbol.isBlank()
+                && org.jawata.mcp.knowledge.KnowledgeLane.CODE_TYPES.contains(
+                    type == null ? "" : type.strip().toLowerCase(Locale.ROOT))) {
+            if (serviceSupplier == null || serviceSupplier.get() == null) {
+                anchorNote = "no project was loaded, so '" + symbol + "' was NOT verified"
+                    + " — this row is admitted unchecked rather than treated as resolved";
+            } else {
+                Map<String, Object> pointer = retrieval.resolvePointer(symbol);
+                if (!Boolean.TRUE.equals(pointer.get("resolved"))) {
+                    return ToolResponse.invalidParameter("symbol",
+                        "anchor '" + symbol + "' does not resolve in the loaded workspace,"
+                        + " so this job would point at nothing. RULE: the code lane answers"
+                        + " WHERE a job lives, and a row whose anchor cannot be found"
+                        + " answers a question wrongly rather than not at all."
+                        + " FIX: check the fully-qualified name — 'pkg.Type#member' — or"
+                        + " record it as a lesson or domain fact if it is not about one"
+                        + " member of this code.");
+                }
+            }
+        }
+
         SymbolFact.Builder fb = SymbolFact.of(type, summary, confidence(text(args, "confidence")));
         List<String> packages = strings(args, "packages");
         List<String> symbols = strings(args, "symbols");
@@ -3361,6 +3398,14 @@ public final class ExperienceTool implements Tool {
         data.put("id", id);
         data.put("status", entry.status());
         data.put("stored", true);
+        // AND THE UNCHECKED ANCHOR IS SAID OUT LOUD. A code-lane row admitted without a
+        // loaded project is stored, correctly — but a caller reading only `stored: true`
+        // would take it for a verified anchor, and the two are different facts. Absent
+        // when the anchor WAS resolved, so its presence means exactly one thing.
+        if (anchorNote != null) {
+            data.put("anchorVerified", false);
+            data.put("anchorUncheckedWhy", anchorNote);
+        }
         // Sprint 27 D5 — write-path dedup. The entry is STORED either way (a
         // dedup that can lose knowledge is worse than a duplicate); when its
         // meaning near-duplicates an existing entry (>= DEDUP_THRESHOLD, C0-

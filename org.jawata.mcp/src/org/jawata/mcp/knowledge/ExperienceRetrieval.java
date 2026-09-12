@@ -1879,7 +1879,11 @@ public final class ExperienceRetrieval {
      * product puts on the wire is 1-based. Two sites each spelling their own arithmetic is
      * how this repository's coordinates came to disagree; there is one site.</p>
      */
-    Map<String, Object> resolvePointer(String symbolFqn) {
+    // PUBLIC since 28f C9: the record path must resolve a code-lane anchor before
+    // accepting it, and that path lives in `tools`. D-SIX applies to me too — this
+    // is the one implementation of "does this fully-qualified name resolve", so the
+    // write gate borrows it rather than growing a second one beside it.
+    public Map<String, Object> resolvePointer(String symbolFqn) {
         if (symbolFqn == null || symbolFqn.isBlank()) {
             return null;
         }
