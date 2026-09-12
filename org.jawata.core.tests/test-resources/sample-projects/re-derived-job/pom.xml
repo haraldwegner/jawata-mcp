@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>re-derived-job</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Re-derived Job Fixture</name>
+    <description>
+        Sprint 28f Stage 8 D5. Jawata-owned fixture for `re_derived_job`: two
+        populations of methods that do ONE job each, written independently, plus
+        the three negative controls the detector's four conditions exist for.
+
+        It is a project of its OWN rather than more classes in simple-maven, and
+        that is the control's doing rather than tidiness: the test asserts that
+        the TOKEN detector names none of these, and simple-maven already carries
+        clone groups of its own, so on that tree the claim could never be made
+        about this fixture alone. It also keeps simple-maven's counted
+        populations still, which this sprint's record says have been moved four
+        times by fixtures written for something else.
+    </description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>

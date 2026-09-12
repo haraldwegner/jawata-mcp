@@ -594,6 +594,22 @@ public final class CureCatalog {
                 "when the clones differ only by a LITERAL — one function takes it as a"
                     + " parameter and the copies collapse into it",
                 List.of("literal"))));
+        // Sprint 28f Stage 8 D5 — THE RE-DERIVED JOB, and its cure is ADVICE on purpose.
+        // Nothing here is runnable, and that is the design rather than a gap: whether two
+        // implementations should become one is a judgement about whether they are the same
+        // JOB, which no signature comparison settles. The architect rules on it, and a
+        // report ordering a second implementation must carry the reason.
+        //
+        // `design:delegation` is the cure this codebase has already applied to exactly this
+        // smell: five `findTypeDeclaration` copies became one `tools.shared.TypeLookup`
+        // that the five now call. That is what makes the discriminator a real instruction
+        // rather than a restatement of the finding.
+        m.put("re_derived_job", List.of(
+            new Cure(null, "design:delegation",
+                "when the group is one job and not several — pick the implementation that"
+                    + " should own it, and make the rest call it. If the duplication is"
+                    + " DELIBERATE, that is the other answer, and its reason belongs in the"
+                    + " record rather than in nobody's head")));
 
         // INVARIANT 1, checkable here because it needs nothing outside the table:
         // the pair (kind, operation) is the ENTRY IDENTITY — declared at most once,

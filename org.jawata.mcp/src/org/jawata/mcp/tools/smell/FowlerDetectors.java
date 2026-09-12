@@ -157,6 +157,14 @@ public final class FowlerDetectors {
             // else in the catalogue looks for it: a duplicate-code check compares BODIES,
             // and these two classes may share no code at all. Four conditions hold
             // together to keep it from reporting most of a codebase; see the class.
-            .register(new AlternativeClassesDetector(), "fowler");
+            .register(new AlternativeClassesDetector(), "fowler")
+            // Sprint 28f Stage 8 D5 — the re-derived job: one job written several times by
+            // people who did not know it was already done. It is the OPPOSITE question from
+            // `duplicated_code` above, which is why it is a detector of its own rather than
+            // another adapter over the clone finder: a job derived from scratch does not
+            // match on tokens, so the finder that answers `duplicated_code` returns the
+            // empty set on every real instance of this one. Both ship, and the test runs
+            // them over the same tree to show they see different things.
+            .register(ReDerivedJobDetector.detector(), "fowler");
     }
 }
