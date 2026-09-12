@@ -61,6 +61,38 @@ class StoryRoundTripTest {
         store.close();
     }
 
+    /**
+     * A summary no other run can be carrying.
+     *
+     * <p><b>What was OBSERVED, which is all that is established:</b> this class failed
+     * once and went 12/12 immediately after, with no code change between. These tests
+     * find their row by SUMMARY, so a per-run summary removes any dependence on what
+     * else a store might be carrying.</p>
+     *
+     * <p><b>THE CAUSE IS UNKNOWN, and the explanation that stood here was FALSE.</b> It
+     * said a fresh store is not as empty as it looks because opening one recovers rows
+     * from orphan stores left in the temp directory. It does not: {@code open(null)}
+     * answers {@code openMemory()}, whose URL carries a fresh UUID per instance — "unique
+     * name per instance so independent stores never share state", in that method's own
+     * words — and {@code recoverOrphans} has one production caller, in
+     * {@code JawataApplication}, which this path never reaches. Also ruled out: these two
+     * classes racing on the JVM-global {@code jawata.stories.dir} they both set and
+     * clear, which would fit the intermittence — but nothing in this repository enables
+     * parallel execution, so within a shard they run one at a time.</p>
+     *
+     * <p>That makes the unique summary a HARDENING rather than a repair, and it is said
+     * plainly here because a wrong cause written down is worse than none: it reads as
+     * settled and stops the next reader looking. Two back-to-back runs of this package
+     * now report identical totals, which is consistent with the hardening working and is
+     * NOT evidence about the cause — a green re-run never is.</p>
+     *
+     * <p>A UUID rather than the clock: clock RESOLUTION is a platform property, and two
+     * calls inside one tick would hand two rows the same name.</p>
+     */
+    private static String unique(String claim) {
+        return claim + " [" + java.util.UUID.randomUUID() + "]";
+    }
+
     /** Record one full-shaped lesson and answer its id. */
     private String recordLesson(String summary) {
         ObjectNode a = mapper.createObjectNode();
@@ -110,7 +142,7 @@ class StoryRoundTripTest {
      */
     @Test
     void recording_writes_nothing_and_accepting_is_what_writes_the_file() throws Exception {
-        String id = recordLesson("a reader's acceptance is what puts the story on disk");
+        String id = recordLesson(unique("a reader's acceptance is what puts the story on disk"));
         assertTrue(filesInFolder().isEmpty(),
             "a recorded candidate has been reviewed by nobody, so it exports nothing");
 
@@ -129,7 +161,7 @@ class StoryRoundTripTest {
      */
     @Test
     void what_the_acceptance_wrote_the_loader_reads_back() throws Exception {
-        String summary = "the store writes the file and the folder is a mirror of it";
+        String summary = unique("the store writes the file and the folder is a mirror of it");
         String id = recordLesson(summary);
         promote(id);
         StoredEntry exported = byId(id);
@@ -172,7 +204,7 @@ class StoryRoundTripTest {
      */
     @Test
     void exporting_the_same_row_twice_writes_the_same_bytes() throws Exception {
-        String id = recordLesson("a second export of one row must not churn the folder");
+        String id = recordLesson(unique("a second export of one row must not churn the folder"));
         promote(id);
         List<Path> first = filesInFolder();
         assertEquals(1, first.size());
@@ -190,13 +222,59 @@ class StoryRoundTripTest {
     }
 
     /**
+     * THE SECOND LAP — and the first version of this class could not see it.
+     *
+     * <p>The earlier round-trip case exports from the store that ACCEPTED the row, so it
+     * exports a stamp that store wrote itself. It never exports from the store that
+     * LOADED the file, which is the lap a human actually takes: accept here, commit the
+     * folder, clone it somewhere else, and let that store write the folder from then on.</p>
+     *
+     * <p>If the loaded row carries no {@code reviewed_at}, its export carries no
+     * {@code reviewed:} line, and loading THAT file demotes the row to candidate — which
+     * is precisely what this stage's own commit message calls disqualifying: a round trip
+     * that changes the row is not a round trip. Found by the C6 architect watch, by
+     * reading; pinned here so it cannot come back.</p>
+     */
+    @Test
+    void a_store_that_LOADED_a_story_exports_the_same_story() throws Exception {
+        String summary = unique("a story survives being handed from one store to the next");
+        String id = recordLesson(summary);
+        promote(id);
+        String firstFile = Files.readString(filesInFolder().get(0));
+        assertTrue(firstFile.contains("reviewed:"), "precondition: lap one carried the stamp");
+
+        try (H2ExperienceStore second = H2ExperienceStore.open(null)) {
+            ExperienceTool reader = new ExperienceTool(() -> null, second);
+            ObjectNode load = mapper.createObjectNode();
+            load.put("kind", "load");
+            load.put("path", stories.toString());
+            assertTrue(reader.execute(load).isSuccess());
+
+            StoredEntry landed = second.all().stream()
+                .filter(e -> summary.equals(e.summary()))
+                .findFirst().orElseThrow(() -> new AssertionError("the story did not load"));
+            assertEquals(ExperienceEntry.ACCEPTED, landed.status(),
+                "precondition: the stamp brought it back accepted");
+
+            // THE CLAIM: the second store can write the same story. It cannot, if loading
+            // a stamped file leaves the row's own stamp null.
+            assertNotNull(landed.facets().reviewedAt(),
+                "a row loaded from a STAMPED file must carry that review date — without it"
+                    + " this store exports a story with no stamp, and the next load of that"
+                    + " file demotes the row it came from");
+            assertTrue(StoryWriter.render(landed).contains("reviewed:"),
+                "so the second store's export carries the stamp too, and the lap closes");
+        }
+    }
+
+    /**
      * A ROW NOBODY REVIEWED EXPORTS NO STAMP. This is the assertion that keeps the
      * writer from forging one: the export path can always reach a clock, and writing
      * today's date here would claim a review that did not happen.
      */
     @Test
     void a_row_with_no_review_renders_no_stamp() {
-        String id = recordLesson("a row nobody accepted has no review date to write");
+        String id = recordLesson(unique("a row nobody accepted has no review date to write"));
         String rendered = StoryWriter.render(byId(id));
         assertFalse(rendered.contains("reviewed:"),
             "nobody reviewed this row, so the story must carry no stamp:\n" + rendered);

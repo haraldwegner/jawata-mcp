@@ -3,6 +3,10 @@ package org.jawata.mcp.knowledge;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -427,6 +431,7 @@ public final class ExperienceMaintenance {
             // is additive, and forgetting is `wipe_and_import`'s job, behind a backup
             // and a confirm.
 
+            Instant reviewedAt = reviewStamp(doc.reviewed());
             boolean split = !doc.sections.isEmpty();
             SymbolFact.Builder fb = SymbolFact.of(
                 doc.type == null ? "note" : doc.type,
@@ -455,8 +460,15 @@ public final class ExperienceMaintenance {
                 // makes the export half's round trip closed: the store stamps at
                 // acceptance, the writer renders the stamp, and the stamp is what brings
                 // the row back accepted rather than demoted.
-                .status(doc.reviewed() != null
+                // ONE derivation, BOTH uses. The status and the stamp must come from the
+                // same parse: branching the status on "the key is present" while storing
+                // the date separately is how a row landed ACCEPTED with a NULL stamp, and
+                // then exported a story with no stamp that demoted its own row on the
+                // next load. An unparseable date is treated as NO stamp on both — which
+                // is the honest reading, since a date nobody can read proves nothing.
+                .status(reviewedAt != null
                     ? ExperienceEntry.ACCEPTED : ExperienceEntry.CANDIDATE)
+                .reviewedAt(reviewedAt)
                 .language(doc.language)
                 // Sprint 28c: a file that declared its form keeps it. The gate
                 // above already refused an experience type that declared none, so
@@ -1106,6 +1118,34 @@ public final class ExperienceMaintenance {
         /** True when there is anything worth ingesting (description or body). */
         boolean hasContent() {
             return (description != null && !description.isBlank()) || !body.isBlank();
+        }
+    }
+
+    /**
+     * The {@code reviewed:} stamp as an instant, or null when there is none to read.
+     *
+     * <p>Sprint 28f Stage 6. Accepts a bare date ({@code 2026-09-12}, which is what the
+     * template asks for and what every fixture writes) and a full timestamp, which is
+     * what this product's own export renders back. A value neither reader can parse is
+     * treated as ABSENT rather than as a stamp of unknown date: the caller uses this one
+     * answer for both the status and the stored date, so a date nobody can read must not
+     * be able to grant an acceptance it cannot then evidence.</p>
+     */
+    static Instant reviewStamp(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String s = raw.strip();
+        try {
+            return LocalDate.parse(s).atStartOfDay(ZoneOffset.UTC).toInstant();
+        } catch (DateTimeParseException notADate) {
+            try {
+                return Instant.parse(s);
+            } catch (DateTimeParseException notAnInstant) {
+                log.warn("unreadable `reviewed:` stamp ({}) — treating the file as"
+                    + " unreviewed rather than accepting it on a date nobody can read", s);
+                return null;
+            }
         }
     }
 

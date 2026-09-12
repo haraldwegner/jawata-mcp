@@ -724,7 +724,14 @@ public final class H2ExperienceStore implements ExperienceStore {
                     // readers split — `stats` and recall's keyword arm read this column
                     // while `list` and the ranked arm derive it, so one verb gave two
                     // answers about one row. The javadoc above predicted exactly this.
-                    + "situation=?,verdict=?,provenance_kind=?,form=?,cause=?,lane=? "
+                    // Sprint 28f Stage 6 (v21) — the REVIEW STAMP moves with the file, for
+                    // the reason the lane does. The file is what says whether anybody
+                    // reviewed this, and the same parse decides the status four columns
+                    // back; leaving the stamp out would re-load a story as ACCEPTED while
+                    // wiping the date that justifies it, and the next export of that row
+                    // would carry no stamp at all.
+                    + "situation=?,verdict=?,provenance_kind=?,form=?,cause=?,lane=?,"
+                    + "reviewed_at=? "
                     + "WHERE id=?")) {
                 ps.setString(1, str(factMap.get("type")));
                 ps.setString(2, entry.scopeKind());
@@ -752,7 +759,9 @@ public final class H2ExperienceStore implements ExperienceStore {
                 ps.setString(21, entry.cause());
                 ps.setString(22, KnowledgeLane.wireOf(
                     str(factMap.get("type")), entry.provenanceKind()));
-                ps.setString(23, id);
+                ps.setTimestamp(23, entry.reviewedAt() == null
+                    ? null : Timestamp.from(entry.reviewedAt()));
+                ps.setString(24, id);
                 ps.executeUpdate();
             }
             // Replaced wholesale rather than merged: a symptom or a link the file no
@@ -848,8 +857,16 @@ public final class H2ExperienceStore implements ExperienceStore {
                     + "cause,"
                     // Sprint 28f (v18): which LIFECYCLE the row lives under. Appended
                     // LAST for the same reason cause was — no existing bind index moves.
-                    + "lane) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                    + "lane,"
+                    // Sprint 28f (v21): WHEN a review happened. Appended LAST for the
+                    // same reason, and written HERE rather than only by setStatus —
+                    // a stamp arrives two ways, an acceptance in this store and a story
+                    // file that already carries one, and with only the first a row
+                    // loaded from a stamped file was accepted carrying NULL. It then
+                    // exported with no stamp and the next load of that export demoted
+                    // it, which is a round trip that changes the row.
+                    + "reviewed_at) "
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                 Timestamp now = Timestamp.from(Instant.now());
                 ps.setString(1, id);
                 ps.setString(2, str(factMap.get("type")));
@@ -966,6 +983,8 @@ public final class H2ExperienceStore implements ExperienceStore {
                 // experience by default, and `WHERE lane IS NULL` is what finds them.
                 ps.setString(31, KnowledgeLane.wireOf(
                     str(factMap.get("type")), entry.provenanceKind()));
+                ps.setTimestamp(32, entry.reviewedAt() == null
+                    ? null : Timestamp.from(entry.reviewedAt()));
                 ps.executeUpdate();
             }
             insertSymptoms(id, entry.symptoms());

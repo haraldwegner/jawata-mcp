@@ -56,6 +56,18 @@ public final class ExperienceEntry {
     private final String provenanceKind;
     /** null/0 = legacy row, 1 = the 28c form. */
     private final Integer form;
+    /**
+     * WHEN a review happened, or null when none did (Sprint 28f Stage 6, schema v21).
+     *
+     * <p>It rides on the ENTRY rather than being written only by {@code setStatus},
+     * because a stamp arrives two ways and both have to land: an acceptance in this
+     * store, and a story file that already carries one. With only the first, a row
+     * loaded from a stamped file was accepted with a NULL stamp — so the store that
+     * LOADED a story exported it without one, and loading that export demoted the row.
+     * A round trip that changes the row is not a round trip. Found by the C6 architect
+     * watch and pinned by {@code StoryRoundTripTest}.</p>
+     */
+    private final java.time.Instant reviewedAt;
 
     /** A typed graph edge; {@code rel} ∈ {handled_by, fixed_by, detected_by, supersedes}. */
     public record Link(String rel, String target) {}
@@ -75,6 +87,12 @@ public final class ExperienceEntry {
         this.verdict = b.verdict;
         this.provenanceKind = b.provenanceKind;
         this.form = b.form;
+        this.reviewedAt = b.reviewedAt;
+    }
+
+    /** When a review happened, or null when nobody reviewed this. */
+    public java.time.Instant reviewedAt() {
+        return reviewedAt;
     }
 
     public static Builder of(SymbolFact fact) {
@@ -192,6 +210,7 @@ public final class ExperienceEntry {
         private String verdict;
         private String provenanceKind;
         private Integer form;
+        private java.time.Instant reviewedAt;
 
         private Builder(SymbolFact fact) {
             if (fact == null) {
@@ -269,6 +288,12 @@ public final class ExperienceEntry {
 
         public Builder verdict(String verdict) {
             this.verdict = verdict;
+            return this;
+        }
+
+        /** The date a review happened — set it ONLY from evidence one did. */
+        public Builder reviewedAt(java.time.Instant reviewedAt) {
+            this.reviewedAt = reviewedAt;
             return this;
         }
 

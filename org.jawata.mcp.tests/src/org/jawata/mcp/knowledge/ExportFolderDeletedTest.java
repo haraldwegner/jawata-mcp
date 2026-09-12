@@ -53,6 +53,35 @@ class ExportFolderDeletedTest {
         store.close();
     }
 
+    /**
+     * A summary no other run can be carrying.
+     *
+     * <p><b>THE CAUSE OF THE FLAKE THIS ANSWERS IS UNKNOWN, and the explanation that
+     * stood here was FALSE.</b> It said that opening a "fresh" store recovers rows from
+     * orphan stores earlier runs left in the temp directory. It cannot, on two counts
+     * read off the source rather than recalled: {@code open(null)} answers
+     * {@code openMemory()}, whose URL carries a fresh UUID per instance — that method's
+     * own javadoc says "unique name per instance so independent stores never share
+     * state" — so there is no directory for anything to be left in; and
+     * {@code recoverOrphans} has exactly ONE production caller, in
+     * {@code JawataApplication}, which this path never reaches.</p>
+     *
+     * <p><b>Also ruled out:</b> two classes racing on {@code jawata.stories.dir}, which
+     * is a JVM-global system property that this class and {@code StoryRoundTripTest} both
+     * set and clear. That would fit the intermittence exactly — but no
+     * {@code junit-platform.properties} exists anywhere in this repository and the runner
+     * enables no parallelism, so within a shard the two classes run one at a time.</p>
+     *
+     * <p>So this is a HARDENING, not a repair: a per-run summary means the class cannot
+     * depend on the question either way, whatever the answer turns out to be. It is
+     * recorded as unknown rather than left reading as diagnosed, because a wrong cause
+     * written down is worse than none — it stops the next reader looking. A UUID rather
+     * than the clock, whose resolution is a platform property.</p>
+     */
+    private static String unique(String claim) {
+        return claim + " [" + java.util.UUID.randomUUID() + "]";
+    }
+
     private String record(String summary) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "record");
@@ -85,7 +114,7 @@ class ExportFolderDeletedTest {
     @Test
     void deleting_the_folder_costs_the_store_nothing_and_the_next_acceptance_rebuilds_it()
             throws Exception {
-        String first = record("the folder is an export and the database is the truth");
+        String first = record(unique("the folder is an export and the database is the truth"));
         accept(first);
         assertEquals(1, stories().size(), "precondition: the acceptance wrote a file");
         long rowsBefore = store.count();
@@ -110,7 +139,7 @@ class ExportFolderDeletedTest {
 
         // AND THE EXPORT STILL WORKS. A mirror that stops being written after its
         // directory goes diverges silently, which is worse than one plainly absent.
-        String second = record("a later acceptance must recreate the folder it writes into");
+        String second = record(unique("a later acceptance must recreate the folder it writes into"));
         accept(second);
         assertEquals(1, stories().size(),
             "the next acceptance recreated the folder and wrote into it: " + stories());
