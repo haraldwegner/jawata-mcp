@@ -40,7 +40,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 15;
+    static final int LATEST = 16;
 
     private SchemaMigrations() {
     }
@@ -165,6 +165,9 @@ final class SchemaMigrations {
         }
         if (from < 15) {
             migrateToV15(conn);
+        }
+        if (from < 16) {
+            migrateToV16(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -815,6 +818,52 @@ final class SchemaMigrations {
             s.execute("CREATE TABLE IF NOT EXISTS schema_version (version INT NOT NULL)");
             s.execute("DELETE FROM schema_version");
             s.execute("INSERT INTO schema_version VALUES (" + version + ")");
+        }
+    }
+
+    /**
+     * v16 — {@code usage_query.decided_at}: WHETHER a disposition ever arrived,
+     * separately from what it contained.
+     *
+     * <h2>The defect this closes, which the ledger's own javadoc defends</h2>
+     *
+     * <p>{@code chosen} is one BOOLEAN carrying a THREE-valued fact.
+     * {@code nominated} opens a row with {@code chosen = FALSE};
+     * {@code decided} sets {@code chosen = !ids.isEmpty()}, which is also FALSE
+     * when the caller judged the candidates and kept none. So <i>never
+     * answered</i> and <i>answered with none</i> are the same value, and nothing
+     * downstream can tell them apart.</p>
+     *
+     * <p>{@code UsageLedger#decided}'s own note calls that deliberate — <i>"an
+     * honest absence and an unanswered question are the same fact from the
+     * backlog's point of view"</i> — and it is right about the WRITING BACKLOG,
+     * where a question with nothing that applied is demand either way. It is
+     * false about the DELETION LIST, which a human deletes rows from: an entry
+     * shown five times and never chosen means either <i>they judged it and did
+     * not take it</i> or <i>nobody was ever asked</i>, and those are opposite
+     * instructions. Presenting the second as the first tells a reader nobody
+     * wanted a row when nobody was consulted about it.</p>
+     *
+     * <h2>The backfill is deliberately one-sided, and that is the honest side</h2>
+     *
+     * <p>A pre-v16 row with {@code chosen = TRUE} was necessarily dispositioned —
+     * only {@code decided} can set it — so it is stamped, with {@code asked_at}
+     * standing in for a time the old schema never recorded. A row with
+     * {@code chosen = FALSE} is exactly the ambiguous case, and it is left NULL:
+     * counted as UN-OBSERVED rather than guessed either way. That under-claims
+     * observation instead of over-claiming it, which is the direction the whole
+     * deliverable exists to enforce — a figure may say less than the truth, never
+     * more.</p>
+     */
+    private static void migrateToV16(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("ALTER TABLE usage_query "
+                + "ADD COLUMN IF NOT EXISTS decided_at TIMESTAMP");
+            // Stamped only where the old value PROVES a disposition arrived.
+            s.execute("UPDATE usage_query SET decided_at = asked_at "
+                + "WHERE chosen = TRUE AND decided_at IS NULL");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_usage_query_undecided "
+                + "ON usage_query(decided_at)");
         }
     }
 }

@@ -67,7 +67,7 @@ public final class ExperienceTool implements Tool {
             // would be a silent continuation of the misreading.
             "wipe_and_import", "refresh", "wipe", "promote", "export", "import", "prune", "dedup",
             "compact", "stats", "fallback", "fallback_report", "migrate_form", "review",
-            "review_sweep", "delete", "set_form", "backup", "restore");
+            "review_sweep", "delete", "set_form", "backup", "restore", "vectorise");
 
     /**
      * Sprint 28f D4 — HOW KNOWLEDGE IS ADDED, said once.
@@ -524,6 +524,7 @@ public final class ExperienceTool implements Tool {
             case "fallback_report" -> fallbackReport();
             case "backup" -> backup();
             case "restore" -> restore(args);
+            case "vectorise" -> vectorise();
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -541,10 +542,18 @@ public final class ExperienceTool implements Tool {
      * Sprint 28c D5 — what the pattern catalogue contributed to this store, and
      * the query that reviews it.
      *
-     * <p>The catalogue arrives as {@code candidate} rows, which means somebody
-     * still has to look at them; a count with no way to act on it is trivia.
-     * So the block carries the exact review query rather than describing one —
-     * a reader can paste it.</p>
+     * <p><b>{@code awaitingReview} now counts the exception rather than the rule
+     * (Sprint 28f E5).</b> This paragraph used to read <i>"the catalogue arrives
+     * as candidate rows, which means somebody still has to look at them"</i>, and
+     * that stopped being true when the seeder began writing {@code accepted}:
+     * status is a WORK QUEUE, and 189 borrowed patterns sitting in it made the
+     * queue useless for the handful of rows a human is genuinely asked to rule
+     * on. What marks a row as somebody else's is its provenance and its
+     * {@code catalogue:} source ref, both of which are unchanged.</p>
+     *
+     * <p>The block still carries the exact review query rather than describing
+     * one — a reader can paste it — and it is now a query worth running, because
+     * what it returns is no longer the whole catalogue.</p>
      *
      * <p>Counted by walking the rows rather than by asking the loader, because
      * the honest question is "what is IN the store", not "what did a loader
@@ -732,6 +741,59 @@ public final class ExperienceTool implements Tool {
             out = out.getParent();
         }
         return out;
+    }
+
+    /**
+     * D4 — the background vectoriser, DRIVEN to completion rather than waited for.
+     *
+     * <p>Rows that arrive in bulk — a load, an import, a catalogue seed — are stored
+     * before they are searchable by meaning, and the gap between those two moments is
+     * where this sprint's defect lived: recall answered a question about a scheduler
+     * retry loop with a design pattern, because the meaning index held the catalogue
+     * and nothing else. The three bulk writers now drain before they return. This verb
+     * is the fourth door: it exists for the store that is ALREADY behind — after a
+     * restore, after an interrupted run, after an older build wrote rows without one.</p>
+     *
+     * <p><b>Every degraded answer is named rather than rendered as zero.</b> No H2 store
+     * behind this resident, and no embedder installed, are different facts from "nothing
+     * left to do", and a remainder the store could not count is a third. Reporting any of
+     * them as {@code remaining: 0} would say the work is finished — which is the exact
+     * shape of lie this stage was opened to remove, and the reason
+     * {@code remainingUnembedded()} answers {@code -1} instead of guessing.</p>
+     */
+    private ToolResponse vectorise() {
+        org.jawata.mcp.knowledge.H2ExperienceStore h2 = currentH2Store();
+        if (h2 == null) {
+            return ToolResponse.invalidParameter("kind",
+                "vectorise needs the H2 store, and this resident has none behind it."
+                    + " Nothing was embedded and nothing is claimed about the remainder —"
+                    + " an empty answer here would read as 'already converged'.");
+        }
+        org.jawata.mcp.knowledge.EmbeddingService svc =
+            org.jawata.mcp.knowledge.EmbeddingService.shared();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        if (!svc.available()) {
+            out.put("embedded", 0);
+            out.put("remaining", "unknown");
+            out.put("embedder", "unavailable");
+            out.put("note", "No embedder is installed, so no row can be given a meaning"
+                + " vector and the remainder cannot be counted. This is NOT convergence:"
+                + " recall runs on the keyword path alone until an embedder is present.");
+            return ToolResponse.success(out);
+        }
+        org.jawata.mcp.knowledge.EmbeddingIndex index =
+            new org.jawata.mcp.knowledge.EmbeddingIndex(h2, svc);
+        long before = index.remainingUnembedded();
+        int embedded = index.drain();
+        long remaining = index.remainingUnembedded();
+        out.put("embedded", embedded);
+        out.put("remaining", remaining < 0 ? "unknown" : remaining);
+        out.put("before", before < 0 ? "unknown" : before);
+        // Convergence is asserted ONLY on a counted zero. A remainder the store
+        // could not read is not a small remainder, it is no measurement at all.
+        out.put("converged", remaining == 0);
+        out.put("embedder", "available");
+        return ToolResponse.success(out);
     }
 
     private java.util.Map<String, Object> stats() {
@@ -1927,6 +1989,14 @@ public final class ExperienceTool implements Tool {
         out.put("deletionList", usage.deletionList(minShown, limit));
         out.put("writingBacklog", usage.writingBacklog(minTimes, limit));
         out.put("droppedWrites", usage.failedWrites());
+        // Sprint 28f D4 — WHAT THIS LEDGER WITNESSED, apart from what it inferred,
+        // AT THE POINT OF DISPLAY. The deletion list above ranks entries by
+        // shown-often-chosen-never, which is evidence about a human's judgement
+        // only over nominations a human actually dispositioned. Over the rest the
+        // rows look identical and mean nothing, and the seat deletes from this
+        // list — so the split rides beside it rather than in a comment nobody
+        // opens.
+        out.put("conformance", usage.conformance());
         // Stage 15 — the QUALITY lane, beside the usage lane. One command, two
         // questions: what does nobody use, and what is badly written. The counts
         // are migrate_form's own dry-run counts by construction (StoreQuality
@@ -1948,7 +2018,12 @@ public final class ExperienceTool implements Tool {
             + " nothing chosen — this is demand with no supply, and the only item here that"
             + " is acted on by WRITING. droppedWrites is how many ledger writes were lost:"
             + " a low engagement rate over lost rows means 'we failed to record it', not"
-            + " 'nobody engaged'. quality: entries whose form cannot be derived"
+            + " 'nobody engaged'. conformance: how much of the deletion list rests on a"
+            + " judgement somebody actually made — observed counts nominations a"
+            + " disposition arrived for, derived counts the ones nobody ever answered,"
+            + " where a zero chosen-count means NOT OBSERVED rather than rejected. Read"
+            + " the deletion list against observed, not against nominations; a high"
+            + " derived count means the list is mostly silence. quality: entries whose form cannot be derived"
             + " mechanically — READ each, judge what it actually applies to, and repair"
             + " with kind=set_form (proposing to the human first). A finding with a"
             + " source_ref is durably fixed in THAT FILE and reseeded — a store write"

@@ -109,6 +109,13 @@ public final class UsageLedger {
      * an honest absence and an unanswered question are the same fact from the
      * backlog's point of view — the store was asked and had nothing that
      * applied.</p>
+     *
+     * <p><b>That is true of the backlog and FALSE of the deletion list, which is
+     * why {@code decided_at} exists (v16).</b> {@code chosen} alone cannot tell
+     * <i>answered with none</i> from <i>never answered</i> — both are FALSE — so a
+     * reader deciding what to DELETE could not tell a judgement from an absence of
+     * one. The timestamp records that a disposition ARRIVED, separately from what
+     * it contained, and {@link #conformance()} is what reports the two apart.</p>
      */
     public void decided(String queryId, List<String> chosenIds) {
         if (queryId == null) {
@@ -123,7 +130,8 @@ public final class UsageLedger {
             Connection c = store.sharedConnection();
             synchronized (store) {
                 try (PreparedStatement ps = c.prepareStatement(
-                        "UPDATE usage_query SET chosen = ? WHERE query_id = ?")) {
+                        "UPDATE usage_query SET chosen = ?, decided_at = CURRENT_TIMESTAMP"
+                            + " WHERE query_id = ?")) {
                     ps.setBoolean(1, !ids.isEmpty());
                     ps.setString(2, queryId);
                     ps.executeUpdate();
@@ -204,6 +212,73 @@ public final class UsageLedger {
                 row.put("lastAsked", String.valueOf(rs.getTimestamp(3)));
                 return row;
             });
+    }
+
+    /**
+     * The sentence that must travel WITH the figure, never only in a comment.
+     *
+     * <p>D4's measure is that the conformance figure is <i>"shown as observed or
+     * labelled as un-observed at the point of display, not only in a field
+     * comment"</i>. A caveat a caller has to go and read the source for is a
+     * caveat nobody reads, so it rides in the response.</p>
+     */
+    public static final String CONFORMANCE_CAVEAT =
+        "OBSERVED counts nominations a disposition actually arrived for; DERIVED counts"
+            + " nominations nobody ever answered, where a zero chosen-count means NOT"
+            + " OBSERVED rather than judged-and-rejected. Rows written before schema v16"
+            + " are counted DERIVED unless their chosen flag proves a disposition — the"
+            + " old column could not tell the two apart, so the count under-claims"
+            + " observation rather than over-claiming it.";
+
+    /**
+     * How much of this ledger was WITNESSED, reported apart from what is inferred.
+     *
+     * <p><b>Why both numbers rather than one ratio.</b> The deletion list ranks
+     * entries by shown-often-chosen-never, and that ranking is only evidence about
+     * a human's judgement where a human judged. Over nominations nobody ever
+     * dispositioned the same rows look identical and mean nothing. A single
+     * percentage hides which population it was taken over; two counts under
+     * separate keys cannot.</p>
+     *
+     * <p><b>And the percentage is absent rather than 100 when nothing was
+     * nominated</b> — borrowed knowingly from studio's own utilization figure,
+     * whose comment says an empty denominator is not 100 % and that printing one
+     * would be the exact lie this work exists to end.</p>
+     */
+    public Map<String, Object> conformance() {
+        H2ExperienceStore store = stores.get();
+        if (store == null) {
+            throw new IllegalStateException(
+                "usage ledger read failed (conformance): no H2 store behind this resident");
+        }
+        Connection c = store.borrowRead();
+        boolean healthy = true;
+        // COUNT(decided_at) counts the NON-NULL ones, which is the whole question.
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT COUNT(*), COUNT(decided_at) FROM usage_query")) {
+            long nominations = 0;
+            long observed = 0;
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    nominations = rs.getLong(1);
+                    observed = rs.getLong(2);
+                }
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("nominations", nominations);
+            out.put("observed", observed);
+            out.put("derived", nominations - observed);
+            out.put("percentObserved", nominations == 0
+                ? null
+                : Math.round((observed * 1000.0) / nominations) / 10.0);
+            out.put("caveat", CONFORMANCE_CAVEAT);
+            return out;
+        } catch (SQLException e) {
+            healthy = false;
+            throw new IllegalStateException("usage ledger read failed (conformance)", e);
+        } finally {
+            store.releaseRead(c, healthy);
+        }
     }
 
     /** How many ledger writes were dropped. Reported, never swallowed. */
