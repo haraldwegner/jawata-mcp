@@ -1025,7 +1025,13 @@ public final class ExperienceTool implements Tool {
                 + " retired " + removedRows + ": it holds LESS than the store did. The"
                 + " copy named in `backup` is the store as it stood before it ran.");
         }
-        return ToolResponse.success(withRefresh(withBackup(data, backupCopy)));
+        // Sprint 28f E5. `data.putAll(loaded)` already carried an `embedded` and an
+        // `unembedded` from the load — but those were measured MID-VERB, before this
+        // method retired rows and re-tombstoned refs. Draining again at the exit costs
+        // nothing when the lane is already closed (drain reads the remainder first and
+        // returns), and it makes the two counts describe the store as it stands when
+        // the caller is answered rather than as it stood partway through.
+        return ToolResponse.success(withRefresh(withBackup(withDrain(data), backupCopy)));
     }
 
     private int reTombstoneWhatIsNotBack(String path, java.util.Set<String> before) {
@@ -1633,7 +1639,40 @@ public final class ExperienceTool implements Tool {
         // where dropping a false justification does not. Raised at C1.
         Path copy = backups.before("import");
         Map<String, Object> imported = new LinkedHashMap<>(store.importEntries(entries));
-        return ToolResponse.success(withRefresh(withBackup(imported, copy)));
+        return ToolResponse.success(withRefresh(withBackup(withDrain(imported), copy)));
+    }
+
+    /**
+     * Sprint 28f E5 — index what was just written, before the verb answers.
+     *
+     * <p><b>Why it is HERE and not at the end of {@code importEntries}, which is what
+     * the plan's wording says.</b> {@code importEntries} is a method on
+     * {@code H2ExperienceStore}, and {@code EmbeddingIndex} already HOLDS a store — so
+     * draining from inside the store would make the store depend on a class that
+     * depends on it. Measured instead: {@code importEntries} has exactly one production
+     * caller outside the store's own recovering wrapper, and it is this verb;
+     * {@code wipe_and_import} is the other write that needs the same thing, and it is
+     * in this same file. The plan's INTENT — a write does not answer until its rows are
+     * searchable — is met at the layer that answers. Only the address moved.</p>
+     *
+     * <p><b>Two keys, not one.</b> {@code embedded} is what this call indexed;
+     * {@code unembedded} is what is still pending. A caller must never have to infer
+     * "nothing left" from "some work done" — that inference is exactly what the
+     * end-to-end gate made, and it is why a store holding only the catalogue reported
+     * itself converged while three recall checks failed two lifecycles downstream.</p>
+     *
+     * <p>An absent index — a degraded store, or no embedder — leaves BOTH keys off
+     * rather than writing a zero, because a zero here reads as "converged, nothing
+     * pending" and would be the same lie in a quieter voice.</p>
+     */
+    private Map<String, Object> withDrain(Map<String, Object> data) {
+        org.jawata.mcp.knowledge.EmbeddingIndex index =
+            org.jawata.mcp.knowledge.EmbeddingIndex.forStore(store);
+        if (index != null) {
+            data.put("embedded", index.drain());
+            data.put("unembedded", index.remainingUnembedded());
+        }
+        return data;
     }
 
     private ToolResponse promote(JsonNode args) {
