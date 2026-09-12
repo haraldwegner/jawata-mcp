@@ -414,6 +414,11 @@ public final class ReDerivedJobDetector {
         f.put("symbol", self.symbol());
         f.put("group", number);
         f.put("groupSize", group.size());
+        // The SHAPE is a field and not only a sentence, because it is the fact that put
+        // these methods in one group and a caller filtering by it is the difference between
+        // a population and a set of methods sharing a name. This file's own live probe
+        // selected on the name first and counted three unrelated signatures as members.
+        f.put("shape", self.shape());
         f.put("message", "'" + self.symbol() + "' answers the same question as "
             + (group.size() - 1) + " other method(s) — " + String.join(", ", others) + more
             + ". Same shape " + self.shape() + ", reached through the same collaborators;"
