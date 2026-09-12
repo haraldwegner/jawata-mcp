@@ -34,6 +34,16 @@ class DuplicateCheckTest {
 
     private static final String OWNER = "com.example.SourceScan#parse";
 
+    /**
+     * A SECOND job, so the ranking has to CHOOSE — without it nothing here could fail.
+     *
+     * <p>With one job recorded, rank one is that job whatever question is asked, so every
+     * assertion naming it was true of any ranking at all, including one that read no
+     * comment and no name. The class claims the lane is asked BY MEANING and that claim
+     * was carried entirely by its own prose.</p>
+     */
+    private static final String ROUNDER = "com.example.Money#round";
+
     private ExperienceStore store;
     private ExperienceTool tool;
     private ObjectMapper json;
@@ -45,6 +55,8 @@ class DuplicateCheckTest {
         json = new ObjectMapper();
         recordJob(OWNER,
             "Parse a compilation unit with binding resolution and answer the syntax tree.");
+        recordJob(ROUNDER,
+            "Round a monetary amount to the nearest cent, half up.");
     }
 
     @AfterEach
@@ -123,22 +135,58 @@ class DuplicateCheckTest {
     @Test
     @DisplayName("the answer is an ORDERING and says so — rank one is not evidence")
     void theAnswerIsAnOrderingAndSaysSo() {
+        // Unrelated to BOTH recorded jobs, deliberately. It used to be a money-rounding
+        // draft, which stopped being unrelated the moment a money-rounding job was recorded
+        // to give the ranking something to choose between — so the fixture moved with it
+        // rather than the sentence being left standing over an input that had changed
+        // meaning underneath it.
         Map<String, Object> data = check("/p/src/Other.java", """
-            /** Rounds a monetary amount to the nearest cent, half up. */
-            private static long roundToCents(long micros) {
-                return micros;
+            /** Draws a progress bar of the given width into the terminal. */
+            private static String progressBar(int width) {
+                return "";
             }
             """);
-        assertEquals(List.of("roundToCents"), data.get("asked"),
+        assertEquals(List.of("progressBar"), data.get("asked"),
             "the verb must have asked about this method at all: " + data);
         assertFalse(nominees(data).isEmpty(),
-            "and rank one comes back even for a draft with nothing to do with the stored"
+            "and rank one comes back even for a draft with nothing to do with EITHER stored"
                 + " job — this is the MEASURED fact that makes the label below load-bearing"
                 + " rather than a caveat: " + data);
         assertTrue(String.valueOf(data.get("ranking")).contains("NOMINEES, not matches"),
             "so the payload must say what it is handing over. A caller reading this as a"
                 + " match would deny every write, which is how a gate is worked around"
                 + " within a day: " + data);
+    }
+
+    /**
+     * THE DISCRIMINATOR: the question is the COMMENT, not the name.
+     *
+     * <p>The draft is built so the two disagree. Its name, {@code parseFigure}, is lexically
+     * the parsing job; its comment is the rounding job, word for word. So whichever of the
+     * two the verb actually asks with decides which job ranks first, and the two answers are
+     * different rows — which is the only shape that can tell them apart.</p>
+     *
+     * <p>This is what the class's "asked BY MEANING" claim rests on. Every other assertion
+     * here names a job while only one job existed, so it held for any ranking whatsoever,
+     * including one reading neither the name nor the comment.</p>
+     */
+    @Test
+    @DisplayName("the COMMENT decides, against a name pointing at the other job")
+    void theCommentDecidesAgainstTheName() {
+        Map<String, Object> data = check("/p/src/Other.java", """
+            /** Rounds a monetary amount to the nearest cent, half up. */
+            private static long parseFigure(long micros) {
+                return micros;
+            }
+            """);
+        List<Map<String, Object>> hits = nominees(data);
+        assertFalse(hits.isEmpty(), "the lane must answer at all: " + data);
+        assertEquals(ROUNDER, hits.get(0).get("location"),
+            "the draft is NAMED like the parsing job and its comment IS the rounding job."
+                + " Rank one must be the rounding job, because the comment is what carries"
+                + " the intent and the name carries nothing — a name-only question would"
+                + " put " + OWNER + " here and this is the assertion that would catch it: "
+                + hits);
     }
 
     @Test
