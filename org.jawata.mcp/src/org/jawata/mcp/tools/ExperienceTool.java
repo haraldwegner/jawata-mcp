@@ -403,6 +403,12 @@ public final class ExperienceTool implements Tool {
                 + " given file lives in is FOR — its area and the jobs inside it — and"
                 + " 'jobs_for' says which of the members you name already have a job"
                 + " written and which do not."));
+        props.put("filePaths", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "describe action=jobs_for: source files whose members should be"
+                + " derived and asked about, instead of naming each member yourself. Needs"
+                + " a loaded project — which members a file declares is JDT's answer, and"
+                + " a caller parsing the file itself would be guessing. Without a project"
+                + " this REFUSES rather than answering that nothing is missing."));
         props.put("filePath", Map.of("type", "string",
             "description", "describe action=area: the source file whose package you want"
                 + " described. The package is derived through JDT rather than from the"
@@ -2258,7 +2264,7 @@ public final class ExperienceTool implements Tool {
             case "next" -> describeNext(service, args);
             case "done" -> describeDone(args);
             case "area" -> describeArea(service, args);
-            case "jobs_for" -> describeJobsFor(args);
+            case "jobs_for" -> describeJobsFor(service, args);
             default -> ToolResponse.invalidParameter("action",
                 "Unknown action '" + action + "'. Allowed: next, done, area, jobs_for.");
         };
@@ -2286,12 +2292,49 @@ public final class ExperienceTool implements Tool {
      * and would turn an absent job into an unanswerable question at the moment the gate has
      * to decide.</p>
      */
-    private ToolResponse describeJobsFor(JsonNode args) {
-        List<String> symbols = strings(args, "symbols");
-        if (symbols.isEmpty()) {
+    private ToolResponse describeJobsFor(IJdtService service, JsonNode args) {
+        List<String> symbols = new java.util.ArrayList<>(strings(args, "symbols"));
+        List<String> filePaths = strings(args, "filePaths");
+        List<String> unreadable = new java.util.ArrayList<>();
+        if (!filePaths.isEmpty()) {
+            if (service == null) {
+                // FAILING OPEN AND SAYING SO. A stop gate that read "no project" as "no
+                // members" would let every turn through silently, which is worse than not
+                // running: the rule would look present and enforce nothing.
+                return ToolResponse.error("NO_PROJECT",
+                    "jobs_for was given files, and deriving their members needs a loaded"
+                        + " project — this is NOT an answer that nothing is missing.",
+                    "Ask by `symbols` instead, which is a store-only question, or load the"
+                        + " project that owns these files.");
+            }
+            for (String path : filePaths) {
+                if (path == null || path.isBlank()) {
+                    continue;
+                }
+                try {
+                    org.eclipse.jdt.core.ICompilationUnit cu =
+                        service.getCompilationUnit(java.nio.file.Path.of(path));
+                    if (cu == null) {
+                        unreadable.add(path + " (not in a loaded project)");
+                        continue;
+                    }
+                    for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
+                        for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
+                            symbols.add(type.getFullyQualifiedName('.') + "#" + m.getElementName());
+                        }
+                    }
+                } catch (Exception e) {
+                    // NAMED, never dropped: a file we could not read is not a file with
+                    // nothing in it, and a shorter list that reads as complete is how a
+                    // gate passes a turn it never actually examined.
+                    unreadable.add(path + " (" + e.getMessage() + ")");
+                }
+            }
+        }
+        if (symbols.isEmpty() && unreadable.isEmpty()) {
             return ToolResponse.invalidParameter("symbols",
-                "Required — the fully-qualified members to ask about, as the edit record"
-                    + " named them.");
+                "Required — the fully-qualified members to ask about, or `filePaths` whose"
+                    + " members should be derived.");
         }
         java.util.Set<String> anchored = new java.util.HashSet<>();
         for (org.jawata.mcp.knowledge.StoredEntry e
@@ -2311,6 +2354,9 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("described", described);
         out.put("missing", missing);
+        if (!unreadable.isEmpty()) {
+            out.put("unreadable", unreadable);
+        }
         // The instruction, rendered ONCE here rather than composed by each caller. A gate
         // that blocks without saying exactly what to run is a gate that gets worked around.
         if (!missing.isEmpty()) {

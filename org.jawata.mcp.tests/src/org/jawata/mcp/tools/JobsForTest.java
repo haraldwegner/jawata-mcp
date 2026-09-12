@@ -135,4 +135,48 @@ class JobsForTest {
         assertTrue(String.valueOf(r.getError()).contains("symbols"),
             "and the refusal names the argument: " + r.getError());
     }
+
+    /**
+     * FILES WITHOUT A PROJECT REFUSE, and this is the assertion the whole gate rests on.
+     *
+     * <p>The stop rule knows which FILES a turn changed; which MEMBERS those files declare
+     * is JDT's answer, and a caller parsing the file itself would be guessing. So asking by
+     * file needs a project — and a resident with none must say so rather than answer with
+     * an empty {@code missing}, which a gate would read as "nothing to describe" and let
+     * every turn through while looking present.</p>
+     */
+    @Test
+    @DisplayName("asking by file without a project refuses instead of finding nothing")
+    void asking_by_file_without_a_project_refuses() {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "describe");
+        a.put("action", "jobs_for");
+        a.putArray("filePaths").add("/src/main/java/com/example/Ledger.java");
+
+        ToolResponse r = tool.execute(a);
+
+        assertFalse(r.isSuccess(),
+            "no project means the question could not be answered, NOT that nothing is"
+                + " missing — the second would silently disarm the gate: " + r.getData());
+        assertTrue(String.valueOf(r.getError()).contains("NOT an answer that nothing is"),
+            "and it says which of the two it is, in the words a gate author needs: "
+                + r.getError());
+    }
+
+    /**
+     * THE CONTROL for the refusal above: the store-only form still answers with no project.
+     *
+     * <p>That is the property that lets this run at the END of a turn, which is where a
+     * stop gate lives and where a resident most often has nothing loaded. Without this
+     * case, a version that refused every call would satisfy the test above.</p>
+     */
+    @Test
+    @DisplayName("and the symbol form still answers with no project loaded")
+    void the_symbol_form_still_answers_with_no_project() {
+        Map<String, Object> data = dataOf(jobsFor(UNDESCRIBED));
+
+        assertEquals(List.of(UNDESCRIBED), data.get("missing"),
+            "this whole class runs with a null service, and this is the assertion that"
+                + " says so on purpose rather than by accident: " + data);
+    }
 }
