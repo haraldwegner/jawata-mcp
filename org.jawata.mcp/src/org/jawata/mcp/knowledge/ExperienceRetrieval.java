@@ -1,10 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import org.eclipse.jdt.core.IType;
-import org.jawata.core.IJdtService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -12,6 +7,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IMember;
+import org.eclipse.jdt.core.ISourceRange;
+import org.eclipse.jdt.core.IType;
+import org.jawata.core.IJdtService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 21 Stage 2 — the two-phase, fit-gated, <em>terminal</em> retrieval contract
@@ -1690,16 +1693,48 @@ public final class ExperienceRetrieval {
     }
 
     /**
-     * Resolve a symbol pointer to current code through JDT (design notes §4.4). The entry
-     * is the coarse index; JDT gives the exact current location, or flags it stale when the
-     * symbol no longer exists. Type-level resolution (strip any {@code #member}); no project
-     * loaded → no resolution (the pointer stays a plain FQN).
+     * Resolve a symbol pointer to its LIVE location in current code (design notes §4.4).
+     * The entry is the coarse index; JDT gives the exact current location, or flags it stale
+     * when the thing the anchor names is no longer there. No project loaded → no resolution
+     * (the pointer stays a plain FQN).
+     *
+     * <h2>Sprint 28f Stage 7 — it now resolves the MEMBER, and that is the deliverable</h2>
+     *
+     * <p>This method used to strip any {@code #member} and answer about the TYPE alone. For
+     * an experience whose anchor is provenance that was adequate. For a {@code job} — a row
+     * whose whole content is what ONE MEMBER is for — it was wrong in both directions at
+     * once:</p>
+     *
+     * <ul>
+     *   <li>it gave the file of the enclosing type and <b>no line at all</b>, so a reader
+     *       handed a job still had to go and find the member themselves — and the stage's
+     *       clause is the anchor's live file <i>and line</i>;</li>
+     *   <li>and when the member had been deleted while its type stood, it answered
+     *       {@code resolved: true} — a job reported as pointing at live code while its
+     *       subject no longer existed. <b>That is the LOCATION LOST case</b>, and nothing
+     *       could see it, because the only question being asked was about the type.</li>
+     * </ul>
+     *
+     * <p>A member that is gone is therefore {@code stale}, with the type's own file kept so
+     * a reader can go and look at what is left. {@code stale} survives to the reader only
+     * for a FACT — {@link #present} strips it from an experience, deliberately — which is
+     * why Stage 7 also had to make a {@code job} address-bound in {@link KnowledgeKind}: a
+     * location lost that renders as "learned here; the symbol no longer exists" is the
+     * signal dressed as history.</p>
+     *
+     * <p><b>The line is 1-BASED and converted in exactly one place — here.</b>
+     * {@link IJdtService#getLineNumber} answers ZERO-based, as its own javadoc says, while
+     * a reader of a recall answer opens a file at a 1-based line and every other row this
+     * product puts on the wire is 1-based. Two sites each spelling their own arithmetic is
+     * how this repository's coordinates came to disagree; there is one site.</p>
      */
     Map<String, Object> resolvePointer(String symbolFqn) {
         if (symbolFqn == null || symbolFqn.isBlank()) {
             return null;
         }
-        String typeName = symbolFqn.contains("#") ? symbolFqn.substring(0, symbolFqn.indexOf('#')) : symbolFqn;
+        int hash = symbolFqn.indexOf('#');
+        String typeName = hash < 0 ? symbolFqn : symbolFqn.substring(0, hash);
+        String member = hash < 0 ? null : symbolFqn.substring(hash + 1).strip();
         IJdtService service = jdt == null ? null : jdt.get();
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("symbol", symbolFqn);
@@ -1716,15 +1751,52 @@ public final class ExperienceRetrieval {
                 p.put("note", "symbol not found in current workspace");
                 return p;
             }
-            p.put("resolved", true);
-            if (type.getResource() != null && type.getResource().getLocation() != null) {
-                p.put("file", type.getResource().getLocation().toOSString());
+            IMember target = type;
+            if (member != null && !member.isEmpty()) {
+                IMember found = SymbolAnchorResolver.memberOn(type, member);
+                if (found == null) {
+                    p.put("resolved", false);
+                    p.put("stale", true);
+                    p.put("note", "the type is here and '" + member + "' is not — "
+                        + "the anchored member is gone");
+                    locate(service, type, type, p);
+                    return p;
+                }
+                p.put("member", member);
+                target = found;
             }
+            p.put("resolved", true);
+            locate(service, type, target, p);
         } catch (Exception ex) {
             p.put("resolved", false);
             p.put("note", "resolution error: " + ex.getMessage());
         }
         return p;
+    }
+
+    /**
+     * Put {@code file} and the 1-based {@code line} of {@code member} into {@code p}.
+     *
+     * <p>A location is an AID and never the claim, so an unreadable source range leaves the
+     * pointer without a line rather than failing a resolution that has already succeeded —
+     * the resolution answered whether the code is there, which is a question the range
+     * cannot re-open. The name range rather than the source range, because a reader sent to
+     * a method wants the signature and not the first line of its javadoc.</p>
+     */
+    private static void locate(IJdtService service, IType type, IMember member,
+            Map<String, Object> p) {
+        try {
+            if (type.getResource() != null && type.getResource().getLocation() != null) {
+                p.put("file", type.getResource().getLocation().toOSString());
+            }
+            ICompilationUnit cu = type.getCompilationUnit();
+            ISourceRange name = member.getNameRange();
+            if (cu != null && name != null && name.getOffset() >= 0) {
+                p.put("line", service.getLineNumber(cu, name.getOffset()) + 1);
+            }
+        } catch (Exception ignored) {
+            // see the javadoc: no line is a smaller answer, never a wrong one.
+        }
     }
 
     private static Map<String, Object> cueMap(RecallQuery q) {

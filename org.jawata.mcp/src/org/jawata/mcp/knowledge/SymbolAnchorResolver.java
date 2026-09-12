@@ -1,9 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import org.eclipse.jdt.core.IMethod;
-import org.eclipse.jdt.core.IType;
-import org.jawata.core.IJdtService;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -11,6 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+
+import org.eclipse.jdt.core.IField;
+import org.eclipse.jdt.core.IMember;
+import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.IType;
+import org.jawata.core.IJdtService;
 
 /**
  * Sprint 21e (item A): turns an entry's text into at most ONE grounded symbol anchor.
@@ -107,19 +109,42 @@ final class SymbolAnchorResolver {
     }
 
     private static boolean memberExists(IType type, String member) {
+        return memberOn(type, member) != null;
+    }
+
+    /**
+     * The field or method named {@code member} on {@code type}, or null.
+     *
+     * <p>Sprint 28f Stage 7 — this used to be the body of {@link #memberExists}, widened to
+     * hand back the ELEMENT rather than a yes. {@code ExperienceRetrieval.resolvePointer}
+     * needs the member itself, because a job's live location is the member's line and not
+     * its type's, and the alternative was a second copy of this lookup one class away.
+     * <b>This repository has paid for that alternative repeatedly</b> — six private copies
+     * of one type lookup, five of one declaration lookup — and the recorded lesson is that a
+     * cure written where only its own file can reach it removes the one instance that would
+     * have made the class visible. So the lookup has one owner, and it is the class that
+     * already had it.</p>
+     *
+     * <p>A field wins over a method of the same name, which Java permits; the anchor form
+     * {@code Type#name} cannot tell them apart, and the field is the cheaper lookup. An
+     * unreadable type answers null rather than throwing — a member that cannot be read is,
+     * for every caller here, a member that is not there.</p>
+     */
+    static IMember memberOn(IType type, String member) {
         try {
-            if (type.getField(member).exists()) {
-                return true;
+            IField f = type.getField(member);
+            if (f.exists()) {
+                return f;
             }
             for (IMethod m : type.getMethods()) {
                 if (member.equals(m.getElementName())) {
-                    return true;
+                    return m;
                 }
             }
         } catch (Exception e) {
             // fall through — an unreadable type never carries a member anchor
         }
-        return false;
+        return null;
     }
 
     private static final class Resolved {
