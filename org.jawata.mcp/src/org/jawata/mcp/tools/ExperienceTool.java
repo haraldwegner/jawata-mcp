@@ -396,9 +396,15 @@ public final class ExperienceTool implements Tool {
         // because this schema is the only thing an agent can see: a parameter the code reads
         // and the schema omits is usable and undiscoverable, which is the sibling of the
         // defect the KINDS javadoc above records for verbs.
-        props.put("action", Map.of("type", "string", "enum", List.of("next", "done"),
+        props.put("action", Map.of("type", "string", "enum", List.of("next", "done", "area"),
             "description", "describe: 'next' takes the source units still to describe,"
-                + " 'done' records one as described."));
+                + " 'done' records one as described, 'area' answers what the package a"
+                + " given file lives in is FOR — its area and the jobs inside it."));
+        props.put("filePath", Map.of("type", "string",
+            "description", "describe action=area: the source file whose package you want"
+                + " described. The package is derived through JDT rather than from the"
+                + " directory names, because which package a file declares is a fact about"
+                + " source roots that a path cannot be read for."));
         props.put("unit", Map.of("type", "string",
             "description", "describe action=done: the unit path action=next handed you."));
         props.put("contentHash", Map.of("type", "string",
@@ -2240,15 +2246,80 @@ public final class ExperienceTool implements Tool {
         String action = text(args, "action");
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action",
-                "Required — 'next' to take units to describe, 'done' to record one.");
+                "Required — 'next' to take units to describe, 'done' to record one,"
+                    + " 'area' to ask what a file's package is for.");
         }
         IJdtService service = serviceSupplier == null ? null : serviceSupplier.get();
         return switch (action) {
             case "next" -> describeNext(service, args);
             case "done" -> describeDone(args);
+            case "area" -> describeArea(service, args);
             default -> ToolResponse.invalidParameter("action",
-                "Unknown action '" + action + "'. Allowed: next, done.");
+                "Unknown action '" + action + "'. Allowed: next, done, area.");
         };
+    }
+
+    /**
+     * Sprint 28f Stage 8 D2 — WHAT THE PACKAGE THIS FILE LIVES IN IS FOR.
+     *
+     * <p>Given a source file, answer with the area that describes its package and the jobs
+     * inside it — the orientation an agent wants the first time it opens a file in a part
+     * of the codebase it has not been in.</p>
+     *
+     * <h2>Why the path is resolved HERE and the rows are fetched by the ordinary recall</h2>
+     *
+     * <p>The path-to-package step needs JDT: which package a file declares is a fact about
+     * source roots, and a caller inferring it from directory names would be guessing at a
+     * layout it cannot see. That is why this is an engine action rather than something the
+     * studio composes.</p>
+     *
+     * <p>The ROWS are exactly what {@code recall} already answers. Its package cue fits an
+     * entry that GOVERNS the package (an area, which carries {@code packageName}) AND an
+     * entry HOLDING a symbol inside it (a job, which carries only {@code symbolFqn}) —
+     * both halves, in one predicate that is already tested. A second query assembling the
+     * same two sets would be a parallel retrieval path, and this codebase has paid for one
+     * of those.</p>
+     */
+    private ToolResponse describeArea(IJdtService service, JsonNode args) {
+        if (service == null) {
+            return ToolResponse.error("NO_PROJECT",
+                "describe area needs a loaded project — which package a file declares is"
+                    + " JDT's answer, not something a path can be read for.",
+                "Call load_project first.");
+        }
+        String filePath = text(args, "filePath");
+        if (filePath == null || filePath.isBlank()) {
+            return ToolResponse.invalidParameter("filePath",
+                "Required — the source file whose area you want.");
+        }
+        org.eclipse.jdt.core.ICompilationUnit cu =
+            service.getCompilationUnit(java.nio.file.Path.of(filePath));
+        if (cu == null) {
+            // NAMED, never an empty answer: "this file is in no loaded project" and "this
+            // package has nothing written about it" are different facts, and a caller that
+            // cannot tell them apart will read the first as the second.
+            return ToolResponse.error("SYMBOL_NOT_FOUND",
+                "No compilation unit at " + filePath + " — the file is not in a loaded"
+                    + " project, so its package cannot be derived.",
+                "Load the project that owns it, or check the path.");
+        }
+        String pkg;
+        try {
+            pkg = packageOf(cu);
+        } catch (Exception e) {
+            return ToolResponse.error("SYMBOL_NOT_FOUND",
+                "Could not read the package of " + filePath + ": " + e.getMessage(),
+                "The file may be unreadable or not valid Java.");
+        }
+        Map<String, Object> result = retrieval.recall(
+            new org.jawata.mcp.knowledge.RecallQuery(
+                null, pkg, null, null, null,
+                org.jawata.mcp.knowledge.KnowledgeLane.CODE.wire()),
+            "describe_area", budgetIn(args));
+        // The package the answer is ABOUT, so a caller can memo on it. The hook shows this
+        // once per package per session and cannot do that without being told which.
+        result.put("package", pkg);
+        return respond(args, result);
     }
 
     /** The outstanding units in scope, with the facts needed to read one. */
