@@ -169,6 +169,20 @@ public final class ExperienceMaintenance {
 
     Map<String, Object> loadSources(List<Path> roots, boolean recursive,
             int maxDepth, int maxFiles, long maxBytes, boolean requireStamp) {
+        // Sprint 28f E5 — the BASELINE for this load's own embedding debt, taken before
+        // it writes anything. The pass at the end clears the store down to this line and
+        // no further: everything this load made pending, and none of the backlog it found.
+        //
+        // A count is needed rather than a guess because the first two attempts both used
+        // one. `drain()` cleared the WHOLE store, so a write inherited the catalogue's
+        // backlog and the import verb timed out. Sizing the pass by the load's file count
+        // was the correction, and DrainBeforeReturnTest proved it wrong on its first run:
+        // the budget counts FILES while the work is ROWS, so a story with sections became
+        // a parent plus one row per section and the surplus stayed unsearchable behind a
+        // report that read as finished. A baseline is neither guess — it is measured in
+        // the same unit as the work.
+        final EmbeddingIndex embedIndex = EmbeddingIndex.forStore(store);
+        final long pendingBefore = embedIndex == null ? 0L : embedIndex.remainingUnembedded();
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> stale = new ArrayList<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
@@ -627,10 +641,15 @@ public final class ExperienceMaintenance {
         // rows, and that is not concealed — `unembedded` says what is left, which is why
         // the two keys are reported separately rather than as one number a reader would
         // have to interpret.
-        EmbeddingIndex index = EmbeddingIndex.forStore(store);
-        if (index != null) {
-            report.put("embedded", index.backfill(Math.max(loaded, 1)));
-            report.put("unembedded", index.remainingUnembedded());
+        // Clear THIS LOAD'S debt and stop at the line where it started. The loop is
+        // drain's — reused rather than rewritten, because "embed until a condition"
+        // already exists and a second copy of it is how two loops drift apart. The
+        // condition is the only new part: stop once the store is back to the baseline
+        // this load found, so the pass cannot inherit a backlog it did not create.
+        if (embedIndex != null) {
+            report.put("embedded", embedIndex.drain(500,
+                () -> embedIndex.remainingUnembedded() <= pendingBefore));
+            report.put("unembedded", embedIndex.remainingUnembedded());
         }
         return report;
     }
