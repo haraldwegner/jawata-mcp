@@ -62,7 +62,14 @@ class PrincipleDetectorKindsTest {
         // name, so a sweep for smells returned nothing while the analysis was already
         // there. Routing it is what made the gap visible: the cure table gained two
         // runnable cures for it, and nothing could reach them.
-        "duplicated_code");
+        "duplicated_code",
+        // Sprint 28f Stage 8 D5 — the re-derived job. It is NOT one of Fowler's 24 and is
+        // not claimed as one: it is this product's own smell, the one the database sprint
+        // exists to make findable — a job somebody did again because nothing told them it
+        // was already done. It sits beside `duplicated_code` and asks the opposite
+        // question, which is why both ship: that one finds the duplicate whose TOKENS
+        // match, this one finds the duplicate whose tokens cannot.
+        "re_derived_job");
 
     private List<String> registeredKinds() {
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> null);
