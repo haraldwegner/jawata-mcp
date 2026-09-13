@@ -110,7 +110,7 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
     /**
      * Sprint 21c: a section entry split out of a memory file ({@code scope_kind} marker).
      *
-     * <p>Since 4.3.2 the loader writes no such rows: a file is one row. This still answers
+     * <p>Since 4.3.1 the loader writes no such rows: a file is one row. This still answers
      * for rows a store kept from an older loader, which the next load of their file removes.</p>
      */
     public boolean isSection() {

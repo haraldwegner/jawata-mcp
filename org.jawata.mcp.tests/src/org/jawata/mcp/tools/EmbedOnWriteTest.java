@@ -18,8 +18,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 /**
  * Sprint 28f E5 — a story is findable by MEANING the moment it is written.
  *
- * <p><b>The half {@code DrainBeforeReturnTest} deliberately does not cover.</b> That one
- * asserts the load's REPORT: nothing it wrote is still waiting for a vector. This one
+ * <p><b>The half {@code LoadEmbedsInBackgroundTest} deliberately does not cover.</b> That one
+ * asserts the load's REPORT: it answers first, says how many rows are still waiting for a
+ * vector, and the background pass it asked for brings that to zero. This one
  * asserts the consequence a reader actually cares about — ask in different words, get the
  * story back — because a count reaching zero and a question being answerable are two
  * claims, and a store can satisfy the first while failing the second.</p>
@@ -42,8 +43,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * passes on the code as it stood before E5, and its green says nothing about the work.
  * What E5 actually changed is the OTHER writes — {@code load}, {@code import},
  * {@code wipe_and_import} — which used to hand back rows that were stored and
- * unsearchable; {@code DrainBeforeReturnTest} is the case that goes red when that work is
- * removed.</p>
+ * unsearchable; {@code LoadEmbedsInBackgroundTest} and {@code ImportIndexesItsOwnRowsTest} are
+ * the cases that go red when that work is removed.</p>
  *
  * <p>It is kept anyway, and the reason is the defect that opened this stage: the meaning
  * index held only the catalogue while imported rows sat outside it, so every recall for

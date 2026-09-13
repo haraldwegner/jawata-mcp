@@ -21,7 +21,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * Sprint 28f E5 — the {@code import} verb indexes the rows it wrote, before it answers.
+ * Sprint 28f E5 — the {@code import} verb gets the rows it wrote indexed. Amended 2026-09-13
+ * (D4): it no longer waits for that before answering; the background vectoriser does it, and
+ * this test asserts the rows become findable with nobody asking again.
  *
  * <p><b>This test exists because a C3 audit found the behaviour shipped with none.</b>
  * {@code import} and {@code wipe_and_import} gained the embed pass and two response keys, and
@@ -100,6 +102,27 @@ class ImportIndexesItsOwnRowsTest {
         return block.get("unembedded");
     }
 
+    /**
+     * The pending count once the background vectoriser has had time to reach it. Polls
+     * rather than sleeps a fixed time, so a fast machine does not wait and a slow one does
+     * not flake; a count that never reaches zero inside the deadline is returned as it
+     * stands, and the assertion names it.
+     */
+    private long pendingAfterWaiting() {
+        long deadline = System.currentTimeMillis() + 120_000;
+        long now = ((Number) pending()).longValue();
+        while (now != 0 && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            now = ((Number) pending()).longValue();
+        }
+        return now;
+    }
+
     @Test
     void the_verb_leaves_nothing_waiting_while_the_store_path_does() {
         Map<String, Object> report = importThrough("import", rows("verb"));
@@ -115,20 +138,23 @@ class ImportIndexesItsOwnRowsTest {
         // The two claims are genuinely different: these keys are the caller's only way to
         // know whether the rows just handed over are findable, and they are assertable on
         // every machine; the count below is the state those keys describe.
+        // Amended 2026-09-13 (28f D4): the import no longer waits for its rows' vectors.
+        // It hands them to the background vectoriser and says so, so the claim is now that
+        // they become findable WITHOUT another call — polled, because the worker runs
+        // behind the answer. LoadEmbedsInBackgroundTest proves the answer comes first.
         org.junit.jupiter.api.Assertions.assertAll(
-            () -> assertNotNull(report.get("embedded"),
-                () -> "the import must report how many rows it indexed: " + report),
             () -> assertNotNull(report.get("unembedded"),
-                () -> "and what it left behind, which is the number a caller acts on: "
-                    + report),
+                () -> "the import must say how many rows cannot yet answer by meaning, the"
+                    + " number a caller acts on: " + report),
             () -> {
                 if (EmbeddingService.shared().available()) {
-                    assertEquals(0L, ((Number) pending()).longValue(),
-                        () -> "THE CLAIM: a caller handed rows back must be able to FIND"
-                            + " them. This is the defect the stage was opened for — imported"
-                            + " rows sat outside the meaning index while the catalogue sat"
-                            + " inside it, so every recall for them answered with design"
-                            + " patterns. Pending was: " + pending());
+                    assertEquals("background", report.get("embedding"),
+                        () -> "and that the vectors are being computed behind it: " + report);
+                    assertEquals(0L, pendingAfterWaiting(),
+                        () -> "THE CLAIM: rows an import hands over must become FINDABLE with"
+                            + " nobody asking again. This is the defect the stage was opened"
+                            + " for — imported rows sat outside the meaning index while the"
+                            + " catalogue sat inside it. Pending was: " + pending());
                 }
             });
 

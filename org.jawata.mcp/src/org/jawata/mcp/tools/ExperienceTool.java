@@ -831,7 +831,7 @@ public final class ExperienceTool implements Tool {
      * before they are searchable by meaning, and the gap between those two moments is
      * where this sprint's defect lived: recall answered a question about a scheduler
      * retry loop with a design pattern, because the meaning index held the catalogue
-     * and nothing else. The three bulk writers now INDEX WHAT THEY WROTE before they return — each under its own bound, and none of them is an unbounded drain: `load` runs a pass back to the backlog it started from, `import` and `wipe_and_import` run one pass sized to their own rows, and the catalogue seed runs none at all (its rows are left to the boot reconciler, a declared deviation, because draining at the seeder stalled a class run for 327 s). This verb
+     * and nothing else. The three bulk writers — `load`, `import` and `wipe_and_import` — hand what they wrote to the background vectoriser and answer at once, reporting how many rows are still unembedded (amended 2026-09-13: waiting for the vectors stalled a load for minutes); the catalogue seed's rows are left to the boot reconciler. This verb
      * is the fourth door: it exists for the store that is ALREADY behind — after a
      * restore, after an interrupted run, after an older build wrote rows without one.</p>
      *
@@ -1334,13 +1334,10 @@ public final class ExperienceTool implements Tool {
                 + " retired " + removedRows + ": it holds LESS than the store did. The"
                 + " copy named in `backup` is the store as it stood before it ran.");
         }
-        // Sprint 28f E5 — bounded by what this rebuild actually delivered, for the
-        // reason spelled out on embedOwnRows: a write indexes its own rows and does not
-        // inherit the store's backlog. `yielded` is the right budget here rather than a
-        // raw row count — it is what this rebuild brought back, loaded plus unchanged,
-        // and it is already the number this method weighs its own verdict on.
+        // Sprint 28f D4, amended 2026-09-13: the rebuilt rows go to the background
+        // vectoriser and this answers at once — see indexOwnRowsInBackground.
         return ToolResponse.success(
-            withRefresh(withBackup(embedOwnRows(data, yielded), backupCopy)));
+            withRefresh(withBackup(indexOwnRowsInBackground(data), backupCopy)));
     }
 
     private int reTombstoneWhatIsNotBack(String path, java.util.Set<String> before) {
@@ -1969,46 +1966,30 @@ public final class ExperienceTool implements Tool {
         Path copy = backups.before("import");
         Map<String, Object> imported = new LinkedHashMap<>(store.importEntries(entries));
         return ToolResponse.success(
-            withRefresh(withBackup(embedOwnRows(imported, entries.size()), copy)));
+            withRefresh(withBackup(indexOwnRowsInBackground(imported), copy)));
     }
 
     /**
-     * Sprint 28f E5 — a write pays to index ITS OWN rows, and no more.
+     * Sprint 28f D4, amended 2026-09-13 — a bulk write hands its rows to the background
+     * vectoriser and answers at once.
      *
-     * <p><b>This is the second shape of this deliverable, and the first one is why.</b>
-     * It began as {@code drain()} — run the backfill to CONVERGENCE at the end of the
-     * write. That is unbounded by construction: its cost is a function of the store's
-     * pending debt, which this caller neither created nor can see. The end-to-end gate
-     * measured the consequence within one run — the freshly seeded catalogue leaves
-     * roughly 190 rows pending, the import inherited all of them at about a second each,
-     * and the call timed out against its 180 s client budget. The verb looked broken
-     * while doing exactly what it had been told.</p>
+     * <p><b>This is the third shape of this deliverable, and the first two are why.</b> It
+     * began as {@code drain()} to convergence, which made an import inherit the catalogue's
+     * whole backlog and time out at 180 s. The correction was one pass sized to the write's
+     * own rows — bounded, and still about a second a row, so a large write still held its
+     * caller for minutes. Harald, 2026-09-13: "we should not block anything and run in
+     * background". {@link org.jawata.mcp.knowledge.BackgroundEmbedding} now does the pass.</p>
      *
-     * <p>So the bound is the WRITE'S OWN SIZE: one backfill pass of at most the number
-     * of rows this call wrote. In the ordinary case those pending rows ARE this write's
-     * rows, and they are indexed before the caller is answered, which is what E5 asks
-     * for. On a store carrying a backlog the pass may spend its budget on older rows
-     * instead — and that case is not hidden: {@code unembedded} in the stats block says
-     * what is left, which is precisely the number published so a caller never has to
-     * derive it.</p>
-     *
-     * <p><b>What this deliberately does NOT do is make a write responsible for the
-     * store's backlog.</b> Converging the whole store is the startup daemon's job, and
-     * it already has it. A write that did it too would be paying somebody else's debt at
-     * the one moment a caller is waiting on an answer.</p>
-     *
-     * @param rows how many rows this write produced — the pass's budget
+     * <p><b>What the wait used to buy is kept another way.</b> {@code unembedded} tells the
+     * caller how many rows cannot yet answer by meaning; a recall that meets one marks it
+     * rather than scoring it zero; {@code stats} publishes the remainder until it is zero.</p>
      */
-    private Map<String, Object> embedOwnRows(Map<String, Object> data, long rows) {
+    private Map<String, Object> indexOwnRowsInBackground(Map<String, Object> data) {
         org.jawata.mcp.knowledge.EmbeddingIndex index =
             org.jawata.mcp.knowledge.EmbeddingIndex.forStore(store);
         if (index != null) {
-            // Clamped rather than cast: the budget is a row count from a caller, and a
-            // silent overflow would turn a large write into a NEGATIVE budget, which
-            // backfill reads as "do nothing" — the failure would be an index that
-            // quietly stopped being written to on exactly the biggest imports.
-            int budget = (int) Math.max(1, Math.min(rows, 100_000));
-            data.put("embedded", index.backfill(budget));
+            org.jawata.mcp.knowledge.BackgroundEmbedding.request(index);
+            data.put("embedding", "background");
             data.put("unembedded", index.remainingUnembedded());
         }
         return data;

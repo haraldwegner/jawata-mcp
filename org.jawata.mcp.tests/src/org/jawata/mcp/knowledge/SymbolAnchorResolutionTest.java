@@ -197,7 +197,7 @@ class SymbolAnchorResolutionTest {
                 The remainder lived in `HelloWorld.printGreeting`, missed by `HelloWorld` cleanup.
                 """);
             maint(store, service).load(dir);
-            // 4.3.2: sections are no longer rows of their own, so the ORB book-flatten gap
+            // 4.3.1: sections are no longer rows of their own, so the ORB book-flatten gap
             // this test was written for — a code token living only in a later section — is
             // closed by the file's row reading its WHOLE body, preamble and sections alike.
             // Before, the parent read the preamble only and the anchor lived on a

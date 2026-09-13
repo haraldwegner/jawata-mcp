@@ -172,20 +172,9 @@ public final class ExperienceMaintenance {
 
     Map<String, Object> loadSources(List<Path> roots, boolean recursive,
             int maxDepth, int maxFiles, long maxBytes, boolean requireStamp) {
-        // Sprint 28f E5 — the BASELINE for this load's own embedding debt, taken before
-        // it writes anything. The pass at the end clears the store down to this line and
-        // no further: everything this load made pending, and none of the backlog it found.
-        //
-        // A count is needed rather than a guess because the first two attempts both used
-        // one. `drain()` cleared the WHOLE store, so a write inherited the catalogue's
-        // backlog and the import verb timed out. Sizing the pass by the load's file count
-        // was the correction, and DrainBeforeReturnTest proved it wrong on its first run:
-        // the budget counts FILES while the work is ROWS, so a story with sections became
-        // a parent plus one row per section and the surplus stayed unsearchable behind a
-        // report that read as finished. A baseline is neither guess — it is measured in
-        // the same unit as the work.
+        // The index this load hands its rows to at the end. It does not wait for their
+        // vectors — see the end of this method for why, and for what replaced the wait.
         final EmbeddingIndex embedIndex = EmbeddingIndex.forStore(store);
-        final long pendingBefore = embedIndex == null ? 0L : embedIndex.remainingUnembedded();
         Map<String, Object> report = new LinkedHashMap<>();
         List<Map<String, Object>> stale = new ArrayList<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
@@ -504,7 +493,7 @@ public final class ExperienceMaintenance {
                 .verdict(doc.verdict)
                 .provenanceKind("ingested")
                 .form(EntryForm.formOf(doc.situation));
-            // jawata-mcp#7, kept after the section split was removed (4.3.2). An UNTYPED
+            // jawata-mcp#7, kept after the section split was removed (4.3.1). An UNTYPED
             // memory file — a CLAUDE.md with no frontmatter — is standing how-to-work
             // knowledge, and it defaults to type "note", which the primer does not push. #7
             // got it into the always-on layer by pushing every SECTION row instead, which also
@@ -550,7 +539,7 @@ public final class ExperienceMaintenance {
             if (doc.symbol == null) {
                 anchored += autoAnchor(anchors, parentId, doc.body, doc.language);
             }
-            // 4.3.2 — ONE FILE, ONE ROW. Sprint 21c split every file into a parent plus one
+            // 4.3.1 — ONE FILE, ONE ROW. Sprint 21c split every file into a parent plus one
             // row per `## ` section, with the heading as that row's summary, so "the fit gate
             // can answer with the FACT". On a story file that premise is false: the template
             // is one claim per entry, and its sections — "The case", "The cure", "Boundary" —
@@ -638,46 +627,24 @@ public final class ExperienceMaintenance {
         if (!skipped.isEmpty()) {
             log.info("load: {} source(s) skipped: {}", skipped.size(), skipped);
         }
-        // Sprint 28f E5 — SEARCHABLE THE MOMENT IT IS WRITTEN. A load that returns
-        // before its rows reach the meaning index has written rows that can be
-        // listed and exported and never FOUND by asking, and the report would say
-        // "loaded: N" with nothing to warn the caller.
+        // Sprint 28f D4, amended 2026-09-13 — THE LOAD HANDS ITS ROWS TO THE BACKGROUND
+        // VECTORISER AND ANSWERS AT ONCE.
         //
-        // Measured 2026-09-12 on the end-to-end gate, which is why this is here and
-        // not left to the startup daemon: 48 rows were imported and the meaning
-        // index still held only the 189 catalogue rows, so every recall for them
-        // answered with design patterns instead. The gate's own convergence check
-        // could not see it, because it compared a count against itself.
+        // E5 made this pass wait for its own rows' vectors, bounded to the debt this load
+        // created. Bounded is not short: each row costs about a second across its lanes, so
+        // a load that re-read a story folder after a loader change stalled 327 s and 364 s
+        // in two measurements, and studio's reload gave up on it after ten. Harald: "we
+        // should not block anything and run in background".
         //
-        // `embedded` is what THIS call indexed; `unembedded` is what is still
-        // pending. They are reported separately on purpose — a caller must not have
-        // to infer "nothing left" from "some work done", which is the inference the
-        // gate made and got wrong. An absent index (degraded store, no embedder)
-        // leaves both keys off rather than reporting a zero that reads as converged.
-        // BOUNDED BY WHAT THIS LOAD WROTE, not run to whole-store convergence.
-        //
-        // The first version called drain() here, and drain() is unbounded: its cost is
-        // the store's whole pending debt, which this caller neither created nor can see.
-        // The end-to-end gate measured what that costs on the sibling write path — with
-        // a freshly seeded catalogue still pending, an import inherited roughly 190 rows
-        // at about a second each and timed out against its client budget. `load` had not
-        // hit it yet, which is not the same as being safe from it: the two differ only
-        // in how many rows happened to be pending when each ran.
-        //
-        // One pass, sized to the rows this load wrote. In the ordinary case those ARE
-        // the pending rows and they are indexed before the report is handed back, which
-        // is what E5 asks. Where a backlog exists the pass may spend its budget on older
-        // rows, and that is not concealed — `unembedded` says what is left, which is why
-        // the two keys are reported separately rather than as one number a reader would
-        // have to interpret.
-        // Clear THIS LOAD'S debt and stop at the line where it started. The loop is
-        // drain's — reused rather than rewritten, because "embed until a condition"
-        // already exists and a second copy of it is how two loops drift apart. The
-        // condition is the only new part: stop once the store is back to the baseline
-        // this load found, so the pass cannot inherit a backlog it did not create.
+        // What E5 protected — rows that are stored and not yet findable by meaning, with
+        // nothing to say so — is kept by other means. `unembedded` below is the count the
+        // caller is handed; a recall that meets such a row marks it rather than scoring it
+        // zero; stats publishes the remainder until it is zero. An absent index (degraded
+        // store, no embedder) leaves both keys off rather than reporting a zero that reads
+        // as converged.
         if (embedIndex != null) {
-            report.put("embedded", embedIndex.drain(500,
-                () -> embedIndex.remainingUnembedded() <= pendingBefore));
+            BackgroundEmbedding.request(embedIndex);
+            report.put("embedding", "background");
             report.put("unembedded", embedIndex.remainingUnembedded());
         }
         return report;
@@ -714,7 +681,7 @@ public final class ExperienceMaintenance {
      * (Sprint 21c item A: headings/bold/backticks/wikilinks → symptom rows) ·
      * 5 = ingest-time symbol-anchor resolution (Sprint 21e item A: backticked
      * tokens JDT-resolved to unique project-source types, column-only) ·
-     * 6 = ONE ROW PER FILE (4.3.2): the section split is gone, so every file that
+     * 6 = ONE ROW PER FILE (4.3.1): the section split is gone, so every file that
      * carried headings is re-ingested once and the reconciliation after the upsert
      * removes the heading-titled rows the previous versions minted from it.
      */

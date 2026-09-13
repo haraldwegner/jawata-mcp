@@ -78,7 +78,7 @@ public final class ExperienceRetrieval {
      * job — but it defaults to type "note", so without a scope the whole loaded corpus reached
      * the always-on layer as NOTHING. #7 answered that with the scope {@code section}, which
      * every heading-split row carried. That also pushed the headings of every TYPED story into
-     * the primer — "The case", "The cure" — and those rows no longer exist (4.3.2). So the
+     * the primer — "The case", "The cure" — and those rows no longer exist (4.3.1). So the
      * scope moved to the file's own row, and the loader sets it only when the author declared
      * no type. {@code section} left this set in the same change: a store still holding rows
      * from the old split stops pushing them at once, before the next load removes them.</p>

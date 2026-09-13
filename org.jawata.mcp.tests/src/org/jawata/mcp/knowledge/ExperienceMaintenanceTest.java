@@ -93,7 +93,7 @@ class ExperienceMaintenanceTest {
      * <p>The load channel obeys the admission routing: a cue with a misplaced shape
      * (a path, a flag, a heading) never lands as a symptom row, and the suppression is
      * REPORTED — a silent drop is this project's recorded deepest bug class. The file
-     * NAME slug still arrives prosified, and (since 4.3.2) a section heading never
+     * NAME slug still arrives prosified, and (since 4.3.1) a section heading never
      * becomes a row's summary at all.</p>
      *
      * <p><b>Why this survived the harvester's deletion when three siblings did not.</b>
@@ -140,7 +140,7 @@ class ExperienceMaintenanceTest {
         assertTrue(allSymptoms.contains("native buffer"),
             "prose-shaped harvest (the bold phrase) still lands: " + allSymptoms);
 
-        // 4.3.2: this used to assert that the `## Root cause:` heading became a row whose
+        // 4.3.1: this used to assert that the `## Root cause:` heading became a row whose
         // summary was "Root cause". That row was the defect — a heading stored as a claim —
         // so the assertion is inverted rather than dropped: no row's summary is a heading,
         // and the section's text is on the file's own row.
@@ -728,7 +728,7 @@ class ExperienceMaintenanceTest {
     }
 
     /**
-     * 4.3.2 — a SECTIONED file is ONE row, and that row keeps the file's form.
+     * 4.3.1 — a SECTIONED file is ONE row, and that row keeps the file's form.
      *
      * <p>This test used to assert that a sectioned file's section rows inherit its
      * form. There are no section rows any more (see ExperienceMaintenance, where the
@@ -758,7 +758,7 @@ class ExperienceMaintenanceTest {
     }
 
     /**
-     * 4.3.2 — rows an OLDER loader split out of a file are removed the next time that
+     * 4.3.1 — rows an OLDER loader split out of a file are removed the next time that
      * file loads, even though the file itself did not change.
      *
      * <p>This is the half that makes the fix reach a store that already exists. The 4.3.0
@@ -871,7 +871,7 @@ class ExperienceMaintenanceTest {
 
     @Test
     void load_keeps_a_sectioned_file_as_one_entry(@TempDir Path dir) throws IOException {
-        // 4.3.2: Sprint 21c split a file into one entry per heading section plus a thin
+        // 4.3.1: Sprint 21c split a file into one entry per heading section plus a thin
         // parent, "so the fit gate can answer with the FACT". A story's sections are the
         // argument for its one claim, and out of the story a heading says nothing — so the
         // file is one entry and its headings stay in its body.
@@ -1140,7 +1140,7 @@ class ExperienceMaintenanceTest {
             }
         }
 
-        // Symptom 1 (#7's primer reach), RE-READ in 4.3.2. This file has no `reviewed:` stamp,
+        // Symptom 1 (#7's primer reach), RE-READ in 4.3.1. This file has no `reviewed:` stamp,
         // so since 28f Stage 6 it loads as a CANDIDATE, and the primer pushes accepted rows
         // only. It used to reach the primer anyway, through its heading rows — which the loader
         // minted ACCEPTED unconditionally, so they claimed a review nobody performed. That was
@@ -1161,7 +1161,7 @@ class ExperienceMaintenanceTest {
     }
 
     /**
-     * 4.3.2 — the 4.3.0 dogfood's primer half: a TYPED story's headings never reach the
+     * 4.3.1 — the 4.3.0 dogfood's primer half: a TYPED story's headings never reach the
      * always-on primer, and neither do heading rows an older loader already left in a store.
      *
      * <p>The primer pushed every row scoped {@code section}, so every heading of every story

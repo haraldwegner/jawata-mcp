@@ -293,6 +293,15 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    /**
+     * Whether the owner has closed this store. For work that runs behind a caller —
+     * {@link BackgroundEmbedding} — so that a store shut down deliberately is skipped as
+     * finished business rather than reported as a failed pass.
+     */
+    boolean isClosed() {
+        return closed;
+    }
+
     /** A pooled read connection, or null when the store cannot give one out. */
     Connection borrowRead() {
         refuseIfClosed();

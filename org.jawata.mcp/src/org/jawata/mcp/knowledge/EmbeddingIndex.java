@@ -60,6 +60,20 @@ public final class EmbeddingIndex {
     private final EmbeddingService embeddings;
 
     /**
+     * One drain at a time per store. The startup backfill and the after-write worker
+     * ({@link BackgroundEmbedding}) both drain, and without this they select the same
+     * unembedded rows and embed each one twice — which is exactly what happens when studio
+     * reloads the story folder into a resident that has just started.
+     */
+    private static final java.util.Map<H2ExperienceStore, Object> DRAIN_LOCKS =
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /** The store this index writes vectors into; the key the drain lock is held on. */
+    H2ExperienceStore store() {
+        return store;
+    }
+
+    /**
      * @param store      the H2 store holding the vectors (the CONCRETE one — in
      *                   production reach it through
      *                   {@link RecoveringExperienceStore#currentDelegate()})
@@ -284,6 +298,14 @@ public final class EmbeddingIndex {
      * @return how many rows this call embedded
      */
     public int drain(int batch, java.util.function.BooleanSupplier interrupted) {
+        Object lock = DRAIN_LOCKS.computeIfAbsent(store, s -> new Object());
+        synchronized (lock) {
+            return drainHoldingLock(batch, interrupted);
+        }
+    }
+
+    /** {@link #drain(int, java.util.function.BooleanSupplier)}'s loop, run under its lock. */
+    private int drainHoldingLock(int batch, java.util.function.BooleanSupplier interrupted) {
         if (!embeddings.available()) {
             return 0;
         }
