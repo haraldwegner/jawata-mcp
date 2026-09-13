@@ -1921,7 +1921,13 @@ public final class ExperienceRetrieval {
             }
             IMember target = type;
             if (member != null && !member.isEmpty()) {
-                IMember found = SymbolAnchorResolver.memberOn(type, member);
+                // THE STRICT FORM, because this answer backs a REFUSAL. The forgiving
+                // `memberOn` turns an unreadable type into "no such member", which for the
+                // auto-anchoring heuristic is right and for a user-facing refusal is the
+                // sprint's own defect: the author would be told the member is gone when the
+                // lookup merely failed. Anything that stops the lookup completing now
+                // propagates to the catch below, where it becomes "could not check".
+                IMember found = SymbolAnchorResolver.memberOnOrThrow(type, member);
                 if (found == null) {
                     p.put("resolved", false);
                     p.put("stale", true);

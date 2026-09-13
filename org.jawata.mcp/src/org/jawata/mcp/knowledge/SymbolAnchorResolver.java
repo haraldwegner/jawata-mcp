@@ -12,6 +12,7 @@ import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IMember;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
 
 /**
@@ -126,23 +127,58 @@ final class SymbolAnchorResolver {
      * already had it.</p>
      *
      * <p>A field wins over a method of the same name, which Java permits; the anchor form
-     * {@code Type#name} cannot tell them apart, and the field is the cheaper lookup. An
-     * unreadable type answers null rather than throwing — a member that cannot be read is,
-     * for every caller here, a member that is not there.</p>
+     * {@code Type#name} cannot tell them apart, and the field is the cheaper lookup.</p>
+     *
+     * <h2>THE TWO CALLERS NEED DIFFERENT ANSWERS, and this method gives one of them</h2>
+     *
+     * <p>An unreadable type answers null here rather than throwing, and the javadoc used to
+     * justify that with "a member that cannot be read is, <b>for every caller here</b>, a
+     * member that is not there". That was true when the only caller was {@link #memberExists},
+     * an auto-anchoring heuristic where declining to anchor beats anchoring wrongly. Stage 7
+     * added a second caller — {@code ExperienceRetrieval.resolvePointer}, which backs a
+     * user-facing REFUSAL — and for that one the merge is exactly the sprint's own defect: a
+     * member lookup that FAILED would be reported to an author as "the anchored member is
+     * gone", which is "I could not check" rendered as "it does not exist".</p>
+     *
+     * <p>A C9 audit demonstrated it rather than arguing it: with a throw injected here, the
+     * control case whose member provably EXISTS was refused with that absence wording. So the
+     * strict form below is what a refusal asks, and this forgiving one stays exactly as it was
+     * for the heuristic that wants it. {@code IType.getMethods()} declares
+     * {@code JavaModelException}, so this is a live failure mode and not a theoretical one.</p>
      */
     static IMember memberOn(IType type, String member) {
         try {
-            IField f = type.getField(member);
-            if (f.exists()) {
-                return f;
-            }
-            for (IMethod m : type.getMethods()) {
-                if (member.equals(m.getElementName())) {
-                    return m;
-                }
-            }
+            return memberOnOrThrow(type, member);
         } catch (Exception e) {
-            // fall through — an unreadable type never carries a member anchor
+            // Deliberately swallowed FOR THIS CALLER ONLY: memberExists is choosing whether to
+            // attach an anchor nobody asked for, and there an unreadable type must decline
+            // rather than guess. A caller that REFUSES on the answer must use the strict form.
+            return null;
+        }
+    }
+
+    /**
+     * The same lookup, but a failure to read is a failure rather than an absence.
+     *
+     * <p>Answers null only when the type was read and carries no such member. Anything that
+     * stopped the lookup from completing propagates, so a caller can tell the two apart —
+     * which is the whole distinction this sprint is about, and which {@link #memberOn} merges
+     * on purpose for its own caller.</p>
+     *
+     * <p>The same split already exists one layer down and for the same stated reason:
+     * {@code JdtServiceImpl.findType} tracks a failed model lookup and throws rather than
+     * answering null, because "reporting null would let the caller claim an absence over a
+     * lookup that never completed". This is that rule applied to the member half.</p>
+     */
+    static IMember memberOnOrThrow(IType type, String member) throws JavaModelException {
+        IField f = type.getField(member);
+        if (f.exists()) {
+            return f;
+        }
+        for (IMethod m : type.getMethods()) {
+            if (member.equals(m.getElementName())) {
+                return m;
+            }
         }
         return null;
     }

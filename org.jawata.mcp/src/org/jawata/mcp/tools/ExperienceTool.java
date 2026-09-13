@@ -3301,17 +3301,24 @@ public final class ExperienceTool implements Tool {
                     + " — this row is admitted unchecked rather than treated as resolved";
             } else {
                 Map<String, Object> pointer = retrieval.resolvePointer(symbol);
-                // REFUSE ONLY ON A POSITIVE FINDING OF ABSENCE, and `stale` is what makes
-                // that readable rather than inferred. The resolver answers `resolved:false`
-                // for THREE different reasons and only two of them are "it is not there":
-                // the type was not found, and the type is here but the member is gone. Both
-                // set `stale`. The third is an exception during resolution, which sets no
-                // `stale` key — and reading `resolved` alone would report that to the author
-                // as "this anchor does not exist", which is the exact blur this gate was
-                // added to prevent. A caught exception is "I could not check".
+                // REFUSE ONLY ON A POSITIVE FINDING OF ABSENCE, and `stale` is what carries
+                // that rather than it being inferred here. The resolver sets `stale` on the
+                // two answers that mean the thing is not there — the type was not found, and
+                // the type was READ and carries no such member — and leaves it unset on every
+                // answer that means the lookup did not complete. Reading `resolved` alone
+                // would report the second kind to the author as "this anchor does not exist",
+                // which is the exact blur this gate exists to prevent.
                 //
-                // The architect's C9 watch found this: the fix contradicting its own stated
-                // purpose, in the commit whose message argues the distinction at length.
+                // TWO C9 ROUNDS WERE NEEDED TO GET THIS RIGHT, and the second is why the
+                // sentence above says "was READ and carries no such member" rather than
+                // "the member is gone". The architect's watch found the gate reading
+                // `resolved` alone. The round after it found that the repair was still half
+                // wrong: `memberOn` swallowed a failed member lookup into the same null it
+                // uses for a genuine miss, so that branch set `stale` for BOTH — and it
+                // demonstrated it, by injecting a throw and watching the control case whose
+                // member provably exists get refused with the absence wording. The member
+                // lookup is strict now (`memberOnOrThrow`), so the enumeration this comment
+                // makes is true of the CONDITIONS and not merely of the statements.
                 if (Boolean.TRUE.equals(pointer.get("stale"))) {
                     return ToolResponse.invalidParameter("symbol",
                         "anchor '" + symbol + "' does not resolve in the loaded workspace,"

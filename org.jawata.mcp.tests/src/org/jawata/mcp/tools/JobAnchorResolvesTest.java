@@ -2,6 +2,8 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.eclipse.jdt.core.IField;
+import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.knowledge.ExperienceStore;
@@ -177,5 +179,64 @@ class JobAnchorResolvesTest {
             "and the reason carries what actually went wrong, rather than the absence"
                 + " wording that would send the author looking for a symbol that is there: "
                 + data);
+    }
+
+    /**
+     * THE SAME DISTINCTION AT THE OTHER LOOKUP — and a C9 audit had to demonstrate it before
+     * the repair above was complete.
+     *
+     * <p>Resolving an anchor is TWO lookups: find the type, then find the member on it. The
+     * case above injects a failure at the first. This one injects it at the SECOND, which is
+     * where the repair was still half wrong: {@code SymbolAnchorResolver.memberOn} swallowed
+     * every exception into the same {@code null} it returns for a member that is genuinely
+     * absent, so the resolver marked BOTH {@code stale} and the gate refused both.</p>
+     *
+     * <p><b>The audit proved it rather than arguing it:</b> with a throw injected into that
+     * lookup, the control case beside this one — whose member provably EXISTS, since it passes
+     * at HEAD — was refused with *"anchor 'com.example.AlphaTool#parse' does not resolve in the
+     * loaded workspace"*. That is verbatim the wording the repair's own commit condemns.</p>
+     *
+     * <p>The member lookup is strict now, so a failure propagates and lands where a failure
+     * belongs. <b>The exception injected here is UNCHECKED, and that is worth stating:</b> the
+     * real failure mode is {@code JavaModelException} from {@code IType.getMethods()}, which
+     * the compiler already proves propagates because {@code memberOnOrThrow} declares it. What
+     * a test can add is that the gate HANDLES a failure from this lookup as "could not check",
+     * and any exception exercises that equally.</p>
+     */
+    @Test
+    @DisplayName("a MEMBER lookup that throws is 'could not check' too, not 'the member is gone'")
+    @SuppressWarnings("unchecked")
+    void a_failing_member_lookup_is_admitted_and_said_rather_than_refused() {
+        IType unreadable = (IType) Proxy.newProxyInstance(
+            IType.class.getClassLoader(), new Class<?>[] {IType.class},
+            (proxy, method, methodArgs) -> switch (method.getName()) {
+                case "exists" -> true;
+                // The type reads fine; it is the MEMBER lookup that fails, which is the whole
+                // point — a type that failed to resolve is the case already covered above.
+                case "getField" -> Proxy.newProxyInstance(
+                    IField.class.getClassLoader(), new Class<?>[] {IField.class},
+                    (f, fm, fa) -> "exists".equals(fm.getName()) ? false
+                        : (fm.getReturnType().isPrimitive() ? 0 : null));
+                case "getMethods" -> throw new IllegalStateException("the member index is rebuilding");
+                default -> method.getReturnType().isPrimitive() ? 0 : null;
+            });
+        IJdtService service = (IJdtService) Proxy.newProxyInstance(
+            IJdtService.class.getClassLoader(), new Class<?>[] {IJdtService.class},
+            (proxy, method, methodArgs) -> "findType".equals(method.getName()) ? unreadable
+                : (method.getReturnType().isPrimitive() ? false : null));
+        ExperienceTool tool = new ExperienceTool(() -> service, store);
+
+        ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
+
+        assertTrue(r.isSuccess(),
+            "the type read fine and the MEMBER lookup failed, which says nothing about whether"
+                + " the member is there — refusing here is the absence wording over an outage: "
+                + (r.getError() == null ? "" : r.getError().getMessage()));
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertEquals(false, data.get("anchorVerified"),
+            "and not reported as verified either — the check did not complete: " + data);
+        assertTrue(String.valueOf(data.get("anchorUncheckedWhy")).contains("the member index is rebuilding"),
+            "and the reason names the failure rather than claiming the member is gone, which is"
+                + " the wording the swallowing lookup produced: " + data);
     }
 }
