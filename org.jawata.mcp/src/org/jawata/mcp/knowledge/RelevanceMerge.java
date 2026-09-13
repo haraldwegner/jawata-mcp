@@ -36,7 +36,8 @@ import java.util.Map;
  * and its body. Same unit, same space, so weighting them is arithmetic and not
  * a unit conversion. The fourth is BM25 over the entry's whole text, which is a
  * different unit entirely and is therefore normalised before it is allowed near
- * the sum — see {@link #normalise}.</p>
+ * the sum — against what a PERFECT word match of the question scores, see
+ * {@link #normalise}.</p>
  *
  * <h2>The weights are a declared prior, not a fit</h2>
  *
@@ -94,37 +95,41 @@ public final class RelevanceMerge {
     }
 
     /**
-     * Rescale a stream to 0..1 by its own best score.
+     * Rescale BM25 to 0..1 against what a PERFECT word match of this question scores.
      *
-     * <p>Applied to BM25 only, and the claim it makes is deliberately narrow:
-     * afterwards a value says <b>which row matches this question's words best
-     * relative to the others</b>, never how good that match is in absolute
-     * terms. That is the right statement for a ranker and the wrong one for a
-     * filter — so nothing here filters, which is also the store's standing rule
-     * that no threshold separates nonsense from an answer.</p>
+     * <p>Afterwards a value says <b>how much of the question's words a row carries</b>,
+     * weighted by rarity: a row holding every discriminating word of the question reads
+     * about 1.0, a row sharing one rare word of twelve reads a small fraction, and a row
+     * sharing only common words reads nothing.</p>
      *
-     * <p>Chosen over a fixed divisor because a fixed divisor is a fitted
-     * constant that holds only on the corpus it was measured against — the
-     * mistake this sprint has already paid for once.</p>
+     * <p><b>The rule this replaces</b> divided by the best score in the result set. That
+     * said which row matched best relative to the others — and so the best match always
+     * read 1.0 and took the full {@link #W_WORDS}, whatever it had matched. Against the
+     * meaning lanes, which are absolute and sit around 0.2 to 0.5 on a real question, a
+     * row sharing ONE word of a paraphrased question outranked the row that answered it.
+     * The 4.3.0 dogfood measured it: "at what point may I treat pulling back an
+     * instruction I gave the exchange as finished" put a lesson about standing
+     * instructions first, on the one word "instruction", and the cancel-confirmation fact
+     * was not in the top eight. That is the unit mismatch this class was written to
+     * remove, come back from the other side.</p>
      *
-     * @param stream raw scores per id; {@code null} or empty yields empty
+     * <p>Still not a fitted constant: the ceiling is computed per question from the
+     * corpus's own statistics ({@link LexicalIndex.Scores#ceiling}), so it moves with
+     * the corpus exactly as the scores do. Clamped at 1.0, because a short row or a
+     * repeated word can exceed the average-length perfect match, and "more than the whole
+     * question" is not a thing a word lane can mean.</p>
+     *
+     * @param stream  raw scores per id; {@code null} or empty yields empty
+     * @param ceiling the score of a perfect word match for this question; zero or less
+     *                means the question has no word any row could match, and yields empty
      */
-    static Map<String, Double> normalise(Map<String, Double> stream) {
-        if (stream == null || stream.isEmpty()) {
-            return Map.of();
-        }
-        double max = 0.0;
-        for (double v : stream.values()) {
-            if (v > max) {
-                max = v;
-            }
-        }
-        if (max <= 0.0) {
+    static Map<String, Double> normalise(Map<String, Double> stream, double ceiling) {
+        if (stream == null || stream.isEmpty() || ceiling <= 0.0) {
             return Map.of();
         }
         Map<String, Double> out = new LinkedHashMap<>(stream.size());
         for (Map.Entry<String, Double> e : stream.entrySet()) {
-            out.put(e.getKey(), e.getValue() / max);
+            out.put(e.getKey(), Math.min(1.0, e.getValue() / ceiling));
         }
         return out;
     }
@@ -168,18 +173,20 @@ public final class RelevanceMerge {
      *                      not an error
      * @param summaryLane   per-id cosine against the entry's one-line claim
      * @param detailsLane   per-id cosine against the entry's body
-     * @param words         RAW BM25 per id; normalised HERE, so callers hand over
-     *                      exactly what {@link LexicalIndex#score} produced and
-     *                      nothing in between has to remember to rescale it
+     * @param words         RAW BM25 per id with the question's ceiling; normalised
+     *                      HERE, so callers hand over exactly what
+     *                      {@link LexicalIndex#scored} produced and nothing in between
+     *                      has to remember to rescale it
      */
     public static Map<String, Score> scoreAll(Map<String, Double> situationLane,
                                               Map<String, Double> summaryLane,
                                               Map<String, Double> detailsLane,
-                                              Map<String, Double> words) {
+                                              LexicalIndex.Scores words) {
         Map<String, Double> sit = situationLane == null ? Map.of() : situationLane;
         Map<String, Double> sum = summaryLane == null ? Map.of() : summaryLane;
         Map<String, Double> det = detailsLane == null ? Map.of() : detailsLane;
-        Map<String, Double> normalisedWords = normalise(words);
+        Map<String, Double> normalisedWords = words == null
+            ? Map.of() : normalise(words.byId(), words.ceiling());
 
         java.util.Set<String> ids = new java.util.LinkedHashSet<>();
         ids.addAll(sit.keySet());

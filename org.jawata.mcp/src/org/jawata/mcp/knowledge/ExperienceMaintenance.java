@@ -41,7 +41,6 @@ public final class ExperienceMaintenance {
      *  harvesting heading text as a recall cue — and left this one: splitting a body
      *  into sections is structural and carries no claim about what anyone will search
      *  for. BOLD and QUOTED went with the harvester; they existed only to feed it. */
-    private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+(.+)$");
     /** jawata-mcp#7: managed-block delimiters and any other HTML comment. */
     private static final Pattern HTML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
     /** Per-entry cue backstop — hitting it is reported, never silent. Now a bound on
@@ -459,16 +458,16 @@ public final class ExperienceMaintenance {
             // and a confirm.
 
             Instant reviewedAt = reviewStamp(doc.reviewed());
-            boolean split = !doc.sections.isEmpty();
             SymbolFact.Builder fb = SymbolFact.of(
                 doc.type == null ? "note" : doc.type,
                 doc.summary(), Confidence.MEDIUM);
             if (doc.symbol != null) {
                 fb.symbol(doc.symbol);
             }
-            // Sprint 21c (item B): with sections, the parent is THIN — its details are
-            // the preamble only; the body bulk lives in the section entries.
-            String parentDetails = (split ? doc.preamble : doc.body).strip();
+            // The whole body, headings and all. A story's sections are the argument for
+            // its ONE claim, not claims of their own — see the note where the section
+            // loop used to be.
+            String parentDetails = doc.body.strip();
             if (!parentDetails.isBlank()) {
                 fb.details(parentDetails);
             }
@@ -505,6 +504,16 @@ public final class ExperienceMaintenance {
                 .verdict(doc.verdict)
                 .provenanceKind("ingested")
                 .form(EntryForm.formOf(doc.situation));
+            // jawata-mcp#7, kept after the section split was removed (4.3.2). An UNTYPED
+            // memory file — a CLAUDE.md with no frontmatter — is standing how-to-work
+            // knowledge, and it defaults to type "note", which the primer does not push. #7
+            // got it into the always-on layer by pushing every SECTION row instead, which also
+            // pushed the headings of every TYPED story ("The case", "The cure") — the 4.3.0
+            // dogfood's defect. Now the file's own row carries the primer scope, and only when
+            // the author declared no type: a typed file goes where its type sends it.
+            if (doc.type == null) {
+                eb.scopeKind(ExperienceRetrieval.STANDING_FILE_SCOPE);
+            }
             // v2.2.5 (find #13): the NAME is where cue-dense phrasing lives ("…renders
             // blank on aarch64") — index it as a symptom so recall can reach it.
             // Sprint 27a D10: PROSIFIED — the slug's hyphens/underscores become
@@ -539,58 +548,24 @@ public final class ExperienceMaintenance {
             // written COLUMN-ONLY so body_json keeps no `symbol` key (the provenance
             // marker refresh() distinguishes on).
             if (doc.symbol == null) {
-                anchored += autoAnchor(anchors, parentId, split ? doc.preamble : doc.body, doc.language);
+                anchored += autoAnchor(anchors, parentId, doc.body, doc.language);
             }
-            // Sprint 21c (item B): one entry per section — the atomic FACT the fit
-            // gate answers with. The whole family shares the file-level source_ref +
-            // source_hash, so skip-unchanged and deleteBySource stay untouched.
-            for (Section s : doc.sections) {
-                // Sprint 27a D10: a section entry's summary is the heading TEXT,
-                // not the heading SHAPE — '#' prefixes and the trailing ':' are
-                // trimmed so load never mints what the record gate refuses.
-                SymbolFact.Builder sf = SymbolFact.of(
-                    doc.type == null ? "note" : doc.type,
-                    unheading(s.heading()), Confidence.MEDIUM);
-                if (!s.body().isBlank()) {
-                    sf.details(s.body().strip());
-                }
-                // Sprint 28c: a section inherits the FILE's form and provenance.
-                // It has to: the gate above ran once, on the file, and these rows
-                // are minted from the same declaration — so without this a file
-                // that declares situation+verdict produces a form-1 parent and
-                // form-null children from ONE write, and Stage 6, which sorts the
-                // two corpora on `form`, puts half of every ingested file in the
-                // legacy lane. Sections cannot carry frontmatter of their own
-                // (see the auto-anchor note below), so inheritance is the only
-                // channel they have.
-                ExperienceEntry.Builder sb = ExperienceEntry.of(sf.build())
-                    .status(ExperienceEntry.ACCEPTED)
-                    .language(doc.language)
-                    .scopeKind("section")
-                    .situation(doc.situation)
-                    .cause(doc.cause)
-                    .verdict(doc.verdict)
-                    .provenanceKind("ingested")
-                    .form(EntryForm.formOf(doc.situation));
-                List<String> sectionAdmissible = admissibleKeywords(s.keywords());
-                keywordsSuppressed += s.keywords().size() - sectionAdmissible.size();
-                if (addKeywords(sb, sectionAdmissible)) {
-                    keywordCapped++;
-                }
-                for (String link : s.links()) {
-                    sb.addLink("related", link);
-                }
-                // Matched to its existing row by (source, summary), and a section's
-                // summary is its heading — so editing a section's BODY rewrites that
-                // row in place, while RENAMING its heading is a new row and leaves the
-                // old one. Stated where the section's summary is chosen, because that
-                // choice is what decides it.
-                String sectionId = store.upsertBySource(sb.build(), sourceRef, hash);
-                family.add(sectionId);
-                // Sections cannot carry frontmatter — the auto-anchor from their OWN
-                // text is their only symbol channel (the ORB book-flatten gap).
-                anchored += autoAnchor(anchors, sectionId, s.heading() + "\n" + s.body(), doc.language);
-            }
+            // 4.3.2 — ONE FILE, ONE ROW. Sprint 21c split every file into a parent plus one
+            // row per `## ` section, with the heading as that row's summary, so "the fit gate
+            // can answer with the FACT". On a story file that premise is false: the template
+            // is one claim per entry, and its sections — "The case", "The cure", "Boundary" —
+            // are the argument for that claim, not claims of their own. Out of the story a
+            // heading says nothing, and the 4.3.0 dogfood measured 49 of 384 rows on the real
+            // store (13%) whose entire summary was a section title, handed to agents as
+            // knowledge by recall, the primer and the prompt hook. 24 of the 55 headings are
+            // under four words, which the record gate refuses as not_a_claim — so the loader
+            // was minting what a direct record could never write.
+            //
+            // Harald, 2026-09-13: "This is a flaw and needs to be fixed". The section rows are
+            // not repaired here, they stop existing: the body stays whole on the file's own
+            // row, where BM25 and the details lane read it. LOADER_VERSION 6 makes every
+            // stored file re-ingest once, and the reconciliation below removes the rows the
+            // old split left, because they are no longer in the family this pass wrote.
             // WHAT THE FILE NO LONGER SAYS GOES — and only now is that knowable.
             //
             // D1 stopped the load deleting a source's rows BEFORE it had what replaces
@@ -738,9 +713,12 @@ public final class ExperienceMaintenance {
      * managed-section markers in CLAUDE.md files) · 4 = body keyword harvest
      * (Sprint 21c item A: headings/bold/backticks/wikilinks → symptom rows) ·
      * 5 = ingest-time symbol-anchor resolution (Sprint 21e item A: backticked
-     * tokens JDT-resolved to unique project-source types, column-only).
+     * tokens JDT-resolved to unique project-source types, column-only) ·
+     * 6 = ONE ROW PER FILE (4.3.2): the section split is gone, so every file that
+     * carried headings is re-ingested once and the reconciliation after the upsert
+     * removes the heading-titled rows the previous versions minted from it.
      */
-    static final int LOADER_VERSION = 5;
+    static final int LOADER_VERSION = 6;
 
     /** The skip-unchanged key: SHA-256 of the file content + the loader fingerprint. */
     static String sourceHash(String content) {
@@ -1125,8 +1103,7 @@ public final class ExperienceMaintenance {
     private record MemoryDoc(String name, String description, String type, String symbol,
                              String language, String situation, String cause, String verdict,
                              String reviewed, String body,
-                             List<String> links, List<String> fileLinks, List<String> keywords,
-                             String preamble, List<Section> sections) {
+                             List<String> links, List<String> fileLinks, List<String> keywords) {
         /** Summary = description, else the frontmatter name, else "(untitled)". */
         String summary() {
             if (description != null && !description.isBlank()) {
@@ -1285,7 +1262,6 @@ public final class ExperienceMaintenance {
         if (name == null) {
             name = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
         }
-        Split split = splitSections(bodyStr);
         // Sprint 28d S10.0: THE CUES ARE THE AUTHOR'S, AND THERE IS NO FALLBACK.
         //
         // This line used to read `harvestKeywords(...)`, which scraped the body's
@@ -1301,53 +1277,7 @@ public final class ExperienceMaintenance {
         // 2026-08-30: "Find the cue by content and not by a format. This is nonsense."
         // The fifth narrowing is refused; the guess is removed.
         return new MemoryDoc(name, description, type, symbol, language, situation, cause,
-            verdict, reviewed, bodyStr, links, fileLinks, List.copyOf(symptoms),
-            split.preamble(), split.sections());
-    }
-
-    /** Sprint 21c (item B): a heading-bounded body slice — the atomic fact. */
-    private record Section(String heading, String body, List<String> links, List<String> keywords) {}
-
-    private record Split(String preamble, List<Section> sections) {}
-
-    /** Split the body at heading boundaries (any level, fence-aware); text before the
-     *  first heading is the preamble and stays with the file-level parent. */
-    private static Split splitSections(String body) {
-        StringBuilder preamble = new StringBuilder();
-        List<Section> sections = new ArrayList<>();
-        String heading = null;
-        StringBuilder cur = new StringBuilder();
-        boolean fenced = false;
-        for (String line : body.split("\n", -1)) {
-            String s = line.strip();
-            if (s.startsWith("```")) {
-                fenced = !fenced;
-            }
-            Matcher h = HEADING.matcher(s);
-            if (!fenced && h.matches()) {
-                if (heading != null) {
-                    sections.add(section(heading, cur.toString()));
-                }
-                heading = h.group(1).replace("**", "").replace("`", "").strip();
-                cur = new StringBuilder();
-                continue;
-            }
-            (heading == null ? preamble : cur).append(line).append('\n');
-        }
-        if (heading != null) {
-            sections.add(section(heading, cur.toString()));
-        }
-        return new Split(preamble.toString(), sections);
-    }
-
-    private static Section section(String heading, String body) {
-        // Sprint 28d S10.0: NO CUES FOR A SECTION, and this is the deliberate half of
-        // the trade rather than an oversight. Cues are declared in frontmatter, which is
-        // file-level, so a section has no way to declare its own — and inventing them
-        // from the section's heading is precisely the defect being removed. A section
-        // stays findable through its summary and body, which BM25 reads since D9; what
-        // it loses is the ability to VOUCH, which it never legitimately had.
-        return new Section(heading, body, wikilinks(body), List.of());
+            verdict, reviewed, bodyStr, links, fileLinks, List.copyOf(symptoms));
     }
 
     private static List<String> wikilinks(String text) {
@@ -1381,13 +1311,6 @@ public final class ExperienceMaintenance {
             }
         }
         return out;
-    }
-
-    /** Sprint 27a D10: heading TEXT for a section summary — strips the '#'
-     *  prefix and the trailing ':' so load never mints a heading-shaped
-     *  summary (the shape the record gate refuses). */
-    static String unheading(String heading) {
-        return heading.replaceFirst("^#+\\s*", "").replaceFirst(":\\s*$", "").strip();
     }
 
     /** Add harvested keywords as symptoms up to the backstop; true when capped. */

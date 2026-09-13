@@ -176,8 +176,8 @@ class SymbolAnchorResolutionTest {
     }
 
     @Test
-    @DisplayName("section entries anchor from their OWN text (the ORB book-flatten gap)")
-    void section_entries_anchor_from_their_own_text(@TempDir Path dir) throws Exception {
+    @DisplayName("a file's one row anchors from text anywhere in its body, a later section included")
+    void a_file_anchors_from_text_in_any_of_its_sections(@TempDir Path dir) throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             writeMemory(dir, "lesson.md", """
@@ -197,10 +197,15 @@ class SymbolAnchorResolutionTest {
                 The remainder lived in `HelloWorld.printGreeting`, missed by `HelloWorld` cleanup.
                 """);
             maint(store, service).load(dir);
+            // 4.3.2: sections are no longer rows of their own, so the ORB book-flatten gap
+            // this test was written for — a code token living only in a later section — is
+            // closed by the file's row reading its WHOLE body, preamble and sections alike.
+            // Before, the parent read the preamble only and the anchor lived on a
+            // heading-titled row nobody could act on.
             assertEquals("com.example.HelloWorld#printGreeting",
-                bySummary(store, "The worked example anchors from its own text").symbolFqn());
-            assertNull(bySummary(store, "Process notes").symbolFqn());
-            assertNull(bySummary(store, "a lesson split across two sections").symbolFqn());
+                bySummary(store, "a lesson split across two sections").symbolFqn(),
+                "the anchor is found in the second section and lands on the file's own row");
+            assertEquals(1L, store.count(), "and there is no section row to carry it instead");
         }
     }
 

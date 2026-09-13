@@ -71,12 +71,22 @@ public final class ExperienceRetrieval {
      *  Membership is identical, so nothing the primer does can have moved; this class's own
      *  tests are the control that says so.</p> */
     private static final java.util.Set<String> DOMAIN_TYPES = KnowledgeLane.DOMAIN_TYPES;
-    // jawata-mcp#7: a memory-file SECTION (the load channel's scope_kind) is
-    // standing how-to-work knowledge — the primer's job. Untyped CLAUDE.md
-    // sections default to type "note", so without this scope the whole loaded
-    // corpus reached the always-on layer as NOTHING (the reporter's unblock).
+    /**
+     * The scope an UNTYPED memory file's row is loaded with, which puts it in the primer.
+     *
+     * <p>jawata-mcp#7: an untyped CLAUDE.md is standing how-to-work knowledge — the primer's
+     * job — but it defaults to type "note", so without a scope the whole loaded corpus reached
+     * the always-on layer as NOTHING. #7 answered that with the scope {@code section}, which
+     * every heading-split row carried. That also pushed the headings of every TYPED story into
+     * the primer — "The case", "The cure" — and those rows no longer exist (4.3.2). So the
+     * scope moved to the file's own row, and the loader sets it only when the author declared
+     * no type. {@code section} left this set in the same change: a store still holding rows
+     * from the old split stops pushing them at once, before the next load removes them.</p>
+     */
+    public static final String STANDING_FILE_SCOPE = "memory_file";
+
     private static final java.util.Set<String> DOMAIN_SCOPES = java.util.Set.of(
-        "bounded_context", "domain_concept", "section");
+        "bounded_context", "domain_concept", STANDING_FILE_SCOPE);
 
     private final ExperienceStore store;
     private final Supplier<IJdtService> jdt;
@@ -571,10 +581,10 @@ public final class ExperienceRetrieval {
      * unmeasured optimisation is how a cache-invalidation bug enters a store
      * whose whole job is telling the truth.</p>
      */
-    private Map<String, Double> lexicalScores(RecallQuery q) {
+    private LexicalIndex.Scores lexicalScores(RecallQuery q) {
         String cue = cueText(q);
         if (cue.isBlank()) {
-            return Map.of();
+            return LexicalIndex.Scores.NONE;
         }
         // REJECTED AND SUPERSEDED ROWS ARE NOT CANDIDATES. Both sibling paths
         // enforce this — the keyword query in its SQL, EmbeddingIndex in its —
@@ -588,7 +598,7 @@ public final class ExperienceRetrieval {
                 live.add(e);
             }
         }
-        return LexicalIndex.score(cue, live);
+        return LexicalIndex.scored(cue, live);
     }
 
     /**
@@ -686,7 +696,7 @@ public final class ExperienceRetrieval {
         // pushed out of the answer entirely. It still ADMITS exactly what it
         // always did; what changed is where it lands. Saying otherwise would
         // assert an invariant three lines above the call site that breaks it.
-        Map<String, Double> lexical = lexicalScores(q);
+        Map<String, Double> lexical = lexicalScores(q).byId();
         List<String> nominated = AnalogyPolicy.nominate(meaning, lexical);
         List<String> ids = new ArrayList<>();
         for (String id : nominated) {
@@ -943,7 +953,7 @@ public final class ExperienceRetrieval {
         // would drift, and the sprint already has one rendering path that lapsed
         // while its twin kept the rules.
         RecallQuery q = new RecallQuery(null, null, null, question, null);
-        Map<String, Double> words = lexicalScores(q);
+        LexicalIndex.Scores words = lexicalScores(q);
 
         // D13: three cosines against three FIELDS, plus the word lane. The old
         // ranking here added one cosine to one raw BM25 weight — 0..1 plus an

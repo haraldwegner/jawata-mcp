@@ -93,8 +93,8 @@ class ExperienceMaintenanceTest {
      * <p>The load channel obeys the admission routing: a cue with a misplaced shape
      * (a path, a flag, a heading) never lands as a symptom row, and the suppression is
      * REPORTED — a silent drop is this project's recorded deepest bug class. The file
-     * NAME slug still arrives prosified, and a section heading still becomes summary
-     * TEXT rather than a heading-shaped summary.</p>
+     * NAME slug still arrives prosified, and (since 4.3.2) a section heading never
+     * becomes a row's summary at all.</p>
      *
      * <p><b>Why this survived the harvester's deletion when three siblings did not.</b>
      * Those three were about WHERE cues come from, which is the thing that changed.
@@ -140,11 +140,17 @@ class ExperienceMaintenanceTest {
         assertTrue(allSymptoms.contains("native buffer"),
             "prose-shaped harvest (the bold phrase) still lands: " + allSymptoms);
 
-        boolean sectionSummaryClean = store.all().stream()
-            .map(StoredEntry::summary)
-            .anyMatch("Root cause"::equals);
-        assertTrue(sectionSummaryClean,
-            "the section summary is the heading TEXT without the ':' shape");
+        // 4.3.2: this used to assert that the `## Root cause:` heading became a row whose
+        // summary was "Root cause". That row was the defect — a heading stored as a claim —
+        // so the assertion is inverted rather than dropped: no row's summary is a heading,
+        // and the section's text is on the file's own row.
+        assertEquals(1L, store.count(), "one file, one row: " + store.all());
+        assertTrue(store.all().stream().map(StoredEntry::summary)
+                .noneMatch(s -> s.startsWith("Root cause")),
+            "no row's summary is a section heading: " + store.all());
+        assertTrue(store.get(store.all().get(0).id()).orElseThrow().toString()
+                .contains("The native buffer is sized before the scale factor arrives."),
+            "and what the section said is carried on the file's row");
     }
 
     @Test
@@ -722,14 +728,16 @@ class ExperienceMaintenanceTest {
     }
 
     /**
-     * A SECTIONED file's children inherit the file's form. One write must not
-     * produce a form-1 parent and form-null children: Stage 6 sorts the two
-     * corpora on `form`, so that split would drop half of every ingested file
-     * into the legacy lane. Sections carry no frontmatter of their own, so
-     * inheritance is the only channel they have.
+     * 4.3.2 — a SECTIONED file is ONE row, and that row keeps the file's form.
+     *
+     * <p>This test used to assert that a sectioned file's section rows inherit its
+     * form. There are no section rows any more (see ExperienceMaintenance, where the
+     * loop used to be), so the property it protected — one declaration never lands
+     * half in the legacy lane — now holds by there being one row. What is asserted
+     * instead is that the section's TEXT did not go missing with its row.</p>
      */
     @Test
-    void the_sections_of_a_form_carrying_file_inherit_its_form(@TempDir Path dir)
+    void a_sectioned_file_is_one_row_that_keeps_its_form_and_its_text(@TempDir Path dir)
             throws IOException {
         writeMemory(dir, "s.md",
             "name: s\ndescription: re-read the queue head before re-arming the retry\n"
@@ -739,14 +747,53 @@ class ExperienceMaintenanceTest {
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
 
         List<Map<String, Object>> rows = store.exportEntries(null, null);
-        assertEquals(2, rows.size(), "a parent and one section");
-        for (Map<String, Object> row : rows) {
-            assertEquals(1, row.get("form"),
-                "every row from one declaration carries the same form: " + row.get("summary"));
-            assertEquals("when a consumer reconnects mid-batch", row.get("situation"));
-            assertEquals("ingested", row.get("provenance_kind"),
-                "including the section — Stage 9's report groups on this column");
-        }
+        assertEquals(1, rows.size(), "one file, one row — no row per heading");
+        Map<String, Object> row = rows.get(0);
+        assertEquals(1, row.get("form"));
+        assertEquals("when a consumer reconnects mid-batch", row.get("situation"));
+        assertEquals("ingested", row.get("provenance_kind"));
+        String stored = store.get(store.all().get(0).id()).orElseThrow().toString();
+        assertTrue(stored.contains("preamble text") && stored.contains("The head moves under you."),
+            "the section's body is on the file's row, not dropped with the section row: " + stored);
+    }
+
+    /**
+     * 4.3.2 — rows an OLDER loader split out of a file are removed the next time that
+     * file loads, even though the file itself did not change.
+     *
+     * <p>This is the half that makes the fix reach a store that already exists. The 4.3.0
+     * dogfood measured 49 heading-titled rows on the real store; they were written by
+     * loader versions that stamped a different content hash. The old stamp is simulated
+     * here directly — a section row and a parent row carrying a hash the current loader
+     * would never write — so the file reads as changed, is re-ingested, and the
+     * reconciliation drops the section row because this pass did not write it.</p>
+     */
+    @Test
+    void section_rows_an_older_loader_wrote_are_removed_on_the_next_load(@TempDir Path dir)
+            throws IOException {
+        writeMemory(dir, "old.md",
+            "name: old\ndescription: the claim this old story makes in one sentence\n"
+                + "type: reference",
+            "The opening.\n\n## The case\n\nWhat happened, told in full.\n");
+        String sourceRef = "memory:" + dir.resolve("old.md").toAbsolutePath().normalize();
+        String olderLoadersHash = "written-by-loader-version-5";
+        store.upsertBySource(ExperienceEntry.of(SymbolFact.of("reference",
+                "the claim this old story makes in one sentence", Confidence.MEDIUM)
+                .details("The opening.").build()).build(), sourceRef, olderLoadersHash);
+        store.upsertBySource(ExperienceEntry.of(SymbolFact.of("reference", "The case",
+                Confidence.MEDIUM).details("What happened, told in full.").build())
+                .scopeKind("section").build(), sourceRef, olderLoadersHash);
+        assertEquals(2L, store.count(), "the control: the old split is in the store");
+
+        Map<String, Object> report = maint(fqn -> null).load(dir, true);
+
+        assertEquals(1, report.get("loaded"), "a hash from an older loader is not 'unchanged'");
+        assertEquals(1L, store.count(), () -> "the heading row is gone: " + store.all());
+        StoredEntry left = store.all().get(0);
+        assertEquals("the claim this old story makes in one sentence", left.summary());
+        assertFalse(left.isSection());
+        assertTrue(store.get(left.id()).orElseThrow().toString().contains("What happened, told in full."),
+            "and what the section said now lives on the file's own row");
     }
 
     /**
@@ -823,47 +870,45 @@ class ExperienceMaintenanceTest {
     }
 
     @Test
-    void load_splits_sections_into_atomic_entries(@TempDir Path dir) throws IOException {
-        // Sprint 21c (item B): files are bundles — one entry per heading section plus a
-        // thin file-level parent, so the fit gate can answer with the FACT.
+    void load_keeps_a_sectioned_file_as_one_entry(@TempDir Path dir) throws IOException {
+        // 4.3.2: Sprint 21c split a file into one entry per heading section plus a thin
+        // parent, "so the fit gate can answer with the FACT". A story's sections are the
+        // argument for its one claim, and out of the story a heading says nothing — so the
+        // file is one entry and its headings stay in its body.
         writeMemory(dir, "bundle.md",
             "name: bundle\ndescription: two facts wearing one coat\ntype: reference",
             "Preamble before any heading.\n\n"
                 + "## First atomic fact\n\nbody one with [[linked-note]].\n\n"
                 + "## Second atomic fact\n\nbody two.\n");
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"), "loaded counts FILES");
-        assertEquals(3L, store.count(), "parent + 2 sections");
+        assertEquals(1L, store.count(), "one file, one entry");
 
-        List<StoredEntry> all = store.all();
-        StoredEntry parent = all.stream().filter(e -> !e.isSection()).findFirst().orElseThrow();
-        assertEquals("two facts wearing one coat", parent.summary());
-        List<StoredEntry> sections = all.stream().filter(StoredEntry::isSection).toList();
-        assertEquals(2, sections.size());
-        StoredEntry first = sections.stream()
-            .filter(e -> "First atomic fact".equals(e.summary())).findFirst().orElseThrow();
-        assertTrue(store.get(first.id()).orElseThrow().toString().contains("body one"),
-            "section details = the section body");
-        String sourceRef = "memory:" + dir.resolve("bundle.md").toAbsolutePath().normalize();
-        assertTrue(all.stream().allMatch(e -> sourceRef.equals(e.sourceRef())),
-            "whole family shares the file-level source_ref");
+        StoredEntry only = store.all().get(0);
+        assertEquals("two facts wearing one coat", only.summary());
+        assertFalse(only.isSection());
+        String stored = store.get(only.id()).orElseThrow().toString();
+        assertTrue(stored.contains("body one") && stored.contains("body two"),
+            "every section's body is on the one entry: " + stored);
+        assertTrue(stored.contains("linked-note"),
+            "and a link written inside a section is still carried: " + stored);
     }
 
     @Test
-    void section_family_reingests_as_one_unit(@TempDir Path dir) throws IOException {
+    void a_changed_sectioned_file_reingests_in_place(@TempDir Path dir) throws IOException {
         writeMemory(dir, "a.md", "name: a\ndescription: note da carries the first body\ntype: reference",
             "## A one\n\nx\n\n## A two\n\ny\n");
         writeMemory(dir, "b.md", "name: b\ndescription: note db carries the second body\ntype: reference",
             "## B one\n\nz\n");
         ExperienceMaintenance m = maint(fqn -> null);
         assertEquals(2, m.load(dir, true).get("loaded"));
-        assertEquals(5L, store.count(), "(parent+2) + (parent+1)");
+        assertEquals(2L, store.count(), "one entry per file");
 
         writeMemory(dir, "a.md", "name: a\ndescription: note da carries the first body\ntype: reference",
             "## A one\n\nx CHANGED\n\n## A two\n\ny\n");
         Map<String, Object> second = m.load(dir, true);
         assertEquals(1, second.get("loaded"), "only the changed file re-ingests");
         assertEquals(1, second.get("unchanged"));
-        assertEquals(5L, store.count(), "family replaced as one unit, nothing duplicated");
+        assertEquals(2L, store.count(), "rewritten in place, nothing duplicated");
     }
 
     @Test
@@ -898,7 +943,8 @@ class ExperienceMaintenanceTest {
         m.dedup(true);
         long active = store.all().stream()
             .filter(e -> !ExperienceEntry.SUPERSEDED.equals(e.status())).count();
-        assertEquals(4L, active, "same-heading sections across files are NOT duplicates");
+        assertEquals(2L, active,
+            "two files that share a heading are NOT duplicates — one entry each survives");
     }
 
     /**
@@ -1094,16 +1140,72 @@ class ExperienceMaintenanceTest {
             }
         }
 
-        // Symptom 1: the sections reach the always-on primer (scope_kind=section).
+        // Symptom 1 (#7's primer reach), RE-READ in 4.3.2. This file has no `reviewed:` stamp,
+        // so since 28f Stage 6 it loads as a CANDIDATE, and the primer pushes accepted rows
+        // only. It used to reach the primer anyway, through its heading rows — which the loader
+        // minted ACCEPTED unconditionally, so they claimed a review nobody performed. That was
+        // the same defect as the headings themselves, and it is gone with them. A stamped
+        // untyped file still reaches the primer: see the test below, whose control is exactly
+        // that.
+        assertEquals(1L, store.count(), "one file, one row: " + all);
+        assertEquals(ExperienceEntry.CANDIDATE, all.get(0).status(),
+            "an unstamped file is a candidate — the Stage 6 rule the heading rows bypassed");
+        assertEquals("Prefer jawata over shell text tools", all.get(0).summary());
+        assertTrue(store.get(all.get(0).id()).orElseThrow().toString()
+                .contains("Run independent operations in parallel when they do not depend"),
+            "and the second heading's rule is on that row, not lost with its row");
         ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
         Map<String, Object> primer = retrieval.primer(20, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
-        assertEquals(ExperienceRetrieval.RESULT_PRIMER, primer.get("result"),
-            "loaded sections must reach the primer, not starve it");
+        assertEquals(ExperienceRetrieval.RESULT_ABSENCE, primer.get("result"),
+            "an unreviewed file does not reach the always-on layer: " + primer);
+    }
+
+    /**
+     * 4.3.2 — the 4.3.0 dogfood's primer half: a TYPED story's headings never reach the
+     * always-on primer, and neither do heading rows an older loader already left in a store.
+     *
+     * <p>The primer pushed every row scoped {@code section}, so every heading of every story
+     * — "The case", "The cure" — was handed to each new session as domain knowledge. The
+     * control is the untyped file beside it, which must still arrive: without it, a primer that
+     * pushed nothing at all would pass this test.</p>
+     */
+    @Test
+    void a_typed_storys_headings_never_reach_the_primer(@TempDir Path dir) throws IOException {
+        // Both files are STAMPED, so both load accepted: the primer's review rule cannot be
+        // what keeps the headings out, which is the only way this test can see the scope rule.
+        writeMemory(dir, "story.md",
+            "name: story\ndescription: re-read the queue head before re-arming the retry\n"
+                + "type: lesson\nsituation: when a consumer reconnects mid-batch\nverdict: worked\n"
+                + "reviewed: 2026-09-13",
+            "Opening.\n\n## The case\n\nThe head moved under the consumer.\n\n## The cure\n\nRe-read it.\n");
+        writeMemory(dir, "standing.md",
+            "name: standing\ndescription: prefer jawata over shell text tools\nreviewed: 2026-09-13",
+            "Use the compiler-aware tools first.\n");
+        // A heading row an older loader left, ACCEPTED as that loader minted them.
+        String storyRef = "memory:" + dir.resolve("story.md").toAbsolutePath().normalize();
+        store.upsertBySource(ExperienceEntry.of(SymbolFact.of("lesson", "Boundary",
+                Confidence.MEDIUM).build()).scopeKind("section").status(ExperienceEntry.ACCEPTED)
+                .build(), storyRef, "written-by-loader-version-5");
+        ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
+
+        assertTrue(primerSummaries(retrieval).stream().noneMatch("Boundary"::equals),
+            "BEFORE any load: a heading row a store already holds is not pushed to the primer");
+
+        maint(fqn -> null).load(dir);
+
+        List<String> summaries = primerSummaries(retrieval);
+        assertTrue(summaries.contains("prefer jawata over shell text tools"),
+            "the control: a stamped untyped file reaches the primer — " + summaries);
+        assertTrue(summaries.stream().noneMatch(s -> s.equals("The case") || s.equals("The cure")
+                || s.equals("Boundary")),
+            "no heading reaches the primer, loaded now or left by an older loader: " + summaries);
+    }
+
+    private static List<String> primerSummaries(ExperienceRetrieval retrieval) {
+        Map<String, Object> primer = retrieval.primer(20, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) primer.get("entries");
-        List<String> summaries = entries.stream().map(m -> String.valueOf(m.get("summary"))).toList();
-        assertTrue(summaries.contains("Prefer jawata over shell text tools")
-                && summaries.contains("Run independent operations in parallel"),
-            "both section headings are domain nodes in the primer: " + summaries);
+        return entries == null ? List.of()
+            : entries.stream().map(m -> String.valueOf(m.get("summary"))).toList();
     }
 }

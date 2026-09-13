@@ -147,6 +147,27 @@ public final class LexicalIndex {
     }
 
     /**
+     * What the word lane measured for one question.
+     *
+     * <p>{@code byId} is the raw BM25 score per row. {@code ceiling} is what a row would
+     * score if it contained EVERY discriminating word of the question once, at the
+     * corpus's average length — the score of a perfect word match for THIS question.
+     * It is the unit {@link RelevanceMerge} divides by, and it exists because the other
+     * unit, the best score in the result set, made the best match read as perfect
+     * whatever it matched: a note sharing one word of a twelve-word question scored 1.0
+     * whenever nothing shared more (the 4.3.0 dogfood, defect 2).</p>
+     *
+     * <p>A question word that no row contains does not raise the ceiling: no row could
+     * match it, so counting it would shrink every row's score alike and only weaken the
+     * lane. A word in most rows does not either, for the reason {@link #discriminates}
+     * gives.</p>
+     */
+    public record Scores(Map<String, Double> byId, double ceiling) {
+        /** No question, or nothing to search: a real answer, not a failure. */
+        public static final Scores NONE = new Scores(Map.of(), 0.0);
+    }
+
+    /**
      * BM25 score per row id for one cue — rows scoring zero are omitted rather
      * than listed, so an empty map means "no shared words", which is a real
      * answer and not a failed lookup.
@@ -157,9 +178,18 @@ public final class LexicalIndex {
      *               "rare" means and should not
      */
     public static Map<String, Double> score(String cue, List<StoredEntry> corpus) {
+        return scored(cue, corpus).byId();
+    }
+
+    /**
+     * The scores and the question's own ceiling, from ONE pass over the corpus — the
+     * ceiling needs the same document frequencies the scores do, and computing it
+     * separately would read and tokenise every row twice per question.
+     */
+    public static Scores scored(String cue, List<StoredEntry> corpus) {
         List<String> query = tokenize(cue);
         if (query.isEmpty() || corpus == null || corpus.isEmpty()) {
-            return Map.of();
+            return Scores.NONE;
         }
         List<String> ids = new ArrayList<>(corpus.size());
         List<Map<String, Integer>> termFreqs = new ArrayList<>(corpus.size());
@@ -208,6 +238,17 @@ public final class LexicalIndex {
                 scores.put(ids.get(i), score);
             }
         }
-        return scores;
+        // A row of average length holding a word once scores exactly that word's idf:
+        // (1 * (K1 + 1)) / (1 + K1 * (1 - B + B * 1)) = 1. So the perfect match is the sum
+        // of the idfs — iterated over the SAME token list the scores were, so a repeated
+        // question word counts in the ceiling exactly as often as it can count in a score.
+        double ceiling = 0.0;
+        for (String w : query) {
+            int df = docFreq.getOrDefault(w, 0);
+            if (df > 0 && discriminates(df, n)) {
+                ceiling += Math.log(1 + (n - df + 0.5) / (df + 0.5));
+            }
+        }
+        return new Scores(scores, ceiling);
     }
 }
