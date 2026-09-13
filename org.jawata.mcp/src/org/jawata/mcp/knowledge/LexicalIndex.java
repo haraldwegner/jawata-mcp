@@ -168,23 +168,17 @@ public final class LexicalIndex {
     }
 
     /**
-     * BM25 score per row id for one cue — rows scoring zero are omitted rather
-     * than listed, so an empty map means "no shared words", which is a real
-     * answer and not a failed lookup.
+     * BM25 score per row id for one cue, with the question's own ceiling, from ONE pass
+     * over the corpus — the ceiling needs the same document frequencies the scores do,
+     * and computing it separately would read and tokenise every row twice per question.
+     *
+     * <p>Rows scoring zero are omitted rather than listed, so an empty {@code byId} means
+     * "no shared words", which is a real answer and not a failed lookup.</p>
      *
      * @param cue    the question, in the words the caller asked it
      * @param corpus every row that may answer; statistics are computed over
      *               exactly this set, so a caller that pre-filters changes what
      *               "rare" means and should not
-     */
-    public static Map<String, Double> score(String cue, List<StoredEntry> corpus) {
-        return scored(cue, corpus).byId();
-    }
-
-    /**
-     * The scores and the question's own ceiling, from ONE pass over the corpus — the
-     * ceiling needs the same document frequencies the scores do, and computing it
-     * separately would read and tokenise every row twice per question.
      */
     public static Scores scored(String cue, List<StoredEntry> corpus) {
         List<String> query = tokenize(cue);

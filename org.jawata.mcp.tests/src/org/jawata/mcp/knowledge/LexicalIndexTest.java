@@ -71,7 +71,7 @@ class LexicalIndexTest {
             row("other-3", "prefer the idempotent path", null),
             row("other-4", "prefer the idempotent path", null));
 
-        Map<String, Double> scores = LexicalIndex.score("a consumer reconnects midbatch", corpus);
+        Map<String, Double> scores = LexicalIndex.scored("a consumer reconnects midbatch", corpus).byId();
 
         assertEquals(List.of("declared"), ranked(scores),
             "the only row whose SITUATION carries the question's words must be the only "
@@ -115,7 +115,7 @@ class LexicalIndexTest {
         List<StoredEntry> corpus = List.of(
             row("a", "a short title", "the compositor path fails silently on some drivers"),
             row("b", "unrelated", "nothing to do with rendering"));
-        assertEquals(List.of("a"), ranked(LexicalIndex.score("compositor", corpus)));
+        assertEquals(List.of("a"), ranked(LexicalIndex.scored("compositor", corpus).byId()));
     }
 
     @Test
@@ -123,7 +123,7 @@ class LexicalIndexTest {
         List<StoredEntry> corpus = List.of(
             row("a", "a short title", "body text", "BROKER_POSITION_DRIFT on short position"),
             row("b", "unrelated", "nothing"));
-        assertFalse(LexicalIndex.score("broker_position_drift", corpus).isEmpty());
+        assertFalse(LexicalIndex.scored("broker_position_drift", corpus).byId().isEmpty());
     }
 
     // --- the AND failure, ended --------------------------------------------------------
@@ -137,8 +137,7 @@ class LexicalIndexTest {
             row("ratchet", "a ratchet whose measurement method is not recorded is not a "
                 + "ratchet: a false 77.60 to 34.34 coverage collapse", null),
             row("other", "an unrelated note about build ordering", null));
-        Map<String, Double> scores = LexicalIndex.score(
-            "our test coverage looked like it fell from 77% to 34% overnight", corpus);
+        Map<String, Double> scores = LexicalIndex.scored("our test coverage looked like it fell from 77% to 34% overnight", corpus).byId();
         assertEquals("ratchet", ranked(scores).get(0),
             "the row sharing the rare words must win despite absent cue words");
     }
@@ -161,7 +160,7 @@ class LexicalIndexTest {
         corpus.add(row("alsoRare", "something that happened overnight", null));
         corpus.add(row("both", "a note about coverage that fell overnight", null));
 
-        Map<String, Double> scores = LexicalIndex.score("coverage overnight", corpus);
+        Map<String, Double> scores = LexicalIndex.scored("coverage overnight", corpus).byId();
         assertTrue(scores.containsKey("common-0"),
             "precondition: the common word must still COUNT, else this test is "
             + "measuring the discrimination cut and not rarity weighting");
@@ -182,8 +181,7 @@ class LexicalIndexTest {
             row("seat-run", "seat javadoc-writer on PurityCheck: applied",
                 "document the five undocumented public methods on this type"));
         assertEquals(Map.of(),
-            LexicalIndex.score("the espresso machine leaks water onto the kitchen floor",
-                oneRow),
+            LexicalIndex.scored("the espresso machine leaks water onto the kitchen floor", oneRow).byId(),
             "sharing only 'the' must nominate NOTHING");
     }
 
@@ -206,7 +204,7 @@ class LexicalIndexTest {
         for (int i = 0; i < 10; i++) {
             corpus.add(row("r" + i, "coverage", null));
         }
-        assertEquals(Map.of(), LexicalIndex.score("coverage", corpus),
+        assertEquals(Map.of(), LexicalIndex.scored("coverage", corpus).byId(),
             "a word in every row must nominate NOTHING — not a small score");
     }
 
@@ -218,22 +216,21 @@ class LexicalIndexTest {
         // because the espresso test passes through this collapse as much as
         // through the rule, and a reader deserves to know which.
         List<StoredEntry> one = List.of(row("only", "broker confirmation ordering", null));
-        assertEquals(Map.of(), LexicalIndex.score("broker confirmation", one));
+        assertEquals(Map.of(), LexicalIndex.scored("broker confirmation", one).byId());
         // At n=4 a term in one row still discriminates, and matching resumes.
         List<StoredEntry> four = List.of(
             row("a", "broker confirmation ordering", null),
             row("b", "webview rendering", null),
             row("c", "coverage ratchets", null),
             row("d", "slot reuse", null));
-        assertEquals(List.of("a"), ranked(LexicalIndex.score("broker confirmation", four)));
+        assertEquals(List.of("a"), ranked(LexicalIndex.scored("broker confirmation", four).byId()));
     }
 
     // --- honest absence ----------------------------------------------------------------
 
     @Test
     void sharing_no_words_yields_no_entry_rather_than_a_zero() {
-        Map<String, Double> scores = LexicalIndex.score("kubernetes autoscaling",
-            List.of(row("a", "broker confirmation ordering", null)));
+        Map<String, Double> scores = LexicalIndex.scored("kubernetes autoscaling", List.of(row("a", "broker confirmation ordering", null))).byId();
         assertEquals(Map.of(), scores,
             "a row with nothing in common must be ABSENT, not present at zero — "
             + "a zero would make it a nominee at some rank");
@@ -241,14 +238,14 @@ class LexicalIndexTest {
 
     @Test
     void an_empty_cue_or_corpus_yields_nothing() {
-        assertEquals(Map.of(), LexicalIndex.score("", List.of(row("a", "x", null))));
-        assertEquals(Map.of(), LexicalIndex.score("anything", List.of()));
-        assertEquals(Map.of(), LexicalIndex.score("anything", null));
+        assertEquals(Map.of(), LexicalIndex.scored("", List.of(row("a", "x", null))).byId());
+        assertEquals(Map.of(), LexicalIndex.scored("anything", List.of()).byId());
+        assertEquals(Map.of(), LexicalIndex.scored("anything", null).byId());
     }
 
     @Test
     void a_corpus_of_empty_rows_does_not_divide_by_zero() {
         List<StoredEntry> corpus = List.of(row("a", null, null), row("b", null, null));
-        assertEquals(Map.of(), LexicalIndex.score("anything", corpus));
+        assertEquals(Map.of(), LexicalIndex.scored("anything", corpus).byId());
     }
 }

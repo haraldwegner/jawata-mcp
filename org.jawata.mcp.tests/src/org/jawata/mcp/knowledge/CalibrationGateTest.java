@@ -161,7 +161,7 @@ class CalibrationGateTest {
                 // are scored by the SAME frozen contract as the arms above, so
                 // the four numbers are comparable.
                 String designated = cue.get("designated").asText();
-                List<String> byWords = rankedIds(LexicalIndex.score(text, all));
+                List<String> byWords = rankedIds(LexicalIndex.scored(text, all).byId());
                 if (contractHolds(byWords, ok, designated)) {
                     lexicalPassed++;
                 }
@@ -171,7 +171,7 @@ class CalibrationGateTest {
                 // capped list against this contract reports regressions that
                 // are artefacts of the cap.
                 List<String> merged = AnalogyPolicy.fuse(
-                    profileOf(index, text), LexicalIndex.score(text, all));
+                    profileOf(index, text), LexicalIndex.scored(text, all).byId());
                 if (contractHolds(merged, ok, designated)) {
                     fusedPassed++;
                 } else {
@@ -180,7 +180,7 @@ class CalibrationGateTest {
                     // stream's winner was — the discriminating observation for
                     // "why did merging lose a cue one stream had right".
                     List<String> sem = rankedIds(profileOf(index, text));
-                    List<String> lex = rankedIds(LexicalIndex.score(text, all));
+                    List<String> lex = rankedIds(LexicalIndex.scored(text, all).byId());
                     System.out.printf("  [fused MISS] %s designated=%s%n"
                         + "      meaning : winner=%s designatedRank=%s%n"
                         + "      words   : winner=%s designatedRank=%s%n"
