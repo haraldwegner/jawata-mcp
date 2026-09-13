@@ -1888,14 +1888,27 @@ public final class ExperienceRetrieval {
     // one the staleness sweep runs on. The two do not agree — it splits `#member` off
     // and resolves the TYPE only, where this resolves the member as well. So a job
     // anchored at a member that has been deleted is refused at the WRITE gate by this
-    // method and judged healthy FOREVER by the sweep, which is D7's "location lost"
-    // clause unimplemented for the only anchor shape a job has.
+    // method and judged healthy FOREVER by the sweep's curation queue.
+    //
+    // TWO BOUNDS ON THAT, both from a C9 round that checked the claim rather than
+    // taking it. It bites only on a `#member` anchor: `EntryForm.memberOf` accepts the
+    // whole string when there is no `#`, and for a bare TYPE anchor the two resolvers
+    // agree exactly, so the divergence does not exist there. And the READ path is
+    // unaffected either way — a reader of that job is still told the member is gone;
+    // it is the queue that would have someone re-anchor it that never learns.
     //
     // That divergence is PRE-EXISTING and is not this method's to fix silently: closing
     // it changes what the sweep marks stale across a live store, which is a change with
     // its own test and its own checkpoint. It is recorded at C9 and named rather than
     // folded into a release-gate repair. What IS fixed here is the claim: this is one of
     // two, and the write gate borrows the member-aware one deliberately.
+    //
+    // "One of two" is scoped to the question THIS method answers — does a
+    // `pkg.Type#member` anchor resolve. `IJdtService#resolveUniqueSourceType` is a third
+    // name-resolution gate and is deliberately not counted, because it answers about a bare
+    // type NAME for auto-anchoring rather than about an anchor. Saying so because the claim
+    // being repaired here was itself a miscount, and a corrected count that quietly picks a
+    // convenient scope is the same defect wearing a smaller number.
     public Map<String, Object> resolvePointer(String symbolFqn) {
         if (symbolFqn == null || symbolFqn.isBlank()) {
             return null;

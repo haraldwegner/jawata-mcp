@@ -3300,6 +3300,11 @@ public final class ExperienceTool implements Tool {
                 anchorNote = "no project was loaded, so '" + symbol + "' was NOT verified"
                     + " — this row is admitted unchecked rather than treated as resolved";
             } else {
+                // `resolvePointer` answers a bare null for a null or blank symbol, and this
+                // dereferences without guarding. That is safe only because the guard above
+                // uses the SAME predicate the resolver does; loosening either one alone is
+                // an NPE on the record path. Said here rather than adding a second guard,
+                // because a redundant null-check would hide the coupling instead of naming it.
                 Map<String, Object> pointer = retrieval.resolvePointer(symbol);
                 // REFUSE ONLY ON A POSITIVE FINDING OF ABSENCE, and `stale` is what carries
                 // that rather than it being inferred here. The resolver sets `stale` on the
