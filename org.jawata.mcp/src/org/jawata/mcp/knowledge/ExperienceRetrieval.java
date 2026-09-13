@@ -861,32 +861,27 @@ public final class ExperienceRetrieval {
     public static final String RESULT_NOMINATED = "nominated";
 
     /**
-     * Sprint 28c D2 — rank candidates for a question that carries NO code anchor.
+     * Sprint 28c D2 — rank candidates for a question that carries NO code anchor, optionally
+     * narrowed to ONE LIFECYCLE (Sprint 28f Stage 8, deliverable 1).
      *
-     * <p>This is the lane the store could not serve. A design question names no
-     * symbol, no package and no operation; the old path answered it by returning
-     * near-neighbours, and measured seven nonsense questions each getting the
-     * maximum eleven. The ranking here is the same kind of computation, and it is
-     * deliberately NOT dressed as an answer: the result is
-     * {@link #RESULT_NOMINATED}, the entries are called candidates, and every one
-     * carries the two things needed to judge it — the situation it applies under
-     * and how it turned out. Nothing here decides; {@link ApplicabilityDecision}
-     * does, in a separate call.</p>
+     * <p>This is the lane the store could not serve. A design question names no symbol, no
+     * package and no operation; the old path answered it by returning near-neighbours, and
+     * measured seven nonsense questions each getting the maximum eleven. The ranking here is
+     * the same kind of computation, and it is deliberately NOT dressed as an answer: the
+     * result is {@link #RESULT_NOMINATED}, the entries are called candidates, and every one
+     * carries the two things needed to judge it — the situation it applies under and how it
+     * turned out. Nothing here decides; {@link ApplicabilityDecision} does, in a separate
+     * call.</p>
      *
-     * <p>The budget travels as a call value rather than living on this shared
-     * object, for the reason #37 established the hard way: one caller's deadline
-     * stored on a long-lived collaborator became every later caller's deadline,
-     * across processes.</p>
+     * <p>The budget travels as a call value rather than living on this shared object, for the
+     * reason #37 established the hard way: one caller's deadline stored on a long-lived
+     * collaborator became every later caller's deadline, across processes.</p>
      *
-     * @param question      the caller's own words
-     * @param budgetMillis  the caller's deadline
-     */
-    public Map<String, Object> nominate(String question, long budgetMillis) {
-        return nominate(question, null, budgetMillis);
-    }
-
-    /**
-     * The same nomination, narrowed to ONE LIFECYCLE — Sprint 28f Stage 8, deliverable 1.
+     * <p><b>The two paragraphs above were rescued from a no-lane overload deleted at the 4.3.0
+     * release</b>, when the hollow-wiring gate found every one of its callers was test code —
+     * production had moved to this signature at Stage 8 and passes null for the lane. Deleting
+     * a method deletes the documentation of the FEATURE along with the overload, which is the
+     * orphaned-comment hazard pointed the other way.</p>
      *
      * <p>The map a task opens with asks the CODE lane and nothing else: an agent starting
      * work wants the areas and jobs that describe what it is about to touch, and a lesson

@@ -117,8 +117,7 @@ class AnchorlessRetrievalTest {
     private static List<String> nominatedIds(ExperienceRetrieval retrieval, String question) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> candidates =
-            (List<Map<String, Object>>) retrieval.nominate(
-                question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
+            (List<Map<String, Object>>) retrieval.nominate(question, null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
         List<String> ids = new ArrayList<>();
         for (Map<String, Object> c : candidates) {
             ids.add(String.valueOf(c.get("id")));
@@ -150,8 +149,7 @@ class AnchorlessRetrievalTest {
                 String question = q.get("question").asText();
                 String expected = assigned.get(q.get("expect_id").asText());
 
-                Map<String, Object> nomination = retrieval.nominate(
-                    question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+                Map<String, Object> nomination = retrieval.nominate(question, null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
                 assertEquals(ExperienceRetrieval.RESULT_NOMINATED, nomination.get("result"),
                     "nominating is never a match, however good the ranking: " + question);
 
@@ -250,9 +248,7 @@ class AnchorlessRetrievalTest {
             }
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> candidates =
-                (List<Map<String, Object>>) retrieval.nominate(
-                    "a partially filled order is amended mid-session",
-                    ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
+                (List<Map<String, Object>>) retrieval.nominate("a partially filled order is amended mid-session", null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
 
             Map<String, Object> a = candidates.stream()
                 .filter(c -> worked.equals(c.get("id"))).findFirst().orElseThrow(
@@ -300,9 +296,7 @@ class AnchorlessRetrievalTest {
             ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> candidates =
-                (List<Map<String, Object>>) retrieval.nominate(
-                    fx.get("positive_questions").get(0).get("question").asText(),
-                    ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
+                (List<Map<String, Object>>) retrieval.nominate(fx.get("positive_questions").get(0).get("question").asText(), null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS).get("candidates");
 
             assertFalse(candidates.isEmpty(), "precondition: the question nominates something");
             for (Map<String, Object> c : candidates) {
@@ -351,7 +345,7 @@ class AnchorlessRetrievalTest {
             ExperienceRetrieval healthy = new ExperienceRetrieval(store, () -> null, index);
             String question = fx.get("positive_questions").get(0).get("question").asText();
             assertEquals("ok",
-                healthy.nominate(question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS)
+                healthy.nominate(question, null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS)
                     .get("meaning_lanes"),
                 "precondition: with the lanes intact the answer must claim they worked, "
                     + "or the assertion below proves nothing");
@@ -361,7 +355,7 @@ class AnchorlessRetrievalTest {
             }
 
             Map<String, Object> answer =
-                healthy.nominate(question, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+                healthy.nominate(question, null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
             assertEquals("failed", answer.get("meaning_lanes"),
                 "an unreadable lane must be REPORTED, not silently degraded to words");
             assertTrue(String.valueOf(answer.get("message")).contains("WORDS ALONE"),

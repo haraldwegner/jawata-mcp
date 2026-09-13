@@ -185,9 +185,7 @@ class CatalogueSeederLifecycleTest {
                 .build());
 
             ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
-            Map<String, Object> out = retrieval.nominate(
-                "when objects of one family share attributes and each type adds its own",
-                ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+            Map<String, Object> out = retrieval.nominate("when objects of one family share attributes and each type adds its own", null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> candidates =
                 (List<Map<String, Object>>) out.getOrDefault("candidates", List.of());
