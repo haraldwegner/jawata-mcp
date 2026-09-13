@@ -1909,6 +1909,17 @@ public final class ExperienceRetrieval {
     // type NAME for auto-anchoring rather than about an anchor. Saying so because the claim
     // being repaired here was itself a miscount, and a corrected count that quietly picks a
     // convenient scope is the same defect wearing a smaller number.
+    //
+    // AND A C9 ROUND HELD THAT SENTENCE TO ITS OWN STANDARD, correctly.
+    // `ExperienceAnalogies.provenanceOf` ALSO splits `#member` off an anchor and resolves the
+    // TYPE only, rendering ", since removed" to a reader — the same member-blindness, and
+    // unlike `resolveUniqueSourceType` it takes an ANCHOR. It is excluded because it neither
+    // admits, refuses nor marks stale, so it is not a GATE; the count is two under the
+    // question "which gate decides whether an anchor resolves" and short under "what splits an
+    // anchor". Both readings are written here rather than the flattering one.
+    //
+    // The bound above survives it: the analogy pool is experience-only, so no JOB ever reaches
+    // `provenanceOf` and "a reader of that job is still told the member is gone" holds.
     public Map<String, Object> resolvePointer(String symbolFqn) {
         if (symbolFqn == null || symbolFqn.isBlank()) {
             return null;

@@ -116,15 +116,10 @@ final class SymbolAnchorResolver {
     /**
      * The field or method named {@code member} on {@code type}, or null.
      *
-     * <p>Sprint 28f Stage 7 — this used to be the body of {@link #memberExists}, widened to
-     * hand back the ELEMENT rather than a yes. {@code ExperienceRetrieval.resolvePointer}
-     * needs the member itself, because a job's live location is the member's line and not
-     * its type's, and the alternative was a second copy of this lookup one class away.
-     * <b>This repository has paid for that alternative repeatedly</b> — six private copies
-     * of one type lookup, five of one declaration lookup — and the recorded lesson is that a
-     * cure written where only its own file can reach it removes the one instance that would
-     * have made the class visible. So the lookup has one owner, and it is the class that
-     * already had it.</p>
+     * <p><b>Its one caller is {@link #memberExists}, which discards the element</b> — the
+     * paragraph explaining why this returns an {@code IMember} rather than a boolean has moved
+     * to {@link #memberOnOrThrow}, which is the method that answer is for. A C9 round found it
+     * here, describing a caller this method no longer has.</p>
      *
      * <p>A field wins over a method of the same name, which Java permits; the anchor form
      * {@code Type#name} cannot tell them apart, and the field is the cheaper lookup.</p>
@@ -151,8 +146,15 @@ final class SymbolAnchorResolver {
             return memberOnOrThrow(type, member);
         } catch (Exception e) {
             // Deliberately swallowed FOR THIS CALLER ONLY: memberExists is choosing whether to
-            // attach an anchor nobody asked for, and there an unreadable type must decline
-            // rather than guess. A caller that REFUSES on the answer must use the strict form.
+            // narrow an anchor nobody asked for down to a MEMBER, and there an unreadable type
+            // must decline rather than guess. A caller that REFUSES on the answer must use the
+            // strict form.
+            //
+            // "Decline" is the member, not the anchor — corrected at C9 round 4, which read
+            // what `resolve()` actually does with a false answer: it falls through and returns
+            // the bare TYPE anchor. So the cost of swallowing here is a coarser anchor, never
+            // an absent one, which is what makes the trade right for this caller and wrong for
+            // a refusal.
             return null;
         }
     }
@@ -169,6 +171,21 @@ final class SymbolAnchorResolver {
      * {@code JdtServiceImpl.findType} tracks a failed model lookup and throws rather than
      * answering null, because "reporting null would let the caller claim an absence over a
      * lookup that never completed". This is that rule applied to the member half.</p>
+     *
+     * <p><b>It hands back the ELEMENT rather than a yes</b> because
+     * {@code ExperienceRetrieval.resolvePointer} needs the member itself — a job's live
+     * location is the member's line and not its type's — and the alternative was a second copy
+     * of this lookup one class away. This repository has paid for that alternative repeatedly:
+     * six private copies of one type lookup, five of one declaration lookup, and the recorded
+     * lesson is that a cure written where only its own file can reach it removes the one
+     * instance that would have made the class visible.</p>
+     *
+     * <p><b>"No such member" means no such FIELD OR METHOD</b>, which is what the two lookups
+     * below consult. A nested TYPE written as {@code pkg.Outer#Inner} therefore answers null
+     * and reads as absent. That is pre-existing rather than new — the forgiving form has always
+     * consulted exactly these two — and unreachable from automatic anchoring, which never emits
+     * that shape; it is stated because the caller turns this answer into a refusal that names
+     * the member.</p>
      */
     static IMember memberOnOrThrow(IType type, String member) throws JavaModelException {
         IField f = type.getField(member);

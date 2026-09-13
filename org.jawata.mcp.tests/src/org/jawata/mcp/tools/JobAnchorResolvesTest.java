@@ -197,11 +197,15 @@ class JobAnchorResolvesTest {
      * loaded workspace"*. That is verbatim the wording the repair's own commit condemns.</p>
      *
      * <p>The member lookup is strict now, so a failure propagates and lands where a failure
-     * belongs. <b>The exception injected here is UNCHECKED, and that is worth stating:</b> the
-     * real failure mode is {@code JavaModelException} from {@code IType.getMethods()}, which
-     * the compiler already proves propagates because {@code memberOnOrThrow} declares it. What
-     * a test can add is that the gate HANDLES a failure from this lookup as "could not check",
-     * and any exception exercises that equally.</p>
+     * belongs. <b>The exception injected here is UNCHECKED, and the reason that is equivalent
+     * was corrected at C9 round 4.</b> An earlier version of this javadoc said the compiler
+     * proves the checked case propagates "because {@code memberOnOrThrow} declares it" — a
+     * {@code throws} clause proves nothing of the kind, since a method may declare an exception
+     * and catch it internally. What actually proves it is that {@code memberOnOrThrow}'s body
+     * contains no {@code try} at all, and that every handler between the throw site and the
+     * gate is a bare {@code catch (Exception)} which cannot discriminate. The auditor did not
+     * take that either: it swapped this injection for a real {@code JavaModelException} and
+     * re-ran, and all three assertions held.</p>
      */
     @Test
     @DisplayName("a MEMBER lookup that throws is 'could not check' too, not 'the member is gone'")
