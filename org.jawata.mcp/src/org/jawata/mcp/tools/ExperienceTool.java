@@ -653,7 +653,8 @@ public final class ExperienceTool implements Tool {
                 : org.jawata.mcp.knowledge.CatalogueSources.all()) {
             perNamespace.put(origin.namespace(), 0);
         }
-        for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
+        for (org.jawata.mcp.knowledge.StoredEntry e
+                : org.jawata.mcp.knowledge.StoreCorpus.of(store).all()) {
             String ref = e.sourceRef();
             org.jawata.mcp.knowledge.CatalogueOrigin owner =
                 org.jawata.mcp.knowledge.CatalogueSources.owning(ref);
@@ -761,20 +762,9 @@ public final class ExperienceTool implements Tool {
      */
     private java.util.Map<String, Object> substrateBlock() {
         java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
-        java.nio.file.Path common = null;
-        int from = 0;
-        for (org.jawata.mcp.knowledge.StoredEntry e : store.all()) {
-            String ref = e.sourceRef();
-            if (ref == null || !ref.startsWith("memory:")) {
-                continue;
-            }
-            java.nio.file.Path dir = Path.of(ref.substring("memory:".length())).getParent();
-            if (dir == null) {
-                continue;
-            }
-            from++;
-            common = common == null ? dir : commonPrefix(common, dir);
-        }
+        Substrate substrate = substrate();
+        java.nio.file.Path common = substrate.root();
+        int from = substrate.from();
         if (common == null) {
             // SPRINT 28f D4 — THE DEFAULT CASE, REPORTED AS ONE.
             //
@@ -813,6 +803,36 @@ public final class ExperienceTool implements Tool {
         // then declines.
         block.put("howToAdd", HOW_TO_ADD);
         return block;
+    }
+
+    /** The store's own story folder, and how many entries it was derived from. */
+    private record Substrate(java.nio.file.Path root, int from) {
+    }
+
+    /**
+     * The deepest directory holding every {@code memory:} source the store carries — the
+     * store's own story folder, or a {@code null} root when the store loaded none.
+     *
+     * <p>One computation for both readers: {@code stats} reports it, and an acceptance
+     * exports the story into it when no folder is configured (2026-09-14).</p>
+     */
+    private Substrate substrate() {
+        java.nio.file.Path common = null;
+        int from = 0;
+        for (org.jawata.mcp.knowledge.StoredEntry e
+                : org.jawata.mcp.knowledge.StoreCorpus.of(store).all()) {
+            String ref = e.sourceRef();
+            if (ref == null || !ref.startsWith("memory:")) {
+                continue;
+            }
+            java.nio.file.Path dir = Path.of(ref.substring("memory:".length())).getParent();
+            if (dir == null) {
+                continue;
+            }
+            from++;
+            common = common == null ? dir : commonPrefix(common, dir);
+        }
+        return new Substrate(common, from);
     }
 
     private static java.nio.file.Path commonPrefix(java.nio.file.Path a,
@@ -2164,11 +2184,29 @@ public final class ExperienceTool implements Tool {
         // The row is re-read rather than assumed, because `setStatus` is what stamped
         // `reviewed_at` a moment ago and the file must carry that stamp — rendering from
         // a pre-update copy would export a story whose re-import demotes it to candidate.
+        // 2026-09-14: with no folder configured the story goes to the store's OWN folder.
+        // The export used to be off in that case, and no engine studio deploys configures
+        // one, so no acceptance anywhere wrote the file /memorize tells the agent to expect.
         if (changed && ExperienceEntry.ACCEPTED.equals(target)) {
+            java.util.Optional<java.nio.file.Path> storeFolder =
+                java.util.Optional.ofNullable(substrate().root());
             store.byIds(List.of(id)).stream()
                 .findFirst()
-                .flatMap(StoryWriter::write)
-                .ifPresent(p -> data.put("story", p.toString()));
+                // Only a row with NO source is exported. A row loaded from a file already
+                // has its file; writing a second one and re-tying the row to it leaves the
+                // original file with no row, so the next load inserts it again — the
+                // duplicate this export must never cause. A catalogue row keeps its source.
+                .filter(entry -> entry.sourceRef() == null)
+                .flatMap(entry -> StoryWriter.write(entry, storeFolder))
+                .ifPresent(p -> {
+                    data.put("story", p.toString());
+                    // A file inside the folder the store loads from is read back on the
+                    // next load; tied to its row it updates that row instead of adding one.
+                    if (storeFolder.isPresent() && p.toAbsolutePath().normalize()
+                            .startsWith(storeFolder.get().toAbsolutePath().normalize())) {
+                        StoryWriter.adopt(store, id, p);
+                    }
+                });
         }
         return ToolResponse.success(data);
     }

@@ -235,6 +235,30 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         return delegate.all();
     }
 
+    /**
+     * Forwarded under the write lock. The interface default answers {@code false}, so a
+     * wrapper that forgot this would silently leave every exported story untied to its row,
+     * and the next load of the story folder would add each accepted entry a second time.
+     */
+    @Override
+    public boolean attachSource(String id, String sourceRef, String sourceHash) {
+        synchronized (lock) {
+            return delegate.attachSource(id, sourceRef, sourceHash);
+        }
+    }
+
+    /**
+     * The delegate's stamp, qualified by WHICH delegate answered — a recovery swaps the
+     * store underneath, and two different stores could otherwise report the same stamp
+     * and hand a caller the corpus of the one that is gone.
+     */
+    @Override
+    public String changeStamp() {
+        ExperienceStore current = delegate;
+        String inner = current.changeStamp();
+        return inner == null ? null : System.identityHashCode(current) + "#" + inner;
+    }
+
     @Override
     public Optional<Map<String, Object>> get(String id) {
         return delegate.get(id);

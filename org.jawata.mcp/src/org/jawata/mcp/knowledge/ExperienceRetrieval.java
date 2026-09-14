@@ -569,17 +569,13 @@ public final class ExperienceRetrieval {
      * embedder off the store still matches on words, which the older
      * conjunctive substring rule effectively could not.</p>
      *
-     * <p><b>COST, disclosed rather than discovered later.</b> This reads every
-     * live row and tokenises all of it on EVERY recall, on every surface, with
-     * no cache: rarity is a property of the whole corpus, so the statistics are
-     * recomputed per cue. On the ~2,080-row live store that is a full table read
-     * plus a term-frequency map per row — materially more than the meaning scan
-     * beside it, which reads only {@code id, embedding} and parses nothing.
-     * Nothing here is cached and nothing claims to be. If a profiler run shows
-     * it dominating recall latency, the fix is a cached inverted index
-     * invalidated on write; that is deliberately NOT built yet, because an
-     * unmeasured optimisation is how a cache-invalidation bug enters a store
-     * whose whole job is telling the truth.</p>
+     * <p><b>COST, and the measurement that settled it.</b> This used to read every
+     * live row and tokenise all of it on EVERY recall. The note that stood here said
+     * the fix — an inverted index invalidated on write — would wait for a profiler run
+     * showing it dominating recall. That run came on 2026-09-14: over 10,257 rows a
+     * recall took 1.5–1.6 s, 61% of CPU reading the rows and 18% rebuilding this
+     * index, against the hook's 1.2 s budget. So the rows and the index are now held by
+     * {@link StoreCorpus}, rebuilt only when the store's change stamp moves.</p>
      */
     private LexicalIndex.Scores lexicalScores(RecallQuery q) {
         String cue = cueText(q);
@@ -591,14 +587,9 @@ public final class ExperienceRetrieval {
         // and a third path that did not would let a note the user threw away
         // come back by another door. The C2b audit found exactly that here, and
         // the suite missed it because the guarding test's fixture holds one row
-        // whose words the cue does not contain.
-        List<StoredEntry> live = new ArrayList<>();
-        for (StoredEntry e : store.all()) {
-            if (isLive(e)) {
-                live.add(e);
-            }
-        }
-        return LexicalIndex.scored(cue, live);
+        // whose words the cue does not contain. The snapshot's word index is built
+        // over its LIVE rows only, so the rule holds there.
+        return LexicalIndex.scoredIn(cue, StoreCorpus.of(store).words());
     }
 
     /**
@@ -980,7 +971,7 @@ public final class ExperienceRetrieval {
 
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
         boolean narrowed = lane != null && !lane.isBlank();
-        for (StoredEntry e : store.all()) {
+        for (StoredEntry e : StoreCorpus.of(store).live()) {
             // The lane narrows the POOL and never the scoring, which is the whole of why it
             // is safe here: the ranking below is untouched, so no bar arrives with it.
             if (isLive(e) && (!narrowed || inLane(lane, e))) {
@@ -1185,8 +1176,9 @@ public final class ExperienceRetrieval {
             return out;
         }
 
+        // Only the rows the caller chose are read — never the whole store.
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
-        for (StoredEntry e : store.all()) {
+        for (StoredEntry e : store.byIds(new ArrayList<>(decision.selected()))) {
             byId.put(e.id(), e);
         }
         List<Map<String, Object>> entries = new ArrayList<>();
@@ -1236,7 +1228,7 @@ public final class ExperienceRetrieval {
 
     private Map<String, Object> primerFromStore(int limit, Map<String, Object> out) {
         List<StoredEntry> domain = new ArrayList<>();
-        for (StoredEntry e : store.all()) {
+        for (StoredEntry e : StoreCorpus.of(store).all()) {
             if (!ExperienceEntry.ACCEPTED.equals(e.status())) {
                 continue;
             }

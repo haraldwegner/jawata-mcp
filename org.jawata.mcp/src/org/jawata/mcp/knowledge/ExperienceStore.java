@@ -237,6 +237,37 @@ public interface ExperienceStore extends AutoCloseable {
     /** Every entry (maintenance: refresh re-resolves their pointers through JDT). */
     List<StoredEntry> all();
 
+    /**
+     * A cheap value that changes whenever the entries change — a row written, updated,
+     * re-statused or removed, by this process or by another engine on the same store — or
+     * {@code null} when this store cannot say.
+     *
+     * <p>It is what lets retrieval keep the corpus in memory ({@link StoreCorpus}) instead
+     * of reading every row on every recall, which a profile on 2026-09-14 measured at 61%
+     * of a 1.5 s recall over 10,257 rows. {@code null} is the safe answer: a caller that
+     * gets it reads the store as it always did.</p>
+     */
+    default String changeStamp() {
+        return null;
+    }
+
+    /**
+     * Record that entry {@code id} now has a file behind it: {@code sourceRef} is the
+     * {@code memory:} reference the loader would give that file and {@code sourceHash} the
+     * loader's key for its content.
+     *
+     * <p>Used when an acceptance exports a story INTO the folder the store loads from. Without
+     * it the next load reads the exported file as new knowledge and the entry exists twice —
+     * measured 2026-09-14 on the test that guards loads (190 rows became 191). With it the
+     * loader finds the row by that reference, skips the file while it is unchanged, and
+     * rewrites the same row in place when someone edits it.</p>
+     *
+     * @return whether a row was updated
+     */
+    default boolean attachSource(String id, String sourceRef, String sourceHash) {
+        return false;
+    }
+
     /** Fetch an entry's stored document by id, or empty when absent. */
     Optional<Map<String, Object>> get(String id);
 

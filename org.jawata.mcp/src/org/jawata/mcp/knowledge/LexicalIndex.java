@@ -181,55 +181,105 @@ public final class LexicalIndex {
      *               "rare" means and should not
      */
     public static Scores scored(String cue, List<StoredEntry> corpus) {
-        List<String> query = tokenize(cue);
-        if (query.isEmpty() || corpus == null || corpus.isEmpty()) {
-            return Scores.NONE;
+        return scoredIn(cue, index(corpus));
+    }
+
+    /**
+     * The corpus side of BM25, computed ONCE: each row's length and each word's postings
+     * (the rows holding it, with the term frequency in each).
+     *
+     * <p><b>Why it exists (2026-09-14).</b> The per-question form rebuilt all of this on
+     * every recall. At 10,257 rows a profile put 18% of each recall's CPU into that
+     * rebuild, beside 61% spent reading the rows it was rebuilt from, and recall missed
+     * the hook's 1.2 s budget. The statistics are a property of the CORPUS, not of the
+     * question, so they are built when the corpus changes ({@link StoreCorpus}) and a
+     * question only walks the postings of its own words.</p>
+     *
+     * <p>Scores are the same as the per-question form: each row's sum takes the same
+     * terms in the same order, and rows are reported in corpus order.</p>
+     */
+    public static final class Corpus {
+        private final String[] ids;
+        private final int[] lengths;
+        private final double avgLength;
+        private final Map<String, int[][]> postings;   // word -> {row index, term frequency}
+
+        private Corpus(String[] ids, int[] lengths, double avgLength,
+                Map<String, int[][]> postings) {
+            this.ids = ids;
+            this.lengths = lengths;
+            this.avgLength = avgLength;
+            this.postings = postings;
         }
-        List<String> ids = new ArrayList<>(corpus.size());
-        List<Map<String, Integer>> termFreqs = new ArrayList<>(corpus.size());
-        int[] lengths = new int[corpus.size()];
-        Map<String, Integer> docFreq = new HashMap<>();
+
+        /** How many rows the statistics were computed over. */
+        public int size() {
+            return ids.length;
+        }
+    }
+
+    /** Build the {@link Corpus} for these rows; the statistics are over exactly this set. */
+    public static Corpus index(List<StoredEntry> corpus) {
+        int n = corpus == null ? 0 : corpus.size();
+        String[] ids = new String[n];
+        int[] lengths = new int[n];
+        Map<String, List<int[]>> building = new HashMap<>();
         long total = 0;
-        for (int i = 0; i < corpus.size(); i++) {
+        for (int i = 0; i < n; i++) {
             StoredEntry e = corpus.get(i);
             List<String> words = tokenize(textOf(e));
-            Map<String, Integer> tf = new HashMap<>();
+            Map<String, Integer> tf = new LinkedHashMap<>();
             for (String w : words) {
                 tf.merge(w, 1, Integer::sum);
             }
-            for (String w : tf.keySet()) {
-                docFreq.merge(w, 1, Integer::sum);
+            for (Map.Entry<String, Integer> t : tf.entrySet()) {
+                building.computeIfAbsent(t.getKey(), k -> new ArrayList<>())
+                    .add(new int[] {i, t.getValue()});
             }
-            ids.add(e.id());
-            termFreqs.add(tf);
+            ids[i] = e.id();
             lengths[i] = words.size();
             total += words.size();
         }
-        int n = corpus.size();
-        double avgLength = total == 0 ? 1.0 : (double) total / n;
+        Map<String, int[][]> postings = new HashMap<>(building.size() * 2);
+        for (Map.Entry<String, List<int[]>> p : building.entrySet()) {
+            postings.put(p.getKey(), p.getValue().toArray(new int[0][]));
+        }
+        double avgLength = total == 0 ? 1.0 : (double) total / Math.max(1, n);
+        return new Corpus(ids, lengths, avgLength, postings);
+    }
 
+    /** BM25 for one cue over a prebuilt {@link Corpus}; see {@link #scored(String, List)}. */
+    public static Scores scoredIn(String cue, Corpus corpus) {
+        List<String> query = tokenize(cue);
+        if (query.isEmpty() || corpus == null || corpus.size() == 0) {
+            return Scores.NONE;
+        }
+        int n = corpus.size();
+        double[] sums = new double[n];
+        for (String w : query) {
+            int[][] rows = corpus.postings.get(w);
+            if (rows == null) {
+                continue;
+            }
+            int df = rows.length;
+            if (!discriminates(df, n)) {
+                continue;
+            }
+            // Lucene's non-negative IDF form: a word in EVERY row scores
+            // near zero rather than negative, so a cue of only common words
+            // ranks nothing rather than ranking it backwards.
+            double idf = Math.log(1 + (n - df + 0.5) / (df + 0.5));
+            for (int[] row : rows) {
+                int i = row[0];
+                int f = row[1];
+                double norm = f + K1 * (1 - B + B * corpus.lengths[i] / corpus.avgLength);
+                sums[i] += idf * (f * (K1 + 1)) / norm;
+            }
+        }
         Map<String, Double> scores = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
-            Map<String, Integer> tf = termFreqs.get(i);
-            double score = 0.0;
-            for (String w : query) {
-                Integer f = tf.get(w);
-                if (f == null) {
-                    continue;
-                }
-                int df = docFreq.getOrDefault(w, 0);
-                if (!discriminates(df, n)) {
-                    continue;
-                }
-                // Lucene's non-negative IDF form: a word in EVERY row scores
-                // near zero rather than negative, so a cue of only common words
-                // ranks nothing rather than ranking it backwards.
-                double idf = Math.log(1 + (n - df + 0.5) / (df + 0.5));
-                double norm = f + K1 * (1 - B + B * lengths[i] / avgLength);
-                score += idf * (f * (K1 + 1)) / norm;
-            }
-            if (score > 0) {
-                scores.put(ids.get(i), score);
+            if (sums[i] > 0) {
+                scores.put(corpus.ids[i], sums[i]);
             }
         }
         // A row of average length holding a word once scores exactly that word's idf:
@@ -238,7 +288,8 @@ public final class LexicalIndex {
         // question word counts in the ceiling exactly as often as it can count in a score.
         double ceiling = 0.0;
         for (String w : query) {
-            int df = docFreq.getOrDefault(w, 0);
+            int[][] rows = corpus.postings.get(w);
+            int df = rows == null ? 0 : rows.length;
             if (df > 0 && discriminates(df, n)) {
                 ceiling += Math.log(1 + (n - df + 0.5) / (df + 0.5));
             }

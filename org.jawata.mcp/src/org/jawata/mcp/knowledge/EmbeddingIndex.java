@@ -167,35 +167,16 @@ public final class EmbeddingIndex {
         if (q == null) {
             return List.of();                 // unavailable or blank cue - not "nothing matched"
         }
+        Vectors vectors = vectorsOf(table, idColumn);
+        if (vectors == null) {
+            return List.of();                 // the read failed and said so in the log
+        }
         List<Hit> hits = new ArrayList<>();
-        // v3.4.1: the SAME status exclusion the keyword path applies
-        // (H2ExperienceStore.query). A rejected entry is knowledge someone
-        // looked at and refused; a superseded one has been replaced. Neither
-        // may come back — and until the index was actually wired into recall,
-        // nothing here filtered them, because nothing here was ever consulted.
-        // The tool_experience lane carries no status column, hence the guard.
-        String statusFilter = "experience_entry".equals(table)
-            ? " AND status NOT IN ('rejected', 'superseded')" : "";
-        String sql = "SELECT " + idColumn + ", embedding FROM " + table
-            + " WHERE embedding IS NOT NULL AND embedder_identity = ?" + statusFilter;
-        try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
-            ps.setString(1, currentIdentity(table));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    float[] v = EmbeddingService.fromBytes(rs.getBytes(2));
-                    if (v == null) {
-                        continue;
-                    }
-                    double score = EmbeddingService.cosine(q, v);
-                    if (score >= floor) {
-                        hits.add(new Hit(rs.getString(1), score));
-                    }
-                }
+        for (int i = 0; i < vectors.ids().length; i++) {
+            double score = EmbeddingService.cosine(q, vectors.vectors()[i]);
+            if (score >= floor) {
+                hits.add(new Hit(vectors.ids()[i], score));
             }
-        } catch (SQLException e) {
-            log.error("semantic nomination over {} FAILED; the caller falls back to keyword"
-                + " nomination for this cue", table, e);
-            return List.of();
         }
         hits.sort(Comparator.comparingDouble(Hit::score).reversed());
         return hits.size() > k ? new ArrayList<>(hits.subList(0, k)) : hits;
@@ -551,6 +532,74 @@ public final class EmbeddingIndex {
             log.debug("unparseable body_json during backfill; embedding the summary alone");
             return null;
         }
+    }
+
+    /** The comparable vectors of one table, as read under one key. */
+    private record Vectors(String key, String[] ids, float[][] vectors) {
+    }
+
+    /**
+     * The knowledge entries' vectors, held per store and re-read only when the entries or
+     * their vectors change.
+     *
+     * <p>2026-09-14: every recall read every stored vector over the shared-store socket.
+     * The key is the store's change stamp, the count of current-identity vectors (a vector
+     * written by the background worker moves it) and the identity itself, all read BEFORE
+     * the vectors — so a write during a read leaves an older key and the next call reads
+     * again. The tool-experience lane has no change stamp and is read as before.</p>
+     */
+    private static final java.util.Map<H2ExperienceStore, Vectors> ENTRY_VECTORS =
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private Vectors vectorsOf(String table, String idColumn) {
+        String identity = currentIdentity(table);
+        String key = null;
+        if ("experience_entry".equals(table)) {
+            String stamp = store.changeStamp();
+            long embedded = embeddedCount(table);
+            if (stamp != null && embedded >= 0) {
+                key = stamp + "|" + embedded + "|" + identity;
+                Vectors cached = ENTRY_VECTORS.get(store);
+                if (cached != null && key.equals(cached.key())) {
+                    return cached;
+                }
+            }
+        }
+        // v3.4.1: the SAME status exclusion the keyword path applies
+        // (H2ExperienceStore.query). A rejected entry is knowledge someone
+        // looked at and refused; a superseded one has been replaced. Neither
+        // may come back — and until the index was actually wired into recall,
+        // nothing here filtered them, because nothing here was ever consulted.
+        // The tool_experience lane carries no status column, hence the guard.
+        String statusFilter = "experience_entry".equals(table)
+            ? " AND status NOT IN ('rejected', 'superseded')" : "";
+        String sql = "SELECT " + idColumn + ", embedding FROM " + table
+            + " WHERE embedding IS NOT NULL AND embedder_identity = ?" + statusFilter;
+        List<String> ids = new ArrayList<>();
+        List<float[]> vecs = new ArrayList<>();
+        try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
+            ps.setString(1, identity);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    float[] v = EmbeddingService.fromBytes(rs.getBytes(2));
+                    if (v == null) {
+                        continue;
+                    }
+                    ids.add(rs.getString(1));
+                    vecs.add(v);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("semantic nomination over {} FAILED; the caller falls back to keyword"
+                + " nomination for this cue", table, e);
+            return null;
+        }
+        Vectors loaded = new Vectors(key, ids.toArray(new String[0]),
+            vecs.toArray(new float[0][]));
+        if (key != null) {
+            ENTRY_VECTORS.put(store, loaded);
+        }
+        return loaded;
     }
 
     /** The identity vectors are written, read and counted under. The D3

@@ -56,13 +56,23 @@ public final class StoryWriter {
     private static final Logger log = LoggerFactory.getLogger(StoryWriter.class);
 
     /**
-     * Where accepted stories are written. ABSENT means the export is off, which is what
-     * every installation is until somebody points it somewhere.
+     * Where accepted stories are written. ABSENT means the store's OWN story folder — the
+     * one its stories were loaded from — and the value {@value #OFF} means no file is
+     * written at all.
+     *
+     * <p><b>Corrected 2026-09-14.</b> Absent used to mean OFF, "which is what every
+     * installation is until somebody points it somewhere". Nobody did: no engine studio
+     * deploys sets it, so no acceptance on any installation wrote the file
+     * {@code /memorize} promises, and nothing said so. The store already knows its folder;
+     * off is now the choice someone makes rather than the state everyone is in.</p>
      *
      * <p>Read per call so a change does not need a restart — the same choice
      * {@code StoreBackups.DEPTH_PROPERTY} makes, and for the same reason.</p>
      */
     public static final String DIRECTORY_PROPERTY = "jawata.stories.dir";
+
+    /** The {@link #DIRECTORY_PROPERTY} value that turns the export off. */
+    public static final String OFF = "off";
 
     /** The stamp's format, which is the one the parser's own fixtures carry. */
     private static final DateTimeFormatter STAMP =
@@ -71,13 +81,54 @@ public final class StoryWriter {
     private StoryWriter() {
     }
 
-    /** The configured folder, or empty when nothing is configured. */
+    /** The configured folder, or empty when nothing is configured or the export is turned off. */
     public static Optional<Path> directory() {
         String raw = System.getProperty(DIRECTORY_PROPERTY);
-        if (raw == null || raw.isBlank()) {
+        if (raw == null || raw.isBlank() || OFF.equalsIgnoreCase(raw.trim())) {
             return Optional.empty();
         }
         return Optional.of(Path.of(raw.trim()));
+    }
+
+    /**
+     * Tie entry {@code id} to the story file just written for it, using exactly the reference
+     * and content key the loader computes for that file — so the next load of the folder
+     * finds this row instead of adding a second one (see
+     * {@link ExperienceStore#attachSource}). Call it only for a file inside a folder the
+     * store loads from; a file elsewhere is a mirror nothing reads back. A row that already
+     * belongs to a file is refused: moving it would leave that file with no row.
+     *
+     * @return whether the row was tied to the file
+     */
+    public static boolean adopt(ExperienceStore store, String id, Path file) {
+        try {
+            Path normalized = file.toAbsolutePath().normalize();
+            String content = Files.readString(normalized, StandardCharsets.UTF_8);
+            return store.attachSource(id, "memory:" + normalized,
+                ExperienceMaintenance.sourceHash(content));
+        } catch (IOException e) {
+            log.warn("could not tie {} to its story file {}: {}", id, file, e.toString());
+            return false;
+        }
+    }
+
+    /** Whether the export was explicitly turned off with {@value #OFF}. */
+    public static boolean turnedOff() {
+        String raw = System.getProperty(DIRECTORY_PROPERTY);
+        return raw != null && OFF.equalsIgnoreCase(raw.trim());
+    }
+
+    /**
+     * Write {@code entry} into the configured folder or, when none is configured, into
+     * {@code storeFolder} — the store's own story folder. Nothing is written when the
+     * export is turned off, or when neither folder exists.
+     */
+    public static Optional<Path> write(StoredEntry entry, Optional<Path> storeFolder) {
+        if (turnedOff()) {
+            return Optional.empty();
+        }
+        Optional<Path> dir = directory();
+        return writeInto(entry, dir.isPresent() ? dir : storeFolder);
     }
 
     /**
@@ -94,8 +145,11 @@ public final class StoryWriter {
      * the review.</p>
      */
     public static Optional<Path> write(StoredEntry entry) {
-        Optional<Path> dir = directory();
-        if (dir.isEmpty()) {
+        return writeInto(entry, directory());
+    }
+
+    private static Optional<Path> writeInto(StoredEntry entry, Optional<Path> dir) {
+        if (dir == null || dir.isEmpty()) {
             return Optional.empty();
         }
         Path file = dir.get().resolve(fileName(entry));

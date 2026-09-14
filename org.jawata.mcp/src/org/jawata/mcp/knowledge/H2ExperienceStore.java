@@ -813,6 +813,26 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    @Override
+    public synchronized boolean attachSource(String id, String sourceRef, String sourceHash) {
+        if (id == null || sourceRef == null) {
+            return false;
+        }
+        try (PreparedStatement ps = live().prepareStatement(
+                // source_ref IS NULL: a row that already belongs to a file is never moved onto
+                // another one, or its own file would be left with no row and load again.
+                "UPDATE experience_entry SET source_ref = ?, source_hash = ?, updated_at = ?"
+                    + " WHERE id = ? AND source_ref IS NULL")) {
+            ps.setString(1, sourceRef);
+            ps.setString(2, sourceHash);
+            ps.setTimestamp(3, Timestamp.from(Instant.now()));
+            ps.setString(4, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("failed to attach a source: " + e.getMessage(), e);
+        }
+    }
+
     /** Sprint 21b: skip-unchanged — any entry from this source with this exact hash? */
     @Override
     public synchronized boolean sourceUnchanged(String sourceRef, String sourceHash) {
@@ -1378,19 +1398,71 @@ public final class H2ExperienceStore implements ExperienceStore {
         });
     }
 
+    /**
+     * Every entry, with its symptoms read in ONE query rather than one per row.
+     *
+     * <p>2026-09-14: the per-row form issued a symptoms query for each of 10,257 rows —
+     * over a socket, for every engine that is not the host of the shared store — and a
+     * profile put 61% of a 1.5 s recall under this method. The rows are unchanged; only
+     * the number of round trips is.</p>
+     */
     @Override
     public List<StoredEntry> all() {
         return withRead("list entries", c -> {
+            java.util.Map<String, List<String>> symptoms = new java.util.HashMap<>();
+            try (Statement s = c.createStatement();
+                    ResultSet rs = s.executeQuery(
+                        "SELECT entry_id, symptom FROM experience_symptom")) {
+                while (rs.next()) {
+                    symptoms.computeIfAbsent(rs.getString(1), k -> new ArrayList<>())
+                        .add(rs.getString(2));
+                }
+            }
             List<StoredEntry> out = new ArrayList<>();
             try (Statement s = c.createStatement();
                     ResultSet rs = s.executeQuery(
                         "SELECT " + ALL_COLUMNS + " FROM experience_entry")) {
                 while (rs.next()) {
-                    out.add(mapRow(rs, c));
+                    List<String> own = symptoms.get(rs.getString("id"));
+                    out.add(mapRow(rs, own == null ? new ArrayList<>() : own));
                 }
             }
             return out;
         });
+    }
+
+    /**
+     * Changes whenever an entry is written, updated, re-statused or removed — by this engine
+     * or another one on the shared store — so a cached corpus is rebuilt only then.
+     *
+     * <p>Four numbers read in one statement, all server-side: the row count (a delete or an
+     * insert), the latest {@code updated_at} and the SUM of every {@code updated_at} (every
+     * write path stamps it, and a sum moves even when an older row is rewritten), and the
+     * symptom count. {@code null} when the read fails, which makes the caller read the
+     * store directly rather than trust a stale copy.</p>
+     */
+    @Override
+    public String changeStamp() {
+        try {
+            return withRead("read the change stamp", c -> {
+                try (Statement s = c.createStatement();
+                        ResultSet rs = s.executeQuery(
+                            "SELECT COUNT(*), MAX(updated_at),"
+                                + " SUM(EXTRACT(EPOCH FROM updated_at)),"
+                                + " (SELECT COUNT(*) FROM experience_symptom)"
+                                + " FROM experience_entry")) {
+                    if (!rs.next()) {
+                        return null;
+                    }
+                    return rs.getLong(1) + "|" + rs.getString(2) + "|" + rs.getString(3)
+                        + "|" + rs.getLong(4);
+                }
+            });
+        } catch (RuntimeException e) {
+            log.warn("could not read the store's change stamp; retrieval reads the store"
+                + " directly this time", e);
+            return null;
+        }
     }
 
     /**
@@ -1663,8 +1735,13 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     /** Map a row (selecting the projection columns below) to a {@link StoredEntry}. */
-    @SuppressWarnings("unchecked")
     private StoredEntry mapRow(ResultSet rs, Connection c) throws SQLException {
+        return mapRow(rs, loadSymptoms(rs.getString("id"), c));
+    }
+
+    /** Map a row whose symptoms the caller already holds — see {@link #all()}. */
+    @SuppressWarnings("unchecked")
+    private StoredEntry mapRow(ResultSet rs, List<String> symptoms) throws SQLException {
         String id = rs.getString("id");
         Map<String, Object> body;
         try {
@@ -1684,7 +1761,7 @@ public final class H2ExperienceStore implements ExperienceStore {
             rs.getString("language"),
             rs.getString("external_system"),
             rs.getString("summary"),
-            loadSymptoms(id, c),
+            symptoms,
             rs.getString("source_ref"),
             rs.getString("scope_kind"),
             rs.getString("workspace_id"),
