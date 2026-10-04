@@ -116,21 +116,6 @@ public final class OperationRegistry {
      */
     private final Map<String, String> discriminatorOf = new ConcurrentHashMap<>();
 
-    /**
-     * WHICH CATALOGUE ROW EACH OPERATION PERFORMS — the architecture's §4-B index.
-     *
-     * <p>"At registration the declaration is published into the existing OperationRegistry,
-     * which keeps its job unchanged — 'what can be called, and how do I spell it' — and gains
-     * the row key as an index." This is that index, and it is what makes the shared catalogue
-     * readable from production rather than only from a test: a caller holding
-     * {@code fowler:23} can ask what THIS engine would run for it, without knowing a single
-     * operation name.</p>
-     *
-     * <p>THE FIFTH MAP, and the fourth was missing from {@link Snapshot} until C9 — which made
-     * borrow-and-return accidentally correct and left a trap for whoever completed
-     * {@code clear()}. So this one joins all three arms in the same change that introduces it.</p>
-     */
-
     /** The registry the application wires; tests may construct their own. */
     public static OperationRegistry theRegistry() {
         return DEFAULT;
@@ -305,32 +290,33 @@ public final class OperationRegistry {
     }
 
     /**
-     * THE ROW INDEX WAS HERE AND IT IS GONE, which is a smaller state than it was.
+     * Everything this registry holds, as a value that can be handed back to
+     * {@link #restore(Snapshot)}.
      *
-     * <p>§4-B asks that a provider's declaration "gains the row key as an index" at
-     * registration, and the first attempt added one: a {@code Map<String,String>} written by
-     * {@code indexRow} from the coverage declaration at boot, with {@code operationForRow} and
-     * {@code indexedRows} to read it.</p>
+     * <p>This exists because the default registry is a GLOBAL and tests write to it. Every
+     * previous attempt to put it back was a hand-written copy of what the application
+     * registers, and each drifted: one restored the KEYS and destroyed the attribution, its
+     * replacement restored three front doors out of the thirty-nine the application
+     * registers — each under a comment claiming the singleton was left as found. A borrow
+     * is only safe when the thing borrowed can be returned exactly, so the registry hands
+     * out its own state rather than asking a caller to reconstruct it.</p>
      *
-     * <p><b>Nothing read it.</b> An architect watch measured both accessors at ZERO references,
-     * production and test, and the gate offered as proof could not have seen that: the
-     * {@code called_only_by_tests} detector reports members with at least one TEST caller and no
-     * production caller, so a member with no callers at all is invisible to it. "Seven hollow
-     * members became PASS" was true of what that gate covers and silent about the two the same
-     * commit added — which is this project's own recorded lesson about a gate that cannot see
-     * zero, walked into again.</p>
+     * <p><b>ALL FOUR maps, and the fourth was missing until C9.</b> {@code discriminatorOf}
+     * was neither captured nor cleared, which made borrow-and-return <i>accidentally</i>
+     * correct — nothing put a discriminator back because nothing had taken one away. A C9
+     * auditor named the trap that left: adding the obvious {@code discriminatorOf.clear()} to
+     * a method whose javadoc reads "Empty it" would have silently reintroduced the S8b step-6
+     * defect, {@code invocationOf} rendering {@code hierarchy kind=up} — an instruction the
+     * product refuses — for every test class after the one that borrowed. The record now holds
+     * what the class holds, so completing {@code clear()} is safe rather than fatal.</p>
      *
-     * <p>So the index is withdrawn rather than kept as dead state behind published API. What
-     * remains is the half that was real: the declaration IS read by production at boot, which
-     * dissolves the closed test-only loop C8's Finding 1 named, and the product can STATE what
-     * it performs. It cannot yet ANSWER a row key, and saying so is the honest claim.</p>
-     *
-     * <p>Its consumer is named by §4-B itself — <i>"the cure table's {@code recipe} field stops
-     * being a global plan kind and becomes a row key that each provider's coverage resolves"</i>
-     * — and {@code CureCatalog}, {@code CureLookup} and {@code CureTier} already resolve
-     * operations through this registry. The first cure resolved through a row key brings the
-     * index back with a reader whose failure an existing test can see. Three lines, when there
-     * is something to read them.</p>
+     * <p><b>IT WENT TO FIVE COMPONENTS AND BACK TO FOUR, and this paragraph is all that is left
+     * of that.</b> A row-key index was added here and withdrawn one commit later for having no
+     * reader — the account of it lives on {@code JavaEngineCoverage}, where its writer lived.
+     * The round that withdrew it wrote that account INTO THIS SLOT, destroying the two
+     * paragraphs above; a round-4 audit caught it. Worth keeping because the record's arity is
+     * published across the OSGi boundary, so an out-of-tree constructor would have broken at
+     * compile time in both directions and this repository's gates could not have seen it.</p>
      */
     public record Snapshot(Map<String, Set<String>> publishedBy, Set<String> mechanical,
                            Set<String> structural, Map<String, String> discriminatorOf) {

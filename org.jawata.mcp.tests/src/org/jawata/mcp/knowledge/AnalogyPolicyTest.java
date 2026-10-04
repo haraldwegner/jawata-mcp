@@ -241,9 +241,20 @@ class AnalogyPolicyTest {
         // Found by a C8 audit on a sibling fence and closed across all three as a class.
         //
         // MEASURED ON THE ARTIFACT THIS TEST ACTUALLY LOADS: under THIS rule the subject carries
-        // THIRTY genuine references beside its own name — one fewer than the embed fence counts,
-        // because that rule also excludes org/jawata/mcp/embed/ and this one does not. Read off
-        // build/dist/target/dist/bundles/org.jawata.mcp-4.3.3.jar, 53180 bytes.
+        // THIRTY genuine references beside its own name, read off
+        // build/dist/target/dist/bundles/org.jawata.mcp-4.3.3.jar, 53180 bytes — 32 distinct
+        // org/jawata tokens in all.
+        //
+        // ONE FEWER THAN THE EMBED FENCE COUNTS, and the reason is THIS file's helper rather
+        // than that one's: `jawataReferencesOtherThanItself` below also drops
+        // org/jawata/mcp/knowledge/AnalogyPolicy — the main assertion's subject, which the
+        // control subject references exactly once.
+        //
+        // THE FIRST VERSION OF THIS SENTENCE BLAMED THE EMBED RULE's extra org/jawata/mcp/embed/
+        // exclusion, and a round-4 audit showed that inverted: ZERO tokens in this class are
+        // under embed/, so that exclusion removes nothing — and an extra exclusion could only
+        // ever make the embed count LOWER, never higher than 30. An explanation that was false
+        // about a method forty lines below it, in a comment correcting a number.
         //
         // AND THE FIRST VERSION OF THIS SENTENCE SAID SIX, which a round-3 audit caught: six is
         // what the scan returns for a 16695-byte class dated 2026-07-12 in a dormant PDE output

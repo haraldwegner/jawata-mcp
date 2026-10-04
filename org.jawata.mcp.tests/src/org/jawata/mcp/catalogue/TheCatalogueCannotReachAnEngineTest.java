@@ -153,16 +153,21 @@ class TheCatalogueCannotReachAnEngineTest {
         // file and matches no allowed prefix, so this read as a pass with every engine reference
         // deleted.
         //
-        // WHAT SURVIVES THE FILTER IS SEVEN, measured on the shipped class rather than listed
-        // from memory: org/jawata/mcp/refactoring/{OperationRegistry,RefactoringChangeCache},
+        // WHAT SURVIVES THE FILTER IS SIX: org/jawata/mcp/refactoring/RefactoringChangeCache,
         // org/jawata/mcp/tools/{AbstractTool,FrontDoor,RefactoringDoors},
-        // org/jawata/core/IJdtService and org/jawata/mcp/knowledge/ExperienceStore.
+        // org/jawata/core/IJdtService and org/jawata/mcp/knowledge/ExperienceStore — four
+        // distinct prefixes, which is what the discriminating mutation has to whitelist.
         //
-        // THE FIRST VERSION OF THIS COMMENT NAMED FIVE, and a round-3 audit caught it: the two
-        // it omitted are exactly the two that make the mutation's prefix count FOUR rather than
-        // two — so the comment reproduced, as prose, the same incompleteness that made this
-        // repair's first mutation attempt a false negative. (§7's own row has all four prefixes
-        // right; only this comment was short.)
+        // THIS COMMENT HAS BEEN WRONG TWICE AND THE SECOND TIME IS THE INSTRUCTIVE ONE. It first
+        // named FIVE, omitting exactly the two that make the prefix count four rather than two —
+        // reproducing as prose the incompleteness that had made the first mutation attempt a
+        // false negative. Corrected to SEVEN including OperationRegistry... in the very commit
+        // that DELETED the reference to it, by removing the dead registry parameter from the
+        // subject. So a sentence whose whole point was "measured on the shipped class rather
+        // than listed from memory" was listed from memory of a class the same commit changed.
+        //
+        // The rule that would have caught both: a count about an artifact is re-taken AFTER the
+        // edit that changes the artifact, not before it and not from the sentence it replaces.
         //
         // One of the seven is a STORE rather than an engine, so the assertion message below is
         // narrower than the needle: what the fence forbids is any reference outside the JDK and
