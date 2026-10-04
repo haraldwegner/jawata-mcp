@@ -16,6 +16,15 @@ import java.nio.file.Path;
  * permanent pattern control moved out of the expiring scaffold class and took its dependency on
  * that class's private helper with it, which is what surfaced this.</p>
  *
+ * <p><b>AND THE FOURTH COPY WAS NOT CAUGHT — it survived, in the same package, until a C8 audit
+ * read for it.</b> The sentence above said it was "one move away" and the commit that wrote it
+ * claimed three walks deleted; {@code TheEngineDeclaresWhatItPerformsTest} went on holding a
+ * byte-identical {@code sourceOf} one file from here, callable unqualified, with nothing
+ * stopping it. So this is a genuine consolidation of three, sold at the time as a consolidation
+ * of all — the exact shape the paragraph above congratulates itself on having avoided. It is
+ * four now, and the number is in the test's own comment rather than only here, where a later
+ * copy would not read it.</p>
+ *
  * <p>So the walk has one owner. That is the same judgement {@code Catalogue} made for
  * {@code withOrigin} and {@code byKey} one commit earlier, and the one five code generators,
  * six {@code typeNamed} copies and thirty-three private parse helpers in this repository each

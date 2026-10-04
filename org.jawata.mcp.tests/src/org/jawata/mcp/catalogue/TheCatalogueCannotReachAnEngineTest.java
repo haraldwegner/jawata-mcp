@@ -61,10 +61,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>What it cannot see, stated rather than left to be found</h2>
  *
- * <p>The scanned population is derived from the module's SOURCE FILES, so a nested or anonymous
- * class compiled to a {@code Foo$Bar.class} that no source file names is not scanned. The module
- * has none today — every type is top-level — and the count assertion below fails if the source
- * set changes without this being revisited.</p>
+ * <p>The population is every CLASS FILE the module compiles to, so a nested or anonymous type is
+ * scanned like any other. It read the source files until a C8 audit named that hole — a file path
+ * maps to one name, so a {@code Foo$Bar.class} was compiled and never opened while the count
+ * assertion still read 5. Measured when it was changed: five class files against five sources,
+ * so the hole was latent rather than live.</p>
+ *
+ * <p>What remains outside it: a type the module loads REFLECTIVELY by a name it computes would
+ * not appear in any constant pool, and no bytecode scan can see that. The module has no
+ * reflection today and the manifest check below is the second fence — a reflective load still
+ * needs the package resolved at runtime, which an empty {@code Import-Package} refuses.</p>
  */
 class TheCatalogueCannotReachAnEngineTest {
 
@@ -75,13 +81,32 @@ class TheCatalogueCannotReachAnEngineTest {
             "java/",
             "org/jawata/catalogue/");
 
+    /**
+     * The known-impure class the two controls below are run against.
+     *
+     * <p>It is the catalogue's own sibling one package over, so it is the honest subject: it
+     * declares against the shared table and reaches a Java engine to do it, which is exactly what
+     * a catalogue class may not do.</p>
+     */
+    private static final String CONTROL = "org.jawata.mcp.catalogue.JavaEngineCoverage";
+
+    /**
+     * Where the module's classes land, repo-relative.
+     *
+     * <p>The build lays the reactor's output out under {@code build/}, which is why this is not
+     * {@code <module>/target}. Resolved through {@link RepoFiles}, the same mechanism this
+     * package uses for every other committed artifact it has to find from a runner whose working
+     * directory is not the repository root.</p>
+     */
+    private static final String COMPILED_OUTPUT = "build/catalogue/target/classes";
+
     @Test
     @DisplayName("no compiled catalogue class references anything but the JDK and itself")
     void noCompiledClassReachesAnEngine() {
         List<String> classes = moduleClasses();
         // PROOF OF LIFE: with an empty population every violation map below is empty and this
         // whole check certifies a module it never read.
-        assertFalse(classes.isEmpty(), "derived no classes from " + moduleRoot());
+        assertFalse(classes.isEmpty(), "derived no classes from " + COMPILED_OUTPUT);
 
         Map<String, List<String>> violations = new LinkedHashMap<>();
         for (String fqn : classes) {
@@ -103,10 +128,9 @@ class TheCatalogueCannotReachAnEngineTest {
                 () -> assertEquals(
                         5,
                         classes.size(),
-                        "the module's type count moved. That is not a failure in itself — but"
-                                + " this check derives its population from SOURCE files, so a"
-                                + " nested or anonymous class would be compiled and never"
-                                + " scanned, and the comment saying there are none is now stale:"
+                        "the module's COMPILED type count moved. That is not a failure in itself"
+                                + " — but a new type is a new chance to reach an engine, and this"
+                                + " number is the one thing a drifting population cannot fake:"
                                 + " " + classes));
     }
 
@@ -117,35 +141,72 @@ class TheCatalogueCannotReachAnEngineTest {
         // half the import-scan version never had: gut its five-prefix list and all three of its
         // assertions still passed. This control is carried, not performed once by hand and
         // written into a commit message.
-        byte[] bytes = classBytes("org.jawata.mcp.catalogue.JavaEngineCoverage");
+        byte[] bytes = classBytes(CONTROL);
         // Deliberately NOT a silent skip. A control that opts out when it cannot find its
         // subject turns the assertion above into one that can only pass.
         assertNotNull(
                 bytes,
                 "purity CONTROL could not load its subject class, so the assertion above is"
                         + " unverified rather than passing");
-        List<String> found = disallowedReferences(bytes);
+        // THE SUBJECT'S OWN NAME IS EXCLUDED, which is what a C8 audit refused the first version
+        // over: `org/jawata/mcp/catalogue/JavaEngineCoverage` is in every copy of its own class
+        // file and matches no allowed prefix, so this read as a pass with every engine reference
+        // deleted. What survives the filter is measured, not asserted — the pool carries
+        // org/jawata/mcp/refactoring/OperationRegistry, .../RefactoringChangeCache and
+        // org/jawata/mcp/tools/{AbstractTool,FrontDoor,RefactoringDoors}.
+        List<String> found = foreignReferencesOf(bytes);
         assertFalse(
                 found.isEmpty(),
                 "the scanner must report the engine references of a class that genuinely has"
-                        + " them — JavaEngineCoverage reaches RefactoringDoors, IJdtService and"
-                        + " the tools package by design — otherwise the purity assertion above"
-                        + " is vacuous");
+                        + " them — JavaEngineCoverage reaches RefactoringDoors and the refactoring"
+                        + " package by design — otherwise the purity assertion above is vacuous");
     }
 
     @Test
-    @DisplayName("the scanner sees what an import scan cannot — a body reference and a static import")
-    void theScannerSeesWhatAnImportScanCannot() {
-        // The two measured escapes of the version this replaces, asserted against a real class
-        // rather than described. JavaEngineCoverage carries BOTH shapes: it writes
-        // `org.jawata.catalogue.Catalogue.byKey(...)` fully qualified in a method body, and it
-        // reaches org.jawata.mcp.* types that no catalogue class may touch.
-        byte[] bytes = classBytes("org.jawata.mcp.catalogue.JavaEngineCoverage");
+    @DisplayName("the scanner sees a type the import block does not name — the mechanism itself")
+    void theScannerSeesWhatAnImportScanCannot() throws IOException {
+        // REWRITTEN AFTER A C8 AUDIT, because the previous version's claim was false twice over
+        // and its needle was satisfied by the subject's own class name.
+        //
+        //   - its DisplayName promised "a static import", and the subject has none: twelve
+        //     imports, not one of them static;
+        //   - its other promised shape, the fully-qualified body reference, is to
+        //     org.jawata.catalogue.Catalogue — which the WHITELIST covers, so it can never
+        //     appear in a disallowed list at all;
+        //   - and `anyMatch(startsWith("org/jawata/mcp/"))` is true of
+        //     `org/jawata/mcp/catalogue/JavaEngineCoverage`, the subject itself.
+        //
+        // The mechanism is still real and this is what demonstrates it, both halves measured:
+        // the pool NAMES org/jawata/catalogue/Catalogue, and the source's import block does NOT
+        // — it imports CatalogueRow and Refactorings only. So an import scan misses a type the
+        // pool sees, on the real idiom, with nothing inferred.
+        byte[] bytes = classBytes(CONTROL);
         assertNotNull(bytes, "the subject must be on the classpath");
-        List<String> found = disallowedReferences(bytes);
-        assertTrue(
-                found.stream().anyMatch(r -> r.startsWith("org/jawata/mcp/")),
-                "a constant pool names every type a method body touches; found: " + found);
+        Path source = RepoFiles.sourceOf(
+                "org.jawata.mcp/src/" + CONTROL.replace('.', '/') + ".java");
+        assertNotNull(source, "the subject's source must be readable to check its import block");
+        String text = Files.readString(source);
+        List<String> pool = allReferences(bytes);
+
+        assertAll(
+                // EXACT equality, not containment: `.../Catalogue` is a prefix of
+                // `.../CatalogueRow`, so a substring test would be answered by the row type.
+                () -> assertTrue(
+                        pool.contains("org/jawata/catalogue/Catalogue"),
+                        "the constant pool must name the type reached fully qualified in a method"
+                                + " body, which is the whole reason this fence reads the pool;"
+                                + " pool: " + pool),
+                () -> assertFalse(
+                        text.contains("import org.jawata.catalogue.Catalogue;"),
+                        "the subject has gained an import for Catalogue, so an import scan would"
+                                + " now see it too and this no longer demonstrates the difference"
+                                + " — point it at a type that is still body-only"),
+                // PROOF OF LIFE on the import half: the block is real and this test is reading
+                // it, so the absence above is an absence rather than an unread file.
+                () -> assertTrue(
+                        text.contains("import org.jawata.catalogue.CatalogueRow;"),
+                        "PROOF OF LIFE: the import block must be readable, or the assertion above"
+                                + " is true of a file this test failed to find"));
     }
 
     @Test
@@ -175,18 +236,39 @@ class TheCatalogueCannotReachAnEngineTest {
                                 + " assertions above would be true of something useless"));
     }
 
-    /** Every top-level type the module declares, derived from its sources rather than listed. */
+    /**
+     * Every type the module COMPILES TO — nested and anonymous ones included.
+     *
+     * <p>This derived the population from SOURCE FILES until a C8 audit named the hole: a file
+     * path maps to exactly one name, so a nested or anonymous class is compiled to a
+     * {@code Foo$Bar.class} that the population never reaches and the scan never opens — while
+     * the count assertion beside it still read 5, which is the very case the old comment named
+     * as its reason for existing. It counted FILES and its message claimed TYPES.</p>
+     *
+     * <p>The compiled set has no such gap: it IS what ships, {@code $} names and all. Measured
+     * at the time of writing — five class files against five sources, so the hole was latent
+     * rather than live, which is why nothing had failed.</p>
+     *
+     * <p>An ABSENT output directory FAILS rather than skips, for this file's own stated reason:
+     * a control that opts out when it cannot find its subject turns the assertion it guards into
+     * one that can only pass.</p>
+     */
     private static List<String> moduleClasses() {
-        Path src = moduleRoot().resolve("src");
+        Path classes = RepoFiles.sourceOf(COMPILED_OUTPUT);
+        assertNotNull(
+                classes,
+                "could not find the catalogue module's compiled output at " + COMPILED_OUTPUT
+                        + " — the population would be empty and every assertion over it vacuous");
+        Path pkg = classes.resolve(MODULE.replace('.', '/'));
         List<String> out = new ArrayList<>();
-        try (Stream<Path> walk = Files.walk(src)) {
-            for (Path p : walk.filter(f -> f.toString().endsWith(".java")).sorted().toList()) {
-                String rel = src.relativize(p).toString();
-                out.add(rel.substring(0, rel.length() - ".java".length())
+        try (Stream<Path> walk = Files.walk(pkg)) {
+            for (Path p : walk.filter(f -> f.toString().endsWith(".class")).sorted().toList()) {
+                String rel = classes.relativize(p).toString();
+                out.add(rel.substring(0, rel.length() - ".class".length())
                         .replace(java.io.File.separatorChar, '.'));
             }
         } catch (IOException e) {
-            throw new AssertionError("could not enumerate the module's sources under " + src, e);
+            throw new AssertionError("could not enumerate the module's classes under " + pkg, e);
         }
         return List.copyOf(out);
     }
@@ -198,6 +280,22 @@ class TheCatalogueCannotReachAnEngineTest {
      * are stored as plain UTF-8, which is the precedent's own reasoning.</p>
      */
     private static List<String> disallowedReferences(byte[] bytes) {
+        return allReferences(bytes).stream()
+                .filter(token -> ALLOWED.stream().noneMatch(token::startsWith))
+                .toList();
+    }
+
+    /**
+     * EVERY internal class name in the constant pool, allowed or not.
+     *
+     * <p>Split out of {@link #disallowedReferences} so the mechanism test above can assert that
+     * one EXACT name is present. A substring test could not: {@code org/jawata/catalogue/Catalogue}
+     * is a prefix of {@code org/jawata/catalogue/CatalogueRow}, so
+     * {@code pool.contains(".../Catalogue")} is satisfied by the row type and would prove nothing
+     * about the name it was written for — which is the vacuity class a C8 audit refused this file
+     * over twice.</p>
+     */
+    private static List<String> allReferences(byte[] bytes) {
         String blob = new String(bytes, StandardCharsets.ISO_8859_1);
         List<String> found = new ArrayList<>();
         int at = 0;
@@ -214,13 +312,36 @@ class TheCatalogueCannotReachAnEngineTest {
             // Only tokens shaped like an internal name — at least one package separator. A bare
             // word is a method name, a field name or a string, and judging those would make this
             // report the row names of the very table it is checking.
-            if (token.indexOf('/') > 0 && ALLOWED.stream().noneMatch(token::startsWith)
-                    && !found.contains(token)) {
+            if (token.indexOf('/') > 0 && !found.contains(token)) {
                 found.add(token);
             }
             at = end + 1;
         }
         return found;
+    }
+
+    /**
+     * The subject's references to OTHER types — its own internal name and its nested types gone.
+     *
+     * <p><b>A C8 audit found BOTH controls above satisfied by the subject's own
+     * {@code this_class} entry</b>, which every copy of its class file carries unconditionally
+     * and which no allowed prefix covers. With every engine reference deleted from it they would
+     * still have passed, so they proved the scanner emits a token rather than that it detects an
+     * engine — and the mutation offered as their proof could not tell the two apart, because
+     * whitelisting {@code org/jawata/mcp/} whitelists the subject's own name and its engine
+     * references in one move. Dropping the subject's own name is what makes them about the thing
+     * they are named for.</p>
+     *
+     * <p>Noted in fairness rather than as an excuse: the precedent this file was told to copy has
+     * the same hole, controlling on a class its deny rule also catches by that class's own name.
+     * Copying the mechanism faithfully included copying the hole; closing it here is one
+     * filter.</p>
+     */
+    private static List<String> foreignReferencesOf(byte[] bytes) {
+        String own = CONTROL.replace('.', '/');
+        return disallowedReferences(bytes).stream()
+                .filter(r -> !r.equals(own) && !r.startsWith(own + "$"))
+                .toList();
     }
 
     /**

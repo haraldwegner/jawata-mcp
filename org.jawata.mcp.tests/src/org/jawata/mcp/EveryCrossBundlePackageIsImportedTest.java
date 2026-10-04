@@ -69,6 +69,17 @@ class EveryCrossBundlePackageIsImportedTest {
      * fails open the day one is added, because no reference-updating refactoring touches a
      * string literal. Deriving it means the next bundle is covered by existing.</p>
      */
+    /**
+     * The bundles this check cannot do without, named rather than counted.
+     *
+     * <p>Not a reinstatement of the literal list the derivation replaced: the derivation still
+     * FINDS the bundles, and this is the floor it must clear. {@code org.jawata.mcp} is here
+     * because the cross-bundle proof of life below is keyed to that exact name, and
+     * {@code org.jawata.core} because it is what mcp imports FROM — lose either and the pair the
+     * check is about stops existing while the check still passes.</p>
+     */
+    private static final List<String> REQUIRED = List.of("org.jawata.core", "org.jawata.mcp");
+
     private static final List<String> BUNDLES = realBundles();
 
     private static List<String> realBundles() {
@@ -92,13 +103,22 @@ class EveryCrossBundlePackageIsImportedTest {
         }
         // A DERIVATION THAT FINDS NOTHING WOULD MAKE EVERY LOOP BELOW VACUOUS, and this check
         // would then pass by having looked at no bundle at all — the manufactured absence this
-        // repository has shipped before. Two is the floor the hand-written list had.
-        if (found.size() < 2) {
+        // repository has shipped before.
+        //
+        // IT CHECKED THE COUNT AND ITS MESSAGE CLAIMED THE IDENTITY, which a C8 audit refused,
+        // and the gap was load-bearing: this file's only cross-bundle proof of life is keyed to
+        // the literal name `org.jawata.mcp` further down. Let that one bundle drop out of the
+        // derivation — a moved manifest, a `Fragment-Host` added — and the set is still two, the
+        // floor is still satisfied, the HOST's manifest is never opened, the mcp-keyed proof of
+        // life silently does not run, and the whole check reports green having never examined
+        // the bundle whose import graph is its subject. The two-name literal this replaced made
+        // that impossible; naming them here is what keeps that property while the rest derives.
+        if (!found.containsAll(REQUIRED)) {
             throw new AssertionError(
-                    "expected at least the two original bundles under " + root
-                            + "; derived only " + found
+                    "the derivation lost a bundle this check cannot do without: expected "
+                            + REQUIRED + " under " + root + "; derived " + found
                             + " — the enumeration is wrong, and left alone it would make this"
-                            + " whole check pass without reading a single manifest");
+                            + " whole check pass without reading the host's manifest");
         }
         return List.copyOf(found);
     }

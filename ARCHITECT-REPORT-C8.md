@@ -167,6 +167,34 @@ still live on the detect side); the shapes differ (a four-field record with a re
 constructor, versus a declines-only `Map<String,String>` where "detects it" is inferred from
 registry membership); and the completeness guarantee is one-sided. **Not a split to live with.**
 
+### What was asked of the pattern catalogue, and what was selected (D4)
+
+**This section was MISSING and no audit round found it.** The plan's per-checkpoint gate requires
+the architect's watch to *"name what it asked the pattern catalogue about this checkpoint's
+changes and what it selected, or state that it selected none (D4)"*. Two adversarial rounds read
+this file and neither raised it, because both audited the findings rather than the checkpoint's
+own contract. It is performed here rather than claimed retroactively.
+
+**ASKED** (`experience(kind=nominate)`): *a shared catalogue table lives in its own module that
+references no language engine; each engine declares per row whether it detects and whether it
+performs, and publishes that declaration into a registry at boot so the product can answer what
+it does rather than only a test being able to derive it — what pattern governs that declaration
+seam, and what governs keeping the shared table free of any one engine's vocabulary?*
+
+**NOMINATED: 8. SELECTED: 1.** Ranking is not an answer, so each was judged on its own situation:
+
+| Candidate | Judgement |
+|---|---|
+| **the `OperationRegistry` lesson** (`worked`) — *check the named tables before designing their replacement; the cure table, architect gate and coverage advisory already resolve operations through `OperationRegistry`, populated at tool registration* | **SELECTED.** It is about this exact seam and it changed nothing because the work already obeyed it — which is worth recording rather than hiding: `publishInto` indexes into the EXISTING registry at boot instead of standing up a second one, and its own entry names `JawataApplication` as a consumer at the line next to this stage's call. Had it been read as licence to invent a registry, this stage would have built the defect the lesson exists to prevent. |
+| Table Module | REJECTED. Its situation presumes logic that applies uniformly to all rows; these rows carry no logic at all, so the premise does not hold and its consequence — one module owning the table's logic — is not what was built. |
+| Metadata Mapping · Table Inheritance · Single Table Inheritance | REJECTED. All three are object-to-table persistence mappings. There is no persistence here. |
+| Monostate | REJECTED. It needs instances that share state; `JavaEngineCoverage` has a private constructor and no instances. |
+| Multiton | REJECTED. One instance per key is a lifecycle; the row index is a map. |
+| the re-seed domain fact | REJECTED. Its subject is the experience store, not the catalogue module. |
+
+Seven rejected for situation mismatch rather than for ranking low — four of them scored above
+0.38 — which is the whole reason the verb hands back candidates instead of a match.
+
 ---
 
 ## 7. DISPOSITION — the implementer's, written after the seat reported
@@ -176,10 +204,102 @@ registry membership); and the completeness guarantee is one-sided. **Not a split
 | **3** purity mechanism | **DONE**, `57cb98dc`. Rebuilt on the constant pool as a **whitelist**, with the precedent's positive control carried. Mutation: emptying the list turns it **red**, where the same mutation left the import scan **all green** — the asymmetry the seat asked for, measured. The pom text check is retired as the seat ruled; `theManifestImportsNothing` kept for the reason the seat gave. |
 | **the pattern control's home** (audit N1, seat's §6 row) | **DONE**, `79c9f77f`. Moved to the permanent class; the move surfaced a fourth copy of one repo-root walk, now owned once. Mutation-proved from its new home. |
 | **the boot guard** (found by the suite, not by either review) | **DONE**, `be94ff97`. `EveryCrossBundlePackageIsImportedTest` reported a package no bundle exports; the product was right and the guard's hand-typed two-bundle list was wrong. Derived now, with a floor so an empty derivation cannot pass vacuously. Mutation returns the original boot failure exactly. |
-| **1** no production reader | **ACCEPTED, homed** to the stage that wires the principal to coverage. The seat's own dispatch; the v3.4.0 precedent is why it is ranked first rather than deferred quietly. Recorded as the stage's largest surviving risk. |
+| **1** no production reader | **DISCHARGED — it was the stage's largest surviving risk and it is gone.** `JavaEngineCoverage.publishInto(OperationRegistry)` is called from `JawataApplication` at boot (one caller, line 364, by call hierarchy), and the boot line now states a figure the product previously could not state about itself. Readership measured per type rather than claimed: all five catalogue types are READ in production bodies — `Catalogue` ×2, `Patterns` ×2 (lines 248-249), `Refactorings` ×2, `CatalogueRow`, and `Smells` at line 232 — so none is a dead import. The unwired-member gate reported SEVEN hollow members before the wiring and **PASS, 0 new, 118 baseline unchanged** after it, which is the v3.4.0 precedent's own failure made visible and then closed. |
 | **2** delegation + the `null` rendering | **ACCEPTED, homed** with Finding 1, since the production reader is what forces the API. The `null`-as-no-row contract is now pinned by a test, which raises the price — noted. |
 | **(a)** the cures | **the seat's reading is accepted and my characterisation was wrong.** "Cannot move as it stands" overstated a one-parameter change. Deferral stands on §4-B's second half, not on the obstacle I named. |
 | **(b)** DETECT and PERFORM | **ACCEPTED as owed work, not a design question.** D39's own measure names both axes, so recording it as the architect's call was me narrowing a signed measure. Owed; not in this stage's commits. |
 | **64628c24's bandage** — no generator committed | **ACCEPTED, open.** `patterns.tsv` instructs a reader not to hand-edit it and nothing in the tree regenerates it. The permanent snapshot control catches drift but cannot repair it. |
 | **Rule 12's caveat** — four pom facts re-derived by hand per new module | **ACCEPTED, homed** to the stage that adds the next bundle. |
 | `theSmellRowCarriesNoKind` fires Rule 13 | **ACCEPTED, open.** The type already forbids a third field and the transcription control already catches a mistyped name, so the 22-item list guards a fact the object owns. Not removed in this stage: it is a deletion inside a checkpoint under audit. |
+
+### Round 2 of the adversarial audit — `REFUSE`, and all three blockers were controls that could not fail
+
+Not one was in the module or in the wiring. All three were assertions of mine that read as
+coverage, which is the shape every checkpoint of this sprint has produced.
+
+| Finding | Disposition |
+|---|---|
+| **NEW-1** the purity fence's positive control was satisfied by its own subject's class name | **DONE.** `JavaEngineCoverage`'s `this_class` entry is `org/jawata/mcp/catalogue/JavaEngineCoverage`, present in every copy of its own class file and covered by no allowed prefix — so both controls passed on the subject's own name and would have passed with every engine reference deleted. `foreignReferencesOf` drops the subject's name and its nested types. **The control is a PAIR, because the audit's point was that the old mutation could not discriminate:** whitelist the four engine prefixes the subject actually reaches — measured, not assumed, `org/jawata/mcp/{refactoring,tools,knowledge}/` and `org/jawata/core/` — but NOT its own package, then run both forms. Fixed: **RED**, *"otherwise the purity assertion above is vacuous"*. Pre-repair: **GREEN, 7/7**. And the first attempt at that mutation stayed green because it whitelisted two of the four prefixes — an incomplete mutation, whose false negative is indistinguishable from a real one, which is this sprint's own recorded trap and the reason the surviving set was then measured instead of guessed. |
+| **NEW-2** the derived bundle floor checked the COUNT while its message claimed the IDENTITY | **DONE.** The gap was load-bearing: this file's only cross-bundle proof of life is keyed to the literal `org.jawata.mcp`, so losing that one bundle left the floor satisfied at two, the host's manifest unopened, and the check green having never examined its own subject. `REQUIRED` names the two it cannot do without; the derivation still finds them. Pair, with the host skipped: fixed **RED**, naming the loss and printing the derived set as `[org.jawata.catalogue, org.jawata.core]` — two, exactly what the old floor accepted; pre-repair **GREEN, 7/7**. |
+| **NEW-3** the purity population counted FILES while its message claimed TYPES | **DONE.** The population is every class file the module compiles to, `$` names included, resolved through `RepoFiles` like every other artifact this package has to find. This pair needed the case CREATED, because the hole was latent — five classes against five sources, so no edit to the test alone can turn it red: a nested type added to a catalogue source, fixed **RED** and NAMING `Smells$MutationCNested` in the population, so it is scanned and not merely counted; pre-repair **GREEN, 7/7** with the type compiled and invisible. Both files restored byte-identical and `git status` verified before each revert. |
+| **non-blocking 2** a fourth copy of the repo walk survived in the same package | **DONE.** `TheEngineDeclaresWhatItPerformsTest` held a byte-identical `sourceOf` one file from `RepoFiles`, callable unqualified. `RepoFiles`' own javadoc claimed to have caught *"a fourth copy one move away"*; it had not. That sentence is corrected in place rather than quietly replaced — it was a consolidation of three sold as a consolidation of all, which is the same over-claim as the three above. |
+| **the purity row's own claim, two rows up** | **CORRECTED.** *"With the precedent's positive control carried"* was true in form only, and the mutation cited beside it is the one NEW-1 proved blind. The row stands as written and this line supersedes it. |
+
+---
+
+## 8. THE TWO CARRIED CLAUSES — settled here, because C8 is where they were carried TO
+
+A round-2 audit found both neither discharged nor re-declared in this file, and it was right: the
+trail existed in two commit bodies and nowhere a reader of the checkpoint would meet it.
+
+### (a) `compile_workspace` cannot be clean for a stage that adds a module — RE-DECLARED
+
+`152eb583` carried it in these words: *"compile_workspace reports 19 errors, every one of them the
+same unresolved import in those two test files. refresh_workspace does not re-import the Maven
+model, so the new module's source root is invisible to JDT, and this agent is instructed never to
+reload a project. That gate cannot be made clean for any stage which adds a module. Maven and the
+runtime are the authority here and both pass; the plan's compile clause is carried to C8 as owed,
+not as met."*
+
+MEASURED AGAIN HERE rather than restated: `compile_workspace` reports **71** errors, and every one
+is `org.jawata.catalogue cannot be resolved` or a type from that package failing to resolve. The
+count moved 19 → 71 because the module is now reached from production as well as from two test
+files — which is this stage's own deliverable, so the number RISING is the wiring landing rather
+than a regression. Over the same tree the Maven compiler reports **exit 0, zero errors**, the dist
+builds, and the suite executes the code.
+
+**It is re-declared and not discharged, and the obstacle is a standing instruction rather than a
+technical one:** making JDT see the module means re-importing the Maven model, and this agent must
+never load or add a project — the workspace is pre-loaded. So the authority for the per-checkpoint
+compile gate in this stage is the Maven compiler plus the runtime, and substituting them is the
+deviation. One word reopens it.
+
+**AND IT IS WORSE THAN A COMPILE GATE, which the round-2 audit did not reach.** No jawata query can
+see the module either: `find_references` on `org.jawata.catalogue.Smells` answers `SYMBOL_NOT_FOUND`
+and asserts *"it is gone, not moved"* about a file edited minutes earlier. That is an absence
+inferred from a failed lookup and stated as a fact — a product defect in its own right, filed as a
+finding here rather than fixed inside a checkpoint under audit. Every readership question in this
+report therefore carries a logged `jawata-fallback:` declaration, because the compiler-accurate
+instrument refused and said so.
+
+The surviving risk, plainly: a JDT-only error — one Eclipse would report and javac would not — is
+invisible in this stage. Nothing in the stage's changes is JDT-specific, and the suite executes all
+of it.
+
+### (b) "green with no engine on the classpath" — DISCHARGED, by building the module alone
+
+The architecture's P2 step 3 asks for this verify and no commit performed it. The round-2 audit read
+the TEST bundle's pom, found it declares `org.jawata.mcp` and `org.jawata.core` — which pull JDT in
+— and concluded the clause is now structurally unsatisfiable. That reading is correct about the test
+bundle and it is not the whole clause: the property is about the MODULE, and the module builds on
+its own.
+
+Measured: `mvn -f build/catalogue/pom.xml clean package` reports **exit 0 with zero errors**, and
+its resolved dependency classpath is **0 bytes — empty**. That is the clause performed rather than
+approximated: there is no classpath entry that could satisfy an engine import, so the compile could
+not succeed if a catalogue source needed one.
+
+Why all three fences are kept rather than one: the standalone build proves nothing reaches an engine
+at COMPILE time from the sources as they stand; the constant-pool scan proves it of what was
+actually COMPILED, so an inherited dependency cannot quietly make a reference legal; the manifest
+check proves OSGi would refuse the package at RESOLVE time. They fail for different reasons, so none
+replaces another.
+
+### The gates, transcribed in the action that ran them
+
+| Gate | Result |
+|---|---|
+| jawata-mcp suite | `SHARDED-SUITE shards=4 wall=726s total=3168 succeeded=3164 failed=0 aborted=4 skipped=0 unloadable=0`. All four aborts are on shard 2 and were READ from THIS run's own shard log: two corpus-absence skips (`-Djawata.embed.corpus` unset), one `kind="src" path="/xref-declarer"` reference skip, and one test that reproduces an open defect and runs only under `-Djawata.probe.race=true`. The abort budget reports 4 of 5 allowed, every skip accounted for. |
+| jawata-studio gates | `ALL LOCAL GATES GREEN`, exit 0 — **948** Rust tests across the workspace, the hollow-wiring gate PASS (77 in baseline, unchanged), and the frontend type pass. The plan asks for BOTH suites and only the mcp one had been run. |
+| unwired members | **PASS**, 0 new, 118 in baseline unchanged. Its first attempt exited **2** — the port its own scratch resident holds was still bound — and exit 2 is not a pass, which the gate says itself; it was re-run after the port freed rather than read as green. |
+| the five catalogue classes | **25/25**, against a dist whose product AND test bundles are both current. |
+| Maven compile | exit 0, zero errors. `compile_workspace`: 71, all one cause — see (a). |
+| the catalogue alone | exit 0, zero errors, empty dependency classpath — see (b). |
+
+**The round-2 blocker about the earlier number is accepted outright.** "25/25 against the BUILT
+DIST" was a scoped selection reported where a suite clause was owed, and this repository's own
+sibling says why that is not evidence — *1812 tests passed against a product that could not start*.
+Worse than the audit knew: those targeted runs used a dist whose PRODUCT bundles were three hours
+stale while only its test bundles were fresh, so they ran new test code against old product jars.
+The suite's own staleness guard is what caught it, by REFUSING to run — and the 25/25 was re-taken
+against a current dist before the suite was launched.

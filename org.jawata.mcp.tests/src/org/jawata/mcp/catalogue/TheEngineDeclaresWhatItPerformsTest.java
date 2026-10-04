@@ -166,7 +166,12 @@ class TheEngineDeclaresWhatItPerformsTest {
     @Test
     @DisplayName("all 66 operations match the table this replaced, row for row")
     void theOperationsMatchTheTableItReplaced() throws IOException {
-        Path old = sourceOf(OLD_TABLE);
+        // THROUGH THE ONE OWNER. This held a byte-identical private copy of the walk until a C8
+        // audit found it — one file from `RepoFiles`, in the same package, which is package-
+        // private and was already visible here. `RepoFiles`' own javadoc had congratulated
+        // itself on catching "a fourth copy one move away"; this WAS that copy, and the
+        // consolidation it described was of three.
+        Path old = RepoFiles.sourceOf(OLD_TABLE);
         assertTrue(old != null && Files.exists(old),
                 "the control's subject is gone — if PerformedRefactoringCountTest's table has"
                         + " been deleted, DELETE THIS TEST TOO rather than leaving one that"
@@ -194,13 +199,4 @@ class TheEngineDeclaresWhatItPerformsTest {
                         + " refactoring, which no other assertion here would catch");
     }
 
-    private static Path sourceOf(String repoRelative) {
-        for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
-            Path candidate = p.resolve(repoRelative);
-            if (Files.exists(candidate)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
 }
