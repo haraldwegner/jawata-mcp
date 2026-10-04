@@ -210,8 +210,22 @@ public final class JavaEngineCoverage {
      * first version wrote that index. An architect watch then measured that NOTHING READ IT —
      * both accessors at zero references, production and test — so the registry argument was
      * dead, the name described a thing that did not happen, and the index was state nobody
-     * could reach. All three are gone; {@code OperationRegistry}'s own javadoc carries the
-     * reason and names §4-B's intended consumer.</p>
+     * could reach. All three are gone.</p>
+     *
+     * <p><b>§4-B's CONSUMER, named here because this is where the writer lived.</b> The
+     * architecture names it itself: <i>"the cure table's {@code recipe} field stops being a
+     * global plan kind and becomes a row key that each provider's coverage resolves"</i> — and
+     * {@code CureCatalog}, {@code CureLookup} and {@code CureTier} already resolve operations
+     * through {@code OperationRegistry}. The first cure resolved through a row key brings the
+     * index back with a reader whose failure an existing test can see.</p>
+     *
+     * <p>THIS PARAGRAPH IS HERE BECAUSE IT WENT MISSING ONCE. The sentence above used to point
+     * at {@code OperationRegistry}'s javadoc for it; restoring that class's own {@code Snapshot}
+     * documentation — itself a repair — deleted the paragraph being pointed at, leaving the two
+     * files pointing at each other and the consumer named nowhere. A round-5 audit caught it,
+     * which made it the FOURTH instance of one shape inside the fold of the first three: a
+     * sentence that points at text the same commit changed, in a paragraph the commit did not
+     * open. A cross-file pointer is a claim; this one is now a statement instead.</p>
      *
      * <p>So what this method does is narrower than its first name claimed, and it is the half
      * that was always real: it VERIFIES, and the verification is what dissolves the closed
@@ -299,9 +313,9 @@ public final class JavaEngineCoverage {
         // the thing C8's Finding 1 was about: the declaration is READ by production at boot, so
         // the closed test-only loop is gone and the product can STATE what it performs.
         //
-        // `OperationRegistry`'s own javadoc carries the reason and the consumer §4-B names. The
-        // index returns when a cure resolves through a row key, which gives it a reader whose
-        // failure an existing test can see.
+        // This method's own javadoc carries the reason and names §4-B's consumer: the index
+        // returns when a cure resolves through a row key, which gives it a reader whose failure
+        // an existing test can see.
         //
         // THE ANSWER IS THE COMPUTED JOIN against the shipped surface, which is what it always
         // was — the removed counter was never what this returned, because rows 30/31 and 32/33

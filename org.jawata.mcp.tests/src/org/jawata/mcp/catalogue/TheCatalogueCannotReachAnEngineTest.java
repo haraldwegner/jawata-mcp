@@ -169,7 +169,7 @@ class TheCatalogueCannotReachAnEngineTest {
         // The rule that would have caught both: a count about an artifact is re-taken AFTER the
         // edit that changes the artifact, not before it and not from the sentence it replaces.
         //
-        // One of the seven is a STORE rather than an engine, so the assertion message below is
+        // One of the SIX is a STORE rather than an engine, so the assertion message below is
         // narrower than the needle: what the fence forbids is any reference outside the JDK and
         // the catalogue itself, which is wider than "an engine" and is the property that makes
         // the table shareable.

@@ -247,8 +247,11 @@ class AnalogyPolicyTest {
         //
         // ONE FEWER THAN THE EMBED FENCE COUNTS, and the reason is THIS file's helper rather
         // than that one's: `jawataReferencesOtherThanItself` below also drops
-        // org/jawata/mcp/knowledge/AnalogyPolicy — the main assertion's subject, which the
-        // control subject references exactly once.
+        // org/jawata/mcp/knowledge/AnalogyPolicy — the main assertion's subject, which appears
+        // in this class's constant pool as exactly ONE distinct token, which is all the
+        // arithmetic needs. (Scoped deliberately: the SOURCE references it at two sites, and a
+        // round-5 audit was right that "references exactly once" would have been false of the
+        // source while true of the pool. A pool is a set of names, not a count of uses.)
         //
         // THE FIRST VERSION OF THIS SENTENCE BLAMED THE EMBED RULE's extra org/jawata/mcp/embed/
         // exclusion, and a round-4 audit showed that inverted: ZERO tokens in this class are
