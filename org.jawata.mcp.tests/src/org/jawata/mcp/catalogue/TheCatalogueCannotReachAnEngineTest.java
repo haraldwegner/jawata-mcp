@@ -280,16 +280,7 @@ class TheCatalogueCannotReachAnEngineTest {
 
     /** The module's own directory, found by walking up from wherever the runner started. */
     private static Path moduleRoot() {
-        return repoRoot().resolve(MODULE);
+        return RepoFiles.root().resolve(MODULE);
     }
 
-    private static Path repoRoot() {
-        for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
-            if (Files.isDirectory(p.resolve(MODULE))) {
-                return p;
-            }
-        }
-        throw new IllegalStateException(
-                "could not find " + MODULE + " above " + Path.of("").toAbsolutePath());
-    }
 }

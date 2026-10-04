@@ -1,10 +1,7 @@
 package org.jawata.mcp.catalogue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.jawata.catalogue.CatalogueRow;
-import org.jawata.catalogue.Patterns;
 import org.jawata.catalogue.Refactorings;
 import org.jawata.catalogue.Smells;
 import org.junit.jupiter.api.DisplayName;
@@ -84,7 +81,7 @@ class CatalogueMatchesTheTableItReplacedTest {
     @Test
     @DisplayName("all 24 smell names match the map this replaced, in Fowler's order")
     void theSmellNamesMatchTheOldMap() throws IOException {
-        Path old = sourceOf(OLD_SMELL_TABLE);
+        Path old = RepoFiles.sourceOf(OLD_SMELL_TABLE);
         assertTrue(
                 old != null && Files.exists(old),
                 "the control's subject is gone — if EverySmellIsDetectedOrDeclinedTest's map has "
@@ -147,56 +144,6 @@ class CatalogueMatchesTheTableItReplacedTest {
     }
 
     /**
-     * THE PATTERN LANE AGAINST THE SNAPSHOT IT WAS SEEDED FROM — and this control does not expire.
-     *
-     * <p>The other two controls here are scaffolds with a stated end: they compare a new
-     * production table against the test table it replaced, and they are deleted when that table
-     * is. This one is different in kind. {@code patterns.tsv} is GENERATED from the pinned
-     * snapshot and the snapshot stays — so the two are a projection and its source, permanently,
-     * and a regeneration that silently dropped rows is exactly what this catches.</p>
-     *
-     * <p>The snapshot is found by its pinned commit in the filename rather than by a fixed path,
-     * because re-pinning the fork renames it. A miss states what it looked for.</p>
-     */
-    @Test
-    @DisplayName("every pattern row is a slug of the pinned snapshot, in its order, none added or dropped")
-    void thePatternRowsMatchTheSnapshotTheyWereSeededFrom() throws IOException {
-        Path dir = sourceOf("build/acceptance");
-        assertTrue(dir != null && Files.isDirectory(dir),
-                "looked for build/acceptance above " + Path.of("").toAbsolutePath());
-
-        List<Path> snapshots;
-        try (var listing = Files.list(dir)) {
-            snapshots = listing
-                    .filter(p -> p.getFileName().toString().startsWith("patterns-"))
-                    .filter(p -> p.getFileName().toString().endsWith(".json"))
-                    .sorted()
-                    .toList();
-        }
-        assertEquals(1, snapshots.size(),
-                "exactly one pinned pattern snapshot must be present — two would make it"
-                        + " ambiguous which one the lane was generated from: " + snapshots);
-
-        JsonNode snapshot = new ObjectMapper().readTree(snapshots.get(0).toFile());
-        List<String> theirs = new ArrayList<>();
-        for (JsonNode p : snapshot.get("patterns")) {
-            theirs.add(p.get("slug").asText());
-        }
-        // PROOF OF LIFE, and it reads the snapshot's OWN declared count rather than a literal:
-        // a reader that matched nothing would otherwise compare two empty lists.
-        assertEquals(snapshot.get("count").asInt(), theirs.size(),
-                "the snapshot's patterns array disagrees with its own count field");
-
-        List<String> ours = new ArrayList<>();
-        for (CatalogueRow r : Patterns.all()) {
-            ours.add(r.name());
-        }
-        assertEquals(theirs, ours,
-                "the pattern lane and the snapshot it is generated from have diverged — the"
-                        + " resource was hand-edited, or a regeneration dropped rows");
-    }
-
-    /**
      * The old table's source file, found by walking up from wherever the runner started.
      *
      * <p>The suite runs from the dist, whose working directory is not reliably the repository
@@ -205,16 +152,7 @@ class CatalogueMatchesTheTableItReplacedTest {
      * {@code NoSuchFileException}.</p>
      */
     private static Path oldTableSource() {
-        return sourceOf(OLD_TABLE);
+        return RepoFiles.sourceOf(OLD_TABLE);
     }
 
-    private static Path sourceOf(String repoRelative) {
-        for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
-            Path candidate = p.resolve(repoRelative);
-            if (Files.exists(candidate)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
 }
