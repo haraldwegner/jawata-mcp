@@ -1,7 +1,9 @@
 package org.jawata.mcp.catalogue;
 
+import org.jawata.catalogue.Catalogue;
 import org.jawata.catalogue.CatalogueRow;
 import org.jawata.catalogue.Refactorings;
+import org.jawata.catalogue.Smells;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -42,9 +44,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CatalogueIntegrityTest {
 
     @Test
-    @DisplayName("Fowler's block is 66 rows, numbered 1 to 66 with none missing or doubled")
+    @DisplayName("Fowler's refactoring block is 66 rows, numbered 1 to 66 with none missing or doubled")
     void theFowlerBlockIsComplete() {
-        List<CatalogueRow> fowler = Refactorings.withOrigin(Refactorings.FOWLER);
+        // THE LANE IS THE BLOCK, which is why this reads Refactorings and not
+        // Catalogue.withOrigin(FOWLER): Fowler published the smells too, so that call now
+        // answers 90 and a 66 asserted against it would have been asserting the wrong set.
+        List<CatalogueRow> fowler = Refactorings.all();
         Set<String> ids = new LinkedHashSet<>();
         for (CatalogueRow r : fowler) {
             assertTrue(ids.add(r.id()), "two rows share the key " + r.key());
@@ -61,9 +66,78 @@ class CatalogueIntegrityTest {
     }
 
     @Test
+    @DisplayName("Fowler's chapter 3 is 24 rows, in his order, with none missing or doubled")
+    void theSmellBlockIsComplete() {
+        List<CatalogueRow> smells = Smells.all();
+        Set<String> ids = new LinkedHashSet<>();
+        for (CatalogueRow r : smells) {
+            assertTrue(ids.add(r.id()), "two rows share the key " + r.key());
+        }
+        List<String> missing = new ArrayList<>();
+        for (int n = 1; n <= 24; n++) {
+            if (!ids.contains(Smells.SMELL + n)) {
+                missing.add("fowler:" + Smells.SMELL + n);
+            }
+        }
+        assertAll(
+                () -> assertEquals(24, smells.size(), "Fowler's chapter 3 is twenty-four smells"),
+                () -> assertEquals(List.of(), missing, "a smell of the published chapter is absent"),
+                // The two DECLINED smells are rows like any other. A declination is a claim an
+                // engine makes ABOUT a row, so the row has to exist for the claim to be about
+                // anything — dropping them here would make the engine's note unanchored.
+                () -> assertEquals(
+                        "Mysterious Name",
+                        smells.get(0).name(),
+                        "a declined smell is still a row"),
+                () -> assertEquals(
+                        "Comments",
+                        smells.get(23).name(),
+                        "a declined smell is still a row"));
+    }
+
+    @Test
+    @DisplayName("the two lanes share one origin and no key collides across them")
+    void theLanesShareAnOriginWithoutColliding() {
+        // Fowler published both tables, so both carry origin `fowler` — and his chapter 3
+        // numbers nothing, which is why the smell lane's id carries its own prefix. Without
+        // that, `fowler:3` would mean Change Value to Reference AND Long Function.
+        Set<String> keys = new LinkedHashSet<>();
+        List<String> collisions = new ArrayList<>();
+        for (CatalogueRow r : Catalogue.rows()) {
+            if (!keys.add(r.key())) {
+                collisions.add(r.key());
+            }
+        }
+        assertAll(
+                () -> assertEquals(List.of(), collisions, "one key names two rows"),
+                () -> assertEquals(
+                        90,
+                        Catalogue.withOrigin(Refactorings.FOWLER).size(),
+                        "everything Fowler published: 66 refactorings and 24 smells"),
+                () -> assertEquals(
+                        Catalogue.rows().size(),
+                        Refactorings.all().size() + Smells.all().size(),
+                        "the table is exactly its lanes — a lane missing from Catalogue.rows()"
+                                + " would make every cross-lane question blind to it"));
+    }
+
+    @Test
+    @DisplayName("a key is looked up without the caller knowing which lane holds it")
+    void byKeyAnswersAcrossLanes() {
+        assertAll(
+                () -> assertEquals("Move Field", Catalogue.byKey("fowler:23").name()),
+                () -> assertEquals("Lazy Element", Catalogue.byKey("fowler:smell-14").name()),
+                // A miss is null rather than an exception: asking whether the catalogue holds a
+                // key is a legitimate question, and a second language will ask it about keys we
+                // do not have yet.
+                () -> assertEquals(null, Catalogue.byKey("cpp:rule-of-five")),
+                () -> assertEquals(null, Catalogue.byKey("fowler:67")));
+    }
+
+    @Test
     @DisplayName("every key is namespaced by its origin, so a second language needs no renumbering")
     void everyKeyCarriesItsOrigin() {
-        for (CatalogueRow r : Refactorings.all()) {
+        for (CatalogueRow r : Catalogue.rows()) {
             assertTrue(r.key().contains(":"), "an un-namespaced key: " + r.key());
             assertFalse(r.origin().isBlank(), "a key with no origin: " + r.key());
             assertFalse(r.id().isBlank(), "a key with no id: " + r.key());
@@ -81,7 +155,7 @@ class CatalogueIntegrityTest {
         // row whose NAME carried a language would be a row only one engine could mean.
         List<String> languages = List.of("java", "kotlin", "c++", "cpp", "rust", "python", "jdt");
         List<String> offenders = new ArrayList<>();
-        for (CatalogueRow r : Refactorings.all()) {
+        for (CatalogueRow r : Catalogue.rows()) {
             String lower = r.name().toLowerCase();
             for (String lang : languages) {
                 if (lower.contains(lang)) {

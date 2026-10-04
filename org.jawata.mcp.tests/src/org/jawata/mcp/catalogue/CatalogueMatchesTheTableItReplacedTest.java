@@ -2,6 +2,7 @@ package org.jawata.mcp.catalogue;
 
 import org.jawata.catalogue.CatalogueRow;
 import org.jawata.catalogue.Refactorings;
+import org.jawata.catalogue.Smells;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -43,6 +44,13 @@ class CatalogueMatchesTheTableItReplacedTest {
     private static final String OLD_TABLE =
             "org.jawata.mcp.tests/src/org/jawata/mcp/tools/PerformedRefactoringCountTest.java";
 
+    /** {@code m.put("Long Function", "long_method");} — the smell's name, which is all we take. */
+    private static final Pattern OLD_SMELL = Pattern.compile("m\\.put\\(\"([^\"]+)\",");
+
+    private static final String OLD_SMELL_TABLE =
+            "org.jawata.mcp.tests/src/org/jawata/mcp/tools/smell/"
+                    + "EverySmellIsDetectedOrDeclinedTest.java";
+
     @Test
     @DisplayName("all 66 names match the table this replaced, in order, character for character")
     void theNamesMatchTheOldTable() throws IOException {
@@ -63,10 +71,75 @@ class CatalogueMatchesTheTableItReplacedTest {
         assertEquals(66, theirs.size(), "the old table did not yield 66 rows — the reader is wrong, not the data");
 
         List<String> ours = new ArrayList<>();
-        for (CatalogueRow r : Refactorings.withOrigin(Refactorings.FOWLER)) {
+        for (CatalogueRow r : Refactorings.all()) {
             ours.add(r.id() + " " + r.name());
         }
         assertEquals(theirs, ours, "a name was mistyped or reordered in the move to production");
+    }
+
+    @Test
+    @DisplayName("all 24 smell names match the map this replaced, in Fowler's order")
+    void theSmellNamesMatchTheOldMap() throws IOException {
+        Path old = sourceOf(OLD_SMELL_TABLE);
+        assertTrue(
+                old != null && Files.exists(old),
+                "the control's subject is gone — if EverySmellIsDetectedOrDeclinedTest's map has "
+                        + "been deleted, DELETE THIS TEST TOO rather than leaving one that cannot "
+                        + "fail. Looked for " + OLD_SMELL_TABLE + " above "
+                        + Path.of("").toAbsolutePath());
+
+        List<String> theirs = new ArrayList<>();
+        Matcher m = OLD_SMELL.matcher(Files.readString(old));
+        while (m.find()) {
+            theirs.add(m.group(1));
+        }
+        // PROOF OF LIFE, and it is load-bearing for a reason this file has already paid once:
+        // the pattern reads `m.put("…"` and that idiom could appear in a fixture or a second
+        // map in the same file. Pinning the COUNT means a reader that drifted is caught here
+        // rather than silently comparing the wrong twenty-four.
+        assertEquals(
+                24,
+                theirs.size(),
+                "the old map did not yield 24 names — the reader is wrong, not the data: " + theirs);
+
+        List<String> ours = new ArrayList<>();
+        for (CatalogueRow r : Smells.all()) {
+            ours.add(r.name());
+        }
+        assertEquals(theirs, ours, "a smell was mistyped or reordered in the move to production");
+    }
+
+    /**
+     * ONLY THE NAME IS TAKEN FROM THE OLD MAP, and the omission is the deliverable.
+     *
+     * <p>That map's value is the {@code find_quality_issue} kind — {@code long_method} for Long
+     * Function. It is the Java engine's spelling and it is exactly the third column that was
+     * removed from the refactoring rows, so a smell row that carried it would re-make the table
+     * one engine's. This asserts the absence rather than leaving it to be read off the row's
+     * shape, because an absence nothing checks is indistinguishable from an oversight.</p>
+     */
+    @Test
+    @DisplayName("no smell row carries the kind that detects it — that is the engine's claim")
+    void theSmellRowCarriesNoKind() {
+        List<String> offenders = new ArrayList<>();
+        // Every kind the old map named, including the five whose spelling differs from
+        // Fowler's title and are therefore the ones a transcription would most plausibly drag
+        // across: long_method, god_class, lazy_class, inappropriate_intimacy, switch_statements.
+        List<String> kinds = List.of(
+                "duplicated_code", "long_method", "long_parameter_list", "global_data",
+                "mutable_data", "divergent_change", "shotgun_surgery", "feature_envy",
+                "data_clumps", "primitive_obsession", "switch_statements", "loops",
+                "lazy_class", "speculative_generality", "temporary_field", "message_chains",
+                "middle_man", "inappropriate_intimacy", "god_class", "alternative_classes",
+                "data_class", "refused_bequest");
+        for (CatalogueRow r : Smells.all()) {
+            for (String kind : kinds) {
+                if (r.name().contains(kind) || r.key().contains(kind)) {
+                    offenders.add(r.key() + " = " + r.name() + " carries '" + kind + "'");
+                }
+            }
+        }
+        assertEquals(List.of(), offenders, "a smell row names the engine kind that detects it");
     }
 
     /**
@@ -78,8 +151,12 @@ class CatalogueMatchesTheTableItReplacedTest {
      * {@code NoSuchFileException}.</p>
      */
     private static Path oldTableSource() {
+        return sourceOf(OLD_TABLE);
+    }
+
+    private static Path sourceOf(String repoRelative) {
         for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
-            Path candidate = p.resolve(OLD_TABLE);
+            Path candidate = p.resolve(repoRelative);
             if (Files.exists(candidate)) {
                 return candidate;
             }

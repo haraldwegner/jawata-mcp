@@ -43,36 +43,19 @@ public final class Refactorings {
 
     private Refactorings() {}
 
-    /** Every row this catalogue holds, whatever its origin, in catalogue order. */
+    /**
+     * Every refactoring this lane holds, in catalogue order.
+     *
+     * <p>THE CROSS-LANE QUESTIONS MOVED, and the move is part of the deliverable rather than
+     * tidying. {@code withOrigin} and {@code byKey} lived here while this was the only table;
+     * the arrival of {@link Smells} would have made each of them a second copy of one filter,
+     * and the pattern rows a third. Both now live once on {@link Catalogue}. {@code byKey} had
+     * ZERO callers here, measured before the move — a caller holding {@code fowler:smell-14} is
+     * asking the catalogue what that key is, and a lane is the wrong object to ask, because
+     * answering would require them to already know which lane it is in.</p>
+     */
     public static List<CatalogueRow> all() {
         return ROWS;
-    }
-
-    /**
-     * The rows from one origin — {@code withOrigin("fowler")} for the 66.
-     *
-     * <p>Scoping by origin is what lets a count mean something once a second language's rows
-     * join the table: "66 refactorings" is a claim about the {@code fowler:} block, never
-     * about the table's size.</p>
-     */
-    public static List<CatalogueRow> withOrigin(String origin) {
-        List<CatalogueRow> out = new ArrayList<>();
-        for (CatalogueRow r : ROWS) {
-            if (r.origin().equals(origin)) {
-                out.add(r);
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    /** The row with this key, or {@code null} when the catalogue does not hold it. */
-    public static CatalogueRow byKey(String key) {
-        for (CatalogueRow r : ROWS) {
-            if (r.key().equals(key)) {
-                return r;
-            }
-        }
-        return null;
     }
 
     private static List<CatalogueRow> rows() {
