@@ -2,6 +2,7 @@ package org.jawata.mcp.catalogue;
 
 import org.jawata.catalogue.Catalogue;
 import org.jawata.catalogue.CatalogueRow;
+import org.jawata.catalogue.Patterns;
 import org.jawata.catalogue.Refactorings;
 import org.jawata.catalogue.Smells;
 import org.junit.jupiter.api.DisplayName;
@@ -116,9 +117,61 @@ class CatalogueIntegrityTest {
                         "everything Fowler published: 66 refactorings and 24 smells"),
                 () -> assertEquals(
                         Catalogue.rows().size(),
-                        Refactorings.all().size() + Smells.all().size(),
+                        Refactorings.all().size() + Smells.all().size() + Patterns.all().size(),
                         "the table is exactly its lanes — a lane missing from Catalogue.rows()"
                                 + " would make every cross-lane question blind to it"));
+    }
+
+    @Test
+    @DisplayName("the pattern lane is the pinned snapshot's own rows, counted against its own header")
+    void thePatternLaneIsTheSnapshotsOwnRows() {
+        List<CatalogueRow> patterns = Patterns.all();
+        Set<String> keys = new LinkedHashSet<>();
+        List<String> wrongOrigin = new ArrayList<>();
+        for (CatalogueRow r : patterns) {
+            assertTrue(keys.add(r.key()), "two pattern rows share the key " + r.key());
+            if (!r.origin().equals(Patterns.FORK)) {
+                wrongOrigin.add(r.key());
+            }
+        }
+        assertAll(
+                // THE COUNT IS HELD AGAINST THE RESOURCE'S OWN HEADER, not against a number
+                // typed here. A hand-written 187 in this assertion would be a second copy of
+                // the one fact the lane exists to stop copying, and it would agree with a
+                // truncated resource as happily as with a whole one.
+                () -> assertEquals(
+                        Patterns.declaredCount(),
+                        patterns.size(),
+                        "the lane read fewer rows than its own header declares — the resource is"
+                                + " truncated, or the reader is dropping lines"),
+                () -> assertTrue(
+                        patterns.size() > 0,
+                        "PROOF OF LIFE: an empty lane would make the comparison above a"
+                                + " comparison of two zeros"),
+                () -> assertEquals(List.of(), wrongOrigin, "a pattern row carries a foreign origin"),
+                // The name is the slug verbatim — nothing is title-cased, because the snapshot
+                // carries no published title and a generated one would be mine.
+                () -> assertEquals(
+                        "visitor",
+                        Catalogue.byKey("java-design-patterns:visitor").name(),
+                        "a pattern row's name is its slug, as the fork publishes it"));
+    }
+
+    @Test
+    @DisplayName("the language clause is about a row's NAME, never about who published it")
+    void theLanguageClauseIsAboutTheNameNotThePublisher() {
+        // `java-design-patterns` contains "java", and that is correct rather than a violation:
+        // an origin names the PUBLISHER, and this publisher happens to be a Java repository. A
+        // C++ corpus would arrive as `cpp-design-patterns` and would be just as right. What may
+        // never name a language is the row's NAME, which is what noRowNamesALanguage reads —
+        // stated here because a reader meeting that origin would otherwise suspect the clause
+        // had been quietly narrowed to let it through.
+        assertTrue(
+                Patterns.FORK.contains("java"),
+                "if the fork's origin stops naming its language this note is stale, not wrong");
+        assertFalse(
+                Catalogue.withOrigin(Patterns.FORK).isEmpty(),
+                "the exemption must be about rows that exist");
     }
 
     @Test

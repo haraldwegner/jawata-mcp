@@ -22,6 +22,25 @@
 
     <build>
         <sourceDirectory>${project.basedir}/../../org.jawata.catalogue/src</sourceDirectory>
+        <!-- THE PATTERN LANE'S ROWS ARE A RESOURCE, and without this block they are silently
+             absent from the jar. `sourceDirectory` is overridden above, which does NOT bring
+             resources with it: Maven's default resource root is src/main/resources, which this
+             layout does not have. So patterns.tsv has to be named, and it is scoped to the
+             non-Java files beside the classes rather than copying the whole tree — a *.java
+             landing in the jar as a resource would ship source nobody asked for.
+
+             `Patterns` throws rather than returning an empty list when the resource is missing,
+             because a lane that reads as empty makes every count taken against it pass by
+             agreeing with nothing. The two halves are deliberate: this block is what SHIPS the
+             file, and that throw is what makes a build which stops shipping it loud. -->
+        <resources>
+            <resource>
+                <directory>${project.basedir}/../../org.jawata.catalogue/src</directory>
+                <excludes>
+                    <exclude>**/*.java</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

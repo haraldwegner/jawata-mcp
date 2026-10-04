@@ -48,6 +48,7 @@ public final class Catalogue {
         List<CatalogueRow> all = new ArrayList<>();
         all.addAll(Refactorings.all());
         all.addAll(Smells.all());
+        all.addAll(Patterns.all());
         return List.copyOf(all);
     }
 
