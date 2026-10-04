@@ -356,6 +356,17 @@ public class JawataApplication implements IApplication {
         org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(
             org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
 
+        // Sprint 28g D39 / the architecture's P2 step 3 and §4-B. The same moment, and the
+        // same reason: every tool has registered, so this is the first point at which the
+        // engine's coverage declaration can be checked against what it actually publishes —
+        // and the first point at which a catalogue row key can be answered from production
+        // rather than only from a test. It THROWS on a declaration that disagrees with the
+        // shipped surface, exactly as the cure table above does.
+        int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.publishInto(
+            org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+        log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
+            org.jawata.catalogue.Refactorings.all().size());
+
         // Sprint 28a (D11): install this server's workspace identity BEFORE the
         // message loop, from the same workspace.json the async load will read —
         // the initialize handshake must never race the project load. The live

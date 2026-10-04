@@ -174,6 +174,101 @@ public final class JavaEngineCoverage {
         return ops;
     }
 
+    /**
+     * PUBLISH THIS ENGINE'S COVERAGE INTO THE REGISTRY, and refuse to boot if it disagrees
+     * with what actually ships.
+     *
+     * <p>The architecture's §4-B: <i>"At registration the declaration is published into the
+     * existing {@code OperationRegistry}, which keeps its job unchanged — 'what can be called,
+     * and how do I spell it' — and gains the row key as an index."</i> This is the call that
+     * does it, and it runs at the same moment and for the same reason as
+     * {@code CureCatalog.validateAgainst}: after every tool has registered, which is the first
+     * point at which "does anything back this claim?" has a true answer.</p>
+     *
+     * <p><b>Why this method exists at all, stated plainly.</b> Without it the whole catalogue
+     * was production CODE and not production BEHAVIOUR — nine references, every one in its own
+     * test. Three instruments said so independently: the architect seat ranked it first, a
+     * fresh-context audit raised it, and this repository's own unwired gate FAILED the suite
+     * naming seven hollow members. The gate offered three remedies — wire it, delete it, or
+     * baseline it with a reason — and baselining would have been the v3.4.0 shape, where
+     * semantic recall shipped inert because the tests did the wiring.</p>
+     *
+     * <p>IT THROWS RATHER THAN LOGS, on the cure table's precedent. A coverage declaration
+     * that names an operation nothing publishes is the same class of defect as a cure step
+     * nothing backs: serving it would mean telling a caller to run something the front door
+     * refuses. Boot failing loudly is the honest answer.</p>
+     *
+     * @return how many catalogue rows this engine actually performs — computed from what the
+     *         doors publish, so a caller logs a number it did not invent. This is the figure
+     *         the product previously could not state about itself: the sprint's headline
+     *         "62 of 66" existed only inside a test.
+     */
+    public static int publishInto(org.jawata.mcp.refactoring.OperationRegistry registry) {
+        Set<String> shipped = shippedOperations();
+
+        // (1) A DECLARATION MAY NOT CLAIM AN OPERATION THIS ENGINE DOES NOT PUBLISH.
+        List<String> unshipped = claimsNotShipped(shipped);
+        if (!unshipped.isEmpty()) {
+            throw new IllegalStateException(
+                    "this engine's coverage declaration claims operations it does not publish, "
+                            + "so a caller resolving one of these rows would be sent at a door "
+                            + "that refuses: " + unshipped);
+        }
+
+        // (2) EVERY ROW OF THE LANE MUST BE DECLARED — performed or declined, never silent.
+        // The third state is what the architecture forbids, and from outside it is
+        // indistinguishable from having forgotten the row.
+        // THROUGH THE ACCESSOR, not the private field. The unwired gate was right to call
+        // `declarations()` hollow while this method reached past it: an accessor whose only
+        // caller is a test is not published API, it is a test fixture with public visibility.
+        Set<String> declared = new LinkedHashSet<>();
+        for (Declaration d : declarations()) {
+            declared.add(d.key());
+        }
+        List<String> undeclared = new ArrayList<>();
+        for (CatalogueRow row : org.jawata.catalogue.Catalogue.withOrigin(Refactorings.FOWLER)) {
+            // Scoped to the REFACTORING ids: Fowler published the smells under the same origin,
+            // and this declaration is about what the engine PERFORMS.
+            if (row.id().startsWith(org.jawata.catalogue.Smells.SMELL)) {
+                continue;
+            }
+            if (!declared.contains(row.key())) {
+                undeclared.add(row.key() + " (" + row.name() + ")");
+            }
+        }
+        if (!undeclared.isEmpty()) {
+            throw new IllegalStateException(
+                    "the catalogue holds refactoring rows this engine declares nothing about, "
+                            + "which is neither performing them nor declining them: " + undeclared);
+        }
+
+        // (3) THE SHIPPED PATTERN LANE MUST MATCH ITS OWN HEADER. The rows are a resource in
+        // the jar, so a truncated or omitted resource is silent at runtime in a way source
+        // cannot be — and the lane's count is a published figure.
+        int patterns = org.jawata.catalogue.Patterns.all().size();
+        int declaredPatterns = org.jawata.catalogue.Patterns.declaredCount();
+        if (patterns != declaredPatterns) {
+            throw new IllegalStateException(
+                    "the shipped pattern lane holds " + patterns + " rows and declares "
+                            + declaredPatterns + " — the resource in this jar is not the one it "
+                            + "says it is");
+        }
+
+        // (4) The index itself, which is what makes a row key answerable from production.
+        int indexed = 0;
+        for (Declaration d : declarations()) {
+            if (d.verdict() == Verdict.PERFORMS) {
+                registry.indexRow(d.key(), d.operation());
+                indexed++;
+            }
+        }
+        // THE ANSWER IS THE COMPUTED COUNT, not the number of index entries, and the two can
+        // differ: rows 30/31 and 32/33 share one operation each, so indexing is per ROW while
+        // `performs` is the join against the shipped surface. Returning the join is what makes
+        // the logged figure the same one the gate asserts.
+        return performs(shipped);
+    }
+
     private static List<Declaration> declare() {
         List<Declaration> d = new ArrayList<>();
         performs(d, 1, "change_method_signature kind=change_signature");

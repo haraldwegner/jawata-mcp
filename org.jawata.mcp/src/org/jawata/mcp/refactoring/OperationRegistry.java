@@ -116,6 +116,22 @@ public final class OperationRegistry {
      */
     private final Map<String, String> discriminatorOf = new ConcurrentHashMap<>();
 
+    /**
+     * WHICH CATALOGUE ROW EACH OPERATION PERFORMS — the architecture's §4-B index.
+     *
+     * <p>"At registration the declaration is published into the existing OperationRegistry,
+     * which keeps its job unchanged — 'what can be called, and how do I spell it' — and gains
+     * the row key as an index." This is that index, and it is what makes the shared catalogue
+     * readable from production rather than only from a test: a caller holding
+     * {@code fowler:23} can ask what THIS engine would run for it, without knowing a single
+     * operation name.</p>
+     *
+     * <p>THE FIFTH MAP, and the fourth was missing from {@link Snapshot} until C9 — which made
+     * borrow-and-return accidentally correct and left a trap for whoever completed
+     * {@code clear()}. So this one joins all three arms in the same change that introduces it.</p>
+     */
+    private final Map<String, String> operationByRow = new ConcurrentHashMap<>();
+
     /** The registry the application wires; tests may construct their own. */
     public static OperationRegistry theRegistry() {
         return DEFAULT;
@@ -290,6 +306,37 @@ public final class OperationRegistry {
     }
 
     /**
+     * Record that one catalogue row is performed by one operation.
+     *
+     * <p>Called at boot by the provider's coverage declaration, after every tool has
+     * registered — the same moment, and for the same reason, as the cure table's own
+     * validation: it is the first point at which "does anything back this claim?" has a true
+     * answer.</p>
+     */
+    public void indexRow(String rowKey, String operation) {
+        if (rowKey == null || rowKey.isBlank() || operation == null || operation.isBlank()) {
+            return;
+        }
+        operationByRow.put(rowKey, operation);
+    }
+
+    /**
+     * What this engine would run for a catalogue row, or {@code null} if it performs none.
+     *
+     * <p>The one question a second language's provider will be asked about the same key, and
+     * the reason the index exists on the registry rather than on the provider: a caller
+     * resolving a row should not have to know which engine answers.</p>
+     */
+    public String operationForRow(String rowKey) {
+        return operationByRow.get(rowKey);
+    }
+
+    /** Every catalogue row this engine has declared an operation for. */
+    public Set<String> indexedRows() {
+        return Set.copyOf(operationByRow.keySet());
+    }
+
+    /**
      * Everything this registry holds, as a value that can be handed back to
      * {@link #restore(Snapshot)}.
      *
@@ -311,7 +358,8 @@ public final class OperationRegistry {
      * what the class holds, so completing {@code clear()} is safe rather than fatal.</p>
      */
     public record Snapshot(Map<String, Set<String>> publishedBy, Set<String> mechanical,
-                           Set<String> structural, Map<String, String> discriminatorOf) {
+                           Set<String> structural, Map<String, String> discriminatorOf,
+                           Map<String, String> operationByRow) {
     }
 
     /** Capture the whole state, deeply enough that later writes cannot reach it. */
@@ -320,7 +368,8 @@ public final class OperationRegistry {
         publishedBy.forEach((key, value) -> published.put(key, new java.util.LinkedHashSet<>(value)));
         return new Snapshot(published, new java.util.LinkedHashSet<>(mechanical),
             new java.util.LinkedHashSet<>(structural),
-            new java.util.LinkedHashMap<>(discriminatorOf));
+            new java.util.LinkedHashMap<>(discriminatorOf),
+            new java.util.LinkedHashMap<>(operationByRow));
     }
 
     /** Put a captured state back, discarding whatever is there now. */
@@ -334,6 +383,7 @@ public final class OperationRegistry {
         mechanical.addAll(snapshot.mechanical());
         structural.addAll(snapshot.structural());
         discriminatorOf.putAll(snapshot.discriminatorOf());
+        operationByRow.putAll(snapshot.operationByRow());
     }
 
     /** Empty it — every map the registry holds, which is what makes {@link #restore} exact. */
@@ -342,5 +392,6 @@ public final class OperationRegistry {
         mechanical.clear();
         structural.clear();
         discriminatorOf.clear();
+        operationByRow.clear();
     }
 }
