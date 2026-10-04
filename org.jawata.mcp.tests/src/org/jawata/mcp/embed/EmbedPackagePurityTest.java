@@ -74,10 +74,25 @@ class EmbedPackagePurityTest {
         // burned by. If the control cannot run, the checkpoint must know.
         assertNotNull(bytes, "purity CONTROL could not load its subject class; "
             + "the purity assertion above would be unverified");
-        List<String> found = foreignJawataReferences(bytes);
+        // THE SUBJECT'S OWN NAME IS EXCLUDED, and leaving it in made this control VACUOUS.
+        // `org/jawata/mcp/knowledge/ExperienceRetrieval` is in every copy of that class's own
+        // file and is not in `org/jawata/mcp/embed/`, so the rule reported it as foreign: this
+        // assertion passed on the subject's own name and would have passed with every genuine
+        // cross-package reference deleted. It proved the scanner emits a token, not that it
+        // detects a foreign package.
+        //
+        // Found by a C8 audit on this file's own COPY — the catalogue fence the architecture
+        // instructed to be built from this mechanism — and closed here as a class rather than
+        // only there, because copying the mechanism faithfully had copied the hole. Measured
+        // before changing: the subject carries SIX genuine foreign references beside its own
+        // name, so the control stays green and becomes discriminating.
+        String ownName = "org/jawata/mcp/knowledge/ExperienceRetrieval";
+        List<String> found = foreignJawataReferences(bytes).stream()
+            .filter(r -> !r.startsWith(ownName))
+            .toList();
         assertTrue(!found.isEmpty(),
-            "the scanner must detect cross-package jawata references, "
-            + "otherwise the purity assertion above is vacuous");
+            "the scanner must detect cross-package jawata references OTHER THAN the control "
+            + "subject's own class name, otherwise the purity assertion above is vacuous");
         System.out.println("[EmbedPackagePurityTest] control saw " + found.size()
             + " foreign refs, e.g. " + found.get(0));
     }

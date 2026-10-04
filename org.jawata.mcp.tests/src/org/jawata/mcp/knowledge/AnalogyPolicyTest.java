@@ -230,9 +230,25 @@ class AnalogyPolicyTest {
     void the_purity_check_can_actually_fail() {
         byte[] bytes = classBytes("org.jawata.mcp.knowledge.ExperienceRetrieval");
         assertNotNull(bytes, "could not read ExperienceRetrieval.class");
-        assertFalse(jawataReferencesOtherThanItself(bytes).isEmpty(),
+        // THE HELPER EXCLUDES THE MAIN ASSERTION'S SUBJECT, NOT THE CONTROL'S, and that made
+        // this control vacuous. `jawataReferencesOtherThanItself` drops names starting with
+        // `org/jawata/mcp/knowledge/AnalogyPolicy`; the control's subject is
+        // ExperienceRetrieval, so its OWN class name is reported as foreign and this assertion
+        // passed on it — it would have passed with every genuine reference deleted. The name
+        // said "other than itself" and meant "other than the other class", which is the kind of
+        // claim this project keeps having to measure rather than read.
+        //
+        // Found by a C8 audit on a sibling fence and closed across all three as a class.
+        // Measured before changing: the subject carries SIX genuine references beside its own
+        // name, so the control stays green and becomes discriminating.
+        String controlOwnName = "org/jawata/mcp/knowledge/ExperienceRetrieval";
+        List<String> foreign = jawataReferencesOtherThanItself(bytes).stream()
+            .filter(r -> !r.startsWith(controlOwnName))
+            .toList();
+        assertFalse(foreign.isEmpty(),
             "the scanner found nothing in a class that certainly references "
-            + "other jawata types — the check is broken, not the code");
+            + "other jawata types, OTHER THAN that class's own name — the check is broken, "
+            + "not the code");
     }
 
     private static byte[] classBytes(String fqn) {
