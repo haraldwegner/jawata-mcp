@@ -1,3 +1,5 @@
+org.jawata.catalogue.Catalogue#withOrigin(String)
+org.jawata.catalogue.CatalogueRow#id()
 org.jawata.core.JdtServiceImpl#dispose()
 org.jawata.core.search.SearchService#findReadAccesses(IJavaElement,int)
 org.jawata.core.search.SearchService#getProject()

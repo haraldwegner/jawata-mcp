@@ -130,7 +130,6 @@ public final class OperationRegistry {
      * borrow-and-return accidentally correct and left a trap for whoever completed
      * {@code clear()}. So this one joins all three arms in the same change that introduces it.</p>
      */
-    private final Map<String, String> operationByRow = new ConcurrentHashMap<>();
 
     /** The registry the application wires; tests may construct their own. */
     public static OperationRegistry theRegistry() {
@@ -306,60 +305,35 @@ public final class OperationRegistry {
     }
 
     /**
-     * Record that one catalogue row is performed by one operation.
+     * THE ROW INDEX WAS HERE AND IT IS GONE, which is a smaller state than it was.
      *
-     * <p>Called at boot by the provider's coverage declaration, after every tool has
-     * registered — the same moment, and for the same reason, as the cure table's own
-     * validation: it is the first point at which "does anything back this claim?" has a true
-     * answer.</p>
-     */
-    public void indexRow(String rowKey, String operation) {
-        if (rowKey == null || rowKey.isBlank() || operation == null || operation.isBlank()) {
-            return;
-        }
-        operationByRow.put(rowKey, operation);
-    }
-
-    /**
-     * What this engine would run for a catalogue row, or {@code null} if it performs none.
+     * <p>§4-B asks that a provider's declaration "gains the row key as an index" at
+     * registration, and the first attempt added one: a {@code Map<String,String>} written by
+     * {@code indexRow} from the coverage declaration at boot, with {@code operationForRow} and
+     * {@code indexedRows} to read it.</p>
      *
-     * <p>The one question a second language's provider will be asked about the same key, and
-     * the reason the index exists on the registry rather than on the provider: a caller
-     * resolving a row should not have to know which engine answers.</p>
-     */
-    public String operationForRow(String rowKey) {
-        return operationByRow.get(rowKey);
-    }
-
-    /** Every catalogue row this engine has declared an operation for. */
-    public Set<String> indexedRows() {
-        return Set.copyOf(operationByRow.keySet());
-    }
-
-    /**
-     * Everything this registry holds, as a value that can be handed back to
-     * {@link #restore(Snapshot)}.
+     * <p><b>Nothing read it.</b> An architect watch measured both accessors at ZERO references,
+     * production and test, and the gate offered as proof could not have seen that: the
+     * {@code called_only_by_tests} detector reports members with at least one TEST caller and no
+     * production caller, so a member with no callers at all is invisible to it. "Seven hollow
+     * members became PASS" was true of what that gate covers and silent about the two the same
+     * commit added — which is this project's own recorded lesson about a gate that cannot see
+     * zero, walked into again.</p>
      *
-     * <p>This exists because the default registry is a GLOBAL and tests write to it. Every
-     * previous attempt to put it back was a hand-written copy of what the application
-     * registers, and each drifted: one restored the KEYS and destroyed the attribution, its
-     * replacement restored three front doors out of the thirty-nine the application
-     * registers — each under a comment claiming the singleton was left as found. A borrow
-     * is only safe when the thing borrowed can be returned exactly, so the registry hands
-     * out its own state rather than asking a caller to reconstruct it.</p>
+     * <p>So the index is withdrawn rather than kept as dead state behind published API. What
+     * remains is the half that was real: the declaration IS read by production at boot, which
+     * dissolves the closed test-only loop C8's Finding 1 named, and the product can STATE what
+     * it performs. It cannot yet ANSWER a row key, and saying so is the honest claim.</p>
      *
-     * <p><b>ALL FOUR maps, and the fourth was missing until C9.</b> {@code discriminatorOf}
-     * was neither captured nor cleared, which made borrow-and-return <i>accidentally</i>
-     * correct — nothing put a discriminator back because nothing had taken one away. A C9
-     * auditor named the trap that left: adding the obvious {@code discriminatorOf.clear()} to
-     * a method whose javadoc reads "Empty it" would have silently reintroduced the S8b step-6
-     * defect, {@code invocationOf} rendering {@code hierarchy kind=up} — an instruction the
-     * product refuses — for every test class after the one that borrowed. The record now holds
-     * what the class holds, so completing {@code clear()} is safe rather than fatal.</p>
+     * <p>Its consumer is named by §4-B itself — <i>"the cure table's {@code recipe} field stops
+     * being a global plan kind and becomes a row key that each provider's coverage resolves"</i>
+     * — and {@code CureCatalog}, {@code CureLookup} and {@code CureTier} already resolve
+     * operations through this registry. The first cure resolved through a row key brings the
+     * index back with a reader whose failure an existing test can see. Three lines, when there
+     * is something to read them.</p>
      */
     public record Snapshot(Map<String, Set<String>> publishedBy, Set<String> mechanical,
-                           Set<String> structural, Map<String, String> discriminatorOf,
-                           Map<String, String> operationByRow) {
+                           Set<String> structural, Map<String, String> discriminatorOf) {
     }
 
     /** Capture the whole state, deeply enough that later writes cannot reach it. */
@@ -368,8 +342,7 @@ public final class OperationRegistry {
         publishedBy.forEach((key, value) -> published.put(key, new java.util.LinkedHashSet<>(value)));
         return new Snapshot(published, new java.util.LinkedHashSet<>(mechanical),
             new java.util.LinkedHashSet<>(structural),
-            new java.util.LinkedHashMap<>(discriminatorOf),
-            new java.util.LinkedHashMap<>(operationByRow));
+            new java.util.LinkedHashMap<>(discriminatorOf));
     }
 
     /** Put a captured state back, discarding whatever is there now. */
@@ -383,7 +356,6 @@ public final class OperationRegistry {
         mechanical.addAll(snapshot.mechanical());
         structural.addAll(snapshot.structural());
         discriminatorOf.putAll(snapshot.discriminatorOf());
-        operationByRow.putAll(snapshot.operationByRow());
     }
 
     /** Empty it — every map the registry holds, which is what makes {@link #restore} exact. */
@@ -392,6 +364,5 @@ public final class OperationRegistry {
         mechanical.clear();
         structural.clear();
         discriminatorOf.clear();
-        operationByRow.clear();
     }
 }

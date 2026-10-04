@@ -204,7 +204,7 @@ Seven rejected for situation mismatch rather than for ranking low — four of th
 | **3** purity mechanism | **DONE**, `57cb98dc`. Rebuilt on the constant pool as a **whitelist**, with the precedent's positive control carried. Mutation: emptying the list turns it **red**, where the same mutation left the import scan **all green** — the asymmetry the seat asked for, measured. The pom text check is retired as the seat ruled; `theManifestImportsNothing` kept for the reason the seat gave. |
 | **the pattern control's home** (audit N1, seat's §6 row) | **DONE**, `79c9f77f`. Moved to the permanent class; the move surfaced a fourth copy of one repo-root walk, now owned once. Mutation-proved from its new home. |
 | **the boot guard** (found by the suite, not by either review) | **DONE**, `be94ff97`. `EveryCrossBundlePackageIsImportedTest` reported a package no bundle exports; the product was right and the guard's hand-typed two-bundle list was wrong. Derived now, with a floor so an empty derivation cannot pass vacuously. Mutation returns the original boot failure exactly. |
-| **1** no production reader | **DISCHARGED — it was the stage's largest surviving risk and it is gone.** `JavaEngineCoverage.publishInto(OperationRegistry)` is called from `JawataApplication` at boot (one caller, line 364, by call hierarchy), and the boot line now states a figure the product previously could not state about itself. Readership measured per type rather than claimed: all five catalogue types are READ in production bodies — `Catalogue` ×2, `Patterns` ×2 (lines 248-249), `Refactorings` ×2, `CatalogueRow`, and `Smells` at line 232 — so none is a dead import. The unwired-member gate reported SEVEN hollow members before the wiring and **PASS, 0 new, 118 baseline unchanged** after it, which is the v3.4.0 precedent's own failure made visible and then closed. |
+| **1** no production reader | **PARTLY DISCHARGED, and my first disposition said DISCHARGED outright — an architect watch measured that as an over-claim and it was right.** What IS closed: the declaration is READ by production at boot, so the catalogue stops being code only its own tests touch, and all five types are read in production bodies rather than imported dead (`Catalogue` ×2, `Patterns` 248-249, `Refactorings` ×2, `CatalogueRow`, `Smells` 232). What was NOT: §4-B's row-key index. It was written and **nothing read it** — both accessors at zero references, production and test, which the watch measured three ways. So "a row key is answerable from production" was false as shipped. **AND THE GATE I CITED AS PROOF COULD NOT HAVE SEEN IT:** `called_only_by_tests` reports members with ≥1 TEST caller and no production caller, so a member with no callers at all is invisible to it — "seven hollow became PASS" is true of what it covers and silent about the two the same commit added. That is this project's own recorded lesson about a gate that cannot see zero, walked into again. The index is **withdrawn** rather than kept as dead state behind exported API, which also reverts an exported record's arity 5 → 4; §4-B's index is owed, with its consumer named on `OperationRegistry`. |
 | **2** delegation + the `null` rendering | **ACCEPTED, homed** with Finding 1, since the production reader is what forces the API. The `null`-as-no-row contract is now pinned by a test, which raises the price — noted. |
 | **(a)** the cures | **the seat's reading is accepted and my characterisation was wrong.** "Cannot move as it stands" overstated a one-parameter change. Deferral stands on §4-B's second half, not on the obstacle I named. |
 | **(b)** DETECT and PERFORM | **ACCEPTED as owed work, not a design question.** D39's own measure names both axes, so recording it as the architect's call was me narrowing a signed measure. Owed; not in this stage's commits. |
@@ -224,6 +224,65 @@ coverage, which is the shape every checkpoint of this sprint has produced.
 | **NEW-3** the purity population counted FILES while its message claimed TYPES | **DONE.** The population is every class file the module compiles to, `$` names included, resolved through `RepoFiles` like every other artifact this package has to find. This pair needed the case CREATED, because the hole was latent — five classes against five sources, so no edit to the test alone can turn it red: a nested type added to a catalogue source, fixed **RED** and NAMING `Smells$MutationCNested` in the population, so it is scanned and not merely counted; pre-repair **GREEN, 7/7** with the type compiled and invisible. Both files restored byte-identical and `git status` verified before each revert. |
 | **non-blocking 2** a fourth copy of the repo walk survived in the same package | **DONE.** `TheEngineDeclaresWhatItPerformsTest` held a byte-identical `sourceOf` one file from `RepoFiles`, callable unqualified. `RepoFiles`' own javadoc claimed to have caught *"a fourth copy one move away"*; it had not. That sentence is corrected in place rather than quietly replaced — it was a consolidation of three sold as a consolidation of all, which is the same over-claim as the three above. |
 | **the purity row's own claim, two rows up** | **CORRECTED.** *"With the precedent's positive control carried"* was true in form only, and the mutation cited beside it is the one NEW-1 proved blind. The row stands as written and this line supersedes it. |
+
+### The vacuous positive control, closed as a CLASS — the record a reader of this checkpoint meets
+
+Round 3 was right that this existed only in a commit body: the per-checkpoint gate asks for *the
+query that enumerates the population* and *fixed equals population*, and neither was here.
+
+**THE QUERY.** It is an assertion-SHAPE question — a test whose body reads a constant pool and
+asserts a positive control on a known-impure subject — so it is not a symbol relation and carries
+a logged `jawata-fallback:`:
+
+```
+grep -rlnE 'disallowedReferences|constant pool|PurityTest|purity CONTROL' \
+    --include='*Test.java' org.jawata.mcp.tests/src org.jawata.core.tests/src
+```
+
+**`-E` IS LOAD-BEARING AND THE COMMIT BODY OMITTED IT**, which round 3 found by running the
+command as recorded: without it the `|` are literal in a basic regex and the query returns
+**zero files** — a recorded population query that enumerates nothing. The commit also attributed
+`AnalogyPolicyTest` to `org.jawata.core.tests`; it is at
+`org.jawata.mcp.tests/src/org/jawata/mcp/knowledge/AnalogyPolicyTest.java`, and that second root
+contributes none of the three.
+
+**POPULATION 3 · FIXED 3.**
+
+| Fence | State |
+|---|---|
+| `TheCatalogueCannotReachAnEngineTest` | fixed in `fdbd08a1` — the subject's own name and nested types filtered out |
+| `EmbedPackagePurityTest` | fixed in `163e20e6` — its rule reports every `org/jawata/` name outside `embed/`, and the control subject is itself outside `embed/` |
+| `AnalogyPolicyTest` | fixed in `163e20e6` — its helper is NAMED `jawataReferencesOtherThanItself` and excluded the MAIN assertion's subject, not the CONTROL's |
+
+Round 3 verified the population independently by its own shape query and found the three extra
+hits use `ISO_8859_1` only to snapshot SOURCE files for parity, carrying no pool-scan control.
+
+### Round 3's four blockers — every one class B, a claim false about the code beside it
+
+| Finding | Disposition |
+|---|---|
+| **B1** the "SIX genuine foreign references" was measured on a stale artifact | **DONE.** The live numbers are **31** under the embed rule and **30** under the analogy rule, re-measured by me on `bundles/org.jawata.mcp-4.3.3.jar`, 53180 bytes — the class the test loads. Six is what the same scan returns for a **16695-byte class dated 2026-07-12** in a dormant PDE output directory on no suite's classpath. Both fences carried one wrong number from one measurement against the wrong artifact, under the word MEASURED, in a commit set that twice lectures on stale jars. The repair was sound; its proof was not taken. Each fence now carries its own number and where it was read. |
+| **B2** the recorded query returns zero and the population lived nowhere a reader meets it | **DONE** — the section above. |
+| **B3** the new survivor list named 5 of 7 | **DONE.** All seven are now named in the comment. The two it omitted are exactly the two that make the mutation's prefix count four rather than two, so the comment reproduced as prose the same incompleteness that made the first mutation a false negative. Also noted: one of the seven is a store, not an engine, so the assertion message is narrower than the needle. |
+| **B4** an orphaned javadoc claimed "DERIVED from the tree, not listed" about a hand-written list | **DONE.** `REQUIRED` and its javadoc now sit ABOVE `BUNDLES`' javadoc, so each block documents the member it describes and `BUNDLES` is no longer undocumented. |
+
+Round 3's own closing read: the three repair MECHANISMS are correctly and discriminatingly
+closed, the population is complete, the §8(b) discharge survives the inheritance attack
+(`build/pom.xml` has no `<dependencies>`, no `<dependencyManagement>`, no `<profiles>`), and the
+suite line is true to the shard logs — it summed them itself. What it kept finding is one shape:
+**a number or a command recorded as "measured" that was not taken against the live artifact.**
+
+### The architect watch over the three commits — `MIXED`, and its first finding is a real defect
+
+| Finding | Disposition |
+|---|---|
+| **F1** the §4-B index is WRITE-ONLY — both accessors at zero references, and the gate offered as proof is structurally blind to a zero-reference member | **DONE, by withdrawal.** The map, `indexRow`, `operationForRow` and `indexedRows` are gone, which removes two unread methods from an EXPORTED package and reverts `Snapshot`'s arity 5 → 4 — also answering the watch's below-the-fold concern that an exported record's arity had changed with consumers I cannot enumerate. `publishInto(OperationRegistry)` published nothing into it, so the dead parameter went with it (`change_method_signature`) and the method is renamed `verifyAgainstShippedDoors` (`rename_symbol`), because a name that describes a thing which does not happen is the same class-B claim this round is about. The index's consumer is the one §4-B itself names — a cure resolving through a row key — recorded on `OperationRegistry` where the next reader meets it. |
+| **F2(a)** two derivations of one population, one statement apart | **DONE.** The refusal walked `Catalogue.withOrigin(FOWLER)` and filtered smells out by STRING PREFIX while the caller's log used `Refactorings.all().size()` — two derivations of one fact in two files, which disagree the day the prefix convention moves. It iterates `Refactorings.all()` now; the prefix filter is deleted and a second provider does not inherit a copy. |
+| **F2(c)** the fetch-then-pass hazard was widened onto a production path | **DONE.** `performs()` and `claimsNotShipped()` no-arg overloads added on the `CureTier.derive(String)` precedent; the boot path calls those, and the set-taking forms stay for the tests whose job is to vary the set. The class's own javadoc records this hazard having already shipped one false green. |
+| **F2(b)** the pattern lane's integrity is enforced inside a Java-engine method | **ACCEPTED, HOMED — not done here**, and the reason is scope rather than disagreement. The watch is right that a fact wholly inside the catalogue module belongs in `Patterns`' own loader, that every future provider must otherwise copy the check, and that the current fail-stop scope is wrong — a truncated `patterns.tsv` takes down `search_symbols` and every analysis tool, none of which touch the pattern lane. It is a change to the LOAD behaviour of a purity-fenced production module, proposed after the last audit round, inside a checkpoint under audit; that is the shape this plan warns about. Homed with F2(b)'s own reasoning intact. |
+| **F3** three purity fences are three copies of one mechanism, and one hole needed three commits | **ACCEPTED, HOMED.** The watch answers D-SIX directly and against the architecture: the lanes differ only in DATA (population root, policy, control subject), the mechanism is entirely ours, so *"a purity test per fenced bundle, each a copy of `EmbedPackagePurityTest`'s mechanism"* is no longer the right instruction — and the proof is `163e20e6`, which exists only to apply one filter to the two copies the previous commit did not reach, and lands it as two fresh duplicated literals. Its smallest alternative is an object for the fence concept, parameterised by those three data, and for the catalogue fence specifically a strictly smaller move: derive `ALLOWED` from the manifest's own absent `Import-Package` rather than hand-spelling the same fact. Changing the architecture's standing instruction is not a fold item. |
+| **a consequence F2(a) had and the watch did not predict** | **BASELINED, with the reason here because the baseline file cannot hold one.** Deleting the Java-engine prefix filter removed the only production readers of `Catalogue#withOrigin(String)` and `CatalogueRow#id()`, so the unwired gate FAILED naming both. Measured before choosing: `Refactorings.all()` returns the lane's OWN rows, so `withOrigin` is the CROSS-LANE filter and nothing in production asks a cross-lane question any more; `id()` is a record component, not something to delete. Wiring either would mean inventing a production question, and deleting `withOrigin` would contradict a documented decision made one commit earlier — `Refactorings`' own javadoc argues it belongs on `Catalogue` precisely so each lane does not carry a copy. So the gate's third remedy, 118 → **120**. **It is speculative generality if the second provider never arrives and correct layering if it does**, and the architecture commits to the second provider. The condition that retires the baseline, so it is not permanent by default: a second provider declaring against the catalogue, or a cure resolving by row key, either of which gives both a production reader. Noted plainly: the baseline file is a bare signature list with no reason column, which is how such a list rots — that is why this row exists. |
+| **Rule 12** | The watch **disagrees with §5's "does not fire"** for this commit set, on new evidence rather than a different reading: `57cb98dc` claimed the precedent's control was carried, `fdbd08a1` proved that control blind, `163e20e6` then found the identical hole in the two files `57cb98dc` was instructed to copy from — one structure, three commits, each exposing the next face, with the propagation vector being the architecture's own copy instruction. **Accepted.** It also records what the response got right: the defect was closed as a class with a population query and fixed = population, which is what the gate asks; the alarm is on the mechanism that made the population three. |
 
 ---
 

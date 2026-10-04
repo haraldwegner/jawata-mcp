@@ -83,9 +83,20 @@ class EmbedPackagePurityTest {
         //
         // Found by a C8 audit on this file's own COPY — the catalogue fence the architecture
         // instructed to be built from this mechanism — and closed here as a class rather than
-        // only there, because copying the mechanism faithfully had copied the hole. Measured
-        // before changing: the subject carries SIX genuine foreign references beside its own
-        // name, so the control stays green and becomes discriminating.
+        // only there, because copying the mechanism faithfully had copied the hole.
+        //
+        // MEASURED ON THE ARTIFACT THIS TEST ACTUALLY LOADS: under this rule the subject
+        // carries THIRTY-ONE genuine foreign references beside its own name, so the control
+        // stays green and becomes discriminating. Read off
+        // build/dist/target/dist/bundles/org.jawata.mcp-4.3.3.jar, 53180 bytes.
+        //
+        // AND THE FIRST VERSION OF THIS SENTENCE SAID SIX, which a round-3 audit caught. Six is
+        // what the same scan returns for
+        // org.jawata.mcp/target/classes/.../ExperienceRetrieval.class — 16695 bytes, dated
+        // 2026-07-12, a dormant PDE output directory that is on no suite's classpath. So the one
+        // sentence justifying this repair's safety was measured against a three-month-old
+        // artifact, under the word MEASURED, in a commit set that twice lectures on running new
+        // test code against stale jars. The repair was sound; its proof was not taken.
         String ownName = "org/jawata/mcp/knowledge/ExperienceRetrieval";
         List<String> found = foreignJawataReferences(bytes).stream()
             .filter(r -> !r.startsWith(ownName))

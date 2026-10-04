@@ -356,14 +356,19 @@ public class JawataApplication implements IApplication {
         org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(
             org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
 
-        // Sprint 28g D39 / the architecture's P2 step 3 and §4-B. The same moment, and the
-        // same reason: every tool has registered, so this is the first point at which the
-        // engine's coverage declaration can be checked against what it actually publishes —
-        // and the first point at which a catalogue row key can be answered from production
-        // rather than only from a test. It THROWS on a declaration that disagrees with the
-        // shipped surface, exactly as the cure table above does.
-        int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.publishInto(
-            org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+        // Sprint 28g D39 / the architecture's P2 step 3. The same moment, and the same reason:
+        // every tool has registered, so this is the first point at which the engine's coverage
+        // declaration can be checked against what it actually publishes. It THROWS on a
+        // declaration that disagrees with the shipped surface, exactly as the cure table above
+        // does.
+        //
+        // THIS COMMENT ALSO CLAIMED "the first point at which a catalogue row key can be
+        // answered from production", and that was false: the index it referred to had no
+        // reader and is withdrawn. What this call buys is that the declaration is READ by
+        // production at all — the catalogue stops being code only its own tests touch — and
+        // that the product can STATE what it performs. Answering a row key is §4-B's index,
+        // which is owed; see JavaEngineCoverage and OperationRegistry.
+        int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.verifyAgainstShippedDoors();
         log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
             org.jawata.catalogue.Refactorings.all().size());
 

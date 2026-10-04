@@ -51,6 +51,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EveryCrossBundlePackageIsImportedTest {
 
     /**
+     * The bundles this check cannot do without, named rather than counted.
+     *
+     * <p>Not a reinstatement of the literal list the derivation replaced: the derivation still
+     * FINDS the bundles, and this is the floor it must clear. {@code org.jawata.mcp} is here
+     * because the cross-bundle proof of life below is keyed to that exact name, and
+     * {@code org.jawata.core} because it is what mcp imports FROM — lose either and the pair the
+     * check is about stops existing while the check still passes.</p>
+     *
+     * <p><b>It sits ABOVE {@code BUNDLES}' javadoc deliberately, and it did not at first.</b>
+     * Inserted between that javadoc and the field it describes, it left two consecutive doc
+     * blocks: Java attaches the last, so the derivation paragraph documented nothing,
+     * {@code BUNDLES} was left undocumented, and as laid out the orphaned block read as
+     * describing THIS field — asserting of it <i>"DERIVED from the tree, not listed"</i> and
+     * that <i>"a policy expressed as a set of NAMES fails open"</i>, when this field is
+     * precisely a listed set of names. A round-3 audit caught it; the defence of this field
+     * one paragraph above was correct while the paragraph above that said the opposite.</p>
+     */
+    private static final List<String> REQUIRED = List.of("org.jawata.core", "org.jawata.mcp");
+
+    /**
      * The real, non-fragment bundles — DERIVED from the tree, not listed.
      *
      * <p>A fragment is excluded BECAUSE it shares its host's classloader, which is the very
@@ -69,17 +89,6 @@ class EveryCrossBundlePackageIsImportedTest {
      * fails open the day one is added, because no reference-updating refactoring touches a
      * string literal. Deriving it means the next bundle is covered by existing.</p>
      */
-    /**
-     * The bundles this check cannot do without, named rather than counted.
-     *
-     * <p>Not a reinstatement of the literal list the derivation replaced: the derivation still
-     * FINDS the bundles, and this is the floor it must clear. {@code org.jawata.mcp} is here
-     * because the cross-bundle proof of life below is keyed to that exact name, and
-     * {@code org.jawata.core} because it is what mcp imports FROM — lose either and the pair the
-     * check is about stops existing while the check still passes.</p>
-     */
-    private static final List<String> REQUIRED = List.of("org.jawata.core", "org.jawata.mcp");
-
     private static final List<String> BUNDLES = realBundles();
 
     private static List<String> realBundles() {

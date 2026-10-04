@@ -118,6 +118,23 @@ public final class JavaEngineCoverage {
      * whole point of computing rather than declaring a number: a kind renamed or retired moves
      * this, where a literal would have stayed true about nothing.</p>
      */
+    public static int performs() {
+        return performs(shippedOperations());
+    }
+
+    /**
+     * The same, against a shipped set the CALLER supplies — for a test that varies it.
+     *
+     * <p><b>A caller that fetches the set and hands it straight back is the hazard, and this
+     * class's own javadoc records it having already fired once:</b> a doors-only set missing
+     * {@code rename_symbol} made the assertion stay green while the operation shipped to nobody.
+     * `publishInto` did exactly that fetch-then-pass, which put the hazard on a PRODUCTION path
+     * where it had only been in a test — an architect watch priced that and it was not priced
+     * when it landed. Production now calls {@link #performs()} and {@link #claimsNotShipped()},
+     * which ask this class for the set it already knows how to build; the overloads taking one
+     * stay for the tests whose whole job is to vary it. Same shape as
+     * {@code CureTier.derive(String)} beside {@code derive(String, List)} one package over.</p>
+     */
     public static int performs(Set<String> shippedOperations) {
         int n = 0;
         for (Declaration d : DECLARATIONS) {
@@ -134,6 +151,11 @@ public final class JavaEngineCoverage {
      * <p>Empty is the healthy state. A non-empty answer names the refactoring that silently
      * stopped being performed, which is the fact a bare count cannot carry.</p>
      */
+    public static List<String> claimsNotShipped() {
+        return claimsNotShipped(shippedOperations());
+    }
+
+    /** The same, against a shipped set the CALLER supplies — see {@link #performs(Set)}. */
     public static List<String> claimsNotShipped(Set<String> shippedOperations) {
         List<String> out = new ArrayList<>();
         for (Declaration d : DECLARATIONS) {
@@ -175,15 +197,25 @@ public final class JavaEngineCoverage {
     }
 
     /**
-     * PUBLISH THIS ENGINE'S COVERAGE INTO THE REGISTRY, and refuse to boot if it disagrees
-     * with what actually ships.
+     * VERIFY THIS ENGINE'S COVERAGE AGAINST THE DOORS THAT ACTUALLY SHIP, and refuse to boot if
+     * the two disagree.
      *
-     * <p>The architecture's §4-B: <i>"At registration the declaration is published into the
-     * existing {@code OperationRegistry}, which keeps its job unchanged — 'what can be called,
-     * and how do I spell it' — and gains the row key as an index."</i> This is the call that
-     * does it, and it runs at the same moment and for the same reason as
+     * <p>It runs at the same moment and for the same reason as
      * {@code CureCatalog.validateAgainst}: after every tool has registered, which is the first
      * point at which "does anything back this claim?" has a true answer.</p>
+     *
+     * <p><b>IT WAS CALLED {@code publishInto(OperationRegistry)} AND IT PUBLISHED NOTHING.</b>
+     * The architecture's §4-B asks that <i>"at registration the declaration is published into
+     * the existing {@code OperationRegistry} … and gains the row key as an index"</i>, and the
+     * first version wrote that index. An architect watch then measured that NOTHING READ IT —
+     * both accessors at zero references, production and test — so the registry argument was
+     * dead, the name described a thing that did not happen, and the index was state nobody
+     * could reach. All three are gone; {@code OperationRegistry}'s own javadoc carries the
+     * reason and names §4-B's intended consumer.</p>
+     *
+     * <p>So what this method does is narrower than its first name claimed, and it is the half
+     * that was always real: it VERIFIES, and the verification is what dissolves the closed
+     * test-only loop. §4-B's index is owed, not delivered.</p>
      *
      * <p><b>Why this method exists at all, stated plainly.</b> Without it the whole catalogue
      * was production CODE and not production BEHAVIOUR — nine references, every one in its own
@@ -203,11 +235,13 @@ public final class JavaEngineCoverage {
      *         the product previously could not state about itself: the sprint's headline
      *         "62 of 66" existed only inside a test.
      */
-    public static int publishInto(org.jawata.mcp.refactoring.OperationRegistry registry) {
-        Set<String> shipped = shippedOperations();
-
+    public static int verifyAgainstShippedDoors() {
         // (1) A DECLARATION MAY NOT CLAIM AN OPERATION THIS ENGINE DOES NOT PUBLISH.
-        List<String> unshipped = claimsNotShipped(shipped);
+        // THROUGH THE NO-ARG FORM: this method used to fetch the shipped set and hand it to both
+        // callees, which is the fetch-then-pass this class's javadoc records as having already
+        // shipped a false green once. It belongs in a test that varies the set, not on the boot
+        // path.
+        List<String> unshipped = claimsNotShipped();
         if (!unshipped.isEmpty()) {
             throw new IllegalStateException(
                     "this engine's coverage declaration claims operations it does not publish, "
@@ -225,13 +259,17 @@ public final class JavaEngineCoverage {
         for (Declaration d : declarations()) {
             declared.add(d.key());
         }
+        // THE LANE RENDERS ITS OWN POPULATION, and this re-derived it. The first version walked
+        // `Catalogue.withOrigin(Refactorings.FOWLER)` and filtered out the smells by STRING
+        // PREFIX — re-deciding, here, which of the origin's rows are refactorings. The catalogue
+        // already answers exactly that as `Refactorings.all()`, and the very next statement in
+        // the caller uses `Refactorings.all().size()` as the M in "N of M". So the refusal's
+        // population and the logged population came from two derivations of one fact in two
+        // files: let them disagree and the product refuses on one set while reporting the other.
+        // An architect watch found it. Iterating the lane deletes the prefix filter, and a second
+        // provider does not inherit a copy of it.
         List<String> undeclared = new ArrayList<>();
-        for (CatalogueRow row : org.jawata.catalogue.Catalogue.withOrigin(Refactorings.FOWLER)) {
-            // Scoped to the REFACTORING ids: Fowler published the smells under the same origin,
-            // and this declaration is about what the engine PERFORMS.
-            if (row.id().startsWith(org.jawata.catalogue.Smells.SMELL)) {
-                continue;
-            }
+        for (CatalogueRow row : Refactorings.all()) {
             if (!declared.contains(row.key())) {
                 undeclared.add(row.key() + " (" + row.name() + ")");
             }
@@ -254,19 +292,21 @@ public final class JavaEngineCoverage {
                             + "says it is");
         }
 
-        // (4) The index itself, which is what makes a row key answerable from production.
-        int indexed = 0;
-        for (Declaration d : declarations()) {
-            if (d.verdict() == Verdict.PERFORMS) {
-                registry.indexRow(d.key(), d.operation());
-                indexed++;
-            }
-        }
-        // THE ANSWER IS THE COMPUTED COUNT, not the number of index entries, and the two can
-        // differ: rows 30/31 and 32/33 share one operation each, so indexing is per ROW while
-        // `performs` is the join against the shipped surface. Returning the join is what makes
-        // the logged figure the same one the gate asserts.
-        return performs(shipped);
+        // (4) THE ROW INDEX WAS HERE AND IS WITHDRAWN. It wrote each PERFORMS row's key into the
+        // registry, and an architect watch measured that NOTHING READ IT — both accessors at
+        // zero references, production and test. The commit's claim that "a row key is answerable
+        // from production" was therefore false as shipped; what is true is narrower and is still
+        // the thing C8's Finding 1 was about: the declaration is READ by production at boot, so
+        // the closed test-only loop is gone and the product can STATE what it performs.
+        //
+        // `OperationRegistry`'s own javadoc carries the reason and the consumer §4-B names. The
+        // index returns when a cure resolves through a row key, which gives it a reader whose
+        // failure an existing test can see.
+        //
+        // THE ANSWER IS THE COMPUTED JOIN against the shipped surface, which is what it always
+        // was — the removed counter was never what this returned, because rows 30/31 and 32/33
+        // share one operation each, so a per-row count and the join legitimately differ.
+        return performs();
     }
 
     private static List<Declaration> declare() {

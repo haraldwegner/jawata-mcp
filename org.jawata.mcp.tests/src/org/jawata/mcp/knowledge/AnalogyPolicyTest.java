@@ -239,8 +239,16 @@ class AnalogyPolicyTest {
         // claim this project keeps having to measure rather than read.
         //
         // Found by a C8 audit on a sibling fence and closed across all three as a class.
-        // Measured before changing: the subject carries SIX genuine references beside its own
-        // name, so the control stays green and becomes discriminating.
+        //
+        // MEASURED ON THE ARTIFACT THIS TEST ACTUALLY LOADS: under THIS rule the subject carries
+        // THIRTY genuine references beside its own name — one fewer than the embed fence counts,
+        // because that rule also excludes org/jawata/mcp/embed/ and this one does not. Read off
+        // build/dist/target/dist/bundles/org.jawata.mcp-4.3.3.jar, 53180 bytes.
+        //
+        // AND THE FIRST VERSION OF THIS SENTENCE SAID SIX, which a round-3 audit caught: six is
+        // what the scan returns for a 16695-byte class dated 2026-07-12 in a dormant PDE output
+        // directory, on no suite's classpath. Both fences carried the same wrong number from one
+        // measurement taken against the wrong artifact.
         String controlOwnName = "org/jawata/mcp/knowledge/ExperienceRetrieval";
         List<String> foreign = jawataReferencesOtherThanItself(bytes).stream()
             .filter(r -> !r.startsWith(controlOwnName))

@@ -151,9 +151,23 @@ class TheCatalogueCannotReachAnEngineTest {
         // THE SUBJECT'S OWN NAME IS EXCLUDED, which is what a C8 audit refused the first version
         // over: `org/jawata/mcp/catalogue/JavaEngineCoverage` is in every copy of its own class
         // file and matches no allowed prefix, so this read as a pass with every engine reference
-        // deleted. What survives the filter is measured, not asserted — the pool carries
-        // org/jawata/mcp/refactoring/OperationRegistry, .../RefactoringChangeCache and
-        // org/jawata/mcp/tools/{AbstractTool,FrontDoor,RefactoringDoors}.
+        // deleted.
+        //
+        // WHAT SURVIVES THE FILTER IS SEVEN, measured on the shipped class rather than listed
+        // from memory: org/jawata/mcp/refactoring/{OperationRegistry,RefactoringChangeCache},
+        // org/jawata/mcp/tools/{AbstractTool,FrontDoor,RefactoringDoors},
+        // org/jawata/core/IJdtService and org/jawata/mcp/knowledge/ExperienceStore.
+        //
+        // THE FIRST VERSION OF THIS COMMENT NAMED FIVE, and a round-3 audit caught it: the two
+        // it omitted are exactly the two that make the mutation's prefix count FOUR rather than
+        // two — so the comment reproduced, as prose, the same incompleteness that made this
+        // repair's first mutation attempt a false negative. (§7's own row has all four prefixes
+        // right; only this comment was short.)
+        //
+        // One of the seven is a STORE rather than an engine, so the assertion message below is
+        // narrower than the needle: what the fence forbids is any reference outside the JDK and
+        // the catalogue itself, which is wider than "an engine" and is the property that makes
+        // the table shareable.
         List<String> found = foreignReferencesOf(bytes);
         assertFalse(
                 found.isEmpty(),
