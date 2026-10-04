@@ -3,6 +3,7 @@ package org.jawata.mcp;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -49,9 +50,66 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class EveryCrossBundlePackageIsImportedTest {
 
-    /** The real, non-fragment bundles. A fragment is excluded BECAUSE it shares its host's
-     *  classloader — which is the very reason this defect is invisible to the suite. */
-    private static final List<String> BUNDLES = List.of("org.jawata.core", "org.jawata.mcp");
+    /**
+     * The real, non-fragment bundles — DERIVED from the tree, not listed.
+     *
+     * <p>A fragment is excluded BECAUSE it shares its host's classloader, which is the very
+     * reason this defect is invisible to the suite. That exclusion is now read off each
+     * bundle's own {@code Fragment-Host} header rather than from a name nobody updates.</p>
+     *
+     * <p><b>It was a two-name literal, and that cost a boot-level failure.</b> Sprint 28g added
+     * {@code org.jawata.catalogue} and gave {@code org.jawata.mcp} an {@code Import-Package} for
+     * it. The new bundle exports the package correctly and the host imports it correctly — but
+     * this list did not know the bundle existed, so its export was invisible here and the import
+     * read as a name <i>"declared and still cannot resolve at boot"</i>. The product was right
+     * and the guard was wrong, which is the worst direction for a check whose whole purpose is
+     * to be believed about boot.</p>
+     *
+     * <p>This file's own javadoc quotes the rule it broke: a policy expressed as a set of NAMES
+     * fails open the day one is added, because no reference-updating refactoring touches a
+     * string literal. Deriving it means the next bundle is covered by existing.</p>
+     */
+    private static final List<String> BUNDLES = realBundles();
+
+    private static List<String> realBundles() {
+        Path root = repoRoot();
+        List<String> found = new ArrayList<>();
+        try (var listing = Files.list(root)) {
+            for (Path dir : listing.sorted().toList()) {
+                if (!Files.isDirectory(dir)
+                        || !dir.getFileName().toString().startsWith("org.jawata.")
+                        || !Files.isRegularFile(dir.resolve("META-INF/MANIFEST.MF"))) {
+                    continue;
+                }
+                // A FRAGMENT IS NOT A BUNDLE FOR THIS CHECK, and it says so itself.
+                if (manifestOfQuietly(dir).getMainAttributes().getValue("Fragment-Host") != null) {
+                    continue;
+                }
+                found.add(dir.getFileName().toString());
+            }
+        } catch (IOException e) {
+            throw new AssertionError("could not enumerate the bundles under " + root, e);
+        }
+        // A DERIVATION THAT FINDS NOTHING WOULD MAKE EVERY LOOP BELOW VACUOUS, and this check
+        // would then pass by having looked at no bundle at all — the manufactured absence this
+        // repository has shipped before. Two is the floor the hand-written list had.
+        if (found.size() < 2) {
+            throw new AssertionError(
+                    "expected at least the two original bundles under " + root
+                            + "; derived only " + found
+                            + " — the enumeration is wrong, and left alone it would make this"
+                            + " whole check pass without reading a single manifest");
+        }
+        return List.copyOf(found);
+    }
+
+    private static Manifest manifestOfQuietly(Path bundleDir) {
+        try {
+            return manifestOf(bundleDir);
+        } catch (Exception e) {
+            throw new AssertionError("could not read the manifest of " + bundleDir, e);
+        }
+    }
 
     private static final Pattern PACKAGE_DECL =
         Pattern.compile("^\\s*package\\s+([a-zA-Z0-9_.]+)\\s*;", Pattern.MULTILINE);
