@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28g (D39, architecture P2 step 3): org.jawata.catalogue — the shared
+     catalogue of refactorings and smells, as production code no engine owns.
+
+     IT DECLARES NO DEPENDENCIES, AND THAT IS THE DELIVERABLE. Every other bundle
+     here lists JDT, Eclipse or Jackson; this one lists nothing, so the purity
+     property is enforced by the build itself before any test runs — a reference
+     to an engine type would not compile. The checked-in MANIFEST says the same
+     thing a second way: it has no Import-Package at all, so OSGi would refuse
+     such a reference at resolve time too. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.build</artifactId>
+        <version>4.3.3</version>
+    </parent>
+
+    <artifactId>org.jawata.catalogue</artifactId>
+
+    <build>
+        <sourceDirectory>${project.basedir}/../../org.jawata.catalogue/src</sourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestFile>${project.basedir}/../../org.jawata.catalogue/META-INF/MANIFEST.MF</manifestFile>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

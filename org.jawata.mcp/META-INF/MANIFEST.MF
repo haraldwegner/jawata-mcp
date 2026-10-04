@@ -25,6 +25,7 @@ Require-Bundle: org.eclipse.equinox.app,
  org.jacoco.core,
  org.jacoco.report
 Import-Package: com.fasterxml.jackson.annotation,
+ org.jawata.catalogue,
  com.fasterxml.jackson.core,
  com.fasterxml.jackson.databind,
  com.fasterxml.jackson.databind.node,

@@ -29,6 +29,7 @@
              defect's numbers from exactly such a dist before catching it by
              checksum. With the edges declared, Maven orders dist after every
              module in ANY build mode. -->
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.catalogue</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
@@ -153,6 +154,7 @@
                             <stripVersion>false</stripVersion>
                             <artifactItems>
                                 <!-- ours -->
+                                <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.catalogue</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version></artifactItem>
                                 <!-- JDT (compiler.batch comes from patched-bundles, below) -->

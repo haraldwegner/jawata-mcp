@@ -14,6 +14,7 @@
     <artifactId>org.jawata.mcp.tests</artifactId>
 
     <dependencies>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.catalogue</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.11.4</version></dependency>
