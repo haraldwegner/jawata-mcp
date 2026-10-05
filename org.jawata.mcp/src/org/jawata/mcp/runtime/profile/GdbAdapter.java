@@ -145,7 +145,9 @@ public final class GdbAdapter {
 
         boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!finished) {
-            process.destroyForcibly();
+            // S9a M5a: the TREE, not just the root. A debugger spawned through a wrapper, or
+            // one that re-execs itself onto the target, left children behind here.
+            org.jawata.core.host.HostProcesses.reap(process);
             process.waitFor(5, TimeUnit.SECONDS);
             drain.join(2_000);
             throw new IllegalStateException(command + " timed out after " + timeoutSeconds

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Registry for all JAWATA tools.
@@ -504,16 +505,28 @@ public class ToolRegistry {
      * @throws ToolNotFoundException if the tool is not registered
      */
     public ToolResponse callTool(String name, JsonNode arguments) throws ToolNotFoundException {
-        return callTool(name, arguments, "local");
+        // Sprint 28g S9a M4: a DECLARED in-process identity. This used to pass
+        // the literal "local", which manufactured an identity out of an
+        // absence — indistinguishable, in the ledger, from a session actually
+        // called that. Measured before the change: 41 references, every one a
+        // test, so no production path ever reached that bucket.
+        return callTool(name, arguments, CallerIdentity.IN_PROCESS);
     }
 
     /**
-     * Sprint 26: the session-scoped entry — {@code sessionId} is minted by the
-     * transport (per HTTP request header {@code Mcp-Session-Id}, or once per
-     * stdio process) and keys the ledger + the learner event stream.
+     * Sprint 26, amended 28g S9a M4: the caller-scoped entry — {@code caller}
+     * comes from the transport (the client's {@code Mcp-Session-Id}, or the one
+     * identity that transport minted) and keys the ledger + the learner event
+     * stream. A {@link CallerIdentity} rather than a string because an id can
+     * be absent and an identity cannot, which is what retires the four sites
+     * that invented one when it was.
      */
-    public ToolResponse callTool(String name, JsonNode arguments, String sessionId)
+    public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller)
             throws ToolNotFoundException {
+        // The private helpers below still take the id; which of them carry the
+        // whole identity is settled one step later, where the collaborators
+        // that would read its origin live.
+        String sessionId = caller.id();
         Tool tool = tools.get(name);
         if (tool == null) {
             String hint = aliasHint(name);
@@ -550,12 +563,31 @@ public class ToolRegistry {
         // using the tool anyway costs a written reason — refused BEFORE dispatch,
         // because the signed D2 body says the steer is "not an optional hint the
         // agent may ignore". v3.3.0 worded the cost but never charged it.
-        ToolResponse unpaid = precedentCharge(sessionId, name, arguments);
+        ToolResponse unpaid = precedentCharge(caller, name, arguments);
         if (unpaid != null) {
             return stamped(unpaid);
         }
         // A paid override is a meta-argument of the CHOKE, not of the tool.
         arguments = withoutOverride(arguments);
+
+        // Sprint 28g S9a M3: ACCEPTANCE, before the act. A seat outcome claimed
+        // over a gate that never ran is REFUSED here rather than stored and then
+        // commented on afterwards.
+        //
+        // THE POSITION IS LOAD-BEARING, TWICE. It is before `tool.execute` below,
+        // which is the whole point — the old site ran 47 lines after it and could
+        // only remark on something already done. And it is before the in-flight
+        // ticket is taken: a refusal returned between that ticket and its `try`
+        // would leak it, and the `finally` that releases it calls a leaked ticket
+        // a FALSE HANG in its own comment. `precedentCharge` above returns a
+        // refusal from this same position, which is what proves the position safe.
+        if (serverChecks != null && eventTap != null) {
+            ToolResponse refused = serverChecks.acceptance(caller, name, arguments,
+                eventTap.ledger());
+            if (refused != null) {
+                return stamped(refused);
+            }
+        }
 
         // mcp#42: mark the call in flight. The recorder fires on the RESPONSE, so a call
         // that never returns produced no row and no shape — the worst failure mode was the
@@ -595,12 +627,12 @@ public class ToolRegistry {
             // call is working on, what did tools do in similar cases before?
             // Runs BEFORE the tap so it reflects PAST experience, not this call's
             // own outcome; appended, never replacing the tool's own line.
-            precedent(sessionId, name, arguments, response);
+            precedent(caller, name, arguments, response);
             // Sprint 26: the event tap — every outcome becomes a learner label
             // as a side effect of the call itself (D7: training is a side
             // effect of use). Tap failures are the tap's own concern (loud
             // there); they never fail the tool call.
-            tap(sessionId, name, arguments, response, duration);
+            tap(caller, name, arguments, response, duration);
             // Sprint 26 (D1): the automatic architect — the delta (hand edits
             // seen by the pre-call disk sync + files this call modified) runs
             // through the watch engine; NEW findings ride the answer. Never
@@ -612,8 +644,8 @@ public class ToolRegistry {
             // Sprint 26 (D4/D5/D3): the server-side enforcement lane.
             if (serverChecks != null && eventTap != null) {
                 try {
-                    String block = serverChecks.onCall(sessionId, name, arguments,
-                        response, eventTap.ledger());
+                    String block = serverChecks.onCompleted(caller, name, arguments,
+                        eventTap.ledger());
                     if (block != null) {
                         response.appendSteering(block);
                     }
@@ -647,7 +679,7 @@ public class ToolRegistry {
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
             ToolResponse error = ToolResponse.internalError(e);
-            tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
+            tap(caller, name, arguments, error, System.currentTimeMillis() - startTime);
             return stamped(error);
         } catch (Error err) {
             // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
@@ -657,7 +689,7 @@ public class ToolRegistry {
             // request already failed, dying with it helps nobody.
             log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
             ToolResponse error = ToolResponse.internalError(err);
-            tap(sessionId, name, arguments, error, System.currentTimeMillis() - startTime);
+            tap(caller, name, arguments, error, System.currentTimeMillis() - startTime);
             return stamped(error);
         } finally {
             // mcp#42: the call came back, however it came back. In a finally rather than
@@ -695,7 +727,7 @@ public class ToolRegistry {
      * steer (never replacing the tool's own line). No retriever, no target, or
      * no clear signal → silent. Never fails the call.
      */
-    private void precedent(String sessionId, String name, JsonNode arguments,
+    private void precedent(CallerIdentity caller, String name, JsonNode arguments,
             ToolResponse response) {
         if (precedentRetriever == null) {
             return;
@@ -751,7 +783,7 @@ public class ToolRegistry {
             // the steer just named. Charging a cost for a warning never shown
             // would be enforcement by ambush.
             if (verdict.warnedTool() != null && precedentLedger != null) {
-                precedentLedger.warn(sessionId, verdict.warnedTool(), target);
+                precedentLedger.warn(caller, verdict.warnedTool(), target);
                 measure(org.jawata.mcp.knowledge.QualityLedger::warned);
             }
         } catch (Exception e) {
@@ -768,21 +800,21 @@ public class ToolRegistry {
      * work. It also never charges for a warning that was not actually shown —
      * enforcement by ambush would be worse than no enforcement.</p>
      */
-    private ToolResponse precedentCharge(String sessionId, String name, JsonNode arguments) {
+    private ToolResponse precedentCharge(CallerIdentity caller, String name, JsonNode arguments) {
         if (precedentLedger == null) {
             return null;
         }
         try {
             String target = org.jawata.mcp.learn.ToolExperienceRecorder.target(name, arguments);
             if (target == null || target.isBlank()
-                    || !precedentLedger.isOutstanding(sessionId, name, target)) {
+                    || !precedentLedger.isOutstanding(caller, name, target)) {
                 return null;
             }
             String reason = justification(arguments);
             if (reason != null) {
                 // Paid. The agent MAY defect from precedent — it may not defect
                 // SILENTLY. Clear the charge so the reason is owed only once.
-                precedentLedger.clear(sessionId, name, target);
+                precedentLedger.clear(caller, name, target);
                 measure(org.jawata.mcp.knowledge.QualityLedger::defected);
                 log.info("Precedent defection on {} for target {} justified: {}",
                     name, target, reason);
@@ -913,13 +945,13 @@ public class ToolRegistry {
     /** Sprint 26: forwards the outcome to the event tap; never fails the call.
      *  Sprint 28b: carries the call's wall-clock duration for the field
      *  recording's latency bucket. */
-    private void tap(String sessionId, String name, JsonNode arguments, ToolResponse response,
+    private void tap(CallerIdentity caller, String name, JsonNode arguments, ToolResponse response,
             long durationMs) {
         if (eventTap == null) {
             return;
         }
         try {
-            eventTap.onCall(sessionId, name, arguments, response, durationMs);
+            eventTap.onCall(caller, name, arguments, response, durationMs);
         } catch (Exception e) {
             log.error("Event tap failed after {} — the label stream missed this outcome", name, e);
         }

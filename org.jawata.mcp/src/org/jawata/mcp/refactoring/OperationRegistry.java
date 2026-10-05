@@ -100,6 +100,24 @@ public final class OperationRegistry {
     private final Set<String> structural = ConcurrentHashMap.newKeySet();
 
     /**
+     * The tools whose answer is EVIDENCE — the gates (Sprint 28g S9a M1).
+     *
+     * <p>The third instance of the history the two sets above record, and the worst of the
+     * three: gate-ness lived as a byte-identical {@code Set.of("compile_workspace",
+     * "get_diagnostics", "run_tests")} in THREE classes of {@code learn/} at once, beside an
+     * inline {@code "run_tests".equals(...)} and a steering message naming all three in
+     * prose. The enforcement lane is what reads it, and a gate that is renamed or retired now
+     * takes its gate-ness with it.</p>
+     *
+     * <p><b>TOOL-LEVEL ONLY, and that is a judgement rather than an omission.</b> The three
+     * gates publish no kinds — none is a front door — so there is no qualified spelling to
+     * classify, and classifying a bare kind is the ambiguity {@link #register} refuses one
+     * paragraph down. If a front door ever becomes a gate, this set needs the qualified form
+     * and that will be a deliberate change rather than a silent one.</p>
+     */
+    private final Set<String> gates = ConcurrentHashMap.newKeySet();
+
+    /**
      * tool name → THE PARAMETER THAT SELECTS ITS KINDS, as the door itself declares it.
      *
      * <p>The registry's KEY stays {@code "<tool> kind=<kind>"} for every door, because a key
@@ -135,7 +153,7 @@ public final class OperationRegistry {
      * registry over the same tools from tripping over itself.
      */
     public void register(String toolName, Collection<String> kinds) {
-        register(toolName, kinds, false, false, Set.of(), "kind");
+        register(toolName, kinds, false, false, false, Set.of(), "kind");
     }
 
     /**
@@ -143,20 +161,35 @@ public final class OperationRegistry {
      *
      * @param isMechanical    every operation of this tool preserves behaviour
      * @param isStructural    every operation of this tool changes a signature or hierarchy
+     * @param isGate          this tool's answer is EVIDENCE — a compile, a diagnostic sweep,
+     *                        a test run. Tool-level only, for the reason {@link #gates}
+     *                        gives: the three gates publish no kinds
      * @param structuralKinds the kinds that are structural when the tool as a whole is not
      * @param discriminator   the parameter this tool selects its kinds on — {@code kind} for
      *                        every door but {@code hierarchy}, which uses {@code direction}.
      *                        It changes how {@link #invocationOf} SPELLS a call and nothing
      *                        about the keys stored here; a tool publishing no kinds has
      *                        nothing to select, so its value is never read
+     *
+     * <p><b>RECORDED SMELL, with its cure named rather than left to be rediscovered:</b> this
+     * is now three adjacent booleans in a seven-parameter signature, so a call site reads
+     * {@code (name, kinds, false, false, true, Set.of(), "kind")} and a transposed flag
+     * compiles. The cure is {@code change_method_signature kind=introduce_parameter_object}
+     * over the three booleans plus {@code structuralKinds} — one value saying what the tool
+     * declares itself to be. It is NOT done here because it rewrites every caller of this
+     * method and S9a M1's subject is gate-ness; raised at C9a for the architect's watch.</p>
      */
     public void register(String toolName, Collection<String> kinds, boolean isMechanical,
-                         boolean isStructural, Set<String> structuralKinds, String discriminator) {
+                         boolean isStructural, boolean isGate, Set<String> structuralKinds,
+                         String discriminator) {
         if (toolName == null || toolName.isBlank()) {
             return;
         }
         publish(toolName, toolName);
         classify(toolName, isMechanical, isStructural);
+        if (isGate) {
+            gates.add(toolName);
+        }
         if (discriminator != null && !discriminator.isBlank()) {
             discriminatorOf.put(toolName, discriminator);
         }
@@ -209,6 +242,34 @@ public final class OperationRegistry {
     /** Does this operation change a signature or a hierarchy? */
     public boolean isStructural(String operation) {
         return operation != null && structural.contains(operation);
+    }
+
+    /**
+     * Is this tool a GATE — is its answer evidence that a claim was verified?
+     *
+     * <p>False for a tool nothing registered, and that is the safe direction for this
+     * question as it is for {@link #isMechanical(String)}: the enforcement lane then treats a
+     * seat outcome as UNGATED rather than silently accepting one on the strength of a tool it
+     * knows nothing about. The lane's own tests must therefore supply a registry that has the
+     * gates in it — which is the point of asking an injected collaborator rather than reading
+     * a literal, and the blindness {@code ArchitectGate}'s constructor javadoc warns about in
+     * the same words.</p>
+     */
+    public boolean isGate(String toolName) {
+        return toolName != null && gates.contains(toolName);
+    }
+
+    /**
+     * Every registered gate, sorted, so a MESSAGE can name them instead of spelling them.
+     *
+     * <p>This exists because the enforcement lane's steering text re-enumerated
+     * {@code "compile_workspace / run_tests / get_diagnostics"} in prose — a FOURTH place
+     * holding the same three names, which {@link #isGate(String)} alone would have left
+     * standing while reading as fixed. Sorted rather than insertion-ordered: a message a
+     * test asserts on must not depend on which tool registered first.</p>
+     */
+    public Set<String> gates() {
+        return java.util.Collections.unmodifiableSet(new java.util.TreeSet<>(gates));
     }
 
     private void publish(String operation, String toolName) {
@@ -317,9 +378,21 @@ public final class OperationRegistry {
      * paragraphs above; a round-4 audit caught it. Worth keeping because the record's arity is
      * published across the OSGi boundary, so an out-of-tree constructor would have broken at
      * compile time in both directions and this repository's gates could not have seen it.</p>
+     *
+     * <p><b>FIVE COMPONENTS SINCE S9a M1, and the arity change was taken deliberately.</b>
+     * {@code gates} had to join all three of {@link #snapshot()}, {@link #restore(Snapshot)}
+     * and {@link #clear()} together, or borrow-and-return would be exactly the
+     * <i>accidentally correct</i> state the paragraph above describes — and the moment
+     * anything cleared it, every test class after the borrower would see no tool as a gate.
+     * The arity is published, and the paragraph above is right that an out-of-tree Java
+     * consumer would break where this repository's gates cannot see it. It is taken on
+     * Harald's standing ruling, recorded in the 28d plan: <i>"There is nothing outisde
+     * jawata. Only returns to a calling agent or studio consumes jawata-mcp."</i> There is no
+     * out-of-tree Java consumer of this record to break.</p>
      */
     public record Snapshot(Map<String, Set<String>> publishedBy, Set<String> mechanical,
-                           Set<String> structural, Map<String, String> discriminatorOf) {
+                           Set<String> structural, Map<String, String> discriminatorOf,
+                           Set<String> gates) {
     }
 
     /** Capture the whole state, deeply enough that later writes cannot reach it. */
@@ -328,7 +401,8 @@ public final class OperationRegistry {
         publishedBy.forEach((key, value) -> published.put(key, new java.util.LinkedHashSet<>(value)));
         return new Snapshot(published, new java.util.LinkedHashSet<>(mechanical),
             new java.util.LinkedHashSet<>(structural),
-            new java.util.LinkedHashMap<>(discriminatorOf));
+            new java.util.LinkedHashMap<>(discriminatorOf),
+            new java.util.LinkedHashSet<>(gates));
     }
 
     /** Put a captured state back, discarding whatever is there now. */
@@ -342,6 +416,7 @@ public final class OperationRegistry {
         mechanical.addAll(snapshot.mechanical());
         structural.addAll(snapshot.structural());
         discriminatorOf.putAll(snapshot.discriminatorOf());
+        gates.addAll(snapshot.gates());
     }
 
     /** Empty it — every map the registry holds, which is what makes {@link #restore} exact. */
@@ -350,5 +425,6 @@ public final class OperationRegistry {
         mechanical.clear();
         structural.clear();
         discriminatorOf.clear();
+        gates.clear();
     }
 }

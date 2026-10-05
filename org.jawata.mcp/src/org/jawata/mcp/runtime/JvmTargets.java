@@ -120,7 +120,10 @@ public final class JvmTargets {
             new BufferedReader(new InputStreamReader(process.getInputStream()));
         int port = awaitPort(process, out);
         if (port <= 0) {
-            process.destroyForcibly();
+            // S9a M5a: the TREE, not just the root. A launch that never announced a port may
+            // still have forked — a wrapper, or a JVM that re-execs — and killing the root
+            // alone orphaned whatever it left.
+            HostProcesses.reap(process);
             throw new IllegalStateException(
                 "the launched JVM never announced a debug port — it is not debuggable");
         }

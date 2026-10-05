@@ -1,13 +1,14 @@
 package org.jawata.mcp.learn;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.jawata.mcp.knowledge.ToolExperienceStore;
 import org.jawata.mcp.models.ToolResponse;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * The D2 capture logic (Sprint 26a): turns outcome-bearing tool calls into
@@ -27,8 +28,17 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ToolExperienceRecorder {
 
-    private static final Set<String> GATE_TOOLS =
-        Set.of("compile_workspace", "get_diagnostics", "run_tests");
+    /**
+     * The registry this recorder asks which tools are GATES (Sprint 28g S9a M1).
+     *
+     * <p>It was a {@code Set.of("compile_workspace", "get_diagnostics", "run_tests")} right
+     * here — the THIRD byte-identical copy in this one package, and the one no reader of the
+     * other two would have found. The tools declare it now, through
+     * {@link org.jawata.mcp.tools.Tool#isGate()}. Injected for the reason
+     * {@code ArchitectGate}'s constructor gives: a dependency taken from a global is one a
+     * test cannot supply.</p>
+     */
+    private final org.jawata.mcp.refactoring.OperationRegistry registry;
 
     /** Arg keys that make a situation recognizable for keyword retrieval. */
     private static final String[] SALIENT =
@@ -50,7 +60,14 @@ public final class ToolExperienceRecorder {
     private PrecedentLedger steers;
 
     public ToolExperienceRecorder(ToolExperienceStore store) {
+        this(store, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+    }
+
+    /** @param registry the registry this recorder asks which tools are gates; see {@link #registry}. */
+    public ToolExperienceRecorder(ToolExperienceStore store,
+            org.jawata.mcp.refactoring.OperationRegistry registry) {
         this.store = store;
+        this.registry = registry;
     }
 
     /** Sprint 27 D6: install measurement. Both must be present for it to count. */
@@ -66,13 +83,13 @@ public final class ToolExperienceRecorder {
      * counted here, because "what happened after a steer" is the question; a
      * count of every outcome would answer a different one.
      */
-    private void countOutcomeAfterSteer(String sid, String tool, String target,
+    private void countOutcomeAfterSteer(CallerIdentity caller, String tool, String target,
             String outcome) {
         if (quality == null || steers == null || target == null || target.isBlank()) {
             return;
         }
         try {
-            if (steers.wasWarned(sid, tool, target)) {
+            if (steers.wasWarned(caller, tool, target)) {
                 quality.outcomeAfter(outcome);
             }
         } catch (RuntimeException e) {
@@ -80,22 +97,30 @@ public final class ToolExperienceRecorder {
         }
     }
 
-    /** Called after every completed tool call (success or structured error). */
-    public void onCall(String sessionId, String name, JsonNode arguments, ToolResponse response) {
+    /**
+     * Called after every completed tool call (success or structured error).
+     *
+     * <p>Takes a {@link CallerIdentity} because this was the third of four
+     * sites reading {@code sessionId == null ? "local" : sessionId}. The rows
+     * it stores are keyed by the identity's ID — a persisted string column —
+     * but nothing can hand it an absence to invent one from.</p>
+     */
+    public void onCall(CallerIdentity caller, String name, JsonNode arguments,
+            ToolResponse response) {
         if (store == null || response == null) {
             return;
         }
-        String sid = sessionId == null ? "local" : sessionId;
+        String sid = caller.id();
 
         if (!response.isSuccess()) {
             store.append(new ToolExperience(sid, situation(name, arguments), name,
                 ToolExperience.OUTCOME_ERROR, "{\"error\":true}"));
-            countOutcomeAfterSteer(sid, name, target(name, arguments),
+            countOutcomeAfterSteer(caller, name, target(name, arguments),
                 ToolExperience.OUTCOME_ERROR);
             return;
         }
 
-        if (GATE_TOOLS.contains(name)) {
+        if (registry.isGate(name)) {
             Pending p = pending.remove(sid);
             if (p != null) {
                 long errors = errorCount(response);
@@ -103,7 +128,7 @@ public final class ToolExperienceRecorder {
                     ? ToolExperience.OUTCOME_COMPILED : ToolExperience.OUTCOME_REVERTED;
                 store.append(new ToolExperience(sid, p.situation(), p.tool(), outcome,
                     "{\"gate\":\"" + name + "\",\"errors\":" + errors + "}"));
-                countOutcomeAfterSteer(sid, p.tool(), p.target(), outcome);
+                countOutcomeAfterSteer(caller, p.tool(), p.target(), outcome);
             }
             return;
         }
@@ -113,7 +138,7 @@ public final class ToolExperienceRecorder {
             if (p != null) {
                 store.append(new ToolExperience(sid, p.situation(), p.tool(),
                     ToolExperience.OUTCOME_REVERTED, "{\"undo\":true}"));
-                countOutcomeAfterSteer(sid, p.tool(), p.target(),
+                countOutcomeAfterSteer(caller, p.tool(), p.target(),
                     ToolExperience.OUTCOME_REVERTED);
             }
             return;

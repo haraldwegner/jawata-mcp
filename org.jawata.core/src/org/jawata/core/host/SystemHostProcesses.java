@@ -111,8 +111,13 @@ final class SystemHostProcesses implements HostProcesses {
         if (!process.waitFor(command.timeout().toMillis(), TimeUnit.MILLISECONDS)) {
             // Kill the tree, not just the parent: a wrapper script that spawned
             // the real tool leaves it running otherwise.
-            process.descendants().forEach(ProcessHandle::destroyForcibly);
-            process.destroyForcibly();
+            //
+            // S9a M5a: this two-line idiom was the ORIGINAL of six copies, and it now lives on
+            // the interface that owns launching, so the nine sites that each remembered it —
+            // or remembered half of it — share one. The order also changed, deliberately:
+            // snapshot, root, then children, which closes the window in which a root killed
+            // second forks once more into nobody's list.
+            HostProcesses.reap(process);
             drain.join(1000);
             return new HostProcessOutcome.TimedOut(captured.toString(), command.timeout());
         }

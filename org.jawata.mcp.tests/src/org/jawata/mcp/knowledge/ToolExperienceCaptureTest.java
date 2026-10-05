@@ -13,6 +13,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 26a D2 (C1): the experience loop's SELECTIVE capture — the positive
@@ -33,13 +34,14 @@ class ToolExperienceCaptureTest {
     void a_refactor_that_compiles_lands_one_compiled_row() {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         ToolExperienceStore tes = new ToolExperienceStore(store);
-        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes);
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
 
-        rec.onCall("s1", "rename_symbol", args("symbol", "com.foo.Bar#baz", "newName", "qux"),
+        rec.onCall(CallerIdentity.supplied("s1"), "rename_symbol", args("symbol", "com.foo.Bar#baz", "newName", "qux"),
             ToolResponse.success(Map.of("filesModified", List.of("Bar.java", "Caller.java"))));
         assertEquals(0L, tes.count(), "a mutate alone is pending, not yet an outcome");
 
-        rec.onCall("s1", "compile_workspace", null,
+        rec.onCall(CallerIdentity.supplied("s1"), "compile_workspace", null,
             ToolResponse.success(Map.of("errorCount", 0)));
 
         List<ToolExperience> rows = tes.recentMatching("rename_symbol", 10);
@@ -57,11 +59,12 @@ class ToolExperienceCaptureTest {
     void a_refactor_then_a_failing_gate_lands_reverted() {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         ToolExperienceStore tes = new ToolExperienceStore(store);
-        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes);
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
 
-        rec.onCall("s1", "extract", args("kind", "method"),
+        rec.onCall(CallerIdentity.supplied("s1"), "extract", args("kind", "method"),
             ToolResponse.success(Map.of("filesModified", List.of("A.java"))));
-        rec.onCall("s1", "compile_workspace", null,
+        rec.onCall(CallerIdentity.supplied("s1"), "compile_workspace", null,
             ToolResponse.success(Map.of("errorCount", 3)));
 
         assertEquals(1L, tes.count());
@@ -74,11 +77,12 @@ class ToolExperienceCaptureTest {
     void an_undo_reverts_the_pending_mutate() {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         ToolExperienceStore tes = new ToolExperienceStore(store);
-        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes);
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
 
-        rec.onCall("s1", "move", args("symbol", "com.foo.Bar"),
+        rec.onCall(CallerIdentity.supplied("s1"), "move", args("symbol", "com.foo.Bar"),
             ToolResponse.success(Map.of("filesModified", List.of("Bar.java"))));
-        rec.onCall("s1", "refactoring", args("action", "undo"),
+        rec.onCall(CallerIdentity.supplied("s1"), "refactoring", args("action", "undo"),
             ToolResponse.success(Map.of("undone", true)));
 
         assertEquals(1L, tes.count());
@@ -91,9 +95,10 @@ class ToolExperienceCaptureTest {
     void a_tool_error_lands_one_error_row() {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         ToolExperienceStore tes = new ToolExperienceStore(store);
-        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes);
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
 
-        rec.onCall("s1", "rename_symbol", args("symbol", "com.foo.Missing"),
+        rec.onCall(CallerIdentity.supplied("s1"), "rename_symbol", args("symbol", "com.foo.Missing"),
             ToolResponse.error("SYMBOL_NOT_FOUND", "no such symbol", "check the name"));
 
         assertEquals(1L, tes.count());
@@ -106,13 +111,14 @@ class ToolExperienceCaptureTest {
     void a_routine_successful_search_lands_no_row_the_negative() {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         ToolExperienceStore tes = new ToolExperienceStore(store);
-        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes);
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
 
-        rec.onCall("s1", "search_symbols", args("query", "*Service"),
+        rec.onCall(CallerIdentity.supplied("s1"), "search_symbols", args("query", "*Service"),
             ToolResponse.success(Map.of("results", List.of("A", "B"))));
-        rec.onCall("s1", "find_references", args("symbol", "com.foo.Bar#baz"),
+        rec.onCall(CallerIdentity.supplied("s1"), "find_references", args("symbol", "com.foo.Bar#baz"),
             ToolResponse.success(Map.of("results", List.of("X"))));
-        rec.onCall("s1", "inspect", args("kind", "type_members", "typeName", "com.foo.Bar"),
+        rec.onCall(CallerIdentity.supplied("s1"), "inspect", args("kind", "type_members", "typeName", "com.foo.Bar"),
             ToolResponse.success(Map.of("data", "stuff")));
 
         assertEquals(0L, tes.count(),

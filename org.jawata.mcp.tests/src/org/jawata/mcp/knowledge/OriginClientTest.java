@@ -17,6 +17,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 28c D14 (v13) — {@code origin_client}: which client recorded an entry.
@@ -70,7 +71,7 @@ class OriginClientTest {
         a.put("verdict", "failed_avoid");
         ToolResponse r = tool.execute(a);
         assertTrue(r.isSuccess());
-        tap.onCall(sessionId, "experience", a, r, 5L);
+        tap.onCall(CallerIdentity.supplied(sessionId), "experience", a, r, 5L);
         return (String) ((Map<?, ?>) r.getData()).get("id");
     }
 
@@ -124,7 +125,7 @@ class OriginClientTest {
         ToolResponse r = tool.execute(im);
         assertTrue(r.isSuccess());
         // The completed IMPORT call reaches the tap too, as it does live.
-        tap.onCall("sess-other", "experience", im, r, 5L);
+        tap.onCall(CallerIdentity.supplied("sess-other"), "experience", im, r, 5L);
 
         assertEquals("cursor", originOf(id),
             "the round trip carries the ORIGINAL client; the importing session's"

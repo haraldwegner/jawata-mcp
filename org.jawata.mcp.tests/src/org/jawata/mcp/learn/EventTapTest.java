@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 26 Stage 1: the event tap turns tool outcomes into learner labels as
@@ -33,7 +34,10 @@ class EventTapTest {
         store = H2ExperienceStore.openMemory();
         events = new LearnerEventStore(store);
         ledger = new SessionLedger();
-        tap = new EventTap(ledger, events);
+        // S9a M1: gate-ness moved off a literal in this package onto the tools themselves,
+        // so the tap has to be given a registry that knows them — the same rule this class
+        // already states for mechanical-ness a few lines down.
+        tap = new EventTap(ledger, events, org.jawata.mcp.fixtures.ShippedGates.registry());
     }
 
     @AfterEach
@@ -44,17 +48,17 @@ class EventTapTest {
 
     @Test
     void a_tool_error_becomes_a_tool_error_event_and_a_ledger_row() throws Exception {
-        tap.onCall("s1", "rename_symbol", mapper.readTree("{}"),
+        tap.onCall(CallerIdentity.supplied("s1"), "rename_symbol", mapper.readTree("{}"),
             ToolResponse.internalError("boom"), 0L);
         assertEquals(Map.of(LearnerEvent.KIND_TOOL_ERROR, 1L), events.countByKind());
-        List<SessionLedger.CallRecord> calls = ledger.calls("s1");
+        List<SessionLedger.CallRecord> calls = ledger.calls(CallerIdentity.supplied("s1"));
         assertEquals(1, calls.size());
         assertFalse(calls.get(0).ok());
     }
 
     @Test
     void an_undo_call_becomes_an_undo_event() throws Exception {
-        tap.onCall("s1", "refactoring", mapper.readTree("{\"action\":\"undo\"}"),
+        tap.onCall(CallerIdentity.supplied("s1"), "refactoring", mapper.readTree("{\"action\":\"undo\"}"),
             ToolResponse.success(Map.of("undone", true)), 0L);
         assertTrue(events.countByKind().containsKey(LearnerEvent.KIND_UNDO));
     }
@@ -67,17 +71,18 @@ class EventTapTest {
         // test that exercises the tap has to wire the tool it names, exactly as the
         // application does at registration.
         org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
-            .register("rename_symbol", java.util.List.of(), true, false, java.util.Set.of(), "kind");
-        tap.onCall("s1", "rename_symbol", mapper.readTree("{}"),
+            .register("rename_symbol", java.util.List.of(), true, false, false,
+                java.util.Set.of(), "kind");
+        tap.onCall(CallerIdentity.supplied("s1"), "rename_symbol", mapper.readTree("{}"),
             ToolResponse.success(Map.of("filesModified", List.of("A.java", "B.java"))), 0L);
         assertTrue(events.countByKind().containsKey(LearnerEvent.KIND_MECHANICAL_TOUCH));
-        assertEquals(2, ledger.calls("s1").get(0).filesModified());
+        assertEquals(2, ledger.calls(CallerIdentity.supplied("s1")).get(0).filesModified());
     }
 
     @Test
     void a_failing_gate_after_a_touch_labels_compile_after_touch_fail() throws Exception {
         MechanicalChangeJournal.recordMechanical("src/A.java");
-        tap.onCall("s1", "compile_workspace", mapper.readTree("{}"),
+        tap.onCall(CallerIdentity.supplied("s1"), "compile_workspace", mapper.readTree("{}"),
             ToolResponse.success(Map.of("errorCount", 3)), 0L);
         Map<String, Long> counts = events.countByKind();
         assertTrue(counts.containsKey(LearnerEvent.KIND_GATE_CALL));
@@ -87,7 +92,7 @@ class EventTapTest {
 
     @Test
     void a_clean_gate_without_touches_is_only_a_gate_call() throws Exception {
-        tap.onCall("s1", "compile_workspace", mapper.readTree("{}"),
+        tap.onCall(CallerIdentity.supplied("s1"), "compile_workspace", mapper.readTree("{}"),
             ToolResponse.success(Map.of("errorCount", 0)), 0L);
         assertEquals(Map.of(LearnerEvent.KIND_GATE_CALL, 1L), events.countByKind());
     }
@@ -95,13 +100,13 @@ class EventTapTest {
     @Test
     void ledger_is_bounded_per_session_and_across_sessions() {
         for (int s = 0; s < SessionLedger.MAX_SESSIONS + 10; s++) {
-            ledger.record("session-" + s,
-                new SessionLedger.CallRecord("t", true, 0, s));
+            ledger.record(CallerIdentity.supplied("session-" + s),
+                new SessionLedger.CallRecord("t", true, 0, s, null));
         }
         assertTrue(ledger.sessionCount() <= SessionLedger.MAX_SESSIONS, "LRU-bounded sessions");
         for (int i = 0; i < SessionLedger.MAX_CALLS + 50; i++) {
-            ledger.record("busy", new SessionLedger.CallRecord("t", true, 0, i));
+            ledger.record(CallerIdentity.supplied("busy"), new SessionLedger.CallRecord("t", true, 0, i, null));
         }
-        assertEquals(SessionLedger.MAX_CALLS, ledger.calls("busy").size(), "bounded calls");
+        assertEquals(SessionLedger.MAX_CALLS, ledger.calls(CallerIdentity.supplied("busy")).size(), "bounded calls");
     }
 }

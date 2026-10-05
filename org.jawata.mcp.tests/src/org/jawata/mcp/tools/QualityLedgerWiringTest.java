@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 27 D6 (E6) — THE gate: every counter class advances from a real
@@ -113,7 +114,7 @@ class QualityLedgerWiringTest {
 
         // 1. A plain call surfaces the precedent — the choke's own doing.
         ToolResponse warned = reg.callTool("analyze",
-            json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+            json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertNotNull(warned.getMeta(), "precondition: the push produced steering");
         assertTrue(warned.getMeta().getSteering().contains("⚠ PRECEDENT"),
             "precondition: the negative precedent was SURFACED");
@@ -129,7 +130,7 @@ class QualityLedgerWiringTest {
         // 2. The agent uses the warned tool anyway, paying the justification.
         ToolResponse paid = reg.callTool("extract",
             json("{\"symbol\":\"com.foo.Bar\",\"precedentOverride\":"
-                + "\"the earlier revert was a bad range; this block is clean\"}"), "s1");
+                + "\"the earlier revert was a bad range; this block is clean\"}"), CallerIdentity.supplied("s1"));
         assertTrue(paid.isSuccess() && ran[0], "precondition: the paid call ran");
 
         assertEquals(1L, counters().get("defected"),
@@ -139,10 +140,10 @@ class QualityLedgerWiringTest {
     @Test
     void an_unpaid_refusal_is_not_counted_as_a_defection() throws Exception {
         wireRegistry();
-        reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
 
         ToolResponse refused = reg.callTool("extract",
-            json("{\"symbol\":\"com.foo.Bar\"}"), "s1");
+            json("{\"symbol\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertFalse(refused.isSuccess(), "precondition: the unjustified call is refused");
         assertFalse(ran[0], "precondition: the tool did not run");
 
@@ -203,14 +204,14 @@ class QualityLedgerWiringTest {
         recorder.setQualityLedger(quality, steers);
 
         // No steer yet: an outcome here must NOT be counted as outcome-after.
-        recorder.onCall("s1", "extract", json("{\"symbol\":\"com.unsteered.Thing\"}"),
+        recorder.onCall(CallerIdentity.supplied("s1"), "extract", json("{\"symbol\":\"com.unsteered.Thing\"}"),
             ToolResponse.error("BOOM", "failed", "hint"));
         assertFalse(counters().keySet().stream().anyMatch(k -> k.startsWith("outcome_after.")),
             "an outcome on a target nobody steered answers a different question");
 
         // Now the same pair is steered, and the next outcome on it counts.
-        steers.warn("s1", "extract", "com.foo.Bar");
-        recorder.onCall("s1", "extract", json("{\"symbol\":\"com.foo.Bar\"}"),
+        steers.warn(CallerIdentity.supplied("s1"), "extract", "com.foo.Bar");
+        recorder.onCall(CallerIdentity.supplied("s1"), "extract", json("{\"symbol\":\"com.foo.Bar\"}"),
             ToolResponse.error("BOOM", "failed", "hint"));
         assertEquals(1L, counters().get("outcome_after.error"),
             "what happened after the steer, on the steered target");
@@ -224,12 +225,12 @@ class QualityLedgerWiringTest {
             new org.jawata.mcp.learn.PrecedentLedger();
         recorder.setQualityLedger(quality, steers);
 
-        steers.warn("s1", "extract", "com.foo.Bar");
-        steers.clear("s1", "extract", "com.foo.Bar");     // the cost was paid
-        assertFalse(steers.isOutstanding("s1", "extract", "com.foo.Bar"),
+        steers.warn(CallerIdentity.supplied("s1"), "extract", "com.foo.Bar");
+        steers.clear(CallerIdentity.supplied("s1"), "extract", "com.foo.Bar");     // the cost was paid
+        assertFalse(steers.isOutstanding(CallerIdentity.supplied("s1"), "extract", "com.foo.Bar"),
             "precondition: paying removes the outstanding charge");
 
-        recorder.onCall("s1", "extract", json("{\"symbol\":\"com.foo.Bar\"}"),
+        recorder.onCall(CallerIdentity.supplied("s1"), "extract", json("{\"symbol\":\"com.foo.Bar\"}"),
             ToolResponse.error("BOOM", "failed", "hint"));
         assertEquals(1L, counters().get("outcome_after.error"),
             "a defection's outcome is exactly the case worth measuring — losing it "
@@ -310,10 +311,10 @@ class QualityLedgerWiringTest {
         plain.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
 
         ToolResponse warned = plain.callTool("analyze",
-            json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+            json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertTrue(warned.getMeta().getSteering().contains("⚠ PRECEDENT"));
         ToolResponse refused = plain.callTool("extract",
-            json("{\"symbol\":\"com.foo.Bar\"}"), "s1");
+            json("{\"symbol\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertFalse(refused.isSuccess());
         assertFalse(ran[0]);
 

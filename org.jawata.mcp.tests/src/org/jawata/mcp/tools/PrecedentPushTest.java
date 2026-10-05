@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 26a D2 (C2): the loop CLOSED through the real choke — capture →
@@ -67,7 +68,19 @@ class PrecedentPushTest {
         ToolExperienceStore tes = new ToolExperienceStore(store);
         ToolRegistry reg = new ToolRegistry();
         EventTap tap = new EventTap(new SessionLedger(), null);
-        tap.setToolExperienceRecorder(new ToolExperienceRecorder(tes));
+        // S9a M1 BROKE THIS TEST AND ITS OWN CLASS LIST DID NOT COVER IT.
+        // Gate-ness used to be a hardcoded set of NAMES, so the mock named
+        // "compile_workspace" below qualified as a gate by its name alone. M1
+        // made it a DECLARATION (Tool#isGate), and a mock declares false — so
+        // the mutate's pending outcome never resolved and the capture count
+        // went to zero. The checks fail CLOSED by M1's own choice, which is
+        // what makes this a red test rather than a silent pass.
+        //
+        // The cure is the one M1 gave four other lane tests: wire the gates the
+        // way the application does, instead of hoping the PROCESS registry was
+        // populated by whatever else shares this JVM.
+        tap.setToolExperienceRecorder(new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry()));
         reg.setEventTap(tap);
         reg.setPrecedentRetriever(new KeywordPrecedentRetriever(tes));
 
@@ -78,12 +91,12 @@ class PrecedentPushTest {
         reg.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
 
         // A mutate on com.foo.Bar, then a failing gate → a reverted precedent is captured.
-        reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar#baz\",\"kind\":\"method\"}"), "s1");
-        reg.callTool("compile_workspace", json("{}"), "s1");
+        reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar#baz\",\"kind\":\"method\"}"), CallerIdentity.supplied("s1"));
+        reg.callTool("compile_workspace", json("{}"), CallerIdentity.supplied("s1"));
         assertEquals(1L, tes.count(), "the reverted precedent was captured through the tap");
 
         // A later call working on com.foo.Bar → the precedent rides the answer.
-        ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         String steer = resp.getMeta() == null ? null : resp.getMeta().getSteering();
         assertNotNull(steer, "a matching precedent rides the answer");
         assertTrue(steer.contains("PRECEDENT"), steer);
@@ -105,7 +118,7 @@ class PrecedentPushTest {
             return r;
         }));
 
-        ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         String steer = resp.getMeta().getSteering();
         assertTrue(steer.contains("TOOL-OWN: the next grounded step"),
             "the tool's OWN steering line survives — the push never replaces it");
@@ -124,7 +137,7 @@ class PrecedentPushTest {
                 ToolExperience.OUTCOME_REVERTED, "{}")));
         reg.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
 
-        ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         String steer = resp.getMeta().getSteering();
         assertNotNull(steer);
         assertTrue(steer.contains("PRECEDENT") && steer.contains("move"),
@@ -155,7 +168,7 @@ class PrecedentPushTest {
             new ToolExperience("s1", "move com.other.Far", "move",
                 ToolExperience.OUTCOME_REVERTED, "{}")));
         speak.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
-        speak.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        speak.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertEquals(1L, ledger.counters().get("fired.choke_advisory"),
             "a similar-case advisory must increment the choke advisory tier's fired counter");
 
@@ -167,7 +180,7 @@ class PrecedentPushTest {
         silent.setQualityLedger(ledger);
         silent.setPrecedentRetriever((query, limit) -> List.of());
         silent.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
-        silent.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s2");
+        silent.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s2"));
         assertEquals(1L, ledger.counters().get("silent.choke_advisory"),
             "an empty lane must increment the choke advisory tier's silent counter — "
             + "without it a tier that never speaks looks like one never consulted");

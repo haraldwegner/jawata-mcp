@@ -162,6 +162,56 @@ class HostProcessesContractTest {
     }
 
     @Test
+    @DisplayName("reap kills the CHILD'S OWN CHILD, not just the process we hold")
+    void reapTakesTheTreeAndNotOnlyTheRoot() throws Exception {
+        // Sprint 28g S9a M5a. Launching lived on this interface and killing what was launched
+        // did not, so the sweep-then-kill idiom was copied into six production sites — and
+        // THREE more killed the root alone and leaked every grandchild. The worst of those was
+        // a Maven timeout, which is the wrapper-spawns-the-real-tool case by definition.
+        //
+        // POSIX only: the fixture needs a shell that can fork and report its child's pid.
+        org.junit.jupiter.api.Assumptions.assumeTrue(!HostOS.current().isWindows(),
+            "the fixture is a POSIX shell; the Windows path has no equivalent one-liner");
+
+        // `wait` is load-bearing. Without it the shell EXITS and the sleeper is reparented
+        // away — which is the double-fork case this reap deliberately cannot reach, and
+        // using it here would make the test assert the limitation instead of the behaviour.
+        Process shell = host.start(HostCommand.of(
+            "/bin/sh", "-c", "sleep 300 & echo $! ; wait"));
+        long grandchild;
+        try (java.io.BufferedReader out = new java.io.BufferedReader(
+                new java.io.InputStreamReader(shell.getInputStream()))) {
+            String line = out.readLine();
+            org.junit.jupiter.api.Assertions.assertNotNull(line,
+                "the fixture must report its child's pid, or this checks nothing");
+            grandchild = Long.parseLong(line.trim());
+        }
+
+        // PROOF OF LIFE. Without it every assertion below passes when the sleeper never
+        // started, which is the shape of a gate that cannot fail.
+        assertTrue(ProcessHandle.of(grandchild).filter(ProcessHandle::isAlive).isPresent(),
+            "the grandchild must be running before a reap can be shown to kill it");
+
+        HostProcesses.reap(shell);
+
+        // A kill is asynchronous; poll rather than sleep a guessed interval.
+        boolean gone = false;
+        for (int i = 0; i < 100 && !gone; i++) {
+            gone = ProcessHandle.of(grandchild).filter(ProcessHandle::isAlive).isEmpty();
+            if (!gone) {
+                Thread.sleep(50);
+            }
+        }
+        if (!gone) {
+            // Never leave a 300-second sleeper behind in the suite, whatever the verdict.
+            ProcessHandle.of(grandchild).ifPresent(ProcessHandle::destroyForcibly);
+        }
+        assertTrue(gone, "reap must take the tree: pid " + grandchild
+            + " was the shell's own child and is still alive");
+        assertFalse(shell.isAlive(), "and the root itself is gone");
+    }
+
+    @Test
     @DisplayName("a command is a value: built and inspected without spawning anything")
     void aCommandIsInspectableBeforeItRuns() {
         HostCommand command = HostCommand.of("git", "-C", "/repo", "diff")

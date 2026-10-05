@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Handles MCP protocol messages over JSON-RPC 2.0.
@@ -45,14 +46,20 @@ public class McpProtocolHandler {
      * Returns null for notifications (no response required).
      */
     public String processMessage(String jsonMessage) {
-        return processMessage(jsonMessage, "local");
+        // Sprint 28g S9a M4: a DECLARED in-process identity, where this used
+        // to pass the literal "local". The literal was one of four sites that
+        // manufactured an identity out of an absence, and a reader meeting it
+        // in the ledger could not tell it from a session actually called that.
+        return processMessage(jsonMessage, CallerIdentity.IN_PROCESS);
     }
 
     /**
-     * Sprint 26: the session-scoped entry — {@code sessionId} comes from the
-     * transport and flows to the tool registry (ledger + learner events).
+     * Sprint 26, amended 28g S9a M4: the caller-scoped entry — {@code caller}
+     * comes from the transport and flows to the tool registry (ledger +
+     * learner events). It carries HOW the identity came to be, so a shared
+     * resident-minted bucket is not read as one agent's session.
      */
-    public String processMessage(String jsonMessage, String sessionId) {
+    public String processMessage(String jsonMessage, CallerIdentity caller) {
         try {
             JsonRpcMessage request = objectMapper.readValue(jsonMessage, JsonRpcMessage.class);
 
@@ -66,7 +73,7 @@ public class McpProtocolHandler {
 
             // Handle request
             if (request.isRequest()) {
-                return handleRequest(request, sessionId);
+                return handleRequest(request, caller);
             }
 
             // Handle notification (no response needed)
@@ -96,7 +103,7 @@ public class McpProtocolHandler {
         }
     }
 
-    private String handleRequest(JsonRpcMessage request, String sessionId) {
+    private String handleRequest(JsonRpcMessage request, CallerIdentity caller) {
         String method = request.getMethod();
         Object id = request.getId();
         JsonNode params = request.getParams();
@@ -105,10 +112,10 @@ public class McpProtocolHandler {
 
         try {
             Object result = switch (method) {
-                case "initialize" -> handleInitialize(params, sessionId);
+                case "initialize" -> handleInitialize(params, caller);
                 case "initialized" -> handleInitialized();
                 case "tools/list" -> handleToolsList();
-                case "tools/call" -> handleToolsCall(params, sessionId);
+                case "tools/call" -> handleToolsCall(params, caller);
                 case "shutdown" -> handleShutdown();
                 default -> throw new MethodNotFoundException("Method not found: " + method);
             };
@@ -201,7 +208,7 @@ public class McpProtocolHandler {
     /**
      * Handle initialize request - MCP handshake.
      */
-    private Object handleInitialize(JsonNode params, String sessionId) {
+    private Object handleInitialize(JsonNode params, CallerIdentity caller) {
         String requestedVersion = null;
         if (params != null) {
             JsonNode clientInfo = params.get("clientInfo");
@@ -212,7 +219,7 @@ public class McpProtocolHandler {
                 // Sprint 28b D1: remember which client this session is, for
                 // the sanitized field recording's client attribution.
                 if (clientDirectory != null) {
-                    clientDirectory.record(sessionId, clientName);
+                    clientDirectory.record(caller.id(), clientName);
                 }
             }
             JsonNode versionNode = params.get("protocolVersion");
@@ -304,7 +311,7 @@ public class McpProtocolHandler {
     /**
      * Handle tools/call - execute a tool.
      */
-    private Object handleToolsCall(JsonNode params, String sessionId)
+    private Object handleToolsCall(JsonNode params, CallerIdentity caller)
             throws InvalidParamsException, MethodNotFoundException {
         if (params == null) {
             throw new InvalidParamsException("Missing params");
@@ -321,7 +328,7 @@ public class McpProtocolHandler {
         log.debug("Calling tool: {} with arguments: {}", toolName, arguments);
 
         try {
-            Object toolResult = toolRegistry.callTool(toolName, arguments, sessionId);
+            Object toolResult = toolRegistry.callTool(toolName, arguments, caller);
 
             // MCP expects content array format for tool results
             Map<String, Object> result = new LinkedHashMap<>();

@@ -32,15 +32,18 @@ class HttpTransportTest {
     private static final String TOKEN = "test-token-deadbeef-cafef00d";
 
     @Test
-    @DisplayName("Sprint 26: Mcp-Session-Id is honored when sent, minted when absent, echoed always")
+    @DisplayName("Sprint 26 + 28g M4: a client's id is honoured, an absent one gets ONE identity for the whole transport, and each says WHICH it is")
     void sessionId_honoredMintedEchoed() throws Exception {
-        java.util.concurrent.atomic.AtomicReference<String> seen =
-            new java.util.concurrent.atomic.AtomicReference<>();
-        try (TestServer server = new TestServer((msg, session) -> {
-            seen.set(session);
+        // Every identity the handler is given, in order. A list rather than one
+        // slot, because the deliverable is about two requests AGREEING and a
+        // single slot cannot express that.
+        java.util.List<org.jawata.mcp.models.CallerIdentity> seen =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        try (TestServer server = new TestServer((msg, caller) -> {
+            seen.add(caller);
             return "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}";
         })) {
-            // Client-supplied id is honored + echoed.
+            // A client-supplied id is honoured, echoed, and SAYS it is theirs.
             HttpRequest withId = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp"))
                 .header("Authorization", "Bearer " + TOKEN)
@@ -50,15 +53,44 @@ class HttpTransportTest {
                 .build();
             HttpResponse<String> r1 = HttpClient.newHttpClient()
                 .send(withId, HttpResponse.BodyHandlers.ofString());
-            assertEquals("client-session-42", seen.get(), "handler receives the client's id");
+            org.jawata.mcp.models.CallerIdentity theirs = seen.get(seen.size() - 1);
+            assertEquals("client-session-42", theirs.id(), "handler receives the client's id");
+            assertEquals(org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED,
+                theirs.origin(), "and it says the id is the CLIENT'S");
             assertEquals("client-session-42",
                 r1.headers().firstValue("Mcp-Session-Id").orElseThrow(), "echoed back");
+
             // Absent id: one is minted and echoed.
             HttpResponse<String> r2 = post(server.port(), TOKEN,
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"x\"}");
             String minted = r2.headers().firstValue("Mcp-Session-Id").orElseThrow();
             assertTrue(minted.startsWith("http-"), "minted id has the transport prefix");
-            assertEquals(minted, seen.get(), "the handler saw the minted id");
+            org.jawata.mcp.models.CallerIdentity first = seen.get(seen.size() - 1);
+            assertEquals(minted, first.id(), "the handler saw the minted id");
+
+            // THE DELIVERABLE. An id the resident minted because the client sent
+            // none is a DISTINCT case from one the client sent — so a per-session
+            // check reading this bucket's history knows it is a TRANSPORT'S and
+            // not one agent's. Without this assertion the whole case passes
+            // against an implementation that mints and then lies about where the
+            // id came from.
+            assertEquals(org.jawata.mcp.models.CallerIdentity.Origin.RESIDENT_MINTED,
+                first.origin(), "a minted identity must not pass itself off as the client's");
+
+            // THE FRAGMENTATION ASSERTION, which is what M4 is actually for. A
+            // SECOND header-less request must land on the SAME identity. Before
+            // this the transport minted a fresh UUID inside the request handler,
+            // so one client's work was scattered one call per identity and no
+            // per-session check could ever see two of its calls together.
+            HttpResponse<String> r3 = post(server.port(), TOKEN,
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"x\"}");
+            org.jawata.mcp.models.CallerIdentity second = seen.get(seen.size() - 1);
+            assertEquals(first, second,
+                "two header-less requests are ONE caller, not two");
+            assertEquals(minted, r3.headers().firstValue("Mcp-Session-Id").orElseThrow(),
+                "and the same id is echoed, so a client that starts carrying it joins"
+                    + " the history it already has");
+            assertEquals(3, seen.size(), "proof of life: all three requests reached the handler");
         }
     }
 

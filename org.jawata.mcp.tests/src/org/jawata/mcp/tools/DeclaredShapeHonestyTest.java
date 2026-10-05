@@ -432,7 +432,8 @@ class DeclaredShapeHonestyTest {
         // as an operation?" and had to reach into the registry's internals to ask.
         tools.forEach((name, door) ->
             registry.register(name, OperationSurface.operationKindsOf(door),
-                door.isMechanical(), door.isStructural(), door.structuralKinds(), "kind"));
+                door.isMechanical(), door.isStructural(), door.isGate(),
+                door.structuralKinds(), "kind"));
 
         assertTrue(registry.isWired(),
             "PROOF OF LIFE: an empty registry would make the check below pass over"

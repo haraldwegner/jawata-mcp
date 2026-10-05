@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Unit tests for ToolRegistry.
@@ -37,21 +38,23 @@ class ToolRegistryTest {
         org.jawata.mcp.learn.SessionLedger ledger = new org.jawata.mcp.learn.SessionLedger();
         registry.setEventTap(new org.jawata.mcp.learn.EventTap(ledger, null));
         registry.register(new MockTool("ok_tool", "answers"));
-        registry.callTool("ok_tool", objectMapper.readTree("{}"), "session-A");
-        assertEquals(1, ledger.calls("session-A").size(), "the call is ledgered under its session");
-        assertTrue(ledger.calls("session-A").get(0).ok());
-        // The 2-arg overload keys the "local" session (in-process callers).
+        registry.callTool("ok_tool", objectMapper.readTree("{}"), CallerIdentity.supplied("session-A"));
+        assertEquals(1, ledger.calls(CallerIdentity.supplied("session-A")).size(), "the call is ledgered under its session");
+        assertTrue(ledger.calls(CallerIdentity.supplied("session-A")).get(0).ok());
+        // The 2-arg overload keys the DECLARED in-process identity. It used to
+        // key the literal "local", which read in the ledger exactly like a
+        // session actually called that.
         registry.callTool("ok_tool", objectMapper.readTree("{}"));
-        assertEquals(1, ledger.calls("local").size());
+        assertEquals(1, ledger.calls(CallerIdentity.IN_PROCESS).size());
         // A tap failure never fails the tool call.
         registry.setEventTap(new org.jawata.mcp.learn.EventTap(ledger, null) {
             @Override
-            public void onCall(String s, String n, JsonNode a,
+            public void onCall(CallerIdentity s, String n, JsonNode a,
                     org.jawata.mcp.models.ToolResponse r, long durationMs) {
                 throw new IllegalStateException("tap boom");
             }
         });
-        assertTrue(registry.callTool("ok_tool", objectMapper.readTree("{}"), "s").isSuccess(),
+        assertTrue(registry.callTool("ok_tool", objectMapper.readTree("{}"), CallerIdentity.supplied("s")).isSuccess(),
             "a tap failure is the tap's problem, never the caller's");
     }
 
@@ -74,7 +77,7 @@ class ToolRegistryTest {
                     java.util.Map.of("filesModified", java.util.List.of("Seeded.java")));
             }
         });
-        var response = registry.callTool("rename_symbol", objectMapper.readTree("{}"), "s1");
+        var response = registry.callTool("rename_symbol", objectMapper.readTree("{}"), CallerIdentity.supplied("s1"));
         String steering = response.getMeta().getSteering();
         assertNotNull(steering);
         assertTrue(steering.contains("Grounded next step"), "the tool's own steering survives");
@@ -90,11 +93,11 @@ class ToolRegistryTest {
             new java.util.concurrent.atomic.AtomicReference<>("STORE DEGRADED: fallback");
         registry.setStoreNotice(notice::get);
         registry.register(new MockTool("ok_tool", "answers"));
-        var r1 = registry.callTool("ok_tool", objectMapper.readTree("{}"), "s");
+        var r1 = registry.callTool("ok_tool", objectMapper.readTree("{}"), CallerIdentity.supplied("s"));
         assertTrue(r1.getMeta().getSteering().contains("STORE DEGRADED"),
             "while degraded, every answer says so");
         notice.set(null); // recovery
-        var r2 = registry.callTool("ok_tool", objectMapper.readTree("{}"), "s");
+        var r2 = registry.callTool("ok_tool", objectMapper.readTree("{}"), CallerIdentity.supplied("s"));
         assertTrue(r2.getMeta() == null || r2.getMeta().getSteering() == null
                 || !r2.getMeta().getSteering().contains("STORE DEGRADED"),
             "after recovery the notice is gone");

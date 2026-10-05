@@ -44,6 +44,17 @@ public class GetDiagnosticsTool extends AbstractTool {
         return "get_diagnostics";
     }
 
+    /**
+     * A GATE: this tool's answer is evidence a claim was verified (S9a M1).
+     *
+     * <p>Declared here rather than held as a name in {@code learn/}, which is where it
+     * lived in three byte-identical sets at once. See {@link Tool#isGate()}.</p>
+     */
+    @Override
+    public boolean isGate() {
+        return true;
+    }
+
     @Override
     public String getDescription() {
         return """

@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 26a D4 (C3): the edit-switch ML model is RETIRED. Its classes are gone
@@ -79,10 +80,14 @@ class EditMlRetirementTest {
     void the_experience_loop_still_captures_after_retirement() {
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         ToolExperienceStore tes = new ToolExperienceStore(store);
-        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes);
-        rec.onCall("s1", "rename_symbol", OM.createObjectNode().put("symbol", "com.foo.Bar"),
+        // S9a M1: the recorder asks the registry which tools are gates, so a test that
+        // drives the edit -> compile outcome has to wire them. Fails CLOSED without it: the
+        // mutate stays pending for ever and the row never lands.
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
+        rec.onCall(CallerIdentity.supplied("s1"), "rename_symbol", OM.createObjectNode().put("symbol", "com.foo.Bar"),
             ToolResponse.success(Map.of("filesModified", List.of("Bar.java"))));
-        rec.onCall("s1", "compile_workspace", null, ToolResponse.success(Map.of("errorCount", 0)));
+        rec.onCall(CallerIdentity.supplied("s1"), "compile_workspace", null, ToolResponse.success(Map.of("errorCount", 0)));
         assertEquals(1L, tes.count(),
             "the experience loop still captures the edit→compile outcome with the models gone");
         store.close();

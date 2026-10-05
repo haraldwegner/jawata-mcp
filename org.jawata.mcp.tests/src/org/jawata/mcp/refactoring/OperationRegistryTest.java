@@ -133,18 +133,29 @@ class OperationRegistryTest {
     @DisplayName("a borrowed registry comes back EXACTLY — the claim three restores made falsely")
     void theBorrowIsExact() {
         OperationRegistry registry = new OperationRegistry();
-        registry.register("alpha_door", java.util.List.of("one", "two"), true, false,
+        registry.register("alpha_door", java.util.List.of("one", "two"), true, false, false,
             java.util.Set.of("one"), "kind");
-        registry.register("beta_door", java.util.List.of("three"), false, true,
+        registry.register("beta_door", java.util.List.of("three"), false, true, false,
+            java.util.Set.of(), "kind");
+        // A GATE IN THE FIXTURE, because S9a M1 gave the record a fifth component and a
+        // borrow is only exact over everything it holds. Without this the gate set would
+        // round-trip unasserted — which is the state the three false restores this test is
+        // named after were in.
+        registry.register("delta_gate", java.util.List.of(), false, false, true,
             java.util.Set.of(), "kind");
         OperationRegistry.Snapshot taken = registry.snapshot();
 
         // PROOF OF LIFE, and then some damage worth undoing.
         assertTrue(registry.has("alpha_door"), "the fixture must be registered to begin with");
+        assertTrue(registry.isGate("delta_gate"), "and the gate must be a gate to begin with");
         registry.clear();
-        registry.register("gamma_door", java.util.List.of("four"), false, false,
+        registry.register("gamma_door", java.util.List.of("four"), false, false, false,
             java.util.Set.of("four"), "kind");
         assertFalse(registry.has("alpha_door"), "and the damage must be real");
+        assertFalse(registry.isGate("delta_gate"),
+            "and clear() must really have emptied the gates — an uncleared set would make"
+                + " the restore below pass without putting anything back, which is exactly"
+                + " how discriminatorOf was 'accidentally correct' until C9");
 
         registry.restore(taken);
 
@@ -160,6 +171,13 @@ class OperationRegistryTest {
         assertTrue(registry.isMechanical("alpha_door"), "mechanical classification is back");
         assertTrue(registry.isStructural(OperationRegistry.qualify("alpha_door", "one")),
             "and so is the structural set the architect gate reads");
+        assertTrue(registry.isGate("delta_gate"),
+            "AND THE GATE SET, the fifth component — the enforcement lane reads it to decide"
+                + " whether a seat outcome was gated at all, so a borrow that lost it would"
+                + " make every test class after the borrower see no tool as a gate");
+        assertEquals(java.util.Set.of("delta_gate"), registry.gates(),
+            "exactly the gates, and no extra: gates() is what the seat-discipline MESSAGE"
+                + " names, so a spurious entry would be printed at a reader");
         assertFalse(registry.has("gamma_door"),
             "and what was written while the registry was borrowed is gone");
     }

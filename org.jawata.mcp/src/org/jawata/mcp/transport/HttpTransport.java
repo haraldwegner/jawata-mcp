@@ -231,6 +231,21 @@ public class HttpTransport implements Transport {
         private final String expectedAuthHeader;
         private final ObjectMapper objectMapper;
 
+        /**
+         * THE FRAGMENTATION FIX (Sprint 28g S9a M4). One identity for every
+         * caller that does not echo a session id — a FIELD, so it is minted once
+         * per transport instead of once per request.
+         *
+         * <p>What it replaces scattered an agent's work across as many
+         * identities as it made calls, so every per-session check read a ledger
+         * that could never accumulate. What it creates is a SHARED BUCKET for
+         * all header-less callers, which is a deliberate trade:
+         * {@code Origin.RESIDENT_MINTED} is what stops a reader taking that
+         * bucket's history for one agent's session.</p>
+         */
+        private final org.jawata.mcp.models.CallerIdentity anonymous =
+            org.jawata.mcp.models.CallerIdentity.minted("http");
+
         McpHandler(MessageHandler handler, String token, ObjectMapper objectMapper) {
             this.handler = handler;
             this.expectedAuthHeader = "Bearer " + token;
@@ -272,15 +287,23 @@ public class HttpTransport implements Transport {
                     return;
                 }
 
-                // Sprint 26: session identity — honor the client's
-                // Mcp-Session-Id, mint one when absent, echo it back so the
-                // client can carry it forward. Keys the per-session ledger
-                // and the learner event stream.
-                String sessionId = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
-                if (sessionId == null || sessionId.isBlank()) {
-                    sessionId = "http-" + java.util.UUID.randomUUID();
-                }
-                exchange.getResponseHeaders().add("Mcp-Session-Id", sessionId);
+                // Sprint 26, amended 28g S9a M4: session identity — honour the
+                // client's Mcp-Session-Id, fall back to the ONE minted identity
+                // above when absent, echo it back so the client can carry it
+                // forward. Keys the per-session ledger and the learner event
+                // stream.
+                //
+                // The fallback used to be `"http-" + randomUUID()` RIGHT HERE,
+                // which minted a fresh identity per request — so a client that
+                // never echoes the header had its whole history scattered one
+                // call per identity, and no per-session check could ever see
+                // two of its calls together.
+                String supplied = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
+                org.jawata.mcp.models.CallerIdentity caller =
+                    supplied == null || supplied.isBlank()
+                        ? this.anonymous
+                        : org.jawata.mcp.models.CallerIdentity.supplied(supplied);
+                exchange.getResponseHeaders().add("Mcp-Session-Id", caller.id());
 
                 // Sprint 28b D7: the studio↔store contract version — ALWAYS
                 // echoed, so a caller that sends its own version can detect a
@@ -303,7 +326,7 @@ public class HttpTransport implements Transport {
                 }
                 String response;
                 try {
-                    response = handler.handle(body, sessionId);
+                    response = handler.handle(body, caller);
                 } finally {
                     if (fromASibling) {
                         org.jawata.mcp.models.SiblingPeek.servingAPeek(false);

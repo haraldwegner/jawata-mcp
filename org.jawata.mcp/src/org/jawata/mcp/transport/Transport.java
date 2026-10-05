@@ -40,6 +40,6 @@ public interface Transport extends AutoCloseable {
          * request, minted once per stdio process. It keys the per-session
          * ledger and the learner event stream.
          */
-        String handle(String message, String sessionId);
+        String handle(String message, org.jawata.mcp.models.CallerIdentity caller);
     }
 }

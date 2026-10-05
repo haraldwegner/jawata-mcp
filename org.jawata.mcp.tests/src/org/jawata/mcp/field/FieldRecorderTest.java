@@ -17,6 +17,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Sprint 28b D1: the recorder rides the PRODUCTION tap — a ToolRegistry call
@@ -60,7 +61,7 @@ class FieldRecorderTest {
         registry.register(failingTool());
 
         registry.callTool("probe_tool",
-            MAPPER.createObjectNode().put("kind", "probe"), "session-9");
+            MAPPER.createObjectNode().put("kind", "probe"), CallerIdentity.supplied("session-9"));
 
         List<FieldEvent> events = pile.fold();
         assertEquals(1, events.size());
@@ -101,7 +102,7 @@ class FieldRecorderTest {
                 return ToolResponse.success(Map.of());
             }
         });
-        registry.callTool("slow_tool", MAPPER.createObjectNode(), "s");
+        registry.callTool("slow_tool", MAPPER.createObjectNode(), CallerIdentity.supplied("s"));
         assertTrue(pile.fold().get(0).latencyBucket() >= 1,
             "a 120ms call cannot be in the <10ms bucket unless the plumbing passes 0");
     }
@@ -117,7 +118,8 @@ class FieldRecorderTest {
         handler.setClientDirectory(clients);
         handler.processMessage("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
             + "\"params\":{\"clientInfo\":{\"name\":\"claude-code\",\"version\":\"2.1\"},"
-            + "\"protocolVersion\":\"2025-06-18\"}}", "session-init-7");
+            + "\"protocolVersion\":\"2025-06-18\"}}",
+            org.jawata.mcp.models.CallerIdentity.supplied("session-init-7"));
         assertEquals("claude_code", clients.clientOf("session-init-7").value());
         assertEquals(Token.UNKNOWN, clients.clientOf("other-session"));
     }
@@ -144,6 +146,6 @@ class FieldRecorderTest {
         registry.setEventTap(tap);
         registry.register(failingTool());
         // …and the call still answers structurally.
-        assertFalse(registry.callTool("probe_tool", MAPPER.createObjectNode(), "s").isSuccess());
+        assertFalse(registry.callTool("probe_tool", MAPPER.createObjectNode(), CallerIdentity.supplied("s")).isSuccess());
     }
 }

@@ -14,6 +14,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * v3.3.1: the D2 justification-cost, ENFORCED. The signed Sprint-26a D2 body
@@ -158,12 +159,12 @@ class PrecedentEnforcementTest {
         boolean[] ran = {false};
         ToolRegistry reg = registryWarningAbout("extract", ran);
 
-        ToolResponse warned = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        ToolResponse warned = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertNotNull(warned.getMeta(), "precondition: the push produced steering");
         assertTrue(warned.getMeta().getSteering().contains("⚠ PRECEDENT"),
             "precondition: the negative precedent was SURFACED");
 
-        ToolResponse refused = reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar\"}"), "s1");
+        ToolResponse refused = reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertFalse(ran[0], "the tool must NOT run — the cost is charged BEFORE dispatch");
         assertFalse(refused.isSuccess(), "an unjustified defection is REFUSED, not merely nudged");
         assertNotNull(refused.getError(), "a refusal carries a structured error");
@@ -177,11 +178,11 @@ class PrecedentEnforcementTest {
     void a_written_justification_pays_the_cost_and_the_call_proceeds() throws Exception {
         boolean[] ran = {false};
         ToolRegistry reg = registryWarningAbout("extract", ran);
-        reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
 
         ToolResponse ok = reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar\","
             + "\"precedentOverride\":\"the earlier revert was a bad range; this is a clean block\"}"),
-            "s1");
+            CallerIdentity.supplied("s1"));
         assertTrue(ran[0], "a written reason pays the cost — the tool runs");
         assertTrue(ok.isSuccess(), "and the call succeeds");
     }
@@ -195,7 +196,7 @@ class PrecedentEnforcementTest {
             return ToolResponse.success(Map.of("ok", true));
         }));
 
-        ToolResponse ok = reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar\"}"), "s1");
+        ToolResponse ok = reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
         assertTrue(ran[0], "no surfaced precedent, no charge — the tool runs");
         assertTrue(ok.isSuccess(), "plain calls are untouched by the enforcement");
     }
@@ -204,10 +205,10 @@ class PrecedentEnforcementTest {
     void the_charge_is_scoped_to_the_warned_target() throws Exception {
         boolean[] ran = {false};
         ToolRegistry reg = registryWarningAbout("extract", ran);
-        reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), "s1");
+        reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
 
         // The warning was surfaced for com.foo.Bar only — a different target owes nothing.
-        ToolResponse other = reg.callTool("extract", json("{\"symbol\":\"com.other.Thing\"}"), "s1");
+        ToolResponse other = reg.callTool("extract", json("{\"symbol\":\"com.other.Thing\"}"), CallerIdentity.supplied("s1"));
         assertTrue(other.isSuccess(), "an unwarned target is not charged");
         assertTrue(ran[0], "and the tool actually ran for it");
     }

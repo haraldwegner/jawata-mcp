@@ -70,8 +70,13 @@ public final class OperationSurface {
         // A tool that is not a front door publishes no kinds, so nothing selects among them
         // and the value is never read — `kind` is the honest filler rather than a guess.
         String discriminator = tool instanceof FrontDoor door ? door.discriminator() : "kind";
+        // GATE-NESS IS ASKED OF THE TOOL TOO (S9a M1). It travels on this one write for the
+        // same reason the classification above does: the enforcement lane used to hold three
+        // byte-identical name sets, and a name set cannot know that a name it holds has
+        // stopped existing.
         OperationRegistry.theRegistry().register(tool.getName(), operationKindsOf(tool),
-            tool.isMechanical(), tool.isStructural(), tool.structuralKinds(), discriminator);
+            tool.isMechanical(), tool.isStructural(), tool.isGate(), tool.structuralKinds(),
+            discriminator);
     }
 
     /**

@@ -118,3 +118,26 @@ org.jawata.mcp.tools.smell.Cures#stepsFor(String,CodeAddress,List<String>)
 org.jawata.mcp.tools.smell.FowlerDetectors#DECLINED
 org.jawata.mcp.transport.HttpTransport#getActualPort()
 org.jawata.mcp.transport.HttpTransport#sendEvent(String,String)
+
+# Sprint 28g S9a, C9a 2026-10-05 — THE DRIVER'S ENTRY POINTS AND THE LEDGER'S READ SURFACE.
+# These are an ABSENCE this gate is reporting correctly, not a defect: the thing that would
+# call and read them is the /main seat's ledger wiring (plan step M7), which is named and
+# NOT built. HiredRun#issue and SeatScheduler#start are the hired path's entry points, and
+# the hired path is the LATER shape (jawata as the agent, renting a brain) on his ruling of
+# 2026-10-05; PlanLedger's four readers are what a step-driving caller reads, and no such
+# caller exists in production yet.
+#
+# PlanLedger#currentStep joined this list AT this checkpoint and that is worth knowing: the
+# architect's finding 2 was fixed by taking the ledger's verdict BY VALUE off the Advance it
+# already returns, which was correct and which removed its only production caller.
+#
+# WHEN M7 LANDS, this gate reports these FIXED and asks for a re-baseline. That is the
+# ratchet working — do not carry these entries past it.
+org.jawata.mcp.execution.HiredBrain.Ceilings#of(Duration)
+org.jawata.mcp.execution.HiredRun#issue(BrainDialect,HostCommand,String,Ceilings,List<GatedStep>,GateRunner)
+org.jawata.mcp.execution.HiredRun.Proposal#complete()
+org.jawata.mcp.execution.SeatScheduler#start()
+org.jawata.mcp.learn.PlanLedger#currentStep(PlanId)
+org.jawata.mcp.learn.PlanLedger#nextStep(PlanId)
+org.jawata.mcp.learn.PlanLedger#planCount()
+org.jawata.mcp.learn.PlanLedger#steps(PlanId)

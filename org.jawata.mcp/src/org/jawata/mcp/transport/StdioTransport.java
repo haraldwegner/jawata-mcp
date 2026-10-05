@@ -43,8 +43,14 @@ public class StdioTransport implements Transport {
      * <p>Per-message dispatch errors are logged and swallowed — the loop
      * survives a single bad message (preserves pre-Stage-3 behaviour).
      */
-    /** Sprint 26: one MCP session per stdio process — minted once. */
-    private final String stdioSessionId = "stdio-" + java.util.UUID.randomUUID();
+    /**
+     * Sprint 26: one MCP session per stdio process — minted once. Already
+     * correct before 28g S9a M4; it is the shape the HTTP side now matches,
+     * carrying an origin so a reader can tell a minted identity from one a
+     * client sent.
+     */
+    private final org.jawata.mcp.models.CallerIdentity caller =
+        org.jawata.mcp.models.CallerIdentity.minted("stdio");
 
     @Override
     public void run(MessageHandler handler) throws IOException {
@@ -53,7 +59,7 @@ public class StdioTransport implements Transport {
         while (!closed && (line = readMessage()) != null) {
             log.debug("Received: {}", line);
             try {
-                String response = handler.handle(line, stdioSessionId);
+                String response = handler.handle(line, caller);
                 if (response != null) {
                     writeMessage(response);
                     log.debug("Sent: {}", response);

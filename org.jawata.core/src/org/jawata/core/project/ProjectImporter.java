@@ -1436,7 +1436,11 @@ public class ProjectImporter {
 
             boolean completed = process.waitFor(120, TimeUnit.SECONDS);
             if (!completed) {
-                process.destroyForcibly();
+                // S9a M5a: the TREE, not just the root. This killed the root alone, and of the
+                // three sites that did, this is the one where it mattered most: the child is
+                // MAVEN, the wrapper-spawns-the-real-tool case by definition, so a timed-out
+                // resolve left its forked JVMs running with nothing holding a handle to them.
+                org.jawata.core.host.HostProcesses.reap(process);
                 throw new DependencyResolutionException(
                     "Maven dependency resolution timed out after 120s for " + projectPath + ".");
             }

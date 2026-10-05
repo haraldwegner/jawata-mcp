@@ -6,6 +6,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * Per-session call ledger (Sprint 26): the resident's memory of what each MCP
@@ -18,7 +19,7 @@ import java.util.Map;
 public final class SessionLedger {
 
     /** One recorded call: what ran, whether it succeeded, how many files it modified. */
-    public record CallRecord(String tool, boolean ok, int filesModified, long ts) {
+    public record CallRecord(String tool, boolean ok, int filesModified, long ts, com.fasterxml.jackson.databind.JsonNode arguments) {
     }
 
     /** Sprint 26 D4: notified when a session is LRU-evicted (its "end"). */
@@ -52,18 +53,34 @@ public final class SessionLedger {
             }
         };
 
-    public synchronized void record(String sessionId, CallRecord record) {
+    /**
+     * Append one call to this caller's ledger.
+     *
+     * <p>Takes a {@link CallerIdentity} rather than a string because this is
+     * one of the four sites that used to read
+     * {@code sessionId == null ? "local" : sessionId} — manufacturing an
+     * identity out of an absence, so a caller with no session and a session
+     * literally named {@code local} arrived here as the same row. An identity
+     * cannot be absent, so there is nothing left to invent.</p>
+     *
+     * <p>The map stays keyed by the identity's ID rather than by the identity.
+     * That is deliberate: the transport ECHOES a minted id so a client can
+     * carry it forward, and a client that starts sending it must JOIN the
+     * history already under it. The origin travels for readers to judge what a
+     * history means, not to partition it.</p>
+     */
+    public synchronized void record(CallerIdentity caller, CallRecord record) {
         Deque<CallRecord> calls = sessions.computeIfAbsent(
-            sessionId == null ? "local" : sessionId, k -> new ArrayDeque<>());
+            caller.id(), k -> new ArrayDeque<>());
         calls.addLast(record);
         while (calls.size() > MAX_CALLS) {
             calls.removeFirst();
         }
     }
 
-    /** The session's recorded calls, oldest first (a copy — safe to iterate). */
-    public synchronized List<CallRecord> calls(String sessionId) {
-        Deque<CallRecord> calls = sessions.get(sessionId == null ? "local" : sessionId);
+    /** This caller's recorded calls, oldest first (a copy — safe to iterate). */
+    public synchronized List<CallRecord> calls(CallerIdentity caller) {
+        Deque<CallRecord> calls = sessions.get(caller.id());
         return calls == null ? List.of() : new ArrayList<>(calls);
     }
 

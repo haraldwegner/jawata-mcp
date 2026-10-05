@@ -1,13 +1,14 @@
 package org.jawata.mcp.learn;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+import java.util.Map;
+
 import org.jawata.mcp.coverage.MechanicalChangeJournal;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.models.ToolResponse;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * The event tap (Sprint 26; Sprint 26a): sits at the ToolRegistry choke point —
@@ -23,12 +24,25 @@ import java.util.Set;
  */
 public class EventTap {
 
-    /** The gate tools whose outcomes are labels (compile/tests/diagnostics). */
-    private static final Set<String> GATE_TOOLS =
-        Set.of("compile_workspace", "get_diagnostics", "run_tests");
-
     private final SessionLedger ledger;
     private final LearnerEventStore events;
+
+    /**
+     * The registry this tap asks which tools are GATES (Sprint 28g S9a M1).
+     *
+     * <p>It was a {@code Set.of("compile_workspace", "get_diagnostics", "run_tests")} right
+     * here — and the byte-identical set existed in two more classes of this package at the
+     * same time, with a fourth hardcoding of one of the names inline. Four places to keep in
+     * step and nothing able to notice, because no reference-updating refactoring touches a
+     * string literal; {@code ArchitectGate} in this same package records what that cost it.
+     * The tools declare it now, through {@link org.jawata.mcp.tools.Tool#isGate()}.</p>
+     *
+     * <p>Injected, for the reason {@code ArchitectGate}'s constructor gives in the same
+     * words: a dependency taken from a global is one a test cannot supply, and a singleton
+     * reach here would leave this tap's own tests passing over an empty registry — a
+     * differently-shaped version of the same blindness.</p>
+     */
+    private final org.jawata.mcp.refactoring.OperationRegistry registry;
 
     /** Sprint 26a D2: the experience-loop capture — null until the application
      *  wires it (the real edit-outcome capture that replaces the retired edit switch). */
@@ -43,8 +57,15 @@ public class EventTap {
     private java.util.function.BiConsumer<String, String> originStamper;
 
     public EventTap(SessionLedger ledger, LearnerEventStore events) {
+        this(ledger, events, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+    }
+
+    /** @param registry the registry this tap asks which tools are gates; see {@link #registry}. */
+    public EventTap(SessionLedger ledger, LearnerEventStore events,
+            org.jawata.mcp.refactoring.OperationRegistry registry) {
         this.ledger = ledger;
         this.events = events;
+        this.registry = registry;
     }
 
     /** Sprint 26a D2: install the experience-loop recorder (selective capture). */
@@ -79,10 +100,15 @@ public class EventTap {
     /** Called after every completed tool call (success or structured error).
      * @param durationMs wall-clock duration of the call, for the field
      *        recording's latency bucket (Sprint 28b) */
-    public void onCall(String sessionId, String name, JsonNode arguments, ToolResponse response, long durationMs) {
+    public void onCall(CallerIdentity caller, String name, JsonNode arguments,
+            ToolResponse response, long durationMs) {
+        // The collaborators below are keyed by the identity's ID — a stored
+        // column, a map key, an event row. The IDENTITY is what this method
+        // takes, so none of them can be handed an absence to invent one from.
+        String sessionId = caller.id();
         int filesModified = filesModified(response);
-        ledger.record(sessionId, new SessionLedger.CallRecord(
-            name, response.isSuccess(), filesModified, System.currentTimeMillis()));
+        ledger.record(caller, new SessionLedger.CallRecord(
+            name, response.isSuccess(), filesModified, System.currentTimeMillis(), arguments));
         // Sprint 28b D1: the sanitized field recording — every outcome, success
         // and error, as a shape. Its own try: recording never fails the call.
         if (fieldRecorder != null) {
@@ -111,7 +137,7 @@ public class EventTap {
         // Sprint 26a D2: the experience loop's selective capture — independent of
         // the learner-event store below and of the learner models (retired in D4).
         if (toolExperience != null) {
-            toolExperience.onCall(sessionId, name, arguments, response);
+            toolExperience.onCall(caller, name, arguments, response);
         }
         if (events == null) {
             return;
@@ -130,7 +156,7 @@ public class EventTap {
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_MECHANICAL_TOUCH, name,
                 "{\"filesModified\":" + filesModified + "}"));
         }
-        if (GATE_TOOLS.contains(name)) {
+        if (registry.isGate(name)) {
             long errorCount = errorCount(response);
             events.append(new LearnerEvent(sessionId, LearnerEvent.KIND_GATE_CALL, name,
                 "{\"errors\":" + errorCount + "}"));

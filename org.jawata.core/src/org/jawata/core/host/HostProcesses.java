@@ -62,6 +62,60 @@ public interface HostProcesses {
      */
     Process start(HostCommand command) throws IOException;
 
+    /**
+     * Destroy a process AND the tree below it (Sprint 28g S9a M5a) — the member this
+     * interface was missing, and the reason three callers leak grandchildren today.
+     *
+     * <p>Launching lives here; killing what was launched did not. The idiom — sweep the
+     * descendants, then kill the root — was copied into <b>six</b> production sites, and
+     * <b>three more</b> killed the root ALONE: {@code ProjectImporter}, {@code JvmTargets} and
+     * {@code profile/GdbAdapter}. Those three leak every grandchild, which is exactly what a
+     * wrapper script leaves behind, and nothing could have told them: there was no member to
+     * forget, only an idiom to remember. Six copies of a two-line sequence and three places
+     * that remembered half of it is the shape this interface exists to remove.</p>
+     *
+     * <h2>The order is SNAPSHOT, ROOT, THEN CHILDREN, and it is not the order it replaces</h2>
+     *
+     * <p>Every copied site did children-first-then-root, which leaves a window: between the
+     * sweep and the root's death the root is still running and can fork once more, and that
+     * child is in nobody's list. Taking the descendant snapshot first and killing the root
+     * SECOND closes it — the root cannot spawn after it is dead, and the children are already
+     * in hand, so nothing is lost by killing them last. Same outcome, one fewer race.</p>
+     *
+     * <h2>What this CANNOT do, stated rather than discovered</h2>
+     *
+     * <p>{@link ProcessHandle#descendants()} walks the parent relation, so a child that
+     * double-forks — or calls {@code setsid} — is reparented away and this reaps nothing of it.
+     * Closing that needs a process GROUP, and {@link ProcessBuilder} has no process-group API
+     * at all (measured on JDK 21: 38 members, none). <b>The obvious fix is worse than the
+     * gap.</b> Prefixing the spawn with {@code setsid} makes it fork and exit, so
+     * {@code Process#toHandle()} names an already-dead process: {@code descendants()} comes
+     * back EMPTY and {@code destroyForcibly()} kills nothing at all, while
+     * {@code waitFor(timeout)} reports a tidy completion of a process still running — the very
+     * failure {@code HostProcessesContractTest} records catching once already. So the detach
+     * must never ship without a group kill beside it, and a group kill is a per-OS kernel fact
+     * that no amount of reading settles. <b>Deferred to Sprint 28's platform round</b>, with
+     * its probe named: one contract test per matrix OS that spawns a double-forking child and
+     * asserts the grandchild's pid is gone after a reap. Until then this is the honest ceiling,
+     * and it is strictly more containment than the nine sites had between them.</p>
+     *
+     * <p>Static because the sweep is OS-INDEPENDENT today and three of the nine call sites hold
+     * no {@code HostProcesses} instance to call it on. The day a group kill lands it becomes
+     * per-OS behaviour and moves onto the instance beside {@link #start}; that is a change with
+     * a reason rather than a shape chosen in advance.</p>
+     *
+     * @param process the process to reap; a null or already-dead one is a no-op, because a
+     *     caller reaping twice on two exit paths is normal and must not have to check
+     */
+    static void reap(Process process) {
+        if (process == null) {
+            return;
+        }
+        List<ProcessHandle> children = process.descendants().toList();
+        process.destroyForcibly();
+        children.forEach(ProcessHandle::destroyForcibly);
+    }
+
     /** The default implementation, backed by the real operating system. */
     static HostProcesses system() {
         return SystemHostProcesses.INSTANCE;

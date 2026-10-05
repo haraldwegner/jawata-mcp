@@ -70,6 +70,33 @@ public interface Tool {
     }
 
     /**
+     * Is this tool a GATE — is its answer evidence that a claim was actually verified?
+     *
+     * <p>Read by the enforcement lane in {@code learn/}: a seat outcome recorded in a
+     * session whose ledger holds no gate call is a gate that never ran, and a gate you did
+     * not run has NOT passed. {@code compile_workspace}, {@code get_diagnostics} and
+     * {@code run_tests} answer true; every other tool answers a question.</p>
+     *
+     * <p><b>Third instance of the history the two methods above record, and the worst of
+     * the three.</b> Gate-ness lived as a byte-identical {@code Set.of("compile_workspace",
+     * "get_diagnostics", "run_tests")} in THREE separate classes of {@code learn/} — the
+     * event tap, the server checks and the experience recorder — each with its own reader,
+     * beside an inline {@code "run_tests".equals(...)} and a steering message
+     * re-enumerating all three names in prose. Four places to keep in step and no compiler
+     * anywhere able to say so, because no reference-updating refactoring touches a string
+     * literal. {@link #isStructural()} already made this repair and {@code ArchitectGate}
+     * wrote down what the old shape cost: the gate <em>"went quiet for pull-up, push-down
+     * and the method move without anything failing"</em>.</p>
+     *
+     * <p>Default false for the same reason as above: most tools answer questions. A gate
+     * declares itself, so a gate that is renamed or retired takes its gate-ness with it
+     * instead of leaving a stale name behind in another package.</p>
+     */
+    default boolean isGate() {
+        return false;
+    }
+
+    /**
      * The kinds this tool publishes, read off its OWN schema.
      *
      * <p>A parametric front door dispatches on a discriminator — {@code kind} on most,
