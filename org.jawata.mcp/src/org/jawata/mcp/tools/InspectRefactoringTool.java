@@ -35,7 +35,9 @@ public class InspectRefactoringTool extends AbstractTool {
     public String getDescription() {
         return "Inspect a cached refactoring change without applying it. "
             + "USAGE: inspect_refactoring(changeId=\"<staged changeId or undoChangeId>\") "
-            + "OUTPUT: { kind, summary, diff, filePaths } — kind is STAGED or UNDO. "
+            + "OUTPUT: { kind, summary, diff, diffSummary, filePaths } — kind is STAGED or "
+            + "UNDO. The diff text is capped and truncated:true says so; diffSummary always "
+            + "accounts for every file. Pass fullDiff:true for the whole text. "
             + "WORKFLOW: stage a refactor with auto_apply: false, inspect the diff here, "
             + "then apply_refactoring(changeId) to commit. Non-consuming: the cached "
             + "change stays available. No files are modified by this call.";
@@ -49,6 +51,14 @@ public class InspectRefactoringTool extends AbstractTool {
                 "changeId", Map.of(
                     "type", "string",
                     "description", "A staged changeId or an undoChangeId."
+                ),
+                // D7f: this door is where the full text is FETCHED from, so the escape is
+                // published here even though the tool applies nothing and so takes none of
+                // withAutoApply's other flags.
+                "fullDiff", Map.of(
+                    "type", "boolean",
+                    "description", "Default false: the diff text is capped and truncated:true "
+                        + "says so. Set true for the whole cached diff."
                 )
             ),
             "required", List.of("changeId")
@@ -76,7 +86,12 @@ public class InspectRefactoringTool extends AbstractTool {
         data.put("changeId", cached.id());
         data.put("kind", cached.kind().name());
         data.put("summary", cached.summary());
-        data.put("diff", cached.diff());
+        // D7f: the same cap and the same summary as an apply-shaped response. This door is
+        // where the full text is fetched from, so `fullDiff:true` matters most here — the
+        // cache holds the whole diff and the cap only decides what the default answer
+        // carries.
+        org.jawata.mcp.refactoring.DiffView.of(cached.diff(),
+            org.jawata.mcp.refactoring.DiffView.fullRequested(arguments)).putInto(data);
         data.put("filePaths", cached.filePaths());
         return ToolResponse.success(data, ResponseMeta.builder()
             .suggestedNextTools(List.of(

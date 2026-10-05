@@ -23,6 +23,71 @@ public final class DiffRenderer {
     /** One file's before/after content pair. */
     public record FileDiff(String filePath, String oldContent, String newContent) {}
 
+    /** What one file contributed to a diff: how many hunks, and how many lines each way. */
+    public record FileSummary(String filePath, int hunks, int added, int removed) {}
+
+    /**
+     * Sprint 28g S3 / D7f — the per-file account of a diff THIS class rendered.
+     *
+     * <p>It lives here rather than beside its caller because the format is this class's:
+     * a reader elsewhere would be a second implementation of the header and hunk shapes,
+     * which is the kind of copy that is right until one of the two moves.</p>
+     *
+     * <p>A header is recognised as a PAIR — {@code --- a/<path>} immediately followed by
+     * {@code +++ b/<path>} naming the same file — and not by its prefix alone. That is
+     * exactness rather than caution: an ADDED source line is rendered as {@code +} plus
+     * the line, so a Java line reading {@code ++ b/scale} renders as {@code +++ b/scale}
+     * and is indistinguishable from a header to anything that only checks the prefix.</p>
+     *
+     * @param unifiedDiff a diff produced by this class; empty is a legitimate input, since
+     *                    a move or a rename contributes no diff text
+     * @return one row per file, in the order the diff presents them
+     */
+    public static List<FileSummary> summarize(String unifiedDiff) {
+        if (unifiedDiff == null || unifiedDiff.isEmpty()) {
+            return List.of();
+        }
+        List<FileSummary> files = new ArrayList<>();
+        String[] lines = unifiedDiff.split("\n", -1);
+        String path = null;
+        int hunks = 0;
+        int added = 0;
+        int removed = 0;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            String header = headerPathAt(lines, i);
+            if (header != null) {
+                if (path != null) {
+                    files.add(new FileSummary(path, hunks, added, removed));
+                }
+                path = header;
+                hunks = 0;
+                added = 0;
+                removed = 0;
+                i++;                        // the '+++ b/' half of the pair, already read
+            } else if (line.startsWith("@@")) {
+                hunks++;
+            } else if (line.startsWith("+")) {
+                added++;
+            } else if (line.startsWith("-")) {
+                removed++;
+            }
+        }
+        if (path != null) {
+            files.add(new FileSummary(path, hunks, added, removed));
+        }
+        return List.copyOf(files);
+    }
+
+    /** The path a header pair names at {@code i}, or null when {@code i} is not one. */
+    private static String headerPathAt(String[] lines, int i) {
+        if (!lines[i].startsWith("--- a/") || i + 1 >= lines.length) {
+            return null;
+        }
+        String path = lines[i].substring("--- a/".length());
+        return lines[i + 1].equals("+++ b/" + path) ? path : null;
+    }
+
     /** Concatenated unified diffs; files with identical content are skipped. */
     public static String unifiedDiff(List<FileDiff> files) {
         StringBuilder sb = new StringBuilder();

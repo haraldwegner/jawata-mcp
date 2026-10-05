@@ -1,0 +1,93 @@
+package org.jawata.mcp.refactoring;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Sprint 28g S3 / D7f — HOW a diff is presented to a caller, in one place.
+ *
+ * <p>The field report measured two responses this product sent that the client could not
+ * display: a {@code rename_symbol} answered with <strong>167,785 characters</strong> — the
+ * full 144-reference diff — which the client spilled to a file, losing the success it was
+ * reporting; and a findings page at 86,584. A response whose size defeats the client is a
+ * response that did not arrive, however correct it was.</p>
+ *
+ * <p>So every apply-shaped response now carries a {@code diffSummary} — one row per file
+ * with its hunk and line counts — which is the part a caller reads to decide anything, and
+ * the diff text itself is capped. Capping without summarising would have been worse than
+ * either: a caller would hold a truncated diff and no account of what was cut.</p>
+ *
+ * <p><strong>The cap is the house figure rather than a new one.</strong> 24,000 characters
+ * is what {@code inspect kind=source} already uses, under a comment saying it is what every
+ * current client accepts. Inventing a second number for the same question is how two
+ * answers to one question start drifting apart.</p>
+ *
+ * <p>The full text stays available on request ({@code fullDiff: true}), and for a STAGED
+ * change it is also still in the change cache, which {@code refactoring action=inspect}
+ * reads — so nothing is destroyed by the cap, only left out of the default answer.</p>
+ */
+public record DiffView(String diff, List<DiffRenderer.FileSummary> files,
+                       boolean truncated, int fullLength) {
+
+    /** The house cap, shared with {@code inspect kind=source} rather than chosen again. */
+    public static final int DEFAULT_MAX_CHARS = 24_000;
+
+    /**
+     * Summarises the diff and caps its text unless the caller asked for all of it.
+     *
+     * @param diff the rendered unified diff; an empty string is a legitimate input (a move
+     *             or a rename contributes no diff text at all, which is
+     *             {@link DiffRenderer}'s own documented behaviour)
+     * @param full {@code true} when the caller passed {@code fullDiff}
+     * @return the view to write into a response
+     */
+    public static DiffView of(String diff, boolean full) {
+        String text = diff == null ? "" : diff;
+        List<DiffRenderer.FileSummary> files = DiffRenderer.summarize(text);
+        if (full || text.length() <= DEFAULT_MAX_CHARS) {
+            return new DiffView(text, files, false, text.length());
+        }
+        return new DiffView(text.substring(0, DEFAULT_MAX_CHARS), files, true, text.length());
+    }
+
+    /** Reads the caller's {@code fullDiff} flag; absent means capped. */
+    public static boolean fullRequested(JsonNode arguments) {
+        return arguments != null && arguments.has("fullDiff")
+            && arguments.get("fullDiff").asBoolean(false);
+    }
+
+    /**
+     * Writes {@code diff} and {@code diffSummary} into a response's data map, plus
+     * {@code truncated} and {@code diffLength} when the text was capped.
+     *
+     * <p>{@code truncated} is written ONLY when it is true, which is deliberate: a caller
+     * that has to read a boolean to learn nothing happened is a caller doing the tool's
+     * work, and the {@code reason} field on a refusal set that precedent in this codebase
+     * already.</p>
+     */
+    public void putInto(Map<String, Object> data) {
+        data.put("diff", diff);
+        List<Map<String, Object>> summary = new ArrayList<>();
+        for (DiffRenderer.FileSummary file : files) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("filePath", file.filePath());
+            row.put("hunks", file.hunks());
+            row.put("added", file.added());
+            row.put("removed", file.removed());
+            summary.add(row);
+        }
+        data.put("diffSummary", summary);
+        if (truncated) {
+            data.put("truncated", true);
+            data.put("diffLength", fullLength);
+            data.put("diffNote", "The diff is " + fullLength + " characters and was cut at "
+                + DEFAULT_MAX_CHARS + ". diffSummary accounts for ALL " + files.size()
+                + " file(s), including the ones below the cut. Pass fullDiff:true for the "
+                + "whole text, or read a staged change with refactoring action=inspect.");
+        }
+    }
+}

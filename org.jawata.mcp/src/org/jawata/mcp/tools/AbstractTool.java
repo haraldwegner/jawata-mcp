@@ -225,6 +225,18 @@ public abstract class AbstractTool implements Tool {
                 + "{ filesModified, diff, undoChangeId }. Set false to stage only — returns "
                 + "{ changeId, diff } for a later apply_refactoring call."
         ));
+        // D7f: the escape from the response cap, declared HERE for the reason auto_apply is
+        // — it is the same choice for every refactoring, and a flag each tool spelled for
+        // itself is a flag some tool will spell differently.
+        newProps.putIfAbsent("fullDiff", Map.of(
+            "type", "boolean",
+            "description", "Default false: the response carries diffSummary (one row per "
+                + "file with its hunk and line counts) and the diff text capped at "
+                + org.jawata.mcp.refactoring.DiffView.DEFAULT_MAX_CHARS
+                + " characters, setting truncated:true when it was cut. Set true for the "
+                + "whole diff — a 144-reference rename answered 167,785 characters, which "
+                + "a client could not display at all."
+        ));
         wrapped.put("properties", newProps);
         return wrapped;
     }

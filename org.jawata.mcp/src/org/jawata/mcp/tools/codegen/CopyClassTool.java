@@ -207,7 +207,11 @@ public class CopyClassTool extends AbstractTool
                 data.put("operation", "copy_class");
                 data.put("applied", false);
                 data.put("changeId", changeId);
-                data.put("diff", diff);
+                // D7f: capped and summarised like every other apply-shaped response. This
+                // door also returns `generatedSource`, so an uncapped diff made the whole
+                // new file arrive TWICE in one answer.
+                org.jawata.mcp.refactoring.DiffView.of(diff,
+                    org.jawata.mcp.refactoring.DiffView.fullRequested(arguments)).putInto(data);
                 data.put("summary", summary);
                 data.put("generatedSource", newSource);
                 return ToolResponse.success(data, ResponseMeta.builder()
@@ -232,7 +236,8 @@ public class CopyClassTool extends AbstractTool
             data.put("operation", "copy_class");
             data.put("applied", true);
             data.put("filesModified", outcome.modifiedFilePaths());
-            data.put("diff", diff);
+            org.jawata.mcp.refactoring.DiffView.of(diff,
+                org.jawata.mcp.refactoring.DiffView.fullRequested(arguments)).putInto(data);
             data.put("undoChangeId", undoChangeId);
             data.put("summary", summary);
             data.put("newType", newName);

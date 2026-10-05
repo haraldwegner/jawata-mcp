@@ -199,6 +199,10 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         Change change = preparation.change;
         String summary = preparation.summary;
         String diff = ChangeEngine.previewDiff(change, service);
+        // D7f: the RESPONSE is capped and summarised; `diff` stays whole for the cache, so
+        // a staged change is still served in full by `refactoring action=inspect`.
+        org.jawata.mcp.refactoring.DiffView view = org.jawata.mcp.refactoring.DiffView.of(
+            diff, org.jawata.mcp.refactoring.DiffView.fullRequested(arguments));
 
         if (!autoApply) {
             List<String> files = ChangeEngine.affectedFilePaths(change, service);
@@ -208,7 +212,7 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
             data.put("operation", getName());
             data.put("applied", false);
             data.put("changeId", changeId);
-            data.put("diff", diff);
+            view.putInto(data);
             data.put("summary", summary);
             preparation.extras.forEach(data::putIfAbsent);
             return ToolResponse.success(data, ResponseMeta.builder()
@@ -246,7 +250,9 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("introducedErrors", introduced);
             detail.put("undone", gated.undone());
-            detail.put("diff", diff);
+            // A refusal payload is as undisplayable at 167k as a success one, so it is
+            // capped by the same rule rather than exempted for being an error.
+            view.putInto(detail);
             return ToolResponse.error(
                 "REFACTORING_BROKE_COMPILE",
                 getName() + " " + gated.failure(),
@@ -294,7 +300,7 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
             // named IN THE RESPONSE — never left for the caller to discover.
             data.put("introducedErrors", introduced);
         }
-        data.put("diff", diff);
+        view.putInto(data);
         data.put("undoChangeId", undoChangeId);
         data.put("summary", summary);
         followed.forEach(data::putIfAbsent);

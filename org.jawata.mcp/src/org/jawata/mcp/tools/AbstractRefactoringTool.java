@@ -303,6 +303,10 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
 
         String diff = ChangeEngine.previewDiff(change, service);
         String summary = operationLabel + ": " + change.getName();
+        // D7f: the RESPONSE is capped and summarised; `diff` stays whole for the cache, so
+        // a staged change is still served in full by `refactoring action=inspect`.
+        org.jawata.mcp.refactoring.DiffView view = org.jawata.mcp.refactoring.DiffView.of(
+            diff, org.jawata.mcp.refactoring.DiffView.fullRequested(arguments));
 
         boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
         if (!autoApply) {
@@ -313,7 +317,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
             data.put("operation", operationLabel);
             data.put("applied", false);
             data.put("changeId", changeId);
-            data.put("diff", diff);
+            view.putInto(data);
             data.put("summary", summary);
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
@@ -348,7 +352,9 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("introducedErrors", gated.introduced());
             detail.put("undone", gated.undone());
-            detail.put("diff", diff);
+            // A refusal payload is as undisplayable at 167k as a success one, so it is
+            // capped by the same rule rather than exempted for being an error.
+            view.putInto(detail);
             return ToolResponse.error(
                 "REFACTORING_BROKE_COMPILE",
                 operationLabel + " " + gated.failure(),
@@ -369,7 +375,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         data.put("operation", operationLabel);
         data.put("applied", true);
         data.put("filesModified", outcome.modifiedFilePaths());
-        data.put("diff", diff);
+        view.putInto(data);
         data.put("undoChangeId", undoChangeId);
         data.put("summary", summary);
 
