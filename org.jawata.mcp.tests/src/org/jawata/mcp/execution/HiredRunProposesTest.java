@@ -185,7 +185,12 @@ class HiredRunProposesTest {
                 "and the record names what the failing gate found"),
             () -> assertTrue(Files.readString(proposal.record()).contains("THE PLAN STOPPED HERE"),
                 "and the LEDGER's own reason for stopping, which the per-gate lines cannot"
-                    + " give: a gate can report cleanly and the ledger still refuse"));
+                    + " give: a gate can report cleanly and the ledger still refuse"),
+            // THE REASON'S CONTENT, not just its header. Matching the header alone would
+            // stay green against a hardcoded or wrong reason, and the ledger's distinct
+            // wordings are the whole payload — this one only it emits.
+            () -> assertTrue(Files.readString(proposal.record()).contains("so it did not pass"),
+                "the ledger's own words for an answering gate that found errors"));
     }
 
     @Test
@@ -211,7 +216,10 @@ class HiredRunProposesTest {
             () -> assertFalse(record.contains("step 0 (compile_workspace): passed"),
                 "and it must NOT read a refused gate's zero as a pass"),
             () -> assertTrue(record.contains("THE PLAN STOPPED HERE"),
-                "and the ledger's reason is in the record: " + record));
+                "and the ledger's reason is in the record: " + record),
+            () -> assertTrue(record.contains("zero error count says nothing about the tree"),
+                "and it is the NON-ANSWER reason rather than the error-count one — the two"
+                    + " send a reader to different places, which is why they are separate"));
     }
 
     @Test

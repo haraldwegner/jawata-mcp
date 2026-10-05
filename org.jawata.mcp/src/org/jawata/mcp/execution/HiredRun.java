@@ -206,6 +206,15 @@ public final class HiredRun {
         out.append("- brain: ").append(dialect.name()).append('\n');
         out.append("- steps past their gates: ").append(passed).append(" of ")
             .append(steps.size()).append('\n');
+        if (refusedBecause != null) {
+            // THE LEDGER'S OWN REASON, BESIDE THE NUMBER IT EXPLAINS. It is not derivable
+            // from the gate lines further down: a gate can report cleanly and the ledger
+            // still refuse — the wrong tool for this step, arguments the step did not
+            // declare, or no plan under that identity at all. It sat after the brain's
+            // whole transcript until the C9a round-3 audit pointed out that "0 of N with
+            // no reason" had merely become "0 of N … transcript … reason".
+            out.append("  ^ THE PLAN STOPPED HERE: ").append(refusedBecause).append('\n');
+        }
         out.append("- tool steps: ").append(outcome.toolSteps()).append('\n');
         out.append("- cost: ").append(outcome.costUsd().isPresent()
             ? String.valueOf(outcome.costUsd().getAsDouble())
@@ -234,14 +243,6 @@ public final class HiredRun {
             ? (outcome.saidNothing() ? "_nothing — and it ran cleanly, so that is silence_"
                 : "_nothing on stdout, and it FAILED — see the exit status above_")
             : outcome.text());
-        if (refusedBecause != null) {
-            // THE LEDGER'S OWN REASON, which is not derivable from the gate lines below.
-            // A gate can report cleanly and the ledger still refuse — the wrong tool for
-            // this step, arguments the step did not declare, or no plan under that identity
-            // at all. Without this the record shows every gate it ran as "passed" beside a
-            // step count of zero and leaves the reader to invent the connection.
-            out.append("\n**THE PLAN STOPPED HERE:** ").append(refusedBecause).append('\n');
-        }
         out.append("\n\n## The gates\n\n");
         for (int i = 0; i < ran.size(); i++) {
             GateOutcome g = ran.get(i);
