@@ -203,6 +203,52 @@ class RunTestsToolTest {
     }
 
     @Test
+    @DisplayName("a run that discovered NOTHING says so, and a run that found tests does not")
+    void zeroDiscovery_isNotReportedAsAPassingRun() {
+        // THE CASE. Sprint 28g S3, D7d: before the note, this answered success with
+        // total=0 failed=0 evidenceFinalized=true — byte-identical in shape to a class
+        // that simply has no tests, and to a run that worked. Measured on a real project:
+        // a class find_tests enumerated with FIVE methods answered exactly these zeros.
+        ObjectNode args = objectMapper.createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", "class");
+        scope.put("typeName", "com.example.NoSuchTestClassAtAll");
+        args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
+        ToolResponse r = tool.execute(args);
+
+        // Whether the tool refuses or runs empty is its own business; what it may NOT do
+        // is report zeros that read as green. If it refuses, that is already honest.
+        if (r.isSuccess()) {
+            java.util.Map<String, Object> summary = summaryOf(r);
+            assertEquals(0, summary.get("total"), "summary: " + summary);
+            assertNotNull(summary.get("discoveryNote"),
+                "a zero-discovery run must SAY it discovered nothing; got: " + summary);
+            assertTrue(String.valueOf(summary.get("discoveryNote"))
+                    .contains("NOT the same answer as a passing run"),
+                "the note must deny the reading it exists to prevent; got: " + summary);
+        }
+
+        // THE CONTROL, and without it the assertion above would pass against a tool that
+        // stamped the note on every run — which would destroy the distinction rather than
+        // make it.
+        ObjectNode realArgs = objectMapper.createObjectNode();
+        ObjectNode realScope = realArgs.putObject("scope");
+        realScope.put("kind", "method");
+        realScope.put("typeName", "com.example.SampleTest");
+        realScope.put("methodName", "testAddition");
+        realArgs.put("framework", "junit5");
+        realArgs.put("timeoutSeconds", 120);
+        ToolResponse real = tool.execute(realArgs);
+        assertTrue(real.isSuccess(), "got: " + real.getError());
+        java.util.Map<String, Object> realSummary = summaryOf(real);
+        assertEquals(1, realSummary.get("total"), "summary: " + realSummary);
+        assertFalse(realSummary.containsKey("discoveryNote"),
+            "a run that found and ran a test must NOT carry the zero-discovery note; got: "
+                + realSummary);
+    }
+
+    @Test
     @DisplayName("happy: methodScope on testAddition returns one passed result")
     void happy_methodScope_returnsPassed() {
         ObjectNode args = objectMapper.createObjectNode();

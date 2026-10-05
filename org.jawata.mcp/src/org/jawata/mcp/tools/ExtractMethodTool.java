@@ -232,7 +232,12 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         // it deliberately on the next call. That is discovery without a behaviour change.
         boolean replaceDuplicates = getBooleanParam(arguments, "replaceDuplicates", false);
 
-        RefactoringStatus status = refactoring.checkAllConditions(new NullProgressMonitor());
+        RefactoringStatus status;
+        try {
+            status = refactoring.checkAllConditions(new NullProgressMonitor());
+        } catch (RuntimeException e) {
+            return Preparation.fail(engineThrew("checkAllConditions", e, filePath, startOffset, endOffset));
+        }
         if (status.hasError()) {
             // The engine analyzed the selection and cannot transform it correctly.
             // Its reasons ARE the answer — a refusal that names the problem beats
@@ -251,7 +256,12 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         // test caught: the parameter was published, accepted, echoed back, and inert.
         refactoring.setReplaceDuplicates(replaceDuplicates);
 
-        Change change = refactoring.createChange(new NullProgressMonitor());
+        Change change;
+        try {
+            change = refactoring.createChange(new NullProgressMonitor());
+        } catch (RuntimeException e) {
+            return Preparation.fail(engineThrew("createChange", e, filePath, startOffset, endOffset));
+        }
 
         Map<String, Object> extras = new LinkedHashMap<>();
         extras.put("filePath", service.getPathUtils().formatPath(path));
@@ -269,6 +279,52 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         String summary = "extract method " + refactoring.getSignature();
         log.debug("extract_method via JDT ExtractMethodRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
+    }
+
+    /**
+     * Sprint 28g S3, D7a — the engine threw, and the caller is told WHICH PHASE and WHICH
+     * FRAME rather than being handed a bare {@code INTERNAL_ERROR}.
+     *
+     * <p>The defect this exists for: on one file in a foreign project
+     * ({@code pipeline/OrbEventProcessor.java}) every selection answered
+     * {@code IllegalStateException: source not specified at ASTParser.createAST}. The
+     * client saw one frame and no phase, so the fault was indistinguishable between
+     * {@code checkAllConditions} and {@code createChange} — and nothing in the response
+     * said which parse had no source. The controls measured at the time: {@code extract
+     * kind=variable} staged cleanly on that same method, and {@code extract kind=method}
+     * staged cleanly on a 4x larger sibling in the same project, so neither the unit's
+     * parseability nor the selection nor the project was the cause.</p>
+     *
+     * <p>This does not FIX that throw. It makes the next occurrence self-diagnosing, which
+     * is what the defect record asked for in as many words: <em>"The error escapes as
+     * INTERNAL_ERROR with no phase and no offset. Catch it at the tool and say which parse
+     * threw."</em> A fault that can only be read out of a server log is a fault only the
+     * machine that produced it can diagnose.</p>
+     */
+    // PACKAGE-PRIVATE, not private, and only so a test in this package can pin the message
+    // FORMAT. The trigger itself is not reachable from any fixture — the only input known to
+    // produce it is a file in a foreign project — so what a test CAN hold is that the phase is
+    // named and the frames are carried, and the compiler holds the wiring, since this is called
+    // from the catch around each of the two engine phases and nowhere else. That split is stated
+    // rather than glossed: it is coverage of the formatting, not proof the branch ever fires.
+    static ToolResponse engineThrew(
+            String phase, RuntimeException e, String filePath, int startOffset, int endOffset) {
+        StringBuilder where = new StringBuilder();
+        StackTraceElement[] frames = e.getStackTrace();
+        for (int i = 0; i < Math.min(4, frames.length); i++) {
+            where.append(i == 0 ? "" : " <- ").append(frames[i]);
+        }
+        return ToolResponse.error(
+            "EXTRACT_ENGINE_FAILED",
+            "extract_method's engine threw during " + phase + ": "
+                + e.getClass().getSimpleName()
+                + (e.getMessage() == null ? "" : ": " + e.getMessage())
+                + " [at " + where + "]",
+            "This is a defect in the engine path, not in your selection — the phase and the "
+                + "frames above are the report. Selection was offsets " + startOffset + ".."
+                + endOffset + " of " + filePath + ". No files were modified. The same "
+                + "selection may succeed through extract kind=variable, and the same "
+                + "operation may succeed on another file.");
     }
 
     private static String statusMessages(RefactoringStatus status) {

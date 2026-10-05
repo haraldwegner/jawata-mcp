@@ -1564,6 +1564,31 @@ public class RunTestsTool extends AbstractTool {
             }
             summary.put("evidenceNote", note);
         }
+        // Sprint 28g S3, D7d — A RUN THAT DISCOVERED NOTHING IS NOT A PASSING RUN, and until
+        // this note existed the two were the same answer. Measured through the built artifact:
+        // `run_tests scope=class` on a class find_tests enumerates with FIVE JUnit5 methods
+        // answered success with total=0 failed=0 evidenceFinalized=true in 173ms — and the
+        // SAME call shape on a class that does not exist at all answered identically. So three
+        // states collapsed into one and the one chosen was the green: the class has no tests,
+        // the selection never resolved, and the run worked.
+        //
+        // That is why the sprint being reported on made ZERO run_tests calls and attributed it
+        // to a stale note about something else: a tool that cannot say it found nothing is
+        // indistinguishable from a tool with nothing to find.
+        //
+        // The note states the fact and NAMES the possibilities without claiming which — it has
+        // the counts but not the selection, and `appendResult` is shared by run/status/cancel.
+        // Telling the three apart needs the selection threaded in, which is a signature change
+        // on a method with three callers and is recorded as the follow-up rather than guessed
+        // at here.
+        if (r.total == 0 && r.evidenceFinalized && !r.cancelled && !r.timedOut) {
+            summary.put("discoveryNote",
+                "NO TESTS WERE DISCOVERED, and this is NOT the same answer as a passing run. "
+                    + "A selection naming a class that is absent from the RUNTIME classpath, or "
+                    + "whose compiled output is missing or stale, discovers nothing and reports "
+                    + "exactly these zeros. Check that the selection resolves and that the "
+                    + "project's test output exists before reading this as green.");
+        }
         data.put("summary", summary);
 
         List<Map<String, Object>> failures = new ArrayList<>();
