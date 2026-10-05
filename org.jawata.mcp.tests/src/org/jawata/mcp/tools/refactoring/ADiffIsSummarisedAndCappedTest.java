@@ -109,13 +109,14 @@ class ADiffIsSummarisedAndCappedTest {
     @Test
     @DisplayName("a '--- a/X' line NOT followed by its own '+++ b/X' does not open a file")
     void anUnpairedMinusLineDoesNotOpenAFile() {
-        // THIS is the case the pair check buys, and the case the previous test does not
-        // reach. A removed source line of the shape `-- a/Ghost.java` renders as
-        // `--- a/Ghost.java` inside a body, where the next line is whatever the diff had.
-        // A prefix-only check opens a file called Ghost.java and attributes the rest of the
-        // real file's hunk to it.
+        // THIS is the case the pair check buys, and it took two attempts to reach — both
+        // recorded, because the clause is narrower than it looks. The mutation only bites
+        // where a `--- a/X` body line is followed by a `+++ b/` line naming a DIFFERENT
+        // path, which needs a REPLACED line rather than a deleted one: a removed
+        // `-- a/Ghost.java` whose replacement is an added `++ b/Other.java`. With only a
+        // deletion the next line is ordinary context, and a prefix check declines it too.
         String oldText = "-- a/Ghost.java\nkeep\n";
-        String newText = "keep\n";
+        String newText = "++ b/Other.java\nkeep\n";
         String diff = DiffRenderer.unifiedDiff(List.of(
             new DiffRenderer.FileDiff("Real.java", oldText, newText)));
 
@@ -125,6 +126,8 @@ class ADiffIsSummarisedAndCappedTest {
         assertEquals("Real.java", files.get(0).filePath(), () -> "wrong file opened: " + diff);
         assertEquals(1, files.get(0).removed(),
             () -> "the look-alike line IS the removal being reported: " + diff);
+        assertEquals(1, files.get(0).added(),
+            () -> "and its replacement IS the addition being reported: " + diff);
     }
 
     @Test
