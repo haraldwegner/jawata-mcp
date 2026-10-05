@@ -539,7 +539,10 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         Map<IFile, List<TextEdit>> editsByFile = new LinkedHashMap<>();
         for (SearchMatch match : references) {
             try {
-                updateCallSite(match, oldName, retargetCallsTo, current, identity, isConstructor, editsByFile);
+                // Retarget maps parameters by identity and declares no defaults, so this
+                // collector stays empty here by construction rather than by luck.
+                updateCallSite(match, oldName, retargetCallsTo, current, identity, isConstructor,
+                    editsByFile, new ArrayList<>());
             } catch (Exception e) {
                 log.debug("Error updating call site: {}", e.getMessage());
             }
@@ -597,7 +600,9 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
     private void updateCallSite(SearchMatch match, String oldName, String newName,
                                 List<ParameterInfo> newParams, int[] paramMapping,
                                 boolean isConstructor,
-                                Map<IFile, List<TextEdit>> editsByFile) throws JavaModelException {
+                                Map<IFile, List<TextEdit>> editsByFile,
+                                List<Map<String, Object>> defaultsInserted)
+                                throws JavaModelException {
         Object element = match.getElement();
         if (!(element instanceof IJavaElement javaElement)) {
             return;
@@ -710,15 +715,25 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             return;
         }
 
-        String newCall = prefix + String.join(", ", buildNewArgs(oldArgs, newParams, paramMapping)) + ")";
+        List<String> defaultsUsedHere = new ArrayList<>();
+        String newCall = prefix
+            + String.join(", ", buildNewArgs(oldArgs, newParams, paramMapping, defaultsUsedHere))
+            + ")";
         if (cu.getResource() instanceof IFile callFile) {
             editsByFile.computeIfAbsent(callFile, k -> new ArrayList<>())
                 .add(new ReplaceEdit(node.getStartPosition(), node.getLength(), newCall));
+            if (!defaultsUsedHere.isEmpty()) {
+                Map<String, Object> site = new LinkedHashMap<>();
+                site.put("filePath", callFile.getFullPath().toString());
+                site.put("line", ast.getLineNumber(node.getStartPosition()));
+                site.put("defaults", List.copyOf(defaultsUsedHere));
+                defaultsInserted.add(site);
+            }
         }
     }
 
     private List<String> buildNewArgs(List<Expression> oldArgs, List<ParameterInfo> newParams,
-                                      int[] paramMapping) {
+                                      int[] paramMapping, List<String> defaultsUsedHere) {
         List<String> newArgs = new ArrayList<>();
         for (int newIdx = 0; newIdx < newParams.size(); newIdx++) {
             ParameterInfo newParam = newParams.get(newIdx);
@@ -732,6 +747,9 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             if (oldIdx >= 0 && oldIdx < oldArgs.size()) {
                 newArgs.add(oldArgs.get(oldIdx).toString());
             } else if (newParam.defaultValue != null) {
+                // D7c (Sprint 28g S3) — a defaultValue is TEXT, spliced in verbatim, and the
+                // caller is told WHERE so the sites it must read are named rather than hunted.
+                defaultsUsedHere.add(newParam.name + "=" + newParam.defaultValue);
                 newArgs.add(newParam.defaultValue);
             } else {
                 newArgs.add("/* TODO " + newParam.name + " */ " + zeroValueFor(newParam.type));
@@ -884,10 +902,11 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         editsByFile.computeIfAbsent(methodFile, k -> new ArrayList<>())
             .add(new ReplaceEdit(sigStart, sigEnd - sigStart, newSignature));
 
+        List<Map<String, Object>> defaultsInserted = new ArrayList<>();
         for (SearchMatch match : references) {
             try {
                 updateCallSite(match, oldName, newName, newParameters, paramMapping,
-                    isConstructor, editsByFile);
+                    isConstructor, editsByFile, defaultsInserted);
             } catch (Exception e) {
                 log.debug("Error updating call site: {}", e.getMessage());
             }
@@ -916,6 +935,21 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         // worklist. The marker lets an agent branch deterministically on "this one is
         // the change-the-signature-then-fix-by-the-compile-failures case".
         extras.put("coupledChange", true);
+        // D7c (Sprint 28g S3) — WHERE each text default landed, because a defaultValue is
+        // spliced in verbatim and cannot be right everywhere. The field report's two halves:
+        // one default named a local that exists at ONE site and not another (both compile-fail
+        // and the compile gate does report those), and a default of 25_000 inserted at sites
+        // built with 10_000 and 100_000 — which COMPILES and is simply not what those sites
+        // meant. No gate can catch the second, so naming the sites is the only thing that can:
+        // these are exactly the lines a caller has to read before applying.
+        if (!defaultsInserted.isEmpty()) {
+            extras.put("defaultsInserted", List.copyOf(defaultsInserted));
+            extras.put("defaultsNote",
+                "A defaultValue is inserted as TEXT at each site listed above. It cannot be "
+                    + "correct everywhere: a name it uses may not exist in some scopes (the "
+                    + "compile gate reports those), and a literal may compile while being the "
+                    + "wrong value for that site (nothing can report that). Read these sites.");
+        }
 
         String summary = "change signature of " + oldName + " -> " + newSignature
             + " (" + totalEdits + " edits in " + editsByFile.size() + " files)";
