@@ -196,6 +196,10 @@ public final class ExperienceRetrieval {
         int cap = maxEntries > 0 ? maxEntries : MAX_TERMINAL;
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("cue", cueMap(q));
+        // D7h, and it sits HERE rather than beside the hits deliberately: the exclusion is a
+        // property of the filter, so it must be stated whatever the outcome — including the
+        // ABSENCE branch below, which is exactly the answer the defect makes unreadable.
+        noteCatalogueExclusion(out, q == null ? null : q.lane());
         if (q == null || q.isEmpty()) {
             out.put("result", RESULT_ABSENCE);
             out.put("reason", "no cue provided");
@@ -907,7 +911,39 @@ public final class ExperienceRetrieval {
         if (lane != null && !lane.isBlank()) {
             out.put("lane", lane);
         }
+        // D7h — a DESIGN question is the case the report hit, and the one where a silently
+        // pattern-free answer costs most: this is the path the architect seat asks on.
+        noteCatalogueExclusion(out, lane);
         return within(() -> nominateFromStore(question, lane, out), out, budgetMillis);
+    }
+
+    /**
+     * Sprint 28g D7h — say so when the caller's lane filter cannot return a catalogue
+     * pattern at all.
+     *
+     * <p>The field report: eight lookups filtered {@code lane=domain} and came back with the
+     * project's own domain facts and no patterns whatever. Nothing was broken — a catalogue
+     * {@code reference} is a borrowed EXPERIENCE by {@link KnowledgeLane#of}'s ruling — and
+     * nothing said so, so <b>the caller could not tell "no pattern fits" from "patterns were
+     * never searched"</b>. Those two answers want opposite next moves, and the steering this
+     * store emits tells a caller to match one of the rows it returned.</p>
+     *
+     * <p>Written onto BOTH answers from one place, for the reason {@link #inLane} gives about
+     * itself: recall and nomination ask the same question, and a copied sentence is how the
+     * two would come to differ.</p>
+     */
+    private static void noteCatalogueExclusion(Map<String, Object> out, String lane) {
+        if (!KnowledgeLane.excludesCatalogue(lane)) {
+            return;
+        }
+        String reach = KnowledgeLane.catalogueLane();
+        out.put("catalogueExcluded", true);
+        out.put("catalogueExclusionNote", "lane=" + lane.strip() + " CANNOT return a catalogue "
+            + "pattern. A borrowed pattern is typed `reference` with catalogue provenance, "
+            + "which this store rules into the `" + reach + "` lane — so an answer here "
+            + "carrying no pattern means the patterns were NOT SEARCHED, not that none fits. "
+            + "Ask again with lane=" + reach + ", or with no lane at all, before concluding "
+            + "anything about them.");
     }
 
     /**

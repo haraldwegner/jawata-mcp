@@ -157,6 +157,45 @@ public enum KnowledgeLane {
         return null;
     }
 
+    /**
+     * Sprint 28g D7h — whether a lane filter spelled {@code wire} can return a CATALOGUE
+     * pattern at all.
+     *
+     * <p>The field report: eight lookups filtered {@code lane=domain} and came back with the
+     * project's own domain facts and no patterns whatever. That is correct and it is
+     * invisible — a catalogue {@code reference} is a borrowed EXPERIENCE by {@link #of}'s own
+     * ruling, so a domain filter removes the entire pattern corpus from a design question
+     * without saying so, and <b>the caller cannot tell "no pattern fits" from "patterns were
+     * never searched"</b>. Those two answers want opposite next moves.</p>
+     *
+     * <p><b>It is a property of the FILTER, not of the result, which is what makes it exact.</b>
+     * Counting the catalogue rows a particular query dropped would undercount, because the
+     * keyword source filters by lane in SQL and those rows never reach the pool to be
+     * counted. Asking whether the lane CAN hold a pattern needs no rows at all and cannot be
+     * wrong.</p>
+     *
+     * <p>And it ASKS {@link #of} rather than restating its answer, so a ruling that moves the
+     * catalogue to another lane moves this with it. A second spelling of "the catalogue's
+     * lane" is the copy that would still say {@code experience} the day it stopped being
+     * true.</p>
+     *
+     * @param wire a lane filter's wire name, or null/blank for no filter
+     * @return true when that filter excludes every catalogue pattern
+     */
+    public static boolean excludesCatalogue(String wire) {
+        if (wire == null || wire.isBlank()) {
+            return false;
+        }
+        KnowledgeLane catalogue = of(REFERENCE_TYPE, CatalogueManifest.PROVENANCE);
+        return catalogue != null && !catalogue.wire().equals(wire.strip());
+    }
+
+    /** The lane a caller must ask for to reach the catalogue, derived rather than restated. */
+    public static String catalogueLane() {
+        KnowledgeLane lane = of(REFERENCE_TYPE, CatalogueManifest.PROVENANCE);
+        return lane == null ? null : lane.wire();
+    }
+
     /** {@link #of} as the stored string, or {@code null} when the type is unclassified. */
     public static String wireOf(String type, String provenanceKind) {
         KnowledgeLane lane = of(type, provenanceKind);

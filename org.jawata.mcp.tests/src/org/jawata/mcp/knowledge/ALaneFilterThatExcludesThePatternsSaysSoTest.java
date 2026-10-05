@@ -1,0 +1,179 @@
+package org.jawata.mcp.knowledge;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.ExperienceTool;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Sprint 28g S3 / D7h — a lane filter that cannot return a catalogue pattern SAYS SO.
+ *
+ * <p>The field report: eight lookups filtered {@code lane=domain} and came back with the
+ * project's own domain facts and no patterns whatever. Nothing was broken — a catalogue
+ * {@code reference} is a borrowed EXPERIENCE by {@link KnowledgeLane#of}'s own ruling — and
+ * nothing said so, so <strong>the caller could not tell "no pattern fits" from "patterns were
+ * never searched"</strong>. Those two answers want opposite next moves, and the store's own
+ * steering tells a caller to match one of the rows it returned.</p>
+ *
+ * <p>Driven through the TOOL rather than the retrieval object, because the complaint is about
+ * what a caller saw. A note the retrieval produced and the tool dropped would read identically
+ * from inside.</p>
+ */
+class ALaneFilterThatExcludesThePatternsSaysSoTest {
+
+    private static final String ANCHOR = "com.example.Thermostat#selectedTemperature";
+
+    private H2ExperienceStore store;
+    private ObjectMapper objectMapper;
+
+    @BeforeEach
+    void setUp() {
+        store = H2ExperienceStore.openMemory();
+        objectMapper = new ObjectMapper();
+
+        // ONE of ours, DOMAIN by its type.
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("domain_fact", "the setpoint is read from the dial, not the probe",
+                        Confidence.MEDIUM)
+                    .symbol(ANCHOR)
+                    .build())
+            .status(ExperienceEntry.ACCEPTED)
+            .build());
+
+        // ONE borrowed from the catalogue, on the SAME anchor. This row is what makes the note
+        // truthful rather than decorative: without it the claim "patterns were excluded"
+        // would describe behaviour nothing in the test exercises.
+        store.put(ExperienceEntry.of(
+                SymbolFact.of("reference", "Strategy: vary an algorithm behind one interface",
+                        Confidence.MEDIUM)
+                    .symbol(ANCHOR)
+                    .build())
+            .status(ExperienceEntry.ACCEPTED)
+            .provenanceKind(CatalogueManifest.PROVENANCE)
+            .build());
+    }
+
+    @AfterEach
+    void tearDown() {
+        store.close();
+    }
+
+    @Test
+    @DisplayName("the exclusion is REAL: lane=domain returns our fact and never the pattern")
+    void theExclusionTheNoteDescribesActuallyHappens() {
+        String domainOnly = renderOf(recall(ANCHOR, "domain"));
+        assertTrue(domainOnly.contains("setpoint is read from the dial"),
+            () -> "our own domain fact must still answer: " + domainOnly);
+        assertFalse(domainOnly.contains("Strategy: vary an algorithm"),
+            () -> "and the catalogue pattern must be absent — that absence is the defect's "
+                + "subject, and asserting the note without it would describe nothing: "
+                + domainOnly);
+
+        // THE CONTROL that makes the above mean something: the pattern IS in the store and IS
+        // reachable, through the lane the note names.
+        String experienceOnly = renderOf(recall(ANCHOR, "experience"));
+        assertTrue(experienceOnly.contains("Strategy: vary an algorithm"),
+            () -> "the pattern must be reachable in its own lane, or the first assertion is "
+                + "just an empty store: " + experienceOnly);
+    }
+
+    @Test
+    @DisplayName("lane=domain says the patterns were not searched, and names the lane that reaches them")
+    void aDomainFilterNamesTheExclusion() {
+        Map<String, Object> data = recall(ANCHOR, "domain");
+        assertEquals(Boolean.TRUE, data.get("catalogueExcluded"),
+            () -> "the caller must be told the corpus was not consulted: " + data.keySet());
+
+        String note = String.valueOf(data.get("catalogueExclusionNote"));
+        assertTrue(note.contains("NOT SEARCHED"),
+            () -> "the note's job is to separate 'none fits' from 'none was looked at': " + note);
+        assertTrue(note.contains("lane=" + KnowledgeLane.catalogueLane()),
+            () -> "and to name the lane that WOULD reach them, derived rather than spelled: "
+                + note);
+    }
+
+    @Test
+    @DisplayName("the lane that HOLDS the patterns says nothing — the note is not on every answer")
+    void theCatalogueOwnLaneIsSilent() {
+        assertNull(recall(ANCHOR, "experience").get("catalogueExcluded"),
+            "lane=experience is where a catalogue pattern lives, so nothing is excluded and "
+                + "nothing should be claimed");
+    }
+
+    @Test
+    @DisplayName("no lane filter says nothing either")
+    void noFilterIsSilent() {
+        assertNull(recall(ANCHOR, null).get("catalogueExcluded"),
+            "an unfiltered recall searches the patterns, so there is no exclusion to report");
+    }
+
+    @Test
+    @DisplayName("an ABSENCE under lane=domain carries the note too — the case that misleads most")
+    void anAbsenceStillCarriesTheNote() {
+        Map<String, Object> data = recall("com.example.NothingAnchoredHere#atAll", "domain");
+
+        // This is the clause the note exists for, and it is why the note is written beside the
+        // echoed cue rather than beside the hits: an empty answer under a lane that excludes
+        // the catalogue is EXACTLY the answer a caller reads as "no pattern fits".
+        assertEquals(Boolean.TRUE, data.get("catalogueExcluded"),
+            () -> "an answer with no rows at all is the one most easily misread, so it must "
+                + "carry the exclusion: " + data.keySet());
+        assertTrue(entriesOf(data).isEmpty(),
+            () -> "the fixture must genuinely match nothing, else this measures a hit: " + data);
+    }
+
+    @Test
+    @DisplayName("a DESIGN question (nominate) under lane=domain carries it as well")
+    void aNominationNamesTheExclusion() {
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "nominate");
+        args.put("question", "how should one algorithm vary behind a single interface?");
+        args.put("lane", "domain");
+
+        Map<String, Object> data = dataOf(new ExperienceTool(() -> null, store).execute(args));
+        assertEquals(Boolean.TRUE, data.get("catalogueExcluded"),
+            () -> "nominate is the path the architect seat asks a design question on, which is "
+                + "where a silently pattern-free answer costs most: " + data.keySet());
+    }
+
+    private Map<String, Object> recall(String symbol, String lane) {
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "recall");
+        args.put("symbol", symbol);
+        if (lane != null) {
+            args.put("lane", lane);
+        }
+        return dataOf(new ExperienceTool(() -> null, store).execute(args));
+    }
+
+    private static List<?> entriesOf(Map<String, Object> data) {
+        Object entries = data.get("entries");
+        return entries instanceof List<?> list ? list : List.of();
+    }
+
+    /** The whole answer as text, so an assertion about a row's presence reads the real answer. */
+    private static String renderOf(Map<String, Object> data) {
+        return String.valueOf(data);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> dataOf(ToolResponse r) {
+        assertTrue(r.isSuccess(), () -> "the store must answer at all: " + r.getError());
+        Object data = r.getData();
+        assertNotNull(data, "a successful recall carries data");
+        return (Map<String, Object>) data;
+    }
+}
