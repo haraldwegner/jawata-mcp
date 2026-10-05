@@ -93,6 +93,7 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
         public static final String COMPONENT_NAME_TAKEN = "COMPONENT_NAME_TAKEN";
         public static final String NO_DEFAULT_FOR_EXISTING_CALLS = "NO_DEFAULT_FOR_EXISTING_CALLS";
         public static final String EXPLICIT_CANONICAL_CONSTRUCTOR = "EXPLICIT_CANONICAL_CONSTRUCTOR";
+        public static final String SECONDARY_CONSTRUCTOR_EXISTS = "SECONDARY_CONSTRUCTOR_EXISTS";
 
         private Refusal() {
         }
@@ -130,7 +131,14 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
             that compiles is the worst thing to guess), and an EXPLICITLY declared canonical
             constructor (EXPLICIT_CANONICAL_CONSTRUCTOR), whose body would need an assignment
             this operation would be inventing. A COMPACT constructor is handled: its
-            parameter list is implicit, so it needs no edit.""";
+            parameter list is implicit, so it needs no edit.
+
+            viaSecondaryConstructor:true changes the shape instead of the call sites — the
+            record gains the component AND an overload taking the old component list that
+            delegates with defaultValue, so no construction is rewritten. mcp D10: asked
+            three times to add an optional factor with default NaN, this correctly rewrote
+            78 sites in 24 files, and all three were undone — the wanted shape was one
+            four-argument constructor in one file.""";
     }
 
     @Override
@@ -150,6 +158,13 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
             "description", "The value passed at EXISTING constructions. Required whenever "
                 + "any exist: a value cannot be derived from a type, and one that compiles "
                 + "is the worst kind of guess."));
+        props.put("viaSecondaryConstructor", Map.of("type", "boolean",
+            "description", "Default false. True adds the component and a SECONDARY "
+                + "constructor taking the OLD component list, delegating to the canonical "
+                + "one with defaultValue — so every existing construction is left untouched. "
+                + "One file changes instead of all of them. Use it when the default is a "
+                + "sentinel (NaN, null, -1): a value nobody wanted at any site is a value no "
+                + "site should have to spell."));
         return props;
     }
 
@@ -297,14 +312,42 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
                 }
             }
 
-            if (constructions > 0 && (defaultValue == null || defaultValue.isBlank())) {
+            boolean viaOverload = arguments != null && arguments.has("viaSecondaryConstructor")
+                && arguments.get("viaSecondaryConstructor").asBoolean(false);
+
+            if ((constructions > 0 || viaOverload)
+                    && (defaultValue == null || defaultValue.isBlank())) {
                 return ToolResponse.invalidParameter("defaultValue",
-                    constructions + " existing construction(s) of '" + record.getElementName()
-                        + "' must pass the new component, and no `defaultValue` was given. "
+                    (viaOverload
+                        ? "the secondary constructor's whole body is a delegation passing the "
+                            + "new component, so it has nothing to pass without a "
+                            + "`defaultValue`. "
+                        : constructions + " existing construction(s) of '"
+                            + record.getElementName() + "' must pass the new component, and "
+                            + "no `defaultValue` was given. ")
                         + "The value cannot be derived from the type: a 0 or a null is a "
                         + "guess that COMPILES, which is the worst kind — it ships a wrong "
                         + "value that nothing refuses. Name the value.",
                     Refusal.NO_DEFAULT_FOR_EXISTING_CALLS);
+            }
+
+            // D7g: an overload taking the OLD list only exists if that list is not already
+            // somebody's constructor. Refused rather than generated, because two
+            // constructors of one signature do not compile and which one should survive is
+            // not this operation's call.
+            if (viaOverload) {
+                MethodDeclaration clash = constructorWithArity(declaration, existing.size());
+                if (clash != null) {
+                    return ToolResponse.invalidParameter("viaSecondaryConstructor",
+                        "'" + record.getElementName() + "' already declares a constructor "
+                            + "taking " + existing.size() + " argument(s), which is exactly "
+                            + "the signature the secondary constructor would have. Two "
+                            + "constructors of one signature do not compile, and deciding "
+                            + "which survives is yours. Add the delegation to that "
+                            + "constructor by hand, or rewrite the call sites instead by "
+                            + "omitting viaSecondaryConstructor.",
+                        Refusal.SECONDARY_CONSTRUCTOR_EXISTS);
+                }
             }
 
             Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
@@ -320,8 +363,21 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
                         componentType + " " + componentName,
                         ASTNode.SINGLE_VARIABLE_DECLARATION), null);
                     touched = true;
+
+                    if (viaOverload) {
+                        ListRewrite body = rewrite.getListRewrite(declaration,
+                            RecordDeclaration.BODY_DECLARATIONS_PROPERTY);
+                        body.insertLast(rewrite.createStringPlaceholder(
+                            secondaryConstructor(record.getElementName(), declaration,
+                                defaultValue),
+                            ASTNode.METHOD_DECLARATION), null);
+                    }
                 }
-                for (ClassInstanceCreation site : sites.getOrDefault(referencing, List.of())) {
+                // viaOverload is the WHOLE point: the old call sites keep their old
+                // signature, so nothing is rewritten at them.
+                for (ClassInstanceCreation site :
+                        viaOverload ? List.<ClassInstanceCreation>of()
+                                    : sites.getOrDefault(referencing, List.of())) {
                     ListRewrite arguments2 = rewrite.getListRewrite(site,
                         ClassInstanceCreation.ARGUMENTS_PROPERTY);
                     arguments2.insertLast(rewrite.createStringPlaceholder(
@@ -346,12 +402,19 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
                 }
             }
 
-            String label = "add component " + componentType + " " + componentName + " to record "
-                + record.getElementName() + " (" + constructions + " construction(s) across "
-                + sites.size() + " file(s))";
-            return runPreCheckedRefactoring(service,
+            String label = viaOverload
+                ? "add component " + componentType + " " + componentName + " to record "
+                    + record.getElementName() + " with a secondary constructor passing "
+                    + defaultValue + " (" + constructions + " existing construction(s) across "
+                    + sites.size() + " file(s) left UNCHANGED)"
+                : "add component " + componentType + " " + componentName + " to record "
+                    + record.getElementName() + " (" + constructions + " construction(s) across "
+                    + sites.size() + " file(s))";
+            ToolResponse response = runPreCheckedRefactoring(service,
                 new PreparedRefactoring(ChangeEngine.fromFileEdits(label, edits), label),
                 "add_record_component", arguments);
+            return withOverloadAlternative(response, record.getElementName(), componentType,
+                componentName, defaultValue, constructions, sites.size(), viaOverload);
         } catch (Exception error) {
             return ToolResponse.error("REFACTORING_FAILED",
                 "add_record_component failed: " + error.getMessage(),
@@ -385,15 +448,134 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
      */
     private static MethodDeclaration explicitCanonicalConstructor(RecordDeclaration declaration,
                                                                   int componentCount) {
+        // A zero-component record's canonical constructor cannot be told from a COMPACT one
+        // by arity, so it answers null here rather than guessing — which is the one case
+        // where this question and constructorWithArity's differ.
+        return componentCount == 0 ? null : constructorWithArity(declaration, componentCount);
+    }
+
+    /**
+     * A declared constructor taking exactly {@code arity} parameters, or null.
+     *
+     * <p>D7g needed this WITHOUT the compact-form exclusion above: the secondary constructor
+     * it generates takes the OLD component list, and when a record had no components that
+     * list is empty — a signature an explicitly declared no-arg constructor would already
+     * occupy, which the canonical-constructor question is deliberately blind to. Two
+     * predicates, one implementation, and the single difference stated where it is made.</p>
+     */
+    private static MethodDeclaration constructorWithArity(RecordDeclaration declaration,
+                                                          int arity) {
         for (Object member : declaration.bodyDeclarations()) {
             if (member instanceof MethodDeclaration method
                     && method.isConstructor()
-                    && !method.parameters().isEmpty()
-                    && method.parameters().size() == componentCount) {
+                    && method.parameters().size() == arity) {
                 return method;
             }
         }
         return null;
+    }
+
+    /**
+     * D7g — offer the other mode when the default is a SENTINEL, which is the signal the
+     * field report named.
+     *
+     * <p>Asked three times to add an optional factor with default {@code Double.NaN}, this
+     * operation correctly rewrote 78 construction sites in 24 files, and all three runs were
+     * undone. The tool did what it says; what it did not do is notice that the ASK carried
+     * the answer. <strong>A sentinel default is a value no site wanted</strong> — that is
+     * what a sentinel means — so making 78 sites spell it is work with nothing on the other
+     * side of it.</p>
+     *
+     * <p><strong>A DECLARED DEVIATION from the report's own wording, and the reason is that
+     * the alternative is semantic rather than economic.</strong> It says to suggest the
+     * overload when the default is a sentinel "and the site count is large". The sentinel
+     * alone is the signal; a threshold on the count would be a number invented here, and the
+     * argument does not depend on one — at two sites the overload is still the shape that
+     * says "nobody passes this". So the suggestion fires on the sentinel at ANY site count,
+     * and carries the count so the caller can weigh the cost themselves.</p>
+     *
+     * <p>It is a key on a SUCCESS response and is named for what it is. A {@code nextStep}
+     * would read as unfinished work on a response whose operation completed; this is the
+     * call a caller might have preferred, not one they still owe.</p>
+     */
+    private static ToolResponse withOverloadAlternative(ToolResponse response, String recordName,
+                                                        String componentType,
+                                                        String componentName,
+                                                        String defaultValue, int constructions,
+                                                        int files, boolean viaOverload) {
+        if (viaOverload || constructions == 0 || !isSentinel(defaultValue)
+                || !response.isSuccess() || !(response.getData() instanceof Map<?, ?> raw)) {
+            return response;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) raw;
+        Map<String, Object> alternative = new LinkedHashMap<>();
+        alternative.put("operation", "data kind=add_record_component");
+        alternative.put("arguments", Map.of(
+            "typeName", recordName,
+            "componentType", componentType,
+            "componentName", componentName,
+            "defaultValue", defaultValue,
+            "viaSecondaryConstructor", true));
+        alternative.put("why", "'" + defaultValue + "' is a sentinel, so no one of the "
+            + constructions + " construction(s) across " + files + " file(s) this run rewrote "
+            + "actually wanted the value — they now all spell a value that means absent. "
+            + "viaSecondaryConstructor:true adds an overload taking the old component list "
+            + "instead, changing ONE file and leaving every call site as it was. mcp D10 is "
+            + "this exact case asked three times and undone three times.");
+        data.put("overloadAlternative", alternative);
+        return response;
+    }
+
+    /** A value whose meaning is "absent", which is what makes the overload the better shape. */
+    private static boolean isSentinel(String defaultValue) {
+        if (defaultValue == null) {
+            return false;
+        }
+        String trimmed = defaultValue.trim();
+        return trimmed.equals("null")
+            || trimmed.equals("-1")
+            || trimmed.endsWith("NaN")          // Double.NaN, Float.NaN, a static import
+            || trimmed.endsWith("MIN_VALUE")
+            || trimmed.endsWith(".empty()")     // Optional.empty()
+            || trimmed.endsWith("EMPTY");
+    }
+
+    /**
+     * D7g — the overload that keeps every existing construction compiling: the record's OLD
+     * component list as parameters, delegating to the canonical constructor with the new
+     * component's default.
+     *
+     * <p>The parameter list is copied from the declaration's own component nodes rather than
+     * rebuilt from the names, so a generic or array type arrives exactly as the source
+     * spells it — {@code List<String> names} and {@code int[] slots} are the cases a
+     * name-plus-type reconstruction gets wrong.</p>
+     *
+     * <p>It is generated {@code public} deliberately. A record's canonical constructor is as
+     * visible as the record, so an overload that was less visible would be unreachable from
+     * precisely the call sites this mode exists to leave alone.</p>
+     */
+    private static String secondaryConstructor(String recordName,
+                                               RecordDeclaration declaration,
+                                               String defaultValue) {
+        StringBuilder parameters = new StringBuilder();
+        StringBuilder arguments = new StringBuilder();
+        for (Object component : declaration.recordComponents()) {
+            SingleVariableDeclaration declared = (SingleVariableDeclaration) component;
+            if (parameters.length() > 0) {
+                parameters.append(", ");
+                arguments.append(", ");
+            }
+            parameters.append(declared.getType()).append(' ').append(declared.getName());
+            arguments.append(declared.getName());
+        }
+        if (arguments.length() > 0) {
+            arguments.append(", ");
+        }
+        arguments.append(defaultValue);
+        return "public " + recordName + "(" + parameters + ") {\n"
+            + "    this(" + arguments + ");\n"
+            + "}";
     }
 
     /** Every {@code new <record>(...)} in this unit. */
