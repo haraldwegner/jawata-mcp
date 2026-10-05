@@ -11,7 +11,10 @@ import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.refactoring.IJavaRefactorings;
 import org.eclipse.jdt.core.refactoring.descriptors.MoveDescriptor;
+import org.eclipse.jdt.internal.corext.codemanipulation.CodeGenerationSettings;
+import org.eclipse.jdt.internal.corext.refactoring.structure.MoveInnerToTopRefactoring;
 import org.eclipse.ltk.core.refactoring.RefactoringCore;
+import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.core.LoadedProject;
@@ -173,6 +176,14 @@ public class MoveClassTool extends AbstractRefactoringTool
             if (sourcePkg.getElementName().equals(targetPackage)
                     && (targetProjectKey == null || targetProjectKey.isBlank()
                         || targetProjectKey.equals(sourceProject.getElementName()))) {
+                // D7e: for a MEMBER type this is NOT a no-op. It is Fowler's Move Inner
+                // To Top Level — the member becoming its own compilation unit in that
+                // same package is the whole change, and refusing it told a caller their
+                // own intent was empty. The refusal survives for a TOP-LEVEL type, where
+                // "nothing to move" is simply true.
+                if (type.getDeclaringType() != null) {
+                    return promoteMemberType(service, type, arguments);
+                }
                 return ToolResponse.invalidParameter("targetPackage",
                     "Target package equals source package in the source project; nothing to move");
             }
@@ -220,6 +231,95 @@ public class MoveClassTool extends AbstractRefactoringTool
         } catch (Exception e) {
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * D7e — promote a MEMBER type to its own compilation unit in the package it already
+     * sits in, by wrapping JDT's own {@code MoveInnerToTopRefactoring} rather than
+     * hand-rolling the rewrite: lifting a nested type out has to move its references, fix
+     * its imports and, for a non-static one, rewrite every construction of it.
+     *
+     * <p>THE NEST-MATE HALF IS REPORTED UP FRONT, because it is the half the diff does not
+     * announce. A non-static inner class that reads its enclosing instance cannot stand
+     * alone without carrying a reference to it, so the engine adds a field and an extra
+     * argument at every construction site. The response therefore says whether an
+     * enclosing instance was required and under what name it arrived — a caller reading
+     * only {@code filesModified} would see a promotion and miss the parameter their call
+     * sites just acquired.</p>
+     *
+     * <p>NOTHING IS CONFIGURED ON THE ENGINE, and the first version of this method was
+     * wrong to try — a wrongness the test caught rather than a review.
+     * {@code setCreateInstanceField} opens with {@code Assert.isTrue(possible)} and
+     * {@code Assert.isTrue(!mandatory)}: it exists for the OPTIONAL case, a non-static
+     * inner type that touches nothing of its outer where a caller might still want a
+     * back-reference. Where the field is MANDATORY the engine has already decided —
+     * {@code fCreateInstanceField = fIsInstanceFieldCreationMandatory} at initialize time —
+     * so asking for it there is redundant AND fails, with an
+     * {@code AssertionFailedException} thrown from inside JDT.</p>
+     *
+     * <p>The conditions are nevertheless run HERE rather than left to the pipeline, because
+     * {@code isCreatingInstanceFieldMandatory()} is only answerable once the source rewrite
+     * exists, and {@code runRefactoring} would run initial conditions a second time.</p>
+     *
+     * <p>{@code updateReferences} is NOT consulted on this path, and that is stated rather
+     * than left to be discovered: the engine rewrites the references unconditionally, and
+     * a promotion that left them naming a type which is no longer nested would simply not
+     * compile — so there is no honest meaning for {@code false} here.</p>
+     */
+    private ToolResponse promoteMemberType(IJdtService service, IType type, JsonNode arguments)
+            throws Exception {
+        MoveInnerToTopRefactoring promote =
+            new MoveInnerToTopRefactoring(type, new CodeGenerationSettings());
+        RefactoringStatus initial = promote.checkInitialConditions(new NullProgressMonitor());
+        if (initial.hasFatalError()) {
+            return ToolResponse.invalidParameter("filePath", formatStatus(initial));
+        }
+
+        boolean possible = promote.isCreatingInstanceFieldPossible();
+        boolean mandatory = promote.isCreatingInstanceFieldMandatory();
+        // The field is reported only where the engine will actually create one, which is
+        // exactly the mandatory case: the optional case defaults to false and inventing a
+        // back-reference nobody asked for is not this operation's decision.
+        String fieldName = mandatory ? promote.getEnclosingInstanceName() : null;
+
+        ToolResponse response = runPreCheckedRefactoring(service, promote, "move_class", arguments);
+        return withPromotionReport(response, possible, mandatory, fieldName);
+    }
+
+    /**
+     * Attaches the promotion's own facts to a built response. The shared tail assembles its
+     * data map privately and offers no extras seam, so the keys go into the map it handed
+     * back — the same in-place augmentation {@code applySteering} and
+     * {@code stampDegradation} already perform on a finished response. A refusal is passed
+     * through untouched: there is no promotion to report.
+     */
+    private static ToolResponse withPromotionReport(ToolResponse response, boolean possible,
+                                                    boolean mandatory, String fieldName) {
+        if (!response.isSuccess() || !(response.getData() instanceof Map<?, ?> raw)) {
+            return response;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) raw;
+        data.put("promotedToTopLevel", Boolean.TRUE);
+
+        Map<String, Object> enclosing = new LinkedHashMap<>();
+        enclosing.put("required", mandatory);
+        enclosing.put("possible", possible);
+        if (fieldName != null) {
+            enclosing.put("fieldName", fieldName);
+        }
+        data.put("enclosingInstance", enclosing);
+
+        data.put("promotionNote", mandatory
+            ? "This was a non-static inner type reading its enclosing instance, so the "
+                + "promoted type carries a '" + fieldName + "' field and EVERY construction "
+                + "of it gained that argument. A member the promoted type reads may also "
+                + "have been WIDENED — a separate top-level class cannot see a private "
+                + "member, so the engine relaxes what it must; the diff names which. Read "
+                + "those call sites before applying."
+            : "The promoted type needed nothing from its enclosing instance, so no field was "
+                + "added, no construction site changed shape, and no visibility was relaxed.");
+        return response;
     }
 
     /**
