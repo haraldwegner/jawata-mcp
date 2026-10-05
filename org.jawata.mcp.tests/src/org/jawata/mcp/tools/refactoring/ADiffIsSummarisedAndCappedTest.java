@@ -88,12 +88,13 @@ class ADiffIsSummarisedAndCappedTest {
     }
 
     @Test
-    @DisplayName("an ADDED line that looks like a diff header is not read as one")
+    @DisplayName("an ADDED line that looks like the '+++' half of a header is not read as one")
     void anAddedLineThatLooksLikeAHeaderIsNotOne() {
-        // An added line is rendered as '+' plus the source line, so a Java line reading
-        // `++ b/scale;` renders as `+++ b/scale;` — byte-identical in shape to a header.
-        // A summariser that checked only the prefix would invent a file called `scale;`
-        // and silently stop counting the real one.
+        // A Java line `++ b/scale;` renders as `+++ b/scale;`, which looks like half a
+        // header. WHAT PROTECTS THIS CASE IS THE `--- a/` REQUIREMENT, not the pair check:
+        // a file is only ever opened at a line starting `--- a/`, so this line is never a
+        // candidate. Mutation C proved it — weakening the pair check to a prefix check left
+        // this test green, which is why its message no longer credits the pair check.
         String diff = DiffRenderer.unifiedDiff(List.of(
             new DiffRenderer.FileDiff("Real.java", "int b = 1;\n", "int b = 1;\n++ b/scale;\n")));
 
@@ -101,9 +102,29 @@ class ADiffIsSummarisedAndCappedTest {
         assertEquals(1, files.size(),
             () -> "exactly one real file, whatever the added line looks like: " + diff);
         assertEquals("Real.java", files.get(0).filePath(),
-            () -> "the path must come from a header PAIR, not from a line that resembles "
-                + "half of one: " + diff);
+            () -> "a file is opened only at a `--- a/` line: " + diff);
         assertEquals(1, files.get(0).added(), () -> "the look-alike line IS an addition: " + diff);
+    }
+
+    @Test
+    @DisplayName("a '--- a/X' line NOT followed by its own '+++ b/X' does not open a file")
+    void anUnpairedMinusLineDoesNotOpenAFile() {
+        // THIS is the case the pair check buys, and the case the previous test does not
+        // reach. A removed source line of the shape `-- a/Ghost.java` renders as
+        // `--- a/Ghost.java` inside a body, where the next line is whatever the diff had.
+        // A prefix-only check opens a file called Ghost.java and attributes the rest of the
+        // real file's hunk to it.
+        String oldText = "-- a/Ghost.java\nkeep\n";
+        String newText = "keep\n";
+        String diff = DiffRenderer.unifiedDiff(List.of(
+            new DiffRenderer.FileDiff("Real.java", oldText, newText)));
+
+        List<DiffRenderer.FileSummary> files = DiffRenderer.summarize(diff);
+        assertEquals(1, files.size(),
+            () -> "only Real.java is a file here; Ghost.java is a line of its content: " + diff);
+        assertEquals("Real.java", files.get(0).filePath(), () -> "wrong file opened: " + diff);
+        assertEquals(1, files.get(0).removed(),
+            () -> "the look-alike line IS the removal being reported: " + diff);
     }
 
     @Test

@@ -33,11 +33,27 @@ public final class DiffRenderer {
      * a reader elsewhere would be a second implementation of the header and hunk shapes,
      * which is the kind of copy that is right until one of the two moves.</p>
      *
-     * <p>A header is recognised as a PAIR — {@code --- a/<path>} immediately followed by
-     * {@code +++ b/<path>} naming the same file — and not by its prefix alone. That is
-     * exactness rather than caution: an ADDED source line is rendered as {@code +} plus
-     * the line, so a Java line reading {@code ++ b/scale} renders as {@code +++ b/scale}
-     * and is indistinguishable from a header to anything that only checks the prefix.</p>
+     * <p><strong>A header is recognised as a PAIR</strong> — {@code --- a/<path>}
+     * immediately followed by {@code +++ b/<path>} naming the SAME file. Two things about
+     * that are worth stating precisely, because a mutation caught the first version of this
+     * paragraph claiming the wrong one:</p>
+     *
+     * <ul>
+     *   <li>What stops an ADDED line being read as a header is the {@code --- a/} half, not
+     *       the pair. A Java line {@code ++ b/scale;} renders as {@code +++ b/scale;} and
+     *       does look like half a header — but a file is only ever opened at a line starting
+     *       {@code --- a/}, so that line is never a candidate. Weakening the pair check to a
+     *       prefix check leaves this case correct, which is how the mutation stayed green.</li>
+     *   <li>What the pair check DOES buy is rejecting {@code --- a/X} followed by anything
+     *       that is not {@code +++ b/X} — a removed source line of the shape {@code -- a/X}
+     *       sitting anywhere in a body.</li>
+     * </ul>
+     *
+     * <p><strong>And the residual ambiguity is named rather than claimed closed:</strong> a
+     * removed {@code -- a/X} immediately followed by an added {@code ++ b/X} renders as a
+     * byte-identical header pair, and nothing in this format can tell the two apart without
+     * an index line the renderer does not emit. The pair check is strictly stronger than a
+     * prefix check and costs nothing; it is not a proof.</p>
      *
      * @param unifiedDiff a diff produced by this class; empty is a legitimate input, since
      *                    a move or a rename contributes no diff text
