@@ -136,6 +136,28 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
     }
 
     @Test
+    @DisplayName("and the NO-CUE absence carries it too — a second absence path, found by a mutation")
+    void theNoCueAbsenceAlsoCarriesTheNote() {
+        // THERE ARE TWO ABSENCE PATHS and the test above only reached one. The case above
+        // supplies a real cue that matches nothing, which goes through the store; a query with
+        // NO cue returns earlier, from its own branch. Mutation I moved the note past that
+        // earlier branch and the whole class stayed green — a complete mutation that does not
+        // fail has found something, and what it found was this gap.
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "recall");
+        args.put("lane", "domain");
+        // deliberately no symbol, package, operation or symptom
+
+        Map<String, Object> data = dataOf(new ExperienceTool(() -> null, store).execute(args));
+        assertEquals("absence", data.get("result"),
+            () -> "the fixture must take the NO-CUE branch, or this measures the other path "
+                + "again: " + data);
+        assertEquals(Boolean.TRUE, data.get("catalogueExcluded"),
+            () -> "a caller who filtered the patterns out AND gave no cue is told both, not "
+                + "just the one the store noticed second: " + data.keySet());
+    }
+
+    @Test
     @DisplayName("a DESIGN question (nominate) under lane=domain carries it as well")
     void aNominationNamesTheExclusion() {
         ObjectNode args = objectMapper.createObjectNode();
