@@ -151,7 +151,15 @@ class HiredRunProposesTest {
                 "THE HEADLINE: a hired run PROPOSES. Nothing was applied, and the manifest"
                     + " says so where a reader of the artifact alone will see it"),
             () -> assertTrue(record.contains("NOTHING HERE WAS APPLIED"),
-                "and the record says it in words too"));
+                "and the record says it in words too"),
+
+            // THE CONTROL for the crashed-brain case: this run exited cleanly, so the
+            // record must NOT carry the did-not-exit-cleanly line. Without this, emitting
+            // that line unconditionally would pass every assertion over there.
+            () -> assertFalse(record.contains("IT DID NOT EXIT CLEANLY"),
+                "a clean run's record must not claim it died"),
+            () -> assertFalse(record.contains("THE PLAN STOPPED HERE"),
+                "nor that the plan stopped, when every step got through"));
     }
 
     @Test
@@ -174,7 +182,10 @@ class HiredRunProposesTest {
             () -> assertEquals(2, proposal.gates().size(),
                 "both gates ran — it is the LEDGER that refused the second, not a skipped call"),
             () -> assertTrue(Files.readString(proposal.record()).contains("2 error(s)"),
-                "and the record names what the failing gate found"));
+                "and the record names what the failing gate found"),
+            () -> assertTrue(Files.readString(proposal.record()).contains("THE PLAN STOPPED HERE"),
+                "and the LEDGER's own reason for stopping, which the per-gate lines cannot"
+                    + " give: a gate can report cleanly and the ledger still refuse"));
     }
 
     @Test
@@ -198,7 +209,9 @@ class HiredRunProposesTest {
             () -> assertTrue(record.contains("DID NOT ANSWER"),
                 "the record says which case this is: " + record),
             () -> assertFalse(record.contains("step 0 (compile_workspace): passed"),
-                "and it must NOT read a refused gate's zero as a pass"));
+                "and it must NOT read a refused gate's zero as a pass"),
+            () -> assertTrue(record.contains("THE PLAN STOPPED HERE"),
+                "and the ledger's reason is in the record: " + record));
     }
 
     @Test

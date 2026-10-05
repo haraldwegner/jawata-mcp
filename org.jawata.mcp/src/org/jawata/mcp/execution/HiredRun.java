@@ -158,8 +158,8 @@ public final class HiredRun {
         String artifactId = artifacts.newArtifactId("proposal");
         Path dir = artifacts.createArtifactDir(artifactId);
         Path record = dir.resolve("proposal.md");
-        Files.writeString(record, render(brief, dialect, outcome, steps, ran, passed),
-            StandardCharsets.UTF_8);
+        Files.writeString(record, render(brief, dialect, outcome, steps, ran, passed,
+            last.advanced() ? null : last.refusedBecause()), StandardCharsets.UTF_8);
         artifacts.writeManifest(artifactId, provenance(plan, dialect, outcome, steps, passed));
 
         // JOURNALLED. Its own try: a run that happened must not be lost because
@@ -199,7 +199,7 @@ public final class HiredRun {
     }
 
     private static String render(String brief, BrainDialect dialect, HiredBrain.Outcome outcome,
-            List<GatedStep> steps, List<GateOutcome> ran, int passed) {
+            List<GatedStep> steps, List<GateOutcome> ran, int passed, String refusedBecause) {
         StringBuilder out = new StringBuilder();
         out.append("# Proposal from an unattended run\n\n");
         out.append("**NOTHING HERE WAS APPLIED.** A hired run proposes; a human decides.\n\n");
@@ -234,6 +234,14 @@ public final class HiredRun {
             ? (outcome.saidNothing() ? "_nothing — and it ran cleanly, so that is silence_"
                 : "_nothing on stdout, and it FAILED — see the exit status above_")
             : outcome.text());
+        if (refusedBecause != null) {
+            // THE LEDGER'S OWN REASON, which is not derivable from the gate lines below.
+            // A gate can report cleanly and the ledger still refuse — the wrong tool for
+            // this step, arguments the step did not declare, or no plan under that identity
+            // at all. Without this the record shows every gate it ran as "passed" beside a
+            // step count of zero and leaves the reader to invent the connection.
+            out.append("\n**THE PLAN STOPPED HERE:** ").append(refusedBecause).append('\n');
+        }
         out.append("\n\n## The gates\n\n");
         for (int i = 0; i < ran.size(); i++) {
             GateOutcome g = ran.get(i);

@@ -257,6 +257,19 @@ implied:
    and deciding HOW a rented session acquires a plan is a design decision this document homes to
    28h along with `/main` as a loop inside a rented chat.
 
+**THIS CLASSIFICATION WAS CHALLENGED AND HELD — C9a audit round 2, 2026-10-05.** The plan's
+amendment of the same day, folding his `/main` ruling, asserted the opposite: that the gap *"is not
+structural"* and that a `/main` seat is *"exactly the missing `open` caller"*, so the deviation
+dissolved. **Measured and false:** `PlanLedger#open` has EIGHT references, exactly ONE production
+(`HiredRun:120`), and M6 added zero Java — a markdown stance cannot call a Java method. The plan's
+claim is struck; this section's wording stands unchanged, and **M7 — the name the plan gives this
+work — is homed HERE, to 28h, reconciled with the entry already on that list, "`/main` as a loop
+inside a rented chat".** They are the same work.
+
+What his ruling genuinely changed is narrower and worth keeping: before it there was no visible
+path at all, and after it the path has a name and a shape — a session needs a way to DECLARE its
+steps, and `/main` is what such a plan would belong to.
+
 So the step-level verdict exists on the hired path and not on the rented one. The lapse condition
 above is not tripped — the rented path has **zero** step definition, not a second one — but that is
 a technicality worth stating plainly: the two executors are said to SHARE the step contract, and
