@@ -618,6 +618,33 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
                 return node.getStartPosition() <= matchOffset
                     && matchOffset < node.getStartPosition() + node.getLength();
             }
+            /**
+             * D7b (Sprint 28g S3) — the match offset belongs to the call's OWN type or
+             * keyword, never to an expression nested in its argument list.
+             *
+             * <p>Containment alone is not identity, and the three constructor branches below
+             * used only containment while the {@link MethodInvocation} branch additionally
+             * required the NAME to match. A visitor walks top-down, so for
+             * {@code new Outer(new Inner(1, 2), "label", 11)} with the offset at {@code Inner}
+             * the enclosing {@code new Outer(...)} contained it, won, and stopped the descent
+             * — the inner node was never visited. The field report saw it rewrite the whole
+             * outer call at four sites, losing five arguments of a constructor that was not
+             * the target, and it was caught only because the change was staged.</p>
+             *
+             * <p>Stated this way rather than by checking {@code getType()} because it is the
+             * one clause that fits all three: {@code this(..)} and {@code super(..)} have no
+             * type node at all, so {@code super(new Inner(1, 2))} carried the same defect
+             * unexercised.</p>
+             */
+            private boolean offsetIsInsideAnArgument(List<Expression> arguments) {
+                for (Expression argument : arguments) {
+                    if (argument.getStartPosition() <= matchOffset
+                            && matchOffset < argument.getStartPosition() + argument.getLength()) {
+                        return true;
+                    }
+                }
+                return false;
+            }
             @Override
             public boolean visit(MethodInvocation node) {
                 if (isConstructor || found[0] != null) return true;
@@ -630,7 +657,8 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             }
             @Override
             public boolean visit(ClassInstanceCreation node) {
-                if (isConstructor && found[0] == null && covers(node)) {
+                if (isConstructor && found[0] == null && covers(node)
+                        && !offsetIsInsideAnArgument(node.arguments())) {
                     found[0] = node;
                     return false;
                 }
@@ -638,7 +666,8 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             }
             @Override
             public boolean visit(ConstructorInvocation node) {
-                if (isConstructor && found[0] == null && covers(node)) {
+                if (isConstructor && found[0] == null && covers(node)
+                        && !offsetIsInsideAnArgument(node.arguments())) {
                     found[0] = node;
                     return false;
                 }
@@ -646,7 +675,8 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             }
             @Override
             public boolean visit(SuperConstructorInvocation node) {
-                if (isConstructor && found[0] == null && covers(node)) {
+                if (isConstructor && found[0] == null && covers(node)
+                        && !offsetIsInsideAnArgument(node.arguments())) {
                     found[0] = node;
                     return false;
                 }
