@@ -97,6 +97,38 @@ public final class ReDerivedJobDetector {
     private static final int DEFAULT_MIN_SHARED = 2;
 
     /**
+     * Sprint 28g D29 — the platform is not a collaborator, and treating it as one is
+     * what made this detector report the workspace against itself.
+     *
+     * <p>The exclusion used to be {@code java.lang.} alone. So a method that builds a
+     * list touched {@code java.util.List} and {@code java.util.ArrayList}, which is TWO
+     * shared foreign types — exactly {@link #DEFAULT_MIN_SHARED} — and every
+     * {@code ()->List} method in the workspace paired with every other. Measured on this
+     * tree: 585 findings over 4,258 methods, whose first group named 21 methods including
+     * {@code ExternalBundlePool#defaultPoolDirs}, {@code WorkspaceFileWatcher#readWorkspacePaths}
+     * and {@code ResidentDegradation#notices} — plugin directories, workspace paths and
+     * degradation notices, reported as one job derived 21 times.</p>
+     *
+     * <p><b>The threshold was not the thing to raise, and that is the point.</b> Its own
+     * javadoc says two is "the smallest number that says these reach for the same PARTS",
+     * and it is right — the flagship population sits exactly on two. What was wrong is
+     * WHICH types were being counted: reaching for {@code java.util.List} says nothing
+     * about what a method is for, because nearly every method does. Raising the bar would
+     * have traded these false groups for the loss of the one population the detector was
+     * built to find.</p>
+     *
+     * <p><b>The flagship survives by construction, which is why this exclusion and not a
+     * wider one:</b> a {@code parse(ICompilationUnit)} helper touches {@code ASTParser}
+     * and {@code AST}, both {@code org.eclipse.jdt.*}, so its two shared collaborators are
+     * untouched by this rule.</p>
+     */
+    private static boolean isPlatform(String qualifiedName) {
+        return qualifiedName.startsWith("java.")
+            || qualifiedName.startsWith("javax.")
+            || qualifiedName.startsWith("jdk.");
+    }
+
+    /**
      * A ceiling on the clustering, and it is stated in the response rather than silent.
      *
      * <p>Clustering compares every pair INSIDE a shape group, and a workspace with a
@@ -227,8 +259,7 @@ public final class ReDerivedJobDetector {
                             String declaring =
                                 m.getDeclaringClass().getErasure().getQualifiedName();
                             calls.add(declaring + "#" + m.getName());
-                            if (!declaring.equals(ownerName)
-                                    && !declaring.startsWith("java.lang.")) {
+                            if (!declaring.equals(ownerName) && !isPlatform(declaring)) {
                                 foreign.add(declaring);
                             }
                         }

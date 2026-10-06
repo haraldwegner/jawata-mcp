@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -295,5 +296,46 @@ class ReDerivedJobDetectorTest {
         assertTrue(published.contains("re_derived_job"),
             "a detector registered but not published is reachable by nobody, which is this"
                 + " codebase's own recorded wired-but-unreachable defect: " + published);
+    }
+
+    /**
+     * Sprint 28g D29 — TWO METHODS THAT ONLY LOOK ALIKE ARE NOT ONE JOB.
+     *
+     * <p>Measured on jawata's own tree before the fix: 585 findings over 4,258 methods,
+     * and the first group named 21 methods including {@code ExternalBundlePool#defaultPoolDirs},
+     * {@code WorkspaceFileWatcher#readWorkspacePaths} and {@code ResidentDegradation#notices}
+     * — plugin directories, workspace paths and degradation notices, reported as one job
+     * derived 21 times.</p>
+     *
+     * <p><b>The cause was WHICH types counted as collaborators, not the threshold.</b> The
+     * exclusion was {@code java.lang.} alone, so a method that builds a list touched
+     * {@code java.util.List} and {@code java.util.ArrayList} — two shared foreign types,
+     * exactly the minimum — and every {@code ()->List} method paired with every other.
+     * Raising the threshold would have traded these groups for the loss of the parse-helper
+     * population the detector was built to find, which sits on exactly two.</p>
+     */
+    @Test
+    @DisplayName("D29: a shape match over PLATFORM types alone is not a re-derived job")
+    void twoListBuildersSharingOnlyTheJdkAreNotGrouped() {
+        List<String> flagged = findings().stream()
+            .map(f -> String.valueOf(f.get("symbol")))
+            .toList();
+
+        assertAll(
+            // The pair, modelled on the real first group.
+            () -> assertFalse(flagged.contains("com.example.PluginDirs#defaultPoolDirs"),
+                () -> "a method that returns a list of plugin directories answers no question "
+                    + "that a degradation-notice list also answers; sharing java.util.List and "
+                    + "java.util.ArrayList is not sharing collaborators " + scan() + " "
+                    + flagged),
+            () -> assertFalse(flagged.contains("com.example.DegradationNotices#notices"),
+                () -> "nor the other half of it " + scan() + " " + flagged),
+            // AND THE CONTROL, in the same test, because an assertion that nothing is
+            // flagged passes just as well against a detector that flags nothing at all.
+            () -> assertTrue(flagged.contains("com.example.AlphaTool#parse"),
+                () -> "the flagship population is STILL FOUND — its two shared collaborators "
+                    + "are org.eclipse.jdt types, untouched by the platform exclusion. Without "
+                    + "this clause the assertions above would hold for a detector that had "
+                    + "simply stopped working " + scan() + " " + flagged));
     }
 }
