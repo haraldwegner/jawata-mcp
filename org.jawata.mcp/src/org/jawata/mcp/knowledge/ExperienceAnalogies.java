@@ -297,6 +297,27 @@ public final class ExperienceAnalogies {
                     && !a.entry().facets().cause().isBlank()) {
                 m.put("cause", a.entry().facets().cause());
             }
+            // Sprint 28g D24 — HOW IT TURNED OUT, on the analogy too.
+            //
+            // The nominate candidate map has carried `outcome` for some time and the
+            // analogy map never did, so the same row offered through two doors told a
+            // reader two different things: one said whether it worked, the other asked
+            // them to judge whether it transfers while withholding the single fact that
+            // judgement most needs. An untested idea then reads exactly like a proven
+            // one, which is D24's sentence.
+            //
+            // Found live rather than by reading: the analogy lines this product injects
+            // into a session carry the summary, the cause and the basis, and no outcome.
+            //
+            // Absent for a row that legitimately has none — a domain_fact never turned
+            // out any way at all, and inventing a value for one is the failure the form
+            // gate refuses at the door. A lesson or a failure_mode cannot be recorded
+            // without a verdict, so for those an absence here means a row older than
+            // that gate, not a silent default.
+            if (a.entry().facets() != null && a.entry().facets().verdict() != null
+                    && !a.entry().facets().verdict().isBlank()) {
+                m.put("outcome", a.entry().facets().verdict());
+            }
             m.put("basis", a.basis());                 // words, never a score
             if (a.provenance() != null) {
                 m.put("provenance", a.provenance());

@@ -1523,6 +1523,15 @@ public final class ExperienceRetrieval {
         if (cause != null) {
             sb.append("  (because ").append(san(cause)).append(')');
         }
+        // D24: the outcome, in the SAME vocabulary the exact-recall line uses for it
+        // (" · worked"), so a reader meets one spelling rather than learning a second
+        // for the same fact. Before the cause deliberately, because the cause says what
+        // problem this solved and the outcome says whether solving it worked — which is
+        // the order a reader asks them in.
+        Object outcome = a.get("outcome");
+        if (outcome != null) {
+            sb.append("  · ").append(san(outcome));
+        }
         Object basis = a.get("basis");
         sb.append("  [");
         sb.append(basis instanceof List<?> l ? String.join("; ",
