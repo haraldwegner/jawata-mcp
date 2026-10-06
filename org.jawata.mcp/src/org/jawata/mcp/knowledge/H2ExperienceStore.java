@@ -821,9 +821,14 @@ public final class H2ExperienceStore implements ExperienceStore {
             // Replaced wholesale rather than merged: a symptom or a link the file no
             // longer carries must go, and there is no key to diff them on — the file
             // IS the statement of what they are.
-            deleteChildRows(id);
-            insertSymptoms(id, entry.symptoms());
-            insertLinks(id, entry.links());
+            // D40b: ONE transaction. Separately, the window between the delete and
+            // the inserts is a row that HAD symptoms and briefly has none — the worst
+            // of the three sites, because the row is already being recalled.
+            asOneTransaction(() -> {
+                deleteChildRows(id);
+                insertSymptoms(id, entry.symptoms());
+                insertLinks(id, entry.links());
+            });
         } catch (SQLException e) {
             throw new IllegalStateException("failed to update a sourced entry: "
                 + e.getMessage(), e);
@@ -1061,8 +1066,13 @@ public final class H2ExperienceStore implements ExperienceStore {
                     ? null : Timestamp.from(entry.reviewedAt()));
                 ps.executeUpdate();
             }
-            insertSymptoms(id, entry.symptoms());
-            insertLinks(id, entry.links());
+            // D40b: the same boundary. A new row is visible to a recall the instant
+            // its INSERT commits, so without this it can be served before it has the
+            // symptoms that are the whole reason a cue would find it.
+            asOneTransaction(() -> {
+                insertSymptoms(id, entry.symptoms());
+                insertLinks(id, entry.links());
+            });
             return id;
         } catch (SQLException e) {
             throw new IllegalStateException("failed to put entry: " + e.getMessage(), e);
@@ -1617,6 +1627,64 @@ public final class H2ExperienceStore implements ExperienceStore {
             return ps.executeUpdate();
         } catch (SQLException e) {
             throw new IllegalStateException("failed to move symbol anchor: " + e.getMessage(), e);
+        }
+    }
+
+    /** A unit of work that writes a row and its children, run under one commit. */
+    @FunctionalInterface
+    private interface Written {
+        void run() throws SQLException;
+    }
+
+    /**
+     * Sprint 28g D40b — write a row and its children as ONE transaction.
+     *
+     * <p>Every statement in this class ran on autocommit before this: there is no
+     * other {@code setAutoCommit} or {@code commit} in the file. So a rewrite —
+     * {@code deleteChildRows}, then the symptom inserts, then the link inserts —
+     * was three separate transactions, and between the first and the second the
+     * row exists with NO symptoms. A recall running then serves that row as
+     * though it had none, which is a wrong answer rather than a slow one.</p>
+     *
+     * <p><b>The monitor does not close this and it is worth saying why, because a
+     * reader would reasonably assume it does.</b> Every write here is
+     * {@code synchronized}; the READS deliberately are not — {@code live()} is
+     * unsynchronized on purpose and the comment above {@code stats()} records that
+     * synchronizing it put the whole of stats behind the write lock. So a concurrent
+     * recall never contends for the monitor and sees exactly the half-written state
+     * the monitor was protecting. Only a transaction boundary hides it.</p>
+     *
+     * <p>Autocommit is restored in a {@code finally}, because this connection is a
+     * long-lived field shared by every later call: leaving it off would silently put
+     * every subsequent statement in the process into a transaction nobody commits.</p>
+     */
+    private void asOneTransaction(Written work) throws SQLException {
+        Connection c = live();
+        boolean previous = c.getAutoCommit();
+        if (!previous) {
+            // Already inside one: do not open a nested boundary and do not commit
+            // somebody else's work half way through it.
+            work.run();
+            return;
+        }
+        c.setAutoCommit(false);
+        try {
+            work.run();
+            c.commit();
+        } catch (SQLException | RuntimeException e) {
+            try {
+                c.rollback();
+            } catch (SQLException ignored) {
+                // The write already failed; a rollback that also fails must not
+                // replace the real cause with its own.
+            }
+            throw e;
+        } finally {
+            try {
+                c.setAutoCommit(previous);
+            } catch (SQLException ignored) {
+                // Same reason.
+            }
         }
     }
 
