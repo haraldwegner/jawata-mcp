@@ -755,10 +755,18 @@ public final class ExperienceTool implements Tool {
      * skill cannot answer on its own — WHERE the substrate is — and a path an
      * agent invents is the same failure as a value invented to satisfy a rule.
      *
-     * <p>Nothing new is stored to answer it. The entries already carry their
-     * own {@code memory:} source paths; the substrate is the deepest directory
-     * that contains all of them. A store with no ingested entries has no
-     * substrate, and says so rather than offering a plausible directory.</p>
+     * <p><b>Sprint 28g D40c — the root is RECORDED, and this paragraph used to
+     * describe the derivation that replaced.</b> It read: the entries carry their
+     * own {@code memory:} source paths, and the substrate is the deepest directory
+     * that contains all of them. That is right only for a store loaded from ONE
+     * folder. This installation layers several, so the narrowing climbed past all
+     * of them to a home directory — and {@code promote} exported an accepted story
+     * there: a file no load reads back, written with no error and reported as a
+     * success. The loader now names each root as it crawls it.</p>
+     *
+     * <p>A store with no recorded folder has no substrate and says so rather than
+     * offering a plausible directory — and so does a store that recorded SEVERAL,
+     * which is a different fact and is reported as one.</p>
      */
     private java.util.Map<String, Object> substrateBlock() {
         java.util.Map<String, Object> block = new java.util.LinkedHashMap<>();
@@ -780,6 +788,17 @@ public final class ExperienceTool implements Tool {
             // hand-written copies of one instruction is how the other five copies of this
             // sentence across this workspace came to disagree with each other.
             block.put("root", null);
+            // D40c: WHICH absence this is. "Several folders recorded" is not "no
+            // folder on this machine", and rendering both as the same blank is the
+            // shape of silence the `how` field exists to remove.
+            block.put("why", substrate.how());
+            // D40c, found by the test that asserts it: without this an absent root
+            // reads the same whether the store ingested nothing or ingested plenty
+            // from several folders. The first is "nothing to export", the second is
+            // "plenty to export and nowhere agreed", and a reader deciding what to
+            // do about it needs to know which.
+            block.put("entriesWithASourcePath",
+                from + " entries carrying a memory: source path");
             block.put("note", "no story folder on this machine, which is the ORDINARY case"
                 + " and not a fault: the store is where knowledge lives and it needs no"
                 + " folder behind it. Do NOT choose a directory to create.");
@@ -787,7 +806,9 @@ public final class ExperienceTool implements Tool {
             return block;
         }
         block.put("root", common.toString());
-        block.put("derivedFrom", from + " entries carrying a memory: source path");
+        block.put("rootFrom", substrate.how());
+        block.put("entriesWithASourcePath",
+            from + " entries carrying a memory: source path");
         // Sprint 28f D4 — THIS INSTRUCTION IS INVERTED, and the inversion is the
         // sprint's whole premise. It used to say: write a file, then reseed, because a
         // direct record had no file behind it and the next reseed would remove it. Two
@@ -805,8 +826,17 @@ public final class ExperienceTool implements Tool {
         return block;
     }
 
-    /** The store's own story folder, and how many entries it was derived from. */
-    private record Substrate(java.nio.file.Path root, int from) {
+    /**
+     * The store's own story folder, how many entries carry a {@code memory:} path,
+     * and WHY the root is what it is.
+     *
+     * <p>Sprint 28g D40c: {@code root} is now RECORDED by the loader rather than
+     * reconstructed here. {@code how} exists because an absent root means three
+     * different things — nothing recorded, several folders recorded, or a store
+     * that does not remember — and a response that renders all three as a blank
+     * says the export ran and found nothing to do.</p>
+     */
+    private record Substrate(java.nio.file.Path root, int from, String how) {
     }
 
     /**
@@ -817,31 +847,32 @@ public final class ExperienceTool implements Tool {
      * exports the story into it when no folder is configured (2026-09-14).</p>
      */
     private Substrate substrate() {
-        java.nio.file.Path common = null;
         int from = 0;
         for (org.jawata.mcp.knowledge.StoredEntry e
                 : org.jawata.mcp.knowledge.StoreCorpus.of(store).all()) {
             String ref = e.sourceRef();
-            if (ref == null || !ref.startsWith("memory:")) {
-                continue;
+            if (ref != null && ref.startsWith("memory:")
+                    && Path.of(ref.substring("memory:".length())).getParent() != null) {
+                from++;
             }
-            java.nio.file.Path dir = Path.of(ref.substring("memory:".length())).getParent();
-            if (dir == null) {
-                continue;
-            }
-            from++;
-            common = common == null ? dir : commonPrefix(common, dir);
         }
-        return new Substrate(common, from);
-    }
-
-    private static java.nio.file.Path commonPrefix(java.nio.file.Path a,
-            java.nio.file.Path b) {
-        java.nio.file.Path out = a;
-        while (out != null && !b.startsWith(out)) {
-            out = out.getParent();
-        }
-        return out;
+        // Sprint 28g D40c — the root is READ, not reconstructed.
+        //
+        // What stood here walked every `memory:` source and narrowed to the deepest
+        // directory containing all of them. That answer is correct only when the
+        // store loaded from exactly one folder. This installation layers several
+        // roots, so the narrowing climbed past all of them to a home directory, and
+        // `promote` exported an accepted story into it: a file no load reads back,
+        // written with no error, reported as a success. The loader now names each
+        // root as it crawls it, and two different roots leave no single folder
+        // rather than producing their ancestor.
+        java.util.Optional<java.nio.file.Path> recorded = store.storyFolder();
+        String how = recorded.isPresent() ? "recorded by the loader"
+            : store.storyFolderAmbiguous()
+                ? "none: the loader recorded more than one folder, so the store has no"
+                    + " single story folder of its own"
+                : "none: no folder was recorded";
+        return new Substrate(recorded.orElse(null), from, how);
     }
 
     /**

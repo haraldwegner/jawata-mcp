@@ -583,6 +583,51 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     /**
+     * Sprint 28g D40c — the folder stories were loaded from, RECORDED.
+     *
+     * <p>In a field rather than a row, which is the same choice
+     * {@link #setProvenance} makes and for the same reason: the loader runs on
+     * every boot, so the value is re-established before any acceptance can read
+     * it, and a persisted copy would be a second truth that a changed
+     * configuration silently contradicts.</p>
+     */
+    private java.nio.file.Path storyFolder;
+
+    /** Set once a SECOND, different folder is recorded; never cleared. */
+    private boolean storyFolderAmbiguous;
+
+    @Override
+    public void recordStoryFolder(java.nio.file.Path folder) {
+        if (folder == null) {
+            return;
+        }
+        java.nio.file.Path normalized = folder.toAbsolutePath().normalize();
+        if (storyFolder == null) {
+            storyFolder = normalized;
+            return;
+        }
+        if (!storyFolder.equals(normalized)) {
+            // Deliberately NOT a narrowing to the common parent, which is the
+            // defect: with this installation's layered roots that parent is a
+            // home directory. Two folders means no single folder, and the
+            // export must decline rather than invent one.
+            storyFolderAmbiguous = true;
+        }
+    }
+
+    @Override
+    public java.util.Optional<java.nio.file.Path> storyFolder() {
+        return storyFolderAmbiguous
+            ? java.util.Optional.empty()
+            : java.util.Optional.ofNullable(storyFolder);
+    }
+
+    @Override
+    public boolean storyFolderAmbiguous() {
+        return storyFolderAmbiguous;
+    }
+
+    /**
      * A healthy open store is not degraded — stated here rather than inherited, because
      * the interface deliberately has no default: every store answers for itself, and the
      * compiler names the ones that have not (the {@code RecoveringExperienceStore}

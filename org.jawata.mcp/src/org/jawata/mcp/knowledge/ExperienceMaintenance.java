@@ -197,6 +197,14 @@ public final class ExperienceMaintenance {
         for (Path root : roots) {
             if (Files.isDirectory(root)) {
                 rootDirs.add(root);
+                // Sprint 28g D40c — TELL THE STORE, here, because this is the only
+                // place that holds the roots. Until now nothing did, and the export
+                // reconstructed a folder by taking the deepest directory holding
+                // every loaded `memory:` path: with the layered roots this
+                // installation configures, that is a home directory, and an accepted
+                // story would have been written there. A second, different root makes
+                // the recording ambiguous rather than narrowing it to an ancestor.
+                store.recordStoryFolder(root);
                 try (Stream<Path> s = recursive ? Files.walk(root, Math.max(1, maxDepth)) : Files.list(root)) {
                     // Sprint 21b (item C2): .mdc = Cursor project rules; explicit FILE
                     // roots (.cursorrules etc.) ingest regardless of extension.

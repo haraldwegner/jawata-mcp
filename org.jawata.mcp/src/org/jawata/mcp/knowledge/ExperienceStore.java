@@ -445,6 +445,54 @@ public interface ExperienceStore extends AutoCloseable {
     }
 
     /**
+     * Sprint 28g D40c — tell the store which folder it is loading stories from.
+     * Called once per root by the loader, which is the only place that knows.
+     *
+     * <p>Recording the SAME folder again is a no-op — a reload is not a second
+     * folder. Recording a DIFFERENT one makes the answer AMBIGUOUS and
+     * {@link #storyFolder()} then answers empty, which is the whole deliverable:
+     * the folder was previously GUESSED as the deepest directory holding every
+     * loaded {@code memory:} path, so two roots resolved to their shared
+     * ancestor and an accepted story would have been exported there. With the
+     * layered roots this installation actually configures that ancestor is a
+     * home directory.</p>
+     *
+     * <p>Empty is the honest answer rather than a fallback to the guess: a story
+     * written into an ancestor is not read back by any load, so it is a file
+     * nobody sees that also looks like a success.</p>
+     */
+    default void recordStoryFolder(java.nio.file.Path folder) {
+        // No store is required to remember; a store that does overrides this.
+    }
+
+    /**
+     * The folder this store loaded its stories FROM, as recorded rather than derived.
+     *
+     * <p>Empty means one of three different things and the caller must not read it
+     * as one: nothing was ever recorded, the store does not remember, or SEVERAL
+     * folders were recorded and no single one is the store's own. All three mean
+     * the same for an export — do not write a file — which is why they share an
+     * answer, and {@link #storyFolderAmbiguous()} separates the third for a
+     * reader who needs to say WHY nothing was written.</p>
+     */
+    default Optional<java.nio.file.Path> storyFolder() {
+        return Optional.empty();
+    }
+
+    /**
+     * Whether {@link #storyFolder()} is empty BECAUSE more than one folder was
+     * recorded, as opposed to none having been.
+     *
+     * <p>It exists so a response can tell a reader which of the two it is. An
+     * export that silently writes nothing is indistinguishable from one that ran
+     * and found nothing to do, and that is the shape of silence this store has
+     * had to remove three times.</p>
+     */
+    default boolean storyFolderAmbiguous() {
+        return false;
+    }
+
+    /**
      * Reclaim file space after prunes/wipes (H2 {@code SHUTDOWN COMPACT} + reopen).
      * NOTE: briefly closes the database — concurrently attached residents (AUTO_SERVER)
      * lose their connection and must reopen. Run when quiet. No-op for in-memory stores.
