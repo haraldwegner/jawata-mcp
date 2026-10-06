@@ -93,6 +93,11 @@ class ARedescriptionReplacesAndSaysSoTest {
                 () -> assertEquals(first, replaced.get("summary"),
                     "carrying the text that is now gone, which is the only place a reader "
                         + "can still see what was overwritten"),
+                // THE TWO BELOW ARE WHAT CARRY THIS CASE, and a mutation is what showed it.
+                // Making the gate DETECT the existing row and then write anyway leaves every
+                // `replaced` assertion above GREEN — the report was still correct, about an
+                // action that had not happened. A report can be right about nothing. These
+                // two read the store instead of the response, so only they can tell.
                 () -> assertEquals(firstWrite.get("id"), secondWrite.get("id"),
                     "the row identity is kept — links point at it and the review ledger "
                         + "names it"),
