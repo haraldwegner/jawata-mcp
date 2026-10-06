@@ -120,4 +120,39 @@ class HeadingSummariesAreAuditableTest {
             () -> assertTrue(AdmissionPolicy.check(COLON_MID_SENTENCE, null).isEmpty(),
                 "and the mid-sentence colon"));
     }
+
+    /**
+     * THE PREMISE THE AUDIT RESTS ON, asserted because a mutation proved nothing
+     * else does. {@code headingShapedSummaries} keeps only refusals whose shape is
+     * {@code HEADING}; dropping that filter changes NOTHING today, measured — the
+     * three tests above stay green with it gone. It cannot fire because
+     * {@code check} checks a summary for heading shape and nothing else, so a
+     * summary carrying a path or a call is admitted and no second shape can reach
+     * the audit.
+     *
+     * <p>So the filter is a bound on a FUTURE change rather than dead code, and
+     * this is where that change is noticed: the day {@code check} starts refusing
+     * a summary for any other reason, these assertions go red and the filter stops
+     * being unreachable. Asserting the premise is the only way to cover a guard
+     * whose own branch no fixture can construct.</p>
+     */
+    @Test
+    @DisplayName("D28: a summary is checked for HEADING shape and nothing else")
+    void theDoorJudgesASummaryOnHeadingShapeAlone() {
+        assertAll(
+            () -> assertTrue(AdmissionPolicy.check("org.jawata.mcp.knowledge.ExperienceStore", null)
+                    .isEmpty(),
+                "a dotted identifier is a CODE shape in a symptom and is fine in a summary, "
+                    + "which a summary legitimately names"),
+            () -> assertTrue(
+                AdmissionPolicy.check("src/main/java/com/example/Widget.java", null).isEmpty(),
+                "and a path"),
+            () -> assertTrue(AdmissionPolicy.check("`appliedSampleCount(target)` returns zero for "
+                    + "a pattern nobody reached for", null).isEmpty(),
+                "and a backticked call inside a real sentence"),
+            () -> assertEquals(AdmissionPolicy.Shape.HEADING,
+                AdmissionPolicy.check(HASH_HEADING, null).orElseThrow().shape(),
+                "so every refusal a summary can draw carries exactly one shape, which is what "
+                    + "makes the audit's shape filter unreachable rather than wrong"));
+    }
 }
