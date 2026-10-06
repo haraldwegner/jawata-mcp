@@ -942,6 +942,25 @@ public final class ExperienceTool implements Tool {
             out.put("quality", q.statsBlock());
         }
         out.put("catalogue", catalogueBlock());
+        // Sprint 28g D28 — THE HEADING AUDIT, HERE, because M10's measure is a POST-RELOAD
+        // QUERY and until this line there was no door to run one through.
+        //
+        // Caught by this plan's own gate rather than by review: the call hierarchy showed
+        // `headingShapedSummaries` with exactly two callers, both inside its own test. A
+        // capability reachable only from a test is one this project has shipped three times
+        // and the quality gate calls a blocking finding, so the instrument was built and
+        // wired to nothing.
+        //
+        // The COUNT and a capped sample, not the whole list: a store carrying hundreds would
+        // make stats unreadable, and the count is what the measure asks for. The ids are
+        // there so a reader can go and look at one rather than take the number.
+        java.util.List<java.util.Map<String, Object>> headings = store.headingShapedSummaries();
+        java.util.Map<String, Object> hygiene = new java.util.LinkedHashMap<>();
+        hygiene.put("headingShapedSummaries", headings.size());
+        if (!headings.isEmpty()) {
+            hygiene.put("sample", headings.subList(0, Math.min(5, headings.size())));
+        }
+        out.put("hygiene", hygiene);
         out.put("substrate", substrateBlock());
         // Sprint 28f Stage 7 — how much of the code has been DESCRIBED, per bundle.
         //
