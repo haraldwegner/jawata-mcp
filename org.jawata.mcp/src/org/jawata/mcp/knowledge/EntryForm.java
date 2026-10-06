@@ -179,7 +179,9 @@ public final class EntryForm {
      */
     public static Optional<Refusal> check(String type, String summary, List<String> symptoms,
                                           String situation, String verdict) {
-        return check(type, summary, symptoms, situation, verdict, null);
+        // D32: `false` — this form is not SAYING there is no anchor, it is not telling us
+        // about one. The six-argument form is the one whose absence is a fact.
+        return shared(type, summary, symptoms, situation, verdict, null, false);
     }
 
     /**
@@ -222,6 +224,17 @@ public final class EntryForm {
      */
     public static Optional<Refusal> check(String type, String summary, List<String> symptoms,
                                           String situation, String verdict, String anchor) {
+        // D32: `true` — the caller is telling us the anchor, so a null one MEANS there is none.
+        return shared(type, summary, symptoms, situation, verdict, anchor, true);
+    }
+
+    /**
+     * The shared body. The only thing the two public forms differ in is whether the caller is
+     * SAYING what the anchor is — which for a member-anchored kind is the difference between
+     * "there is none" and "I am not telling you", and D32 turns on exactly that.
+     */
+    private static Optional<Refusal> shared(String type, String summary, List<String> symptoms,
+            String situation, String verdict, String anchor, boolean anchorWasGiven) {
         Optional<AdmissionPolicy.Refusal> shape = AdmissionPolicy.check(summary, symptoms);
         if (shape.isPresent()) {
             return Optional.of(new Refusal(shape.get().field(), shape.get().message()));
@@ -256,7 +269,7 @@ public final class EntryForm {
         // experience branch because a job is neither an experience nor a bare fact: it
         // owes no situation and no outcome, and it does owe something the others do not
         // — that it says what the member is FOR rather than what the member is CALLED.
-        Optional<Refusal> derived = checkDerived(type, summary, anchor);
+        Optional<Refusal> derived = checkDerived(type, summary, anchor, anchorWasGiven);
         if (derived.isPresent()) {
             return derived;
         }
@@ -315,9 +328,14 @@ public final class EntryForm {
      * that adds anything the identifier does not carry is admitted, which is the whole
      * bar — it need not be eloquent, it must say something more than the name.</p>
      */
-    private static Optional<Refusal> checkDerived(String type, String summary, String anchor) {
-        String t = type == null ? "" : type.strip().toLowerCase(Locale.ROOT);
-        if (!KnowledgeLane.CODE_TYPES.contains(t)) {
+    private static Optional<Refusal> checkDerived(String type, String summary, String anchor,
+            boolean anchorWasGiven) {
+        // Sprint 28g D32 — THE KIND, not a name list. What stood here was
+        // `KnowledgeLane.CODE_TYPES.contains(t)`, and that set holds BOTH code kinds while
+        // their anchor requirements differ, so the rule below had nothing finer to ask and
+        // admitted an anchorless job. `CodeKind` carries what each kind hangs on.
+        Optional<CodeKind> kind = CodeKind.of(type);
+        if (kind.isEmpty()) {
             return Optional.empty();
         }
         String said = summary == null ? "" : summary.strip();
@@ -331,8 +349,34 @@ public final class EntryForm {
                 + " use asking for it."));
         }
         if (anchor == null || anchor.isBlank()) {
-            // Nothing to call a restatement OF. The rule that compares them stays silent
-            // rather than guessing — an anchorless job is refused by nothing here.
+            // Sprint 28g D32 — A MEMBER KIND WITH NO MEMBER IS REFUSED BY NAME.
+            //
+            // This branch used to return empty with the comment "an anchorless job is refused
+            // by nothing here". That reasoning is sound for the RESTATEMENT rule below — with
+            // no anchor there is nothing to call a restatement OF — and it is not an argument
+            // that the row should exist. A job says what one MEMBER is for; with no member it
+            // points at nothing, which is the same thing the write gate already refuses when
+            // an anchor fails to RESOLVE. Admitting the anchorless case was the softer hole
+            // next to that one.
+            //
+            // GATED ON `anchorWasGiven`, and the distinction is the one this file draws
+            // everywhere else: "the caller is not telling me about the anchor" is not "there
+            // is no anchor". The five-argument form means the former — its javadoc says so,
+            // and `without_an_anchor_there_is_nothing_to_call_a_restatement_of` pins it — so
+            // only the six-argument form, whose production caller is `record` and which
+            // always passes what the author wrote, can tell the absence apart from silence.
+            if (anchorWasGiven && kind.get().anchorsTo() == CodeKind.Anchor.MEMBER) {
+                return Optional.of(new Refusal("symbol",
+                    "a '" + kind.get().wire() + "' says what one MEMBER is for, and this one"
+                    + " names none, so it would point at nothing. RULE: the code lane answers"
+                    + " WHERE a description lives; its anchor is not decoration but the thing"
+                    + " it is about."
+                    + " FIX: pass the member as 'pkg.Type#member' — or, if this is about a"
+                    + " PACKAGE rather than one member, record it as an '"
+                    + CodeKind.AREA.wire() + "', which anchors to the package instead."));
+            }
+            // An AREA legitimately has no member anchor, and every non-code type reached
+            // `empty` above — so the restatement comparison simply has nothing to do.
             return Optional.empty();
         }
         List<String> saidWords = words(said);

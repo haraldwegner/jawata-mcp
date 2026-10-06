@@ -114,8 +114,16 @@ public enum KnowledgeLane {
      * for "no ruling covers this type", and every lane-scoped reader would have looked
      * straight past the rows the sprint exists to produce while the enum constant made the
      * lane read as shipped. The constant is not the wiring; the branch below is.</p>
+     *
+     * <p>Sprint 28g D32 — DERIVED from {@link CodeKind} rather than written here. The literal
+     * {@code Set.of("job", "area")} that stood here was also the only thing the code lane's form
+     * check had to discriminate on, and it cannot: it holds BOTH kinds while their anchor
+     * requirements differ, so the rule that needed the finer answer had none. {@link CodeKind}
+     * carries that property per kind; this set stays because the lane question — "is this the
+     * code lane at all" — is genuinely about membership, and deriving it is what stops the two
+     * from drifting into two populations of one thing.</p>
      */
-    public static final Set<String> CODE_TYPES = Set.of("job", "area");
+    public static final Set<String> CODE_TYPES = CodeKind.wires();
 
     /** A published pattern the catalogue lent us — somebody else's experience. */
     private static final String REFERENCE_TYPE = "reference";
