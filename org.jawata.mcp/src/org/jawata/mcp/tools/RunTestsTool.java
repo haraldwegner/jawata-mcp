@@ -160,8 +160,23 @@ public class RunTestsTool extends AbstractTool {
                 "unavailable" without attribution evidence — never guesses.
               run_tests(action="coverage_of_test", test="FooTest#m")
                 → every symbol that test exercised.
-              run_tests(action="coverage_impacted_tests" [, symbols] [, diff])
-                → the smallest evidence-backed test set for a change.
+              run_tests(action="coverage_impacted_tests" [, symbols] [, diff]
+                [, forScope])
+                → the smallest evidence-backed test set for a change, plus
+                selectionVerdict — read mayNarrow, which is a COMPLETE answer
+                for the forScope you named ('whole-suite' by default). Do not
+                shorten a run on impactedTests while mayNarrow is false: the
+                reason beside it says what the evidence could not speak for.
+
+            SELECTION BY COMPILER REACH, and it is the DEFAULT, not a flag:
+              a scope={kind:"package"} run executes only the tests this same
+              evidence says your changes reach, and reports what it narrowed to
+              under `selection` on the run, start AND status responses. Where
+              the evidence cannot carry the claim it runs the WHOLE scope and
+              says why — it never shortens silently, and it never shortens a
+              run that is itself recording coverage or attribution. Pass
+              fullRun=true to pin the whole scope, which is what a checkpoint
+              or a release gate wants.
 
             Mutation (OPT-IN, always targeted, runtime-bounded):
               run_tests(action="coverage_mutation", targetClasses=["com.example.Foo"]
@@ -281,6 +296,13 @@ public class RunTestsTool extends AbstractTool {
             "items", Map.of("type", "string"),
             "description", "coverage_impacted_tests: explicit symbol list (else derived "
                 + "from the git diff)."));
+        properties.put("forScope", Map.of("type", "string",
+            "description", "coverage_impacted_tests: the scope you mean to NARROW, so the "
+                + "verdict can be a complete answer rather than a half of one — "
+                + "'whole-suite' (the default, and the strictest) or 'package:com.foo'. "
+                + "Evidence recorded from a run narrower than this cannot say which tests "
+                + "cover it, only which cover what that run happened to execute, so "
+                + "selectionVerdict.mayNarrow comes back false and says which."));
         properties.put("diff", Map.of("type", "string",
             "enum", List.of("worktree", "staged", "range"),
             "description", "coverage_delta / coverage_impacted_tests: which git diff "
@@ -498,6 +520,7 @@ public class RunTestsTool extends AbstractTool {
             if ("start".equals(action)) {
                 org.jawata.mcp.execution.TestSessionRegistry.Session session = sessions.create();
                 session.frameworkLabel = frameworkLabel;
+                session.selection = selection;
                 spec.eventConsumer = session::onEvent;
                 ForkedTestRunner.RunningSession running;
                 try {
@@ -1242,15 +1265,25 @@ public class RunTestsTool extends AbstractTool {
         // re-deriving the staleness rules from the facts above it. Four rules
         // read five ways is four chances to disagree, and the disagreement is
         // silent on the side that runs fewer tests.
+        // THE VERDICT IS COMPLETE, because the caller says which scope it means
+        // to narrow. An earlier version answered `mayNarrow` over the rules
+        // that need no scope and published the scope as a separate fact for
+        // each caller to judge — which put ONE predicate (does the evidence
+        // cover the scope?) in two places that had already drifted apart, and
+        // left a field named for a whole judgement holding part of one. A third
+        // consumer reading `mayNarrow` and trusting its name would have
+        // narrowed unsafely, and unsafely here means FEWER tests.
+        String forScope = getStringParam(arguments, "forScope", WHOLE_SUITE);
+        String blocked = sel.cannotNarrowBecause() != null ? sel.cannotNarrowBecause()
+            : evidenceTooNarrowFor(sel.evidenceScope(), forScope);
         Map<String, Object> verdict = new LinkedHashMap<>();
-        verdict.put("mayNarrow", sel.cannotNarrowBecause() == null);
-        if (sel.cannotNarrowBecause() != null) verdict.put("reason", sel.cannotNarrowBecause());
-        // RULE 2's fact, not its judgement — the caller compares it against the
-        // scope IT is narrowing, which this response cannot see. The suite
-        // runner narrows EVERYTHING, so for it the only admissible value is
-        // the empty one.
+        verdict.put("forScope", forScope);
+        verdict.put("mayNarrow", blocked == null);
+        if (blocked != null) verdict.put("reason", blocked);
+        // Still reported, because a caller deciding what to do about a refusal
+        // wants to see what the evidence actually covered — but nothing has to
+        // re-derive the judgement from it any more.
         verdict.put("evidenceScope", sel.evidenceScope());
-        verdict.put("evidenceCoversWholeSuite", sel.evidenceScope().isEmpty());
         data.put("selectionVerdict", verdict);
         data.put("impactedTests", sel.rankedTests());
         return ToolResponse.success(data, ResponseMeta.builder()
@@ -1488,36 +1521,68 @@ public class RunTestsTool extends AbstractTool {
      * under-selection, and it is the failure this whole mechanism is one
      * mistake away from at all times.</p>
      *
+     * <p>THE ONLY implementation of that predicate, and every caller reaches it
+     * by NAMING its own scope. It briefly had a twin: the action published
+     * `evidenceCoversWholeSuite`, which is this same question specialised for
+     * the suite runner, and the two had already diverged — the boolean admitted
+     * nothing but empty evidence while this method also admitted evidence from
+     * the very package being run. One rule in two places is two rules as soon
+     * as either is edited.</p>
+     *
+     * <p>The whole suite is the strictest caller and gets the strictest answer:
+     * only evidence that selected nothing in particular ever saw everything.</p>
+     *
      * @param evidenceScope what the recording run selected; empty = whole suite
-     * @param packageName the package this run was asked for
+     * @param forScope {@link #WHOLE_SUITE}, or {@code package:<name>}
      * @return the reason it may not narrow, or null
      */
     private static String evidenceTooNarrowFor(java.util.List<String> evidenceScope,
-            String packageName) {
+            String forScope) {
         if (evidenceScope.isEmpty()) return null;            // whole-suite evidence
+        if (WHOLE_SUITE.equals(forScope)) {
+            return "the evidence was recorded from a run that selected " + evidenceScope
+                + ", so it cannot speak for the whole suite";
+        }
+        String packageName = forScope.startsWith(PACKAGE_SCOPE)
+            ? forScope.substring(PACKAGE_SCOPE.length()) : forScope;
         if (evidenceScope.contains(packageName)) return null; // this very package
         return "the evidence was recorded from a run that selected " + evidenceScope
             + ", which is narrower than the package being run — it cannot say which tests "
             + "cover " + packageName + ", only which cover what it happened to execute";
     }
 
-    /** One git predicate, answered by exit status. */
+    /** The strictest scope a caller can name: everything. */
+    private static final String WHOLE_SUITE = "whole-suite";
+
+    /** The only narrower scope this understands today. */
+    private static final String PACKAGE_SCOPE = "package:";
+
+    /**
+     * One git predicate, answered by exit status — and spawned through the
+     * host seam rather than a {@code ProcessBuilder} of its own.
+     *
+     * <p>The first version built the process here, and the full suite refused
+     * it: {@code HostBoundaryRulesTest} keeps a list of production files that
+     * construct a ProcessBuilder directly, and its message is the reason —
+     * <em>"Eleven such sites once each decided privately how an executable is
+     * spelled and whether a timeout means anything."</em> A git that is
+     * {@code git.exe} on one platform, and a hang with no bound, are exactly
+     * the two things this call must not decide for itself.</p>
+     *
+     * <p>Cannot-ask is not the same as yes: a launch failure and a timeout are
+     * both false, and the caller reads false as "do not narrow" — the side that
+     * costs time rather than correctness.</p>
+     */
     private static boolean git(Path repo, String... args) {
+        java.util.List<String> argv = new ArrayList<>();
+        argv.add("git");
+        argv.addAll(List.of(args));
         try {
-            java.util.List<String> cmd = new ArrayList<>();
-            cmd.add("git");
-            cmd.addAll(List.of(args));
-            Process p = new ProcessBuilder(cmd).directory(repo.toFile())
-                .redirectErrorStream(true).start();
-            p.getInputStream().readAllBytes();
-            return p.waitFor() == 0;
+            return org.jawata.core.host.HostProcesses.system()
+                .run(org.jawata.core.host.HostCommand.of(argv).in(repo))
+                .succeeded();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return false;
-        } catch (Exception e) {
-            // Cannot ask is not the same as yes. The caller reads false as
-            // "do not narrow", which is the side that costs time rather than
-            // correctness.
             return false;
         }
     }
@@ -1624,7 +1689,9 @@ public class RunTestsTool extends AbstractTool {
             return note;
         }
         String blocked = sel.cannotNarrowBecause();
-        if (blocked == null) blocked = evidenceTooNarrowFor(sel.evidenceScope(), packageName);
+        if (blocked == null) {
+            blocked = evidenceTooNarrowFor(sel.evidenceScope(), PACKAGE_SCOPE + packageName);
+        }
         if (blocked != null) {
             note.put("narrowed", false);
             note.put("ran", "the whole scope");
@@ -1870,6 +1937,11 @@ public class RunTestsTool extends AbstractTool {
         data.put("sessionId", sid);
         data.put("state", session.state());
         data.put("framework", session.frameworkLabel);
+        // status/cancel is where an async caller READS the totals, so it is
+        // where a narrowing has to be visible. Putting it only on the start
+        // response would have left the numbers and the fact that explains them
+        // on two different messages.
+        if (session.selection != null) data.put("selection", session.selection);
         Map<String, Object> progress = new LinkedHashMap<>();
         progress.put("plannedTests", session.plannedTests);
         progress.put("classesStarted", session.classesStarted.get());

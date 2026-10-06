@@ -50,13 +50,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * evidence against it.</p>
  *
  * <p><b>And the D21 half, which lives here because it needs the SAME fixture.</b>
- * The three tests above pin what the derivation ANSWERS; the three below pin
+ * The three mcp#40 tests above pin what the derivation ANSWERS; the rest pin
  * what the run path DOES with it — that a broad scope narrows itself by
  * default, that {@code fullRun} pins the whole scope, and that an answer the
  * evidence cannot support widens the run and says so instead of shrinking it.
  * They are one subject seen from both ends, and splitting them across two
- * classes would have copied ninety lines of git-and-attribution fixture to buy
- * a tidier class name.</p>
+ * classes would have copied the git-and-attribution fixture to buy a tidier
+ * class name.</p>
+ *
+ * <p>No count of the D21 half appears here on purpose. The first version said
+ * "the three below" when five had shipped, and a C12a audit caught it — a
+ * hand-written number beside a list it does not derive from is the defect this
+ * sprint has recorded at every checkpoint since C3, and the cheapest cure for
+ * one sentence is to need no number at all.</p>
  */
 class ImpactedTestsFromDiffTest {
 
@@ -248,15 +254,81 @@ class ImpactedTestsFromDiffTest {
         Map<String, Object> verdict = cast2(impacted.get("selectionVerdict"));
 
         assertAll(
-            () -> assertEquals(Boolean.TRUE, verdict.get("mayNarrow"),
-                "the scope-independent rules all pass — so a refusal here would be some other "
-                    + "rule answering and this test would prove nothing; got: " + verdict),
-            () -> assertEquals(Boolean.FALSE, verdict.get("evidenceCoversWholeSuite"),
-                "but the evidence saw one class, and the suite runner narrows EVERYTHING; "
-                    + "got: " + verdict),
+            () -> assertEquals(Boolean.FALSE, verdict.get("mayNarrow"),
+                "mayNarrow is a COMPLETE answer for the scope the caller named, not a verdict "
+                    + "over the rules that happen not to need one. An earlier version said "
+                    + "TRUE here and published the width as a separate fact for each caller "
+                    + "to judge — so a consumer that read the field named for the whole "
+                    + "judgement would have narrowed unsafely, and unsafely means FEWER "
+                    + "tests; got: " + verdict),
+            () -> assertEquals("whole-suite", verdict.get("forScope"),
+                "and it echoes the scope it answered FOR, because the same evidence is a yes "
+                    + "for one scope and a no for another; got: " + verdict),
+            () -> assertTrue(String.valueOf(verdict.get("reason")).contains("whole suite"),
+                "naming the width it could not cover; got: " + verdict),
             () -> assertEquals(List.of(COVERED_TEST), verdict.get("evidenceScope"),
-                "and it says which, so a caller can compare it against its own scope rather "
-                    + "than take a yes or no computed for somebody else's; got: " + verdict));
+                "the width is still REPORTED — a caller deciding what to do about a refusal "
+                    + "wants to see it — it just is not theirs to judge; got: " + verdict));
+    }
+
+    @Test
+    @DisplayName("D21: the same evidence is a yes for the scope it did cover")
+    void theSameEvidenceAnswersDifferentlyPerScope() throws Exception {
+        // THE CONTROL for the sibling above, and without it that refusal could
+        // mean the verdict refuses everything. One artifact, two questions: the
+        // scope it recorded is a yes, the whole suite is a no. If mayNarrow
+        // were still scope-free, both calls would return the same value and
+        // this test could not pass.
+        RunTestsTool tool = attributedFixture();
+        editAlwaysCalled();
+
+        Map<String, Object> narrow = action(tool, "coverage_impacted_tests",
+            Map.of("diff", "worktree", "forScope", "package:com.example.cov"));
+        Map<String, Object> wide = action(tool, "coverage_impacted_tests",
+            Map.of("diff", "worktree", "forScope", "whole-suite"));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, cast2(wide.get("selectionVerdict")).get("mayNarrow"),
+                "got: " + wide.get("selectionVerdict")),
+            () -> assertEquals(Boolean.FALSE,
+                cast2(narrow.get("selectionVerdict")).get("mayNarrow"),
+                "evidence from ONE CLASS is also too narrow for that class's whole package — "
+                    + "the package is what it does not cover, and the recorded scope names a "
+                    + "class, not the package; got: " + narrow.get("selectionVerdict")),
+            () -> assertNotEquals(
+                cast2(narrow.get("selectionVerdict")).get("reason"),
+                cast2(wide.get("selectionVerdict")).get("reason"),
+                "and the two refusals are DIFFERENT sentences, which is what proves the scope "
+                    + "reached the predicate rather than being echoed back unused; narrow="
+                    + narrow.get("selectionVerdict") + " wide=" + wide.get("selectionVerdict")));
+    }
+
+    @Test
+    @DisplayName("D21: the ASYNC path says it narrowed, on the response that carries the totals")
+    void aStartedRunReportsItsNarrowingOnStatusToo() throws Exception {
+        // Found by the C12a architect watch, not by me. action=start put the
+        // selection note on the START response only — and status is where an
+        // async caller reads `passed=N failed=0`, because start exists for
+        // "long suites — progressive results". A caller that started, polled
+        // and transcribed the totals had a narrowed number with nothing on that
+        // message saying so: the silent short run, inside the tool, introduced
+        // by the commit that was supposed to make silence impossible.
+        RunTestsTool tool = selectionFixture();
+        editWidget();
+
+        Map<String, Object> started = packageRun(tool, Map.of("action", "start"));
+        Map<String, Object> status = cast2(statusOf(tool, String.valueOf(
+            started.get("sessionId"))));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, cast2(started.get("selection")).get("narrowed"),
+                "got: " + started),
+            () -> assertEquals(Boolean.TRUE, cast2(status.get("selection")).get("narrowed"),
+                "the status response carries it too, because that is the one a caller reads "
+                    + "the numbers off; got: " + status),
+            () -> assertEquals(List.of(WIDGET_TEST),
+                cast2(status.get("selection")).get("selectedClasses"),
+                "and says what it narrowed TO, not merely that it did; got: " + status));
     }
 
     @Test
@@ -314,6 +386,77 @@ class ImpactedTestsFromDiffTest {
                     + "got: " + rerun));
     }
 
+    @Test
+    @DisplayName("D21: with NO evidence at all — the commonest state — the whole scope runs")
+    void withNoEvidenceAtAllTheWholeScopeRuns() throws Exception {
+        // A C12a audit called this the untested arm that matters most: it is
+        // the state of every fresh checkout, and the one a developer meets
+        // first. Note what is NOT done here — no attribution run.
+        JdtServiceImpl service = helper.loadProjectCopy("selection-target");
+        commitEverything(selRoot());
+        RunTestsTool tool = new RunTestsTool(() -> service);
+        editWidget();
+
+        Map<String, Object> run = packageRun(tool, Map.of());
+        Map<String, Object> selection = cast2(run.get("selection"));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, selection.get("narrowed"), "got: " + run),
+            () -> assertTrue(String.valueOf(selection.get("reason")).contains("attribution"),
+                "and it names what is MISSING, so a reader knows the cure is to record some "
+                    + "rather than concluding their change reaches nothing; got: " + selection),
+            () -> assertEquals(3, cast2(run.get("summary")).get("total"),
+                "and all three ran; got: " + run));
+    }
+
+    @Test
+    @DisplayName("D21: an EMPTY diff is nothing to select against, not a reason to run nothing")
+    void anEmptyDiffRunsEverything() throws Exception {
+        // No edit after the attribution run, so the derivation sees nothing
+        // changed. The dangerous reading is "nothing is impacted, so run
+        // nothing"; the right one is that there is nothing to select against.
+        RunTestsTool tool = selectionFixture();
+
+        Map<String, Object> run = packageRun(tool, Map.of());
+        Map<String, Object> selection = cast2(run.get("selection"));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, selection.get("narrowed"), "got: " + run),
+            () -> assertEquals(3, cast2(run.get("summary")).get("total"),
+                "an empty diff must never shrink a run to zero; got: " + run));
+    }
+
+    @Test
+    @DisplayName("D21: evidence from a tree this one did not come from describes another tree")
+    void evidenceFromARewrittenHistoryIsRefused() throws Exception {
+        // RULE 3, which every other D21 test executes only on its passing arm.
+        // Attribution is recorded and THEN history is rewritten under it, so
+        // the revision the artifact names is no longer an ancestor of HEAD —
+        // the shape a rebase or an amend produces, and the one where the
+        // evidence is not stale so much as about a different tree.
+        RunTestsTool tool = selectionFixture();
+        // ORDER MATTERS, and the first version of this test had it wrong: it
+        // amended WITH the edit, which left the worktree diff empty, so the
+        // empty-diff rule answered first and the ancestor rule was never
+        // reached. Rewrite history on an unchanged tree, THEN edit — now the
+        // diff is real, symbols derive, and the only thing left to object to
+        // is the revision.
+        run(selRoot(), "git", "-c", "user.email=fixture@example.com", "-c", "user.name=fixture",
+            "commit", "-q", "--amend", "-m", "history rewritten under the evidence");
+        editWidget();
+
+        Map<String, Object> run = packageRun(tool, Map.of());
+        Map<String, Object> selection = cast2(run.get("selection"));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, selection.get("narrowed"), "got: " + run),
+            () -> assertTrue(String.valueOf(selection.get("reason")).contains("ancestor"),
+                "and by the ANCESTOR rule rather than one of the others — every one of them "
+                    + "passes on this input, which is what makes the refusal attributable to "
+                    + "the rule it is named for; got: " + selection),
+            () -> assertEquals(3, cast2(run.get("summary")).get("total"), "got: " + run));
+    }
+
     // ---------------------------------------------------------------- fixture
 
     /**
@@ -340,6 +483,16 @@ class ImpactedTestsFromDiffTest {
             "        int bumped = x + 1;\n        return bumped;");
         assertNotEquals(before, after, "Widget's bump body is what this edits; it moved");
         Files.writeString(widget, after);
+    }
+
+    /** Poll a started run, which is where an async caller reads its totals. */
+    private Map<String, Object> statusOf(RunTestsTool tool, String sessionId) {
+        ObjectNode args = om.createObjectNode();
+        args.put("action", "status");
+        args.put("sessionId", sessionId);
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "status failed: " + r.getError());
+        return cast2(r.getData());
     }
 
     /** A run over the whole fixture package — the broad scope D21 is about. */

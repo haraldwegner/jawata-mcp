@@ -53,7 +53,12 @@ import json, sys, urllib.request
 
 url, token, diff, rng = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 symbols = [x.strip() for x in (sys.argv[5] if len(sys.argv) > 5 else "").split(",") if x.strip()]
-args = {"action": "coverage_impacted_tests"}
+# This caller narrows the WHOLE SUITE, and says so rather than letting the tool
+# guess. The scope travels with the question so the answer that comes back is a
+# complete one — the alternative, a verdict over the scope-free rules plus a
+# fact for this script to judge, put one predicate in two places and they had
+# already drifted apart.
+args = {"action": "coverage_impacted_tests", "forScope": "whole-suite"}
 if symbols:
     args["symbols"] = symbols
 else:
@@ -83,29 +88,34 @@ if not payload.get("success", False):
 
 data = payload.get("data", {})
 
-# THE VERDICT. Absent means a resident older than this script, and an absent
-# verdict is not a permissive one: a build that cannot state the rules has not
-# applied them, so the run stays full.
+# THE VERDICT. An absent verdict is never a permissive one — a build that
+# cannot state the rules has not applied them — but the two reasons it can be
+# absent are worth telling apart, because the FIRST version of this message
+# named only the rare one and so misdiagnosed the common case on every fresh
+# checkout.
 verdict = data.get("selectionVerdict")
 if not isinstance(verdict, dict):
+    if not data.get("attributionAvailable"):
+        # The ordinary state: nothing has been run with attribution=true yet,
+        # so the tool answers attributionAvailable=false with a note and no
+        # verdict at all. Nothing is wrong with this resident.
+        print(str(data.get("note") or "there is no attribution evidence yet"), file=sys.stderr)
+        sys.exit(6)
     print("this resident states no selectionVerdict — it predates the staleness rules, "
           "so nothing here can say the evidence still describes this tree", file=sys.stderr)
     sys.exit(6)
+# ONE field, because the question carried the scope. This used to be two checks
+# — mayNarrow, then a separate evidenceCoversWholeSuite — and the second was
+# this script re-deriving a predicate the tool also implemented, which is how
+# the two came to admit different things.
+#
+# What that rule is FOR, kept here because it is the reason the whole-suite
+# answer is the strictest: jawata's own suite splits between plain-JVM tests and
+# tests that need the Eclipse workspace, and the forked runner cannot start the
+# latter — so an artifact it produced names only the plain ones, and a class
+# covered by both comes back claimed by one.
 if not verdict.get("mayNarrow"):
     print(str(verdict.get("reason") or "the evidence may not narrow this run"), file=sys.stderr)
-    sys.exit(7)
-
-# RULE 2, applied to the scope THIS caller narrows — the whole suite. The tool
-# states what the recording run selected; only a run that selected nothing in
-# particular saw everything. jawata's own suite splits between plain-JVM tests
-# and tests that need the Eclipse workspace, and the forked runner cannot start
-# the latter — so an artifact it produced names only the plain ones, and a
-# class covered by both would come back claimed by one. The tool cannot apply
-# this rule itself: it does not know what scope its caller is about to run.
-if not verdict.get("evidenceCoversWholeSuite"):
-    print("the evidence was recorded from a run that selected %s, so it cannot speak for "
-          "the whole suite" % (verdict.get("evidenceScope") or "a narrower scope"),
-          file=sys.stderr)
     sys.exit(7)
 
 classes = set()

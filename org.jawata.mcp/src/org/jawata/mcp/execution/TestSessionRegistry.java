@@ -33,6 +33,20 @@ public final class TestSessionRegistry {
         volatile ForkedTestRunner.RunningSession handle;
         /** Display label ("junit5", …) captured at start for status responses. */
         public volatile String frameworkLabel = "";
+        /**
+         * What this run's test selection was narrowed to, or null when it runs
+         * the scope it was asked for.
+         *
+         * <p>It travels on the SESSION rather than only on the start response
+         * because {@code action=status} is where an async caller reads the
+         * totals — the tool's own description says start exists for "long
+         * suites — progressive results". A caller that starts a package run,
+         * polls status and transcribes `passed=N failed=0` would otherwise have
+         * a narrowed total with nothing on that response saying so, which is
+         * exactly the silent short run the whole mechanism is built to make
+         * impossible.</p>
+         */
+        public volatile java.util.Map<String, Object> selection;
         public final AtomicInteger classesStarted = new AtomicInteger();
         public final AtomicInteger classesFinished = new AtomicInteger();
         public final AtomicInteger testsFinished = new AtomicInteger();

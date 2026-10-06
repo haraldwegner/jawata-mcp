@@ -193,15 +193,25 @@ echo "Discovered $TOTAL_CLASSES test classes across $SHARDS shards"
 #   * the tool names zero impacted tests  -> full, reason printed (a diff that
 #                                            touches code nothing covers is the
 #                                            LAST thing to run narrowly)
-#   * the artifact is PARTIAL             -> full, reason printed. jawata's own
-#                                            suite splits between plain-JVM tests
-#                                            and tests that need the Eclipse
-#                                            workspace; the forked runner cannot
-#                                            run the latter, so their coverage is
-#                                            absent from any artifact it produced.
-#                                            Narrowing on evidence that structurally
-#                                            cannot see half the suite is exactly
-#                                            the false green this rule forbids.
+#   * the evidence is NARROWER than the   -> full, reason printed. This replaces
+#     whole suite                            a bullet that named a "PARTIAL"
+#                                            artifact flag — a mechanism that no
+#                                            longer exists and, as the commit
+#                                            that deleted it measured, never
+#                                            fired: it read response fields the
+#                                            tool has never carried. The REASON
+#                                            it existed is unchanged and is why
+#                                            the replacement is strict: jawata's
+#                                            own suite splits between plain-JVM
+#                                            tests and tests that need the
+#                                            Eclipse workspace, the forked runner
+#                                            cannot start the latter, so an
+#                                            artifact it produced names only the
+#                                            plain ones. What is checked now is
+#                                            what the recording run SELECTED,
+#                                            which the manifest has always held —
+#                                            only a run that selected nothing in
+#                                            particular saw everything.
 SELECTION="full"
 if [ "$IMPACTED" = "1" ]; then
     reason=""

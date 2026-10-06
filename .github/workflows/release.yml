@@ -61,14 +61,24 @@ jobs:
     # halts with 124, and it only helps if it fires BEFORE GitHub's cap, because a
     # cancelled step's log is discarded. A healthy run is 45 min and the backstop
     # waits 45, so 75 let GitHub win on any hang past the first half hour.
-    # S12a / D21: the release run is the ONE place the whole suite really runs,
-    # on this platform, so it is the only run whose coverage can speak for the
-    # whole suite. It carries the JaCoCo agent (already shipped in the dist, and
-    # the same version CoverageService mounts) and publishes its exec beside the
-    # aborts this platform actually took. A developer imports it with
-    # run_tests(action=coverage_import), which accepts it only if the class ids
-    # match their build — so evidence from a different tree is refused rather
-    # than trusted.
+    # S12a / D21: the release run is the ONE place the whole suite really runs
+    # on this platform, so it is the only run whose COVERAGE can speak for the
+    # whole suite. It carries the JaCoCo agent (already in the dist, the same
+    # version CoverageService mounts) and publishes its exec beside the aborts
+    # this platform actually took. A developer imports it with
+    # run_tests(action=coverage_import), which accepts it only when the class
+    # ids match their own build, so evidence from a different tree is refused.
+    #
+    # WHAT THIS IS NOT, stated because the commit that added it claimed
+    # otherwise and a C12a audit measured the claim false. This exec CANNOT
+    # widen a local impacted-test selection. Selection needs per-test
+    # ATTRIBUTION — the segments/ directory CoverageService writes only for a
+    # local attribution=true run (CoverageService.java, the single site that
+    # sets m.attribution) — and selectImpacted skips every artifact without it.
+    # An imported artifact is marked IMPORTED and carries no segments, so a
+    # plain agent exec is whole-suite COVERAGE and nothing more. Making it feed
+    # selection would mean teaching -runTests to emit per-test segments, which
+    # is a change to the runner and not to this file.
     - name: Test (in-framework)
       timeout-minutes: 100
       run: |
@@ -80,7 +90,16 @@ jobs:
         # The aborts are published as what THIS platform took, not as what the
         # expected-aborts file predicts: the point of shipping them is that a
         # reader can see the difference.
-        grep -E '^\[.*\] (ABORTED|NOT RUN)|NOT RUN —' test-run.log > release-aborts.txt || true
+        #
+        # THE PATTERN IS build/abort-budget.sh's, verbatim, and that script owns
+        # it. The first version here invented its own regex and a C12a audit
+        # measured one of its two alternatives to be unmatchable — real abort
+        # lines are prefixed, so `^\[` never fired and everything rode on a
+        # literal phrase that nothing enforces. A message without that phrase
+        # would have landed in the budget gate's list and been silently missing
+        # from the artifact whose whole purpose is to show what really happened.
+        # If these two ever disagree again, this one is wrong.
+        sed -n 's/.*~~ ABORTED //p' test-run.log > release-aborts.txt || true
         echo "platform=${{ runner.os }}" >> release-aborts.txt
         test "$rc" -eq 0
 
