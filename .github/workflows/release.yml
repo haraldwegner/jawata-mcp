@@ -61,13 +61,38 @@ jobs:
     # halts with 124, and it only helps if it fires BEFORE GitHub's cap, because a
     # cancelled step's log is discarded. A healthy run is 45 min and the backstop
     # waits 45, so 75 let GitHub win on any hang past the first half hour.
+    # S12a / D21: the release run is the ONE place the whole suite really runs,
+    # on this platform, so it is the only run whose coverage can speak for the
+    # whole suite. It carries the JaCoCo agent (already shipped in the dist, and
+    # the same version CoverageService mounts) and publishes its exec beside the
+    # aborts this platform actually took. A developer imports it with
+    # run_tests(action=coverage_import), which accepts it only if the class ids
+    # match their build — so evidence from a different tree is refused rather
+    # than trusted.
     - name: Test (in-framework)
       timeout-minutes: 100
       run: |
         java -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
              -Djawata.experience.shared.dir="$RUNNER_TEMP/jawata-test-store" \
+             -javaagent:"$PWD/build/dist/target/dist/tools/org.jacoco.agent-0.8.15-runtime.jar"=destfile="$PWD/release-coverage.exec" \
              -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee test-run.log
-        test ${PIPESTATUS[0]} -eq 0
+        rc=${PIPESTATUS[0]}
+        # The aborts are published as what THIS platform took, not as what the
+        # expected-aborts file predicts: the point of shipping them is that a
+        # reader can see the difference.
+        grep -E '^\[.*\] (ABORTED|NOT RUN)|NOT RUN —' test-run.log > release-aborts.txt || true
+        echo "platform=${{ runner.os }}" >> release-aborts.txt
+        test "$rc" -eq 0
+
+    - name: Upload suite coverage and aborts
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: release-coverage-${{ runner.os }}
+        path: |
+          release-coverage.exec
+          release-aborts.txt
+        if-no-files-found: warn
 
     # Sprint 28 (D-UNWIRED): no public production member may reach a release
     # with every one of its callers in test code — the v3.4.0 shape, which
