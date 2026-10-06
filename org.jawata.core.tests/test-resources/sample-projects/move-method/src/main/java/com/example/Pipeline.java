@@ -5,8 +5,10 @@ import com.example.sink.Port;
 /**
  * Sprint 28g S5 / D9 row 2 — a moved body that STILL REACHES the type it came from.
  *
- * <p>This is the shape the census counts <strong>eleven</strong> hand edits of — its own summary
- * figure, <em>"the moved body's access to its old owner decided silently (11)"</em> — and that
+ * <p>The signed spec scopes this change at <strong>sixteen</strong> hand edits, covering the
+ * package-rule half with it; the census attributes <strong>eleven</strong> to this cause
+ * specifically, in its own summary figure — <em>"the moved body's access to its old owner
+ * decided silently (11)"</em>. This is the shape they are counting, and that
  * <strong>no fixture in this repository had</strong>, which is why the defect could ship:
  * {@link Mover#reset} — the only move fixture here — has a body that reaches nothing of
  * {@code Mover}, so the engine's {@code needsTargetNode()} answers false and the question is

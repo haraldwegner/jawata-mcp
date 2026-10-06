@@ -255,11 +255,17 @@ public class MoveMethodTool extends AbstractRefactoringTool
             // "every one of these bodies had to reach it through a port or a listener
             // instead, because `execution` may not name `pipeline`".
             //
-            // ELEVEN hand edits, which is the census's own summary figure ("the moved body's
-            // access to its old owner decided silently (11)") rather than either number this
-            // comment carried first: 10 is the move-method row's edit count, and the
-            // eleventh is the extract-then-move row's fifth edit, whose note says it "needs
-            // the same old-owner answer as the row above".
+            // THE SIZE, with each number attributed, because this comment has now carried three
+            // and two of them were wrong. The signed spec scopes this change at SIXTEEN hand
+            // edits (D9's table: "Move-method asks how the moved body reaches its old owner …
+            // and checks the package rule on its own result | 16"), which is the contract and
+            // covers the package-rule half as well. The census attributes ELEVEN specifically
+            // to this cause in its own summary — "the moved body's access to its old owner
+            // decided silently (11)" — being the move-with-changed-body row's ten plus the
+            // extract-then-move row's fifth edit, whose note says it "needs the same old-owner
+            // answer as the row above". The two count different things and both are real; the
+            // numbers this comment carried first, ten and sixteen-as-the-cause, were a row
+            // count and nothing's count respectively.
             //
             // `needsTargetNode()` is the engine's own answer to that question and it is
             // public, so it is ASKED rather than inferred — and asked AFTER setTarget, because
