@@ -2478,6 +2478,38 @@ public final class H2ExperienceStore implements ExperienceStore {
         return counts;
     }
 
+    /**
+     * Sprint 28g D25 — how many of our own experiences say they USED this
+     * pattern, as a number rather than as prose somebody has to read and tally.
+     *
+     * <p>Counts rows, not distinct entries, and that is the decision rather than
+     * an oversight: Harald ruled a second use ADDS as a sample ("you can have
+     * 1..n here"), so two experiences reaching for the same pattern is exactly
+     * the signal this answers. Collapsing them would turn the measure back into
+     * "has anyone ever used it", which the catalogue already implies by
+     * carrying the row at all.</p>
+     *
+     * <p>Zero is a real answer and the commonest one — most of the catalogue has
+     * never been reached for here — so a caller must not read it as a pattern
+     * that failed. It means nobody has recorded using it yet.</p>
+     */
+    public int appliedSampleCount(String patternTarget) {
+        if (patternTarget == null || patternTarget.isBlank()) return 0;
+        try (PreparedStatement ps = live().prepareStatement(
+                "SELECT COUNT(*) FROM experience_link WHERE rel = 'applied' AND target = ?")) {
+            ps.setString(1, patternTarget);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            // An unreadable store is not a pattern with no samples. Saying so
+            // here rather than returning 0 keeps a storage fault from arriving
+            // at a reader as evidence about the catalogue.
+            throw new IllegalStateException(
+                "could not count applied samples for '" + patternTarget + "'", e);
+        }
+    }
+
     private List<Map<String, Object>> loadLinks(String id, Connection c) throws SQLException {
         List<Map<String, Object>> links = new ArrayList<>();
         try (PreparedStatement ps = live().prepareStatement(

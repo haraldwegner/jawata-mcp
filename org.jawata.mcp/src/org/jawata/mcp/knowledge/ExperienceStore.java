@@ -385,6 +385,24 @@ public interface ExperienceStore extends AutoCloseable {
     int pruneAged(int days);
 
     /**
+     * Sprint 28g D25 — how many of our own experiences record having USED this
+     * catalogue pattern.
+     *
+     * <p>It is on this interface rather than only on the implementation because
+     * D25's measure is that the count is <em>answerable as a query</em>: a
+     * caller holding a store must be able to ask, without knowing which store
+     * it holds or going near a link table.</p>
+     *
+     * <p>Zero means nobody has recorded using it, which is the normal state for
+     * most of the catalogue and is not a verdict on the pattern.</p>
+     *
+     * @param patternTarget the pattern an {@code applied} link points at
+     */
+    default int appliedSampleCount(String patternTarget) {
+        return 0;
+    }
+
+    /**
      * Reclaim file space after prunes/wipes (H2 {@code SHUTDOWN COMPACT} + reopen).
      * NOTE: briefly closes the database — concurrently attached residents (AUTO_SERVER)
      * lose their connection and must reopen. Run when quiet. No-op for in-memory stores.

@@ -116,7 +116,19 @@ public final class EntryForm {
         // on answering as themselves; the rule is a general instruction distilled
         // from them, and deleting the sources would leave it unaccountable rather
         // than merely unlinked.
-        "derived_from");
+        "derived_from",
+        // Sprint 28g D25: an experience points at the catalogue pattern it USED.
+        // Harald's decision, asked whether a second use should replace the
+        // first: "Why replace. It adds as a sample. You can have 1..n here."
+        //
+        // So this is the one rel that is deliberately MANY-to-one and must never
+        // be deduplicated away: a pattern's worth here is how often it actually
+        // worked on our own code, and that is a COUNT. It points FROM the
+        // experience TO the pattern rather than the other way round, because the
+        // experience is what happened while the pattern is only what it reached
+        // for — and because a catalogue row has to stay replaceable by the next
+        // extraction without taking our samples with it.
+        "applied");
 
     /** The link vocabulary as prose, derived so the schema cannot drift from the set. */
     public static String linkVocabulary() {
