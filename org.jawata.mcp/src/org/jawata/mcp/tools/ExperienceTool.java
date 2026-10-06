@@ -3494,10 +3494,87 @@ public final class ExperienceTool implements Tool {
         }
 
         ExperienceEntry entry = eb.build();
-        String id = store.put(entry);
+
+        // Sprint 28g S14 D30 — ONE JOB PER MEMBER. A second description of a member
+        // REPLACES the first instead of landing beside it.
+        //
+        // The defect, measured over org.jawata.mcp.knowledge alone and uncapped:
+        // 73 members carry more than one job row, 75 surplus rows. jawata-mcp#85 has the
+        // store-wide census. The older row of each pair describes code that has since
+        // changed, and recall offers both.
+        //
+        // SCOPED TO `job`, NOT to KnowledgeLane.CODE_TYPES, which also holds `area`. An
+        // area row is anchored to a PACKAGE; one package legitimately carries one area
+        // row and the key for it is a different column, so folding the two together here
+        // would apply a member rule to something that is not a member.
+        //
+        // THE LOOKUP IS THE READ THAT ALREADY EXISTED. `listEntries`'s scope clause tries
+        // `symbol_fqn = ?` first, so an exact anchor matches; the re-filter below is
+        // because that clause ALSO ORs in two LIKE patterns and the package column, so a
+        // scope string can match rows that are not this member. A dedicated store read was
+        // written first and the duplicate gate refused it, correctly.
+        String replacedId = null;
+        String replacedSummary = null;
+        String replaceNote = null;
+        if ("job".equals(type == null ? "" : type.strip().toLowerCase(Locale.ROOT))
+                && symbol != null && !symbol.isBlank()) {
+            try {
+                List<org.jawata.mcp.knowledge.StoredEntry> already =
+                    store.listEntries("job", null, symbol, null, 50).stream()
+                        .filter(e -> symbol.equals(e.symbolFqn()))
+                        .toList();
+                if (already.size() > 1) {
+                    // REFUSED rather than collapsed. Choosing which of several descriptions
+                    // survives is a judgement about which one is right, and doing it as a
+                    // side effect of an unrelated write would destroy the loser with no
+                    // backup. It is also the case jawata-mcp#85 counts FOUR of that must
+                    // not be collapsed at all: overloads and constructors sharing one bare
+                    // key, which are different members rather than duplicate rows.
+                    return ToolResponse.invalidParameter("symbol",
+                        "'" + symbol + "' already carries " + already.size()
+                        + " descriptions, so there is no single one to replace: "
+                        + already.stream().map(org.jawata.mcp.knowledge.StoredEntry::id)
+                            .collect(java.util.stream.Collectors.joining(", "))
+                        + ". RULE: a member has one description, and which of several"
+                        + " existing ones is right is a judgement rather than a side effect"
+                        + " of this write — collapsing them needs a backup first."
+                        + " FIX: if these are really the SAME member, collapse them"
+                        + " deliberately; if they are OVERLOADS sharing a bare key, name"
+                        + " this one with its parameter types — 'pkg.Type#m(int)' is a"
+                        + " different anchor from 'pkg.Type#m(java.lang.String)' and each"
+                        + " keeps its own row.");
+                }
+                if (already.size() == 1) {
+                    replacedId = already.get(0).id();
+                    replacedSummary = already.get(0).summary();
+                }
+            } catch (RuntimeException e) {
+                // "I could not check" is not "there is nothing there", and this file draws
+                // that line everywhere else — so the write proceeds as it always did and
+                // SAYS the check did not happen. Swallowing it would silently reintroduce
+                // the duplicate; refusing would reject a correct row because a read failed.
+                replaceNote = "could not check for an existing description of '" + symbol
+                    + "' (" + e.getMessage() + "), so this row was ADDED without replacing";
+            }
+        }
+        String id = replacedId == null
+            ? store.put(entry)
+            : store.replaceJob(replacedId, entry);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", id);
+        // D30's other half: the answer NAMES the row it replaced. A replacement reported
+        // only as `stored: true` is indistinguishable from a fresh write, which is how a
+        // caller loses the chance to notice it has just overwritten somebody's wording.
+        if (replacedId != null) {
+            Map<String, Object> replaced = new LinkedHashMap<>();
+            replaced.put("id", replacedId);
+            replaced.put("summary", replacedSummary);
+            data.put("replaced", replaced);
+        }
+        if (replaceNote != null) {
+            data.put("replaceCheckSkipped", replaceNote);
+        }
         data.put("status", entry.status());
         data.put("stored", true);
         // AND THE UNCHECKED ANCHOR IS SAID OUT LOUD. A code-lane row admitted without a
