@@ -113,6 +113,11 @@ public final class RefactoringDoors {
                                                 Supplier<ExperienceStore> knowledge) {
         return List.of(
             new RenameSymbolTool(service, cache, knowledge),
-            new OrganizeImportsTool(service, cache));
+            new OrganizeImportsTool(service, cache),
+            // Sprint 28g D10. Added HERE and not to a register line, which is what the paragraph
+            // above instructs for exactly this case: a standalone refactoring tool carrying a
+            // census row, where a count joining against these two methods would otherwise
+            // silently not see it. It dispatches on no discriminator, so it is not a door.
+            new DeleteAnonymousImplementationTool(service, cache));
     }
 }

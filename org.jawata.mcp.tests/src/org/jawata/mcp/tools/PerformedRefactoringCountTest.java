@@ -312,7 +312,12 @@ class PerformedRefactoringCountTest {
     void everyDoorPublishesItsAssignedKindCount() {
         Map<String, Integer> assigned = new LinkedHashMap<>();
         assigned.put("extract", 11);
-        assigned.put("inline", 5);
+        // SIX since Sprint 28g S5's third change: `unreferenced_member`, the n=0 case of this
+        // door's own family — `class` folds a class into its ONE user and refuses more, and with
+        // ZERO references there is nothing to fold into, so only the deletion remains. C9's
+        // figure of five was its count on the day it was written; this gate caught the move the
+        // same run the kind landed, which is what it is for.
+        assigned.put("inline", 6);
         assigned.put("move", 6);
         assigned.put("apply_cleanup", 10);
         assigned.put("change_method_signature", 11);
