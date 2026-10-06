@@ -1068,6 +1068,29 @@ public final class ExperienceRetrieval {
             }
             c.put("principle", e.summary());
             c.put("outcome", e.facets().verdict());
+            // Sprint 28g D25 — HOW OFTEN WE HAVE ACTUALLY REACHED FOR THIS PATTERN.
+            //
+            // Named by the hollow-wiring gate, not by review: `appliedSampleCount` had five
+            // callers and all five were tests. The count existed, its mutations proved it
+            // correct, and nothing in production ever asked — which is the shape this
+            // project has shipped three times and the gate exists to refuse.
+            //
+            // HERE because this is where a pattern is OFFERED. D25's whole point is that an
+            // architect choosing between candidates can see which of them this codebase has
+            // already made work, and a count nobody is shown decides nothing.
+            //
+            // Emitted for every catalogue row INCLUDING ZERO, deliberately. Zero is the
+            // normal state for most of the catalogue and is not a verdict on the pattern;
+            // emitting only non-zero would make an absent key mean two things — "not a
+            // pattern" and "a pattern nobody here has used" — which is the ambiguity this
+            // file removes everywhere else.
+            //
+            // The `design:` prefix is the discriminator because it is what an `applied` link
+            // TARGETS by construction, so the key is present exactly where a count can be
+            // non-zero.
+            if (e.operation() != null && e.operation().startsWith("design:")) {
+                c.put("appliedHere", store.appliedSampleCount(e.operation()));
+            }
             // Sprint 28c D7 — a REFERENCE owes an address; an EXPERIENCE does not.
             //
             // A catalogue pattern is only usable if the reader can open the
@@ -1503,6 +1526,15 @@ public final class ExperienceRetrieval {
         Object outcome = c.get("outcome");
         if (outcome != null) {
             sb.append("  [").append(san(outcome)).append(']');
+        }
+        // D25: our own worked samples for this pattern. Said in words rather than as a bare
+        // number, because "0" beside a pattern reads as a score against it and it is not one
+        // — it says nobody here has recorded reaching for it yet.
+        Object applied = c.get("appliedHere");
+        if (applied instanceof Number n) {
+            sb.append(n.intValue() == 0
+                ? "  · not yet used here"
+                : "  · used here " + n.intValue() + (n.intValue() == 1 ? " time" : " times"));
         }
         Object address = c.get("address");
         if (address != null) {
