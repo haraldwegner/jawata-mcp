@@ -2,27 +2,27 @@ package com.example;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Sprint 28g D29 — the other half of the false positive. See {@link PluginDirs}.
+ * Sprint 28g D29 — the other half of the false positive. See {@link PluginDirs} for
+ * what the pair is modelled on and why the first version of it proved nothing.
  *
- * <p>Deliberately NOT a near-copy in prose or structure: a reader should be able to
- * see at a glance that these two answer different questions. That is the whole
- * claim — a shape match plus a platform-type overlap is not evidence of one job.</p>
+ * <p>Deliberately NOT a near-copy in prose or structure: a reader should see at a
+ * glance that these two answer different questions. That is the whole claim — a shape
+ * match plus a platform-type overlap is not evidence of one job.</p>
  */
 public class DegradationNotices {
 
-    private boolean loading;
+    private String reason;
 
-    public void beginLoading() {
-        this.loading = true;
+    public void failedToLoad(String why) {
+        this.reason = why;
     }
 
     public List<String> notices() {
         List<String> out = new ArrayList<>();
-        if (loading) {
-            out.add("the workspace is still loading");
-        }
+        out.add(Optional.ofNullable(reason).orElse("the workspace is still loading"));
         return out;
     }
 }
