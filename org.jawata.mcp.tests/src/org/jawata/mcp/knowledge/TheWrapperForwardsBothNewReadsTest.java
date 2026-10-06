@@ -16,12 +16,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Sprint 28g S13 — the two reads this stage added answer THROUGH THE WRAPPER, which is
  * what production serves.
  *
- * <p><b>Both shipped broken and the hollow-wiring gate is what found it.</b> Each arrived
- * as a {@code default} on {@link ExperienceStore} — {@code appliedSampleCount} returning
- * 0 and {@code headingShapedSummaries} returning empty. {@link RecoveringExperienceStore}
- * declares only what it means to forward, so for both of these the DEFAULT answered in
- * its place: zero samples for every pattern and a clean heading audit, whatever the
- * wrapped store actually held.</p>
+ * <p><b>ONE of them shipped broken, not both, and the C13 audit is what corrected that.</b>
+ * Each arrived as a {@code default} on {@link ExperienceStore}, and
+ * {@link RecoveringExperienceStore} declares only what it means to forward — so the
+ * default answered in its place for both. But the two defaults were not alike.
+ * {@code appliedSampleCount} was a hard {@code return 0}: through the wrapper every
+ * pattern had zero samples whatever the wrapped store held, and the hollow-wiring gate
+ * is what found it. {@code headingShapedSummaries} looped over an UNQUALIFIED
+ * {@code all()}, which dispatches to the wrapper's own override and reaches the
+ * delegate's rows — so it answered CORRECTLY, and the version of this paragraph that
+ * said it returned a clean audit was false.</p>
+ *
+ * <p><b>Which makes the two cases below different kinds of test, and saying so is the
+ * point.</b> The sample count's case pins a repaired defect. The heading audit's pins a
+ * forward that was never wrong — and under an abstract interface member it cannot fail
+ * for a MISSING forward at all, because deleting the override is a compile error. It is
+ * a regression lock on the forward's BODY, which is a real thing to hold and is not the
+ * discriminator its first message claimed to be.</p>
  *
  * <p>That is the defect {@code RecoveringExperienceStore#degradedNotice}'s own javadoc
  * records, in its own words — <em>"the one method of twenty here that answered for itself
@@ -98,10 +109,12 @@ class TheWrapperForwardsBothNewReadsTest {
             List<?> offending = wrapped.headingShapedSummaries();
             assertAll(
                 () -> assertEquals(1, offending.size(),
-                    () -> "the one heading row, from the store behind the wrapper. EMPTY is "
-                        + "what the interface default used to answer, and an empty audit "
-                        + "reads as a clean store — which is the whole reason this is a "
-                        + "defect rather than a gap: " + offending),
+                    () -> "the one heading row, read from the store behind the wrapper. This "
+                        + "is a REGRESSION LOCK on the forward's body, not a reproduction of a "
+                        + "defect: the old default looped over an unqualified all(), which "
+                        + "dispatches to this wrapper's own override, so it already answered "
+                        + "correctly. What would break this is a forward rewritten to answer "
+                        + "locally: " + offending),
                 () -> assertTrue(String.valueOf(offending).contains(HEADING),
                     () -> "and it carries the offending text: " + offending));
         }

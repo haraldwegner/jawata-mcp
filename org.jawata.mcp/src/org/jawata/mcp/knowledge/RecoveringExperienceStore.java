@@ -85,14 +85,20 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     /**
      * Sprint 28g — AND THESE TWO FORWARD, for the reason the method above records.
      *
-     * <p>Both arrived as interface DEFAULTS, so this wrapper declared neither and the
-     * default answered in its place: zero samples for every pattern, and an empty
-     * heading audit, whatever the wrapped store actually held. Exactly the shape the
-     * javadoc above calls out — inert while the delegate had nothing to say, and live
-     * and wrong the moment it did.</p>
+     * <p>Both arrived as interface DEFAULTS, so this wrapper declared neither. <b>Only
+     * ONE of them was actually broken by that, and the C13 audit is what corrected the
+     * claim.</b> {@code appliedSampleCount}'s default was a hard {@code return 0}, so
+     * through this wrapper every pattern had zero samples whatever the delegate held —
+     * exactly the shape the javadoc above calls out. {@code headingShapedSummaries}'
+     * default looped over an UNQUALIFIED {@code all()}, which dispatches to this
+     * class's own override and so reached the delegate's real rows: it answered
+     * correctly, and the sentence that used to stand here saying otherwise was
+     * wrong.</p>
      *
      * <p>They are abstract on the interface now, which is what made the compiler ask
-     * this class for them rather than answering quietly on its behalf.</p>
+     * this class for them rather than answering quietly on its behalf — and for the
+     * second one that is a latent hazard closed rather than a defect fixed: its default
+     * was right only because every implementor happens to override {@code all()}.</p>
      */
     @Override
     public int appliedSampleCount(String patternTarget) {

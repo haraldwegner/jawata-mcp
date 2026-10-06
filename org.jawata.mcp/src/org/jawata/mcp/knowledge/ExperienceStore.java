@@ -396,9 +396,6 @@ public interface ExperienceStore extends AutoCloseable {
      * <p>Zero means nobody has recorded using it, which is the normal state for
      * most of the catalogue and is not a verdict on the pattern.</p>
      *
-     * @param patternTarget the pattern an {@code applied} link points at
-     */
-    /**
      * <p><b>ABSTRACT, not a default, and the hollow-wiring gate is what corrected that.</b>
      * It shipped as {@code default ... { return 0; }} — and
      * {@link RecoveringExperienceStore}, which production serves through, does not
@@ -409,6 +406,8 @@ public interface ExperienceStore extends AutoCloseable {
      *
      * <p>Abstract is what makes the compiler name every store that has not answered,
      * which is the reason {@link #degradedNotice()} has no default either.</p>
+     *
+     * @param patternTarget the pattern an {@code applied} link points at
      */
     int appliedSampleCount(String patternTarget);
 
@@ -434,22 +433,26 @@ public interface ExperienceStore extends AutoCloseable {
      * heading shape and nothing else, so a null symptom list reaches no other
      * branch.</p>
      *
-     * <p>A {@code default} because it needs no storage the interface does not
-     * already expose: {@link #all()} is the population. Every store answers,
-     * including a degraded one, which is the point — an audit that silently
-     * skipped the store it could not read would report a clean result.</p>
+     * <p><b>ABSTRACT — but unlike {@link #appliedSampleCount}, this one was never
+     * broken, and the C13 audit is what corrected that claim.</b> It shipped as a
+     * default whose body read {@code for (StoredEntry e : all())} — an UNQUALIFIED
+     * call, so through {@link RecoveringExperienceStore} it dispatched to that class's
+     * own {@code all()}, which forwards to the delegate. The default therefore audited
+     * the wrapped store's real rows and answered correctly. Four places including this
+     * one said it answered EMPTY through the wrapper; that was false, and it was false
+     * because the enumeration that found the genuine defect next door was carried
+     * across to this member without being re-checked against its body.</p>
      *
-     * @return one entry per offending row, {@code id} to {@code summary}, newest
-     *     first as {@link #all()} orders them; empty when the store is clean
-     */
-    /**
-     * <p><b>ABSTRACT for the same reason as {@link #appliedSampleCount}</b>, and it had
-     * the same defect: as a default over {@link #all()} it answered EMPTY through
-     * {@link RecoveringExperienceStore}, which declares neither — so a clean audit and
-     * a store nobody could read produced the same answer.</p>
+     * <p>It is abstract anyway, for a reason that survives the correction: the default
+     * was right only by the accident of every implementor overriding {@code all()}, and
+     * a store that did not would have audited the wrong rows while looking identical
+     * from here. Abstract makes the compiler ask rather than answer on its behalf.</p>
      *
      * <p>The shared body lives in {@link #auditHeadings(ExperienceStore)} so the two
      * implementations that really walk their rows share one rule rather than two.</p>
+     *
+     * @return one entry per offending row, {@code id} to {@code summary}, newest
+     *     first as {@link #all()} orders them; empty when the store is clean
      */
     List<Map<String, Object>> headingShapedSummaries();
 
