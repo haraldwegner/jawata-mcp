@@ -398,9 +398,19 @@ public interface ExperienceStore extends AutoCloseable {
      *
      * @param patternTarget the pattern an {@code applied} link points at
      */
-    default int appliedSampleCount(String patternTarget) {
-        return 0;
-    }
+    /**
+     * <p><b>ABSTRACT, not a default, and the hollow-wiring gate is what corrected that.</b>
+     * It shipped as {@code default ... { return 0; }} — and
+     * {@link RecoveringExperienceStore}, which production serves through, does not
+     * forward what it does not declare. So the wrapper answered ZERO for every pattern
+     * whatever the wrapped store held, and the sentence two paragraphs up — that a
+     * method reachable only by casting silently does nothing where it matters — was
+     * true of this method, written in its own javadoc.</p>
+     *
+     * <p>Abstract is what makes the compiler name every store that has not answered,
+     * which is the reason {@link #degradedNotice()} has no default either.</p>
+     */
+    int appliedSampleCount(String patternTarget);
 
     /**
      * Sprint 28g D28 — the rows whose summary is a section HEADING rather than a
@@ -432,9 +442,30 @@ public interface ExperienceStore extends AutoCloseable {
      * @return one entry per offending row, {@code id} to {@code summary}, newest
      *     first as {@link #all()} orders them; empty when the store is clean
      */
-    default List<Map<String, Object>> headingShapedSummaries() {
+    /**
+     * <p><b>ABSTRACT for the same reason as {@link #appliedSampleCount}</b>, and it had
+     * the same defect: as a default over {@link #all()} it answered EMPTY through
+     * {@link RecoveringExperienceStore}, which declares neither — so a clean audit and
+     * a store nobody could read produced the same answer.</p>
+     *
+     * <p>The shared body lives in {@link #auditHeadings(ExperienceStore)} so the two
+     * implementations that really walk their rows share one rule rather than two.</p>
+     */
+    List<Map<String, Object>> headingShapedSummaries();
+
+    /**
+     * The audit itself, over any store's own rows — one implementation of the rule,
+     * asked by every store that can actually answer it.
+     *
+     * <p>It asks {@link AdmissionPolicy} rather than re-deciding: the rule is one private
+     * pattern read by one method, and a second copy here would be the
+     * two-readers-of-one-rule shape this sprint has had to close four times.
+     * {@code check(summary, null)} is an exact heading test by construction, since a
+     * summary is checked for heading shape and nothing else.</p>
+     */
+    static List<Map<String, Object>> auditHeadings(ExperienceStore store) {
         List<Map<String, Object>> offending = new java.util.ArrayList<>();
-        for (StoredEntry e : all()) {
+        for (StoredEntry e : store.all()) {
             if (AdmissionPolicy.check(e.summary(), null)
                     .filter(r -> r.shape() == AdmissionPolicy.Shape.HEADING).isPresent()) {
                 offending.add(Map.of("id", e.id(), "summary",

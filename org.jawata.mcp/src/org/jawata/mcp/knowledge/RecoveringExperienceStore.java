@@ -82,6 +82,28 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         return notice != null ? notice : delegate.degradedNotice();
     }
 
+    /**
+     * Sprint 28g — AND THESE TWO FORWARD, for the reason the method above records.
+     *
+     * <p>Both arrived as interface DEFAULTS, so this wrapper declared neither and the
+     * default answered in its place: zero samples for every pattern, and an empty
+     * heading audit, whatever the wrapped store actually held. Exactly the shape the
+     * javadoc above calls out — inert while the delegate had nothing to say, and live
+     * and wrong the moment it did.</p>
+     *
+     * <p>They are abstract on the interface now, which is what made the compiler ask
+     * this class for them rather than answering quietly on its behalf.</p>
+     */
+    @Override
+    public int appliedSampleCount(String patternTarget) {
+        return delegate.appliedSampleCount(patternTarget);
+    }
+
+    @Override
+    public java.util.List<java.util.Map<String, Object>> headingShapedSummaries() {
+        return delegate.headingShapedSummaries();
+    }
+
     private void retryLoop(Supplier<H2ExperienceStore> reopener, long retryMs) {
         while (!closed && notice != null) {
             try {

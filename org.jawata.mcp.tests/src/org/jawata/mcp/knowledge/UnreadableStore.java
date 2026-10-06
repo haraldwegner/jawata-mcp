@@ -190,6 +190,18 @@ final class UnreadableStore implements ExperienceStore {
         throw boom();
     }
 
+    /** A store that cannot be read cannot count its samples either. */
+    @Override
+    public int appliedSampleCount(String patternTarget) {
+        throw boom();
+    }
+
+    /** Nor audit its summaries — an empty audit would read as a clean store. */
+    @Override
+    public java.util.List<java.util.Map<String, Object>> headingShapedSummaries() {
+        throw boom();
+    }
+
     @Override
     public java.util.List<java.util.Map<String, Object>> exportEntries(String status, String type) {
         throw boom();

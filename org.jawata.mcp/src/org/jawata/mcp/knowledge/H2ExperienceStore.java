@@ -615,6 +615,12 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
     }
 
+    /** The heading audit over this store's own rows, through the shared rule. */
+    @Override
+    public java.util.List<java.util.Map<String, Object>> headingShapedSummaries() {
+        return ExperienceStore.auditHeadings(this);
+    }
+
     @Override
     public java.util.Optional<java.nio.file.Path> storyFolder() {
         return storyFolderAmbiguous
