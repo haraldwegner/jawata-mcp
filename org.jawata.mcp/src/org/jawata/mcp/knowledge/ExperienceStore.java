@@ -403,6 +403,48 @@ public interface ExperienceStore extends AutoCloseable {
     }
 
     /**
+     * Sprint 28g D28 — the rows whose summary is a section HEADING rather than a
+     * sentence of knowledge, as the shipped admission gate itself judges them.
+     *
+     * <p>D28's first measure — that the gate which refuses a heading at
+     * {@code record} applies to LOADED files too — was delivered in Sprint 28c
+     * (D3) and is covered by
+     * {@code ExperienceMaintenanceTest#a_heading_shaped_memory_file_is_refused_and_the_refusal_is_reported}.
+     * Its SECOND measure is about this store rather than about the door:
+     * <em>after a reload no row's summary is a section heading</em>. Nothing could
+     * answer that. The load gate refuses new ones; it says nothing about the 49
+     * rows that were already in when it shipped, and superseding is not deleting
+     * in this store, so a reload does not carry them out.</p>
+     *
+     * <p><b>It asks {@link AdmissionPolicy} rather than re-deciding.</b> The rule
+     * lives in one private pattern read by one method, and a second copy here —
+     * in Java or as a SQL {@code LIKE} — would be the two-readers-of-one-rule
+     * shape this sprint has had to close four times. {@code check(summary, null)}
+     * is an exact heading test by construction: the summary is checked for
+     * heading shape and nothing else, so a null symptom list reaches no other
+     * branch.</p>
+     *
+     * <p>A {@code default} because it needs no storage the interface does not
+     * already expose: {@link #all()} is the population. Every store answers,
+     * including a degraded one, which is the point — an audit that silently
+     * skipped the store it could not read would report a clean result.</p>
+     *
+     * @return one entry per offending row, {@code id} to {@code summary}, newest
+     *     first as {@link #all()} orders them; empty when the store is clean
+     */
+    default List<Map<String, Object>> headingShapedSummaries() {
+        List<Map<String, Object>> offending = new java.util.ArrayList<>();
+        for (StoredEntry e : all()) {
+            if (AdmissionPolicy.check(e.summary(), null)
+                    .filter(r -> r.shape() == AdmissionPolicy.Shape.HEADING).isPresent()) {
+                offending.add(Map.of("id", e.id(), "summary",
+                    e.summary() == null ? "" : e.summary()));
+            }
+        }
+        return List.copyOf(offending);
+    }
+
+    /**
      * Reclaim file space after prunes/wipes (H2 {@code SHUTDOWN COMPACT} + reopen).
      * NOTE: briefly closes the database — concurrently attached residents (AUTO_SERVER)
      * lose their connection and must reopen. Run when quiet. No-op for in-memory stores.
