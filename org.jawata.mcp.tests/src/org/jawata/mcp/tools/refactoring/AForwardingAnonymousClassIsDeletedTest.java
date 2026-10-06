@@ -67,6 +67,7 @@ class AForwardingAnonymousClassIsDeletedTest {
     void theWrapperIsDeletedAndTheTargetImplementsTheInterface() throws Exception {
         assertFalse(Files.readString(managerPath()).contains("implements SlotListener"),
             "precondition: the target does NOT declare the interface yet, or this measures nothing");
+        int wrappersBefore = creations(Files.readString(strategyPath()));
 
         ToolResponse r = deleteAt("wrapper()");
         assertTrue(r.isSuccess(), () -> "the deletion failed: " + describe(r));
@@ -99,11 +100,17 @@ class AForwardingAnonymousClassIsDeletedTest {
             () -> "and the anonymous class must be gone from it:\n" + body);
         // A COUNT, NOT A CONTAINMENT. `contains` proved that ONE of the siblings survived, not
         // that all of them did — a C5 audit named it, and the compile assertion below only
-        // catches gross damage. The fixture declares SEVEN wrappers and this case deletes one,
-        // so six creations must remain; a rewrite that caught a sibling now fails by number.
-        assertEquals(6, strategy.split("new SlotListener\\(\\)", -1).length - 1,
+        // catches gross damage. A rewrite that caught a sibling now fails by number.
+        //
+        // DERIVED FROM THE FIXTURE, not written down. A first version asserted the literal 6,
+        // which a C5 round-2 audit pointed out was a fresh hand-written count added inside the
+        // commit whose whole subject is hand-written counts going stale: the eighth wrapper
+        // anyone adds to this fixture would re-open that line. The before-count is already in
+        // hand, so the claim is exactly "one fewer than there were".
+        assertEquals(wrappersBefore - 1, creations(strategy),
             () -> "the OTHER wrappers must be untouched — this operation acts on the one it was"
-                + " given, and the fixture's other six must still construct:\n" + strategy);
+                + " given, and the fixture's remaining " + (wrappersBefore - 1)
+                + " must still construct:\n" + strategy);
 
         CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service);
         @SuppressWarnings("unchecked")
@@ -227,6 +234,11 @@ class AForwardingAnonymousClassIsDeletedTest {
         assertFalse(r.isSuccess(), "a plain method is not an anonymous implementation");
         assertTrue(String.valueOf(r.getError().getMessage()).contains("No anonymous class"),
             () -> "the refusal should say what it was looking for: " + r.getError().getMessage());
+    }
+
+    /** How many anonymous {@code SlotListener}s the fixture still constructs. */
+    private static int creations(String source) {
+        return source.split("new SlotListener\\(\\)", -1).length - 1;
     }
 
     private Path strategyPath() {

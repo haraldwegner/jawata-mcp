@@ -162,6 +162,40 @@ class AMovedBodyThatStillNeedsItsOldOwnerTest {
     }
 
     @Test
+    @DisplayName("an unknown mode is refused even where the body reaches NOTHING — the half that was silent")
+    void anUnknownModeIsRefusedOnAMoveThatAsksNoQuestion() throws Exception {
+        // THE CONTROL FOR THE HOIST, and without it the fix has none. The mode used to be read
+        // and validated INSIDE `if (processor.needsTargetNode())`, so on every move whose body
+        // reaches nothing — which is most of them — a misspelled `oldOwnerAccess` was accepted
+        // in silence and the move proceeded. That is the failure the sibling D9 change names in
+        // its own comment one file away: "which is how a caller ends up believing a flag did
+        // something".
+        //
+        // The existing unknown-mode case cannot see the fix: it drives `dispatch`, whose body
+        // DOES reach the old owner, so it was refused by the old in-gate `default` arm and is
+        // refused now by the pre-gate guard — passing identically before and after. A C5
+        // round-2 audit named that. `describe` reaches nothing, so this case runs only through
+        // the hoisted guard: before the hoist it SUCCEEDED, after it refuses.
+        Path pipeline = pipelinePath();
+        Path port = portPath();
+        String pipelineBefore = Files.readString(pipeline);
+        String portBefore = Files.readString(port);
+
+        ToolResponse r = move("describe(Port", "sideways", null);
+        assertFalse(r.isSuccess(),
+            () -> "a garbage mode must be refused whatever the body reaches: " + describe(r));
+        assertTrue(String.valueOf(r.getError().getMessage()).contains("is not a choice"),
+            () -> "and by the mode guard rather than by something else: "
+                + r.getError().getMessage());
+
+        assertEquals(pipelineBefore, Files.readString(pipeline),
+            "nothing may be written — the sibling case proves this same move SUCCEEDS when the"
+                + " mode is valid, so a refusal that still moved it would be the worse half");
+        assertEquals(portBefore, Files.readString(port),
+            "and the destination must be untouched too");
+    }
+
+    @Test
     @DisplayName("an unknown mode is refused, and the choices it lists are the ones that WORK")
     void anUnknownModeIsRefusedWithTheRealChoices() throws Exception {
         ToolResponse r = move("dispatch(Port", "sideways", null);

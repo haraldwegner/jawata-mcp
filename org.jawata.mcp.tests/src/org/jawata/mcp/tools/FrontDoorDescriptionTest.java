@@ -135,12 +135,19 @@ class FrontDoorDescriptionTest {
                     + part);
         }
 
-        // AND THE USAGE LINE, which is generated from the routing table and so cannot be
-        // compared as text once a kind joins it. Each legacy kind must still be OFFERED there.
-        for (String kind : List.of("method", "variable", "class", "subclass", "middle_man")) {
-            assertTrue(published.contains(kind),
-                "the usage line must still offer the pre-seam kind '" + kind + "'");
-        }
+        // NO PER-KIND CONTAINMENT CHECK HERE, and the omission is deliberate. A first version
+        // added one — `published.contains(kind)` for each of the five pre-seam kinds — offered
+        // as compensation for excluding the generated usage line. A C5 round-2 audit showed all
+        // five were ENTAILED by the bullet loop above: each kind name is the leading token of
+        // its own bullet, so asserting the bullet is contained already asserts the name is.
+        // Five assertions that cannot fail independently, added inside the very fold that was
+        // deleting assertions which cannot fail — the seventh consecutive instance of that
+        // recurrence in this sprint family, so they are removed rather than kept as coverage
+        // that measures nothing.
+        //
+        // The usage line is genuinely covered, by `theUsageLineComesFromTheRoutingTable`: it
+        // iterates `door.publishedKinds()` under an exact `assertEquals(6, ...)`, so a kind
+        // that stopped reaching the line fails there.
     }
 
     /**
@@ -301,8 +308,16 @@ class FrontDoorDescriptionTest {
         assertNotEquals(was.get("refactor_to_state"), now.get("refactor_to_state"),
             "refactor_to_state's bullet is the one deliberate rewrite: D9 change 4 added the"
                 + " nullable-field shape, so the int-switch-only sentence no longer describes"
-                + " the operation. If these are equal again, either the prose was reverted or"
-                + " the second entry path went undocumented");
+                + " the operation. Equal again means the prose was REVERTED");
+
+        // AND THE SECOND HALF, which inequality cannot reach. A C5 round-2 audit found the
+        // message above claiming it would also catch "the second entry path going
+        // undocumented"; it would not — any THIRD rewrite that still omits the nullable shape
+        // differs from the legacy text and satisfies the inequality. So the thing the exemption
+        // is granted FOR is asserted directly.
+        assertTrue(now.get("refactor_to_state").contains("nullable"),
+            () -> "the rewritten bullet must document the shape the rewrite was granted for:\n"
+                + now.get("refactor_to_state"));
 
         // AND THE OTHER TEN STILL COMPARE EXACTLY, which is the claim this test was written
         // for: the move onto the delegates lost nothing.

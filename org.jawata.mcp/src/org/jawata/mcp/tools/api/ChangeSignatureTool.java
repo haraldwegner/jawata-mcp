@@ -787,11 +787,21 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             // parameter, so the site was rewritten with its receiver argument dropped and a
             // `/* TODO */` default spliced in for the parameter nothing mapped to. That is a
             // mangled call site emitted under a comment promising it had been skipped, which is
-            // worse than either doing it or refusing. A C5 audit derived it by reading; no test
-            // reaches it, and that is stated rather than papered over — the branch needs a call
-            // site with fewer arguments than its own declaration, which compiling source cannot
-            // produce, so the guard is defensive and has no fixture. Same shape as the
-            // MAX_REFERENCES caps this sprint family records as uncoverable.
+            // worse than either doing it or refusing. A C5 audit derived it by reading, and the
+            // old behaviour was never right for this input: the `else` gave the ORIGINAL
+            // receiver while `buildNewArgs` spliced `/* TODO */` for the parameter nothing
+            // mapped to, so the return replaces a wrong rewrite with no rewrite.
+            //
+            // THE BRANCH IS REACHABLE AND UNCOVERED, which is NOT what an earlier version of
+            // this comment said. It claimed "compiling source cannot produce" a call with fewer
+            // arguments than its declaration, and the paragraph three lines above already names
+            // the counterexample: a VARARGS call. `void m(String a, String... rest)` invoked as
+            // `m("x")` has one argument against two parameters, so `receiverFromParameter=rest`
+            // gives index 1 >= 1 and fires here on source that compiles. Writing "no fixture is
+            // possible" was a claim asserted rather than read — the defect class this very
+            // checkpoint was repairing — so it is corrected rather than quietly dropped.
+            // The branch has no test; it is carried with C5's other uncovered branches instead
+            // of being excused.
             if (receiverArgIndex >= 0) {
                 if (receiverArgIndex >= oldArgs.size()) {
                     return;
