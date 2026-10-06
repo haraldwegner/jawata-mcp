@@ -226,8 +226,18 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             "type", "string",
             "description", "Rewrite every call site to invoke this (already-existing) method name "
                 + "instead, leaving the declaration unchanged — e.g. redirect callers of a "
-                + "deprecated method to its replacement. Exclusive with the signature/visibility "
-                + "changes; verify the result with compile_workspace."
+                + "deprecated method to its replacement. Keeps the RECEIVER as it is; to move the "
+                + "call onto a different object, add receiverFromParameter. Exclusive with the "
+                + "signature/visibility changes; verify the result with compile_workspace."
+        ));
+        properties.put("receiverFromParameter", Map.of(
+            "type", "string",
+            "description", "Only with retargetCallsTo: the name of a parameter whose ARGUMENT "
+                + "becomes the new receiver, dropping out of the argument list — so "
+                + "`callback.x(slot, a, b)` becomes `slot.<retargetCallsTo>(a, b)`. Use it when "
+                + "the behaviour moved to the object that was being passed in. REFUSED for a "
+                + "constructor (there is no receiver to replace) and for a name that is not a "
+                + "parameter of the target, which is answered with the list of names that are."
         ));
 
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
@@ -274,6 +284,17 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             }
         }
 
+        // Stage 5 / D9 row 1 — the receiver mode. `receiverFromParameter` only means anything
+        // alongside retargetCallsTo, because on its own it names no method to call on the new
+        // receiver; refusing says that rather than ignoring the parameter, which is how a caller
+        // ends up believing a flag did something.
+        String receiverFromParameter = getStringParam(arguments, "receiverFromParameter");
+        if (receiverFromParameter != null && !receiverFromParameter.isBlank() && !retarget) {
+            return Preparation.fail(ToolResponse.invalidParameter("receiverFromParameter",
+                "receiverFromParameter moves the call onto the object passed for that parameter, "
+                    + "so it needs retargetCallsTo to say which method to call on it"));
+        }
+
         // Parse the requested parameter list (jawata form).
         List<ParameterInfo> newParameters = null;
         if (arguments.has("newParameters") && arguments.get("newParameters").isArray()) {
@@ -309,7 +330,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         }
 
         if (retarget) {
-            return prepareRetarget(service, method, retargetCallsTo);
+            return prepareRetarget(service, method, retargetCallsTo, receiverFromParameter);
         }
         return prepareSignatureChange(service, method, newName, newReturnType, newParameters, visibility);
     }
@@ -519,7 +540,8 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
     // ===== class javadoc + Sprint-29 upstream case) =====================================
 
     private Preparation prepareRetarget(IJdtService service, IMethod method,
-                                        String retargetCallsTo) throws Exception {
+                                        String retargetCallsTo,
+                                        String receiverFromParameter) throws Exception {
         String oldName = method.getElementName();
         boolean isConstructor = method.isConstructor();
 
@@ -527,8 +549,47 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         // are unchanged, so reuse the call-site rewriter with a no-op mapping.
         String[] oldParamNames = method.getParameterNames();
         String[] oldParamTypes = method.getParameterTypes();
+
+        // Stage 5 / D9 row 1 — THE RECEIVER MODE, and it is deliberately a COMPOSITION of the
+        // machinery already here rather than a second rewrite path. The census records the gap
+        // exactly: `retargetCallsTo` keeps the receiver, and all 18 of Sprint 8's retargets
+        // CHANGED it — `callback.x(s, …)` became `s.x(…)`, the argument becoming the object.
+        //
+        // So the parameter named here is dropped from the list the rewriter is given, and the
+        // existing mapping then omits its argument for free; the only thing left to change is
+        // which expression goes in front of the dot. One index carries that, and
+        // `updateCallSite` reads it in one place.
+        int receiverIndex = -1;
+        boolean wantsReceiver = receiverFromParameter != null && !receiverFromParameter.isBlank();
+        if (wantsReceiver) {
+            // A CONSTRUCTOR HAS NO RECEIVER TO REPLACE, and this is refused rather than
+            // approximated: `new Foo(s, a)` has nowhere for `s` to go, and the three
+            // constructor branches below have no expression slot a caller would recognise.
+            if (isConstructor) {
+                return Preparation.fail(ToolResponse.invalidParameter("receiverFromParameter",
+                    "the target is a constructor, which has no receiver to move the call onto; "
+                        + "moving a constructor's argument out is a different refactoring"));
+            }
+            for (int i = 0; i < oldParamNames.length; i++) {
+                if (oldParamNames[i].equals(receiverFromParameter.strip())) {
+                    receiverIndex = i;
+                    break;
+                }
+            }
+            // NAMED, NOT COUNTED — the refusal lists the parameters that DO exist, because a
+            // caller who misremembered one name can act on that and cannot act on "not found".
+            if (receiverIndex < 0) {
+                return Preparation.fail(ToolResponse.invalidParameter("receiverFromParameter",
+                    "'" + receiverFromParameter + "' is not a parameter of " + oldName
+                        + "; its parameters are " + String.join(", ", oldParamNames)));
+            }
+        }
+
         List<ParameterInfo> current = new ArrayList<>();
         for (int i = 0; i < oldParamNames.length; i++) {
+            if (i == receiverIndex) {
+                continue;
+            }
             current.add(new ParameterInfo(oldParamNames[i], Signature.toString(oldParamTypes[i]), null));
         }
         int[] identity = buildParameterMapping(oldParamNames, current);
@@ -542,7 +603,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
                 // Retarget maps parameters by identity and declares no defaults, so this
                 // collector stays empty here by construction rather than by luck.
                 updateCallSite(match, oldName, retargetCallsTo, current, identity, isConstructor,
-                    editsByFile, new ArrayList<>());
+                    editsByFile, new ArrayList<>(), receiverIndex);
             } catch (Exception e) {
                 log.debug("Error updating call site: {}", e.getMessage());
             }
@@ -557,8 +618,19 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         extras.put("retargetedTo", retargetCallsTo);
         extras.put("totalEdits", totalEdits);
         extras.put("filesAffected", editsByFile.size());
+        // WHICH OF THE TWO SHAPES A CALLER GOT. The two differ in what the call ends up
+        // invoked ON, which is the whole point of the mode and is invisible in an edit count.
+        if (wantsReceiver) {
+            extras.put("receiverFromParameter", receiverFromParameter.strip());
+            extras.put("receiverNote", "The argument passed for '" + receiverFromParameter.strip()
+                + "' is now the receiver and no longer an argument: callers read "
+                + "<that argument>." + retargetCallsTo + "(…). The DECLARATION is unchanged, "
+                + "which is this operation's contract — the method being called on the new "
+                + "receiver has to exist there already, and compile_workspace is what says so.");
+        }
 
         String summary = "retarget calls of " + oldName + " -> " + retargetCallsTo
+            + (wantsReceiver ? " on the '" + receiverFromParameter.strip() + "' argument" : "")
             + " (" + totalEdits + " edits in " + editsByFile.size() + " files)";
         return Preparation.of(change, summary, extras);
     }
@@ -601,7 +673,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
                                 List<ParameterInfo> newParams, int[] paramMapping,
                                 boolean isConstructor,
                                 Map<IFile, List<TextEdit>> editsByFile,
-                                List<Map<String, Object>> defaultsInserted)
+                                List<Map<String, Object>> defaultsInserted, int receiverArgIndex)
                                 throws JavaModelException {
         Object element = match.getElement();
         if (!(element instanceof IJavaElement javaElement)) {
@@ -698,8 +770,22 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         String prefix;
         if (node instanceof MethodInvocation mi) {
             oldArgs = mi.arguments();
-            prefix = (mi.getExpression() != null ? mi.getExpression().toString() + "." : "")
-                + newName + "(";
+            // Stage 5 / D9 row 1 — THE ONE PLACE THE RECEIVER MODE CHANGES ANYTHING. The
+            // argument becomes the expression before the dot; the parameter list it came from
+            // was already built without it, so the rewriter drops it from the arguments without
+            // being told twice.
+            //
+            // The INDEX is checked against this call's own argument count rather than trusted:
+            // a reference search can return a site with fewer arguments than the declaration
+            // has — a varargs call, or source that no longer compiles — and reading past the
+            // end there would be an exception in place of an answer. Such a site is left alone,
+            // which the response's edit count then shows as a site not rewritten.
+            if (receiverArgIndex >= 0 && receiverArgIndex < oldArgs.size()) {
+                prefix = oldArgs.get(receiverArgIndex).toString() + "." + newName + "(";
+            } else {
+                prefix = (mi.getExpression() != null ? mi.getExpression().toString() + "." : "")
+                    + newName + "(";
+            }
         } else if (node instanceof ClassInstanceCreation cic) {
             oldArgs = cic.arguments();
             prefix = (cic.getExpression() != null ? cic.getExpression().toString() + "." : "")
@@ -906,7 +992,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         for (SearchMatch match : references) {
             try {
                 updateCallSite(match, oldName, newName, newParameters, paramMapping,
-                    isConstructor, editsByFile, defaultsInserted);
+                    isConstructor, editsByFile, defaultsInserted, -1);
             } catch (Exception e) {
                 log.debug("Error updating call site: {}", e.getMessage());
             }
