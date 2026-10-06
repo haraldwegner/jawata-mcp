@@ -438,8 +438,17 @@ public class RunTestsTool extends AbstractTool {
             // for the two cases that genuinely want it.
             boolean fullRun = arguments.has("fullRun")
                 && arguments.get("fullRun").asBoolean(false);
+            // A run that is RECORDING evidence must not be shaped by evidence.
+            // Narrowing it would record a manifest whose own selection is
+            // narrow, which the scope rule then reads to narrow the next run
+            // further — a loop that converges on one test class and calls it a
+            // suite. The run that produces the evidence sees the scope it
+            // claims to describe.
+            boolean recording = (arguments.has("attribution")
+                    && arguments.get("attribution").asBoolean(false))
+                || (arguments.has("coverage") && arguments.get("coverage").asBoolean(false));
             Map<String, Object> selection = null;
-            if ("package".equals(kind) && !fullRun) {
+            if ("package".equals(kind) && !fullRun && !recording) {
                 selection = narrowToImpacted(spec, arguments,
                     scope.get("packageName").asText());
             }
@@ -1623,6 +1632,22 @@ public class RunTestsTool extends AbstractTool {
             return note;
         }
         java.util.List<String> classes = sel.testClasses();
+        // A BOUND, not a reachable branch, and it is written down as such
+        // rather than claimed as covered: `cannotNarrowBecause` already refuses
+        // an empty ranking, so nothing today reaches here with no classes. It
+        // stays because the failure it prevents is the worst one available —
+        // clearing the package selector and adding nothing leaves the runner
+        // with no selectors at all, which exits 2 with "argfile has no
+        // selectors" and, on a path that swallowed that, would be a run that
+        // executed NOTHING and reported success. Mutation M4 produced exactly
+        // that state, which is how this came to be written.
+        if (classes.isEmpty()) {
+            note.put("narrowed", false);
+            note.put("ran", "the whole scope");
+            note.put("reason", "the selection named no test class, and a run with no "
+                + "selectors executes nothing at all");
+            return note;
+        }
         spec.selectPackages.clear();
         spec.selectClasses.addAll(classes);
         note.put("narrowed", true);

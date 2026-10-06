@@ -290,6 +290,30 @@ class ImpactedTestsFromDiffTest {
             () -> assertEquals(3, summary.get("total"), "so all three ran; got: " + run));
     }
 
+    @Test
+    @DisplayName("D21: a run that RECORDS evidence is never shaped by evidence")
+    void anAttributionRunIsNeverNarrowed() throws Exception {
+        // Found by mutation M4 rather than by review. Without this, the second
+        // attribution run over a package narrows itself to what the FIRST one
+        // covered, records a manifest saying it only selected those classes,
+        // and the next run reads that and narrows further — a loop that
+        // converges on one test class and calls it a suite.
+        RunTestsTool tool = selectionFixture();          // evidence now exists
+        editWidget();
+
+        Map<String, Object> rerun = packageRun(tool, Map.of("attribution", true));
+        Map<String, Object> summary = cast2(rerun.get("summary"));
+
+        assertAll(
+            () -> assertFalse(rerun.containsKey("selection"),
+                "a recording run carries no selection note at all — it was never a candidate "
+                    + "for narrowing; got: " + rerun),
+            () -> assertEquals(3, summary.get("total"),
+                "and it ran the whole package, which is the only width at which the evidence "
+                    + "it is about to record means what its manifest will say it means; "
+                    + "got: " + rerun));
+    }
+
     // ---------------------------------------------------------------- fixture
 
     /**
