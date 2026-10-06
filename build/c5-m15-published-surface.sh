@@ -10,8 +10,8 @@
 #
 # WHAT IT PROVES:
 #   * D10's tool is PUBLISHED, not merely built and registered in a method nobody calls;
-#   * health_check's toolCount EQUALS the number of tools tools/list actually returns —
-#     the two disagreeing is how a tool ships invisibly;
+#   * the shipped surface is EXACTLY 43 tools, and health_check's toolCount is that same
+#     43 — each pinned against the LITERAL, never against the other;
 #   * every refactoring door publishes exactly the kind count C9 assigns it, with inline at
 #     SIX since Sprint 28g's third change added `unreferenced_member`;
 #   * and hierarchy is counted on `direction`, not `kind`, because that door selects on its
@@ -86,12 +86,16 @@ listed = rpc("tools/list", {})["result"]["tools"]
 names = [t["name"] for t in listed]
 by_name = {t["name"]: t for t in listed}
 
-# PROOF OF LIFE FIRST. Without it an empty or broken list makes every absence check below
-# pass having looked at nothing.
-if len(names) > 20:
-    ok("tools/list returns %d tools" % len(names))
+# THE COUNT, PINNED TO AN ABSOLUTE NUMBER. This replaces a `len(names) > 20` floor, and a
+# C5 audit is why: a floor cannot see a tool LEAVE, since any single departure from 43 still
+# lands above 20. The criterion asks for the toolCount "recomputed from the shipped list",
+# and only a literal makes a vanished tool fail.
+EXPECTED_TOOLS = 43
+if len(names) == EXPECTED_TOOLS:
+    ok("tools/list returns exactly %d tools" % len(names))
 else:
-    bad("tools/list returned %d tools — too few to be the real surface" % len(names))
+    bad("the shipped surface is %d tools, expected %d. A tool was added or stopped "
+        "shipping: %s" % (len(names), EXPECTED_TOOLS, sorted(names)))
 
 # --- D10 is PUBLISHED -----------------------------------------------------------------
 if "delete_anonymous_implementation" in names:
@@ -104,11 +108,18 @@ else:
 hc = rpc("tools/call", {"name": "health_check", "arguments": {}})
 data = json.loads(hc["result"]["content"][0]["text"])["data"]
 reported = data.get("toolCount")
-if reported == len(names):
-    ok("health_check toolCount %s equals the %d tools tools/list returns" % (reported, len(names)))
+# PINNED TO THE LITERAL, NOT TO len(names). Comparing the two was a TAUTOLOGY and a C5 audit
+# proved it by reading the production path: ToolRegistry.getToolCount() returns tools.size(),
+# getToolDefinitions() emits one entry per element of the same map with no filter, and
+# handleToolsList() returns that list unchanged — so both sides were tools.size() and a tool
+# vanishing moved them together. The probe's own header claimed "the two disagreeing is how a
+# tool ships invisibly"; they cannot disagree, so the claim described a check that could not
+# fail. Each side now meets the number independently.
+if reported == EXPECTED_TOOLS:
+    ok("health_check toolCount is %s, the expected absolute" % reported)
 else:
-    bad("health_check says toolCount=%s while tools/list returns %d — a tool can ship "
-        "invisibly between those two numbers" % (reported, len(names)))
+    bad("health_check says toolCount=%s, expected %d — pinned against the literal rather "
+        "than against tools/list, because both read the same map" % (reported, EXPECTED_TOOLS))
 
 # --- per-door kind counts, read off each door's own published schema --------------------
 # hierarchy selects on `direction`; every other door on `kind`. Asking the wrong one reports

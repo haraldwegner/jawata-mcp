@@ -181,7 +181,12 @@ esac
 # doors that already did their job — move_method, convert_anonymous_to_lambda,
 # replace_duplicates, optimize_imports_workspace — and two were renamed rather than
 # removed, so the count falls by four and not by six.
-EXPECTED_TOOLS=42
+# Sprint 28g D10: 42 -> 43, ON PURPOSE and this line is part of that change, exactly as the
+# note above prescribes. `delete_anonymous_implementation` ships as a STANDALONE tool because
+# the signed spec says "one new tool"; the architect report records the tension with 28d-rescue's
+# 46 -> 42 consolidation and the alternative (`inline kind=anonymous_implementation`, which would
+# return the count to 42), and the spec's wording stands until ruled otherwise.
+EXPECTED_TOOLS=43
 TOOLS="$(printf '%s' "$H" | grep -oE '"toolCount"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+')"
 if [ "${TOOLS:-missing}" = "$EXPECTED_TOOLS" ]; then
     pass "tool-count-still-$EXPECTED_TOOLS health_check reports exactly $EXPECTED_TOOLS tools"

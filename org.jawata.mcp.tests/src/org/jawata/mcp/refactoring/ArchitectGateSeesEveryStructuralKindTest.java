@@ -113,8 +113,16 @@ class ArchitectGateSeesEveryStructuralKindTest {
                 .structuralKinds().size(),
             "extract: superclass, interface, class, combine_functions, function_to_command,"
                 + " split_phase");
-        assertEquals(3, new InlineTool(() -> null, new RefactoringChangeCache())
-                .structuralKinds().size(), "inline: class, subclass, middle_man");
+        // FOUR since Sprint 28g D9 change 3, and this is the ruling this test's own name asks
+        // for. The criterion asserted above is "changes a SIGNATURE or a HIERARCHY": deleting a
+        // published member REMOVES a signature from its type, which is strictly stronger than
+        // changing one, and for an interface member it changes what every implementor must
+        // provide, which is the hierarchy. So it is structural on the file's existing criterion
+        // rather than on a new one — contrast `move kind=statements_to_callers` below, which
+        // rewrites call sites and is deliberately NOT structural.
+        assertEquals(4, new InlineTool(() -> null, new RefactoringChangeCache())
+                .structuralKinds().size(),
+            "inline: class, subclass, middle_man, unreferenced_member");
         assertEquals(4, new MoveTool(() -> null, new RefactoringChangeCache())
                 .structuralKinds().size(), "move: method, field, class, package");
     }

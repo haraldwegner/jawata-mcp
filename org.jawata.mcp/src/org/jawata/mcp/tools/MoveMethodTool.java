@@ -271,9 +271,21 @@ public class MoveMethodTool extends AbstractRefactoringTool
             // public, so it is ASKED rather than inferred — and asked AFTER setTarget, because
             // whether the body still needs the old owner depends on which receiver it moves
             // onto.
+            // THE VALUE IS VALIDATED BEFORE THE GATE, and a C5 audit is why it had to move.
+            // All of this used to sit inside `needsTargetNode()`, so on every move whose body
+            // reaches nothing — which is most of them — `oldOwnerAccess=sideways` was accepted
+            // in silence. That is exactly the failure the sibling D9 change names in its own
+            // comment one file away: "which is how a caller ends up believing a flag did
+            // something". A garbage mode is an error whatever the body does; only the two
+            // BEHAVIOURAL arms depend on the gate.
+            String access = getStringParam(arguments, "oldOwnerAccess");
+            String mode = access == null || access.isBlank() ? "refuse" : access.strip();
+            if (!"refuse".equals(mode) && !"parameter".equals(mode)) {
+                return ToolResponse.invalidParameter("oldOwnerAccess",
+                    "'" + access + "' is not a choice; one of: refuse, parameter");
+            }
+
             if (processor.needsTargetNode()) {
-                String access = getStringParam(arguments, "oldOwnerAccess");
-                String mode = access == null || access.isBlank() ? "refuse" : access.strip();
                 IType destination = chosen.getType() == null ? null
                     : (IType) chosen.getType().getJavaElement();
                 String fromPackage = destination == null ? "the destination"
@@ -281,16 +293,16 @@ public class MoveMethodTool extends AbstractRefactoringTool
                 String ownerPackage = method.getDeclaringType().getPackageFragment()
                     .getElementName();
 
-                switch (mode) {
-                    case "parameter" -> {
-                        // JDT's own behaviour, now CHOSEN rather than defaulted into.
-                        String name = getStringParam(arguments, "oldOwnerName");
-                        if (name != null && !name.isBlank()) {
-                            processor.setTargetName(name.strip());
-                        }
+                // TWO arms, not a switch with an unreachable default: the value is already
+                // known to be one of the two, because it is validated above the gate.
+                if ("parameter".equals(mode)) {
+                    // JDT's own behaviour, now CHOSEN rather than defaulted into.
+                    String name = getStringParam(arguments, "oldOwnerName");
+                    if (name != null && !name.isBlank()) {
+                        processor.setTargetName(name.strip());
                     }
-                    case "refuse" -> {
-                        return ToolResponse.invalidParameter("oldOwnerAccess",
+                } else {
+                    return ToolResponse.invalidParameter("oldOwnerAccess",
                             "the moved body still reaches " + method.getDeclaringType()
                                 .getElementName() + ", so it cannot stand alone on "
                                 + (destination == null ? "the destination"
@@ -302,11 +314,6 @@ public class MoveMethodTool extends AbstractRefactoringTool
                                 + "private field public. Choose: oldOwnerAccess=parameter to "
                                 + "take both deliberately, or re-home the body on a port or "
                                 + "listener first and move it then.");
-                    }
-                    default -> {
-                        return ToolResponse.invalidParameter("oldOwnerAccess",
-                            "'" + access + "' is not a choice; one of: refuse, parameter");
-                    }
                 }
 
                 // THE PACKAGE RULE, CHECKED ON THIS TOOL'S OWN RESULT rather than left for a
@@ -314,8 +321,12 @@ public class MoveMethodTool extends AbstractRefactoringTool
                 // destination may not reach, and a move that would create exactly that edge is
                 // refused before anything is written — which is the half the census asks for
                 // and the half no detector can supply, because the edge does not exist yet.
+                //
+                // The `"parameter".equals(mode)` clause this condition used to open with is
+                // GONE: the only other mode returns above, so it was necessarily true here and
+                // read as a condition that could be false.
                 String forbidden = getStringParam(arguments, "forbiddenPackage");
-                if ("parameter".equals(mode) && forbidden != null && !forbidden.isBlank()
+                if (forbidden != null && !forbidden.isBlank()
                         && ownerPackage.startsWith(forbidden.strip())) {
                     return ToolResponse.invalidParameter("forbiddenPackage",
                         "the move would add " + method.getDeclaringType().getElementName()

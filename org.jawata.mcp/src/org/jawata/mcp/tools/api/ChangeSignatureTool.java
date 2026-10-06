@@ -780,7 +780,22 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             // has — a varargs call, or source that no longer compiles — and reading past the
             // end there would be an exception in place of an answer. Such a site is left alone,
             // which the response's edit count then shows as a site not rewritten.
-            if (receiverArgIndex >= 0 && receiverArgIndex < oldArgs.size()) {
+            //
+            // THE SKIP IS A `return`, AND IT HAS TO BE. The first version of this guard only
+            // chose a different `prefix` and fell through to the rewrite below — so a short
+            // site was not left alone at all: `newParams` is already built WITHOUT the receiver
+            // parameter, so the site was rewritten with its receiver argument dropped and a
+            // `/* TODO */` default spliced in for the parameter nothing mapped to. That is a
+            // mangled call site emitted under a comment promising it had been skipped, which is
+            // worse than either doing it or refusing. A C5 audit derived it by reading; no test
+            // reaches it, and that is stated rather than papered over — the branch needs a call
+            // site with fewer arguments than its own declaration, which compiling source cannot
+            // produce, so the guard is defensive and has no fixture. Same shape as the
+            // MAX_REFERENCES caps this sprint family records as uncoverable.
+            if (receiverArgIndex >= 0) {
+                if (receiverArgIndex >= oldArgs.size()) {
+                    return;
+                }
                 prefix = oldArgs.get(receiverArgIndex).toString() + "." + newName + "(";
             } else {
                 prefix = (mi.getExpression() != null ? mi.getExpression().toString() + "." : "")

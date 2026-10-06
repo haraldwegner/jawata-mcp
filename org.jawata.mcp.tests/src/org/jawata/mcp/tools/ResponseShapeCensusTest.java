@@ -107,7 +107,8 @@ class ResponseShapeCensusTest {
     private static final Map<String, Integer> EXPECTED_KINDS_PER_DOOR = new LinkedHashMap<>();
     static {
         EXPECTED_KINDS_PER_DOOR.put("extract", 11);
-        EXPECTED_KINDS_PER_DOOR.put("inline", 5);
+        // SIX since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`.
+        EXPECTED_KINDS_PER_DOOR.put("inline", 6);
         EXPECTED_KINDS_PER_DOOR.put("move", 6);
         EXPECTED_KINDS_PER_DOOR.put("hierarchy", 7);
         EXPECTED_KINDS_PER_DOOR.put("generate", 7);
@@ -117,7 +118,16 @@ class ResponseShapeCensusTest {
         EXPECTED_KINDS_PER_DOOR.put("apply_cleanup", 10);
     }
 
-    /** 11+5+6+7+7+11+11+10+10. Summed here so the two cannot drift apart silently. */
+    /**
+     * Summed FROM the map above, so the two cannot drift apart silently.
+     *
+     * <p>This javadoc used to spell the addition out — "11+5+6+7+7+11+11+10+10" — and when
+     * Sprint 28g came to change one entry the written sum ALREADY disagreed with the map it
+     * described: it ended "10+10" where the map says {@code data=11, apply_cleanup=10}, so it
+     * totalled 78 against a real 79. Nothing held it to the list. The arithmetic is deleted
+     * rather than corrected, which is this sprint family's own earned cure for a number
+     * written in prose beside the list that settles it; the method below needs none.</p>
+     */
     private static int expectedTotal() {
         return EXPECTED_KINDS_PER_DOOR.values().stream().mapToInt(Integer::intValue).sum();
     }

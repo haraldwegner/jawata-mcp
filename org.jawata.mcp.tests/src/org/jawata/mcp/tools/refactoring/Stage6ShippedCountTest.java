@@ -69,7 +69,12 @@ class Stage6ShippedCountTest {
         Map<String, Integer> counted = new LinkedHashMap<>();
         doors.forEach((name, door) -> counted.put(name, door.publishedKinds().size()));
 
-        assertEquals(Map.of("extract", 11, "inline", 5, "move", 6), counted,
+        // inline is SIX since Sprint 28g's D9 change 3 published `unreferenced_member`, which
+        // that sprint's own S5 table authorises ("dead-code removal covers a public member with
+        // no references"). C9 contracted FIVE, and this number is not free to drift: it moved by
+        // a later sprint's written deliverable, and this comment is the authority a reader needs
+        // so a changed C9 figure can never read as a silent correction.
+        assertEquals(Map.of("extract", 11, "inline", 6, "move", 6), counted,
             "the plan's C9 clause names a count per tool and says why a ceiling would not"
                 + " do — it 'would pass a tool that finished two kinds short'. These are"
                 + " read from the published schemas, so a kind that reaches the enum"

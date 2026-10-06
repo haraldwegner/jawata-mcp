@@ -64,7 +64,12 @@ public class Strategy {
 
     /** REFUSED — two different receivers, so there is no single target to promote. */
     public SlotListener wrapperWithTwoReceivers() {
-        final SlotManager other = new SlotManager();
+        // NAMED `standby` RATHER THAN `other`, and a C5 audit is why. The refusal's own
+        // template ends "promoting either would silently drop the other's calls", so a
+        // receiver called `other` made the test's `contains("other")` needle true whatever
+        // the second receiver was named — the claim "the refusal must name BOTH receivers"
+        // was paid for by the message's boilerplate.
+        final SlotManager standby = new SlotManager();
         return new SlotListener() {
             @Override
             public void onFill(String order) {
@@ -73,7 +78,35 @@ public class Strategy {
 
             @Override
             public void onCancel(String order) {
-                other.onCancel(order);
+                standby.onCancel(order);
+            }
+        };
+    }
+
+    /**
+     * REFUSED — the forward RENAMES the method, so the target does not answer what the
+     * interface asks. {@code onFill} is routed to {@code onCancel}: explicit receiver, a
+     * variable, the parameter passed straight through, and only the NAME differs.
+     *
+     * <p><strong>This wrapper exists because a C5 audit found the refusal unreachable.</strong>
+     * The implicit-receiver check was deliberately moved AHEAD of the name check this
+     * checkpoint — correctly, since {@code wrapperOnItself} is necessarily also a rename and
+     * was answering for the wrong branch. But that fixture was the only route to
+     * {@code FORWARD_RENAMES_THE_METHOD}, and the reorder left the code with no test mentioning
+     * it anywhere. Fixing the order while deleting the only coverage of the branch reordered is
+     * half a repair, and a published refusal reachable by no test is indistinguishable from one
+     * that no longer fires.</p>
+     */
+    public SlotListener wrapperThatRenames() {
+        return new SlotListener() {
+            @Override
+            public void onFill(String order) {
+                manager.onCancel(order);
+            }
+
+            @Override
+            public void onCancel(String order) {
+                manager.onCancel(order);
             }
         };
     }

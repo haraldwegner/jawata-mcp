@@ -200,7 +200,17 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // themselves — the tautology this file's sibling guards already record — so the number
         // is what a drifting population cannot fake. It was `examined >= 30` once: a floor
         // cannot see a door LEAVE, because any single departure still lands above it.
-        org.junit.jupiter.api.Assertions.assertEquals(79, examined,
+        // 80 since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`. The
+        // comment above is the rule and it held: a kind added without a route or a reason
+        // changes this number, and this one carries a written reason in
+        // CureCatalog.SHIPPED_BUT_UNROUTED rather than a route, because no shipped detector
+        // can report its subject. Measured, each from the candidate's own published text:
+        // `unused` is scoped to "unused PRIVATE methods and fields"; `called_only_by_tests`
+        // emits "(N test reference(s), zero production callers)" and so needs N >= 1, which a
+        // zero-reference member never has; and `speculative_generality` has ONE emission site,
+        // naming Collapse Hierarchy / Inline Class — a redundant hierarchy level, not a dead
+        // published member.
+        org.junit.jupiter.api.Assertions.assertEquals(80, examined,
             "PROOF OF LIFE: the nine doors must publish their kinds here, or this loop runs"
                 + " over nothing and passes. A door removed from RefactoringDoors.all, or a"
                 + " kind added without a route or a reason, changes this number. Examined: "

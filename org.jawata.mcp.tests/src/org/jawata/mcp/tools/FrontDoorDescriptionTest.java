@@ -4,12 +4,14 @@ import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -103,11 +105,66 @@ class FrontDoorDescriptionTest {
         // What must NOT change is the prose, and this compares every non-whitespace
         // character in order: a dropped sentence, a mangled refusal, a bullet that lost its
         // tail all fail here, while the alignment is free to differ.
-        assertEquals(content(INLINE_LEGACY_DESCRIPTION),
-            content(FrontDoorDescription.ASSEMBLER.describe(inline())),
-            "the per-kind prose moved from the door onto its delegates; if a character of it"
-                + " went missing on the way, the move lost documentation rather than"
-                + " relocating it");
+        //
+        // EQUALITY BECAME THE WRONG QUESTION A SECOND TIME, and for the opposite reason.
+        // M5 made byte-identity wrong because the LAYOUT changed. Sprint 28g D9 change 3 makes
+        // whole-text equality wrong because the door GREW: `unreferenced_member` is a sixth
+        // kind, so the published description legitimately contains prose that was never in the
+        // legacy text, and the generated usage line now reads one name longer.
+        //
+        // The golden is deliberately NOT updated. Its constant says "AS IT STOOD BEFORE THE
+        // SEAM", and a constant edited every time a kind is added stops being that and becomes
+        // a snapshot of itself — a label going false while the code around it changes is this
+        // sprint family's most-recorded defect, and a golden re-recorded from the current state
+        // can no longer fail for the reason it was written. So the legacy text stays frozen and
+        // the claim is checked PER PART: every piece of the old prose must still be found in
+        // what the door publishes. A dropped sentence, a mangled refusal or a bullet that lost
+        // its tail still fails here; a kind being ADDED does not.
+        String published = content(FrontDoorDescription.ASSEMBLER.describe(inline()));
+
+        // PROOF OF LIFE. Containment against an empty or tiny description would pass every
+        // check below having compared almost nothing.
+        assertTrue(published.length() > 1000,
+            "the assembled description must actually be the door's prose, or the containment"
+                + " checks below are vacuous. Got " + published.length() + " characters");
+
+        for (String part : legacyParts()) {
+            assertTrue(published.contains(content(part)),
+                "this piece of inline's pre-seam prose is no longer in what the door"
+                    + " publishes, so the move lost documentation rather than relocating it:\n"
+                    + part);
+        }
+
+        // AND THE USAGE LINE, which is generated from the routing table and so cannot be
+        // compared as text once a kind joins it. Each legacy kind must still be OFFERED there.
+        for (String kind : List.of("method", "variable", "class", "subclass", "middle_man")) {
+            assertTrue(published.contains(kind),
+                "the usage line must still offer the pre-seam kind '" + kind + "'");
+        }
+    }
+
+    /**
+     * The frozen golden, split into the parts whose prose must survive: the preamble, one
+     * entry per pre-seam bullet, and the closing notes.
+     *
+     * <p>The generated USAGE line is excluded by construction — it is assembled from the
+     * routing table, so its text necessarily changes when a kind is added, and the five
+     * legacy kind names are asserted against it separately.</p>
+     */
+    private static List<String> legacyParts() {
+        int usage = INLINE_LEGACY_DESCRIPTION.indexOf("USAGE:");
+        int firstBullet = INLINE_LEGACY_DESCRIPTION.indexOf("\n- ");
+        int tail = INLINE_LEGACY_DESCRIPTION.indexOf("IMPORTANT:");
+
+        List<String> parts = new ArrayList<>();
+        parts.add(INLINE_LEGACY_DESCRIPTION.substring(0, usage));
+        for (String bullet : INLINE_LEGACY_DESCRIPTION.substring(firstBullet, tail).split("\n- ")) {
+            if (!bullet.isBlank()) {
+                parts.add(bullet);
+            }
+        }
+        parts.add(INLINE_LEGACY_DESCRIPTION.substring(tail));
+        return parts;
     }
 
     @Test
@@ -155,7 +212,8 @@ class FrontDoorDescriptionTest {
                 kind + "'s bullet must be what the DELEGATE says, not what the door said");
         });
         // PROOF OF LIFE: a door with no delegates would satisfy both loops vacuously.
-        assertTrue(door.delegates().size() == 5, "inline routes five kinds");
+        // SIX since Sprint 28g D9 change 3 published `unreferenced_member`.
+        assertTrue(door.delegates().size() == 6, "inline routes six kinds");
     }
 
     @Test
@@ -181,8 +239,15 @@ class FrontDoorDescriptionTest {
                     + " deriving it: " + kind + " missing from " + usage);
         }
         // PROOF OF LIFE for the loop above: a door publishing nothing would satisfy it.
-        assertTrue(door.publishedKinds().size() >= 5,
-            "inline publishes five kinds; an empty list makes the loop vacuous");
+        //
+        // An EXACT count, not a floor — and the change is a strengthening rather than a
+        // repair, since `>= 5` still passed at six. A floor cannot see a kind LEAVE: any
+        // single departure from six still lands above five, so the loop would go quiet about
+        // a kind that stopped shipping. That is the same re-narrowing
+        // EveryShippedKindIsRoutedOrExplainedTest records for its own `examined >= 30`.
+        assertEquals(6, door.publishedKinds().size(),
+            "inline publishes six kinds since Sprint 28g D9 change 3 added"
+                + " `unreferenced_member`; an empty list makes the loop above vacuous");
     }
 
     @Test
@@ -213,9 +278,40 @@ class FrontDoorDescriptionTest {
         // makes all three agree. An ordered comparison would fail on that and say nothing
         // about whether any bullet's prose survived, which is the thing worth checking.
         RefactorToPatternTool door = new RefactorToPatternTool(() -> null, new RefactoringChangeCache());
-        assertEquals(bullets(RefactorToPatternTool.LEGACY_KIND_BLOCK),
-            bullets(FrontDoorDescription.ASSEMBLER.kindBlockOf(door)),
-            "every kind's prose must survive the move onto its delegate, character for"
+        Map<String, String> was = bullets(RefactorToPatternTool.LEGACY_KIND_BLOCK);
+        Map<String, String> now = bullets(FrontDoorDescription.ASSEMBLER.kindBlockOf(door));
+
+        // PROOF OF LIFE: two empty maps are equal, and so are two maps this helper failed to
+        // parse. Eleven is the door's contracted kind count.
+        assertEquals(11, was.size(), "the legacy block must parse to eleven bullets: " + was.keySet());
+        assertEquals(11, now.size(), "and so must the projection: " + now.keySet());
+
+        // ONE KIND IS EXEMPT, AND THE EXEMPTION IS ASSERTED RATHER THAN SKIPPED — an exemption
+        // and a passing check are indistinguishable from outside, which is this sprint family's
+        // most-repeated finding.
+        //
+        // Sprint 28g D9 change 4 gave `refactor_to_state` a SECOND entry path: state spread
+        // across nullable fields, branched on with null tests, where before it performed only a
+        // switch on an int state field. So the legacy sentence — "a method switching on an int
+        // state field becomes delegation to nested State classes" — became FALSE of the
+        // operation, describing one of its two shapes as though it were the whole. Rewriting it
+        // is a documentation change the behaviour change REQUIRED, not prose lost in the move,
+        // and containment cannot express it because the old sentence is gone rather than
+        // extended. Asserting the inequality means a silent revert of that prose fails here.
+        assertNotEquals(was.get("refactor_to_state"), now.get("refactor_to_state"),
+            "refactor_to_state's bullet is the one deliberate rewrite: D9 change 4 added the"
+                + " nullable-field shape, so the int-switch-only sentence no longer describes"
+                + " the operation. If these are equal again, either the prose was reverted or"
+                + " the second entry path went undocumented");
+
+        // AND THE OTHER TEN STILL COMPARE EXACTLY, which is the claim this test was written
+        // for: the move onto the delegates lost nothing.
+        Map<String, String> wasRest = new LinkedHashMap<>(was);
+        Map<String, String> nowRest = new LinkedHashMap<>(now);
+        wasRest.remove("refactor_to_state");
+        nowRest.remove("refactor_to_state");
+        assertEquals(wasRest, nowRest,
+            "every OTHER kind's prose must survive the move onto its delegate, character for"
                 + " non-whitespace character");
     }
 

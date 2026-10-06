@@ -159,8 +159,15 @@ class StateFromNullableFieldsTest {
     }
 
     @Test
-    @DisplayName("THE CONTROL: the int-switch shape still works, untouched by this path")
-    void theSwitchShapeStillWorks() throws Exception {
+    // RENAMED at C5, because the old name claimed more than the body does. It read "THE
+    // CONTROL: the int-switch shape still works, untouched by this path", and this test never
+    // drives a switch — it positions on a plain method and reads the refusal. The comment
+    // below already admitted that, so the name and the body disagreed in the same screen. The
+    // genuine switch control is RefactorToStateToolTest, which is named here so a reader
+    // looking for it is not left thinking this was it.
+    @DisplayName("a position that is neither shape is refused by a message naming BOTH"
+        + " (the int-switch control proper is RefactorToStateToolTest)")
+    void neitherShapeIsRefusedNamingBoth() throws Exception {
         // The switch path's own fixture lives in another project, so this asserts the narrower
         // thing that matters here: a position that is neither a switch nor an if-chain is
         // refused by a message naming BOTH shapes, which is what says the old path survived

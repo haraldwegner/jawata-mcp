@@ -116,8 +116,9 @@ class TheRoutingTableIsTheKindListTest {
         }
         assertEquals(List.of(), problems, String.join("\n  ", problems));
         // PROOF OF LIFE: six doors routing nothing would satisfy the loop.
-        assertEquals(50, compared,
-            "the six converted doors route fifty kinds between them — extract 11, inline 5,"
-                + " move 6, refactor_to_pattern 11, generate 7, apply_cleanup 10");
+        // FIFTY-ONE since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`.
+        assertEquals(51, compared,
+            "the six converted doors route fifty-one kinds between them — extract 11,"
+                + " inline 6, move 6, refactor_to_pattern 11, generate 7, apply_cleanup 10");
     }
 }

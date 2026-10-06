@@ -45,14 +45,19 @@ class AForwardingAnonymousClassIsDeletedTest {
 
     private JdtServiceImpl service;
     private DeleteAnonymousImplementationTool tool;
+    private org.jawata.mcp.tools.RefactoringTool lifecycle;
     private ObjectMapper mapper;
     private Path projectPath;
 
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("dead-api");
-        tool = new DeleteAnonymousImplementationTool(() -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        // The cache is SHARED with the lifecycle door, which is what makes a staged change
+        // findable by its changeId — a fresh cache per tool would lose it between the two.
+        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
+            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        tool = new DeleteAnonymousImplementationTool(() -> service, cache);
+        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
         mapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }
@@ -92,8 +97,13 @@ class AForwardingAnonymousClassIsDeletedTest {
             () -> "the creation must become the receiver:\n" + body);
         assertFalse(body.contains("new SlotListener()"),
             () -> "and the anonymous class must be gone from it:\n" + body);
-        assertTrue(strategy.contains("new SlotListener()"),
-            "the OTHER wrappers must be untouched — this operation acts on the one it was given");
+        // A COUNT, NOT A CONTAINMENT. `contains` proved that ONE of the siblings survived, not
+        // that all of them did — a C5 audit named it, and the compile assertion below only
+        // catches gross damage. The fixture declares SEVEN wrappers and this case deletes one,
+        // so six creations must remain; a rewrite that caught a sibling now fails by number.
+        assertEquals(6, strategy.split("new SlotListener\\(\\)", -1).length - 1,
+            () -> "the OTHER wrappers must be untouched — this operation acts on the one it was"
+                + " given, and the fixture's other six must still construct:\n" + strategy);
 
         CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service);
         @SuppressWarnings("unchecked")
@@ -102,6 +112,42 @@ class AForwardingAnonymousClassIsDeletedTest {
         assertEquals(0, ((Number) cdata.get("errorCount")).intValue(),
             () -> "the promoted target and the rewritten call must compile; diagnostics="
                 + cdata.get("diagnostics"));
+    }
+
+    @Test
+    @DisplayName("it STAGES: nothing is written until the changeId is applied")
+    void stagesTheChangeAndAppliesItOnDemand() throws Exception {
+        // C5's exit says the new tool is "staged and reversible". Only the REVERSIBLE half was
+        // asserted — a non-null undoChangeId — and a C5 audit named the gap: no test drove this
+        // tool with auto_apply=false at all, so "staged" was a word in the criterion with
+        // nothing behind it. The two halves are different claims: an undo handle says a change
+        // can be taken back AFTER it landed, staging says it had not landed yet.
+        String strategyBefore = Files.readString(strategyPath());
+        String managerBefore = Files.readString(managerPath());
+
+        ToolResponse r = deleteAt("wrapper()", false);
+        assertTrue(r.isSuccess(), () -> "staging failed: " + describe(r));
+
+        assertEquals(strategyBefore, Files.readString(strategyPath()),
+            "STAGING must not write — the creation expression is still there");
+        assertEquals(managerBefore, Files.readString(managerPath()),
+            "and must not write the OTHER file either: this operation edits two, so a staging"
+                + " that held one back and promoted the target anyway would be the worse half");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        Object changeId = data.get("changeId");
+        assertNotNull(changeId, () -> "a staged change must be retrievable by id: " + data);
+
+        ObjectNode apply = mapper.createObjectNode();
+        apply.put("action", "apply");
+        apply.put("changeId", String.valueOf(changeId));
+        assertTrue(lifecycle.execute(apply).isSuccess(),
+            "the staged change must be findable in the shared cache and applicable by its id");
+
+        // AND IT WAS THE REAL CHANGE, not an empty one that staged and applied cleanly.
+        assertTrue(Files.readString(managerPath()).contains("implements SlotListener"),
+            "applying the staged change must do what the immediate path does");
     }
 
     @Test
@@ -132,8 +178,30 @@ class AForwardingAnonymousClassIsDeletedTest {
         assertFalse(r.isSuccess(), "there is no single target");
         assertEquals("RECEIVERS_DISAGREE", r.getError().getReason(), () -> describe(r));
         String message = String.valueOf(r.getError().getMessage());
-        assertTrue(message.contains("manager") && message.contains("other"),
+        // THE SECOND NEEDLE USED TO BE "other" AND COULD NOT FAIL: the refusal's template ends
+        // "promoting either would silently drop the other's calls", so the word is present
+        // whatever the receivers are called. The fixture's second receiver is now `standby`,
+        // which only the receiver list can supply — a C5 audit found this.
+        assertTrue(message.contains("manager") && message.contains("standby"),
             () -> "the refusal must name BOTH receivers: " + message);
+    }
+
+    @Test
+    @DisplayName("a renamed forward is refused — the target does not answer what the interface asks")
+    void aRenamedForwardIsRefused() throws Exception {
+        // THE BRANCH THIS CHECKPOINT MADE UNREACHABLE. The receiver check was moved ahead of
+        // the name check — right, because the implicit-receiver fixture is necessarily also a
+        // rename and was answering for the wrong branch — but that fixture was the only route
+        // here, and a C5 audit measured the result: zero files in the test tree mentioned
+        // FORWARD_RENAMES_THE_METHOD. `wrapperThatRenames` reaches it with an explicit
+        // variable receiver, so every earlier precondition passes and only the name differs.
+        ToolResponse r = deleteAt("wrapperThatRenames()");
+        assertFalse(r.isSuccess(), "promoting the target would make onFill call onCancel");
+        assertEquals("FORWARD_RENAMES_THE_METHOD", r.getError().getReason(), () -> describe(r));
+        String message = String.valueOf(r.getError().getMessage());
+        assertTrue(message.contains("onFill") && message.contains("onCancel"),
+            () -> "the refusal must name BOTH the method asked for and the one forwarded to,"
+                + " or a reader cannot see what the mismatch is: " + message);
     }
 
     @Test
@@ -175,6 +243,11 @@ class AForwardingAnonymousClassIsDeletedTest {
      * a needle on the creation alone would always resolve to the first wrapper.
      */
     private ToolResponse deleteAt(String methodNeedle) throws Exception {
+        return deleteAt(methodNeedle, true);
+    }
+
+    /** As above, but staging rather than applying when {@code autoApply} is false. */
+    private ToolResponse deleteAt(String methodNeedle, boolean autoApply) throws Exception {
         String source = Files.readString(strategyPath());
         int from = source.indexOf(methodNeedle);
         if (from < 0) {
@@ -189,6 +262,9 @@ class AForwardingAnonymousClassIsDeletedTest {
         args.put("filePath", strategyPath().toString());
         args.put("line", pos[0]);
         args.put("column", pos[1]);
+        if (!autoApply) {
+            args.put("auto_apply", false);
+        }
         return tool.execute(args);
     }
 

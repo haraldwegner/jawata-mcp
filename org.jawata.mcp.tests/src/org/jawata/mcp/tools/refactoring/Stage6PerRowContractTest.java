@@ -501,8 +501,8 @@ class Stage6PerRowContractTest {
      * nothing until now compared either against what the door dispatches on.</p>
      *
      * <p><b>Containment, not equality, and the reason is measured rather than preferred.</b>
-     * The tables hold twelve Stage-6 rows against twenty-two published kinds — {@code extract}
-     * eleven, {@code inline} five, {@code move} six — so equality is false in both directions:
+     * The tables hold twelve Stage-6 rows against twenty-three published kinds — {@code extract}
+     * eleven, {@code inline} six, {@code move} six — so equality is false in both directions:
      * most kinds are not Stage-6 rows at all. The rows are a declared SUBSET, which is exactly
      * what this asserts.</p>
      */
@@ -514,8 +514,11 @@ class Stage6PerRowContractTest {
             ((org.jawata.mcp.tools.KindedTool) doorOf(door)).delegates().keySet()
                 .forEach(kind -> routed.add(door + " kind=" + kind));
         }
-        assertEquals(22, routed.size(),
-            "the three doors route twenty-two kinds between them — extract 11, inline 5,"
+        // TWENTY-THREE since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`.
+        // The message's own rule held: a change to this number IS a change to what the doors
+        // ship, so it moved by a later sprint's deliverable rather than by a recount here.
+        assertEquals(23, routed.size(),
+            "the three doors route twenty-three kinds between them — extract 11, inline 6,"
                 + " move 6. A change to that number is a change to what Stage 6 shipped and"
                 + " belongs in C9's arithmetic, not here: " + routed);
 

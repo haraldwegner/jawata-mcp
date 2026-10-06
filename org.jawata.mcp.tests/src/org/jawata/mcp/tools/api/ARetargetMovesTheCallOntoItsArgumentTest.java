@@ -100,13 +100,34 @@ class ARetargetMovesTheCallOntoItsArgumentTest {
         // broken the behaviour the other 294 census rows rely on.
         ToolResponse r = retarget("launchExit", null);
         assertTrue(r.isSuccess(), () -> "staging failed: " + describe(r));
-        String added = addedLines(String.valueOf(dataOf(r).get("diff")));
+        Map<String, Object> data = dataOf(r);
+        String added = addedLines(String.valueOf(data.get("diff")));
 
-        assertTrue(added.isEmpty() || added.contains("callback.launchExit"),
-            () -> "a retarget with no receiverFromParameter must leave the receiver alone:\n"
-                + added);
-        assertFalse(added.contains("primary.launchExit"),
-            () -> "the receiver moved without being asked to:\n" + added);
+        // THE FIRST VERSION OF THIS CONTROL COULD NOT FAIL, and a C5 audit derived the path.
+        // It read `added.isEmpty() || added.contains("callback.launchExit")`, and `added` is
+        // EMPTY BY CONSTRUCTION here: this case retargets `launchExit` to its OWN name with no
+        // receiver parameter, so the rewriter rebuilds `callback.launchExit(primary,
+        // "siteOneFill")` byte-for-byte from the same arguments, four sites change nothing,
+        // and the diff carries no `+` lines at all. So `"".isEmpty()` satisfied the disjunct
+        // and `"".contains("primary.launchExit")` was false — the vacuity was encoded in the
+        // assertion rather than fixed. A control labelled "THE CONTROL THAT MAKES THE FIRST
+        // TEST MEAN SOMETHING" that cannot fail is the worst case of this sprint's own
+        // most-recorded defect.
+        //
+        // EMPTINESS IS NOW THE CLAIM, and it is falsifiable: a change that moved the call onto
+        // an argument unconditionally would emit `primary.launchExit("siteOneFill")`, which
+        // DIFFERS from the source, so the diff would carry added lines and this fails.
+        assertTrue(added.isEmpty(),
+            () -> "a retarget to the method's own name with no receiverFromParameter must"
+                + " rewrite every site to the text it already had, so there is nothing added."
+                + " Anything here means the receiver moved without being asked:\n" + added);
+
+        // AND THE RESPONSE MUST NOT CLAIM THE MODE RAN. `theModeIsReported` pins that the key
+        // is PRESENT when the mode is asked for; its absence here is the other half, and
+        // nothing asserted it before.
+        assertFalse(data.containsKey("receiverFromParameter"),
+            () -> "the response must not report a receiver move that was never requested: "
+                + data.keySet());
     }
 
     @Test
@@ -117,8 +138,18 @@ class ARetargetMovesTheCallOntoItsArgumentTest {
         String message = String.valueOf(r.getError().getMessage());
         // The refusal has to be ACTIONABLE: "not found" leaves the caller guessing, the list
         // does not. Both real parameter names are required so a partial list cannot pass.
-        assertTrue(message.contains("slot") && message.contains("reason"),
-            () -> "the refusal must name the parameters that DO exist: " + message);
+        //
+        // THE ECHO IS REMOVED BEFORE THE CHECK, and a C5 audit is why. The refusal opens by
+        // quoting what the caller sent — "'slotz' is not a parameter of …" — and `"slotz"`
+        // CONTAINS `"slot"`, so the first half of this assertion was paid for by the echo of
+        // the test's own input. A refusal that listed only `reason` passed it, which is the
+        // opposite of what the comment above claims.
+        String withoutTheEcho = message.replace("slotz", "");
+        assertTrue(withoutTheEcho.contains("slot"),
+            () -> "the refusal must name the real parameter `slot` somewhere other than in the"
+                + " echo of what was sent: " + message);
+        assertTrue(withoutTheEcho.contains("reason"),
+            () -> "and `reason`, so a partial list cannot pass: " + message);
     }
 
     @Test
@@ -149,8 +180,22 @@ class ARetargetMovesTheCallOntoItsArgumentTest {
         ToolResponse r = tool.execute(args);
         assertFalse(r.isSuccess(),
             "receiverFromParameter without retargetCallsTo must not be silently ignored");
-        assertTrue(String.valueOf(r.getError().getMessage()).contains("retargetCallsTo"),
-            () -> "the refusal should name what is missing: " + r.getError().getMessage());
+
+        // THE NEEDLE USED TO BE `contains("retargetCallsTo")` AND IT COULD NOT FAIL — a C5
+        // audit derived why, and it is the shadowing class this sprint has recorded seven
+        // times. Delete the branch under test and control reaches the generic
+        // no-changes-requested refusal one screen below, whose own message reads "At least one
+        // of newName, newReturnType, newParameters, visibility, or retargetCallsTo must be
+        // specified" — so it CONTAINS the needle. isSuccess() is false either way and the test
+        // was green with the feature gone.
+        String message = String.valueOf(r.getError().getMessage());
+        assertTrue(message.contains("which method to call on it"),
+            () -> "the refusal must be THIS branch's, which explains that the parameter names"
+                + " an object and not a method: " + message);
+        assertFalse(message.contains("At least one of newName"),
+            () -> "and must NOT be the generic no-changes-requested refusal, which also names"
+                + " retargetCallsTo and so passed the old substring check with this branch"
+                + " deleted: " + message);
     }
 
     private ToolResponse retarget(String to, String receiverFromParameter) {

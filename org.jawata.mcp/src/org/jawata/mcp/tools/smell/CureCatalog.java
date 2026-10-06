@@ -888,7 +888,24 @@ public final class CureCatalog {
             + " The nearest is `duplicated_code`, which compares bodies and would name the"
             + " assignments rather than the ownership — and ownership is this row's entire"
             + " rule: it moves a leading run of assignments to fields the parent declares,"
-            + " which is a fact about who declares what and not about text repeating.");
+            + " which is a fact about who declares what and not about text repeating.",
+
+        // Sprint 28g, D9 change 3. Each exclusion below is read off the candidate's OWN
+        // published text rather than recalled, because "no detector reports this" is the
+        // kind of claim that is easy to assert and cheap to check.
+        "inline kind=unreferenced_member",
+        "no shipped detector reports a PUBLISHED member with zero references, and the three"
+            + " candidates are each ruled out by their own published text. `unused` is scoped"
+            + " to \"unused PRIVATE methods and fields\", so a public member is outside it by"
+            + " construction — which is exactly the gap this operation fills."
+            + " `called_only_by_tests` emits \"(N test reference(s), zero production"
+            + " callers)\", so it needs N >= 1: a member nothing references at all has no test"
+            + " reference either, and its silence is therefore not a report of safety."
+            + " `speculative_generality` has ONE emission site and names Collapse Hierarchy /"
+            + " Inline Class — a redundant level of hierarchy, not a dead published member; one"
+            + " emission site makes that a census rather than a sample. So the gap is on the"
+            + " DETECTOR side and this operation is unrouted rather than unroutable: a detector"
+            + " that reported a zero-reference exported member would route here unchanged.");
 
     // FOUR hierarchy ENTRIES WERE DELETED AT S8b STEP 9 —
     // replace_type_code_with_subclasses, replace_superclass_with_delegate,
