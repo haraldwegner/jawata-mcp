@@ -479,6 +479,47 @@ public interface ExperienceStore extends AutoCloseable {
     }
 
     /**
+     * Sprint 28g S14 D30 — rewrite one job row in place, keeping its id.
+     *
+     * <p><b>The defect this exists for:</b> {@code record type=job} inserts, so a member
+     * described twice ends up with two jobs and the older one describes code that has
+     * since changed. Measured 2026-10-07 over {@code org.jawata.mcp.knowledge} alone,
+     * uncapped: <b>73 members carry more than one job row, 75 surplus rows</b> — and the
+     * session that took that measurement had just created some of them itself, by
+     * following an "undescribed members" list that names members which already have a
+     * job. jawata-mcp#85 carries the store-wide census.
+     *
+     * <p><b>There is deliberately no companion read, because one already exists.</b>
+     * {@code listEntries(type="job", scope=<the exact member symbol>)} answers it: that
+     * clause tries {@code symbol_fqn = ?} first, so an exact anchor matches. The first
+     * draft of this work added a {@code jobsAnchoredTo} beside it and the duplicate gate
+     * refused it — correctly. What misled that draft is worth recording, because it is a
+     * real defect in the same clause: the scope filter's LIKE pattern is
+     * {@code scope + ".%"}, and a job's symbol separates its member with {@code #}, so
+     * scoping to a TYPE silently finds none of its members' jobs. Exact works; the
+     * type-wide form does not.
+     *
+     * <p>The id is kept because it is the entry's identity: links point at it and the
+     * review ledger names it, so a replacement that minted a new id would orphan both
+     * while looking like a clean update. This is what {@code upsertBySource} already does
+     * for a re-read file, and it reuses that same rewrite rather than copying its column
+     * list — that list's own javadoc warns it is a fourth place to widen when a column is
+     * added, and a fifth copy is the defect this codebase has closed repeatedly.
+     *
+     * <p>Reusing it also carries two behaviours a fresh statement would have had to
+     * rediscover: the row's meaning vectors go to NULL so the changed text is re-embedded
+     * (a stale vector ranks the row on words it no longer carries), and {@code source_ref}
+     * is deliberately NOT written, so a row's provenance survives the rewrite.
+     *
+     * @param existingId the row to rewrite — a caller that found it through
+     *     {@link #jobsAnchoredTo} holds the guarantee that it exists
+     * @param entry the replacement
+     * @return {@code existingId}, so a caller can report what it wrote without
+     *     re-deriving it
+     */
+    String replaceJob(String existingId, ExperienceEntry entry);
+
+    /**
      * Sprint 28g D40c — tell the store which folder it is loading stories from.
      * Called once per root by the loader, which is the only place that knows.
      *

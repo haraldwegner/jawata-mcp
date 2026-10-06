@@ -2311,6 +2311,28 @@ public final class H2ExperienceStore implements ExperienceStore {
         return report;
     }
 
+    /**
+     * Sprint 28g S14 D30 — the rewrite, delegated to the one that already exists.
+     *
+     * <p>{@code updateSourcedRow} writes every column {@code insert} does except the id
+     * and the creation instant, NULLs the meaning vectors so the changed text is
+     * re-embedded, and leaves {@code source_ref} alone. All three matter here and none is
+     * re-implemented: that statement's own javadoc warns its column list is a fourth place
+     * to widen when a column is added, so a fifth copy is the defect this codebase has
+     * closed repeatedly.</p>
+     *
+     * <p>The two source arguments are passed as null, and that is safe for a RECORDED job
+     * rather than by luck: {@code source_ref} is not in the statement at all, so it
+     * survives, and {@code source_hash} is already null on a row nobody loaded from a
+     * file. A job that DID come from a file would have its hash cleared — which is why the
+     * caller only reaches this for a recorded row.</p>
+     */
+    @Override
+    public String replaceJob(String existingId, ExperienceEntry entry) {
+        updateSourcedRow(existingId, entry, null, null);
+        return existingId;
+    }
+
     @Override
     public List<StoredEntry> listEntries(String type, String status, String scope,
             String language, int limit) {

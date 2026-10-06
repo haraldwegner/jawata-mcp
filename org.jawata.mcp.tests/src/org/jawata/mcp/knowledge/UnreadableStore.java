@@ -222,6 +222,17 @@ final class UnreadableStore implements ExperienceStore {
         throw boom();
     }
 
+    /**
+     * Sprint 28g S14 D30. Throws like every other write here, and the reason is not
+     * symmetry: a rewrite that silently did nothing on an unreadable store would leave the
+     * caller believing it had REPLACED a duplicate, so the surplus row it was collapsing
+     * would still be there and nothing would say so.
+     */
+    @Override
+    public String replaceJob(String existingId, ExperienceEntry entry) {
+        throw boom();
+    }
+
     @Override
     public java.util.List<java.util.Map<String, Object>> exportEntries(String status, String type) {
         throw boom();

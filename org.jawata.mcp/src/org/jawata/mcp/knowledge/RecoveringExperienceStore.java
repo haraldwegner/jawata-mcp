@@ -135,6 +135,22 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         return delegate.storyFolderAmbiguous();
     }
 
+    /**
+     * Sprint 28g S14 D30 — forwarded, and declared here because the interface gives it no
+     * default to answer with.
+     *
+     * <p>That is the S13 lesson applied rather than re-learned: three members shipped as
+     * defaults in that stage and this class, which production serves through, declared
+     * none of them — so the default spoke in its place and the honest answer never
+     * reached a caller. For a WRITE the same hole is worse than for a read: a default
+     * that quietly declined to replace would look exactly like a member nobody had
+     * described, which is the very duplicate this deliverable exists to stop.</p>
+     */
+    @Override
+    public String replaceJob(String existingId, ExperienceEntry entry) {
+        return delegate.replaceJob(existingId, entry);
+    }
+
     private void retryLoop(Supplier<H2ExperienceStore> reopener, long retryMs) {
         while (!closed && notice != null) {
             try {
