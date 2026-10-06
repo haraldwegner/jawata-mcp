@@ -44,7 +44,7 @@ public class InlineTool extends AbstractTool implements KindedTool {
     public java.util.Map<String, KindDelegate> delegates() {
         java.util.Map<String, KindDelegate> published = new java.util.LinkedHashMap<>();
         for (KindDelegate delegate
-                : List.of(method, variable, clazz, subclass, middleMan)) {
+                : List.of(method, variable, clazz, subclass, middleMan, unreferencedMember)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -56,6 +56,7 @@ public class InlineTool extends AbstractTool implements KindedTool {
     private final InlineClassTool clazz;
     private final RemoveSubclassTool subclass;
     private final RemoveMiddleManTool middleMan;
+    private final RemoveUnreferencedMemberTool unreferencedMember;
 
     public InlineTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -72,6 +73,13 @@ public class InlineTool extends AbstractTool implements KindedTool {
         // METHODS away rather than the class: a middle man keeps its name and loses
         // the forwarding that was all it did.
         this.middleMan = new RemoveMiddleManTool(serviceSupplier, cache);
+        // Sprint 28g S5 / D9 row 3 — the n=0 case of this door's own family. `class` folds a
+        // class into its ONE user and refuses more; with ZERO references there is nothing to
+        // fold into, so the fold is the empty operation and only the deletion remains. The
+        // census names apply_cleanup for this work, and that door's own law forbids it: a
+        // cleanup rule gets one file, takes no parameter and cannot refuse, so an unnarrowed
+        // sweep would delete every zero-reference public member in the workspace.
+        this.unreferencedMember = new RemoveUnreferencedMemberTool(serviceSupplier, cache);
     }
 
     @Override
@@ -80,11 +88,16 @@ public class InlineTool extends AbstractTool implements KindedTool {
     }
 
     /**
-     * Three of the five kinds DELETE A TYPE or change what a hierarchy contains.
+     * MOST of this door's kinds delete something or change what a hierarchy contains, and the
+     * list below is the statement — a COUNT here would be one more hand-written number beside a
+     * hand-written list, which is the defect this file's own C8 note is about. It went stale on
+     * the sentence that used to open this paragraph ("three of the five") the moment a sixth
+     * kind arrived.
      *
      * <p>{@code class} folds a class away, {@code subclass} removes one from a hierarchy
      * and reparents every reference, {@code middle_man} changes what a class exposes to
-     * every caller it had. {@code method} and {@code variable} rewrite inside one body.</p>
+     * every caller it had, {@code unreferenced_member} deletes a published member outright.
+     * {@code method} and {@code variable} rewrite inside one body.</p>
      *
      * <p>THIS DOOR HAD NO DECLARATION AT ALL until a C6 audit looked, so the
      * architect-involvement gate had been silent on every one of them — including
@@ -166,7 +179,9 @@ public class InlineTool extends AbstractTool implements KindedTool {
         kind.put("type", "string");
         kind.put("enum", publishedKinds());
         kind.put("description", "Inline a method, a local variable, a whole class, a"
-            + " subclass into its parent, or a middle man's forwarding.");
+            + " subclass into its parent, a middle man's forwarding, or a non-private member"
+            + " nothing references — the n=0 case, where there is no user to fold into and"
+            + " only the deletion remains.");
         properties.put("kind", kind);
         properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
         properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
@@ -178,8 +193,8 @@ public class InlineTool extends AbstractTool implements KindedTool {
         // ones — a published sentence telling clients a form does not apply where it does.
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "target to inline: pkg.Type#method for kind=method, pkg.Type for kind=class, "
-                + "subclass and middle_man. kind=variable is POSITIONAL only — a local has "
-                + "no name to address it by"));
+                + "subclass and middle_man, pkg.Type#member for kind=unreferenced_member. "
+                + "kind=variable is POSITIONAL only — a local has no name to address it by"));
         properties.put("accessorName", Map.of("type", "string",
             "description", "kind=middle_man: name for the accessor that exposes the delegate "
                 + "(default: the field's own name). Every rewritten call site reads it."));
@@ -219,6 +234,8 @@ public class InlineTool extends AbstractTool implements KindedTool {
             case "class"    -> clazz.executeWithService(service, arguments);
             case "subclass" -> subclass.executeWithService(service, arguments);
             case "middle_man" -> middleMan.executeWithService(service, arguments);
+            case "unreferenced_member" ->
+                unreferencedMember.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         };

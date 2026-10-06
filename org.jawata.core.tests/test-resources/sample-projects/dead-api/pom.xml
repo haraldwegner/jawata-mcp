@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>dead-api</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Dead-API Fixture</name>
+    <description>
+        Jawata-owned fixture for Sprint 28g S5 / D9 row 3
+        (inline kind=unreferenced_member): a published member nothing
+        references, beside the members that LOOK like it and must be refused —
+        one with a caller, a private one, an override, an interface method with
+        an implementor, and a field sharing its declaration.
+
+        It is its own project rather than a few more classes in simple-maven,
+        which is shared and monotonically growing and has moved a counted
+        population five times in this sprint. A fixture whose whole subject is
+        "nothing references this" is the worst possible thing to add to a
+        project other tests count unused members in.
+
+        JRE-only, compiles clean before and after the deletion.
+    </description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>
