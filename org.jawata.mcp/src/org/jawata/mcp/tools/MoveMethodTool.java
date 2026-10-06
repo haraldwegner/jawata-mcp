@@ -149,6 +149,27 @@ public class MoveMethodTool extends AbstractRefactoringTool
             "description", "For a STATIC method: fully-qualified name of the existing class "
                 + "it moves to. A static method has no receiver, so `target` does not apply "
                 + "to it and this does."));
+        properties.put("oldOwnerAccess", Map.of(
+            "type", "string",
+            "enum", List.of("refuse", "parameter"),
+            "description", "Only consulted when the moved body STILL REACHES the type it came "
+                + "from, which the engine answers and this tool asks. Default 'refuse': the "
+                + "move is declined and names what it would cost, because JDT's own answer is "
+                + "to do it silently, and that silence sent eleven of Sprint 8's move edits to "
+                + "hand work. 'parameter' takes it deliberately — and MEASURED it costs TWO "
+                + "things rather than one: the old owner is added as a parameter, so the "
+                + "destination's package comes to depend on the owner's, AND the engine WIDENS "
+                + "the members the moved body reads, turning a private field public. The move "
+                + "opens the old owner's encapsulation as well as inverting the dependency."));
+        properties.put("oldOwnerName", Map.of("type", "string",
+            "description", "With oldOwnerAccess=parameter: the name for the added parameter. "
+                + "Omit to take the engine's suggestion."));
+        properties.put("forbiddenPackage", Map.of("type", "string",
+            "description", "A package prefix the DESTINATION must not come to depend on. With "
+                + "oldOwnerAccess=parameter, a move that would create exactly that dependency "
+                + "is refused before anything is written — the layering check applied to this "
+                + "tool's own result, which no detector can do beforehand because the edge "
+                + "does not exist yet."));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "method to move"));
         schema.put("properties", properties);
@@ -226,6 +247,78 @@ public class MoveMethodTool extends AbstractRefactoringTool
             // and remove the leftover forwarding method from the original type.
             processor.setInlineDelegator(!keepDelegate);
             processor.setRemoveDelegator(!keepDelegate);
+
+            // Stage 5 / D9 row 2 — HOW THE MOVED BODY REACHES ITS OLD OWNER IS ASKED, NOT
+            // DECIDED. The census names the defect in this tool's own verdict line: "how the
+            // moved body reaches its old owner is MoveInstanceMethodProcessor's SILENT
+            // choice", and the cost beside it: JDT adds the old owner as a PARAMETER, and
+            // "every one of these bodies had to reach it through a port or a listener
+            // instead, because `execution` may not name `pipeline`".
+            //
+            // ELEVEN hand edits, which is the census's own summary figure ("the moved body's
+            // access to its old owner decided silently (11)") rather than either number this
+            // comment carried first: 10 is the move-method row's edit count, and the
+            // eleventh is the extract-then-move row's fifth edit, whose note says it "needs
+            // the same old-owner answer as the row above".
+            //
+            // `needsTargetNode()` is the engine's own answer to that question and it is
+            // public, so it is ASKED rather than inferred — and asked AFTER setTarget, because
+            // whether the body still needs the old owner depends on which receiver it moves
+            // onto.
+            if (processor.needsTargetNode()) {
+                String access = getStringParam(arguments, "oldOwnerAccess");
+                String mode = access == null || access.isBlank() ? "refuse" : access.strip();
+                IType destination = chosen.getType() == null ? null
+                    : (IType) chosen.getType().getJavaElement();
+                String fromPackage = destination == null ? "the destination"
+                    : destination.getPackageFragment().getElementName();
+                String ownerPackage = method.getDeclaringType().getPackageFragment()
+                    .getElementName();
+
+                switch (mode) {
+                    case "parameter" -> {
+                        // JDT's own behaviour, now CHOSEN rather than defaulted into.
+                        String name = getStringParam(arguments, "oldOwnerName");
+                        if (name != null && !name.isBlank()) {
+                            processor.setTargetName(name.strip());
+                        }
+                    }
+                    case "refuse" -> {
+                        return ToolResponse.invalidParameter("oldOwnerAccess",
+                            "the moved body still reaches " + method.getDeclaringType()
+                                .getElementName() + ", so it cannot stand alone on "
+                                + (destination == null ? "the destination"
+                                    : destination.getElementName())
+                                + ". JDT would do two things silently: add the old owner as a "
+                                + "PARAMETER, making " + fromPackage + " depend on " + ownerPackage
+                                + " — the edge behind eleven of Sprint 8's hand-edited move "
+                                + "sites — and WIDEN the members the body reads, turning a "
+                                + "private field public. Choose: oldOwnerAccess=parameter to "
+                                + "take both deliberately, or re-home the body on a port or "
+                                + "listener first and move it then.");
+                    }
+                    default -> {
+                        return ToolResponse.invalidParameter("oldOwnerAccess",
+                            "'" + access + "' is not a choice; one of: refuse, parameter");
+                    }
+                }
+
+                // THE PACKAGE RULE, CHECKED ON THIS TOOL'S OWN RESULT rather than left for a
+                // later sweep to find. A caller who knows the layering says which package the
+                // destination may not reach, and a move that would create exactly that edge is
+                // refused before anything is written — which is the half the census asks for
+                // and the half no detector can supply, because the edge does not exist yet.
+                String forbidden = getStringParam(arguments, "forbiddenPackage");
+                if ("parameter".equals(mode) && forbidden != null && !forbidden.isBlank()
+                        && ownerPackage.startsWith(forbidden.strip())) {
+                    return ToolResponse.invalidParameter("forbiddenPackage",
+                        "the move would add " + method.getDeclaringType().getElementName()
+                            + " as a parameter, so " + fromPackage + " would depend on "
+                            + ownerPackage + ", which this call declares forbidden. Nothing was "
+                            + "written. Re-home the body on a port or listener the destination "
+                            + "may already name, and move it then.");
+                }
+            }
 
             return runPreCheckedRefactoring(service, refactoring, "move_method", arguments);
         } catch (Exception e) {
