@@ -119,10 +119,29 @@ class ADeadPublishedMemberIsDeletableTest {
     }
 
     @Test
-    @DisplayName("an OVERRIDE is refused — zero direct references is its expected state")
-    void anOverrideIsRefusedBecauseTheSearchProvesNothing() throws Exception {
-        // toString() has zero direct references in this project, exactly like the dead member.
-        // THIS IS THE ASSERTION THE ROW EXISTS FOR: the search cannot tell them apart.
+    @DisplayName("an override whose contract nobody calls is refused — the case the search CANNOT see")
+    void anUnreferencedOverrideIsRefused() throws Exception {
+        // THIS is the case the override refusal exists for, and it is the row's headline claim.
+        // Service.shutdown overrides Lifecycle.shutdown and NOTHING calls shutdown() anywhere,
+        // so the reference search returns zero — a result identical to the genuinely dead
+        // member's. Deleting it leaves Service not implementing the interface it declares.
+        ToolResponse r = removeIn("Service.java", "shutdown", true);
+        assertFalse(r.isSuccess(), "deleting it leaves Service not implementing Lifecycle");
+        assertEquals("MEMBER_OVERRIDES_A_SUPERTYPE", r.getError().getReason(), () -> describe(r));
+        assertTrue(String.valueOf(r.getError().getMessage()).contains("Lifecycle"),
+            () -> "the refusal should name where the contract is declared: "
+                + r.getError().getMessage());
+    }
+
+    @Test
+    @DisplayName("an override the search DOES see is refused earlier, and the order is the point")
+    void anOverrideWithPolymorphicCallersIsRefusedToo() throws Exception {
+        // MEASURED, after a mutation corrected what this test used to claim: the search does
+        // NOT report zero for toString(). JDT matches calls to toString() polymorphically, so
+        // on this five-file fixture it reports TEN. The override check still answers first,
+        // which is right — it names the real reason — but with it disabled the reference check
+        // catches this member anyway. So toString is NOT evidence that the override branch is
+        // load-bearing; the test above is, and it is where mutation D lands.
         ToolResponse r = remove("toString", true);
         assertFalse(r.isSuccess(), "deleting an override changes dispatch");
         assertEquals("MEMBER_OVERRIDES_A_SUPERTYPE", r.getError().getReason(), () -> describe(r));
