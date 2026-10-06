@@ -258,9 +258,25 @@ class ADiffIsSummarisedAndCappedTest {
     }
 
     /**
-     * The clause both base tests share: the response carries a {@code diffSummary} whose
-     * rows account for the diff the SAME response carries. Comparing the two is what makes
-     * this more than a presence check — a summary of some other change would pass that.
+     * The clause both base tests share: the response carries a {@code diffSummary} whose rows
+     * account for the diff the SAME response carries, and says it is unverified.
+     *
+     * <p><strong>The count is compared against a number this test derives itself</strong>, and
+     * that is a C3 repair rather than the original design. The first version asserted
+     * {@code assertEquals(DiffRenderer.summarize(diff).size(), summary.size())} under a comment
+     * claiming <em>"a summary of some other change would pass"</em> a mere presence check. Both
+     * reviews found it independently and both were right: {@code summary} was PRODUCED by
+     * {@code DiffView.putInto} calling {@code DiffRenderer.summarize} on that same text, so the
+     * two sides were byte-identical inputs to one deterministic function. It could not fail,
+     * and {@code assertNotNull(raw)} above already proved everything it proved.</p>
+     *
+     * <p>Counting the {@code --- a/} openers in the text is independent of the function under
+     * test. Its one divergence is named rather than left to be discovered: {@code summarize}
+     * requires a {@code --- a/} to be FOLLOWED by a {@code +++ b/} before it opens a file, so a
+     * body line that merely looks like an opener would be counted here and not there. That
+     * exact shape is owned by {@code anUnpairedMinusLineDoesNotOpenAFile}; a real staged diff
+     * from either base does not contain it, and if one ever does, this disagreeing is the
+     * finding rather than the flake.</p>
      */
     private static void assertSummarised(ToolResponse r, String where) {
         @SuppressWarnings("unchecked")
@@ -273,14 +289,36 @@ class ADiffIsSummarisedAndCappedTest {
         String diff = String.valueOf(data.get("diff"));
         assertFalse(summary.isEmpty(),
             () -> where + " changed something, so its summary cannot be empty: " + diff);
-        assertEquals(DiffRenderer.summarize(diff).size(), summary.size(),
-            () -> where + "'s summary must describe the diff in the same response: " + diff);
+
+        int counted = 0;
+        for (String line : diff.split("\n", -1)) {
+            if (line.startsWith("--- a/")) {
+                counted++;
+            }
+        }
+        final int openers = counted;
+        assertEquals(openers, summary.size(),
+            () -> where + "'s summary must have one row per file the diff opens — counted "
+                + openers + " '--- a/' openers against " + summary.size() + " rows: " + diff);
+
         for (Map<String, Object> row : summary) {
             assertNotNull(row.get("filePath"), () -> "a row with no file: " + row);
             assertNotNull(row.get("hunks"), () -> "a row with no hunk count: " + row);
             assertTrue(diff.contains(String.valueOf(row.get("filePath"))),
                 () -> where + ": the summary names a file the diff does not: " + row);
         }
+
+        // F4: A STAGED RESPONSE SAYS IT IS UNVERIFIED. Both bases return from their staged
+        // branch before the compile gate runs, and the APPLIED branch writes compileVerified
+        // while this one wrote no verification claim at all — so a caller comparing the two
+        // found the key on one and absent on the other, which reads as verified by omission.
+        // Asserted HERE because both base tests share this helper, so neither base can gain
+        // the claim without the other being checked for it.
+        assertEquals(Boolean.FALSE, data.get("compileVerified"),
+            () -> where + " staged a change without saying it is unverified: " + data.keySet());
+        assertNotNull(data.get("verificationNote"),
+            () -> where + " claims compileVerified:false and does not say why, which is the "
+                + "bare-boolean shape this codebase answers with a reason: " + data.keySet());
     }
 
     /** Enough changed lines to pass the cap; built, not pasted, so the number is visible. */

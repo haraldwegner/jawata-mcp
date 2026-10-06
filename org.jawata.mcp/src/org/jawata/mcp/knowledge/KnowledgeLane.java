@@ -186,8 +186,30 @@ public enum KnowledgeLane {
         if (wire == null || wire.isBlank()) {
             return false;
         }
+        String asked = wire.strip();
+        // AN UNKNOWN LANE NAME IS NOT AN EXCLUSION, and the first version of this method
+        // said it was. Any string that is not the catalogue's lane answered TRUE — so
+        // `lane=domian` produced the note in full, naming the lane to ask for instead, about
+        // a filter that does not exist. That is this very defect pointed at its own fix: the
+        // note exists so a caller can tell "no pattern fits" from "patterns were never
+        // searched", and a third case — "that is not a lane" — was being answered as the
+        // second, with the same authority. Found by the C3 audit; no test asserted either way.
+        //
+        // Checked against the enum rather than against a second list of names, for the reason
+        // the rest of this method gives about `of`: a lane added here must not need a sibling
+        // list updated to be recognised.
+        boolean known = false;
+        for (KnowledgeLane lane : values()) {
+            if (lane.wire().equals(asked)) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) {
+            return false;
+        }
         KnowledgeLane catalogue = of(REFERENCE_TYPE, CatalogueManifest.PROVENANCE);
-        return catalogue != null && !catalogue.wire().equals(wire.strip());
+        return catalogue != null && !catalogue.wire().equals(asked);
     }
 
     /** The lane a caller must ask for to reach the catalogue, derived rather than restated. */

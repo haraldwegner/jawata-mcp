@@ -242,6 +242,62 @@ public abstract class AbstractTool implements Tool {
     }
 
     /**
+     * Writes a unified diff into a response the way every response presents one.
+     *
+     * <p><strong>This exists because publishing the flag and honouring it were in different
+     * places.</strong> D7f capped the diff on the two refactoring BASES and published
+     * {@code fullDiff} from {@link #withAutoApply}, which 81 tools call. A tool that extends
+     * this class DIRECTLY assembles its own response map and so never reached a base's cap —
+     * and the C3 reviews measured the cost independently of one another: <strong>14 sites in
+     * 8 classes</strong> ({@code ComposeMethodTool}, {@code DecomposeConditionalTool} and the
+     * six {@code codegen} tools) advertised the escape flag and sent the uncapped payload
+     * anyway. That is the shape this codebase already records one file away, in
+     * {@code ExtractMethodTool}: <em>"the parameter was published, accepted, echoed back, and
+     * inert."</em></p>
+     *
+     * <p>So the cap now lives where the flag is published. A site that writes
+     * {@code data.put("diff", …)} for a unified diff bypasses both halves, and after this
+     * there is no reason left to — which is what makes a bypass a defect rather than a style.</p>
+     *
+     * @param data      the response's data map, written in place
+     * @param diff      the rendered unified diff; an empty string is legitimate input, which
+     *                  is {@code DiffRenderer}'s own documented behaviour for a move or rename
+     * @param arguments the call's arguments, read ONLY for {@code fullDiff}
+     */
+    protected static void putDiff(Map<String, Object> data, String diff, JsonNode arguments) {
+        org.jawata.mcp.refactoring.DiffView
+            .of(diff, org.jawata.mcp.refactoring.DiffView.fullRequested(arguments))
+            .putInto(data);
+    }
+
+    /**
+     * Says, on a STAGED response, that nothing has been compiled yet.
+     *
+     * <p><strong>Why this is not left implicit.</strong> Both refactoring bases return from
+     * their staged branch BEFORE the compile gate runs — measured at C3:
+     * {@code AbstractApplyingRefactoringTool} returns at 218 with the gate at 237, and
+     * {@code AbstractRefactoringTool} returns at 322 with the gate at 341. The APPLIED branch
+     * writes {@code compileVerified}; the staged branch wrote no verification claim at all,
+     * which reads as verified by omission — a caller comparing the two responses finds the key
+     * present on one and absent on the other and has no way to tell "not verified" from "we
+     * did not say".</p>
+     *
+     * <p><strong>This is deliberately NOT the expensive fix.</strong> An architect run proposed
+     * gating the staged path too; that was declined on measured grounds — on APPLY the D7b
+     * defect was never silent (it produced four loud compile errors), and gating staging would
+     * buy an apply-check-revert on every staged call, so staging would stop being free.
+     * Harald's ruling was <em>"SO make the tiny solution"</em>, and declining the expensive one
+     * is not itself a solution. Saying what is true costs nothing and closes the ambiguity,
+     * which is the same defect shape five of this stage's eight engine defects share.</p>
+     */
+    protected static void putStagedUnverified(Map<String, Object> data) {
+        data.put("compileVerified", false);
+        data.put("verificationNote", "A staged change is not compiled until it is applied, so "
+            + "this diff is unverified. apply_refactoring runs the compile gate and will "
+            + "refuse or report errors then.");
+    }
+
+    /**
      * Execute the tool. Subclasses should override this instead of execute().
      *
      * @param service The IJdtService — non-null for a tool that requires a

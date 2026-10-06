@@ -277,7 +277,7 @@ public class GenerateConstructorTool extends AbstractTool
                 stagedData.put("operation", "generate_constructor");
                 stagedData.put("applied", false);
                 stagedData.put("changeId", staged.changeId());
-                stagedData.put("diff", staged.diff());
+                putDiff(stagedData, staged.diff(), arguments);
                 stagedData.put("filePath", staged.filePath());
                 return ToolResponse.success(stagedData, ResponseMeta.builder()
                     .suggestedNextTools(List.of(
@@ -299,7 +299,7 @@ public class GenerateConstructorTool extends AbstractTool
 
             data.put("applied", true);
             data.put("filesModified", List.of(committed.filePath()));
-            data.put("diff", committed.diff());
+            putDiff(data, committed.diff(), arguments);
             data.put("undoChangeId", committed.undoChangeId());
 
             return ToolResponse.success(data, ResponseMeta.builder()

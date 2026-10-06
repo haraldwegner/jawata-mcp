@@ -1,7 +1,13 @@
 package org.jawata.mcp.knowledge;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
+
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.ExperienceTool;
 import org.junit.jupiter.api.AfterEach;
@@ -9,14 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 28g S3 / D7h — a lane filter that cannot return a catalogue pattern SAYS SO.
@@ -131,8 +131,33 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
         assertEquals(Boolean.TRUE, data.get("catalogueExcluded"),
             () -> "an answer with no rows at all is the one most easily misread, so it must "
                 + "carry the exclusion: " + data.keySet());
-        assertTrue(entriesOf(data).isEmpty(),
+        // THE STORE'S OWN WORD FOR IT, not an empty list. The first version asserted
+        // `entriesOf(data).isEmpty()`, and `entriesOf` answers `List.of()` whenever the key
+        // is absent or is not a List — so it passed for any reason at all, including a
+        // response-shape change that stopped carrying `entries`. The C3 audit named it; the
+        // fix is to read the field the store sets to say so, which is what the no-cue case
+        // below was already doing.
+        assertEquals("absence", data.get("result"),
             () -> "the fixture must genuinely match nothing, else this measures a hit: " + data);
+    }
+
+    @Test
+    @DisplayName("an UNKNOWN lane name is not an exclusion — it was answered as one")
+    void anUnknownLaneClaimsNothing() {
+        // THE DEFECT THIS PINS SHIPPED IN D7h ITSELF, and the C3 audit found it.
+        // `excludesCatalogue` answered TRUE for any string that was not the catalogue's lane,
+        // so a MISSPELLED filter produced the note in full — "the patterns were NOT SEARCHED,
+        // ask for lane=experience" — with complete authority, about a lane that does not
+        // exist. The note's whole job is to separate "no pattern fits" from "patterns were
+        // never searched"; a third state, "that is not a lane", was being answered as the
+        // second.
+        Map<String, Object> data = recall(ANCHOR, "domian");
+        assertNull(data.get("catalogueExcluded"),
+            () -> "a lane nobody can ask for excludes nothing, so there is nothing to claim: "
+                + data.keySet());
+        assertNull(data.get("catalogueExclusionNote"),
+            () -> "and no note either — naming a lane to ask for INSTEAD of a typo is the "
+                + "confidently-wrong half: " + data.get("catalogueExclusionNote"));
     }
 
     @Test
@@ -179,11 +204,6 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
             args.put("lane", lane);
         }
         return dataOf(new ExperienceTool(() -> null, store).execute(args));
-    }
-
-    private static List<?> entriesOf(Map<String, Object> data) {
-        Object entries = data.get("entries");
-        return entries instanceof List<?> list ? list : List.of();
     }
 
     /** The whole answer as text, so an assertion about a row's presence reads the real answer. */

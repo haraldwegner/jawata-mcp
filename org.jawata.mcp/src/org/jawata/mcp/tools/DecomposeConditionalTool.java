@@ -307,7 +307,7 @@ public class DecomposeConditionalTool extends AbstractTool
             data.put("introducedErrors", result.introducedErrors());
             // Absent rather than null — see ComposeMethodTool.
             if (result.diff() != null) {
-                data.put("diff", result.diff());
+                putDiff(data, result.diff(), arguments);
             }
             data.put("partsExtracted", parts.size());
             data.put("summary", "decompose conditional: extracted " + parts.size()

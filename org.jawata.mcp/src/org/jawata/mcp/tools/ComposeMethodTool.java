@@ -196,7 +196,7 @@ public class ComposeMethodTool extends AbstractTool
         // .nextStep). Every other applying operation guarantees a diff string, so a caller
         // that had to null-check this one key would be paying for our exception.
         if (result.diff() != null) {
-            data.put("diff", result.diff());
+            putDiff(data, result.diff(), arguments);
         }
         data.put("sectionsExtracted", sections.size());
         data.put("summary", "compose method: extracted " + sections.size() + " sections into named sub-methods");
