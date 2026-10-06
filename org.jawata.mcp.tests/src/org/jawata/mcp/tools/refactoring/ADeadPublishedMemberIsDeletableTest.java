@@ -35,10 +35,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * kind as unknown — which is this repository's recorded defect of a kind that "ran correctly for
  * anyone who knew its argument names and was invisible to everyone else".</p>
  *
- * <p>Most of this class asserts REFUSALS, and that is the subject rather than defensiveness: a
- * reference search returns zero for a member that is genuinely dead AND for an override whose
- * callers go through its supertype. The two results are identical; what deleting them does is
- * not.</p>
+ * <p>Most of this class asserts REFUSALS, and that is the subject rather than defensiveness.
+ * The refusals are also where two of my own claims were corrected by mutations rather than by
+ * review: an override does NOT report zero references in this engine — JDT matches the
+ * supertype's own declaration, and matches {@code toString()} polymorphically besides — so
+ * that branch delivers a precise REASON rather than the only barrier to a deletion. Each test
+ * therefore asserts the reason CODE, because on this operation the code is the deliverable.</p>
  */
 class ADeadPublishedMemberIsDeletableTest {
 
@@ -119,12 +121,15 @@ class ADeadPublishedMemberIsDeletableTest {
     }
 
     @Test
-    @DisplayName("an override whose contract nobody calls is refused — the case the search CANNOT see")
+    @DisplayName("an override is refused AS an override, not as a member with one reference")
     void anUnreferencedOverrideIsRefused() throws Exception {
-        // THIS is the case the override refusal exists for, and it is the row's headline claim.
-        // Service.shutdown overrides Lifecycle.shutdown and NOTHING calls shutdown() anywhere,
-        // so the reference search returns zero — a result identical to the genuinely dead
-        // member's. Deleting it leaves Service not implementing the interface it declares.
+        // MEASURED, and it corrected this test twice. Nothing calls shutdown() anywhere, so I
+        // predicted the search would return zero and this branch would be the only thing
+        // preventing a deletion. It returns ONE: JDT matches Lifecycle's own declaration as a
+        // reference to the implementing method. So an override NEVER reports zero in this
+        // engine, and what this branch buys is the REASON — "start at the supertype" instead
+        // of "it has one reference at Lifecycle.java", which tells a caller nothing about why.
+        // That is why the assertion is on the reason code: the code IS the deliverable.
         ToolResponse r = removeIn("Service.java", "shutdown", true);
         assertFalse(r.isSuccess(), "deleting it leaves Service not implementing Lifecycle");
         assertEquals("MEMBER_OVERRIDES_A_SUPERTYPE", r.getError().getReason(), () -> describe(r));

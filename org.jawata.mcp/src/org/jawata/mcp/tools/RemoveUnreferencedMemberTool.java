@@ -88,9 +88,17 @@ import com.fasterxml.jackson.databind.JsonNode;
  *   <li><b>A private member</b> → {@code apply_cleanup kind=remove_dead_code}, where the
  *       COMPILER proves it dead. A search is the weaker proof and should not be used where the
  *       stronger one applies.</li>
- *   <li><b>A method that overrides or implements something.</b> Zero direct references is
- *       expected and means nothing: the call goes through the supertype. Deleting it changes
- *       dispatch.</li>
+ *   <li><b>A method that overrides or implements something</b> — refused BY NAME, so the caller
+ *       is told to start at the supertype rather than being left to work out why a member with
+ *       one reference is undeletable. <b>MEASURED, after two mutations predicted otherwise:
+ *       this branch buys precision, not safety.</b> The reference search never returns zero for
+ *       an override — JDT matches the supertype's own declaration, so {@code Service.shutdown}
+ *       reports one reference at {@code Lifecycle.java}, and {@code Registry.toString} reports
+ *       TEN because calls to {@code toString()} match polymorphically across the workspace.
+ *       With this branch disabled both are still refused, one check later and less usefully.
+ *       The first version of this entry claimed a zero-reference override was
+ *       indistinguishable from a dead member; that was asserted rather than measured, and it
+ *       is false of this engine.</li>
  *   <li><b>A method with implementors</b> — the census's interface-member case. Removing the
  *       declaration leaves every implementor's {@code @Override} dangling.</li>
  *   <li><b>Any reference at all</b>, with the sites listed, because the useful part of a
@@ -127,11 +135,11 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
             enumeration is complete rather than this tool assuming it.
             Refuses a PRIVATE member (apply_cleanup kind=remove_dead_code
             proves those with the compiler, which is the stronger proof), a
-            method that overrides or implements anything (its callers go
-            through the supertype, so zero direct references means nothing),
-            a method with implementors, a field sharing its declaration with
-            other fragments, and of course any member with a reference —
-            listing the sites.""";
+            method that overrides or implements anything — named as such so
+            you start at the supertype, rather than being told it has one
+            reference at the interface that declares it — a method with
+            implementors, a field sharing its declaration with other
+            fragments, and any member with a reference, listing the sites.""";
     }
 
     /** Structural: a published member stops existing, so every consumer's compile changes. */
@@ -316,19 +324,21 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
         }
 
         if (member instanceof IMethod method) {
-            // A zero-reference override is EXPECTED to have zero references — its callers go
-            // through the supertype — so the search result says nothing about whether it is
-            // reachable. This is the one refusal that protects against a deletion which both
-            // compiles and changes behaviour.
+            // Asked FIRST so the refusal names the right thing. The reference check below
+            // would refuse an override too — measured: JDT matches the supertype's own
+            // declaration, so an override never reports zero — but it would report "one
+            // reference at Lifecycle.java", which tells the caller nothing about why the
+            // member cannot go. This branch is the difference between that and "start at the
+            // supertype".
             IType overridden = overriddenDeclarer(service, method);
             if (overridden != null) {
                 return ToolResponse.preconditionNotMet(
                     method.getElementName() + " overrides or implements "
                         + overridden.getElementName() + ", so its callers invoke it through "
-                        + "that declaration and zero DIRECT references is the expected state "
-                        + "rather than evidence of anything. Deleting it changes dispatch. If "
-                        + "the whole contract is dead, start at "
-                        + overridden.getElementName() + ".",
+                        + "that declaration and deleting it changes dispatch. A reference count "
+                        + "cannot tell you that: an override always has at least the supertype's "
+                        + "own declaration pointing at it. If the whole contract is dead, start "
+                        + "at " + overridden.getElementName() + ".",
                     "MEMBER_OVERRIDES_A_SUPERTYPE");
             }
             List<SearchMatch> implementors =
