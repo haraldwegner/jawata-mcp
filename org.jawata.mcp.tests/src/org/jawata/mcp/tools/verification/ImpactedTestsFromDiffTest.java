@@ -48,11 +48,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Exercising either needs a git-backed project ON TOP of an attribution run,
  * so this makes the per-test fixture copy a real repository before recording
  * evidence against it.</p>
+ *
+ * <p><b>And the D21 half, which lives here because it needs the SAME fixture.</b>
+ * The three tests above pin what the derivation ANSWERS; the three below pin
+ * what the run path DOES with it — that a broad scope narrows itself by
+ * default, that {@code fullRun} pins the whole scope, and that an answer the
+ * evidence cannot support widens the run and says so instead of shrinking it.
+ * They are one subject seen from both ends, and splitting them across two
+ * classes would have copied ninety lines of git-and-attribution fixture to buy
+ * a tidier class name.</p>
  */
 class ImpactedTestsFromDiffTest {
 
     private static final String EDITED_METHOD_BODY = "        return x + 1;";
     private static final String COVERED_CLASS = "com.example.cov.Covered";
+    private static final String COVERED_TEST = "com.example.cov.CoveredTest";
+    private static final String WIDGET_TEST = "com.example.sel.WidgetTest";
 
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
@@ -149,7 +160,180 @@ class ImpactedTestsFromDiffTest {
             () -> assertEquals(List.of(), impacted.get("symbols"), "got: " + impacted));
     }
 
+    // ------------------------------------------------- D21: the run USES it
+
+    @Test
+    @DisplayName("D21: a package run narrows ITSELF to the tests the change reaches — no flag")
+    void aPackageRunNarrowsToTheTestsTheChangeReaches() throws Exception {
+        RunTestsTool tool = selectionFixture();
+        editWidget();
+
+        Map<String, Object> run = packageRun(tool, Map.of());
+        Map<String, Object> selection = cast2(run.get("selection"));
+        Map<String, Object> summary = cast2(run.get("summary"));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, selection.get("narrowed"),
+                "nothing was passed to ask for this — a selection offered as an opt-in is "
+                    + "chosen by nobody, so being the DEFAULT is the deliverable; got: " + run),
+            () -> assertEquals(List.of(WIDGET_TEST), selection.get("selectedClasses"),
+                "the evidence names exactly the class covering the edit; got: " + selection),
+            () -> assertEquals(1, summary.get("total"),
+                "THE DISCRIMINATOR, and it is a measured pair rather than an assertion about "
+                    + "one number: the package holds THREE test classes and its sibling test "
+                    + "runs the same scope pinned and gets 3. Only a narrowing that reached "
+                    + "the runner can produce 1 — a selection computed and then ignored would "
+                    + "report narrowed=true here and still run three; got: " + run));
+    }
+
+    @Test
+    @DisplayName("D21: fullRun PINS the whole scope — which is what a checkpoint gate asks for")
+    void fullRunPinsTheWholeScope() throws Exception {
+        RunTestsTool tool = selectionFixture();
+        editWidget();
+
+        Map<String, Object> run = packageRun(tool, Map.of("fullRun", true));
+        Map<String, Object> summary = cast2(run.get("summary"));
+
+        assertAll(
+            () -> assertFalse(run.containsKey("selection"),
+                "a pinned run carries NO selection note, because nothing was selected — "
+                    + "reporting a narrowing that did not happen is worse than not narrowing; "
+                    + "got: " + run),
+            () -> assertEquals(3, summary.get("total"),
+                "and all three classes ran. This is the OTHER half of the pair above: without "
+                    + "it, a 1 there could mean the package selector finds one class rather "
+                    + "than that the narrowing works; got: " + run));
+    }
+
+    @Test
+    @DisplayName("D21: where the proof cannot hold, the answer SAYS SO and everything runs")
+    void whereTheProofCannotHoldTheWholeScopeRuns() throws Exception {
+        RunTestsTool tool = selectionFixture();
+        Path pom = selRoot().resolve("pom.xml");
+        Files.writeString(pom, Files.readString(pom) + "\n<!-- changed -->\n");
+
+        Map<String, Object> run = packageRun(tool, Map.of());
+        Map<String, Object> selection = cast2(run.get("selection"));
+        Map<String, Object> summary = cast2(run.get("summary"));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, selection.get("narrowed"), "got: " + run),
+            () -> assertEquals("the whole scope", selection.get("ran"), "got: " + run),
+            () -> assertTrue(String.valueOf(selection.get("reason")).contains("pom.xml"),
+                "and it NAMES the file it could not speak for, because 'we could not look' and "
+                    + "'there is nothing to run' are different facts and only one of them is a "
+                    + "reason to run less; got: " + selection),
+            () -> assertEquals(3, summary.get("total"),
+                "and SAYING so is not the deliverable — RUNNING everything is. A response that "
+                    + "explained itself and still ran one class would pass every assertion "
+                    + "above it; got: " + run));
+    }
+
+    @Test
+    @DisplayName("D21: evidence narrower than the run may not narrow it, however fresh it is")
+    void evidenceFromOneClassMayNotNarrowAPackage() throws Exception {
+        // The coverage fixture's attribution is recorded from ONE test class,
+        // which is the shape that must be refused: a production class covered
+        // both by the class that run saw and by one it never started comes back
+        // claimed only by the first, and the second is then dropped from a run
+        // that used to include it. Every other rule passes here — the evidence
+        // is finalized, its revision is an ancestor, the edit resolves — so
+        // this case reaches the scope rule and nothing else.
+        RunTestsTool tool = attributedFixture();
+        editAlwaysCalled();
+
+        Map<String, Object> impacted = action(tool, "coverage_impacted_tests",
+            Map.of("diff", "worktree"));
+        Map<String, Object> verdict = cast2(impacted.get("selectionVerdict"));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, verdict.get("mayNarrow"),
+                "the scope-independent rules all pass — so a refusal here would be some other "
+                    + "rule answering and this test would prove nothing; got: " + verdict),
+            () -> assertEquals(Boolean.FALSE, verdict.get("evidenceCoversWholeSuite"),
+                "but the evidence saw one class, and the suite runner narrows EVERYTHING; "
+                    + "got: " + verdict),
+            () -> assertEquals(List.of(COVERED_TEST), verdict.get("evidenceScope"),
+                "and it says which, so a caller can compare it against its own scope rather "
+                    + "than take a yes or no computed for somebody else's; got: " + verdict));
+    }
+
+    @Test
+    @DisplayName("D21: and the RUN refuses the same narrowness, on the scope it was asked for")
+    void aPackageRunRefusesEvidenceNarrowerThanItself() throws Exception {
+        // The sibling above pins the FACT the verdict states; this pins the
+        // RULE the run path applies to it, which is a different half and was
+        // reachable by nothing. Same fixture, same edit — only the width of the
+        // recorded evidence differs, so the width is the only thing that can
+        // explain the different answer.
+        JdtServiceImpl service = helper.loadProjectCopy("selection-target");
+        commitEverything(selRoot());
+        RunTestsTool tool = new RunTestsTool(() -> service);
+        runAttribution(tool, "class", WIDGET_TEST);
+        editWidget();
+
+        Map<String, Object> run = packageRun(tool, Map.of());
+        Map<String, Object> selection = cast2(run.get("selection"));
+        Map<String, Object> summary = cast2(run.get("summary"));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, selection.get("narrowed"),
+                "WidgetTest's own evidence would have selected WidgetTest and been RIGHT by "
+                    + "luck — the two unrelated classes really do not touch Widget. It must "
+                    + "still refuse: being right about this fixture is not knowing, and the "
+                    + "next package has a second coverer; got: " + run),
+            () -> assertTrue(String.valueOf(selection.get("reason")).contains("narrower"),
+                "and by the SCOPE rule rather than by one of the four that precede it — "
+                    + "every other rule passes on this input, which is what makes the "
+                    + "refusal attributable; got: " + selection),
+            () -> assertEquals(3, summary.get("total"), "so all three ran; got: " + run));
+    }
+
     // ---------------------------------------------------------------- fixture
+
+    /**
+     * The selection fixture, with attribution recorded over the WHOLE package —
+     * which is what makes its evidence wide enough to narrow a package run.
+     */
+    private RunTestsTool selectionFixture() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("selection-target");
+        commitEverything(selRoot());
+        RunTestsTool tool = new RunTestsTool(() -> service);
+        runAttribution(tool, "package", "com.example.sel");
+        return tool;
+    }
+
+    private Path selRoot() {
+        return helper.getTempDirectory().resolve("selection-target");
+    }
+
+    /** An edit inside Widget's only method — the ordinary shape of a change. */
+    private void editWidget() throws Exception {
+        Path widget = selRoot().resolve("src/main/java/com/example/sel/Widget.java");
+        String before = Files.readString(widget);
+        String after = before.replace("        return x + 1;",
+            "        int bumped = x + 1;\n        return bumped;");
+        assertNotEquals(before, after, "Widget's bump body is what this edits; it moved");
+        Files.writeString(widget, after);
+    }
+
+    /** A run over the whole fixture package — the broad scope D21 is about. */
+    private Map<String, Object> packageRun(RunTestsTool tool, Map<String, Object> extra) {
+        ObjectNode args = om.createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", "package");
+        scope.put("packageName", "com.example.sel");
+        args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
+        extra.forEach((k, v) -> {
+            if (v instanceof Boolean b) args.put(k, b);
+            else args.put(k, String.valueOf(v));
+        });
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "package run failed: " + r.getError());
+        return cast2(r.getData());
+    }
 
     /** A git-backed copy of the coverage fixture with attribution recorded against it. */
     private RunTestsTool attributedFixture() throws Exception {
@@ -230,10 +414,21 @@ class ImpactedTestsFromDiffTest {
     }
 
     private void runAttribution(RunTestsTool tool, String testClass) {
+        runAttribution(tool, "class", testClass);
+    }
+
+    /**
+     * Record attribution over a scope. The KIND is a parameter because the two
+     * fixtures need different widths deliberately: coverage-target can only be
+     * attributed one class at a time (its package holds a ten-minute sleeper),
+     * and that narrowness is itself the subject of
+     * {@link #evidenceFromOneClassMayNotNarrowAPackage()}.
+     */
+    private void runAttribution(RunTestsTool tool, String scopeKind, String target) {
         ObjectNode args = om.createObjectNode();
         ObjectNode scope = args.putObject("scope");
-        scope.put("kind", "class");
-        scope.put("typeName", testClass);
+        scope.put("kind", scopeKind);
+        scope.put("package".equals(scopeKind) ? "packageName" : "typeName", target);
         args.put("framework", "junit5");
         args.put("timeoutSeconds", 120);
         args.put("attribution", true);

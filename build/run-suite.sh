@@ -5,7 +5,14 @@
 # shards in parallel, merge the summaries. Exit != 0 when any test fails or
 # any shard dies.
 #
-# Usage:  build/run-suite.sh [shards]        (default 4)
+# Usage:  build/run-suite.sh [shards] [--full]      (shards default 4)
+#           --full  run EVERY discovered class. Selection is otherwise ON: the
+#                   run narrows to the classes the coverage evidence says your
+#                   changes reach, and widens itself back with a printed reason
+#                   wherever that evidence cannot carry the claim.
+#                   PASS IT AT A CHECKPOINT OR RELEASE GATE. The summary line
+#                   reports which it was, so a forgotten --full is visible in
+#                   the record rather than hidden in it.
 # Env:    TIMINGS=<file>  DEFAULT_SECS=<n>   (default 15)
 set -uo pipefail
 
@@ -14,9 +21,15 @@ SHARDS="${1:-4}"
 TIMINGS="${TIMINGS:-$ROOT/docs/sprints/dossier-23-timings.txt}"
 DEFAULT_SECS="${DEFAULT_SECS:-15}"
 DIST="$ROOT/build/dist/target/dist"
-# Stage 6b: --impacted is OPT-IN and never the gate path (see the safety rule below).
-IMPACTED=0
-for a in "$@"; do [ "$a" = "--impacted" ] && IMPACTED=1; done
+# S12a / D21 — SELECTION IS THE DEFAULT. `--full` pins the whole suite.
+#
+# It was the other way round (Stage 6b: `--impacted`, opt-in), and opt-in is
+# why it never fired. The cost of skipping it lands on the person waiting, not
+# on the agent running it, so a flag nobody is obliged to pass is a flag nobody
+# passes — measured at 26 of 354 classes, 38 s against 307 s, chosen by nobody.
+# `--impacted` still parses, as a no-op, so older call sites keep working.
+IMPACTED=1
+for a in "$@"; do [ "$a" = "--full" ] && IMPACTED=0; done
 FIXTURES="$ROOT/org.jawata.core.tests/test-resources/sample-projects"
 # PER-RUN output dir. Two concurrent runs used to share $DIST/suite-shards and
 # both `rm -rf` it, so the loser found no summaries and reported
@@ -163,15 +176,18 @@ done | sort -u > "$ALL_CLASSES"
 TOTAL_CLASSES=$(wc -l < "$ALL_CLASSES")
 echo "Discovered $TOTAL_CLASSES test classes across $SHARDS shards"
 
-# 1b. IMPACTED-TEST SELECTION (Stage 6b, G4) — OPT-IN, INNER LOOP ONLY.
+# 1b. IMPACTED-TEST SELECTION (S12a / D21) — ON BY DEFAULT.
 #
-# THE BINDING SAFETY RULE: selection narrows the INNER loop and nothing else.
-# Every checkpoint gate calls this script WITHOUT --impacted and therefore runs
-# the full suite. We are not building a false-green machine.
+# THE SAFETY RULE, RESTATED FOR THE NEW DEFAULT. A checkpoint or release gate
+# pins the whole suite with `--full`, and forgetting to is LOUD rather than
+# silent: the summary line carries `selection=full` or `selection=impacted(N/M)`,
+# so a transcribed total that was never a full run says so on its own face.
+# That is what replaces "the safe thing is the default" — under opt-in the
+# protection cost nothing and bought nothing, because the mechanism never ran.
 #
 # It narrows only when the evidence can carry the claim, and SAYS WHY whenever
 # it does not:
-#   * no --impacted flag                  -> full (the default, and the gate path)
+#   * --full passed                       -> full (the gate path)
 #   * no resident to ask                  -> full, reason printed
 #   * the tool reports no attribution     -> full, reason printed
 #   * the tool names zero impacted tests  -> full, reason printed (a diff that
@@ -186,6 +202,7 @@ echo "Discovered $TOTAL_CLASSES test classes across $SHARDS shards"
 #                                            Narrowing on evidence that structurally
 #                                            cannot see half the suite is exactly
 #                                            the false green this rule forbids.
+SELECTION="full"
 if [ "$IMPACTED" = "1" ]; then
     reason=""
     if [ -z "${JAWATA_URL:-}" ] || [ -z "${JAWATA_TOKEN:-}" ]; then
@@ -204,6 +221,7 @@ if [ "$IMPACTED" = "1" ]; then
             if [ "$SEL_COUNT" -eq 0 ]; then
                 reason="none of the impacted classes exist in this dist"
             else
+                SELECTION="impacted($SEL_COUNT/$TOTAL_CLASSES)"
                 cp "$OUT/impacted-live.txt" "$ALL_CLASSES"
                 TOTAL_CLASSES="$SEL_COUNT"
                 echo "IMPACTED SELECTION: running $SEL_COUNT of the discovered classes"
@@ -406,7 +424,10 @@ for s in $(seq 0 $((SHARDS - 1))); do
     CFAIL=$((CFAIL + $(sed 's/.*containersFailed=\([0-9]*\).*/\1/' <<< "$line")))
 done
 
-echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD containersAborted=$CABORT containersFailed=$CFAIL"
+# `selection=` is on this line because this line is what gets TRANSCRIBED into
+# a checkpoint record. A total quoted without it cannot be told from a total
+# that ran a tenth of the suite, and the two must never read the same.
+echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS failed=$FAIL aborted=$ABORT skipped=$SKIP unloadable=$UNLOAD containersAborted=$CABORT containersFailed=$CFAIL selection=$SELECTION"
 [ "$SUMMARIES" -eq "$SHARDS" ] || { echo "FAILED: $((SHARDS - SUMMARIES)) shard(s) produced no summary"; exit 3; }
 
 # Every PLANNED test must have produced a verdict — the runner's blind spot is a

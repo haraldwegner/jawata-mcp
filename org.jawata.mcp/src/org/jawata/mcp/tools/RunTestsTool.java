@@ -255,6 +255,14 @@ public class RunTestsTool extends AbstractTool {
         properties.put("coverage", Map.of("type", "boolean",
             "description", "Collect JaCoCo coverage during this run (action=run/start); the "
                 + "response carries a coverageArtifactId for the coverage_* query actions."));
+        properties.put("fullRun", Map.of("type", "boolean",
+            "description", "PIN the whole scope. A kind='package' run otherwise narrows "
+                + "ITSELF to the tests the coverage evidence says your changes reach — by "
+                + "default, on every client and OS, with no flag to remember. Pass this "
+                + "true where the whole scope is the point: a checkpoint, a release gate. "
+                + "Where the evidence cannot prove the narrowing is safe the response SAYS "
+                + "SO and everything runs anyway, so a quiet short run is not a state this "
+                + "can reach."));
         properties.put("evidenceKind", Map.of("type", "string",
             "enum", List.of("unit", "integration", "system", "replay", "manual"),
             "description", "Evidence classification recorded in the coverage artifact "
@@ -418,6 +426,24 @@ public class RunTestsTool extends AbstractTool {
                 }
             }
 
+            // D21 — selection by compiler reach, as the DEFAULT of the broad
+            // scope. A method or class scope is already the caller's own
+            // narrowing and is left alone; a package scope is the one that
+            // runs everything, so it is the one worth deriving.
+            //
+            // It is not a flag, and that is the deliverable rather than a
+            // convenience. A selection offered as an opt-in costs the agent
+            // nothing to skip — the wall clock lands on the human — so it is
+            // chosen by nobody and never fires. fullRun pins the whole scope
+            // for the two cases that genuinely want it.
+            boolean fullRun = arguments.has("fullRun")
+                && arguments.get("fullRun").asBoolean(false);
+            Map<String, Object> selection = null;
+            if ("package".equals(kind) && !fullRun) {
+                selection = narrowToImpacted(spec, arguments,
+                    scope.get("packageName").asText());
+            }
+
             // Evidence needs compiled classes: build, and refuse honestly on
             // compile errors instead of running tests against stale bytes.
             String buildProblem = RunnerClasspath.buildAndCheck(javaProject, new NullProgressMonitor());
@@ -493,6 +519,7 @@ public class RunTestsTool extends AbstractTool {
                 data.put("sessionId", session.id);
                 data.put("state", session.state());
                 data.put("framework", frameworkLabel);
+                if (selection != null) data.put("selection", selection);
                 if (withCoverage) data.put("coverageArtifactId", artifactId);
                 data.put("hint", "Poll run_tests(action=status, sessionId=…) for per-class "
                     + "progress; abort with action=cancel.");
@@ -513,6 +540,7 @@ public class RunTestsTool extends AbstractTool {
             data.put("operation", "run_tests");
             data.put("framework", frameworkLabel);
             data.put("projectsTested", 1);
+            if (selection != null) data.put("selection", selection);
             if (withCoverage) {
                 data.put("coverageArtifactId", artifactId);
                 data.put("coverageHint", "Query run_tests(action=coverage_report|"
@@ -1183,38 +1211,91 @@ public class RunTestsTool extends AbstractTool {
 
     /** Stage 9 — smallest evidence-backed test set for a change. */
     private ToolResponse coverageImpactedTests(JsonNode arguments) throws Exception {
+        ImpactedSelection sel = selectImpacted(arguments);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("operation", "run_tests");
+        data.put("action", "coverage_impacted_tests");
+        if (!sel.attributionAvailable()) {
+            data.put("attributionAvailable", false);
+            data.put("note", sel.note());
+            return ToolResponse.success(data, ResponseMeta.builder().build());
+        }
+        if (sel.derivedFromDiff()) {
+            // D2: the list is never bare — what was examined to produce it, and
+            // what could not be spoken for, travel with it.
+            data.put("filesChanged", sel.filesChanged());
+            data.put("filesWithoutEvidence", sel.filesWithoutEvidence());
+            data.put("staleClasses", sel.staleClasses());
+        }
+        data.put("symbols", sel.symbols());
+        data.put("attributionAvailable", true);
+        // THE VERDICT, so a caller narrowing a run reads ONE field instead of
+        // re-deriving the staleness rules from the facts above it. Four rules
+        // read five ways is four chances to disagree, and the disagreement is
+        // silent on the side that runs fewer tests.
+        Map<String, Object> verdict = new LinkedHashMap<>();
+        verdict.put("mayNarrow", sel.cannotNarrowBecause() == null);
+        if (sel.cannotNarrowBecause() != null) verdict.put("reason", sel.cannotNarrowBecause());
+        // RULE 2's fact, not its judgement — the caller compares it against the
+        // scope IT is narrowing, which this response cannot see. The suite
+        // runner narrows EVERYTHING, so for it the only admissible value is
+        // the empty one.
+        verdict.put("evidenceScope", sel.evidenceScope());
+        verdict.put("evidenceCoversWholeSuite", sel.evidenceScope().isEmpty());
+        data.put("selectionVerdict", verdict);
+        data.put("impactedTests", sel.rankedTests());
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .totalCount(sel.rankedTests().size())
+            .returnedCount(sel.rankedTests().size()).build());
+    }
+
+    /**
+     * The impacted-test derivation, in ONE place: which tests the evidence says
+     * a change reaches, and — just as load-bearing — whether that answer may be
+     * used to NARROW a run at all.
+     *
+     * <p>Two callers read it. The {@code coverage_impacted_tests} action
+     * REPORTS it; the run path NARROWS by it. A second implementation would be
+     * a second answer, and the two would disagree the first time either one
+     * changed — which is the whole reason this is a method and not a copy.</p>
+     */
+    private ImpactedSelection selectImpacted(JsonNode arguments) throws Exception {
         // Symbols: explicit list, or derived from a git diff via the newest
         // attribution artifact's line model.
         java.util.List<String> symbols = new ArrayList<>();
-        if (arguments.has("symbols") && arguments.get("symbols").isArray()) {
+        if (arguments != null && arguments.has("symbols") && arguments.get("symbols").isArray()) {
             arguments.get("symbols").forEach(n -> symbols.add(n.asText()));
         }
+        boolean derivedFromDiff = symbols.isEmpty();
+        int filesChanged = 0;
+        java.util.List<String> withoutEvidence = new ArrayList<>();
+        java.util.List<String> staleClasses = new ArrayList<>();
         String attributionArtifact = null;
+        org.jawata.mcp.coverage.CoverageManifest manifest = null;
         for (String id : coverage.store().list()) {
             org.jawata.mcp.coverage.CoverageManifest m =
                 coverage.store().readManifest(id).orElse(null);
             if (m != null && m.attribution && m.runFinalized) {
                 attributionArtifact = id;
+                manifest = m;
                 break;
             }
         }
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("operation", "run_tests");
-        data.put("action", "coverage_impacted_tests");
         if (attributionArtifact == null) {
-            data.put("attributionAvailable", false);
-            data.put("note", "No attribution artifacts exist — impacted-test selection needs "
-                + "at least one run with attribution=true.");
-            return ToolResponse.success(data, ResponseMeta.builder().build());
+            String none = "there is no attribution evidence yet, so nothing can say which "
+                + "tests reach the change — run once with attribution=true to record some";
+            return new ImpactedSelection(false,
+                "No attribution artifacts exist — impacted-test selection needs "
+                    + "at least one run with attribution=true.",
+                false, 0, symbols, withoutEvidence, staleClasses, List.of(), List.of(), none);
         }
         org.jawata.mcp.coverage.CoverageModel model = coverage.model(attributionArtifact);
-        if (symbols.isEmpty()) {
+        if (derivedFromDiff) {
             String diffKind = getStringParam(arguments, "diff", "worktree");
             String range = getStringParam(arguments, "range");
             org.jawata.mcp.coverage.GitDiff diff = org.jawata.mcp.coverage.GitDiff.read(
                 Path.of(model.manifest.projectRoot), diffKind, range);
-            java.util.List<String> withoutEvidence = new ArrayList<>();
-            java.util.List<String> staleClasses = new ArrayList<>();
+            filesChanged = diff.changedLinesByFile.size();
             for (Map.Entry<String, java.util.Set<Integer>> e : diff.changedLinesByFile.entrySet()) {
                 org.jawata.mcp.coverage.CoverageModel.ClassCov clazz =
                     classForPath(model, e.getKey());
@@ -1262,13 +1343,7 @@ public class RunTestsTool extends AbstractTool {
                     if (!symbols.contains(clazz.fqn)) symbols.add(clazz.fqn);
                 }
             }
-            // D2: the list is never bare — what was examined to produce it, and
-            // what could not be spoken for, travel with it.
-            data.put("filesChanged", diff.changedLinesByFile.size());
-            data.put("filesWithoutEvidence", withoutEvidence);
-            data.put("staleClasses", staleClasses);
         }
-        data.put("symbols", symbols);
         // Union of tests covering each symbol; count how many symbols each covers.
         Map<String, Map<String, Object>> tests = new LinkedHashMap<>();
         for (String symbol : symbols) {
@@ -1305,10 +1380,258 @@ public class RunTestsTool extends AbstractTool {
                 .kindRank((String) t.get("evidenceKind")))
             .thenComparing(t -> -((java.util.List<?>) t.get("coversSymbols")).size())
             .thenComparing(t -> String.valueOf(t.get("test"))));
-        data.put("attributionAvailable", true);
-        data.put("impactedTests", ranked);
-        return ToolResponse.success(data, ResponseMeta.builder()
-            .totalCount(ranked.size()).returnedCount(ranked.size()).build());
+        java.util.List<String> evidenceScope = new ArrayList<>();
+        if (manifest.selectClasses != null) evidenceScope.addAll(manifest.selectClasses);
+        if (manifest.selectMethods != null) evidenceScope.addAll(manifest.selectMethods);
+        if (manifest.selectPackages != null) evidenceScope.addAll(manifest.selectPackages);
+        return new ImpactedSelection(true, null, derivedFromDiff, filesChanged,
+            symbols, withoutEvidence, staleClasses, ranked, evidenceScope,
+            cannotNarrow(manifest, symbols, withoutEvidence, ranked, derivedFromDiff,
+                filesChanged));
+    }
+
+    /**
+     * THE STALENESS RULES — attribution evidence may narrow a run only while it
+     * still describes THIS tree. Any one failing leaves the run whole and says
+     * which, because a selection nobody can see is a silent short run.
+     *
+     * <p>These four were written in {@code build/impacted-tests.sh}, which read
+     * the derivation and then judged it from the outside. They are HERE now
+     * because the judgement needs the artifact's own manifest — its completion
+     * status and the revision it was recorded at — which the shell could only
+     * ask for over a second round-trip and, in the case of partial evidence,
+     * never got: the script tested {@code data.partial} and
+     * {@code data.evidenceComplete}, and this response has never carried either
+     * field, so that rule has been reading null and passing since it was
+     * written. Moving the verdict is what turns it back on.</p>
+     */
+    private String cannotNarrow(org.jawata.mcp.coverage.CoverageManifest m,
+            java.util.List<String> symbols, java.util.List<String> withoutEvidence,
+            java.util.List<Map<String, Object>> ranked, boolean derivedFromDiff,
+            int filesChanged) {
+        // RULE 4 (near half) — a changed file no class in the evidence claims.
+        if (!withoutEvidence.isEmpty()) {
+            return "the evidence has never seen " + withoutEvidence.size()
+                + " changed file(s), so it cannot speak for them: "
+                + String.join(", ", withoutEvidence);
+        }
+        if (ranked.isEmpty()) {
+            return filesChanged == 0 && derivedFromDiff
+                ? "the diff is empty, so there is nothing to select against"
+                : "no test in the evidence covers the change, which is a gap in the evidence "
+                    + "rather than a proof that nothing is affected";
+        }
+        if (m.gitRevision == null || m.gitRevision.isBlank()) {
+            return "the evidence records no git revision, so nothing can say which tree it "
+                + "describes";
+        }
+        Path repo = Path.of(m.projectRoot);
+        // RULE 3 — evidence from a rewritten or divergent history describes
+        // code this tree does not have, and that is not a smaller mismatch
+        // than a stale one. It is a different tree.
+        if (!git(repo, "merge-base", "--is-ancestor", m.gitRevision, "HEAD")) {
+            return "the attribution evidence was recorded at "
+                + m.gitRevision.substring(0, Math.min(12, m.gitRevision.length()))
+                + ", which is not an ancestor of HEAD — it describes a different tree";
+        }
+        // RULE 4 (far half) — everything that changed SINCE that revision,
+        // committed or not, must be accounted for. Rule 4 subsumes "the
+        // evidence is older than my change": stale evidence and a dropped
+        // derivation are one failure seen from the selector's side, a file
+        // whose tests were never considered.
+        java.util.Set<String> derived = new java.util.LinkedHashSet<>();
+        for (String s : symbols) {
+            String fqn = s.contains("#") ? s.substring(0, s.indexOf('#')) : s;
+            derived.add(fqn.substring(fqn.lastIndexOf('.') + 1));
+        }
+        java.util.List<String> unaccounted = new ArrayList<>();
+        try {
+            org.jawata.mcp.coverage.GitDiff since =
+                org.jawata.mcp.coverage.GitDiff.read(repo, "range", m.gitRevision);
+            for (String file : since.changedLinesByFile.keySet()) {
+                if (!file.endsWith(".java")) continue;
+                String simple = file.substring(file.lastIndexOf('/') + 1,
+                    file.length() - ".java".length());
+                if (!derived.contains(simple)) unaccounted.add(file);
+            }
+        } catch (Exception e) {
+            return "the changes since " + m.gitRevision.substring(0,
+                Math.min(12, m.gitRevision.length())) + " could not be read, so nothing can "
+                + "say whether the evidence covers them: " + e;
+        }
+        if (!unaccounted.isEmpty()) {
+            return "the derivation accounts for none of " + unaccounted.size()
+                + " file(s) changed since the evidence was recorded (e.g. "
+                + unaccounted.get(0) + "); narrowing on this would skip the tests covering them";
+        }
+        return null;
+    }
+
+    /**
+     * RULE 2, applied where the scope IS known: evidence recorded from a run
+     * narrower than the one being narrowed cannot carry the claim.
+     *
+     * <p>A package run may be narrowed by whole-suite evidence, or by evidence
+     * from a run of that same package. It may NOT be narrowed by evidence from
+     * one test class: a production class exercised both by the class that run
+     * saw and by one it never started comes back naming only the first, and
+     * the second is then dropped from a run that used to include it. That is
+     * under-selection, and it is the failure this whole mechanism is one
+     * mistake away from at all times.</p>
+     *
+     * @param evidenceScope what the recording run selected; empty = whole suite
+     * @param packageName the package this run was asked for
+     * @return the reason it may not narrow, or null
+     */
+    private static String evidenceTooNarrowFor(java.util.List<String> evidenceScope,
+            String packageName) {
+        if (evidenceScope.isEmpty()) return null;            // whole-suite evidence
+        if (evidenceScope.contains(packageName)) return null; // this very package
+        return "the evidence was recorded from a run that selected " + evidenceScope
+            + ", which is narrower than the package being run — it cannot say which tests "
+            + "cover " + packageName + ", only which cover what it happened to execute";
+    }
+
+    /** One git predicate, answered by exit status. */
+    private static boolean git(Path repo, String... args) {
+        try {
+            java.util.List<String> cmd = new ArrayList<>();
+            cmd.add("git");
+            cmd.addAll(List.of(args));
+            Process p = new ProcessBuilder(cmd).directory(repo.toFile())
+                .redirectErrorStream(true).start();
+            p.getInputStream().readAllBytes();
+            return p.waitFor() == 0;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception e) {
+            // Cannot ask is not the same as yes. The caller reads false as
+            // "do not narrow", which is the side that costs time rather than
+            // correctness.
+            return false;
+        }
+    }
+
+    /**
+     * What the coverage evidence says a change reaches, and whether that is a
+     * proof a run may be narrowed by.
+     *
+     * <p>The two are kept apart deliberately. A caller READING the selection
+     * wants every derived fact, including the ones that make it unusable; a
+     * caller NARROWING by it needs one yes or no and a sentence saying why.
+     * Folding them would make "I found nothing" and "I could not look"
+     * indistinguishable, and those two must never be the same answer.</p>
+     */
+    private record ImpactedSelection(
+            boolean attributionAvailable,
+            String note,
+            boolean derivedFromDiff,
+            int filesChanged,
+            java.util.List<String> symbols,
+            java.util.List<String> filesWithoutEvidence,
+            java.util.List<String> staleClasses,
+            java.util.List<Map<String, Object>> rankedTests,
+            /**
+             * WHAT THE RECORDING RUN ITSELF SELECTED — the empty list meaning
+             * it selected nothing in particular and therefore saw the whole
+             * suite.
+             *
+             * <p>This is RULE 2, and it is stated as a FACT rather than folded
+             * into {@link #cannotNarrowBecause} because the rule needs a scope
+             * and the verdict does not have one. Evidence recorded from one
+             * test class cannot say which tests cover a whole package: a class
+             * exercised by the run it saw AND by one it did not comes back
+             * naming only the first, which is under-selection wearing a clean
+             * answer's face. So each caller compares this against the scope IT
+             * is about to narrow — the suite runner needs whole-suite
+             * evidence, a package run needs evidence that covered that
+             * package — and neither re-derives the other's answer.</p>
+             *
+             * <p>It does NOT come from {@code completionStatus}. That field
+             * records how the run ENDED (FINALIZED / CANCELLED / TIMED_OUT /
+             * ABNORMAL) and is already implied by the {@code runFinalized}
+             * filter above, so reading it here would have been a rule that
+             * cannot fail — which is what the first version of this was, and
+             * what the test caught on its first run.</p>
+             */
+            java.util.List<String> evidenceScope,
+            /**
+             * Why a run may NOT be narrowed to this selection, or null when it
+             * may. Every value this can hold means "then run EVERYTHING",
+             * never "then run nothing": an absent proof is not a proof of
+             * absence, and a selection that silently shrank to zero on missing
+             * evidence is the one failure a test gate cannot tolerate.
+             */
+            String cannotNarrowBecause) {
+
+        /**
+         * The distinct test CLASSES this selection names, for a runner spec.
+         *
+         * <p>Class-level, not method-level, and that is the conservative
+         * choice rather than a limitation of the evidence: the segments carry
+         * {@code Class#method}, so a method selection is available and would be
+         * sharper. It is not taken, because a sibling method the evidence
+         * happens not to cover would then be dropped from a run that used to
+         * include it. Over-selection costs time and under-selection costs
+         * correctness, which is the same trade the symbol derivation makes one
+         * level up and resolves the same way.</p>
+         */
+        java.util.List<String> testClasses() {
+            java.util.List<String> out = new ArrayList<>();
+            for (Map<String, Object> t : rankedTests) {
+                String id = String.valueOf(t.get("test"));
+                String fqn = id.contains("#") ? id.substring(0, id.indexOf('#')) : id;
+                if (!out.contains(fqn)) out.add(fqn);
+            }
+            return out;
+        }
+
+    }
+
+    /**
+     * D21 — narrow a broad run to the tests the evidence says the change
+     * reaches, or leave it whole and say why it could not be narrowed.
+     *
+     * <p>The selectors are a UNION in the runner, so narrowing means CLEARING
+     * the package selector rather than adding to it. Returns the note that
+     * travels on the response either way: a narrowing nobody can see is a
+     * silent short run, which is the thing this must never be.</p>
+     */
+    private Map<String, Object> narrowToImpacted(ForkedTestRunner.Spec spec, JsonNode arguments,
+            String packageName) {
+        Map<String, Object> note = new LinkedHashMap<>();
+        ImpactedSelection sel;
+        try {
+            sel = selectImpacted(arguments);
+        } catch (Exception e) {
+            // The proof could not be TAKEN at all — no git, an unreadable
+            // artifact. That is not a reason to run less than was asked for.
+            log.warn("impacted-test selection failed; running the whole scope: {}",
+                e.getMessage());
+            note.put("narrowed", false);
+            note.put("ran", "the whole scope");
+            note.put("reason", "the impacted-test derivation failed: " + e);
+            return note;
+        }
+        String blocked = sel.cannotNarrowBecause();
+        if (blocked == null) blocked = evidenceTooNarrowFor(sel.evidenceScope(), packageName);
+        if (blocked != null) {
+            note.put("narrowed", false);
+            note.put("ran", "the whole scope");
+            note.put("reason", blocked);
+            return note;
+        }
+        java.util.List<String> classes = sel.testClasses();
+        spec.selectPackages.clear();
+        spec.selectClasses.addAll(classes);
+        note.put("narrowed", true);
+        note.put("selectedClasses", classes);
+        note.put("symbols", sel.symbols());
+        note.put("filesChanged", sel.filesChanged());
+        if (!sel.staleClasses().isEmpty()) note.put("staleClasses", sel.staleClasses());
+        note.put("pin", "Pass fullRun=true to run the whole scope instead.");
+        return note;
     }
 
     /** Stage 10 — targeted, opt-in, bounded mutation testing via PIT. */

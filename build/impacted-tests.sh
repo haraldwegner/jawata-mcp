@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stage 6b (G4) — ask a running resident which test classes the working-tree
-# diff impacts, and print them one per line, sorted.
+# Ask a running resident which test classes the working-tree diff impacts, and
+# print them one per line, sorted.
 #
 # Prints NOTHING and exits non-zero with a one-line reason on stderr whenever
 # the answer cannot be trusted. run-suite.sh treats every such exit as "run the
@@ -13,73 +13,56 @@
 #       JAWATA_RANGE  required when JAWATA_DIFF=range
 #       JAWATA_SYMBOLS  comma-separated FQNs; bypasses the diff derivation
 #
-# THE STALENESS RULE, and it is EXECUTED here rather than merely documented:
-# attribution evidence may narrow a run only while it still describes this
-# tree. All four must hold, and any one failing prints its reason and leaves
-# the run FULL:
-#   1. attribution exists at all (attributionAvailable);
-#   2. the artifact does not declare itself partial;
-#   3. the artifact-s git revision is an ANCESTOR of HEAD — evidence from a
-#      rewritten or divergent history describes code this tree does not have;
-#   4. every changed source file since that revision (committed or not) is
-#      accounted for in the derived symbol set.
-# Rule 4 subsumes "the evidence is older than my change": stale evidence and a
-# dropped derivation are the same failure from the selector-s side — a file
-# whose tests were never considered.
+# THIS IS A THIN CALLER (Sprint 28g S12a / D21). THE STALENESS RULES MOVED.
+# They used to live here as ~80 lines of Python that re-derived the changed set
+# from git, re-read the coverage report over a second round-trip, and judged
+# the tool's answer from outside. They are now the tool's own verdict,
+# `selectionVerdict`, which this reads in one field. Three reasons, measured
+# rather than argued:
+#
+#   1. The RUN PATH narrows too, and a judgement living in a shell script
+#      cannot reach it. Two implementations of "may this narrow?" disagree
+#      eventually, and the disagreement is SILENT on the side that runs fewer
+#      tests.
+#   2. One of the four rules was DEAD here. The partial-evidence check read
+#      `data.partial` and `data.evidenceComplete`; this response has never
+#      carried either field, so `.get()` returned None and the rule passed
+#      every time since it was written. The tool reads the artifact's own
+#      manifest and cannot miss it.
+#   3. The independence this bought was over the DERIVATION, not over the
+#      evidence — and the tool now states what it could not speak for
+#      (filesWithoutEvidence, staleClasses) rather than leaving a caller to
+#      infer it. A cross-check of a fact its subject now declares is a second
+#      reader of one answer, not a second opinion.
 set -uo pipefail
 
 [ -n "${JAWATA_URL:-}" ]   || { echo "JAWATA_URL is not set" >&2; exit 3; }
 [ -n "${JAWATA_TOKEN:-}" ] || { echo "JAWATA_TOKEN is not set" >&2; exit 3; }
 
-# JAWATA_SYMBOLS bypasses the diff derivation with an explicit list, for a
-# caller who already knows what changed. It is no longer a workaround: the
-# derivation was broken for MODIFIED files (jawata-mcp#40) and is fixed.
 SYMBOLS="${JAWATA_SYMBOLS:-}"
 DIFF="${JAWATA_DIFF:-worktree}"
 RANGE="${JAWATA_RANGE:-}"
 
-# THE COMPLETENESS CROSS-CHECK (Stage 6b). It was written for jawata-mcp#40 —
-# measured 2026-08-19, the tool's diff→symbol derivation yielded symbols for
-# ADDED files and NOTHING for MODIFIED ones, so a diff that modified production
-# code and added a test came back naming only the test's own symbols: a
-# non-empty, plausible, WRONG narrow answer.
-#
-# THAT DEFECT IS FIXED (2026-09-08) and this check STAYS, because it never was
-# a workaround for one bug. It is the gate's own defence below the tool's
-# abstraction: owning the source does not mean controlling what executes, and
-# the one thing this mechanism must never do is narrow a run on a derivation
-# that silently dropped a file. Independence is the whole value — it re-derives
-# the changed set from git rather than believing the answer it is checking.
-#
-# The tool now also SAYS what it could not speak for (filesWithoutEvidence) and
-# where it could only answer coarsely (staleClasses). Neither is read here:
-# the first is what this check already catches from the other side, and the
-# second is over-selection, which is safe for a gate.
 case "$DIFF" in
-    worktree) CHANGED="$(git diff --name-only -- '*.java')" ;;
-    staged)   CHANGED="$(git diff --cached --name-only -- '*.java')" ;;
-    range)    CHANGED="$(git diff --name-only "$RANGE" -- '*.java')" ;;
-    *)        echo "unknown JAWATA_DIFF '$DIFF'" >&2; exit 3 ;;
+    worktree|staged|range) ;;
+    *) echo "unknown JAWATA_DIFF '$DIFF'" >&2; exit 3 ;;
 esac
 
-[ -n "$SYMBOLS" ] && CHANGED=""   # explicit symbols answer for themselves
-
-python3 - "$JAWATA_URL" "$JAWATA_TOKEN" "$DIFF" "$RANGE" "$CHANGED" "$SYMBOLS" <<'PY'
+python3 - "$JAWATA_URL" "$JAWATA_TOKEN" "$DIFF" "$RANGE" "$SYMBOLS" <<'PY'
 import json, sys, urllib.request
 
 url, token, diff, rng = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-changed_files = [f for f in (sys.argv[5] if len(sys.argv) > 5 else "").split() if f]
-symbols = [x for x in (sys.argv[6] if len(sys.argv) > 6 else "").split(",") if x.strip()]
+symbols = [x.strip() for x in (sys.argv[5] if len(sys.argv) > 5 else "").split(",") if x.strip()]
 args = {"action": "coverage_impacted_tests"}
 if symbols:
-    args["symbols"] = [x.strip() for x in symbols]
+    args["symbols"] = symbols
 else:
     args["diff"] = diff
-if not symbols and diff == "range":
-    if not rng:
-        print("JAWATA_DIFF=range needs JAWATA_RANGE", file=sys.stderr)
-        sys.exit(3)
-    args["range"] = rng
+    if diff == "range":
+        if not rng:
+            print("JAWATA_DIFF=range needs JAWATA_RANGE", file=sys.stderr)
+            sys.exit(3)
+        args["range"] = rng
 
 body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                    "params": {"name": "run_tests", "arguments": args}}).encode()
@@ -99,67 +82,40 @@ if not payload.get("success", False):
     sys.exit(5)
 
 data = payload.get("data", {})
-if not data.get("attributionAvailable"):
-    print("no attribution evidence exists — nothing has been run with attribution=true",
-          file=sys.stderr)
-    sys.exit(6)
 
-# PARTIAL EVIDENCE MUST NOT NARROW. An artifact produced by the forked runner
-# cannot contain the tests that need the Eclipse workspace (they cannot start
-# there), so a class covered by BOTH a plain test and a workspace test would
-# come back naming only the plain one — under-selection that looks like a
-# clean answer. Only evidence that declares itself complete may narrow a run.
-if data.get("partial") or data.get("evidenceComplete") is False:
-    print("the attribution evidence is PARTIAL — it cannot see the whole suite",
+# THE VERDICT. Absent means a resident older than this script, and an absent
+# verdict is not a permissive one: a build that cannot state the rules has not
+# applied them, so the run stays full.
+verdict = data.get("selectionVerdict")
+if not isinstance(verdict, dict):
+    print("this resident states no selectionVerdict — it predates the staleness rules, "
+          "so nothing here can say the evidence still describes this tree", file=sys.stderr)
+    sys.exit(6)
+if not verdict.get("mayNarrow"):
+    print(str(verdict.get("reason") or "the evidence may not narrow this run"), file=sys.stderr)
+    sys.exit(7)
+
+# RULE 2, applied to the scope THIS caller narrows — the whole suite. The tool
+# states what the recording run selected; only a run that selected nothing in
+# particular saw everything. jawata's own suite splits between plain-JVM tests
+# and tests that need the Eclipse workspace, and the forked runner cannot start
+# the latter — so an artifact it produced names only the plain ones, and a
+# class covered by both would come back claimed by one. The tool cannot apply
+# this rule itself: it does not know what scope its caller is about to run.
+if not verdict.get("evidenceCoversWholeSuite"):
+    print("the evidence was recorded from a run that selected %s, so it cannot speak for "
+          "the whole suite" % (verdict.get("evidenceScope") or "a narrower scope"),
           file=sys.stderr)
     sys.exit(7)
 
-# STALENESS RULES 3 + 4. The artifact-s own revision decides which changes the
-# evidence has never seen; those files must be accounted for too.
-import subprocess
-try:
-    rep_body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                           "params": {"name": "run_tests",
-                                      "arguments": {"action": "coverage_report"}}}).encode()
-    rep_req = urllib.request.Request(url, data=rep_body, headers={
-        "Authorization": "Bearer " + token,
-        "Mcp-Session-Id": "impacted-tests",
-        "Content-Type": "application/json"})
-    with urllib.request.urlopen(rep_req, timeout=120) as r:
-        rep = json.loads(json.load(r)["result"]["content"][0]["text"])
-    prov = rep.get("data", {}).get("provenance", {}) or {}
-except Exception:                                          # noqa: BLE001
-    prov = {}
-
-rev = prov.get("gitRevision")
-if rev:
-    anc = subprocess.run(["git", "merge-base", "--is-ancestor", rev, "HEAD"],
-                         capture_output=True)
-    if anc.returncode != 0:
-        print("the attribution evidence was recorded at %s, which is not an ancestor of "
-              "HEAD — it describes a different tree" % rev[:12], file=sys.stderr)
-        sys.exit(9)
-    since = subprocess.run(["git", "diff", "--name-only", rev, "--", "*" + ".java"],
-                           capture_output=True, text=True)
-    changed_files = sorted(set(changed_files)
-                           | {f for f in since.stdout.split() if f})
-
-derived = {s.split("#", 1)[0].rsplit(".", 1)[-1] for s in (data.get("symbols") or [])}
-unaccounted = [f for f in changed_files
-               if f.rsplit("/", 1)[-1][:-len(".java")] not in derived]
-if unaccounted:
-    print("the derivation dropped %d of %d changed file(s) (e.g. %s);"
-          " narrowing on this would skip the tests that cover them"
-          % (len(unaccounted), len(changed_files),
-             unaccounted[0].rsplit("/", 1)[-1]), file=sys.stderr)
-    sys.exit(8)
-
-rows = data.get("impactedTests") or []
 classes = set()
-for row in rows:
+for row in (data.get("impactedTests") or []):
     name = row.get("test") if isinstance(row, dict) else str(row)
     if name:
         classes.add(name.split("#", 1)[0])
+if not classes:
+    print("the tool named no impacted test classes", file=sys.stderr)
+    sys.exit(8)
 for name in sorted(classes):
     print(name)
 PY

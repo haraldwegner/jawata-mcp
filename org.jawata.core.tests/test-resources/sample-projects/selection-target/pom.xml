@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28g S12a (D21) — THE SELECTION FIXTURE.
+
+     coverage-target cannot play this part, and the reason is the point rather
+     than an inconvenience: its package holds CovHangTest, which sleeps ten
+     minutes, so attribution can only ever be recorded there one class at a
+     time. Evidence from ONE class may not narrow a PACKAGE run — a production
+     class exercised both by the class that run saw and by one it never started
+     comes back claimed by the first — so on that fixture the narrowing is
+     correctly refused and the success path cannot be demonstrated at all.
+
+     Here every test is fast and harmless, so attribution is recorded over the
+     WHOLE package and the evidence is wide enough to carry the claim. One test
+     class touches Widget; two deliberately do not. That 1-of-3 is the
+     measurement: a narrowed run executes one test, a pinned run executes
+     three, and nothing but a real narrowing can produce the first number. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>selection-target</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
