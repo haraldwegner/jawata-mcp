@@ -202,6 +202,26 @@ final class UnreadableStore implements ExperienceStore {
         throw boom();
     }
 
+    /**
+     * D40c's three. The RECORDER throws like every other write here; the two READS throw
+     * because an empty folder is exactly what a working store with nothing recorded
+     * answers, and this store must never be mistaken for one.
+     */
+    @Override
+    public void recordStoryFolder(java.nio.file.Path folder) {
+        throw boom();
+    }
+
+    @Override
+    public java.util.Optional<java.nio.file.Path> storyFolder() {
+        throw boom();
+    }
+
+    @Override
+    public boolean storyFolderAmbiguous() {
+        throw boom();
+    }
+
     @Override
     public java.util.List<java.util.Map<String, Object>> exportEntries(String status, String type) {
         throw boom();

@@ -104,6 +104,31 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         return delegate.headingShapedSummaries();
     }
 
+    /**
+     * D40c's three, forwarded for the same reason — the architect's C13 F1 found them
+     * still answering from their defaults after the two above had been fixed.
+     *
+     * <p><b>One caveat, stated rather than discovered later:</b> while this wrapper is
+     * DEGRADED the delegate is the in-memory fallback, so a folder recorded during that
+     * window is recorded there. Recovery replays the entries written while degraded; it
+     * does not replay this. In practice the loader runs on every boot and records again,
+     * which is the same reason the folder is held in a field rather than a row.</p>
+     */
+    @Override
+    public void recordStoryFolder(java.nio.file.Path folder) {
+        delegate.recordStoryFolder(folder);
+    }
+
+    @Override
+    public java.util.Optional<java.nio.file.Path> storyFolder() {
+        return delegate.storyFolder();
+    }
+
+    @Override
+    public boolean storyFolderAmbiguous() {
+        return delegate.storyFolderAmbiguous();
+    }
+
     private void retryLoop(Supplier<H2ExperienceStore> reopener, long retryMs) {
         while (!closed && notice != null) {
             try {

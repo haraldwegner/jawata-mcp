@@ -492,9 +492,21 @@ public interface ExperienceStore extends AutoCloseable {
      * written into an ancestor is not read back by any load, so it is a file
      * nobody sees that also looks like a success.</p>
      */
-    default void recordStoryFolder(java.nio.file.Path folder) {
-        // No store is required to remember; a store that does overrides this.
-    }
+    /**
+     * <p><b>ALL THREE ARE ABSTRACT, and the architect's C13 F1 is why.</b> They shipped
+     * as defaults — a no-op recorder, an empty folder and a false flag — and
+     * {@link RecoveringExperienceStore}, which production serves through, forwards only
+     * what it declares. So through the wrapper the loader's recording was DISCARDED, the
+     * folder was always empty, and this deliverable did not hold in production at all:
+     * it replaced a wrong answer, the home-directory ancestor, with no answer.</p>
+     *
+     * <p>That was the THIRD member of this interface to ship that way in one stage, after
+     * {@code appliedSampleCount} and {@code headingShapedSummaries}. The rule the three of
+     * them leave behind: <b>this interface must not carry a {@code default} for anything
+     * whose honest answer depends on which store you are holding.</b> A default is right
+     * only where every implementation would answer the same.</p>
+     */
+    void recordStoryFolder(java.nio.file.Path folder);
 
     /**
      * The folder this store loaded its stories FROM, as recorded rather than derived.
@@ -506,9 +518,7 @@ public interface ExperienceStore extends AutoCloseable {
      * answer, and {@link #storyFolderAmbiguous()} separates the third for a
      * reader who needs to say WHY nothing was written.</p>
      */
-    default Optional<java.nio.file.Path> storyFolder() {
-        return Optional.empty();
-    }
+    Optional<java.nio.file.Path> storyFolder();
 
     /**
      * Whether {@link #storyFolder()} is empty BECAUSE more than one folder was
@@ -519,9 +529,7 @@ public interface ExperienceStore extends AutoCloseable {
      * and found nothing to do, and that is the shape of silence this store has
      * had to remove three times.</p>
      */
-    default boolean storyFolderAmbiguous() {
-        return false;
-    }
+    boolean storyFolderAmbiguous();
 
     /**
      * Reclaim file space after prunes/wipes (H2 {@code SHUTDOWN COMPACT} + reopen).

@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -103,6 +104,55 @@ class TheWrapperForwardsBothNewReadsTest {
                         + "defect rather than a gap: " + offending),
                 () -> assertTrue(String.valueOf(offending).contains(HEADING),
                     () -> "and it carries the offending text: " + offending));
+        }
+    }
+
+    /**
+     * D40c's three, added after the architect's C13 F1 found them STILL answering from
+     * their defaults when the two above had already been fixed.
+     *
+     * <p>They are the third member of this interface to ship that way in one stage, and
+     * the one nobody looked for: the enumeration that cures the first two is exactly the
+     * one that finds the third. Through the wrapper, {@code recordStoryFolder} was a
+     * no-op, so the loader's recording was discarded and the story folder was empty on
+     * every machine — D40c's deliverable replaced a wrong answer with none.</p>
+     */
+    @Test
+    @DisplayName("the wrapper RECORDS and REPORTS the story folder, not a default empty")
+    void theStoryFolderIsForwarded(@TempDir Path dir, @TempDir Path stories) throws Exception {
+        try (RecoveringExperienceStore wrapped = recoveredOnto(dir)) {
+            wrapped.recordStoryFolder(stories);
+
+            assertAll(
+                () -> assertEquals(stories.toAbsolutePath().normalize(),
+                    wrapped.storyFolder().orElseThrow(),
+                    "the folder the loader recorded. An EMPTY answer is what the interface "
+                        + "default used to give here, and it is indistinguishable from a "
+                        + "store that was never told"),
+                () -> assertFalse(wrapped.storyFolderAmbiguous(),
+                    "and one folder is not several — a default FALSE would agree with this "
+                        + "by accident, which the next case is for"));
+        }
+    }
+
+    @Test
+    @DisplayName("and the wrapper reports AMBIGUITY, which a default false cannot")
+    void theAmbiguityFlagIsForwarded(@TempDir Path dir, @TempDir Path a, @TempDir Path b)
+            throws Exception {
+        // THE DISCRIMINATOR for the clause above. `storyFolderAmbiguous` defaulted to
+        // false, which is the correct answer in the one-folder case — so that case alone
+        // would pass against a wrapper that forwards nothing. Two different roots is the
+        // only input where the default and the truth disagree.
+        try (RecoveringExperienceStore wrapped = recoveredOnto(dir)) {
+            wrapped.recordStoryFolder(a);
+            wrapped.recordStoryFolder(b);
+
+            assertAll(
+                () -> assertTrue(wrapped.storyFolderAmbiguous(),
+                    "two different roots leave no single story folder, and the wrapper must "
+                        + "say so rather than answering the default FALSE"),
+                () -> assertTrue(wrapped.storyFolder().isEmpty(),
+                    "and no folder is reported, rather than their shared ancestor"));
         }
     }
 }
