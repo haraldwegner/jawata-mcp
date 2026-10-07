@@ -2433,8 +2433,13 @@ public final class ExperienceTool implements Tool {
      *
      * <h2>Batched on purpose, and store-only on purpose</h2>
      *
-     * <p>A turn adds several members at once, and asking per symbol would put N round trips
-     * on a gate that runs at the end of every turn. It needs NO project: a job row is
+     * <p>A turn adds several members at once, and this answers about all of them in ONE call —
+     * which is what the sentence about round trips was always about. <b>Internally it now reads
+     * the store once per member</b>, since Sprint 28g: the corpus-wide read it replaced could be
+     * capped by unrelated rows and report a member that HAS a job as missing. Measured against
+     * that read it is also fewer statements on the live store, because each returned row costs a
+     * second query of its own. The API is still batched; only the reads beneath it are not.
+     * It needs NO project: a job row is
      * anchored by an FQN string, and whether one EXISTS is a question about the store. That
      * is what lets this answer while a resident has nothing loaded — which is the state a
      * stop gate most often finds.</p>
@@ -2495,18 +2500,28 @@ public final class ExperienceTool implements Tool {
         java.util.Map<String, String> jobs = held.byMember();
         List<Map<String, Object>> described = new java.util.ArrayList<>();
         List<String> missing = new java.util.ArrayList<>();
+        List<String> undetermined = new java.util.ArrayList<>();
         for (String s : symbols) {
             if (s == null || s.isBlank()) {
                 continue;
             }
             String existing = jobs.get(s);
-            if (existing == null) {
-                missing.add(s);
-            } else {
+            if (existing != null) {
                 Map<String, Object> row = new java.util.LinkedHashMap<>();
                 row.put("symbol", s);
                 row.put("job", existing);
                 described.add(row);
+            } else if (held.undetermined().contains(s)) {
+                // NOT SEEN IS NOT NOT THERE, and this third bucket is the round-3 fold. The
+                // store's scope filter matches a dot-PREFIX as well as the exact anchor, so a
+                // scope that is a package or a type fills the window with OTHER members' rows —
+                // newest first — and this member's own row can sit outside it. Calling that
+                // `missing` and then instructing a record is how this answer would mint the
+                // duplicate D42(a) exists to prevent: the same false absence the corpus-wide cap
+                // had, relocated to the per-member one by my own repair for it.
+                undetermined.add(s);
+            } else {
+                missing.add(s);
             }
         }
         Map<String, Object> out = new java.util.LinkedHashMap<>();
@@ -2515,22 +2530,22 @@ public final class ExperienceTool implements Tool {
         if (!unreadable.isEmpty()) {
             out.put("unreadable", unreadable);
         }
-        // THE CAP NO LONGER THREATENS `missing`, and that is the round-2 fold rather than a
-        // relaxation of it. The read is per member now, so a cap being reached means ONE member
-        // carries fifty job rows — and that member's own job was still found, by exact anchor,
-        // inside those rows. So `missing` is correct either way and the instruction below is no
-        // longer withheld. What is reported is the pathological state itself, which nothing else
-        // in this product would mention.
-        //
-        // The first repair REPORTED a corpus-wide cap and told the caller to "ask about that
-        // member on its own" — a remedy the round-2 audit proved false, because the read ignored
-        // which symbols were asked about and a single-member call returned the identical answer.
-        // A false remedy in a shipped response is worse than the gap it papers over.
-        if (held.capped()) {
-            out.put("manyJobsForOneMember", "At least one member named here carries "
-                + JOBS_PER_MEMBER_CAP + " or more job rows, which is not a state this product"
-                + " should be able to reach — D30 measured one job per member. The job reported"
-                + " above is the one anchored exactly to that member; the others were not read.");
+        // WHAT COULD NOT BE DETERMINED IS NAMED, and it is named as that rather than as an
+        // absence. Two earlier versions of this clause were both wrong, in opposite directions:
+        // the first reported a corpus-wide cap and told the caller to "ask about that member on
+        // its own", a remedy the read could not deliver; the second claimed a full window meant
+        // "this member carries fifty job rows", which is false whenever the window was filled by
+        // a PREFIX match on some other member. Both shipped a sentence a reader could act on and
+        // be misled by, which is worse than the gap each was papering over.
+        if (!undetermined.isEmpty()) {
+            out.put("undetermined", undetermined);
+            out.put("undeterminedNote", "For these, " + JOBS_PER_MEMBER_CAP + " rows matched the"
+                + " store's scope filter and none was anchored exactly to the member — so its own"
+                + " job may exist outside that window. This is NOT SEEN rather than NOT THERE,"
+                + " and no recording instruction is offered for them. It happens when the scope"
+                + " given is a package or a type rather than a member, because the filter matches"
+                + " a dot-prefix as well as an exact anchor; naming the member exactly answers"
+                + " it.");
         }
         // The instruction, rendered ONCE here rather than composed by each caller. A gate
         // that blocks without saying exactly what to run is a gate that gets worked around.
@@ -2558,7 +2573,7 @@ public final class ExperienceTool implements Tool {
      * {@code DESCRIBING_ROW_CAP} and filter — a cap equal to the sprint's own figure for the code
      * lane, so reachable on the live store, and past it a member that HAS a job landed in
      * {@code missing}. The first repair REPORTED the cap, and the round-2 audit refused it on two
-     * counts that were both right: {@link #membersThatAlreadyHaveAJob}'s consumer discarded the
+     * counts that were both right: {@link #membersThatAlreadyHaveAJobAmong}'s consumer discarded the
      * flag and went on naming such members as undescribed, and the note's remedy — <i>ask about
      * that member on its own</i> — could not work, because the read ignored which symbols were
      * asked about and returned the identical answer.</p>
@@ -2571,8 +2586,20 @@ public final class ExperienceTool implements Tool {
      */
     private java.util.Set<String> membersThatAlreadyHaveAJobAmong(
             java.util.Collection<String> members) {
-        return jobsByMember(members).byMember().keySet();
+        JobsHeld held = jobsByMember(members);
+        // UNDETERMINED COUNTS AS ANSWERED HERE, deliberately, and it is the conservative
+        // direction. This set decides what a closing answer NAMES as left undescribed, so a
+        // member whose own row could not be ruled out must not be named — the cost of including
+        // it is a false accusation the agent cannot check, and the cost of excluding it is one
+        // member silently not chased. Round 3's N1 named the discarded state; this is the answer
+        // to it rather than a second flag for the caller to remember.
+        java.util.Set<String> answered = new java.util.LinkedHashSet<>(held.byMember().keySet());
+        answered.addAll(held.undetermined());
+        return answered;
     }
+
+    /** The per-scope read window. A member's own rows are one, by D30; a package's are not. */
+    private static final int JOBS_PER_MEMBER_CAP = 50;
 
     /**
      * The job the store already holds for each anchored member — Sprint 28g D42(a), case one.
@@ -2582,66 +2609,78 @@ public final class ExperienceTool implements Tool {
      * learned a job EXISTED and not what it SAID, which is the half that decides whether the work
      * in front of them is the same work. A member's own name is something they already have.</p>
      *
-     * <p><b>{@link #membersThatAlreadyHaveAJob} is now derived from this rather than reading the
+     * <p><b>{@link #membersThatAlreadyHaveAJobAmong} is now derived from this rather than reading the
      * store a second time</b>, which is that method's own stated property: it is <i>"the one set
      * both the queue's answer and the closing count are judged against so they cannot drift
      * apart"</i>. Two reads of one question is exactly how they would.</p>
      *
-     * <p>Keyed by anchor, so a member carrying several job rows — which {@code replaceJob} exists
-     * to prevent and D30 measured at zero — yields the last one read rather than a pile. Worth
-     * stating as the narrowing it is: this answers <i>what the store says this member is for</i>,
-     * never <i>every row it holds about it</i>.</p>
+     * <p>Keyed by anchor, and the FIRST exactly-anchored row wins — the rows arrive newest-first,
+     * so that is the newest. An earlier version of this sentence said "the last one read", which
+     * was true of the loop before it gained its {@code break} and false after: the same
+     * claim-beside-the-code defect a dedicated commit in this stage was for.</p>
+     *
+     * <p><b>A FULL WINDOW WITH NO EXACT ROW IS UNDETERMINED, not an absence</b>, and that is the
+     * round-3 fold. The store's scope filter matches a dot-PREFIX as well as the exact anchor —
+     * {@code symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"}, and the same pair on
+     * {@code package_name} ({@code H2ExperienceStore:2350-2354}) — so a scope that is a package or
+     * a type matches every member job beneath it. With {@code ORDER BY created_at DESC LIMIT},
+     * those rows can fill the window and leave this member's own row outside it. Reporting that as
+     * {@code missing} and then instructing a record is the duplicate D42(a) exists to prevent, so
+     * the two states are kept apart and only the real absence gets the instruction.</p>
+     *
+     * <p>Both earlier versions of this got the window wrong in opposite directions: the first read
+     * the whole corpus and reported its cap, the second read per member and claimed a full window
+     * meant fifty jobs for one member. Neither was true of a package-shaped scope, which nothing
+     * here validates and the {@code symbols} parameter's own published description does not
+     * constrain.</p>
      */
-    /** How many job rows one MEMBER could plausibly carry. D30 measured the real answer at one. */
-    private static final int JOBS_PER_MEMBER_CAP = 50;
-
     private JobsHeld jobsByMember(java.util.Collection<String> members) {
         java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();
-        boolean capped = false;
+        java.util.Set<String> undetermined = new java.util.LinkedHashSet<>();
         for (String member : members) {
             if (member == null || member.isBlank()) {
                 continue;
             }
             java.util.List<org.jawata.mcp.knowledge.StoredEntry> rows =
                 store.listEntries("job", null, member, null, JOBS_PER_MEMBER_CAP);
-            capped |= rows.size() >= JOBS_PER_MEMBER_CAP;
+            boolean found = false;
             for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
-                // THE ANCHOR IS CHECKED, AND THE REASON IS NARROWER THAN THE ONE I FIRST WROTE.
-                // That comment said the filter "matches a prefix as well as the exact anchor",
-                // which invited the reading that a job on `Type#mAll` could answer for `Type#m`.
-                // Measured — `H2ExperienceStore:2350-2352` binds `scope` and `scope + ".%"`, so
-                // the LIKE matches DOT-CHILDREN and a longer sibling NAME is already excluded by
-                // the store. A mutation that trusted the row stayed GREEN against exactly that
-                // pair, which is how the false reason was found rather than reasoned away.
-                //
-                // So this is defensive against a dot-child anchor, which no job shape produces
-                // today, and it costs one comparison. Kept with its real reason rather than
-                // deleted, because the next person to widen that filter meets it here.
+                // THE ANCHOR IS CHECKED rather than trusted, because the filter above returns a
+                // dot-prefix match too — and for a package- or type-shaped scope that is every
+                // member beneath it.
                 if (member.equals(e.symbolFqn())) {
                     byMember.put(member, e.summary());
+                    found = true;
                     break;
                 }
             }
+            // A FULL WINDOW AND NO EXACT ROW: the answer is "not seen", never "not there". If the
+            // window had room to spare, the exact row would have been in it, so an absence there
+            // IS an absence.
+            if (!found && rows.size() >= JOBS_PER_MEMBER_CAP) {
+                undetermined.add(member);
+            }
         }
-        return new JobsHeld(byMember, capped);
+        return new JobsHeld(byMember, undetermined);
     }
 
     /**
-     * The jobs read, and whether ANY MEMBER's own read was capped — Sprint 28g, folding the C14a
-     * audit's B5 and then its round-2 refusal of that fold.
+     * The jobs found, and the members whose answer COULD NOT BE DETERMINED — Sprint 28g, folding
+     * the C14a audit's B5 and then its round-2 and round-3 refusals of that fold.
      *
-     * <p><b>What the flag means changed with the read, and it is weaker now in the direction that
-     * matters.</b> Over the whole corpus, capped meant <i>a member that has a job may be reported
-     * as missing</i> — a false absence on the surface D42(a) makes authoritative. Per member, it
-     * means <i>one member carries fifty job rows</i>, and that member's own job was still found by
-     * exact anchor inside them. So the verdict is sound either way, and what is left to report is
-     * the pathological state itself.</p>
+     * <p>Three states rather than two, and the third is the whole point: a member with a job, a
+     * member with none, and <b>a member whose read window was full of other rows so its own could
+     * not be ruled out</b>. The first two fold into {@code described} and {@code missing}; the
+     * third must not, because {@code missing} is what the recording instruction is offered for.</p>
      *
-     * <p>The flag is kept rather than dropped because an unreachable-in-practice limit reporting
-     * nothing is how the first version of this got written: {@code DESCRIBING_ROW_CAP} was also
-     * unreachable in practice until the code lane grew to the same number.</p>
+     * <p><b>A boolean was not enough, and that was round 3's blocker.</b> The flag it replaces said
+     * "some member's window was full" and the response then claimed that member carried fifty
+     * jobs — false whenever the window was filled by a dot-prefix match on a package or a type.
+     * Carrying the MEMBERS rather than a flag is what lets the answer name exactly the ones it
+     * could not settle, and lets the instruction be withheld for exactly those.</p>
      */
-    private record JobsHeld(java.util.Map<String, String> byMember, boolean capped) {
+    private record JobsHeld(java.util.Map<String, String> byMember,
+                            java.util.Set<String> undetermined) {
     }
 
     /**
