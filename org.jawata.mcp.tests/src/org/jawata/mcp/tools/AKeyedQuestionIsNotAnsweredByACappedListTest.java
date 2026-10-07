@@ -217,6 +217,51 @@ class AKeyedQuestionIsNotAnsweredByACappedListTest {
         }
     }
 
+    /**
+     * MANY ANCHORS AT ONCE, which is the shape the cataloguer actually asks in — and the case a
+     * MUTATION had to find, because the rest of this class could not reach it.
+     *
+     * <p>Putting a {@code LIMIT 50} back on the keyed read left every other case here GREEN: they
+     * ask about ONE anchor, so a window of fifty is never reached and the "no window" claim was
+     * verified by nothing. The production caller derives EVERY member of the files it was handed
+     * ({@code collectMembersInto}), which for an ordinary class is routinely more than fifty — so
+     * with a window, members past the fiftieth would be reported missing and instructed for.</p>
+     *
+     * <p>That is the same defect this class is about, reached from the other side: the first form
+     * truncated the ROWS a scope matched, this one would truncate the ANSWERS to the question
+     * asked. The read is bounded by the question only if every anchor in the question is in the
+     * answer.</p>
+     */
+    @Test
+    @DisplayName("D30: every one of 75 described members is answered — the window has no size at all")
+    void everyAnchorAskedAboutIsAnswered(@TempDir Path dir) {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            int members = 75;
+            List<String> asked = new java.util.ArrayList<>();
+            for (int i = 0; i < members; i++) {
+                String m = "com.example.keyed.Wide#m" + i;
+                asked.add(m);
+                store.put(jobOn("Describes member " + i + ".", m));
+            }
+
+            Map<String, List<StoredEntry>> keyed = store.anchoredAt("job",
+                ExperienceStore.Anchor.SYMBOL, asked);
+
+            assertAll(
+                () -> assertTrue(members > OLD_WINDOW,
+                    () -> "the fixture must exceed any window for this to measure anything: "
+                        + members + " vs " + OLD_WINDOW),
+                () -> assertEquals(members, keyed.size(),
+                    () -> "EVERY member asked about is answered. A window of any size truncates"
+                        + " this, and the members it drops are reported missing and instructed"
+                        + " for — the same false absence, reached by truncating the ANSWER"
+                        + " rather than the rows a scope matched. Got: " + keyed.size()),
+                () -> assertEquals(List.of(), asked.stream()
+                        .filter(m -> !keyed.containsKey(m)).toList(),
+                    "and none is silently absent"));
+        }
+    }
+
     // ------------------------------------------------------------------ the write gate
 
     private ToolResponse record(ExperienceStore store, String summary, String symbol) {
