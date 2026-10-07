@@ -137,10 +137,18 @@ public final class ExperienceAdvisor implements Advisor {
         Map<String, Object> r =
             retrieval.recall(q, QualityLedger.SURFACE_PRE_ADVICE, budgetMillis);
 
-        // THE RESULT WORD IS READ BEFORE THE ROWS, and it has to be: `unavailable` STRIPS every
-        // key but the cue, so `entries` is absent rather than empty and the loop below would
-        // throw on it. That is not a hypothetical — it is what this method did until D42, where
-        // the throw was swallowed by the one caller's catch and read as "the store knows nothing".
+        // THE RESULT WORD IS THE ONLY THING THAT DISTINGUISHES THE TWO EMPTIES, and it is read
+        // before the rows because the rows cannot tell them apart. `unavailable` strips its
+        // half-built answer and then puts `entries` back as an EMPTY LIST — deliberately, so no
+        // reader meets a missing key — so the loop below runs cleanly over nothing and this
+        // method used to return exactly what a healthy store holding nothing returns.
+        //
+        // That silent equivalence is what D42 removed, and it is stated as the measured fact it
+        // is: an earlier version of this comment claimed the loop would THROW on a stripped
+        // `entries`, and a mutation disabling this branch disproved it — the test failed on the
+        // outcome assertion, not with a NullPointerException, and the run's own log showed the
+        // budget firing while the rendering completed. The check is no less necessary for that;
+        // only its reason changed, from avoiding a throw to preserving a distinction.
         if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(r.get("result"))) {
             return PriorWork.notLooked(String.valueOf(r.get("reason")));
         }
