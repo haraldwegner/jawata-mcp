@@ -145,6 +145,38 @@ class TheTwoCorruptingCallsCarryThePriorWorkAnswerTest {
             "and the instruction for the missing one is still rendered");
     }
 
+    /**
+     * THE PER-MEMBER READ MUST NOT ANSWER FOR A SIBLING — the property the C14a round-2 fold
+     * introduced and nothing else pins.
+     *
+     * <p>That fold replaced a whole-corpus read with one scoped per member, which closed a false
+     * absence past the corpus cap. The scope filter is the store's own and matches a PREFIX as
+     * well as an exact anchor ({@code symbol_fqn = ? OR symbol_fqn LIKE ?}), so the rows it
+     * returns are checked for an exact anchor rather than trusted. Without that check, asking
+     * about {@code Ledger#reconcile} could be answered by the job of
+     * {@code Ledger#reconcileAll} — a plausible, wrong answer on the surface D42(a) makes
+     * authoritative for "is this the same work".</p>
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void a_job_on_a_longer_sibling_name_does_not_answer_for_this_member() {
+        String sibling = MEMBER + "All";
+        store.put(ExperienceEntry.of(
+            SymbolFact.of("job", "Settles EVERY ledger, which is a different job",
+                Confidence.MEDIUM).symbol(sibling).build())
+            .status(ExperienceEntry.ACCEPTED).build());
+
+        ToolResponse r = new ExperienceTool(() -> null, store).execute(jobsFor(UNDESCRIBED));
+
+        Map<String, Object> data = dataOf(r);
+        assertEquals(List.of(UNDESCRIBED), data.get("missing"),
+            () -> "the undescribed member is still missing: " + data);
+        assertTrue(((List<Map<String, Object>>) data.get("described")).isEmpty(),
+            () -> "and no sibling's job was offered in its place: " + data);
+        assertFalse(String.valueOf(data).contains("different job"),
+            () -> "the longer-named sibling's words must not travel with this answer: " + data);
+    }
+
     // ---------------------------------------------------------------- case two
 
     private static Tool mock(String name) {

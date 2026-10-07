@@ -2491,7 +2491,7 @@ public final class ExperienceTool implements Tool {
         // not what it says. The corrupting case this deliverable is about is writing a SECOND
         // description of work the store already describes, and the only thing that lets a caller
         // see that is the existing job's own words. Their own member names they already have.
-        JobsHeld held = jobsByMember();
+        JobsHeld held = jobsByMember(symbols);
         java.util.Map<String, String> jobs = held.byMember();
         List<Map<String, Object>> described = new java.util.ArrayList<>();
         List<String> missing = new java.util.ArrayList<>();
@@ -2515,19 +2515,26 @@ public final class ExperienceTool implements Tool {
         if (!unreadable.isEmpty()) {
             out.put("unreadable", unreadable);
         }
-        // THE READ'S OWN LIMIT, NAMED — and it changes the instruction below rather than
-        // merely annotating it. Past the cap a member that HAS a job lands in `missing`, so
-        // telling the caller to record one for it is how this answer would mint the duplicate
-        // D42(a) exists to prevent. Named, never dropped, which is this file's own idiom.
+        // THE CAP NO LONGER THREATENS `missing`, and that is the round-2 fold rather than a
+        // relaxation of it. The read is per member now, so a cap being reached means ONE member
+        // carries fifty job rows — and that member's own job was still found, by exact anchor,
+        // inside those rows. So `missing` is correct either way and the instruction below is no
+        // longer withheld. What is reported is the pathological state itself, which nothing else
+        // in this product would mention.
+        //
+        // The first repair REPORTED a corpus-wide cap and told the caller to "ask about that
+        // member on its own" — a remedy the round-2 audit proved false, because the read ignored
+        // which symbols were asked about and a single-member call returned the identical answer.
+        // A false remedy in a shipped response is worse than the gap it papers over.
         if (held.capped()) {
-            out.put("incomplete", "The job rows were read up to a cap of " + DESCRIBING_ROW_CAP
-                + " and the cap was REACHED, so `missing` may name a member that already has a"
-                + " job this answer could not see. Treat it as 'not seen' rather than 'not"
-                + " there', and ask about that member on its own before recording anything.");
+            out.put("manyJobsForOneMember", "At least one member named here carries "
+                + JOBS_PER_MEMBER_CAP + " or more job rows, which is not a state this product"
+                + " should be able to reach — D30 measured one job per member. The job reported"
+                + " above is the one anchored exactly to that member; the others were not read.");
         }
         // The instruction, rendered ONCE here rather than composed by each caller. A gate
         // that blocks without saying exactly what to run is a gate that gets worked around.
-        if (!missing.isEmpty() && !held.capped()) {
+        if (!missing.isEmpty()) {
             out.put("next", "experience(kind=record, type=job, symbol=<one of the missing>,"
                 + " summary=<what that member is FOR, in a sentence that is not its own"
                 + " name restated>)");
@@ -2542,6 +2549,29 @@ public final class ExperienceTool implements Tool {
                 symbols.add(type.getFullyQualifiedName('.') + "#" + m.getElementName());
             }
         }
+    }
+
+    /**
+     * The job the store holds for each of the members NAMED, read one member at a time.
+     *
+     * <p>Sprint 28g, folding the C14a round-2 audit. This read used to fetch every job row up to
+     * {@code DESCRIBING_ROW_CAP} and filter — a cap equal to the sprint's own figure for the code
+     * lane, so reachable on the live store, and past it a member that HAS a job landed in
+     * {@code missing}. The first repair REPORTED the cap, and the round-2 audit refused it on two
+     * counts that were both right: {@link #membersThatAlreadyHaveAJob}'s consumer discarded the
+     * flag and went on naming such members as undescribed, and the note's remedy — <i>ask about
+     * that member on its own</i> — could not work, because the read ignored which symbols were
+     * asked about and returned the identical answer.</p>
+     *
+     * <p><b>Reading per member puts the cap out of reach instead of reporting it</b>, which is why
+     * it closes both: the rows for ONE member are the rows D30 measured at one apiece, and both
+     * consumers already hold the member list they are asking about. The scope filter is the
+     * store's own ({@code symbol_fqn = ? OR LIKE ?}), so each row is still checked for an exact
+     * anchor rather than trusted.</p>
+     */
+    private java.util.Set<String> membersThatAlreadyHaveAJobAmong(
+            java.util.Collection<String> members) {
+        return jobsByMember(members).byMember().keySet();
     }
 
     /**
@@ -2562,38 +2592,47 @@ public final class ExperienceTool implements Tool {
      * stating as the narrowing it is: this answers <i>what the store says this member is for</i>,
      * never <i>every row it holds about it</i>.</p>
      */
-    private JobsHeld jobsByMember() {
+    /** How many job rows one MEMBER could plausibly carry. D30 measured the real answer at one. */
+    private static final int JOBS_PER_MEMBER_CAP = 50;
+
+    private JobsHeld jobsByMember(java.util.Collection<String> members) {
         java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();
-        java.util.List<org.jawata.mcp.knowledge.StoredEntry> rows =
-            store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP);
-        for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
-            if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
-                byMember.put(e.symbolFqn(), e.summary());
+        boolean capped = false;
+        for (String member : members) {
+            if (member == null || member.isBlank()) {
+                continue;
+            }
+            java.util.List<org.jawata.mcp.knowledge.StoredEntry> rows =
+                store.listEntries("job", null, member, null, JOBS_PER_MEMBER_CAP);
+            capped |= rows.size() >= JOBS_PER_MEMBER_CAP;
+            for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
+                // The scope filter matches a prefix as well as the exact anchor, so the row is
+                // checked rather than assumed: a job on `Type#other` must not answer for `Type#m`.
+                if (member.equals(e.symbolFqn())) {
+                    byMember.put(member, e.summary());
+                    break;
+                }
             }
         }
-        return new JobsHeld(byMember, rows.size() >= DESCRIBING_ROW_CAP);
+        return new JobsHeld(byMember, capped);
     }
 
     /**
-     * The jobs read, and WHETHER THE READ WAS CAPPED — Sprint 28g, folding the C14a audit's B5.
+     * The jobs read, and whether ANY MEMBER's own read was capped — Sprint 28g, folding the C14a
+     * audit's B5 and then its round-2 refusal of that fold.
      *
-     * <p>The cap is {@code DESCRIBING_ROW_CAP}, and the sprint's own figure for the code lane is
-     * <i>~10,000 rows</i> — the same number. So this read can reach its cap on the live store,
-     * and the consequence is not a missing count: a member that HAS a job lands in
-     * {@code missing}, and the answer then instructs the caller to record one for it, minting
-     * the duplicate D42(a) exists to prevent.</p>
+     * <p><b>What the flag means changed with the read, and it is weaker now in the direction that
+     * matters.</b> Over the whole corpus, capped meant <i>a member that has a job may be reported
+     * as missing</i> — a false absence on the surface D42(a) makes authoritative. Per member, it
+     * means <i>one member carries fifty job rows</i>, and that member's own job was still found by
+     * exact anchor inside them. So the verdict is sound either way, and what is left to report is
+     * the pathological state itself.</p>
      *
-     * <p>This file already refuses the shape — <i>"the population the sample was drawn from —
-     * published ONLY when the read was not capped, because a capped figure sold as a total is
-     * the defect this file already refuses"</i> — and {@code jobsByMember} had no such guard.
-     * Carried as a flag rather than inferred by a caller comparing sizes, because a caller that
-     * has to derive it is a caller that can forget to.</p>
+     * <p>The flag is kept rather than dropped because an unreachable-in-practice limit reporting
+     * nothing is how the first version of this got written: {@code DESCRIBING_ROW_CAP} was also
+     * unreachable in practice until the code lane grew to the same number.</p>
      */
     private record JobsHeld(java.util.Map<String, String> byMember, boolean capped) {
-    }
-
-    private java.util.Set<String> membersThatAlreadyHaveAJob() {
-        return jobsByMember().byMember().keySet();
     }
 
     /**
@@ -3090,7 +3129,13 @@ public final class ExperienceTool implements Tool {
                 + e.getMessage() + "). A failure to look, not an absence.");
             return;
         }
-        java.util.Set<String> anchored = membersThatAlreadyHaveAJob();
+        // ASKED ABOUT THE MEMBERS IN HAND, which is round-2 blocker 1: this read used to fetch
+        // every job row up to a cap reachable on the live store and DISCARD whether it was
+        // capped, so past it a member that HAS a job was counted in `closingOver` and NAMED in
+        // `undescribedMembers` — the same false absence `jobs_for` was repaired for, in this
+        // sibling answer. The member list is right here, so there was never a reason to ask the
+        // whole corpus.
+        java.util.Set<String> anchored = membersThatAlreadyHaveAJobAmong(members);
         List<String> undescribed = new java.util.ArrayList<>();
         for (String m : members) {
             if (!anchored.contains(m)) {
