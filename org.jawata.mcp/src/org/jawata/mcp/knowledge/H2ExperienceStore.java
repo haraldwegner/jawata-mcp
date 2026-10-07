@@ -2380,10 +2380,15 @@ public final class H2ExperienceStore implements ExperienceStore {
      * Sprint 28g, Stage 14 / D30 — the keyed read, with the contract on
      * {@link ExperienceStore#anchoredAt}.
      *
-     * <p><b>No {@code ORDER BY} and no {@code LIMIT}, and that is the whole point</b> — the
-     * result is bounded by the anchors asked about, so nothing can fall outside a window and
-     * be reported as absent. The column is chosen by the enum rather than passed as text,
-     * because the one thing a caller must not be able to do is name a column.</p>
+     * <p><b>No {@code LIMIT}, and that is the whole point</b> — the result is bounded by the
+     * anchors asked about, so nothing can fall outside a window and be reported as absent.
+     * The column is chosen by the enum rather than passed as text, because the one thing a
+     * caller must not be able to do is name a column.</p>
+     *
+     * <p>(This sentence read <i>"No {@code ORDER BY} and no {@code LIMIT}"</i> until a review
+     * pointed out that its own SQL twenty lines below has an {@code ORDER BY}, and so does its
+     * own third paragraph. Two halves of one javadoc disagreeing about the statement between
+     * them is the claim-beside-the-code defect this very fold was written to repair.)</p>
      *
      * <p><b>Not {@code ExperienceRetrieval.anchorAnswer}, which the duplicate gate nominates.</b>
      * That one asks JDT whether a stored anchor still points at live code; this asks the database
@@ -2404,12 +2409,18 @@ public final class H2ExperienceStore implements ExperienceStore {
         if (type == null || type.isBlank() || anchor == null || anchors == null) {
             return out;
         }
-        List<String> wanted = new ArrayList<>();
+        // A SET for the dedup, not a list scan. The caller's anchor count is unbounded by
+        // design here — "bounded by the question" moved the bound to whoever asks, and the
+        // describing caller derives every member of every file a turn touched — so an
+        // ArrayList#contains per candidate is quadratic in exactly the input this method
+        // invites. Insertion order is kept because the parameter order must match it.
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (String a : anchors) {
-            if (a != null && !a.isBlank() && !wanted.contains(a)) {
-                wanted.add(a);
+            if (a != null && !a.isBlank()) {
+                seen.add(a);
             }
         }
+        List<String> wanted = new ArrayList<>(seen);
         if (wanted.isEmpty()) {
             return out;
         }

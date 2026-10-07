@@ -376,6 +376,23 @@ public interface ExperienceStore extends AutoCloseable {
      * promote what you cannot see. Filter by {@code type} / {@code status} / {@code scope}
      * (symbol/package prefix) / {@code language}; newest first, capped at {@code limit}.
      * Unlike {@link #query}, rejected/superseded entries are INCLUDED (curation sees all).
+     *
+     * <p><b>THIS READ CANNOT ANSWER WHETHER A PARTICULAR ANCHOR CARRIES A ROW. Use
+     * {@link #anchoredAt} for that question.</b> Two properties make the answer unusable
+     * for it, and both are features of a LISTING: {@code scope} matches a dot-PREFIX as
+     * well as the exact value, so the page fills with rows that are not the anchor asked
+     * about; and the page is capped, newest first, so the anchor's own row can sit outside
+     * it. Filtering the page in the caller cannot tell "there is no such row" from "it was
+     * not on this page" — the two arrive as the same empty result.</p>
+     *
+     * <p><b>That is not a theoretical hazard: it shipped, in four callers at once.</b>
+     * Sprint 28g Stage 14 / D30 — three of them instructed an agent to describe a member
+     * or a package it had already described, and the fourth was an invariant's own write
+     * gate, which INSERTED a second row every time the first fell outside the page. So the
+     * page size decided how many duplicate writes the product performed. The explanation
+     * sat on {@link #anchoredAt} alone until a review pointed out that a caller reaching
+     * for a listing never opens the cure's javadoc — the warning belongs here, on the read
+     * they do open.</p>
      */
     List<StoredEntry> listEntries(String type, String status, String scope, String language, int limit);
 
@@ -413,6 +430,16 @@ public interface ExperienceStore extends AutoCloseable {
      * <p>Anchors are compared as written, not resolved — both sides are FQNs this product
      * produced, and resolving here would need a project and turn an absent row into an
      * unanswerable question at the moment a gate has to decide.</p>
+     *
+     * <p><b>STATUS IS DELIBERATELY NOT FILTERED</b>, which is PARITY with the read this
+     * replaced rather than a new decision — but it is now the one place the question is
+     * settled, so it is written down. A {@code rejected}, {@code superseded} or retired row
+     * at an anchor therefore counts as a row, and a write gate asking this will replace it
+     * rather than insert beside it. {@link #query} excludes those statuses because recall
+     * must not offer judged-out knowledge as an answer; here the question is narrower and
+     * more mechanical — <i>is this anchor occupied</i> — and a gate that treated a rejected
+     * row as absent would insert a second row beside it, which is the state the keyed read
+     * exists to prevent. Change this only with that consequence in view.</p>
      *
      * <p><b>A LIST per anchor, not one row, because more than one is a state that must stay
      * visible.</b> D30 forbids it and {@link #replaceJob}'s caller refuses on sight rather

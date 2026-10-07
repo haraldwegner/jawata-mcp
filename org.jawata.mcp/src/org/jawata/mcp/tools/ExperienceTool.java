@@ -2475,12 +2475,12 @@ public final class ExperienceTool implements Tool {
      * <h2>Batched on purpose, and store-only on purpose</h2>
      *
      * <p>A turn adds several members at once, and this answers about all of them in ONE call —
-     * which is what the sentence about round trips was always about. <b>Internally it now reads
-     * the store once per member</b>, since Sprint 28g: the corpus-wide read it replaced could be
-     * capped by unrelated rows and report a member that HAS a job as missing. Measured against
-     * that read it is also fewer statements on the live store, because each returned row costs a
-     * second query of its own. The API is still batched; only the reads beneath it are not.
-     * It needs NO project: a job row is
+     * which is what the sentence about round trips was always about. <b>Internally it is also ONE
+     * statement</b>, since 2026-10-08: the store is asked, for exactly the members named, which of
+     * them carry a row. (This paragraph said <i>"it now reads the store once per member"</i> and
+     * argued for that as fewer statements — true of the fold before last and left standing by the
+     * one that replaced it. The per-member read existed to put a page cap out of reach; a keyed
+     * read needs neither the page nor the N statements.) It needs NO project: a job row is
      * anchored by an FQN string, and whether one EXISTS is a question about the store. That
      * is what lets this answer while a resident has nothing loaded — which is the state a
      * stop gate most often finds.</p>
@@ -2594,22 +2594,20 @@ public final class ExperienceTool implements Tool {
     }
 
     /**
-     * The job the store holds for each of the members NAMED, read one member at a time.
+     * Which of the members NAMED the store can account for, in ONE keyed read.
      *
-     * <p>Sprint 28g, folding the C14a round-2 audit. This read used to fetch every job row up to
-     * {@code DESCRIBING_ROW_CAP} and filter — a cap equal to the sprint's own figure for the code
-     * lane, so reachable on the live store, and past it a member that HAS a job landed in
-     * {@code missing}. The first repair REPORTED the cap, and the round-2 audit refused it on two
-     * counts that were both right: {@link #membersThatAlreadyHaveAJobAmong}'s consumer discarded the
-     * flag and went on naming such members as undescribed, and the note's remedy — <i>ask about
-     * that member on its own</i> — could not work, because the read ignored which symbols were
-     * asked about and returned the identical answer.</p>
+     * <p><b>This javadoc described three superseded implementations in a row and was left
+     * standing by the fold that replaced the third</b> — corrected 2026-10-08 after a review
+     * found it asserting a per-member read, a cap "put out of reach", and a Java-side exact-anchor
+     * re-filter, none of which the method below does any more. The history is worth one paragraph
+     * because the shape of it is the lesson; the claims are not worth keeping as prose that reads
+     * as current.</p>
      *
-     * <p><b>Reading per member puts the cap out of reach instead of reporting it</b>, which is why
-     * it closes both: the rows for ONE member are the rows D30 measured at one apiece, and both
-     * consumers already hold the member list they are asking about. The scope filter is the
-     * store's own ({@code symbol_fqn = ? OR LIKE ?}), so each row is still checked for an exact
-     * anchor rather than trusted.</p>
+     * <p>What it was: a corpus-wide page filtered in Java, then a page per member, then that page
+     * plus a third {@code undetermined} state for the case where it was full. All three were a
+     * capped list answering a keyed question. {@link org.jawata.mcp.knowledge.ExperienceStore#anchoredAt}
+     * asks the store exactly, so there is no window, no re-filter and no third state — and an
+     * absence here is an absence, which is what lets a caller name a member as undescribed.</p>
      */
     private java.util.Set<String> membersThatAlreadyHaveAJobAmong(
             java.util.Collection<String> members) {
@@ -3930,11 +3928,23 @@ public final class ExperienceTool implements Tool {
         // REPLACES it, and inserts a second row when it finds none. It used to find that row
         // by calling `listEntries("job", null, symbol, null, 50)` and re-filtering in Java —
         // and that read's scope clause is `symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"`
-        // plus the same pair on `package_name`, ordered newest-first under a LIMIT. So for a
-        // type- or package-shaped scope the fifty rows could be other members' and this
-        // member's own row could sit outside them. The gate then saw no existing row and
-        // INSERTED, which is how the duplicates D30 exists to prevent were minted — by the
-        // gate itself, not by any caller ignoring it.
+        // plus the same pair on `package_name`, ordered newest-first under a LIMIT.
+        //
+        // WHICH ANCHORS THAT COULD ACTUALLY BITE, stated precisely, because the first version
+        // of this comment claimed the gate had MINTED the duplicates D30 was built for and an
+        // audit refused it on two measured facts. (1) A MEMBER anchor carries a `#`, so the
+        // LIKE pattern `pkg.Type#m.%` can match nothing this product ever writes, and a job
+        // row's `package_name` is null — so for a member anchor the first arm matched exactly
+        // and the window was never filled. The board recorded that on 2026-10-07 and this
+        // comment did not carry it forward. (2) The measured 73-members/75-surplus-rows census
+        // is member-anchored AND predates this gate existing. So the past tense was wrong:
+        // those duplicates were not made here.
+        //
+        // WHAT IS TRUE is a live hazard rather than a post-mortem, and it is enough: a TYPE
+        // anchor prefix-matches its nested members' jobs and a PACKAGE anchor matches every
+        // symbol beneath it, both verbs take the anchor from the CALLER, and in that state the
+        // gate saw no existing row and inserted beside one. That is the defect; it simply had
+        // not been observed firing.
         //
         // The comment that stood here said a dedicated store read "was written first and the
         // duplicate gate refused it, correctly." The refusal was WRONG, and recording that is

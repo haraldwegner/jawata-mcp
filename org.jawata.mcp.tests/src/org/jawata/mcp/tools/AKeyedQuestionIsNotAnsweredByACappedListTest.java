@@ -52,14 +52,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * cannot answer the question. {@link ExperienceStore#anchoredAt} is bounded by the anchors
  * ASKED ABOUT, so there is no window, no third state, and an absent key is an absence.</p>
  *
- * <h2>The control is the whole class</h2>
+ * <h2>Which cases carry a control, stated per case because the blanket claim was false</h2>
  *
- * <p>Every case here is paired with the OLD read over the identical store, asserted to return
- * a full page that does NOT contain the row. Without that pair, "the keyed read found it"
- * passes against any read at all, including the one being replaced — and a fixture that cannot
- * tell the two apart is the defect this sprint has shipped five times. The last case is the
- * opposite control: a genuine absence must still be reported as one, or every assertion above
- * is satisfied by a read that claims everything is described.</p>
+ * <p>This section read <i>"Every case here is paired with the OLD read over the identical store,
+ * asserted to return a full page that does NOT contain the row"</i>. An audit measured it:
+ * <b>three of the six called the old read and two asserted a full page</b>, and the
+ * {@code jobsFor} case had no precondition at all, so it passed against the defective code the
+ * moment the fixture stopped burying. The claim was written in the paragraph whose subject is
+ * that an unfalsifiable assertion is worthless. The missing precondition is now in place; what
+ * each case actually carries is listed here rather than asserted as a uniform property:</p>
+ *
+ * <ul>
+ *   <li><b>The two store cases and the two tool cases</b> pair with the old read and assert the
+ *       page was FULL — so a fixture that stops reaching the defect fails loudly instead of
+ *       reading as "nothing is there".</li>
+ *   <li><b>{@code everyAnchorAskedAboutIsAnswered} has no pairing and cannot have one</b>: its
+ *       subject is a window on the ANSWER rather than on the matched rows, which the old read
+ *       had no form of. Its discriminator is the mutation that re-adds a {@code LIMIT}.</li>
+ *   <li><b>{@code anAbsenceIsStillAnAbsence} passes identically against old and new code by
+ *       design</b> — it is the opposite control, and without it every assertion here is
+ *       satisfied by a read that claims everything is described.</li>
+ * </ul>
  */
 class AKeyedQuestionIsNotAnsweredByACappedListTest {
 
@@ -214,10 +227,14 @@ class AKeyedQuestionIsNotAnsweredByACappedListTest {
                 () -> assertEquals(OLD_WINDOW, page.size(),
                     () -> "the page is full, so the absence below is truncation: " + page.size()),
                 () -> assertFalse(onThePage,
-                    "THE CONTROL on the PACKAGE column, which is the shape the defect was"
-                        + " measured on live: `describe action=area` answered `result: match`"
-                        + " with five rows against 5996 matched and no area row among them, on"
-                        + " every large package"),
+                    "THE CONTROL on the PACKAGE column. (This message cited `describe"
+                        + " action=area` answering with five rows against 5996 matched as 'the"
+                        + " live instance' of THIS defect. An audit measured that it is not:"
+                        + " that verb goes through `ExperienceRetrieval.recall`, whose cap is a"
+                        + " five-row ranked terminal — a DIFFERENT read with a different cap,"
+                        + " which does at least declare itself through `capped_from`. The"
+                        + " package-column defect this case pins is the one in `listEntries`,"
+                        + " reached by `describe action=next`'s areas block.)"),
                 () -> assertTrue(keyed.containsKey(PACKAGE_ANCHOR),
                     () -> "and the keyed read on the package column finds it: " + keyed.keySet()),
                 () -> assertEquals(1, keyed.get(PACKAGE_ANCHOR).size(),
@@ -348,6 +365,17 @@ class AKeyedQuestionIsNotAnsweredByACappedListTest {
     void jobsForReportsABuriedRowAsDescribed(@TempDir Path dir) {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
             buryAJobUnderItsOwnNestedMembers(store);
+            // THE PRECONDITION, added 2026-10-08 after an audit measured that this case had
+            // NONE — and it was the case the class javadoc's "every one is paired" claim was
+            // most wrong about. Without it, a fixture that stopped burying (NOISE dropped below
+            // the old window) makes every assertion below pass against the defective read, and
+            // this case's discriminating power was entirely borrowed from a sibling method.
+            List<StoredEntry> page = theOldListSift(store, "job", TYPE_ANCHOR);
+            assertEquals(OLD_WINDOW, page.size(),
+                () -> "precondition: the old read's page is FULL, so the row this case is about"
+                    + " is one it could not see. Got: " + page.size());
+            assertFalse(page.stream().anyMatch(e -> TYPE_ANCHOR.equals(e.symbolFqn())),
+                "precondition: and the row is outside that page");
 
             Map<String, Object> out = data(jobsFor(store, TYPE_ANCHOR));
             List<Map<String, Object>> described =
