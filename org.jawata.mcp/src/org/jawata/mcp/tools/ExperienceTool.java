@@ -2606,8 +2606,17 @@ public final class ExperienceTool implements Tool {
                 store.listEntries("job", null, member, null, JOBS_PER_MEMBER_CAP);
             capped |= rows.size() >= JOBS_PER_MEMBER_CAP;
             for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
-                // The scope filter matches a prefix as well as the exact anchor, so the row is
-                // checked rather than assumed: a job on `Type#other` must not answer for `Type#m`.
+                // THE ANCHOR IS CHECKED, AND THE REASON IS NARROWER THAN THE ONE I FIRST WROTE.
+                // That comment said the filter "matches a prefix as well as the exact anchor",
+                // which invited the reading that a job on `Type#mAll` could answer for `Type#m`.
+                // Measured — `H2ExperienceStore:2350-2352` binds `scope` and `scope + ".%"`, so
+                // the LIKE matches DOT-CHILDREN and a longer sibling NAME is already excluded by
+                // the store. A mutation that trusted the row stayed GREEN against exactly that
+                // pair, which is how the false reason was found rather than reasoned away.
+                //
+                // So this is defensive against a dot-child anchor, which no job shape produces
+                // today, and it costs one comparison. Kept with its real reason rather than
+                // deleted, because the next person to widen that filter meets it here.
                 if (member.equals(e.symbolFqn())) {
                     byMember.put(member, e.summary());
                     break;

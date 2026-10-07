@@ -149,32 +149,43 @@ class TheTwoCorruptingCallsCarryThePriorWorkAnswerTest {
      * THE PER-MEMBER READ MUST NOT ANSWER FOR A SIBLING — the property the C14a round-2 fold
      * introduced and nothing else pins.
      *
-     * <p>That fold replaced a whole-corpus read with one scoped per member, which closed a false
-     * absence past the corpus cap. The scope filter is the store's own and matches a PREFIX as
-     * well as an exact anchor ({@code symbol_fqn = ? OR symbol_fqn LIKE ?}), so the rows it
-     * returns are checked for an exact anchor rather than trusted. Without that check, asking
-     * about {@code Ledger#reconcile} could be answered by the job of
-     * {@code Ledger#reconcileAll} — a plausible, wrong answer on the surface D42(a) makes
-     * authoritative for "is this the same work".</p>
+     * <p>That fold replaced a whole-corpus read with one scoped per member. The property asserted
+     * here is that a LONGER-NAMED sibling's job is not offered for the member asked about — a
+     * plausible, wrong answer on the surface D42(a) makes authoritative for <i>is this the same
+     * work</i>.</p>
+     *
+     * <p><b>WHAT MAKES IT PASS IS THE STORE'S FILTER, NOT THE TOOL'S ANCHOR CHECK, and that was
+     * measured rather than assumed.</b> Disabling the tool's exact-anchor comparison left this
+     * GREEN — twice, once with a mis-built pair and once with the right one — and reading the SQL
+     * says why: the scope filter binds {@code scope} and {@code scope + ".%"}
+     * ({@code H2ExperienceStore:2350-2352}), so it matches dot-children and never a longer
+     * sibling name. The assertion is therefore a PROPERTY assertion about the answer, not a proof
+     * that the tool's check is load-bearing — and it is kept because the property is worth
+     * pinning whichever layer enforces it, while saying plainly which one does.</p>
      */
     @Test
     @SuppressWarnings("unchecked")
     void a_job_on_a_longer_sibling_name_does_not_answer_for_this_member() {
-        String sibling = MEMBER + "All";
+        // THE PAIR MUST SHARE A PREFIX IN THE RIGHT DIRECTION, and the first version of this test
+        // did not: it recorded a job for MEMBER + "All" and then asked about UNDESCRIBED, which
+        // could never prefix-match it. The mutation below stayed GREEN and that is what found it —
+        // a mutation's job is to fail, and one that does not has found something.
+        String asked = UNDESCRIBED;
+        String longerSibling = UNDESCRIBED + "Deeply";
         store.put(ExperienceEntry.of(
             SymbolFact.of("job", "Settles EVERY ledger, which is a different job",
-                Confidence.MEDIUM).symbol(sibling).build())
+                Confidence.MEDIUM).symbol(longerSibling).build())
             .status(ExperienceEntry.ACCEPTED).build());
 
-        ToolResponse r = new ExperienceTool(() -> null, store).execute(jobsFor(UNDESCRIBED));
+        ToolResponse r = new ExperienceTool(() -> null, store).execute(jobsFor(asked));
 
         Map<String, Object> data = dataOf(r);
-        assertEquals(List.of(UNDESCRIBED), data.get("missing"),
-            () -> "the undescribed member is still missing: " + data);
+        assertEquals(List.of(asked), data.get("missing"),
+            () -> "the member asked about has no job of its own, so it is missing: " + data);
         assertTrue(((List<Map<String, Object>>) data.get("described")).isEmpty(),
-            () -> "and no sibling's job was offered in its place: " + data);
+            () -> "and the longer-named sibling's job was not offered in its place: " + data);
         assertFalse(String.valueOf(data).contains("different job"),
-            () -> "the longer-named sibling's words must not travel with this answer: " + data);
+            () -> "nor did its words travel with this answer: " + data);
     }
 
     // ---------------------------------------------------------------- case two
