@@ -1255,6 +1255,12 @@ public class JawataApplication implements IApplication {
         // exactly the "component available: true" blindness v3.4.0 shipped.
         experienceAdvisor = new ExperienceAdvisor(experienceStore, () -> jdtService,
             experienceEmbeddingIndex());
+        // Sprint 28g (D42): the SAME advisor, now also asked on every tool response rather than
+        // by one tool of forty-two. Measured before wiring: `adviseBefore` had thirteen callers
+        // and exactly ONE in production, so the surface was built, wired at boot, and reachable
+        // only by whoever happened to call plan_refactoring. Nothing new is constructed here —
+        // that is what keeps D-SIX satisfied.
+        toolRegistry.setExperienceAdvisor(experienceAdvisor);
         toolRegistry.register(new RefactoringTool(() -> jdtService, refactoringChangeCache,
             experienceAdvisor));
         // Sprint 14b: composite closing the find_duplicate_code loop.

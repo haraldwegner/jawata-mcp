@@ -67,6 +67,21 @@ public class ToolRegistry {
         this.diskSync = diskSync;
     }
 
+    /**
+     * Sprint 28g D42 — the knowledge store's PRIOR-WORK advisor, asked on every tool response.
+     *
+     * <p>It is the advisor the application already builds; before this it was reached by ONE
+     * tool of forty-two ({@code plan_refactoring}), so an agent learned what the store already
+     * knew only when it happened to call that one. Null = not wired, which is every test that
+     * constructs this registry directly.</p>
+     */
+    private org.jawata.mcp.knowledge.ExperienceAdvisor advisor;
+
+    /** Install the prior-work advisor (Sprint 28g D42). Null = no prior-work block. */
+    public void setExperienceAdvisor(org.jawata.mcp.knowledge.ExperienceAdvisor advisor) {
+        this.advisor = advisor;
+    }
+
     /** Sprint 21e (item A): fired after a SUCCESSFUL project mutation
      *  ({@code load_project}, {@code project(action=add|remove)}) so the experience
      *  store's refresh + anchor backfill see the new project set. Null = no hook. */
@@ -628,6 +643,12 @@ public class ToolRegistry {
             // Runs BEFORE the tap so it reflects PAST experience, not this call's
             // own outcome; appended, never replacing the tool's own line.
             precedent(caller, name, arguments, response);
+            // Sprint 28g (D42): the PRIOR-WORK block — what the knowledge store already knows
+            // about the thing this call is working on. Beside the precedent push and sharing its
+            // target derivation, but a different lane: that one is what TOOLS did here before,
+            // this one is what the store KNOWS about here. On the response because the hook
+            // channel reaches one client of six.
+            priorWork(name, arguments, response);
             // Sprint 26: the event tap — every outcome becomes a learner label
             // as a side effect of the call itself (D7: training is a side
             // effect of use). Tap failures are the tap's own concern (loud
@@ -727,6 +748,65 @@ public class ToolRegistry {
      * steer (never replacing the tool's own line). No retriever, no target, or
      * no clear signal → silent. Never fails the call.
      */
+    /**
+     * Sprint 28g D42 — THE PRIOR-WORK BLOCK, on every tool response.
+     *
+     * <p>What the store already knows about the thing this call is working on, carried by the
+     * response rather than waiting to be asked. The channel is the point: a hook reaches one
+     * client of six and the standing instruction for the rest is <i>"clients without hook
+     * injection must PULL it"</i>, which is an opt-in, which this project has measured at
+     * chosen-by-nobody. A response reaches every client with no cooperation at all.</p>
+     *
+     * <p><b>It builds nothing.</b> The advisor, the duplicate check, the cap and the deadline all
+     * existed; {@code adviseBefore} simply had ONE caller out of forty-two tools. This method is
+     * the connection and not a mechanism — which is why D-SIX permits it where a fifth
+     * prior-work check would have been refused.</p>
+     *
+     * <p><b>The budget is the floor, deliberately.</b> {@code MIN_RETRIEVAL_BUDGET_MILLIS} is the
+     * fastest answer the store allows — its clamp exists so <i>"a caller may buy a FASTER
+     * answer, never a longer wait"</i> — and a block nobody asked for must buy the fastest. The
+     * default fifteen seconds is right for a verb an agent chose to call and would be a hostage
+     * here: the vouched fact behind this clause is store reads walking past a four-second
+     * watchdog until the mandatory line was never emitted at all.</p>
+     *
+     * <p><b>It does not touch the quality ledger, unlike the two lanes below it.</b>
+     * {@code adviseBefore} already counts itself to the pre-advice surface through its own
+     * recall, so a fired/silent pair here would double-count one surface. Said explicitly
+     * because a reader meeting this beside {@link #precedent} would expect the measurement.</p>
+     *
+     * <p>Never fails the call: the tool's own answer is the thing the caller asked for, and an
+     * advisory that could not be computed must not take it down.</p>
+     */
+    private void priorWork(String name, JsonNode arguments, ToolResponse response) {
+        if (advisor == null) {
+            return;
+        }
+        try {
+            // The SAME target derivation the precedent lane uses — one statement of what this
+            // call is working on, so the two blocks cannot disagree about it.
+            String target = org.jawata.mcp.learn.ToolExperienceRecorder.target(name, arguments);
+            if (target == null || target.isBlank()) {
+                return;
+            }
+            // THE OPERATION CUE IS DELIBERATELY NULL HERE, and that is a bound rather than an
+            // omission. `adviseBefore`'s other caller passes a REFACTORING KIND, which is what
+            // the store's `operation` facet actually holds (`seat:refactor` and the like). A TOOL
+            // NAME is not an operation, so passing it would add a cue that rarely matches and can
+            // match something unrelated — on every response. Symbol-only means a target that is
+            // not FQN-shaped (a `filePath` call, which `target` reduces to a basename) yields an
+            // EMPTY query and no block at all, which is the right answer rather than a broad one.
+            java.util.List<String> advice = advisor.adviseBefore(null, target,
+                org.jawata.mcp.knowledge.ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS);
+            if (advice == null || advice.isEmpty()) {
+                return;
+            }
+            response.appendSteering("What the store already knows about " + target + ":\n"
+                + String.join("\n", advice));
+        } catch (Exception e) {
+            log.warn("prior-work advice failed after {}: {}", name, e.toString());
+        }
+    }
+
     private void precedent(CallerIdentity caller, String name, JsonNode arguments,
             ToolResponse response) {
         if (precedentRetriever == null) {

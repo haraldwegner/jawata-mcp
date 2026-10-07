@@ -66,9 +66,38 @@ public final class ExperienceAdvisor implements Advisor {
         retrieval.setQualityLedger(ledger);
     }
 
+    /**
+     * Advice under the store's OWN retrieval budget — the form a caller that ASKED for it uses.
+     *
+     * <p>The default is right here and wrong on a path nobody asked on, which is why the
+     * overload below exists: a caller that chose to ask is willing to wait out a wedged store.</p>
+     */
     @Override
-    @SuppressWarnings("unchecked")
     public List<String> adviseBefore(String kind, String target) {
+        return adviseBefore(kind, target, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+    }
+
+    /**
+     * The same advice under a deadline the CALLER chooses — Sprint 28g D42, step M4.
+     *
+     * <p>It exists because the default budget is unusable on a path nobody asked on. A block
+     * riding EVERY tool response cannot wait fifteen seconds for an advisory, and the default's
+     * own javadoc says fifteen seconds is <i>"not a performance target"</i> but the point past
+     * which slow is indistinguishable from wedged. The vouched fact behind D42's deadline clause
+     * is sequential store reads walking past a FOUR-second watchdog until the mandatory line was
+     * never emitted at all.</p>
+     *
+     * <p>So the budget is a PARAMETER rather than a constant: a call site on the response path
+     * cannot omit it and quietly inherit the long one. That is the whole of <i>M4 before M5</i> —
+     * the ordering holds because the deadline is an argument M5's call has to supply.</p>
+     *
+     * <p>Past the deadline the answer is EMPTY rather than wrong. The underlying recall cancels
+     * the abandoned read and answers {@code RESULT_UNAVAILABLE} with its reason, which carries no
+     * {@code entries} and no {@code analogies} — so this renders nothing from it. A response
+     * therefore carries a prior-work block or carries none; it never carries a half-read one.</p>
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> adviseBefore(String kind, String target, long budgetMillis) {
         RecallQuery q = new RecallQuery(
             looksLikeFqn(target) ? target : null,   // symbol cue
             null,                                    // package
@@ -82,7 +111,8 @@ public final class ExperienceAdvisor implements Advisor {
         // surface — so the quality ledger records when this surface actually
         // reaches the agent, and when it stays silent, as a side effect of the
         // normal call rather than through a separate feed.
-        Map<String, Object> r = retrieval.recall(q, QualityLedger.SURFACE_PRE_ADVICE);
+        Map<String, Object> r =
+            retrieval.recall(q, QualityLedger.SURFACE_PRE_ADVICE, budgetMillis);
 
         // A vouched entry leads; failing that, the meaning/word NOMINEES recall
         // already computed. Before Sprint 27a this method read `entries` only
