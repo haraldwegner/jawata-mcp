@@ -2483,14 +2483,28 @@ public final class ExperienceTool implements Tool {
                 "Required — the fully-qualified members to ask about, or `filePaths` whose"
                     + " members should be derived.");
         }
-        java.util.Set<String> anchored = membersThatAlreadyHaveAJob();
-        List<String> described = new java.util.ArrayList<>();
+        // Sprint 28g D42(a), case one — THE ANSWER NAMES THE JOB, not just the member.
+        //
+        // `described` used to be a list of member names, which tells a caller a job exists and
+        // not what it says. The corrupting case this deliverable is about is writing a SECOND
+        // description of work the store already describes, and the only thing that lets a caller
+        // see that is the existing job's own words. Their own member names they already have.
+        java.util.Map<String, String> jobs = jobsByMember();
+        List<Map<String, Object>> described = new java.util.ArrayList<>();
         List<String> missing = new java.util.ArrayList<>();
         for (String s : symbols) {
             if (s == null || s.isBlank()) {
                 continue;
             }
-            (anchored.contains(s) ? described : missing).add(s);
+            String existing = jobs.get(s);
+            if (existing == null) {
+                missing.add(s);
+            } else {
+                Map<String, Object> row = new java.util.LinkedHashMap<>();
+                row.put("symbol", s);
+                row.put("job", existing);
+                described.add(row);
+            }
         }
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("described", described);
@@ -2517,15 +2531,37 @@ public final class ExperienceTool implements Tool {
         }
     }
 
-    private java.util.Set<String> membersThatAlreadyHaveAJob() {
-        java.util.Set<String> anchored = new java.util.HashSet<>();
+    /**
+     * The job the store already holds for each anchored member — Sprint 28g D42(a), case one.
+     *
+     * <p>D42 asks that a describing call carry <i>"the store's prior-work answer … naming an
+     * existing job for that member"</i>. Naming the MEMBER is what this answered before: a caller
+     * learned a job EXISTED and not what it SAID, which is the half that decides whether the work
+     * in front of them is the same work. A member's own name is something they already have.</p>
+     *
+     * <p><b>{@link #membersThatAlreadyHaveAJob} is now derived from this rather than reading the
+     * store a second time</b>, which is that method's own stated property: it is <i>"the one set
+     * both the queue's answer and the closing count are judged against so they cannot drift
+     * apart"</i>. Two reads of one question is exactly how they would.</p>
+     *
+     * <p>Keyed by anchor, so a member carrying several job rows — which {@code replaceJob} exists
+     * to prevent and D30 measured at zero — yields the last one read rather than a pile. Worth
+     * stating as the narrowing it is: this answers <i>what the store says this member is for</i>,
+     * never <i>every row it holds about it</i>.</p>
+     */
+    private java.util.Map<String, String> jobsByMember() {
+        java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();
         for (org.jawata.mcp.knowledge.StoredEntry e
                 : store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP)) {
             if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
-                anchored.add(e.symbolFqn());
+                byMember.put(e.symbolFqn(), e.summary());
             }
         }
-        return anchored;
+        return byMember;
+    }
+
+    private java.util.Set<String> membersThatAlreadyHaveAJob() {
+        return jobsByMember().keySet();
     }
 
     /**
