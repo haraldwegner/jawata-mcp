@@ -3,14 +3,7 @@ package org.jawata.mcp.knowledge;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.core.IType;
-import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.host.HostPaths;
-import org.jawata.core.search.SearchService;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.ExperienceTool;
@@ -19,10 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -59,6 +50,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code noSuchMember}. Nothing is added to {@code simple-maven}: it is monotonically growing
  * and shared, and this sprint has recorded it moving a counted population four separate times.
  * A row written here would be the fifth.</p>
+ *
+ * <p><b>And the closed-workspace case uses the real service, emptied by the product's own
+ * {@code removeProject}.</b> The first version stubbed {@code IJdtService} — sixteen
+ * methods, fifteen of them throwing — and a stub asserts what its author believes an
+ * unopened workspace does. The verb puts a real service into that state, and three tests
+ * in {@code org.jawata.core} already drive it that way.</p>
  */
 class OneAnchorAnswerForBothGatesTest {
 
@@ -231,16 +228,34 @@ class OneAnchorAnswerForBothGatesTest {
      */
     @Test
     @DisplayName("D40d: nothing loaded answers COULD-NOT-CHECK, never GONE")
-    void aClosedWorkspaceCannotLookRatherThanFindNothing() {
+    void aClosedWorkspaceCannotLookRatherThanFindNothing() throws Exception {
+        JdtServiceImpl service = helper.loadProject("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            IJdtService closed = new NothingLoaded();
-            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> closed);
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> service);
+
+            // PROOF OF LIFE while the project IS loaded. Without it, UNKNOWN below could be
+            // UNKNOWN for any reason at all — a bad anchor, a broken fixture — and the
+            // assertion would pass while measuring nothing about an emptied workspace.
+            assertEquals(ExperienceRetrieval.AnchorAnswer.RESOLVES,
+                retrieval.anchorAnswer(STILL_HERE),
+                "proof of life: loaded, this anchor resolves");
+
+            // THE WORKSPACE IS EMPTIED BY THE PRODUCT'S OWN VERB, not by a stub. A
+            // hand-written IJdtService would be sixteen methods asserting what I believe an
+            // unopened workspace does; removeProject puts the service into that state for
+            // real, and three tests in org.jawata.core already drive it this way.
+            for (String key : List.copyOf(service.projectKeys())) {
+                service.removeProject(key);
+            }
+            assertTrue(service.projectKeys().isEmpty(),
+                "precondition: the workspace must really be empty, or the rest is vacuous");
+
             Map<String, Object> pointer = retrieval.resolvePointer(STILL_HERE);
             assertAll(
                 () -> assertEquals(ExperienceRetrieval.AnchorAnswer.UNKNOWN,
                     ExperienceRetrieval.answerOf(pointer),
-                    () -> "an unopened workspace could not look; it did not find nothing: "
-                        + pointer),
+                    () -> "an emptied workspace could not look; it did not find nothing — and"
+                        + " this is the SAME anchor that resolved moments ago: " + pointer),
                 () -> assertFalse(Boolean.TRUE.equals(pointer.get("stale")),
                     () -> "and `stale` must be unset, because that flag is what every reader"
                         + " of this map treats as a positive finding of absence: " + pointer),
@@ -257,89 +272,5 @@ class OneAnchorAnswerForBothGatesTest {
         args.put("summary", "Answers the gauge's last sampled reading in degrees.");
         args.put("symbol", symbol);
         return args;
-    }
-
-    /**
-     * A service with NOTHING LOADED — the D40d state, not a mock of a failure.
-     *
-     * <p>Only two answers matter and both are the real ones an unopened workspace gives: an
-     * empty project set, and {@code findType} returning null rather than throwing. Everything
-     * else throws, which is a deliberate assertion in itself: the resolution must return
-     * BEFORE touching any of it, so a branch that fell through to the search path would fail
-     * here loudly instead of quietly answering UNKNOWN from a catch and looking correct.</p>
-     */
-    private static final class NothingLoaded implements IJdtService {
-        private static UnsupportedOperationException notAsked() {
-            return new UnsupportedOperationException(
-                "a resolution on an unopened workspace must answer before asking this");
-        }
-
-        @Override public Collection<String> projectKeys() {
-            return List.of();
-        }
-
-        @Override public IType findType(String typeName) {
-            return null;
-        }
-
-        @Override public HostPaths getPathUtils() {
-            throw notAsked();
-        }
-
-        @Override public Path getProjectRoot() {
-            throw notAsked();
-        }
-
-        @Override public int getTimeoutSeconds() {
-            throw notAsked();
-        }
-
-        @Override public <T> T executeWithTimeout(Callable<T> operation, String operationName) {
-            throw notAsked();
-        }
-
-        @Override public SearchService getSearchService() {
-            throw notAsked();
-        }
-
-        @Override public IJavaProject getJavaProject() {
-            throw notAsked();
-        }
-
-        @Override public ICompilationUnit getCompilationUnit(Path filePath) {
-            throw notAsked();
-        }
-
-        @Override public IJavaElement getElementAtPosition(Path filePath, int line, int column) {
-            throw notAsked();
-        }
-
-        @Override public IType getTypeAtPosition(Path filePath, int line, int column) {
-            throw notAsked();
-        }
-
-        @Override public String getContextLine(ICompilationUnit cu, int offset) {
-            throw notAsked();
-        }
-
-        @Override public int getOffset(ICompilationUnit cu, int line, int column) {
-            throw notAsked();
-        }
-
-        @Override public int getLineNumber(ICompilationUnit cu, int offset) {
-            throw notAsked();
-        }
-
-        @Override public int getColumnNumber(ICompilationUnit cu, int offset) {
-            throw notAsked();
-        }
-
-        @Override public List<Path> getAllJavaFiles() {
-            throw notAsked();
-        }
-
-        @Override public void reresolveWorkspace() {
-            throw notAsked();
-        }
     }
 }
