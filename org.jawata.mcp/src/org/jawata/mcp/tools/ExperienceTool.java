@@ -2359,6 +2359,38 @@ public final class ExperienceTool implements Tool {
         return describedUnits;
     }
 
+    /**
+     * How many worked-in packages steer one batch — Sprint 28g D31.
+     *
+     * <p>A bound and not a preference: the whole point is that the batch starts where somebody
+     * has just been, and a list long enough to cover most of the workspace would restore the
+     * sweep it replaces while still calling itself use-driven. Twelve is a working session's
+     * worth of packages, not a census of them.</p>
+     */
+    private static final int PREFERRED_PACKAGES = 12;
+
+    /**
+     * The package a unit belongs to, as the enumeration already recorded it.
+     *
+     * <p>Read back out of the facts rather than re-derived: {@code describeNext} resolved it
+     * through JDT one loop earlier, and asking twice would be a second answer that can disagree
+     * with the first.</p>
+     */
+    private static String packageOfUnit(Map<String, Map<String, Object>> facts, String path) {
+        Object pkg = facts.getOrDefault(path, Map.of()).get("package");
+        return pkg == null ? "" : pkg.toString();
+    }
+
+    /** Where somebody has been working — Sprint 28g D31, held the same way and for the same reason. */
+    private org.jawata.mcp.knowledge.WorkedPackages workedPackages;
+
+    private org.jawata.mcp.knowledge.WorkedPackages workedPackages() {
+        if (workedPackages == null) {
+            workedPackages = new org.jawata.mcp.knowledge.WorkedPackages(this::currentH2Store);
+        }
+        return workedPackages;
+    }
+
     private ToolResponse describe(JsonNode args) {
         String action = text(args, "action");
         if (action == null || action.isBlank()) {
@@ -2705,6 +2737,22 @@ public final class ExperienceTool implements Tool {
         // The package the answer is ABOUT, so a caller can memo on it. The hook shows this
         // once per package per session and cannot do that without being told which.
         result.put("package", pkg);
+        // Sprint 28g D31 — COVERAGE FOLLOWS USE, and this is the only place the use is visible.
+        //
+        // The hook fires this action on a tool call naming a .java file, so by the time we are
+        // here somebody has opened something in `pkg`. That is the whole event D31 needs, and it
+        // is ALREADY ARRIVING — which is why the recording goes here rather than behind a verb
+        // of its own. The measure's third clause forbids the alternative in as many words:
+        // "recording does not make the file-open path slower or noisier". A new verb would be a
+        // second round trip on exactly that path and a new cross-product contract besides; this
+        // adds one insert to a call that already happens and emits nothing, so the clause holds
+        // BY CONSTRUCTION rather than by a measurement somebody has to keep re-taking.
+        //
+        // THE TRADE, NAMED RATHER THAN HIDDEN: this makes a read verb write, which is a
+        // command-and-query in a product that ships a `cqs` detector. It is the measure's own
+        // clause that forces it, the write is invisible in the response, and the alternative
+        // breaks a clause the spec states. Recorded for C14 rather than settled quietly.
+        workedPackages().noted(pkg);
         return respond(args, result);
     }
 
@@ -2746,6 +2794,23 @@ public final class ExperienceTool implements Tool {
                 unreadable.add(file + " (" + e.getMessage() + ")");
             }
         }
+        // Sprint 28g D31 — COVERAGE FOLLOWS USE: the batch starts where somebody has been.
+        //
+        // Sorted HERE and not in the ledger, because `outstanding` keeps the caller's order on
+        // purpose and says so: "a ledger that re-sorted them would be deciding the agent's route
+        // from a table that knows only what is finished." This is the caller, it is the one that
+        // knows the route, and the preference is its decision to make.
+        //
+        // STABLE, so it reorders and never reshuffles: within the worked packages and within the
+        // rest, the enumeration's own order survives. A sort that scrambled the remainder would
+        // make two runs over an unchanged workspace hand out different batches, and a resumable
+        // queue whose order moves under it is not resumable.
+        List<String> preferred = workedPackages().stillUndescribed(PREFERRED_PACKAGES);
+        if (!preferred.isEmpty()) {
+            java.util.Set<String> prefer = new java.util.LinkedHashSet<>(preferred);
+            candidates.sort(java.util.Comparator.comparingInt(
+                u -> prefer.contains(packageOfUnit(facts, u.path())) ? 0 : 1));
+        }
         List<org.jawata.mcp.knowledge.DescribedUnits.Unit> outstanding =
             describedUnits().outstanding(candidates, limit);
 
@@ -2768,6 +2833,27 @@ public final class ExperienceTool implements Tool {
         out.put("inScope", candidates.size());
         out.put("outstanding",
             describedUnits().outstanding(candidates, Integer.MAX_VALUE).size());
+        // Sprint 28g D31 — A USE-DRIVEN BATCH SAYS SO, which is half the deliverable.
+        //
+        // Without this the two batches are indistinguishable from outside: the units arrive in
+        // some order and a reader cannot tell whether the queue followed somebody's work or
+        // just walked the workspace. That matters because the two mean different things about
+        // what is being handed over — the first says "this is where attention has been", the
+        // second says "this is what is next in file order" — and a caller that reads a sweep as
+        // use-driven will believe the batch is more relevant than it is.
+        //
+        // The packages are NAMED, not counted. A number says the preference fired; the names
+        // say which work it followed, which is the thing a reader can check against what they
+        // were actually doing — and the thing that makes a WRONG preference visible rather than
+        // merely present.
+        if (preferred.isEmpty()) {
+            out.put("order", "file order — no worked-in package is still undescribed, so this"
+                + " batch is a sweep rather than a use-driven one");
+        } else {
+            out.put("order", "use-driven — units from packages somebody has been working in"
+                + " come first; the rest follow in file order");
+            out.put("preferredPackages", preferred);
+        }
         if (!unreadable.isEmpty()) {
             out.put("unreadable", unreadable);
         }

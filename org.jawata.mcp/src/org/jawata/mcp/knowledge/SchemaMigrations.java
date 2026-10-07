@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 22;
+    static final int LATEST = 23;
 
     private SchemaMigrations() {
     }
@@ -190,6 +190,9 @@ final class SchemaMigrations {
         }
         if (from < 22) {
             migrateToV22(conn);
+        }
+        if (from < 23) {
+            migrateToV23(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -1138,6 +1141,47 @@ final class SchemaMigrations {
             // Read by the coverage report, which groups what is described by bundle.
             s.execute("CREATE INDEX IF NOT EXISTS idx_described_unit_bundle "
                 + "ON described_unit(bundle)");
+        }
+    }
+
+    /**
+     * v23 — {@code worked_package}: which packages somebody has actually been working in.
+     *
+     * <p>Sprint 28g D31, <i>coverage follows use</i>. The cataloguer's queue is the workspace in
+     * file order, which is a route nobody's attention actually takes: the package a person opened
+     * this morning and the package nobody has touched in a year are the same row to it. This
+     * table is the other input — where the work has been — so the next batch can start there.</p>
+     *
+     * <h2>It records the USE and not the verdict, which is the whole design</h2>
+     *
+     * <p>The obvious column is a flag meaning "worked in and still undescribed", and it would be
+     * wrong within a day: the moment somebody describes that package the flag is stale, and
+     * nothing in the describing path knows to clear it. So the row holds only what was OBSERVED
+     * — this package was opened, this many times, most recently then — and whether it still
+     * NEEDS describing is derived at read time against the described rows, which cannot go
+     * stale because it is not stored. A fact with a derived verdict beside it, rather than a
+     * verdict stored as a fact.</p>
+     *
+     * <h2>Why a count and a timestamp rather than one or the other</h2>
+     *
+     * <p>They answer different questions and the queue wants both: {@code times} says how much
+     * of somebody's attention a package has had, {@code last_seen} says whether that attention
+     * is current. A package opened forty times last spring and a package opened twice this
+     * morning are both interesting and are not the same kind of interesting, and a single column
+     * would have to pick one and silently lose the other.</p>
+     *
+     * <p>No foreign key, for {@code described_unit}'s reason one table up: this records what a
+     * PERSON did, and it must survive the store's knowledge being re-derived or wiped.</p>
+     */
+    private static void migrateToV23(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("CREATE TABLE IF NOT EXISTS worked_package ("
+                + "package VARCHAR(512) PRIMARY KEY, "
+                + "times BIGINT NOT NULL, "
+                + "last_seen TIMESTAMP NOT NULL)");
+            // The queue reads this ordered by recency, which is the only query there is.
+            s.execute("CREATE INDEX IF NOT EXISTS idx_worked_package_last_seen "
+                + "ON worked_package(last_seen)");
         }
     }
 }
