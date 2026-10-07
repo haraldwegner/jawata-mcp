@@ -94,6 +94,35 @@ public record RecallQuery(String symbol, String packageName, String operation,
     }
 
     /**
+     * Whether this cue ASKS A CODE QUESTION — Sprint 28g D42(b), the lane derived from the cue.
+     *
+     * <p>A cue naming a {@code symbol} or a {@code packageName} is asking about code. Anything
+     * else — a symptom, an operation, an external system, a question in prose — is not, and
+     * must not be answered out of the code lane.</p>
+     *
+     * <p><b>The rule has teeth in ONE direction, and that is the requirement rather than a
+     * softening of it.</b> Its reason is cost, in the sprint's own words: <i>"experience is small
+     * and can be asked every time; the code lane is ~10,000 rows and must be asked only of a code
+     * question; the patterns answer design questions."</i> So what the derivation does is keep
+     * CODE out of a non-code question; it does not narrow a code question to the code lane, and
+     * it says nothing about domain or rules. Reading the deliverable's lists as EXHAUSTIVE would
+     * drop {@code api_contract} and {@code naming_convention} — {@link KnowledgeLane#DOMAIN_TYPES},
+     * anchored to symbols — out of every symbol recall, which is knowledge lost to satisfy a rule
+     * that was never about them.</p>
+     *
+     * <p>The deliverable's third category needs no branch here, which is worth stating because
+     * its absence looks like an omission: <i>"experience and patterns"</i> are ONE lane.
+     * Measured rather than assumed — {@code KnowledgeLane.of("reference", }
+     * {@code CatalogueManifest.PROVENANCE)} answers {@link KnowledgeLane#EXPERIENCE}, on the
+     * ruling that a borrowed pattern is somebody else's experience.</p>
+     *
+     * @return {@code true} when a {@code symbol} or {@code packageName} cue is set
+     */
+    public boolean isCodeShaped() {
+        return hasSymbol() || hasPackage();
+    }
+
+    /**
      * Whether the {@code lane} filter is set.
      * @return {@code true} when {@code lane} is non-null and non-blank
      */

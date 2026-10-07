@@ -234,6 +234,29 @@ public final class ExperienceRetrieval {
             Map<String, Object> out, int cap) {
         List<StoredEntry> candidates = store.query(q);
 
+        // Sprint 28g D42(b) — THE DERIVED LANE REACHES THE VOUCHED PATH TOO, and leaving it to
+        // the pool filter below would have been the 28f defect pointed the other way.
+        //
+        // The keyword query filters by lane IN SQL — but only when the caller NAMED one. A
+        // derived exclusion names none, so these rows arrive unfiltered and flow into BOTH
+        // `fitting`, which is answered as vouched fact, and `turnedAwayExperience`. The pool
+        // filter further down never sees the first of those. So the derivation is applied at the
+        // one place every keyword-sourced row enters, which is exactly the shape that comment
+        // argues for about status: a per-destination filter is a rule a fourth destination can
+        // be added without.
+        //
+        // It is not pushed into the SQL, and that is a cost decision rather than a correctness
+        // one: `query` applies no LIMIT — measured, its callees carry no `setMaxRows` and build
+        // no limit clause, and the cap is applied later during ranking — so fetching code rows
+        // and dropping them here cannot truncate the answer the way a capped page would. What it
+        // costs is reading rows nobody will use, and expressing "every lane except code" in that
+        // statement means a second, negated lane parameter there. Recorded as available rather
+        // than done.
+        if (!q.hasLane() && !q.isCodeShaped()) {
+            candidates = new ArrayList<>(candidates);
+            candidates.removeIf(ExperienceRetrieval::isCodeLane);
+        }
+
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
         // pipeline (Harald's ruling, 2026-07-21).
         //
@@ -729,6 +752,18 @@ public final class ExperienceRetrieval {
         // status: a per-source filter is a rule a fourth source can be added without.
         if (q.hasLane()) {
             pool.removeIf(e -> !inLane(q.lane(), e));
+        } else if (!q.isCodeShaped()) {
+            // Sprint 28g D42(b) — THE LANE IS DERIVED FROM THE CUE WHEN THE CALLER NAMED NONE.
+            // A cue that is not asking about code must not be answered out of the code lane:
+            // ~10,000 job and area rows, regenerated from the code they came from, which a
+            // symptom or an operation has no business ranking against. Without this an
+            // uncategorised question answers from every lane and cannot say that it did.
+            //
+            // It sits in the SAME branch as the override rather than beside it, so the two
+            // cannot both apply and a reader meets one decision about lanes in one place —
+            // and `hasLane()` winning is the override the deliverable asks to be tested,
+            // including the case that matters most: lane=code on a cue that is not code-shaped.
+            pool.removeIf(ExperienceRetrieval::isCodeLane);
         }
         if (pool.isEmpty()) {
             return List.of();
@@ -960,6 +995,21 @@ public final class ExperienceRetrieval {
     }
 
     /**
+     * Whether this entry lives in the CODE lane — Sprint 28g D42(b).
+     *
+     * <p>ONE predicate, read by both places that derive the lane from the cue: the ranked recall
+     * pool and the nomination pool. It exists for the reason {@link #inLane} gives about itself —
+     * the lane is derived from the entry's type AND its provenance, so a second spelling that
+     * read only the type would agree on every fixture and disagree on the rows that matter.</p>
+     *
+     * <p>It ASKS {@link KnowledgeLane} rather than restating which types are code, so a ruling
+     * that moves a type into or out of that lane moves this with it.</p>
+     */
+    private static boolean isCodeLane(StoredEntry e) {
+        return inLane(KnowledgeLane.CODE.wire(), e);
+    }
+
+    /**
      * Three decimals for a score that rides into a response.
      *
      * <p>Not precision-shaving: these numbers exist to be READ by an agent
@@ -1010,7 +1060,14 @@ public final class ExperienceRetrieval {
         for (StoredEntry e : StoreCorpus.of(store).live()) {
             // The lane narrows the POOL and never the scoring, which is the whole of why it
             // is safe here: the ranking below is untouched, so no bar arrives with it.
-            if (isLive(e) && (!narrowed || inLane(lane, e))) {
+            //
+            // Sprint 28g D42(b) — A NOMINATION'S CUE IS PROSE, so it is never code-shaped and
+            // the code lane is excluded unless the caller asked for it by name. This is the
+            // deliverable's sharpest clause ("prose → experience and patterns and NEVER code")
+            // and the path it is sharpest about: a question in words, ranked by meaning against
+            // ~10,000 rows that describe what members are for, returns the jobs whose wording
+            // happens to be nearest and reads as if the store had an opinion about the question.
+            if (isLive(e) && (narrowed ? inLane(lane, e) : !isCodeLane(e))) {
                 byId.put(e.id(), e);
             }
         }
