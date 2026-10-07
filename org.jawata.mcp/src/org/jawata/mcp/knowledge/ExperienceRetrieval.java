@@ -2022,19 +2022,35 @@ public final class ExperienceRetrieval {
         // that the two callers ask ONE object. A per-caller guard is how the member-blindness
         // below survived in one resolver and not the other.
         //
-        // An exception asking is UNKNOWN for the same reason: a project set we could not read
-        // tells us nothing about any symbol.
+        // AN UNREADABLE PROJECT SET FALLS THROUGH; IT DOES NOT ANSWER HERE. The first version
+        // answered UNKNOWN with its own wording for a set it could not read, and the full
+        // suite refused it: two tests whose doubles answer null from `projectKeys` assert that
+        // a THROWING resolver and a THROWING member lookup each report what actually went
+        // wrong, and this branch caught the NPE and reported "the project set could not be
+        // read" over both of them. Same verdict, wrong reason — and the reason is the entire
+        // deliverable, since it is what tells an author where to look.
+        //
+        // That is the shadowing shape this sprint has recorded repeatedly: a new, EARLIER
+        // precondition answering in place of a later one that was already correct. The cure is
+        // that this branch speaks only for the ONE state it was written for, and says nothing
+        // about any other — so where it cannot tell, the resolution below proceeds and its own
+        // error wording survives.
+        //
+        // AND THE EMPTY SET IS A PROXY, WHICH IS WORTH NAMING. `projectKeys` is a default on
+        // the interface returning List.of(), so "empty" is also what any implementation that
+        // never overrode it answers. The resolver cannot tell that from a real workspace with
+        // nothing loaded — and UNKNOWN is the safe direction for both, because it never
+        // retires a row and never refuses a write. What it must not do is claim the reason.
+        java.util.Collection<String> loaded;
         try {
-            if (service.projectKeys().isEmpty()) {
-                p.put("resolved", false);
-                p.put("note", "no project is loaded in this workspace, so nothing could be"
-                    + " looked up — this is a failure to look and not a missing symbol");
-                return p;
-            }
+            loaded = service.projectKeys();
         } catch (RuntimeException ex) {
+            loaded = null;
+        }
+        if (loaded != null && loaded.isEmpty()) {
             p.put("resolved", false);
-            p.put("note", "the loaded-project set could not be read (" + ex.getMessage()
-                + "), so nothing could be looked up");
+            p.put("note", "no project is loaded in this workspace, so nothing could be"
+                + " looked up — this is a failure to look and not a missing symbol");
             return p;
         }
         try {
