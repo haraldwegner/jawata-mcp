@@ -2409,8 +2409,8 @@ public final class ExperienceTool implements Tool {
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action",
                 "Required — 'next' to take units to describe, 'done' to record one,"
-                    + " 'area' to ask what a file's package is for, 'jobs_for' to ask"
-                    + " which members already have a job written.");
+                    + " 'area' to ask what a file's package is for, 'jobs_for' to ask what"
+                    + " job the store already holds for each member you name.");
         }
         IJdtService service = serviceSupplier == null ? null : serviceSupplier.get();
         return switch (action) {
