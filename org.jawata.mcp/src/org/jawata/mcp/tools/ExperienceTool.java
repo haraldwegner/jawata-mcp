@@ -241,8 +241,16 @@ public final class ExperienceTool implements Tool {
         this.serviceSupplier = serviceSupplier;
         this.store = store;
         this.retrieval = new ExperienceRetrieval(store, serviceSupplier);
+        // Sprint 28g S14 D32 — THE SWEEP NOW ASKS WHAT THE WRITE GATE ASKS, and that is the
+        // whole deliverable. It used to run on `resolvesViaJdt`, a SECOND resolver that split
+        // `#member` off and resolved the TYPE only — so a job anchored at a deleted member was
+        // refused at the write gate and judged healthy forever by the curation queue. The
+        // divergence was measured and named by a C9 round, which left it for a checkpoint of
+        // its own because closing it changes what the sweep marks stale across a live store.
+        // `resolvesViaJdt` is DELETED rather than left beside this: a second implementation
+        // nothing calls is a second implementation the next change wires back in.
         this.maintenance = new ExperienceMaintenance(store,
-            resolverOverride != null ? resolverOverride : this::resolvesViaJdt, defaultRoots,
+            resolverOverride != null ? resolverOverride : this::anchorResolves, defaultRoots,
             serviceSupplier);
     }
 
@@ -274,19 +282,28 @@ public final class ExperienceTool implements Tool {
         return out;
     }
 
-    /** Bridge the JDT service to the maintenance resolver (TRUE=resolves, FALSE=stale, null=no project). */
-    private Boolean resolvesViaJdt(String symbolFqn) {
-        IJdtService s = serviceSupplier.get();
-        if (s == null) {
-            return null;
-        }
-        String typeName = symbolFqn.contains("#") ? symbolFqn.substring(0, symbolFqn.indexOf('#')) : symbolFqn;
-        try {
-            IType t = s.findType(typeName);
-            return t != null && t.exists();
-        } catch (Exception e) {
-            return null;
-        }
+    /**
+     * The sweep's view of the write gate's own answer — TRUE=resolves, FALSE=gone, null=could
+     * not check.
+     *
+     * <p>Sprint 28g S14 D32. This REPLACES {@code resolvesViaJdt}, which answered the same
+     * question with its own resolution and got a different answer: it took
+     * {@code symbolFqn.substring(0, indexOf('#'))} and asked {@code findType} about the TYPE,
+     * so {@code pkg.Type#deletedMember} came back TRUE while the member it names was gone.
+     * The write gate has resolved the member since 28f D7, so the two gates disagreed on
+     * exactly the anchors the sweep exists to find.</p>
+     *
+     * <p>A VIEW and not a translation layer: the three values it hands back are the three
+     * {@link ExperienceRetrieval.AnchorAnswer} values under the names
+     * {@code ExperienceMaintenance.PointerResolver} has always documented, so the sweep's
+     * contract and its tests are untouched. What changed is where the answer comes from.</p>
+     */
+    private Boolean anchorResolves(String symbolFqn) {
+        return switch (retrieval.anchorAnswer(symbolFqn)) {
+            case RESOLVES -> Boolean.TRUE;
+            case GONE -> Boolean.FALSE;
+            case UNKNOWN -> null;
+        };
     }
 
     @Override
@@ -3375,6 +3392,13 @@ public final class ExperienceTool implements Tool {
                 // an NPE on the record path. Said here rather than adding a second guard,
                 // because a redundant null-check would hide the coupling instead of naming it.
                 Map<String, Object> pointer = retrieval.resolvePointer(symbol);
+                // Sprint 28g S14 D32 — THE VERDICT IS READ BY NAME, not re-derived here from
+                // two keys. The enumeration in the comment below is exactly what
+                // `answerOf` performs, and it performed it HERE and in the sweep separately
+                // until this change. That is the shape the two C9 rounds kept landing on: the
+                // reading was correct in one place and wrong in the other, and nothing could
+                // see the difference because each place looked right on its own.
+                var answer = org.jawata.mcp.knowledge.ExperienceRetrieval.answerOf(pointer);
                 // REFUSE ONLY ON A POSITIVE FINDING OF ABSENCE, and `stale` is what carries
                 // that rather than it being inferred here. The resolver sets `stale` on the
                 // two answers that mean the thing is not there — the type was not found, and
@@ -3393,7 +3417,7 @@ public final class ExperienceTool implements Tool {
                 // member provably exists get refused with the absence wording. The member
                 // lookup is strict now (`memberOnOrThrow`), so the enumeration this comment
                 // makes is true of the CONDITIONS and not merely of the statements.
-                if (Boolean.TRUE.equals(pointer.get("stale"))) {
+                if (answer == org.jawata.mcp.knowledge.ExperienceRetrieval.AnchorAnswer.GONE) {
                     return ToolResponse.invalidParameter("symbol",
                         "anchor '" + symbol + "' does not resolve in the loaded workspace,"
                         + " so this job would point at nothing. RULE: the code lane answers"
@@ -3403,7 +3427,8 @@ public final class ExperienceTool implements Tool {
                         + " record it as a lesson or domain fact if it is not about one"
                         + " member of this code.");
                 }
-                if (!Boolean.TRUE.equals(pointer.get("resolved"))) {
+                if (answer == org.jawata.mcp.knowledge.ExperienceRetrieval
+                        .AnchorAnswer.UNKNOWN) {
                     // Not resolved and not stale: the resolver could not reach an answer.
                     // ADMITTED and SAID, on the same footing as no-project-loaded — the
                     // row is fine, the CHECK did not happen, and a caller reading only

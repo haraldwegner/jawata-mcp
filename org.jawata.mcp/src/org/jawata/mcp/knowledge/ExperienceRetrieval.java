@@ -2009,6 +2009,34 @@ public final class ExperienceRetrieval {
             p.put("note", "no project loaded");
             return p;
         }
+        // Sprint 28g S14 D40d — A CLOSED PROJECT IS A FAILURE TO LOOK, NOT A MISSING SYMBOL.
+        //
+        // The guard above catches "there is no service". It does NOT catch the state one step
+        // in: a service in hand with NOTHING LOADED. There `findType` answers null without
+        // throwing, which falls into the branch below and sets `stale` — so an unopened or
+        // closed workspace reports every anchor in the store as GONE, and the write gate
+        // refuses correct rows while the sweep would queue the whole store for re-anchoring.
+        //
+        // D40d's measure is that "the answer distinguishes the two", and the distinction has
+        // to be made HERE rather than at each caller, because the whole of D32's clause is
+        // that the two callers ask ONE object. A per-caller guard is how the member-blindness
+        // below survived in one resolver and not the other.
+        //
+        // An exception asking is UNKNOWN for the same reason: a project set we could not read
+        // tells us nothing about any symbol.
+        try {
+            if (service.projectKeys().isEmpty()) {
+                p.put("resolved", false);
+                p.put("note", "no project is loaded in this workspace, so nothing could be"
+                    + " looked up — this is a failure to look and not a missing symbol");
+                return p;
+            }
+        } catch (RuntimeException ex) {
+            p.put("resolved", false);
+            p.put("note", "the loaded-project set could not be read (" + ex.getMessage()
+                + "), so nothing could be looked up");
+            return p;
+        }
         try {
             IType type = service.findType(typeName);
             if (type == null || !type.exists()) {
@@ -2044,6 +2072,89 @@ public final class ExperienceRetrieval {
             p.put("note", "resolution error: " + ex.getMessage());
         }
         return p;
+    }
+
+    /**
+     * Sprint 28g S14 D32 — what asking about an anchor can answer, in three NAMED values.
+     *
+     * <p>The three states have existed since 28f D7 and two of them had no name: a pointer map
+     * carries {@code stale} for "it is not there", {@code resolved} for "it is", and the third
+     * state is the ABSENCE OF BOTH FLAGS. That is three-valued in substance and two-valued to
+     * read, which is exactly how the state gets lost — the write gate's own comment records
+     * TWO C9 rounds spent getting that two-key reading right, the first of which read
+     * {@code resolved} alone and so reported "could not check" to an author as "does not
+     * exist".</p>
+     *
+     * <p>Naming the third value is what stops the next reader repeating it: a {@code switch}
+     * over this enum cannot quietly handle two of three.</p>
+     */
+    public enum AnchorAnswer {
+        /** The anchor names something that is there — the type, and the member if it names one. */
+        RESOLVES,
+        /** The type is gone, or the type is here and the member it names is not. */
+        GONE,
+        /**
+         * The question could not be answered: no service, no project loaded, or the lookup
+         * threw. NEVER a reason to refuse a write or to retire a row — it is the absence of an
+         * answer, not an answer of absence.
+         */
+        UNKNOWN
+    }
+
+    /**
+     * Sprint 28g S14 D32 — THE one answer to "does this anchor still resolve", which the write
+     * gate and the staleness sweep both ask.
+     *
+     * <p><b>It is a projection of {@link #resolvePointer}, not a second resolver.</b> That
+     * matters more than it looks: the defect this closes is that there WERE two.
+     * {@code ExperienceTool#resolvesViaJdt} split {@code #member} off and resolved the TYPE
+     * only, and it was the one the sweep ran on — so a job anchored at a member that had been
+     * deleted was refused at the write gate by {@code resolvePointer} and judged healthy
+     * forever by the curation queue. {@code resolvePointer}'s own comment records a C9 round
+     * measuring that and deliberately NOT closing it, because closing it changes what the
+     * sweep marks stale across a live store and therefore wanted its own test and its own
+     * checkpoint. This is that checkpoint.</p>
+     *
+     * <p>So this method adds no resolution logic whatever. It names the answer the one
+     * remaining resolver already produces, and both callers read the name instead of
+     * re-deriving it from two keys — which is the half that cannot drift.</p>
+     *
+     * @param symbolFqn a stored anchor, {@code pkg.Type} or {@code pkg.Type#member}
+     * @return one of the three named answers, never null. A null or blank anchor is
+     *     {@link AnchorAnswer#UNKNOWN}: a row with no anchor is not a row whose anchor went
+     *     missing, and the two must not share a verdict.
+     */
+    public AnchorAnswer anchorAnswer(String symbolFqn) {
+        return answerOf(resolvePointer(symbolFqn));
+    }
+
+    /**
+     * The same answer read off a pointer the caller ALREADY resolved.
+     *
+     * <p>It exists so the write gate does not resolve twice. That gate needs the pointer's
+     * {@code note} as well as its verdict — the note is what it tells an author when the
+     * lookup could not complete — and {@link #anchorAnswer} resolves internally, so a gate
+     * calling both would do the JDT lookup once per question. <b>The shared thing is therefore
+     * the READING of the map, not the lookup</b>, which is also the half that was being
+     * re-derived at each site and got it wrong twice.</p>
+     *
+     * @param pointer a map from {@link #resolvePointer}, or null
+     * @return one of the three named answers, never null
+     */
+    public static AnchorAnswer answerOf(Map<String, Object> pointer) {
+        if (pointer == null) {
+            return AnchorAnswer.UNKNOWN;
+        }
+        // ORDER IS LOAD-BEARING: `stale` is the positive finding of absence and is the only
+        // thing that may answer GONE. `resolved` alone cannot, because every answer that means
+        // the lookup did not complete also leaves `resolved` false — which is the misreading
+        // the C9 rounds found twice.
+        if (Boolean.TRUE.equals(pointer.get("stale"))) {
+            return AnchorAnswer.GONE;
+        }
+        return Boolean.TRUE.equals(pointer.get("resolved"))
+            ? AnchorAnswer.RESOLVES
+            : AnchorAnswer.UNKNOWN;
     }
 
     /**
