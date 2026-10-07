@@ -795,9 +795,20 @@ public class ToolRegistry {
             // match something unrelated — on every response. Symbol-only means a target that is
             // not FQN-shaped (a `filePath` call, which `target` reduces to a basename) yields an
             // EMPTY query and no block at all, which is the right answer rather than a broad one.
-            java.util.List<String> advice = advisor.adviseBefore(null, target,
-                org.jawata.mcp.knowledge.ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS);
-            if (advice == null || advice.isEmpty()) {
+            org.jawata.mcp.knowledge.ExperienceAdvisor.PriorWork asked = advisor.priorWork(null,
+                target, org.jawata.mcp.knowledge.ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS);
+            // PAST THE DEADLINE THE RESPONSE SAYS SO. Silence here would be read as "the store
+            // knows nothing about this", which is a claim nobody made — and the one thing the
+            // store's own unavailable answer insists on is that it is NOT an absence. The reason
+            // is the recall's own sentence, because the layer that failed is the one that can say
+            // what happened.
+            if (!asked.looked()) {
+                response.appendSteering("The store was NOT consulted about " + target
+                    + " — this is not an absence: " + asked.reason());
+                return;
+            }
+            java.util.List<String> advice = asked.advice();
+            if (advice.isEmpty()) {
                 return;
             }
             response.appendSteering("What the store already knows about " + target + ":\n"

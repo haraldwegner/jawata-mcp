@@ -96,8 +96,31 @@ public final class ExperienceAdvisor implements Advisor {
      * {@code entries} and no {@code analogies} — so this renders nothing from it. A response
      * therefore carries a prior-work block or carries none; it never carries a half-read one.</p>
      */
-    @SuppressWarnings("unchecked")
     public List<String> adviseBefore(String kind, String target, long budgetMillis) {
+        return priorWork(kind, target, budgetMillis).advice();
+    }
+
+    /**
+     * What the response path needs and a {@code List<String>} cannot say — WHICH empty this is.
+     *
+     * <p>Sprint 28g D42, the second half of the architect's deadline refusal: <i>"past the
+     * deadline the response reads 'we did not look' — never silence, never 'nothing found'"</i>.
+     * {@link #adviseBefore} cannot carry that. Past the deadline the underlying recall answers
+     * {@code RESULT_UNAVAILABLE}, which strips every key but the cue, so this surface renders
+     * nothing and returns an EMPTY LIST — the identical value it returns when the store simply
+     * holds nothing about this target. The distinction the refusal exists to preserve was being
+     * destroyed at the return type, one layer below the caller that needed it.</p>
+     *
+     * <p>So the outcome travels WITH the advice. {@link PriorWork#looked()} is false only for the
+     * one case where the store was never read to a conclusion, and {@link PriorWork#reason()} is
+     * the recall's own sentence about why — not a sentence composed here, because the layer that
+     * failed is the one that can say what happened.</p>
+     *
+     * <p>It is the ONE read and the ONE rendering: {@code adviseBefore} delegates here rather than
+     * repeating the walk, so the two forms cannot disagree about what the store said.</p>
+     */
+    @SuppressWarnings("unchecked")
+    public PriorWork priorWork(String kind, String target, long budgetMillis) {
         RecallQuery q = new RecallQuery(
             looksLikeFqn(target) ? target : null,   // symbol cue
             null,                                    // package
@@ -105,7 +128,7 @@ public final class ExperienceAdvisor implements Advisor {
             null,                                    // symptom
             null);                                   // external_system
         if (q.isEmpty()) {
-            return List.of();
+            return PriorWork.nothingToAsk();
         }
         // The SAME union recall the front door runs, counted to the pre-advice
         // surface — so the quality ledger records when this surface actually
@@ -113,6 +136,14 @@ public final class ExperienceAdvisor implements Advisor {
         // normal call rather than through a separate feed.
         Map<String, Object> r =
             retrieval.recall(q, QualityLedger.SURFACE_PRE_ADVICE, budgetMillis);
+
+        // THE RESULT WORD IS READ BEFORE THE ROWS, and it has to be: `unavailable` STRIPS every
+        // key but the cue, so `entries` is absent rather than empty and the loop below would
+        // throw on it. That is not a hypothetical — it is what this method did until D42, where
+        // the throw was swallowed by the one caller's catch and read as "the store knows nothing".
+        if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(r.get("result"))) {
+            return PriorWork.notLooked(String.valueOf(r.get("reason")));
+        }
 
         // A vouched entry leads; failing that, the meaning/word NOMINEES recall
         // already computed. Before Sprint 27a this method read `entries` only
@@ -136,7 +167,51 @@ public final class ExperienceAdvisor implements Advisor {
             }
             advice.add(renderAdvice(a));
         }
-        return advice;
+        return PriorWork.looked(advice);
+    }
+
+    /**
+     * One answer from the store, carrying WHETHER IT WAS READ as well as what it said.
+     *
+     * <p>Three states, and the middle one is the whole reason this type exists:</p>
+     * <ul>
+     *   <li><b>read, and it had something</b> — {@code advice} non-empty;</li>
+     *   <li><b>NOT READ</b> — {@code looked()} false, {@code reason} the recall's own sentence.
+     *       A caller must say so rather than fall silent, because silence here is read as
+     *       "nothing is known", which is a claim nobody made;</li>
+     *   <li><b>read, and it genuinely had nothing</b> — {@code looked()} true, {@code advice}
+     *       empty. An absence, and reporting it as one is correct.</li>
+     * </ul>
+     *
+     * <p>{@code looked()} is derived rather than stored, so the two cannot drift: there is one
+     * fact — the result word — and the question is asked of it.</p>
+     */
+    public record PriorWork(List<String> advice, String result, String reason) {
+
+        /** The store answered; {@code advice} is what it said, empty included. */
+        static PriorWork looked(List<String> advice) {
+            return new PriorWork(List.copyOf(advice), ExperienceRetrieval.RESULT_MATCH, null);
+        }
+
+        /** The store was never read to a conclusion — the deadline, or a saturated pool. */
+        static PriorWork notLooked(String reason) {
+            return new PriorWork(List.of(), ExperienceRetrieval.RESULT_UNAVAILABLE, reason);
+        }
+
+        /**
+         * There was no question to ask: the cue was empty, so no read was attempted and none
+         * was owed. Counted as HAVING LOOKED, deliberately — a caller that supplied nothing to
+         * look up is not owed a "we did not look" line about the store, which would report an
+         * outage that did not happen.
+         */
+        static PriorWork nothingToAsk() {
+            return new PriorWork(List.of(), ExperienceRetrieval.RESULT_ABSENCE, null);
+        }
+
+        /** False only when the store was not read to a conclusion. */
+        public boolean looked() {
+            return !ExperienceRetrieval.RESULT_UNAVAILABLE.equals(result);
+        }
     }
 
     @Override
