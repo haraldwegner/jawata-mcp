@@ -184,7 +184,16 @@ class AKeyedQuestionIsNotAnsweredByACappedListTest {
                 () -> assertEquals(1, keyed.get(TYPE_ANCHOR).size(),
                     () -> "and EXACTLY the row anchored there — none of the " + NOISE + " that"
                         + " merely share its prefix, which the old read returned and every"
-                        + " caller had to filter out by hand: " + keyed.get(TYPE_ANCHOR)));
+                        + " caller had to filter out by hand: " + keyed.get(TYPE_ANCHOR)),
+                // THE EXACTNESS OF THE CLAUSE, which the assertion above does NOT reach: the
+                // map is keyed by each row's OWN anchor, so a prefix-matching filter would put
+                // the noise under its own keys and leave the line above reading 1. One key is
+                // what says the clause matched the anchor rather than its descendants — and
+                // what makes every caller's Java-side re-filter unnecessary rather than merely
+                // redundant.
+                () -> assertEquals(1, keyed.size(),
+                    () -> "ONE KEY, for the one anchor asked about. " + NOISE + " keys here"
+                        + " means the clause is matching a prefix again: " + keyed.keySet()));
         }
     }
 
