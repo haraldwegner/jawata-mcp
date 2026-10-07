@@ -236,8 +236,8 @@ class CatalogExtractorCarriesTheCategoryTest {
      * claim "the pattern keeps its family" can actually be checked.</p>
      */
     @Test
-    @DisplayName("S10.1a: the category and tags reach the SNAPSHOT, not just the record")
-    void the_classification_reaches_the_snapshot(@TempDir Path root) throws IOException {
+    @DisplayName("S10.1a: the category and tags stay OUT of the snapshot, though the record parses them")
+    void the_classification_stays_out_of_the_snapshot(@TempDir Path root) throws IOException {
         writeReadme(root, "builder",
             "title: \"Builder Pattern in Java\"\ncategory: Creational\n"
                 + "tag: [Gang of Four, Instantiation]");
