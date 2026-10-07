@@ -25,9 +25,18 @@
         <!-- THE PATTERN LANE'S ROWS ARE A RESOURCE, and without this block they are silently
              absent from the jar. `sourceDirectory` is overridden above, which does NOT bring
              resources with it: Maven's default resource root is src/main/resources, which this
-             layout does not have. So patterns.tsv has to be named, and it is scoped to the
-             non-Java files beside the classes rather than copying the whole tree — a *.java
-             landing in the jar as a resource would ship source nobody asked for.
+             layout does not have. So the resource root has to be named.
+
+             IT IS A ROOT OF ITS OWN, NOT `src` WITH THE SOURCES EXCLUDED, which is what this
+             block declared until 2026-10-07. Maven accepts a resource root equal to the source
+             root and builds correctly from it; AN ECLIPSE BUILD PATH CANNOT HOLD TWO SOURCE
+             FOLDERS AT ONE LOCATION. So m2e could not configure this module, an editor driven
+             by it saw a project contributing no types, and every org.jawata.catalogue reference
+             read as unresolved — while this build, which never consults a build path, stayed
+             green and said nothing. Of the nine modules here it was the only one with that
+             overlap and the only one an editor could not resolve. org.jawata.mcp already keeps
+             its resources in a root of their own; this follows it, and the rows keep their
+             classpath location, so Patterns loads exactly what it loaded before.
 
              `Patterns` throws rather than returning an empty list when the resource is missing,
              because a lane that reads as empty makes every count taken against it pass by
@@ -35,10 +44,7 @@
              file, and that throw is what makes a build which stops shipping it loud. -->
         <resources>
             <resource>
-                <directory>${project.basedir}/../../org.jawata.catalogue/src</directory>
-                <excludes>
-                    <exclude>**/*.java</exclude>
-                </excludes>
+                <directory>${project.basedir}/../../org.jawata.catalogue/resources</directory>
             </resource>
         </resources>
         <plugins>

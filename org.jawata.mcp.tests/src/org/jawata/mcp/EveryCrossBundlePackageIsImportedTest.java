@@ -273,7 +273,7 @@ class EveryCrossBundlePackageIsImportedTest {
      * check that resolves its input through the working directory is a check about its
      * launcher. The working directory stays as a fallback for an IDE or plain-Maven run.
      */
-    private static Path repoRoot() {
+    static Path repoRoot() {
         List<Path> starts = new ArrayList<>();
         try {
             var source = EveryCrossBundlePackageIsImportedTest.class
