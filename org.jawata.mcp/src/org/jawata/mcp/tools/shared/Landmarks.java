@@ -175,10 +175,32 @@ public final class Landmarks {
                 try {
                     Entry computed = new Entry(rank(service, PROGRESS.get(key)),
                         System.currentTimeMillis());
-                    if (CACHE.size() >= MAX_ENTRIES) {
-                        CACHE.clear();
+                    // AN EMPTY RANKING IS NOT CACHED, 2026-10-08.
+                    //
+                    // The key is the project NAME (see cacheKey), the map is static, and
+                    // `invalidate()` has ZERO production callers — so whatever lands here is
+                    // served to every later caller in the process until it ages out. An EMPTY
+                    // list cached under a reused name is then handed back through the fast path
+                    // above as `ready: true, count: 0`, which this feature's own documentation
+                    // says must mean "this workspace genuinely has no landmarks" and is the one
+                    // reading it must never be confused with. Measured: that is how the C14
+                    // post-fold suite went red — the test polls for `ready` and got an
+                    // authoritative zero, with no ranking-failure warning anywhere in the log,
+                    // so the ranking had succeeded against a workspace that was empty to it.
+                    // Test harnesses reuse one project path and name by construction, which is
+                    // what makes a name-keyed static cache reachable at all.
+                    //
+                    // NOT cached means RECOMPUTED next call, which is the conservative
+                    // direction: a genuinely empty workspace still answers empty, it simply
+                    // pays for the answer again rather than freezing it. Caching a zero buys
+                    // nothing — there is no expensive result to keep — and costs the one
+                    // distinction the caller depends on.
+                    if (!computed.ranked().isEmpty()) {
+                        if (CACHE.size() >= MAX_ENTRIES) {
+                            CACHE.clear();
+                        }
+                        CACHE.put(key, computed);
                     }
-                    CACHE.put(key, computed);
                     fresh.complete(computed);
                 } catch (Throwable t) {
                     // A ranking that failed must not wedge every later caller on a future

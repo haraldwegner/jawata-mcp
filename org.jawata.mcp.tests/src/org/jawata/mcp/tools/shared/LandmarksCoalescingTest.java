@@ -156,4 +156,52 @@ class LandmarksCoalescingTest {
             "a cached ranking must not start another — this is what makes asking again free,"
                 + " which is what the tool tells callers to do");
     }
+
+    /**
+     * 2026-10-08 — <b>AN EMPTY RANKING IS NOT CACHED, and the sibling above is why that needs
+     * its own case.</b>
+     *
+     * <p>The cache is static and keyed by the project NAME, and {@code invalidate()} has no
+     * production caller — so an empty list put there is served to every later caller in the
+     * process as {@code ready: true, count: 0}, which this feature's documentation says must
+     * mean <i>this workspace genuinely has no landmarks</i>. That is how the C14 post-fold
+     * suite went red: the test polled for {@code ready}, got an authoritative zero, and no
+     * ranking-failure warning appeared anywhere in the log — so a ranking had SUCCEEDED
+     * against a workspace that was empty to it, and frozen that answer.</p>
+     *
+     * <p><b>The discriminator is the start counter, as it is for every case here:</b> a
+     * second call must start ANOTHER ranking rather than be served the zero. With the
+     * caching unguarded the counter does not move, which is the defect; the two cases are
+     * otherwise indistinguishable from outside, since both answer empty.</p>
+     *
+     * <p>A service with no project loaded is the fixture, deliberately: every sample project
+     * carries Java sources, and adding a source-free one to the shared fixture tree is the
+     * hazard this plan records four times over — a new file there has moved a findings page,
+     * a clone-group page, a naming population and a search ranking.</p>
+     */
+    @Test
+    @DisplayName("an EMPTY ranking is not cached — a zero must not be frozen as a fact")
+    void anEmptyRankingIsNotCached() throws Exception {
+        JdtServiceImpl empty = new JdtServiceImpl();
+        Landmarks.invalidate();
+
+        Landmarks.Ranking first = awaitReady(empty);
+        int afterFirst = Landmarks.RANKINGS_STARTED.get();
+
+        Landmarks.Ranking second = awaitReady(empty);
+
+        assertAll(
+            () -> assertTrue(first.landmarks().isEmpty(),
+                () -> "the fixture's precondition: a service with no project has no landmarks."
+                    + " A non-empty answer here means this case is measuring nothing: "
+                    + first.landmarks()),
+            () -> assertTrue(second.landmarks().isEmpty(),
+                "and the second answer is empty too — that is not what is under test"),
+            () -> assertTrue(Landmarks.RANKINGS_STARTED.get() > afterFirst,
+                "THE DISCRIMINATOR: the second call must RECOMPUTE rather than be served a"
+                    + " frozen zero. An empty ranking is not an expensive result worth"
+                    + " keeping, and caching it costs the one distinction every caller of"
+                    + " this feature depends on — `ready` with nothing in it has to mean"
+                    + " `nothing here`, not `we once looked at something else`"));
+    }
 }
