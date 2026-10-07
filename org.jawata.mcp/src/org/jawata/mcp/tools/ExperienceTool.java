@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.EntryForm;
@@ -2381,6 +2382,16 @@ public final class ExperienceTool implements Tool {
         return pkg == null ? "" : pkg.toString();
     }
 
+    /**
+     * How many undescribed members a closing unit NAMES before the list is clipped — 28g D30.
+     *
+     * <p>Named and not merely counted, because a number tells an agent it left something while
+     * the names tell it what; bounded, because a unit can hold many members and the response is
+     * read by something with a budget. When the bound bites the answer SAYS so, so a short list
+     * is never read as a complete one.</p>
+     */
+    private static final int CLOSED_OVER_NAMES = 20;
+
     /** Where somebody has been working — Sprint 28g D31, held the same way and for the same reason. */
     private org.jawata.mcp.knowledge.WorkedPackages workedPackages;
 
@@ -2402,7 +2413,7 @@ public final class ExperienceTool implements Tool {
         IJdtService service = serviceSupplier == null ? null : serviceSupplier.get();
         return switch (action) {
             case "next" -> describeNext(service, args);
-            case "done" -> describeDone(args);
+            case "done" -> describeDone(service, args);
             case "area" -> describeArea(service, args);
             case "jobs_for" -> describeJobsFor(service, args);
             default -> ToolResponse.invalidParameter("action",
@@ -2458,11 +2469,7 @@ public final class ExperienceTool implements Tool {
                         unreadable.add(path + " (not in a loaded project)");
                         continue;
                     }
-                    for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
-                        for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
-                            symbols.add(type.getFullyQualifiedName('.') + "#" + m.getElementName());
-                        }
-                    }
+                    collectMembersInto(symbols, cu);
                 } catch (Exception e) {
                     // NAMED, never dropped: a file we could not read is not a file with
                     // nothing in it, and a shorter list that reads as complete is how a
@@ -2476,13 +2483,7 @@ public final class ExperienceTool implements Tool {
                 "Required — the fully-qualified members to ask about, or `filePaths` whose"
                     + " members should be derived.");
         }
-        java.util.Set<String> anchored = new java.util.HashSet<>();
-        for (org.jawata.mcp.knowledge.StoredEntry e
-                : store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP)) {
-            if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
-                anchored.add(e.symbolFqn());
-            }
-        }
+        java.util.Set<String> anchored = membersThatAlreadyHaveAJob();
         List<String> described = new java.util.ArrayList<>();
         List<String> missing = new java.util.ArrayList<>();
         for (String s : symbols) {
@@ -2505,6 +2506,26 @@ public final class ExperienceTool implements Tool {
                 + " name restated>)");
         }
         return respond(args, out);
+    }
+
+    private void collectMembersInto(List<String> symbols, org.eclipse.jdt.core.ICompilationUnit cu)
+            throws JavaModelException {
+        for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
+            for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
+                symbols.add(type.getFullyQualifiedName('.') + "#" + m.getElementName());
+            }
+        }
+    }
+
+    private java.util.Set<String> membersThatAlreadyHaveAJob() {
+        java.util.Set<String> anchored = new java.util.HashSet<>();
+        for (org.jawata.mcp.knowledge.StoredEntry e
+                : store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP)) {
+            if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
+                anchored.add(e.symbolFqn());
+            }
+        }
+        return anchored;
     }
 
     /**
@@ -2899,8 +2920,15 @@ public final class ExperienceTool implements Tool {
         return ToolResponse.success(out);
     }
 
-    /** Record one unit as described at the text its hash names. */
-    private ToolResponse describeDone(JsonNode args) {
+    /**
+     * Record one unit as described at the text its hash names, and say what is being closed over.
+     *
+     * @param service the loaded workspace, used ONLY to derive the unit's own members so the
+     *     answer can say how many of them still carry no job. Null is an ordinary state — a
+     *     store-only caller — and the recording works without it; what is lost is the count,
+     *     which is then said to be absent rather than reported as zero.
+     */
+    private ToolResponse describeDone(IJdtService service, JsonNode args) {
         String unit = text(args, "unit");
         if (unit == null || unit.isBlank()) {
             return ToolResponse.invalidParameter("unit",
@@ -2925,7 +2953,82 @@ public final class ExperienceTool implements Tool {
             out.put("note", "the ledger did not accept this row — it will be offered again."
                 + " Lost bookkeeping writes so far: " + describedUnits().failedWrites());
         }
+        // Sprint 28g D30 — CLOSING A UNIT SAYS WHAT IT IS CLOSING OVER.
+        //
+        // Marking a unit done retires it from the queue: it will not be offered again while its
+        // text is unchanged. So a unit closed with members nobody described is a gap that is now
+        // INVISIBLE — the exact shape of the backlog this stage exists to make reachable, and
+        // one the agent closing it is in the best position to notice.
+        //
+        // It REPORTS rather than refuses, which the measure permits ("refused OR says how many
+        // it is closing over"). Refusing would break the crawl on every unit holding a member
+        // whose job is legitimately recorded under another anchor, and a gate that blocks the
+        // ordinary case is a gate that gets worked around.
+        //
+        // The members and the store question both come from the SAME two helpers
+        // `jobs_for` uses — extracted for this, not copied — so the two answers cannot drift
+        // into disagreeing about what a member is or which ones have a job.
+        describeWhatIsBeingClosedOver(service, unit, out);
         return ToolResponse.success(out);
+    }
+
+    /**
+     * How many of this unit's own members are being retired without a job — Sprint 28g D30.
+     *
+     * <p>Every outcome is NAMED, including the ones where the count could not be taken. A unit
+     * closed over three undescribed members and a unit whose members could not be read are
+     * different facts, and an answer that reported both as nothing — or as zero — would turn the
+     * second into a false reassurance. That is this project's own recorded deepest bug class, and
+     * it is exactly the shape a count invites.</p>
+     */
+    private void describeWhatIsBeingClosedOver(IJdtService service, String unit,
+            Map<String, Object> out) {
+        if (service == null) {
+            out.put("closingOver", "not counted — no project is loaded, so this unit's members"
+                + " could not be derived. This is a failure to look, not an answer that nothing"
+                + " is missing.");
+            return;
+        }
+        List<String> members = new java.util.ArrayList<>();
+        try {
+            org.eclipse.jdt.core.ICompilationUnit cu =
+                service.getCompilationUnit(java.nio.file.Path.of(unit));
+            if (cu == null) {
+                out.put("closingOver", "not counted — " + unit + " is not in a loaded project,"
+                    + " so its members could not be derived. A failure to look, not an absence.");
+                return;
+            }
+            collectMembersInto(members, cu);
+        } catch (Exception e) {
+            out.put("closingOver", "not counted — " + unit + " could not be read ("
+                + e.getMessage() + "). A failure to look, not an absence.");
+            return;
+        }
+        java.util.Set<String> anchored = membersThatAlreadyHaveAJob();
+        List<String> undescribed = new java.util.ArrayList<>();
+        for (String m : members) {
+            if (!anchored.contains(m)) {
+                undescribed.add(m);
+            }
+        }
+        out.put("closingOver", undescribed.size());
+        if (!undescribed.isEmpty()) {
+            // NAMED, not just counted. A number tells the agent it left something; the names
+            // tell it what, which is the difference between a figure it can act on and one it
+            // can only feel bad about. Bounded, because a unit can hold many members and a
+            // response is read by something with a budget — and the bound SAYS it is one.
+            List<String> shown = undescribed.size() <= CLOSED_OVER_NAMES
+                ? undescribed
+                : new java.util.ArrayList<>(undescribed.subList(0, CLOSED_OVER_NAMES));
+            out.put("undescribedMembers", shown);
+            if (undescribed.size() > CLOSED_OVER_NAMES) {
+                out.put("undescribedMembersShown",
+                    CLOSED_OVER_NAMES + " of " + undescribed.size());
+            }
+            out.put("closingOverNote", "this unit is now retired from the queue and will not be"
+                + " offered again while its text is unchanged, so these members are a gap"
+                + " nothing will surface. Record a job for each, or re-read the unit.");
+        }
     }
 
     /** The package a unit declares, or the empty string for the default package. */
