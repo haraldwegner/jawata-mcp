@@ -101,6 +101,38 @@ public class ToolResponse {
     }
 
     /**
+     * APPEND WHAT THE STORE KNOWS — Sprint 28g D42 — <b>on a refusal as well as a success.</b>
+     *
+     * <p>A separate method rather than a flag on {@link #appendSteering}, for the reason
+     * {@link #stampDegradation} is separate: the no-op on failure is CORRECT for steering,
+     * because steering is advice about the next step and a refused call has no next step to
+     * advise. A flag would let any of that method's call sites opt out of the no-op without
+     * saying why, which is how the distinction would be lost.</p>
+     *
+     * <p><b>What this carries is not advice, it is a fact about prior work on the target</b> —
+     * what the store already knows about it, or that the store could not be read. On a REFUSAL
+     * that fact is more relevant rather than less: a caller whose tool just declined is the
+     * caller most likely to go and do the thing by hand, which is the duplicate D42 exists to
+     * prevent. Riding {@code appendSteering} it was silent on exactly those answers — the
+     * defect {@code mcp#12} records for the degradation notice, at the site that found it.</p>
+     *
+     * <p>Appended rather than prepended, unlike the degradation stamp: a degraded resident is
+     * the frame a caller must read first, while prior work sits beside the answer.</p>
+     */
+    public void appendStoreAnswer(String block) {
+        if (block == null || block.isBlank()) {
+            return;
+        }
+        if (meta == null) {
+            meta = ResponseMeta.builder().steering(block).build();
+            return;
+        }
+        String current = meta.getSteering();
+        meta.setSteering(current == null || current.isBlank()
+            ? block : current + "\n" + block);
+    }
+
+    /**
      * Sprint 26: APPEND a steering block — composes with (never replaces) the
      * tool's own steering line. Used by the watch engine and the server-side
      * checks; no-op on errors and blank blocks.

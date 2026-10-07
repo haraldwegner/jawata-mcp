@@ -255,6 +255,20 @@ public final class ExperienceRetrieval {
         if (!q.hasLane() && !q.isCodeShaped()) {
             candidates = new ArrayList<>(candidates);
             candidates.removeIf(ExperienceRetrieval::isCodeLane);
+            // AND IT SAYS SO. The deliverable's own words are that an uncategorised question
+            // "cannot SILENTLY answer from all three lanes" — the first version of this stopped
+            // the answering and left the silence, which is half the clause. This file already
+            // states the rule twice: `noteCatalogueExclusion` exists because "the caller could
+            // not tell 'no pattern fits' from 'patterns were never searched'. Those two answers
+            // want opposite next moves"; and `recall` carries that note "whatever the outcome"
+            // precisely so the ABSENCE branch is not the one that goes quiet. Found by the C14a
+            // audit, which cited both.
+            out.put("lanes_not_searched", List.of(KnowledgeLane.CODE.wire()));
+            out.put("lane_note", "This cue names no symbol and no package, so the CODE lane was"
+                + " not searched — it holds what each member and package is FOR, which a"
+                + " question naming neither is not asking about. That is a property of the"
+                + " filter and not an absence of answers: ask again with lane=code to search"
+                + " it.");
         }
 
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
@@ -949,6 +963,16 @@ public final class ExperienceRetrieval {
         // D7h — a DESIGN question is the case the report hit, and the one where a silently
         // pattern-free answer costs most: this is the path the architect seat asks on.
         noteCatalogueExclusion(out, lane);
+        // Sprint 28g D42(b) — and the SAME rule for the lane this path derives. A nomination's
+        // cue is prose, so it is never code-shaped and the code lane is excluded unless the
+        // caller named it; D7h's own argument applies unchanged, one lane over.
+        if (lane == null || lane.isBlank()) {
+            out.put("lanes_not_searched", List.of(KnowledgeLane.CODE.wire()));
+            out.put("lane_note", "A question in prose names no code, so the CODE lane was not"
+                + " searched — ranking ~10,000 rows that say what members are FOR against a"
+                + " question in words returns whichever is nearest in wording and reads as an"
+                + " opinion about the question. Ask with lane=code to search it.");
+        }
         return within(() -> nominateFromStore(question, lane, out), out, budgetMillis);
     }
 

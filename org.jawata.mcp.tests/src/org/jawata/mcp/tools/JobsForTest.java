@@ -85,13 +85,18 @@ class JobsForTest {
     @Test
     @DisplayName("a described member and an undescribed one are separated in one answer")
     void a_described_and_an_undescribed_member_are_separated() {
-        recordJob(DESCRIBED,
-            "Marks the breaker as having just seen an error, so the window can open.");
+        String job = "Marks the breaker as having just seen an error, so the window can open.";
+        recordJob(DESCRIBED, job);
 
         Map<String, Object> data = dataOf(jobsFor(DESCRIBED, UNDESCRIBED));
 
-        assertEquals(List.of(DESCRIBED), data.get("described"),
-            "the one with a job written: " + data);
+        // Sprint 28g D42(a) CHANGED THIS SHAPE, and this assertion is why the change was not
+        // free: `described` was a list of member NAMES and is now a list of {symbol, job},
+        // because naming the member tells a caller a job exists and not what it says. The
+        // assertion is STRONGER for it rather than merely different — it now pins the job's own
+        // words, which is the half the deliverable is about.
+        assertEquals(List.of(Map.of("symbol", DESCRIBED, "job", job)), data.get("described"),
+            "the one with a job written, AND what that job says: " + data);
         assertEquals(List.of(UNDESCRIBED), data.get("missing"),
             "and the one without, which is what the gate acts on: " + data);
     }

@@ -191,7 +191,15 @@ class SeatAsksByMeaningTest {
     void the_sub_floor_job_is_nominated() {
         recordTheCorpus();
 
-        List<Map<String, Object>> candidates = nominate(TASK);
+        // Sprint 28g D42(b) MOVED THIS CALL, and the lane is now named rather than omitted.
+        // This case's subject is RANKING — does the shortlist bite, does the sub-floor row
+        // still arrive — and it reached a pool of jobs by asking with no lane at all. A prose
+        // question with no lane no longer reaches the code lane, deliberately: the signed
+        // clause is "prose -> experience and patterns and never code". So the call now names
+        // the lane the PRODUCTION path names (`ExperienceTool:2677` passes
+        // `KnowledgeLane.CODE.wire()` for the duplicate check), which makes this case stronger
+        // rather than merely repaired — it was measuring a route no caller takes.
+        List<Map<String, Object>> candidates = nominate(TASK, "code");
 
         assertEquals(ExperienceRetrieval.MAX_CANDIDATES, candidates.size(),
             "PROOF THE SHORTLIST BITES: the store holds more jobs than the cap, so a full"
@@ -217,9 +225,12 @@ class SeatAsksByMeaningTest {
     void the_shortlist_responds_to_the_question() {
         recordTheCorpus();
 
-        List<String> forTheTask = summaries(nominate(TASK));
+        // Both asked in the code lane, for the reason the case above gives — this is a claim
+        // about ORDER responding to the question, and it needs a pool to order.
+        List<String> forTheTask = summaries(nominate(TASK, "code"));
         List<String> forSomethingElse = summaries(nominate(
-            "the operator has supplied the key shares and the secrets are still locked"));
+            "the operator has supplied the key shares and the secrets are still locked",
+            "code"));
 
         assertTrue(!forTheTask.equals(forSomethingElse),
             "two unrelated questions returning the identical shortlist in the identical"
@@ -240,23 +251,36 @@ class SeatAsksByMeaningTest {
     @Test
     @DisplayName("the code lane answers with jobs and leaves the other lifecycles out")
     void the_code_lane_answers_with_jobs_alone() {
+        String lesson = "A forked run that reports fewer classes than it planned has lost"
+            + " a shard, and the missing lines read as untested code.";
         recordTheCorpus();
-        recordLesson("A forked run that reports fewer classes than it planned has lost"
-            + " a shard, and the missing lines read as untested code.");
+        recordLesson(lesson);
 
+        // SPRINT 28g D42(b) DESTROYED THIS CASE'S ORIGINAL DISCRIMINATOR, and the repair makes
+        // it a TWO-DIRECTION claim rather than restoring the one-direction one.
+        //
+        // It used to prove the lane filter by showing the lesson competed well UNFILTERED and
+        // was absent under lane=code. After D42(b) an unfiltered prose question no longer
+        // reaches the code lane at all, so the lesson is the only row left and
+        // `contains(lesson)` became true whatever the filter did — a vacuous assertion created
+        // by that change, which is the defect class this sprint keeps finding. Found by the
+        // C14a audit; this case stayed GREEN while it happened, which is exactly why it needed
+        // finding rather than noticing.
         List<String> everyLane = summaries(nominate(TASK));
-        assertTrue(everyLane.contains("A forked run that reports fewer classes than it"
-                + " planned has lost a shard, and the missing lines read as untested code."),
-            "PROOF OF LIFE: unfiltered, the lesson is a strong enough competitor to be"
-                + " nominated at all — without that its absence below proves nothing about"
-                + " the filter: " + everyLane);
+        assertTrue(everyLane.contains(lesson),
+            "PROOF OF LIFE: the lesson is a strong enough competitor to be nominated at all —"
+                + " it names the forked run and the classes it reached: " + everyLane);
+        assertTrue(!everyLane.contains(TARGET_JOB),
+            "AND THE OTHER DIRECTION, which is D42(b): a prose question names no code, so the"
+                + " code lane does not answer it even unfiltered. Without this clause the"
+                + " assertion above is true of a nomination that returns only ever one row: "
+                + everyLane);
 
         List<String> codeOnly = summaries(nominate(TASK, "code"));
         assertTrue(codeOnly.contains(TARGET_JOB),
-            "the sub-floor job still arrives — the lane narrows the pool and must not"
-                + " introduce a bar: " + codeOnly);
-        assertTrue(!codeOnly.contains("A forked run that reports fewer classes than it"
-                + " planned has lost a shard, and the missing lines read as untested code."),
+            "asked for by name, the sub-floor job still arrives — the lane narrows the pool"
+                + " and must not introduce a bar: " + codeOnly);
+        assertTrue(!codeOnly.contains(lesson),
             "and the lesson does not, because it belongs to another lifecycle: " + codeOnly);
     }
 

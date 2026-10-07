@@ -97,7 +97,7 @@ public final class ExperienceAdvisor implements Advisor {
      * therefore carries a prior-work block or carries none; it never carries a half-read one.</p>
      */
     public List<String> adviseBefore(String kind, String target, long budgetMillis) {
-        return priorWork(kind, target, budgetMillis).advice();
+        return priorWork(kind, target, budgetMillis, QualityLedger.SURFACE_PRE_ADVICE).advice();
     }
 
     /**
@@ -120,7 +120,7 @@ public final class ExperienceAdvisor implements Advisor {
      * repeating the walk, so the two forms cannot disagree about what the store said.</p>
      */
     @SuppressWarnings("unchecked")
-    public PriorWork priorWork(String kind, String target, long budgetMillis) {
+    public PriorWork priorWork(String kind, String target, long budgetMillis, String surface) {
         RecallQuery q = new RecallQuery(
             looksLikeFqn(target) ? target : null,   // symbol cue
             null,                                    // package
@@ -134,8 +134,12 @@ public final class ExperienceAdvisor implements Advisor {
         // surface — so the quality ledger records when this surface actually
         // reaches the agent, and when it stays silent, as a side effect of the
         // normal call rather than through a separate feed.
-        Map<String, Object> r =
-            retrieval.recall(q, QualityLedger.SURFACE_PRE_ADVICE, budgetMillis);
+        // THE SURFACE IS THE CALLER'S, not this method's. It was a constant here, and D42 then
+        // gave this method a second caller that runs on every tool response — which put the
+        // choke's whole traffic into the pre-advice counter and made one rate two populations
+        // added together. The constant four lines from it in QualityLedger is the rule against
+        // that, and it was written for this exact conflation.
+        Map<String, Object> r = retrieval.recall(q, surface, budgetMillis);
 
         // THE RESULT WORD IS THE ONLY THING THAT DISTINGUISHES THE TWO EMPTIES, and it is read
         // before the rows because the rows cannot tell them apart. `unavailable` strips its

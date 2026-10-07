@@ -86,7 +86,8 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
     void a_store_that_could_not_be_read_is_reported_as_not_looked() {
         long start = System.currentTimeMillis();
         ExperienceAdvisor.PriorWork asked = overAStalledStore()
-            .priorWork(null, TARGET, ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS);
+            .priorWork(null, TARGET, ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS,
+                QualityLedger.SURFACE_CHOKE_PRIOR_WORK);
         long waited = System.currentTimeMillis() - start;
 
         assertFalse(asked.looked(),
@@ -107,7 +108,8 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
     void a_healthy_empty_store_is_an_absence_and_not_an_outage() {
         try (H2ExperienceStore healthy = H2ExperienceStore.openMemory()) {
             ExperienceAdvisor.PriorWork asked = new ExperienceAdvisor(healthy, () -> null)
-                .priorWork(null, TARGET, ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS);
+                .priorWork(null, TARGET, ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS,
+                    QualityLedger.SURFACE_CHOKE_PRIOR_WORK);
 
             assertTrue(asked.looked(),
                 "the store WAS read; it simply held nothing, which is an observed absence");
@@ -126,6 +128,82 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
             "and it refuses the reading that silence would have invited: " + steer);
         assertFalse(steer.contains(KNOWS),
             "it must not also claim to be telling them what the store knows: " + steer);
+    }
+
+    /**
+     * THE REGISTRY BUYS THE FLOOR, and this is the only assertion that says so — the C14a
+     * review found the previous one attached to the wrong half.
+     *
+     * <p>`PriorWorkRidesTheResponseTest` asserts the ADVISOR answers at the floor, which it
+     * does; it calls the advisor directly, so changing the registry's own call to the
+     * fifteen-second default left it green. That is the defect this project keeps finding: a
+     * correct assertion about a path nobody takes.</p>
+     *
+     * <p>What this measures instead is time through the REGISTRY, which is the thing the clause
+     * is about: a block riding every response must not hold a caller while a wedged store is
+     * walked. Against a read that never returns, the floor comes back in roughly its own
+     * milliseconds and the default would take fifteen seconds — so the two are far enough apart
+     * that a generous bound still discriminates.</p>
+     */
+    @Test
+    void the_registry_buys_the_floor_and_not_the_fifteen_second_default() throws Exception {
+        long start = System.currentTimeMillis();
+        steeringOf(overAStalledStore());
+        long waited = System.currentTimeMillis() - start;
+
+        assertTrue(waited < 5_000,
+            () -> "the registry's own call must buy the floor; a caller waited " + waited
+                + "ms, which is the fifteen-second default's territory");
+    }
+
+    /**
+     * B3 — THE BLOCK RIDES A REFUSAL, and before the C14a audit it did not.
+     *
+     * <p>`appendSteering` opens with `if (!success ...) return;` — correctly, because steering
+     * is next-step advice and a refused call has no next step. Both D42 emissions used it, so
+     * the block and the outage line were dropped on exactly the answers where they matter most:
+     * a caller whose tool just declined is the one most likely to go and do the thing by hand,
+     * which is the duplicate this deliverable exists to prevent. `mcp#12` records the identical
+     * defect 120 lines above the method, for the degradation notice.</p>
+     */
+    @Test
+    void a_refused_response_still_carries_what_the_store_knows() throws Exception {
+        try (H2ExperienceStore knowing = H2ExperienceStore.openMemory()) {
+            knowing.put(ExperienceEntry.of(
+                SymbolFact.of("failure_mode", "this target bit somebody before",
+                    Confidence.HIGH).symbol(TARGET).build())
+                .situation("when touching this target")
+                .verdict("failed_avoid")
+                .build());
+
+            ToolRegistry reg = new ToolRegistry();
+            reg.setExperienceAdvisor(new ExperienceAdvisor(knowing, () -> null));
+            reg.register(new Tool() {
+                @Override public String getName() {
+                    return "analyze";
+                }
+                @Override public String getDescription() {
+                    return "analyze";
+                }
+                @Override public Map<String, Object> getInputSchema() {
+                    return Map.of();
+                }
+                @Override public ToolResponse execute(JsonNode arguments) {
+                    return ToolResponse.error("DELIBERATE_REFUSAL",
+                        "this tool declined, which is the case the block must survive",
+                        "none");
+                }
+            });
+
+            ToolResponse r = reg.callTool("analyze",
+                OM.readTree("{\"typeName\":\"" + TARGET + "\"}"), CallerIdentity.supplied("s1"));
+            String steer = r.getMeta() == null ? null : r.getMeta().getSteering();
+
+            assertFalse(r.isSuccess(), "PROOF OF LIFE: the tool really did refuse");
+            assertNotNull(steer, "and the block survived the refusal rather than being dropped");
+            assertTrue(steer.contains("bit somebody before"),
+                () -> "carrying what the store knows: " + steer);
+        }
     }
 
     /**

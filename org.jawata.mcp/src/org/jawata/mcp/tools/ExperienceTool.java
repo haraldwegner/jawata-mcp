@@ -424,8 +424,10 @@ public final class ExperienceTool implements Tool {
             "description", "describe: 'next' takes the source units still to describe,"
                 + " 'done' records one as described, 'area' answers what the package a"
                 + " given file lives in is FOR — its area and the jobs inside it — and"
-                + " 'jobs_for' says which of the members you name already have a job"
-                + " written and which do not."));
+                + " 'jobs_for' answers, for each member you name, the job the store"
+                + " ALREADY holds for it — in that job's own words, because a flag saying"
+                + " one exists cannot tell you whether the work in front of you is the same"
+                + " work — and lists the members that have none."));
         props.put("filePaths", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "describe action=jobs_for: source files whose members should be"
                 + " derived and asked about, instead of naming each member yourself. Needs"
@@ -2489,7 +2491,8 @@ public final class ExperienceTool implements Tool {
         // not what it says. The corrupting case this deliverable is about is writing a SECOND
         // description of work the store already describes, and the only thing that lets a caller
         // see that is the existing job's own words. Their own member names they already have.
-        java.util.Map<String, String> jobs = jobsByMember();
+        JobsHeld held = jobsByMember();
+        java.util.Map<String, String> jobs = held.byMember();
         List<Map<String, Object>> described = new java.util.ArrayList<>();
         List<String> missing = new java.util.ArrayList<>();
         for (String s : symbols) {
@@ -2512,9 +2515,19 @@ public final class ExperienceTool implements Tool {
         if (!unreadable.isEmpty()) {
             out.put("unreadable", unreadable);
         }
+        // THE READ'S OWN LIMIT, NAMED — and it changes the instruction below rather than
+        // merely annotating it. Past the cap a member that HAS a job lands in `missing`, so
+        // telling the caller to record one for it is how this answer would mint the duplicate
+        // D42(a) exists to prevent. Named, never dropped, which is this file's own idiom.
+        if (held.capped()) {
+            out.put("incomplete", "The job rows were read up to a cap of " + DESCRIBING_ROW_CAP
+                + " and the cap was REACHED, so `missing` may name a member that already has a"
+                + " job this answer could not see. Treat it as 'not seen' rather than 'not"
+                + " there', and ask about that member on its own before recording anything.");
+        }
         // The instruction, rendered ONCE here rather than composed by each caller. A gate
         // that blocks without saying exactly what to run is a gate that gets worked around.
-        if (!missing.isEmpty()) {
+        if (!missing.isEmpty() && !held.capped()) {
             out.put("next", "experience(kind=record, type=job, symbol=<one of the missing>,"
                 + " summary=<what that member is FOR, in a sentence that is not its own"
                 + " name restated>)");
@@ -2549,19 +2562,38 @@ public final class ExperienceTool implements Tool {
      * stating as the narrowing it is: this answers <i>what the store says this member is for</i>,
      * never <i>every row it holds about it</i>.</p>
      */
-    private java.util.Map<String, String> jobsByMember() {
+    private JobsHeld jobsByMember() {
         java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();
-        for (org.jawata.mcp.knowledge.StoredEntry e
-                : store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP)) {
+        java.util.List<org.jawata.mcp.knowledge.StoredEntry> rows =
+            store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP);
+        for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
             if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
                 byMember.put(e.symbolFqn(), e.summary());
             }
         }
-        return byMember;
+        return new JobsHeld(byMember, rows.size() >= DESCRIBING_ROW_CAP);
+    }
+
+    /**
+     * The jobs read, and WHETHER THE READ WAS CAPPED — Sprint 28g, folding the C14a audit's B5.
+     *
+     * <p>The cap is {@code DESCRIBING_ROW_CAP}, and the sprint's own figure for the code lane is
+     * <i>~10,000 rows</i> — the same number. So this read can reach its cap on the live store,
+     * and the consequence is not a missing count: a member that HAS a job lands in
+     * {@code missing}, and the answer then instructs the caller to record one for it, minting
+     * the duplicate D42(a) exists to prevent.</p>
+     *
+     * <p>This file already refuses the shape — <i>"the population the sample was drawn from —
+     * published ONLY when the read was not capped, because a capped figure sold as a total is
+     * the defect this file already refuses"</i> — and {@code jobsByMember} had no such guard.
+     * Carried as a flag rather than inferred by a caller comparing sizes, because a caller that
+     * has to derive it is a caller that can forget to.</p>
+     */
+    private record JobsHeld(java.util.Map<String, String> byMember, boolean capped) {
     }
 
     private java.util.Set<String> membersThatAlreadyHaveAJob() {
-        return jobsByMember().keySet();
+        return jobsByMember().byMember().keySet();
     }
 
     /**

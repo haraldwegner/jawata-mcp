@@ -64,6 +64,23 @@ public final class QualityLedger {
      *  must count as its OWN surface or its speak/abstain is conflated with the
      *  choke's and neither can be read honestly. */
     public static final String SURFACE_PRE_ADVICE = "pre_advice";
+    /**
+     * The choke's PRIOR-WORK tier — Sprint 28g D42: what the store already knows about the
+     * target of EVERY tool call, as opposed to what a tool did to it before
+     * ({@link #SURFACE_CHOKE_PRECEDENT}) or a similar case elsewhere
+     * ({@link #SURFACE_CHOKE_ADVISORY}).
+     *
+     * <p><b>It exists because D42 first rode {@link #SURFACE_PRE_ADVICE}, which silently
+     * changed what that counter counts.</b> Pre-advice was reached only through
+     * {@code plan_refactoring}; the response block runs on every call of every tool, so one
+     * surface's speak/abstain rate became two populations added together — and
+     * {@code SURFACE_PRE_ADVICE}'s own javadoc, four lines up, is the rule against exactly
+     * that: <i>"it must count as its OWN surface or its speak/abstain is conflated with the
+     * choke's and neither can be read honestly."</i> Found by the C14a audit, which quoted
+     * {@code ExperienceRetrieval}'s standing rule back at it: <i>a counter must never change
+     * what it counts.</i></p>
+     */
+    public static final String SURFACE_CHOKE_PRIOR_WORK = "choke_prior_work";
     /** The session-start domain primer. */
     public static final String SURFACE_PRIMER = "primer";
     /** A driven seat run's recall — the caller must NAME this one

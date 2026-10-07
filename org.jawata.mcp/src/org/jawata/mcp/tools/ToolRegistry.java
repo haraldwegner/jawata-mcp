@@ -796,14 +796,23 @@ public class ToolRegistry {
             // not FQN-shaped (a `filePath` call, which `target` reduces to a basename) yields an
             // EMPTY query and no block at all, which is the right answer rather than a broad one.
             org.jawata.mcp.knowledge.ExperienceAdvisor.PriorWork asked = advisor.priorWork(null,
-                target, org.jawata.mcp.knowledge.ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS);
+                target, org.jawata.mcp.knowledge.ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS,
+                org.jawata.mcp.knowledge.QualityLedger.SURFACE_CHOKE_PRIOR_WORK);
             // PAST THE DEADLINE THE RESPONSE SAYS SO. Silence here would be read as "the store
             // knows nothing about this", which is a claim nobody made — and the one thing the
             // store's own unavailable answer insists on is that it is NOT an absence. The reason
             // is the recall's own sentence, because the layer that failed is the one that can say
             // what happened.
+            // BOTH EMISSIONS GO THROUGH `appendStoreAnswer`, WHICH RIDES A REFUSAL TOO, and the
+            // difference from `appendSteering` is not a detail: that method no-ops on failure —
+            // correctly, since steering is next-step advice and a refused call has no next step.
+            // This block is a FACT about prior work, and on a refusal it matters MORE, because a
+            // caller whose tool just declined is the one most likely to go and do the thing by
+            // hand. Riding `appendSteering` it was silent on exactly those answers, which is
+            // `mcp#12`'s defect — recorded 120 lines above this method and not taken until the
+            // C14a audit pointed at it.
             if (!asked.looked()) {
-                response.appendSteering("The store was NOT consulted about " + target
+                response.appendStoreAnswer("The store was NOT consulted about " + target
                     + " — this is not an absence: " + asked.reason());
                 return;
             }
@@ -811,7 +820,7 @@ public class ToolRegistry {
             if (advice.isEmpty()) {
                 return;
             }
-            response.appendSteering("What the store already knows about " + target + ":\n"
+            response.appendStoreAnswer("What the store already knows about " + target + ":\n"
                 + String.join("\n", advice));
         } catch (Exception e) {
             log.warn("prior-work advice failed after {}: {}", name, e.toString());
