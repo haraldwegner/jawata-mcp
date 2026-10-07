@@ -436,6 +436,12 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public Map<String, List<StoredEntry>> anchoredAt(String type, Anchor anchor,
+            java.util.Collection<String> anchors) {
+        return delegate.anchoredAt(type, anchor, anchors);
+    }
+
+    @Override
     public int pruneAged(int days) {
         synchronized (lock) {
             return delegate.pruneAged(days);

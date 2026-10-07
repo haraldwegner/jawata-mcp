@@ -250,6 +250,19 @@ final class UnreadableStore implements ExperienceStore {
         throw boom();
     }
 
+    /**
+     * Sprint 28g, Stage 14 / D30. Throws, and here the reason is the sharpest in this class:
+     * an EMPTY MAP from this read is indistinguishable from a working store answering that
+     * none of these members has been described — and that absence is what the write gate acts
+     * on by inserting a second description. A silent empty answer would make an unreadable
+     * store mint duplicates.
+     */
+    @Override
+    public java.util.Map<String, java.util.List<StoredEntry>> anchoredAt(String type,
+            Anchor anchor, java.util.Collection<String> anchors) {
+        throw boom();
+    }
+
     @Override
     public int pruneAged(int days) {
         throw boom();

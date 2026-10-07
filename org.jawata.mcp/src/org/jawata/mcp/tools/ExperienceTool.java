@@ -1119,14 +1119,32 @@ public final class ExperienceTool implements Tool {
     private java.util.Map<String, Object> describingStoreFacts() {
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
 
+        // A LISTING, NOT A KEYED QUESTION — so the cap stays and the TRUNCATION is published,
+        // which is what the sibling count below already does and this did not.
+        //
+        // Stage 14 / D30's defect, folded 2026-10-08. The job read and the `areas` block were
+        // both asking "do THESE anchors carry a row" of a capped list; they now ask the store
+        // exactly, because both held their key set. This one has none: it publishes the
+        // described packages as facts for a reading agent, with no scope to compare against.
+        // What it shares with the others is the consequence — an agent that does not find its
+        // package in this list describes it again — so the honest repair is the one three lines
+        // down, whose comment states the rule this clause was breaking: a capped figure sold as
+        // a total is the defect this file already refuses.
+        java.util.List<org.jawata.mcp.knowledge.StoredEntry> areaRows =
+            store.listEntries("area", null, null, null, DESCRIBING_ROW_CAP);
         java.util.Set<String> described = new java.util.TreeSet<>();
-        for (org.jawata.mcp.knowledge.StoredEntry e
-                : store.listEntries("area", null, null, null, DESCRIBING_ROW_CAP)) {
+        for (org.jawata.mcp.knowledge.StoredEntry e : areaRows) {
             if (e.packageName() != null && !e.packageName().isBlank()) {
                 described.add(e.packageName());
             }
         }
         out.put("describedAreas", new java.util.ArrayList<>(described));
+        if (areaRows.size() >= DESCRIBING_ROW_CAP) {
+            out.put("describedAreasTruncated", "This list is the newest " + DESCRIBING_ROW_CAP
+                + " area rows and is NOT every described package — a package absent from it may"
+                + " still have been described. To ask about particular packages exactly, use"
+                + " describe(action=next), whose `areas` block is answered per package in scope.");
+        }
 
         List<org.jawata.mcp.knowledge.StoredEntry> jobs =
             store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP);
@@ -2500,7 +2518,6 @@ public final class ExperienceTool implements Tool {
         java.util.Map<String, String> jobs = held.byMember();
         List<Map<String, Object>> described = new java.util.ArrayList<>();
         List<String> missing = new java.util.ArrayList<>();
-        List<String> undetermined = new java.util.ArrayList<>();
         for (String s : symbols) {
             if (s == null || s.isBlank()) {
                 continue;
@@ -2511,16 +2528,12 @@ public final class ExperienceTool implements Tool {
                 row.put("symbol", s);
                 row.put("job", existing);
                 described.add(row);
-            } else if (held.undetermined().contains(s)) {
-                // NOT SEEN IS NOT NOT THERE, and this third bucket is the round-3 fold. The
-                // store's scope filter matches a dot-PREFIX as well as the exact anchor, so a
-                // scope that is a package or a type fills the window with OTHER members' rows —
-                // newest first — and this member's own row can sit outside it. Calling that
-                // `missing` and then instructing a record is how this answer would mint the
-                // duplicate D42(a) exists to prevent: the same false absence the corpus-wide cap
-                // had, relocated to the per-member one by my own repair for it.
-                undetermined.add(s);
             } else {
+                // TWO STATES, because the read underneath has two. It had three until
+                // 2026-10-08: a capped list sift could not tell an absence from a row outside
+                // its window, so a member in that case was named `undetermined` and withheld
+                // from the instruction below. `anchoredAt` is bounded by `symbols`, so there is
+                // no window and this `else` is a real absence.
                 missing.add(s);
             }
         }
@@ -2530,23 +2543,14 @@ public final class ExperienceTool implements Tool {
         if (!unreadable.isEmpty()) {
             out.put("unreadable", unreadable);
         }
-        // WHAT COULD NOT BE DETERMINED IS NAMED, and it is named as that rather than as an
-        // absence. Two earlier versions of this clause were both wrong, in opposite directions:
-        // the first reported a corpus-wide cap and told the caller to "ask about that member on
-        // its own", a remedy the read could not deliver; the second claimed a full window meant
-        // "this member carries fifty job rows", which is false whenever the window was filled by
-        // a PREFIX match on some other member. Both shipped a sentence a reader could act on and
-        // be misled by, which is worse than the gap each was papering over.
-        if (!undetermined.isEmpty()) {
-            out.put("undetermined", undetermined);
-            out.put("undeterminedNote", "For these, " + JOBS_PER_MEMBER_CAP + " rows matched the"
-                + " store's scope filter and none was anchored exactly to the member — so its own"
-                + " job may exist outside that window. This is NOT SEEN rather than NOT THERE,"
-                + " and no recording instruction is offered for them. It happens when the scope"
-                + " given is a package or a type rather than a member, because the filter matches"
-                + " a dot-prefix as well as an exact anchor; naming the member exactly answers"
-                + " it.");
-        }
+        // `undetermined` AND `undeterminedNote` ARE GONE from this response, 2026-10-08, and
+        // their absence is a deliverable rather than a simplification. Three versions of that
+        // clause shipped and all three described a WINDOW: a corpus-wide cap whose suggested
+        // remedy the read could not deliver, then a per-member window, then the same window
+        // reported honestly as a state the caller must not act on. A keyed read has no window,
+        // so there is no case in which this answer cannot tell an absence from a hidden row —
+        // which is what makes the instruction below safe to attach at all.
+        //
         // The instruction, rendered ONCE here rather than composed by each caller. A gate
         // that blocks without saying exactly what to run is a gate that gets worked around.
         if (!missing.isEmpty()) {
@@ -2586,20 +2590,27 @@ public final class ExperienceTool implements Tool {
      */
     private java.util.Set<String> membersThatAlreadyHaveAJobAmong(
             java.util.Collection<String> members) {
-        JobsHeld held = jobsByMember(members);
-        // UNDETERMINED COUNTS AS ANSWERED HERE, deliberately, and it is the conservative
-        // direction. This set decides what a closing answer NAMES as left undescribed, so a
-        // member whose own row could not be ruled out must not be named — the cost of including
-        // it is a false accusation the agent cannot check, and the cost of excluding it is one
-        // member silently not chased. Round 3's N1 named the discarded state; this is the answer
-        // to it rather than a second flag for the caller to remember.
-        java.util.Set<String> answered = new java.util.LinkedHashSet<>(held.byMember().keySet());
-        answered.addAll(held.undetermined());
-        return answered;
+        // THE CONSERVATIVE DIRECTION NO LONGER COSTS ANYTHING, which is the fold's quietest
+        // consequence. This set decides what a closing answer NAMES as left undescribed, so
+        // naming a member wrongly is a false accusation the agent cannot check. While the read
+        // was capped, the conservative choice was to count an undetermined member as answered
+        // and accept that one might silently not be chased. The keyed read removes the trade:
+        // every member is answered one way or the other.
+        return new java.util.LinkedHashSet<>(jobsByMember(members).byMember().keySet());
     }
 
-    /** The per-scope read window. A member's own rows are one, by D30; a package's are not. */
-    private static final int JOBS_PER_MEMBER_CAP = 50;
+    /**
+     * The job rows anchored EXACTLY at one symbol, newest first — the read D30's write gate
+     * asks before it decides whether to replace or to insert.
+     *
+     * <p>Empty means there is none. That sentence is the deliverable: it was not true while this
+     * question was answered by filtering a capped, time-ordered list.</p>
+     */
+    private List<org.jawata.mcp.knowledge.StoredEntry> jobRowsAnchoredAt(String symbol) {
+        return store.anchoredAt("job", org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL,
+                List.of(symbol))
+            .getOrDefault(symbol, List.of());
+    }
 
     /**
      * The job the store already holds for each anchored member — Sprint 28g D42(a), case one.
@@ -2619,68 +2630,54 @@ public final class ExperienceTool implements Tool {
      * was true of the loop before it gained its {@code break} and false after: the same
      * claim-beside-the-code defect a dedicated commit in this stage was for.</p>
      *
-     * <p><b>A FULL WINDOW WITH NO EXACT ROW IS UNDETERMINED, not an absence</b>, and that is the
-     * round-3 fold. The store's scope filter matches a dot-PREFIX as well as the exact anchor —
-     * {@code symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"}, and the same pair on
-     * {@code package_name} ({@code H2ExperienceStore:2350-2354}) — so a scope that is a package or
-     * a type matches every member job beneath it. With {@code ORDER BY created_at DESC LIMIT},
-     * those rows can fill the window and leave this member's own row outside it. Reporting that as
-     * {@code missing} and then instructing a record is the duplicate D42(a) exists to prevent, so
-     * the two states are kept apart and only the real absence gets the instruction.</p>
+     * <p><b>ONE KEYED READ, no window — Stage 14 / D30's defect, folded 2026-10-08.</b> Three
+     * earlier versions each answered this keyed question by filtering a capped, time-ordered
+     * list, and each repair only moved which rows the window hid: the first read the whole
+     * corpus up to {@code DESCRIBING_ROW_CAP}; the second read per member under a window of
+     * fifty; the third kept that window and added an {@code undetermined} state for the case
+     * where it was full. That third state was the tell and I shipped it as a fix — a state
+     * meaning <i>the cap hid this</i> is an admission that the read cannot answer the question.
+     * {@link org.jawata.mcp.knowledge.ExperienceStore#anchoredAt} answers it: the result is
+     * bounded by the members ASKED ABOUT, so an absent key is an absence and there is no third
+     * state to report.</p>
      *
-     * <p>Both earlier versions of this got the window wrong in opposite directions: the first read
-     * the whole corpus and reported its cap, the second read per member and claimed a full window
-     * meant fifty jobs for one member. Neither was true of a package-shaped scope, which nothing
-     * here validates and the {@code symbols} parameter's own published description does not
-     * constrain.</p>
+     * <p>It is also one statement rather than one per member, which the per-member version was
+     * not: that fold traded a corpus read for N reads to put the cap out of reach, and the keyed
+     * read needs neither.</p>
      */
     private JobsHeld jobsByMember(java.util.Collection<String> members) {
         java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();
-        java.util.Set<String> undetermined = new java.util.LinkedHashSet<>();
+        java.util.Map<String, List<org.jawata.mcp.knowledge.StoredEntry>> rows =
+            store.anchoredAt("job", org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL,
+                members);
         for (String member : members) {
             if (member == null || member.isBlank()) {
                 continue;
             }
-            java.util.List<org.jawata.mcp.knowledge.StoredEntry> rows =
-                store.listEntries("job", null, member, null, JOBS_PER_MEMBER_CAP);
-            boolean found = false;
-            for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
-                // THE ANCHOR IS CHECKED rather than trusted, because the filter above returns a
-                // dot-prefix match too — and for a package- or type-shaped scope that is every
-                // member beneath it.
-                if (member.equals(e.symbolFqn())) {
-                    byMember.put(member, e.summary());
-                    found = true;
-                    break;
-                }
-            }
-            // A FULL WINDOW AND NO EXACT ROW: the answer is "not seen", never "not there". If the
-            // window had room to spare, the exact row would have been in it, so an absence there
-            // IS an absence.
-            if (!found && rows.size() >= JOBS_PER_MEMBER_CAP) {
-                undetermined.add(member);
+            // The newest, which is the ordering the store applies within an anchor. More than
+            // one row here is the state D30 forbids; the WRITE gate is what refuses it, and
+            // this read is deliberately not a second place that decides about it.
+            List<org.jawata.mcp.knowledge.StoredEntry> held = rows.get(member);
+            if (held != null && !held.isEmpty()) {
+                byMember.put(member, held.get(0).summary());
             }
         }
-        return new JobsHeld(byMember, undetermined);
+        return new JobsHeld(byMember);
     }
 
     /**
-     * The jobs found, and the members whose answer COULD NOT BE DETERMINED — Sprint 28g, folding
-     * the C14a audit's B5 and then its round-2 and round-3 refusals of that fold.
+     * The job each asked-about member holds, by member. TWO states, and a member absent from the
+     * map has no job.
      *
-     * <p>Three states rather than two, and the third is the whole point: a member with a job, a
-     * member with none, and <b>a member whose read window was full of other rows so its own could
-     * not be ruled out</b>. The first two fold into {@code described} and {@code missing}; the
-     * third must not, because {@code missing} is what the recording instruction is offered for.</p>
-     *
-     * <p><b>A boolean was not enough, and that was round 3's blocker.</b> The flag it replaces said
-     * "some member's window was full" and the response then claimed that member carried fifty
-     * jobs — false whenever the window was filled by a dot-prefix match on a package or a type.
-     * Carrying the MEMBERS rather than a flag is what lets the answer name exactly the ones it
-     * could not settle, and lets the instruction be withheld for exactly those.</p>
+     * <p><b>It carried a THIRD state until 2026-10-08 and the third state was a defect wearing a
+     * fix's clothes.</b> {@code undetermined} named the members whose read window had been full
+     * of other rows, so their own could not be ruled out — real while the read was a capped list
+     * sift, and the C14a round-3 audit was right to refuse a boolean in its place. What neither
+     * that round nor the two before it said is that a read which can report <i>I could not tell</i>
+     * must not be the read a write instruction hangs off. The keyed read has no window, so the
+     * state has no referent and is gone rather than better reported.</p>
      */
-    private record JobsHeld(java.util.Map<String, String> byMember,
-                            java.util.Set<String> undetermined) {
+    private record JobsHeld(java.util.Map<String, String> byMember) {
     }
 
     /**
@@ -3047,13 +3044,13 @@ public final class ExperienceTool implements Tool {
         // which packages a scope holds is JDT's answer and the resident's alone, and a
         // studio that inferred "not described" from an absent key would be inventing the
         // half it cannot see. `MemoryView` renders this string; it does not derive it.
-        java.util.Set<String> describedAreas = new java.util.HashSet<>();
-        for (org.jawata.mcp.knowledge.StoredEntry e
-                : store.listEntries("area", null, null, null, 10000)) {
-            if (e.packageName() != null && !e.packageName().isBlank()) {
-                describedAreas.add(e.packageName());
-            }
-        }
+        // THE PACKAGES ARE DERIVED FIRST AND THE STORE IS ASKED ABOUT THOSE — Stage 14 / D30's
+        // defect, folded 2026-10-08. This read used to fetch EVERY area row up to a window of
+        // ten thousand and sift it, which is the same keyed-question-answered-by-a-capped-list
+        // shape as the job read: past the window a described package renders "not described
+        // yet", and the `next` instruction below then sends an agent to describe it again. The
+        // keys were already in hand — `inScope` is computed right here — so the question could
+        // always have been asked exactly.
         java.util.Set<String> inScope = new java.util.TreeSet<>();
         for (Map<String, Object> f : facts.values()) {
             Object pkg = f.get("package");
@@ -3061,6 +3058,8 @@ public final class ExperienceTool implements Tool {
                 inScope.add(String.valueOf(pkg));
             }
         }
+        java.util.Set<String> describedAreas = store.anchoredAt("area",
+            org.jawata.mcp.knowledge.ExperienceStore.Anchor.PACKAGE, inScope).keySet();
         List<Map<String, Object>> areas = new java.util.ArrayList<>();
         for (String pkg : inScope) {
             Map<String, Object> row = new java.util.LinkedHashMap<>();
@@ -3901,11 +3900,24 @@ public final class ExperienceTool implements Tool {
         // row and the key for it is a different column, so folding the two together here
         // would apply a member rule to something that is not a member.
         //
-        // THE LOOKUP IS THE READ THAT ALREADY EXISTED. `listEntries`'s scope clause tries
-        // `symbol_fqn = ?` first, so an exact anchor matches; the re-filter below is
-        // because that clause ALSO ORs in two LIKE patterns and the package column, so a
-        // scope string can match rows that are not this member. A dedicated store read was
-        // written first and the duplicate gate refused it, correctly.
+        // THE LOOKUP IS A KEYED READ, AND IT WAS A CAPPED LIST SIFT — the Stage 14 / D30
+        // defect, folded 2026-10-08.
+        //
+        // This gate IS the one-job-per-member invariant: it finds the existing row and
+        // REPLACES it, and inserts a second row when it finds none. It used to find that row
+        // by calling `listEntries("job", null, symbol, null, 50)` and re-filtering in Java —
+        // and that read's scope clause is `symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"`
+        // plus the same pair on `package_name`, ordered newest-first under a LIMIT. So for a
+        // type- or package-shaped scope the fifty rows could be other members' and this
+        // member's own row could sit outside them. The gate then saw no existing row and
+        // INSERTED, which is how the duplicates D30 exists to prevent were minted — by the
+        // gate itself, not by any caller ignoring it.
+        //
+        // The comment that stood here said a dedicated store read "was written first and the
+        // duplicate gate refused it, correctly." The refusal was WRONG, and recording that is
+        // the point: a keyed existence read and a scoped list read are not the same job, and
+        // the difference is exactly that one can be truncated and the other cannot. Three
+        // repairs downstream of that decision each only moved which rows the window hid.
         String replacedId = null;
         String replacedSummary = null;
         String replaceNote = null;
@@ -3913,9 +3925,7 @@ public final class ExperienceTool implements Tool {
                 && symbol != null && !symbol.isBlank()) {
             try {
                 List<org.jawata.mcp.knowledge.StoredEntry> already =
-                    store.listEntries("job", null, symbol, null, 50).stream()
-                        .filter(e -> symbol.equals(e.symbolFqn()))
-                        .toList();
+                    jobRowsAnchoredAt(symbol);
                 if (already.size() > 1) {
                     // REFUSED rather than collapsed. Choosing which of several descriptions
                     // survives is a judgement about which one is right, and doing it as a

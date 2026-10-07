@@ -2376,6 +2376,67 @@ public final class H2ExperienceStore implements ExperienceStore {
         });
     }
 
+    /**
+     * Sprint 28g, Stage 14 / D30 — the keyed read, with the contract on
+     * {@link ExperienceStore#anchoredAt}.
+     *
+     * <p><b>No {@code ORDER BY} and no {@code LIMIT}, and that is the whole point</b> — the
+     * result is bounded by the anchors asked about, so nothing can fall outside a window and
+     * be reported as absent. The column is chosen by the enum rather than passed as text,
+     * because the one thing a caller must not be able to do is name a column.</p>
+     *
+     * <p><b>Not {@code ExperienceRetrieval.anchorAnswer}, which the duplicate gate nominates.</b>
+     * That one asks JDT whether a stored anchor still points at live code; this asks the database
+     * whether a row exists at an anchor. Same word, different question, different source of
+     * truth — and a store that cannot be read must answer the second one by failing, which is
+     * exactly what a JDT-shaped answer cannot express.</p>
+     *
+     * <p><b>{@code ORDER BY created_at DESC} is kept and the {@code LIMIT} is not</b>, and the
+     * two are not a pair. The ordering is the newest-first tie-break every caller of
+     * {@code listEntries} already relied on, and it decides which row a caller takes when an
+     * anchor wrongly carries several. The limit is what turned an absence into a maybe. Keeping
+     * one without the other is the entire change.</p>
+     */
+    @Override
+    public Map<String, List<StoredEntry>> anchoredAt(String type, Anchor anchor,
+            java.util.Collection<String> anchors) {
+        Map<String, List<StoredEntry>> out = new LinkedHashMap<>();
+        if (type == null || type.isBlank() || anchor == null || anchors == null) {
+            return out;
+        }
+        List<String> wanted = new ArrayList<>();
+        for (String a : anchors) {
+            if (a != null && !a.isBlank() && !wanted.contains(a)) {
+                wanted.add(a);
+            }
+        }
+        if (wanted.isEmpty()) {
+            return out;
+        }
+        String column = anchor == Anchor.PACKAGE ? "package_name" : "symbol_fqn";
+        String sql = "SELECT " + ALL_COLUMNS + " FROM experience_entry WHERE type = ? AND "
+            + column + " IN (" + "?,".repeat(wanted.size() - 1) + "?)"
+            + " ORDER BY created_at DESC";
+        return withRead("read entries anchored at " + wanted.size() + " " + column, c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setObject(1, type);
+                for (int i = 0; i < wanted.size(); i++) {
+                    ps.setObject(i + 2, wanted.get(i));
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        StoredEntry e = mapRow(rs, c);
+                        String key = anchor == Anchor.PACKAGE ? e.packageName() : e.symbolFqn();
+                        if (key != null) {
+                            out.computeIfAbsent(key, k -> new ArrayList<>()).add(e);
+                        }
+                    }
+                }
+            }
+            return out;
+        });
+    }
+
     // --- Sprint 21a (item G): hygiene — prune / compact ---------------------------------
 
     /**

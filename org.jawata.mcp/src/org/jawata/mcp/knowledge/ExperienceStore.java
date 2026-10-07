@@ -1,5 +1,6 @@
 package org.jawata.mcp.knowledge;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -377,6 +378,57 @@ public interface ExperienceStore extends AutoCloseable {
      * Unlike {@link #query}, rejected/superseded entries are INCLUDED (curation sees all).
      */
     List<StoredEntry> listEntries(String type, String status, String scope, String language, int limit);
+
+    /** Which column an anchor is matched against by {@link #anchoredAt} — EXACTLY, never by prefix. */
+    enum Anchor {
+        /** {@code symbol_fqn} — a member or a type. */
+        SYMBOL,
+        /** {@code package_name} — what an {@code area} row is anchored to. */
+        PACKAGE
+    }
+
+    /**
+     * The rows of {@code type} anchored EXACTLY at each anchor named, keyed by the anchor asked
+     * about and newest first within each key. An absent key is an ABSENCE.
+     *
+     * <p><b>Sprint 28g, folding the Stage 14 / D30 defect. This exists because
+     * {@link #listEntries} cannot answer a keyed question, and four callers were asking it
+     * one anyway.</b> That read takes a {@code scope} and matches
+     * {@code symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"}, plus the same pair on
+     * {@code package_name}, then orders by {@code created_at DESC} and applies a {@code LIMIT}.
+     * Asked "does this one anchor carry a row", a caller got a page of whatever the filter
+     * matched, newest first, and re-filtered it in Java — so a prefix-shaped scope could fill
+     * the page with other members' rows and leave the one asked about outside it. The caller
+     * then read "not on the page" as "does not exist".</p>
+     *
+     * <p><b>A cap and a write instruction cannot coexist, which is why this is a new read rather
+     * than a bigger window.</b> Every one of those four callers acts on the absence: three tell
+     * an agent to describe the member, and the fourth is D30's own write gate, which INSERTS a
+     * second row when it sees none. So the page size decided how many duplicate descriptions
+     * the product asked for, and three successive repairs — a bigger corpus window, a per-member
+     * window, a third "undetermined" state — each only moved which rows the window hid. The
+     * answer here is bounded by the QUESTION: at most one row per anchor named, so there is
+     * nothing to truncate and no third state to report.</p>
+     *
+     * <p>Anchors are compared as written, not resolved — both sides are FQNs this product
+     * produced, and resolving here would need a project and turn an absent row into an
+     * unanswerable question at the moment a gate has to decide.</p>
+     *
+     * <p><b>A LIST per anchor, not one row, because more than one is a state that must stay
+     * visible.</b> D30 forbids it and {@link #replaceJob}'s caller refuses on sight rather
+     * than collapsing silently — choosing which of several descriptions survives is a
+     * judgement, and four of the duplicates counted in jawata-mcp#85 are overloads sharing one
+     * bare key, which are different members rather than surplus rows. Returning the newest and
+     * discarding the rest would hide exactly the state the invariant is about. The result is
+     * still bounded by the question: the rows that exist at the anchors asked about, with no
+     * window to fall outside.</p>
+     *
+     * @param type the entry type, e.g. {@code job} or {@code area}; required
+     * @param anchor which column the anchors are matched against
+     * @param anchors the anchors to ask about; empty yields an empty map
+     * @return anchor to its rows, newest first, for the anchors that have any
+     */
+    Map<String, List<StoredEntry>> anchoredAt(String type, Anchor anchor, Collection<String> anchors);
 
     /**
      * GC the store itself: delete {@code rejected}/{@code superseded} entries older than
