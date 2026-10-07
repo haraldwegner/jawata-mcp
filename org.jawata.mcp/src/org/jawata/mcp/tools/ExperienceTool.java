@@ -9,10 +9,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.knowledge.Confidence;
+import org.jawata.mcp.knowledge.DescribedUnits;
 import org.jawata.mcp.knowledge.EntryForm;
 import org.jawata.mcp.knowledge.ExperienceEntry;
 import org.jawata.mcp.knowledge.ExperienceMaintenance;
@@ -2942,6 +2942,24 @@ public final class ExperienceTool implements Tool {
                     + " were given, and if the file has changed since, recording today's text"
                     + " would claim a description nobody wrote and the unit would never be"
                     + " offered again.");
+        }
+        // Sprint 28g, C14 blocker 1 — a hash this server could not have handed out is refused.
+        //
+        // Before this, any non-blank string closed a unit: an audit drove `action=done` with
+        // "whatever-this-test-was-handed" and got `recorded: true`. Closing RETIRES the unit, so
+        // that accepted a description of text nobody was offered AND made it durable.
+        //
+        // The shape belongs to DescribedUnits, which produces it — asked here rather than
+        // restated. And the bound is narrower than the clause wants: this refuses what CANNOT
+        // have been offered, not everything that WAS not. See hasHashShape for why the stronger
+        // form needs remembered offers rather than a predicate.
+        if (!DescribedUnits.hasHashShape(hash)) {
+            return ToolResponse.invalidParameter("contentHash",
+                "Not a hash this server hands out — expected the 64 hex characters"
+                    + " describe(action=next) gave you with this unit, and got '" + hash + "'."
+                    + " Ask for the unit again rather than composing a value: closing a unit"
+                    + " retires it, so a hash nobody offered would record a description of text"
+                    + " nobody wrote and the unit would not come back.");
         }
         boolean recorded = describedUnits().done(unit, hash, text(args, "bundle"));
         Map<String, Object> out = new java.util.LinkedHashMap<>();

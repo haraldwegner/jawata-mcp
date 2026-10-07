@@ -1,9 +1,19 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
+import org.jawata.mcp.knowledge.DescribedUnits;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.models.ToolResponse;
 import org.junit.jupiter.api.AfterEach;
@@ -12,13 +22,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 28g D30 — CLOSING A UNIT SAYS WHAT IT IS CLOSING OVER.
@@ -58,17 +63,68 @@ class ClosingAUnitSaysWhatItLeavesTest {
         }
     }
 
+    /**
+     * Close a unit with a hash of the SHAPE the server hands out.
+     *
+     * <p>This passed {@code "whatever-this-test-was-handed"} until C14, and the call SUCCEEDED —
+     * which is how an audit found that the closing verb accepted a hash no {@code action=next}
+     * ever emitted. The fixture was the evidence, so it is corrected here rather than worked
+     * around, and {@link #aNeverOfferedHashIsRefused} now pins the refusal it should always have
+     * met.</p>
+     */
     private Map<String, Object> close(ExperienceTool t, String unit) {
-        ObjectNode a = json.createObjectNode();
-        a.put("kind", "describe");
-        a.put("action", "done");
-        a.put("unit", unit);
-        a.put("contentHash", "whatever-this-test-was-handed");
-        ToolResponse r = t.execute(a);
+        Map<String, Object> data = closeWith(t, unit, DescribedUnits.hash(contentOf(unit)));
+        return data;
+    }
+
+    private Map<String, Object> closeWith(ExperienceTool t, String unit, String contentHash) {
+        ToolResponse r = t.execute(doneCall(unit, contentHash));
         assertTrue(r.isSuccess(), "got " + r.getError());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) r.getData();
         return data;
+    }
+
+    private ObjectNode doneCall(String unit, String contentHash) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "describe");
+        a.put("action", "done");
+        a.put("unit", unit);
+        a.put("contentHash", contentHash);
+        return a;
+    }
+
+    private String contentOf(String unit) {
+        try {
+            return Files.readString(Path.of(unit));
+        } catch (IOException e) {
+            throw new AssertionError("the fixture unit must be readable: " + unit, e);
+        }
+    }
+
+    /**
+     * C14 blocker 1 — a hash this server could not have handed out is REFUSED, where it used to
+     * close the unit and retire it.
+     *
+     * <p>The control matters more than the refusal: without it, a verb that refused EVERY hash
+     * would pass. {@link #close} drives the accepted path on every other case in this class, so
+     * the pair is live.</p>
+     */
+    @Test
+    @DisplayName("a contentHash the server never handed out is refused, and a real one is not")
+    void aNeverOfferedHashIsRefused() {
+        String unit = aUnitWithMembers();
+
+        ToolResponse refused = tool.execute(doneCall(unit, "whatever-this-test-was-handed"));
+        assertFalse(refused.isSuccess(),
+            "a hash of a shape this server never emits must not close a unit — closing RETIRES"
+                + " it, so accepting one records a description of text nobody wrote");
+        assertTrue(String.valueOf(refused.getError()).contains("64 hex"),
+            () -> "and the refusal must say what it expected: " + refused.getError());
+
+        assertTrue(tool.execute(doneCall(unit, DescribedUnits.hash(contentOf(unit)))).isSuccess(),
+            "PROOF OF LIFE: a hash of the right shape still closes the unit, so the refusal above"
+                + " discriminates rather than rejecting everything");
     }
 
     private String aUnitWithMembers() {
@@ -142,7 +198,12 @@ class ClosingAUnitSaysWhatItLeavesTest {
     @DisplayName("with no project the count is refused by name, never reported as zero")
     void an_uncountable_unit_says_so_rather_than_zero() {
         ExperienceTool storeOnly = new ExperienceTool(() -> null, store);
-        Map<String, Object> out = close(storeOnly, "/anywhere/Thing.java");
+        // This unit deliberately does not exist on disk — the case is about having no project at
+        // all — so its hash cannot be read from a file. A SHA of any text has the shape the
+        // server hands out, which is what the C14 form gate checks; the gate's own refusal is
+        // pinned separately by aNeverOfferedHashIsRefused.
+        Map<String, Object> out = closeWith(storeOnly, "/anywhere/Thing.java",
+            DescribedUnits.hash("a unit this test never put on disk"));
 
         Object closingOver = out.get("closingOver");
         assertInstanceOf(String.class, closingOver,

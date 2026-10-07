@@ -212,6 +212,43 @@ public final class DescribedUnits {
         return out;
     }
 
+    /** The number of hex characters {@link #hash} renders a SHA-256 digest into. */
+    private static final int HASH_LENGTH = 64;
+
+    /**
+     * Whether a string has the SHAPE {@link #hash} produces, and so could be one this server
+     * handed out.
+     *
+     * <p>Sprint 28g, C14 blocker 1 — an audit found the closing verb accepted ANY non-blank
+     * string as a unit's content hash, including one no {@code action=next} ever emitted, and
+     * recorded the unit as described on the strength of it. Marking a unit done RETIRES it, so
+     * the accepted lie is also durable.</p>
+     *
+     * <p><b>This answers a NARROWER question than "was this offered", and the difference is
+     * stated rather than glossed:</b> a string that is not 64 lowercase hex characters cannot be
+     * a hash {@link #hash} produced, so it can be refused outright on form alone. A well-formed
+     * hash of text nobody was ever offered STILL PASSES. Closing that needs the offers
+     * themselves to be remembered — stored state written on a read path — which is a design
+     * change rather than a predicate, and is raised at the checkpoint rather than taken here.</p>
+     *
+     * <p>The rule lives beside {@link #hash} because that is what produces the shape. A copy of
+     * it inside the calling tool would be a second statement of one fact, which this sprint has
+     * already paid for several times over.</p>
+     */
+    public static boolean hasHashShape(String candidate) {
+        if (candidate == null || candidate.length() != HASH_LENGTH) {
+            return false;
+        }
+        for (int i = 0; i < HASH_LENGTH; i++) {
+            char c = candidate.charAt(i);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+            if (!hex) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * The content hash of a unit's text.
      *
