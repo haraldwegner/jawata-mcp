@@ -39,11 +39,20 @@ class OneJobPerMemberTest {
 
     private static final String MEMBER = "com.example.d30.Gauge#reading";
 
-    /** Job rows anchored to exactly this member, through the read that already existed. */
+    /**
+     * Job rows anchored to exactly this member — through the KEYED read, 2026-10-08.
+     *
+     * <p>It was {@code listEntries("job", null, member, null, 50)} plus a Java re-filter, which
+     * is the read Stage 14 / D30's own defect was in: a capped, time-ordered page whose scope
+     * clause matches a dot-prefix, so a member's row can sit outside the window and read as
+     * absent. <b>This class verifies the one-job-per-member invariant, and it was verifying it
+     * through the read that could not see the row</b> — so a regression of exactly that kind
+     * would have left every assertion here green. Fixtures this small never reached the window,
+     * which is why it cost nothing and proved nothing.</p>
+     */
     private static List<StoredEntry> jobsFor(ExperienceStore store, String member) {
-        return store.listEntries("job", null, member, null, 50).stream()
-            .filter(e -> member.equals(e.symbolFqn()))
-            .toList();
+        return store.anchoredAt("job", ExperienceStore.Anchor.SYMBOL, List.of(member))
+            .getOrDefault(member, List.of());
     }
 
     private static ExperienceEntry jobOn(String summary, String member) {

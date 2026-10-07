@@ -156,9 +156,20 @@ class ARecrawlAfterAnEditLeavesOneJobPerMemberTest {
         assertTrue(r.isSuccess(), () -> "describing " + member + " failed: " + r.getError());
     }
 
-    /** How many job rows the store holds for exactly this member. */
+    /**
+     * How many job rows the store holds for exactly this member — through the KEYED read,
+     * 2026-10-08.
+     *
+     * <p>It was a capped {@code listEntries} page plus a Java re-filter. <b>This class carries
+     * C14's clause that a re-crawl leaves no member with two descriptions</b>, and it was asking
+     * the question through the read whose truncation is what produced the second description —
+     * so the clause was proved by an instrument that shared the defect's blind spot. The window
+     * of a thousand was never reached by this fixture, which is why nothing failed and nothing
+     * was shown.</p>
+     */
     private long rowsFor(String member) {
-        List<StoredEntry> rows = store.listEntries("job", null, member, null, 1000);
-        return rows.stream().filter(e -> member.equals(e.symbolFqn())).count();
+        return store.anchoredAt("job",
+                org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL, List.of(member))
+            .getOrDefault(member, List.of()).size();
     }
 }

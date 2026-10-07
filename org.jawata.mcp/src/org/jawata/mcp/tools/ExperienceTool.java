@@ -1913,8 +1913,17 @@ public final class ExperienceTool implements Tool {
     }
 
     private ToolResponse fallbackReport() {
+        // Stage 14 / D30's class, 2026-10-08. This is a COUNT over a capped read, and the cap
+        // was the one filter this method did not admit to — against its own rule below: "a
+        // filtered list that does not admit to filtering is the same lie in a smaller frame."
+        // It STAYS capped, because an aggregate over every row has no key set to ask about and
+        // ten thousand is a real bound on how much a report should read; what changes is that a
+        // truncated total says so. The consequence here is an UNDERSTATED gap count rather than
+        // a duplicate write — this verb instructs nothing — which makes it the same honesty
+        // defect and not the same incident.
+        final int lane = 10000;
         List<org.jawata.mcp.knowledge.StoredEntry> rows =
-            store.listEntries("failure_mode", null, null, null, 10000);
+            store.listEntries("failure_mode", null, null, null, lane);
         String prefix = "jawata-fallback slip:";
         Map<String, Integer> tally = new LinkedHashMap<>();
         int total = 0;
@@ -1956,9 +1965,11 @@ public final class ExperienceTool implements Tool {
         // day the writer moved; reading only the old one would make it stop
         // growing. Neither is true, so it reads both and says which is which.
         int fromToolLane = 0;
+        int toolLaneRowsRead = 0;
         if (toolLane != null) {
-            for (org.jawata.mcp.learn.ToolExperience t
-                    : toolLane.recentMatching(null, 10000)) {
+            List<org.jawata.mcp.learn.ToolExperience> toolRows = toolLane.recentMatching(null, lane);
+            toolLaneRowsRead = toolRows.size();
+            for (org.jawata.mcp.learn.ToolExperience t : toolRows) {
                 if (!org.jawata.mcp.learn.ToolExperience.OUTCOME_FALLBACK.equals(t.outcome())) {
                     continue;
                 }
@@ -2002,6 +2013,18 @@ public final class ExperienceTool implements Tool {
 
         // Say what was left OUT and why — a filtered list that does not admit to filtering is
         // the same lie in a smaller frame.
+        //
+        // THE CAP IS ONE OF THOSE FILTERS and was the one this method never declared. Either
+        // lane arriving full means the totals above are FLOORS: more slips exist and were not
+        // read, so a gap the report ranks low may simply be one whose rows fell outside the
+        // window. Declared per lane, because only the reader knows which half they are acting on.
+        if (rows.size() >= lane || toolLaneRowsRead >= lane) {
+            data.put("truncated", "The read is capped at " + lane + " rows per lane and at least"
+                + " one lane came back full (knowledge lane: " + rows.size() + ", tool lane: "
+                + toolLaneRowsRead + "). So totalFallbacks and every gap count are FLOORS, not"
+                + " totals — slips outside the window were not read, and a gap ranked low here"
+                + " may be one whose rows were truncated rather than one that is rare.");
+        }
         if (rejected > 0) {
             data.put("excludedRejected", rejected);
         }

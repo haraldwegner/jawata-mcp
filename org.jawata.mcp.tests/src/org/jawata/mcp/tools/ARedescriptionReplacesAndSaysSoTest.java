@@ -58,10 +58,15 @@ class ARedescriptionReplacesAndSaysSoTest {
         return (Map<String, Object>) r.getData();
     }
 
+    /**
+     * Through the KEYED read, 2026-10-08 — it was a capped {@code listEntries} page plus a Java
+     * re-filter, which is the read Stage 14 / D30's defect was in. A test that verifies the
+     * invariant through the read that could not see the row would stay green through a
+     * regression of exactly that kind.
+     */
     private static List<StoredEntry> jobsFor(ExperienceStore store, String member) {
-        return store.listEntries("job", null, member, null, 50).stream()
-            .filter(e -> member.equals(e.symbolFqn()))
-            .toList();
+        return store.anchoredAt("job", ExperienceStore.Anchor.SYMBOL, List.of(member))
+            .getOrDefault(member, List.of());
     }
 
     @Test
