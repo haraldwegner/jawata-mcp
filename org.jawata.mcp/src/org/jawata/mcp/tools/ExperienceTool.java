@@ -1652,15 +1652,44 @@ public final class ExperienceTool implements Tool {
 
     // --- Sprint 21a (item G): curation verbs -------------------------------------------
 
-    /** Curation browse — recall is terminal-single; promoting needs to SEE the set. */
+    /**
+     * Curation browse — recall is terminal-single; promoting needs to SEE the set.
+     *
+     * <p><b>IT DECLARES ITS OWN TRUNCATION, 2026-10-08.</b> This was the one site the C14 audit
+     * found where this fold's rule had not been applied, and the dispute was fair: the limit
+     * DEFAULTS to fifty when a caller omits it, the {@code scope} it accepts is prefix-matched,
+     * and nothing in the answer said either thing. So {@code experience(kind=list, scope=X)} —
+     * which an agent does reach for to ask whether X is described — could answer short and read
+     * as complete.</p>
+     *
+     * <p>The cap STAYS, and here that is not a concession: a browse is a listing whose size the
+     * caller chooses, which is the one shape a window genuinely belongs on. What it owed was the
+     * sentence beside it. A caller who passed their own limit is told the same thing, because a
+     * page that happens to be exactly as long as the number asked for is the case where "is
+     * there more?" cannot be answered by looking.</p>
+     */
     private ToolResponse list(JsonNode args) {
-        int limit = args != null && args.has("limit") && args.get("limit").isInt()
-            ? args.get("limit").asInt() : 50;
+        boolean limitWasGiven = args != null && args.has("limit") && args.get("limit").isInt();
+        int limit = limitWasGiven ? args.get("limit").asInt() : 50;
         List<org.jawata.mcp.knowledge.StoredEntry> rows = store.listEntries(
             text(args, "type"), text(args, "status"), text(args, "scope"),
             text(args, "language"), limit);
+        // A FULL PAGE IS A FLOOR. Said on both render paths, because the text form is what a
+        // reading agent sees and a disclosure only the JSON form carries is no disclosure.
+        String truncated = rows.size() < limit ? null
+            : "This page is FULL at " + rows.size() + " row(s)"
+                + (limitWasGiven ? "" : " (the DEFAULT limit — none was given)")
+                + ", so it is a floor and not the whole set: more may match and were not read."
+                + (text(args, "scope") == null ? ""
+                    : " `scope` also matches a dot-PREFIX, so these rows need not all be the"
+                        + " one you named.")
+                + " To ask whether a PARTICULAR member or package is described, use"
+                + " describe(action=jobs_for) or describe(action=next), which are answered"
+                + " exactly rather than from a page.";
         if ("text".equalsIgnoreCase(text(args, "format"))) {
-            return ToolResponse.success(ExperienceRetrieval.renderList(rows));
+            String rendered = ExperienceRetrieval.renderList(rows);
+            return ToolResponse.success(
+                truncated == null ? rendered : rendered + "\n\nTRUNCATED: " + truncated);
         }
         List<Map<String, Object>> entries = new ArrayList<>();
         for (org.jawata.mcp.knowledge.StoredEntry e : rows) {
@@ -1703,6 +1732,9 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("count", entries.size());
         data.put("entries", entries);
+        if (truncated != null) {
+            data.put("truncated", truncated);
+        }
         return ToolResponse.success(data);
     }
 

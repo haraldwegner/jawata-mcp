@@ -172,4 +172,42 @@ class ExperienceToolCurationTest {
     void import_requires_entries_or_path() {
         assertFalse(exec("import", a -> { }).isSuccess());
     }
+
+    /**
+     * 2026-10-08 — <b>a FULL browse page says it is a floor, and a short one says nothing.</b>
+     *
+     * <p>The C14 audit named this the one site where the fold's own rule had not been applied,
+     * and the dispute was fair: the limit DEFAULTS to fifty, the {@code scope} it accepts is
+     * prefix-matched, and the answer declared neither — so {@code list(scope=X)}, which an agent
+     * does reach for to ask whether X is described, could come back short and read as the whole
+     * set.</p>
+     *
+     * <p><b>The short-page case is the control and it carries the whole test.</b> Asserting that
+     * a full page declares itself proves nothing on its own: a tool that stamped every answer
+     * with the notice would satisfy it, and that is worse than silence because it would train a
+     * reader to ignore the key. The pair is what distinguishes "declares when truncated" from
+     * "always declares".</p>
+     */
+    @Test
+    void aFullBrowsePageSaysItIsAFloorAndAShortOneDoesNot() {
+        for (int i = 0; i < 4; i++) {
+            record("lesson", "A lesson worth keeping about overlapping runs, number " + i + ".",
+                "com.example.browse.Target#m" + i, null, null);
+        }
+
+        Map<String, Object> full = data(exec("list", a -> a.put("limit", 2)));
+        Map<String, Object> room = data(exec("list", a -> a.put("limit", 50)));
+
+        assertEquals(2, full.get("count"), () -> "precondition: the page is FULL at the limit"
+            + " asked for, which is what makes it unanswerable by looking: " + full);
+        assertTrue(room.get("count") instanceof Integer c && c < 50,
+            () -> "precondition: the other page has ROOM TO SPARE, so its silence below means"
+                + " 'nothing was hidden' rather than 'this tool never says': " + room);
+        assertTrue(String.valueOf(full.get("truncated")).contains("floor"),
+            () -> "a full page declares itself a floor: " + full);
+        assertFalse(room.containsKey("truncated"),
+            () -> "THE CONTROL: a page with room to spare declares NOTHING. A tool that stamped"
+                + " every answer would pass the assertion above and teach a reader to ignore"
+                + " the key: " + room);
+    }
 }
