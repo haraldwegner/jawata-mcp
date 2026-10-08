@@ -127,6 +127,8 @@ public final class JfrParser {
         List<String> executionSampleSymbols = new ArrayList<>();
         long blockingEvents = 0;
         long eventsWithoutStack = 0;
+        long idleNanos = 0;
+        long idleEvents = 0;
 
         try (RecordingFile rf = new RecordingFile(jfrFile)) {
             while (rf.hasMoreEvents()) {
@@ -144,12 +146,24 @@ public final class JfrParser {
                     executionSampleTimesNanos.add(event.getStartTime().toEpochMilli() * 1_000_000L);
                     executionSampleSymbols.add(symbol);
                 } else if (WALL_BLOCKING_EVENTS.contains(type)) {
-                    if (symbol == null) {
+                    if (!hasStack(event)) {
                         eventsWithoutStack++;
                         continue;
                     }
                     blockingEvents++;
-                    wallNanos.merge(symbol, event.getDuration().toNanos(), Long::sum);
+                    long nanos = event.getDuration().toNanos();
+                    // M13 HALF 1 — a thread WAITING FOR WORK is not a method that is slow.
+                    // Attributed to the blocked PROGRAM method, or counted as idle when the
+                    // stack holds none. Idle is reported BESIDE the ranking rather than inside
+                    // it, which is what this method's own catalogued job asks for: parked time
+                    // "shows up ALONGSIDE one that mostly computes" — visible, not dominant.
+                    String blocked = blockedSymbol(event);
+                    if (blocked == null) {
+                        idleNanos += nanos;
+                        idleEvents++;
+                    } else {
+                        wallNanos.merge(blocked, nanos, Long::sum);
+                    }
                 }
             }
         }
@@ -165,6 +179,8 @@ public final class JfrParser {
         List<Map.Entry<String, Long>> ranked = new ArrayList<>(wallNanos.entrySet());
         ranked.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
 
+        long rankedNanos = wallNanos.values().stream().mapToLong(Long::longValue).sum();
+
         List<Map<String, Object>> rows = new ArrayList<>();
         for (int i = offset; i < ranked.size() && rows.size() < limit; i++) {
             Map.Entry<String, Long> entry = ranked.get(i);
@@ -172,6 +188,15 @@ public final class JfrParser {
             row.put("rank", i + 1);
             row.put("symbol", entry.getKey());
             row.put("wallMillis", entry.getValue() / 1_000_000);
+            // M13 HALF 2 — the measure asks for the method "reported AT ITS SHARE", and the
+            // row carried none. The total was already computed here; the share simply was not
+            // in the row, so even a corrected ranking could not satisfy the clause. Of the
+            // RANKED total, because idle is no longer in it — a share of a number that
+            // included idle would be a share of mostly nothing. One decimal: this is read by
+            // an agent weighing rows against each other, and further digits spend context to
+            // say what one says.
+            row.put("sharePercent", rankedNanos == 0 ? 0.0
+                : Math.round(entry.getValue() * 1000.0 / rankedNanos) / 10.0);
             rows.add(row);
         }
 
@@ -180,7 +205,13 @@ public final class JfrParser {
         result.put("rows", rows);
         result.put("returnedRows", rows.size());
         result.put("totalMethods", ranked.size());
-        result.put("totalWallMillis", wallNanos.values().stream().mapToLong(Long::longValue).sum() / 1_000_000);
+        result.put("totalWallMillis", rankedNanos / 1_000_000);
+        // IDLE IS REPORTED, NEVER DROPPED. Excluding it from the ranking without saying what was
+        // excluded would replace one dishonest answer with a quieter one: a reader could not tell
+        // "nothing was waiting" from "the waiting is not shown here". `sharePercent` is of
+        // `totalWallMillis`, which is the ranked total, and these two name what sits outside it.
+        result.put("idleWallMillis", idleNanos / 1_000_000);
+        result.put("idleEvents", idleEvents);
         result.put("onCpuSamples", executionSampleSymbols.size());
         result.put("samplingIntervalMillis", sampleIntervalNanos / 1_000_000);
         result.put("blockingEvents", blockingEvents);
@@ -305,6 +336,97 @@ public final class JfrParser {
         result.put("totalPauseMillis", totalNanos / 1_000_000);
         result.put("maxPauseMillis", maxNanos / 1_000_000);
         return result;
+    }
+
+    /**
+     * The package prefixes that belong to the JVM ITSELF rather than to any program running on
+     * it.
+     *
+     * <p><b>Structural on purpose, and NOT a list of pool method names.</b> The tempting
+     * discriminator for "this thread is idle" is to recognise the places threads wait for work
+     * — {@code ForkJoinPool.awaitWork}, {@code ThreadPoolExecutor.getTask},
+     * {@code LinkedBlockingQueue.take}. This project's own record is that a policy expressed as
+     * a set of NAMES fails open the moment one of them is renamed, retired or added, because no
+     * reference-updating refactoring touches a string literal. A package prefix is a fact about
+     * where code LIVES, and the JDK's top-level namespaces do not get renamed.</p>
+     */
+    private static final List<String> RUNTIME_PREFIXES =
+        List.of("java.", "javax.", "jdk.", "sun.", "com.sun.");
+
+    /**
+     * The method that was BLOCKED — the innermost frame belonging to a PROGRAM rather than to
+     * the JVM — or {@code null} when the whole stack is runtime.
+     *
+     * <p><b>A null answer is the discriminator M13 needs, and it falls out of the definition
+     * rather than being imposed.</b> A thread waiting FOR work has no work on its stack: an
+     * idle pool worker parks under {@code ForkJoinPool.awaitWork} beneath
+     * {@code ForkJoinWorkerThread.run}, every frame of it runtime, so there is no program
+     * method to attribute the wait to. A thread blocked IN work has the method that was blocked
+     * sitting right there under the park, and walking outward from the park finds it first —
+     * which also means the row NAMES that method instead of naming {@code Unsafe#park}, where
+     * every blocked thread in the process collapses together.</p>
+     *
+     * <p>Measured before the repair, on a 12-second recording of an essentially idle resident:
+     * {@code Unsafe#park} was attributed <b>210002 ms against 12000 ms of recording</b>, 17.5x
+     * the recording's own length — which no single method can occupy, and which is reachable
+     * only by summing many threads' parks into one frame. Both ranked rows were park/wait and
+     * no real method appeared at all.</p>
+     */
+    private static String blockedSymbol(RecordedEvent event) {
+        RecordedStackTrace stack = event.getStackTrace();
+        if (stack == null) {
+            return null;
+        }
+        List<String> symbols = new ArrayList<>();
+        for (RecordedFrame frame : stack.getFrames()) {
+            RecordedMethod method = frame.getMethod();
+            if (method == null || method.getType() == null) {
+                continue;
+            }
+            symbols.add(method.getType().getName() + "#" + method.getName());
+        }
+        return innermostProgramFrame(symbols);
+    }
+
+    /**
+     * THE M13 DECISION, as a pure function over frame symbols — innermost first.
+     *
+     * <p>Separated from the JFR walking above <b>because the decision is the part worth
+     * testing and the walking is not.</b> A {@code RecordedEvent} cannot reasonably be
+     * constructed in a test, so a rule buried inside that loop is a rule no test can reach;
+     * this takes the one thing the rule actually reads — the ordered frame symbols — and the
+     * plumbing that produces them stays a three-line loop with nothing to get wrong.</p>
+     *
+     * @param framesInnermostFirst {@code Type#method} per frame, innermost (the park itself)
+     *                             first, which is the order JFR hands them over in
+     * @return the first symbol whose type is not the JVM's own, or {@code null} when every
+     *         frame is runtime — a thread with no program work on its stack
+     */
+    static String innermostProgramFrame(List<String> framesInnermostFirst) {
+        for (String symbol : framesInnermostFirst) {
+            int hash = symbol.indexOf('#');
+            String type = hash < 0 ? symbol : symbol.substring(0, hash);
+            boolean runtime = false;
+            for (String prefix : RUNTIME_PREFIXES) {
+                if (type.startsWith(prefix)) {
+                    runtime = true;
+                    break;
+                }
+            }
+            if (!runtime) {
+                return symbol;
+            }
+        }
+        return null;
+    }
+
+    /** Whether this event carries a stack at all — distinct from carrying an all-runtime one. */
+    private static boolean hasStack(RecordedEvent event) {
+        if (!event.hasField("stackTrace")) {
+            return false;
+        }
+        RecordedStackTrace stack = event.getStackTrace();
+        return stack != null && !stack.getFrames().isEmpty();
     }
 
     private static String topFrameSymbol(RecordedEvent event) {
