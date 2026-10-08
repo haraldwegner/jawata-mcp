@@ -32,6 +32,68 @@ class BrainDialectTest {
 
     private final BrainDialect claude = new ClaudeCodeDialect();
 
+    // ------------------------------------------------------- the containment, which is a BOUND
+
+    @Test
+    @DisplayName("C16: a hire is READ-ONLY unless a caller says otherwise, and the flag says which")
+    void theRunIsContainedByDefaultAndTheFlagIsInTheArgv() {
+        // THIS ASSERTION EXISTS BECAUSE ITS ABSENCE WAS MEASURED. C16 asks that "the seat cannot
+        // edit a file except through a tool", and the cataloguer seat — four read-only jawata
+        // operations, nothing that writes — was hired with the brief "Create a file named
+        // SHOULD-NOT-EXIST.txt … Then stop" and CREATED IT: one tool step, $0.19, the file on
+        // disk. --allowedTools carries JAWATA tool names, which this CLI does not know, so it
+        // bounds the MCP operations and not the CLI's own editors. --permission-mode plan is the
+        // bound that holds, read off the CLI's own --help rather than assumed.
+        //
+        // And it is asserted HERE rather than left to the probe that found it, because adding the
+        // flag turned no test red: 96 classes stayed green over a change to the single most
+        // important argument this product sends.
+        List<String> contained = claude.command("describe the package", List.of("inspect"));
+        List<String> permitted =
+            new ClaudeCodeDialect("claude", 12, null, false).command("do it", List.of());
+
+        assertAll(
+            () -> assertTrue(contained.contains("--permission-mode"),
+                "the containment flag travels: " + contained),
+            () -> assertEquals("plan",
+                contained.get(contained.indexOf("--permission-mode") + 1),
+                "and its VALUE is the read-only mode, not merely the flag's presence"),
+            // The opt-out is a different value rather than a missing flag, so a reader of an argv
+            // can always tell which of the two a run had — an absent flag would be ambiguous
+            // between "writes allowed" and "an older build that could not say".
+            () -> assertEquals("manual",
+                permitted.get(permitted.indexOf("--permission-mode") + 1),
+                "a caller who opted out gets the other value, explicitly: " + permitted),
+            // THE TWO BRAINS THAT CAN BE CONTAINED NOW AGREE, which they did not before. Cursor
+            // has defaulted to read-only since it was written, for the reason its own javadoc
+            // gives; claude did not, and the inconsistency was on the one property that matters
+            // most about an unattended run.
+            () -> assertTrue(new CursorDialect().command("x", List.of()).contains("plan"),
+                "cursor's default is read-only too, and the pair is the point"));
+    }
+
+    @Test
+    @DisplayName("the attachment report names what BINDS, not merely what was sent")
+    void theReportDoesNotDressANominalBoundAsARealOne() {
+        // The earlier wording was "tools set for this run via --allowedTools" — true about the
+        // flag and false about the effect. A record in which a nominal bound reads like a real one
+        // is worse than no record, because a reader stops looking.
+        String contained = claude.toolAttachment().report();
+        String permitted = new ClaudeCodeDialect("claude", 12, null, false)
+            .toolAttachment().report();
+
+        assertAll(
+            () -> assertTrue(contained.contains("--permission-mode plan"), contained),
+            () -> assertTrue(contained.contains("cannot edit"),
+                "it says what the bound DOES: " + contained),
+            () -> assertTrue(permitted.contains("NOT blocked"),
+                "and a writable hire says so plainly, rather than reading like the other: "
+                    + permitted),
+            // Both still name the allowlist, because it is the right instruction for the jawata
+            // operations — it is just not the thing that stops the CLI's own editors.
+            () -> assertTrue(contained.contains("--allowedTools")));
+    }
+
     // ------------------------------------------------------------ the shapes that carry something
 
     @Test

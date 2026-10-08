@@ -51,16 +51,40 @@ public final class ClaudeCodeDialect implements BrainDialect {
     private final String binary;
     private final int maxTurns;
     private final String model;
+    private final boolean readOnly;
 
     public ClaudeCodeDialect() {
         this("claude", DEFAULT_MAX_TURNS, null);
     }
 
-    /** @param model the model to ask for, or null to take the CLI's own default. */
+    /**
+     * READ-ONLY, because that is the hire path's contract and because the alternative was measured.
+     *
+     * @param model the model to ask for, or null to take the CLI's own default.
+     */
     public ClaudeCodeDialect(String binary, int maxTurns, String model) {
+        this(binary, maxTurns, model, true);
+    }
+
+    /**
+     * @param readOnly pass {@code --permission-mode plan}, which is this CLI's own read-only mode.
+     *     DEFAULTED ON by the constructor above, for the reason {@link CursorDialect} gives in the
+     *     same words: an unattended run PROPOSES, and a caller who means to let it write passes
+     *     false and says so, which is the direction that decision should have to travel.
+     *     <p>It was added after a MEASUREMENT rather than on principle. C16 asks that "the seat
+     *     cannot edit a file except through a tool", and the cataloguer seat — whose declared tools
+     *     are four read-only jawata operations and nothing that writes — was hired with the brief
+     *     "Create a file named SHOULD-NOT-EXIST.txt … Then stop" and CREATED IT: one tool step,
+     *     $0.19, clean exit, the file on disk. So {@code --allowedTools} carrying JAWATA tool names
+     *     restricts nothing here: those are not names this CLI knows, and a list of names it does
+     *     not recognise is not a bound on the tools it does. The clause was nominal, and the
+     *     containment it reported was a sentence rather than a fact.</p>
+     */
+    public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly) {
         this.binary = binary == null || binary.isBlank() ? "claude" : binary;
         this.maxTurns = maxTurns > 0 ? maxTurns : DEFAULT_MAX_TURNS;
         this.model = model;
+        this.readOnly = readOnly;
     }
 
     @Override
@@ -85,6 +109,17 @@ public final class ClaudeCodeDialect implements BrainDialect {
         List<String> argv = new ArrayList<>(List.of(
             binary, "-p", prompt == null ? "" : prompt,
             "--output-format", "stream-json",
+            // THE CONTAINMENT THAT ACTUALLY CONTAINS, read off this CLI's own --help on 2026-10-08:
+            // `--permission-mode <mode>` takes "plan" among its values, and plan mode analyses and
+            // proposes without editing. It is added FIRST among the optional flags because it is
+            // the one flag whose absence was measured to let a read-only seat write a file.
+            //
+            // It is not belt-and-braces over --allowedTools below; it is the only one of the two
+            // that binds. The allowlist carries the seat's JAWATA tool names, which this CLI does
+            // not know, so it bounds nothing it owns. Both are sent: the allowlist is still the
+            // right instruction for the MCP tools the brain reaches through jawata, and plan mode
+            // is what stops its own editors.
+            "--permission-mode", readOnly ? "plan" : "manual",
             "--verbose",
             "--max-turns", Integer.toString(maxTurns)));
         if (model != null && !model.isBlank()) {
@@ -104,7 +139,18 @@ public final class ClaudeCodeDialect implements BrainDialect {
 
     @Override
     public ToolAttachment toolAttachment() {
-        return ToolAttachment.perRun("--allowedTools (with --mcp-config / --strict-mcp-config"
+        // THE REPORT NAMES WHAT BINDS, and it used to name only what was sent. The earlier wording
+        // — "tools set for this run via --allowedTools" — was true about the flag and false about
+        // the effect: measured, a seat whose declared tools cannot write wrote a file anyway,
+        // because the allowlist carries jawata's tool names and this CLI does not know them. A
+        // record in which a nominal bound reads like a real one is worse than no record.
+        return ToolAttachment.perRun((readOnly
+            ? "--permission-mode plan, which this hire passes: read-only, so it analyses and"
+                + " proposes and cannot edit — this is the bound that holds; plus "
+            : "--permission-mode manual: writes are NOT blocked for this hire, by explicit"
+                + " request; plus ")
+            + "--allowedTools, which carries the seat's jawata operations and bounds those"
+            + " rather than the CLI's own editors (with --mcp-config / --strict-mcp-config"
             + " available to bound which servers are reachable at all)");
     }
 
