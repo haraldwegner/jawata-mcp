@@ -1,14 +1,11 @@
 package org.jawata.mcp.learn;
 
-import java.util.List;
-import java.util.Map;
-
 import org.jawata.mcp.coverage.MechanicalChangeJournal;
 import org.jawata.mcp.knowledge.LearnerEventStore;
+import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * The event tap (Sprint 26; Sprint 26a): sits at the ToolRegistry choke point —
@@ -173,24 +170,17 @@ public class EventTap {
     }
 
     private static int filesModified(ToolResponse response) {
-        if (response.getData() instanceof Map<?, ?> map
-                && map.get("filesModified") instanceof List<?> files) {
-            return files.size();
-        }
-        return 0;
+        return ResponseFacts.filesModified(response);
     }
 
+    /**
+     * ZERO when the response carried no count in a shape the shared reader knows, which is this
+     * class's own behaviour unchanged — telemetry about a tool that reported nothing is zero.
+     *
+     * <p>A GATE must not make that choice: see {@link ResponseFacts#errorCount}. The decision lives
+     * here, at the caller, precisely because the two kinds of caller want opposite answers to it.</p>
+     */
     private static long errorCount(ToolResponse response) {
-        if (response.getData() instanceof Map<?, ?> map) {
-            Object v = map.get("errorCount");
-            if (v instanceof Number n) {
-                return n.longValue();
-            }
-            Object failed = map.get("failed");
-            if (failed instanceof Number n) {
-                return n.longValue();
-            }
-        }
-        return 0;
+        return ResponseFacts.errorCount(response).orElse(0L);
     }
 }

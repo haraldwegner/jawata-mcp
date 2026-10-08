@@ -1,14 +1,13 @@
 package org.jawata.mcp.learn;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.jawata.mcp.knowledge.ToolExperienceStore;
+import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.mcp.models.CallerIdentity;
 
 /**
  * The D2 capture logic (Sprint 26a): turns outcome-bearing tool calls into
@@ -206,24 +205,15 @@ public final class ToolExperienceRecorder {
     }
 
     private static int filesModified(ToolResponse response) {
-        if (response.getData() instanceof Map<?, ?> map
-                && map.get("filesModified") instanceof List<?> files) {
-            return files.size();
-        }
-        return 0;
+        return ResponseFacts.filesModified(response);
     }
 
+    /**
+     * ZERO when the response carried no count in a shape the shared reader knows — this class's
+     * own behaviour unchanged, for the reason its sibling tap gives: telemetry about a tool that
+     * reported nothing is zero, while a GATE must treat the same silence as not having answered.
+     */
     private static long errorCount(ToolResponse response) {
-        if (response.getData() instanceof Map<?, ?> map) {
-            Object v = map.get("errorCount");
-            if (v instanceof Number n) {
-                return n.longValue();
-            }
-            Object failed = map.get("failed");
-            if (failed instanceof Number n) {
-                return n.longValue();
-            }
-        }
-        return 0;
+        return ResponseFacts.errorCount(response).orElse(0L);
     }
 }
