@@ -190,13 +190,21 @@ public final class Landmarks {
                     // harness builds a FRESH temp directory per test method, so projectRoot and
                     // loadedAt are unique per method and this key CANNOT collide across tests.
                     // The fast path above therefore served nothing, and THIS GUARD DOES NOT
-                    // EXPLAIN THAT RED RUN. It is kept on its own merits and on nothing else.
+                    // EXPLAIN THAT RED RUN. It is kept for the reason below.
                     //
-                    // AND THE FAST PATH DEPENDS ON THIS GUARD, which the first version of this
-                    // comment did not record while calling the guard "kept on its own merits and
-                    // on nothing else". This is the ONLY writer to CACHE, so it is the only
-                    // reason the fast path above cannot serve an empty entry as `ready: true`.
-                    // Removing it reopens that path, and nothing else would notice.
+                    // AND THE FAST PATH DEPENDS ON IT. This is the only INSERTER into CACHE —
+                    // invalidate() and the size cap also mutate the map, so "only writer" would
+                    // be wrong — which makes it the only reason the fast path above cannot serve
+                    // an empty entry as `ready: true`. Removing it reopens that path and nothing
+                    // else would notice.
+                    //
+                    // (This paragraph previously ended the sentence above with "kept on its own
+                    // merits and on nothing else" and then, three lines later, said the fast path
+                    // DEPENDS on it — withdrawing a claim and re-asserting it in one comment,
+                    // which is the shape four consecutive audit rounds have now found here. It
+                    // also blamed "the first version of this comment" for that phrase; the
+                    // phrase was the SECOND version's, and it was still standing above while
+                    // the correction named the wrong author.)
                     //
                     // Its own merits are real: stillResolves answers true VACUOUSLY on an empty
                     // list, so an empty entry that does reach this map is served thereafter as

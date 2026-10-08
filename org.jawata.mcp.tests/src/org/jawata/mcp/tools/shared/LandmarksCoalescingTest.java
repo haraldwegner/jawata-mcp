@@ -164,12 +164,19 @@ class LandmarksCoalescingTest {
      * <p><b>THIS PARAGRAPH CARRIED THREE FALSE CLAIMS AND IS REWRITTEN.</b> It said the cache is
      * "keyed by the project NAME" — it is keyed by each project's ROOT, source-file count and
      * load instant, and the field's own javadoc records NAME-keying as a Sprint-24 defect already
-     * fixed. It said this was "how the C14 post-fold suite went red" — the harness builds a fresh
-     * temp directory per test METHOD, so that key cannot collide and this cannot have been the
-     * cause. And it inferred from an absent warning that "a ranking had SUCCEEDED" — both paths
-     * that produce an empty list swallow their cause at DEBUG, so the absent warning proves only
-     * that the ranking did not THROW. A round-2 audit struck all three in the production file and
-     * this test, written in the same session, kept them; a round-3 audit found them here.</p>
+     * fixed. It said this was "how the C14 post-fold suite went red" — the RED TEST loads a project
+     * copy, whose root is a fresh temp directory per test METHOD, so ITS key cannot collide and
+     * this cannot have been the cause. (Not a property of the key in general, and the
+     * counter-example is THIS test: {@code new JdtServiceImpl()} loads nothing, so the key
+     * iterates no projects and is the EMPTY STRING — a constant every project-less service in the
+     * JVM shares. The guard under test is exactly what makes that harmless, which is worth saying
+     * where an earlier draft of this sentence implied the opposite.) And it inferred from an absent
+     * warning that "a ranking had SUCCEEDED" — the two FAILING producers of an empty list swallow
+     * their cause at DEBUG, so the absent warning proves only that the ranking did not THROW.
+     * (There is a third producer and it is not a failure at all: {@code rank} skips every type
+     * with zero references, which is the documented true zero.) A round-2 audit struck all three
+     * claims in the production file and this test, written in the same session, kept them; a
+     * round-3 audit found them here.</p>
      *
      * <p><b>What is true, and is why this test stays:</b> {@code invalidate()} has no production
      * caller, and {@code stillResolves} answers true VACUOUSLY on an empty list — so an empty
