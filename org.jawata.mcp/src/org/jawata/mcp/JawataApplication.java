@@ -9,6 +9,7 @@ import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.core.host.HostProcesses;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
@@ -36,6 +37,7 @@ import org.jawata.mcp.tools.GetCallHierarchyTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.GoToDefinitionTool;
 import org.jawata.mcp.tools.HealthCheckTool;
+import org.jawata.mcp.tools.HireTool;
 import org.jawata.mcp.tools.InspectTool;
 import org.jawata.mcp.tools.LoadProjectTool;
 import org.jawata.mcp.tools.ProfileTool;
@@ -89,6 +91,17 @@ public class JawataApplication implements IApplication {
     // Sprint 21 (v2.0): the local experience/knowledge store — workspace-scoped H2,
     // opened at start()/closed at stop(). Backs the ExperienceAdvisor + store tools.
     private ExperienceStore experienceStore;
+
+    /**
+     * The learner-event journal, or NULL on the degraded path (Sprint 28g S16).
+     *
+     * <p>It rides the experience store's H2 file, so a non-H2 store has none — which is a state
+     * this class already branches on and already logs. It is a field because {@code hire} needs
+     * the same journal a hired run's record lands in and is registered in another method; a second
+     * instance over the same database would write the same rows and would be a second answer to
+     * "where does a record go".</p>
+     */
+    private org.jawata.mcp.knowledge.LearnerEventStore learnerEvents;
     /** Sprint 26: kept for the watch engine's detector binding. */
     private FindQualityIssueTool findQualityIssueTool;
     /** Sprint 21b (item D): held for the automatic post-project-load refresh. */
@@ -217,8 +230,11 @@ public class JawataApplication implements IApplication {
         // of use). Rides the store's H2 file; a non-H2 (degraded) store means
         // ledger-only tapping, stated in the log.
         if (experienceStore instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
-            org.jawata.mcp.knowledge.LearnerEventStore learnerEvents =
-                new org.jawata.mcp.knowledge.LearnerEventStore(h2);
+            // Sprint 28g S16: a FIELD rather than a local, because `hire` needs the same journal
+            // and is registered in another method. It stays NULL on the degraded path, which is
+            // the condition this `if` already expresses — and `hire` reports that absence rather
+            // than disappearing from the published tool list, where no client could see it.
+            learnerEvents = new org.jawata.mcp.knowledge.LearnerEventStore(h2);
             org.jawata.mcp.learn.SessionLedger sessionLedger =
                 new org.jawata.mcp.learn.SessionLedger();
             org.jawata.mcp.learn.EventTap eventTap = new org.jawata.mcp.learn.EventTap(
@@ -1208,6 +1224,21 @@ public class JawataApplication implements IApplication {
         // diagnostics (threads/deadlock/heap/GC/native-memory) via jcmd, against
         // the same sessions `debug` opens. toolCount 44 -> 45 (the budget's end state).
         toolRegistry.register(new ProfileTool(() -> jdtService, runtimeSessions));
+
+        // Sprint 28g S16 (C16): the hire path's FIRST production caller. HiredRun.issue had seven
+        // callers and every one was a test — filed as S16-5 — so one seat could not hire another
+        // in the live process at all, which is C16's first clause.
+        //
+        // The two suppliers are not symmetric and the asymmetry is the point. The REGISTRY one
+        // breaks a real cycle: this tool sits in the registry its own gates run through, so the
+        // gate runner is built per call from whatever the registry holds by then. The JOURNAL one
+        // may answer null, because a degraded resident has no journal; the tool is still published
+        // and refuses with that reason, since a tool missing from the list is a degradation no
+        // client can see.
+        toolRegistry.register(new HireTool(() -> jdtService, HostProcesses.system(),
+            new org.jawata.mcp.runtime.RuntimeArtifactStore(),
+            new org.jawata.mcp.learn.PlanLedger(),
+            () -> learnerEvents, () -> toolRegistry));
 
         // Sprint 14 Phase B.1 (v1.8.0): consolidated lifecycle tool.
         toolRegistry.register(new RefreshWorkspaceTool(() -> jdtService));

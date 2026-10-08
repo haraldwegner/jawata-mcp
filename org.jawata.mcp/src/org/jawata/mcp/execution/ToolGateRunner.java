@@ -124,11 +124,11 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             // Case 4. The one that would otherwise pass silently.
             return didNotAnswer(step, "it succeeded but published no error count this runner reads");
         }
-        // SATURATED rather than wrapped: a count above two billion is not a number any gate really
-        // reports, and an int overflow would turn a catastrophic one into a small one or a negative.
-        long count = errors.getAsLong();
-        int reported = count > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) count;
-        return new GateOutcome(step.tool(), step.gateArguments(), reported, true);
+        // Passed through as a long, which is what GateOutcome stores. An earlier version saturated
+        // it to Integer.MAX_VALUE on the belief the record held an int; reading the record is what
+        // corrected that. Narrowing a count nothing asked to be narrowed would have invented a
+        // ceiling and lost information above it, for no reader's benefit.
+        return new GateOutcome(step.tool(), step.gateArguments(), errors.getAsLong(), true);
     }
 
     /**
