@@ -248,11 +248,25 @@ class HotspotTest {
         // already names for its CPU half ("asserting a rank on that reports a conclusion the
         // data cannot support, in either direction") and never applied here.
         //
-        // So the clause is stated as what actually distinguishes wall from cpu, and it is
-        // STRICTLY STRONGER than the rank it replaces: wall must name BOTH methods, because
-        // elapsed time counts whether a thread was on the CPU or blocked, and the blocking one
-        // must be named by its own PROGRAM symbol rather than by the JVM primitive it parked
-        // in — which is the thing a reader can act on and the thing the old #1 never gave them.
+        // TWO CLAIMS MADE HERE WERE WIDER THAN THE EVIDENCE, and the C15 audit and the
+        // architect watch caught them independently. Both are corrected rather than annotated:
+        //
+        // 1. "STRICTLY STRONGER" WAS FALSE. Two of the three replacement clauses are strictly
+        //    stronger — requiring `waitOnLock` by its own program symbol, which the old test
+        //    COULD NOT require since `Object#wait0` satisfied it, and forbidding any JVM
+        //    primitive row. The third is REVERSED, not strengthened: the old test FORBADE
+        //    burnCpu at rank 1, the new set merely requires it present. The rank was dropped
+        //    and nothing ordinal replaced it, so a magnitude regression — a wrong time unit,
+        //    or waitOnLock falling to rank 5 with 1 ms — passes all three new clauses and
+        //    would have failed the old one.
+        // 2. "PASSING BECAUSE OF THE DEFECT" was also too wide. `waitOnLock` contains both
+        //    "wait" and "Lock", so it satisfies the old clauses too: the old test is still
+        //    SATISFIABLE after the repair. It went red because the 8% tie flipped, not because
+        //    the clause encoded the defect. The honest reason is the narrower one — it asserted
+        //    a rank the data cannot support.
+        //
+        // SO A RANK-FREE RELATION IS ADDED BELOW, which was available and not taken. Dropping
+        // the rank at an 8% gap is still right; carrying NO relation between rows was not.
         List<String> wallSymbols = wallRows.stream()
             .map(row -> row.get("symbol").toString())
             .toList();
@@ -269,6 +283,29 @@ class HotspotTest {
             "and NO row is a bare JVM blocking primitive, which is the frame every blocked"
                 + " thread shares and the row this assertion used to be satisfied by: "
                 + wallRows);
+
+        // THE RESTORED MAGNITUDE RELATION. Not a rank — a rank across the measured 8% gap is a
+        // coin flip. A FLOOR on the blocking method's share is not: this fixture is "~97%
+        // blocked BY DESIGN" (see the CPU caveat below), and measured it holds 4484 ms of a
+        // 9316 ms ranked total, about 48%. A 10% floor therefore has nearly 5x of headroom
+        // while still failing every regression the dropped rank would have caught — a wrong
+        // time unit, or waitOnLock collapsing to a handful of milliseconds at rank 5.
+        //
+        // The architect watch proposed a sharper form: waitOnLock's share in WALL exceeding its
+        // share in CPU, which expresses wall-is-not-cpu as a relation between the dimensions
+        // rather than as a floor. It is better and it is NOT what this is. The cpu dimension
+        // publishes no share, so it would have to be computed from a CAPPED page's sample sum,
+        // which compares a whole-answer share against a page share — unlike things. Recorded as
+        // the better clause once the cpu dimension carries a share of its own.
+        Map<String, Object> blockingRow = wallRows.stream()
+            .filter(row -> "com.example.debug.WallTimeTarget#waitOnLock".equals(row.get("symbol")))
+            .findFirst().orElseThrow();
+        double blockingShare = ((Number) blockingRow.get("sharePercent")).doubleValue();
+        assertTrue(blockingShare >= 10.0,
+            "the blocking method must hold a REAL share of the wall clock, not merely appear in"
+                + " the list — this is the magnitude dimension the dropped rank used to carry,"
+                + " and the fixture blocks by design, so 10% is a floor with ~5x headroom. Got "
+                + blockingShare + "% from " + blockingRow);
 
         // The CORROBORATION, and it is sampling-dependent, so it goes LAST and behind a
         // precondition. WallTimeTarget is ~97% blocked BY DESIGN — that is the whole point of
@@ -381,6 +418,28 @@ class HotspotTest {
             // check and what a time without a count hides.
             () -> assertNotNull(root.get("samples"),
                 () -> "every node reports the samples behind its number: " + root));
+
+        // C15 AUDIT BLOCKER 4 — the truncation marker is NOT tested here, and the reason is a
+        // measurement rather than a choice. `HotLoopTarget`'s sampled tree is exactly two deep
+        // (main -> burnCpu, and burnCpu is the innermost frame of every sample), while the tool
+        // clamps `maxDepth` to at least 1 — so the shallowest request this door accepts already
+        // reaches the end of this fixture's chain and there is nothing to cut. A first version
+        // asserted the marker here and failed for exactly that reason; loosening the clamp to
+        // make it pass would have been changing the product to suit a test. The clause lives in
+        // `WallTimeNamesWorkNotWaitingTest` instead, over a deliberately deep chain and against
+        // the parser, where no clamp applies.
+
+        // C15 AUDIT BLOCKER 7 — the bare-Type entry form is advertised in the published schema
+        // and in the absence note, and BOTH existing cases passed a Type#method. So the
+        // capability was correct and unproven: making its clause return false reddened nothing.
+        ObjectNode bare = profileAction("call_tree");
+        bare.put("artifactId", artifactId);
+        bare.put("entryPoint", "com.example.debug.HotLoopTarget");
+        Map<String, Object> byType = data(profile.execute(bare));
+
+        assertTrue(((Number) byType.get("samplesThroughEntryPoint")).longValue() > 0,
+            "a bare Type enters at any of its methods, which the schema promises and nothing"
+                + " exercised: " + byType);
     }
 
     @Test

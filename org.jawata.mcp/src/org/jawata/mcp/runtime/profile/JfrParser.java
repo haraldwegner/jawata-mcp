@@ -132,8 +132,16 @@ public final class JfrParser {
         // IT IS NOT A CALL COUNT AND IS NOT NAMED ONE. `callCounts`' own javadoc records that
         // v2.13.0 relabelled a hotspot's top-of-stack sample count as an invocation count and a
         // Sprint-24 audit caught it; true per-method counts need a live method trace, which is
-        // `call_counts`, and this is the number of EVENTS the milliseconds were summed from.
-        Map<String, Long> wallCounts = new LinkedHashMap<>();
+        // `call_counts`.
+        //
+        // TWO MAPS, NOT ONE, AND THE C15 AUDIT IS WHY. The first version kept a single
+        // `wallCounts` incremented once per BLOCKING EVENT on one branch and once per EXECUTION
+        // SAMPLE on the other, published as one field called `samples`. That is one name over
+        // two different units — a monitor wait is not a sample — and it is the same relabeling
+        // shape as the defect cited above, one step milder. A reader given "N samples" for N
+        // monitor waits has been told something false about how the number was made.
+        Map<String, Long> blockingCounts = new LinkedHashMap<>();
+        Map<String, Long> cpuSampleCounts = new LinkedHashMap<>();
         List<Long> executionSampleTimesNanos = new ArrayList<>();
         List<String> executionSampleSymbols = new ArrayList<>();
         long blockingEvents = 0;
@@ -161,6 +169,14 @@ public final class JfrParser {
                         eventsWithoutStack++;
                         continue;
                     }
+                    // AN UNREADABLE STACK IS NOT AN IDLE THREAD. `hasStack` above proved the
+                    // event HAS frames; if none of them resolves to a method, there is nothing
+                    // to attribute and nothing to conclude — counting it as idle would be a
+                    // claim about the program made from a gap in the recording.
+                    if (readableFrames(event).isEmpty()) {
+                        eventsWithoutStack++;
+                        continue;
+                    }
                     blockingEvents++;
                     long nanos = event.getDuration().toNanos();
                     // M13 HALF 1 — a thread WAITING FOR WORK is not a method that is slow.
@@ -174,7 +190,7 @@ public final class JfrParser {
                         idleEvents++;
                     } else {
                         wallNanos.merge(blocked, nanos, Long::sum);
-                        wallCounts.merge(blocked, 1L, Long::sum);
+                        blockingCounts.merge(blocked, 1L, Long::sum);
                     }
                 }
             }
@@ -186,7 +202,7 @@ public final class JfrParser {
         long sampleIntervalNanos = medianGapNanos(executionSampleTimesNanos);
         for (String symbol : executionSampleSymbols) {
             wallNanos.merge(symbol, sampleIntervalNanos, Long::sum);
-            wallCounts.merge(symbol, 1L, Long::sum);
+            cpuSampleCounts.merge(symbol, 1L, Long::sum);
         }
 
         List<Map.Entry<String, Long>> ranked = new ArrayList<>(wallNanos.entrySet());
@@ -210,10 +226,21 @@ public final class JfrParser {
             // say what one says.
             row.put("sharePercent", rankedNanos == 0 ? 0.0
                 : Math.round(entry.getValue() * 1000.0 / rankedNanos) / 10.0);
-            // The count the milliseconds were summed from, so a 1-event row and a 400-event row
-            // are distinguishable instead of ranking identically. Named `samples` to match every
-            // other dimension's row, which is also the field the suite's rankability guard reads.
-            row.put("samples", wallCounts.getOrDefault(entry.getKey(), 0L));
+            // THE OBSERVATIONS THE MILLISECONDS WERE SUMMED FROM, in their own units, so a row
+            // built from ONE long block and a row built from four hundred short ones are
+            // distinguishable instead of ranking identically. Reported SEPARATELY because a
+            // wall row's time can come from either source or both, and one field over two units
+            // tells a reader something false about how the number was made — see the two maps
+            // above. Neither is an invocation count; those are action=call_counts.
+            long blockingHere = blockingCounts.getOrDefault(entry.getKey(), 0L);
+            long samplesHere = cpuSampleCounts.getOrDefault(entry.getKey(), 0L);
+            row.put("blockingEvents", blockingHere);
+            row.put("cpuSamples", samplesHere);
+            // `samples` is kept as the TOTAL observation count, which is what the suite's
+            // rankability guard reads on every other dimension and the one number that answers
+            // "is this row thin". It is a sum of two units and SAYS SO through the two fields
+            // beside it, rather than being the only thing published.
+            row.put("samples", blockingHere + samplesHere);
             rows.add(row);
         }
 
@@ -246,9 +273,12 @@ public final class JfrParser {
      * stage opened:</b> <i>"a ranking that credits each sample only to its top stack frame never
      * names the method that holds the time"</i> — because a self-time ranking credits the method
      * executing at that instant, so a caller whose time goes entirely into what it calls scores
-     * ZERO and never appears at all. {@link #wallHotspots} names where the CPU was; it cannot
-     * name what the work was FOR. That is not a defect in it — self time is the right answer to
-     * its own question — it is a different question, and this is it.</p>
+     * ZERO and never appears at all. {@link #wallHotspots} names WHERE THE TIME WAS SPENT — on
+     * the CPU or blocked, the method running or the method waiting — and cannot name what the
+     * work was FOR. (An earlier version of this sentence said it "names where the CPU was",
+     * which describes {@code hotspots(dimension=cpu)}, a different method; corrected at the C15
+     * audit.) That is not a defect in either — self time is the right answer to its own
+     * question — it is a different question, and this is it.</p>
      *
      * <p>Each node carries the time of its whole SUBTREE (inclusive), so a caller is credited
      * with everything it caused, and the sample count beside it — which is what C15 means by
@@ -329,10 +359,15 @@ public final class JfrParser {
             // a tree with no children and left to read it as "this method is cheap".
             result.put("tree", Map.of());
             result.put("hotPath", List.of());
-            result.put("note", "no sample's stack passed through " + entryPoint
+            result.put("note", "no EXECUTION SAMPLE's stack passed through " + entryPoint
                 + " — this is not a measurement that it is fast, it is an absence of samples."
-                + " Either it did not run during the recording, or the name does not match a"
-                + " frame (a bare Type enters at any of its methods).");
+                + " Three causes, and the third is the one a closed list of two used to omit:"
+                + " it did not run during the recording; the name does not match a frame (a"
+                + " bare Type enters at any of its methods); or IT RAN BUT WAS OFF-CPU"
+                + " THROUGHOUT — blocked, parked or sleeping — because this tree is built from"
+                + " execution samples only, and a thread that never holds the CPU produces"
+                + " none. For that third case ask hotspots(dimension=wall), which reads the"
+                + " blocking events instead.");
             return result;
         }
         result.put("tree", root.render(maxDepth));
@@ -394,12 +429,29 @@ public final class JfrParser {
             return out;
         }
 
+        /**
+         * The heaviest chain from here down — <b>and it says when it stopped early.</b>
+         *
+         * <p>The C15 audit found this missing and it was the sharper half of that finding: the
+         * tree's {@code render} already declared how many children it cut, while THIS — named
+         * in the commit as "the deliverable, not the tree", and the thing the profiler seat is
+         * instructed to report — ran out at the depth limit and emitted nothing to say so. A
+         * path that stops without saying it stopped reads as the end of the chain, which is
+         * exactly the lie the truncation marker exists to prevent, left on the output that
+         * matters most.</p>
+         */
         List<String> hotPath(int maxDepth) {
             List<String> path = new ArrayList<>();
             Node at = this;
             for (int depth = 0; depth <= maxDepth && at != null; depth++) {
                 path.add(at.symbol + " (" + (at.nanos / 1_000_000) + "ms, " + at.samples + ")");
                 List<Node> kids = at.byWeight();
+                if (depth == maxDepth && !kids.isEmpty()) {
+                    path.add("… cut at maxDepth=" + maxDepth + "; " + kids.size()
+                        + " callee(s) below this, heaviest " + kids.get(0).symbol
+                        + " — raise maxDepth to follow it");
+                    break;
+                }
                 at = kids.isEmpty() ? null : kids.get(0);
             }
             return path;
@@ -533,16 +585,41 @@ public final class JfrParser {
      * a set of NAMES fails open the moment one of them is renamed, retired or added, because no
      * reference-updating refactoring touches a string literal. A package prefix is a fact about
      * where code LIVES, and the JDK's top-level namespaces do not get renamed.</p>
+     *
+     * <p><b>WHAT THIS RULE DOES NOT DO — the residual, declared at the C15 audit rather than
+     * left for a reader to discover.</b> It separates waits that occur ENTIRELY INSIDE JDK
+     * NAMESPACES. It does not identify idleness in general, and two cases survive it:</p>
+     * <ul>
+     *   <li><b>An idle thread whose stack holds any non-JDK frame still ranks as blocked
+     *       work.</b> A worker started as {@code new Thread(() -> queue.take())} puts its own
+     *       lambda under the park; an Equinox {@code EventManager$EventThread} waiting on its
+     *       queue does the same. Each then gets a row of its own, bounded by the recording
+     *       length — so the N x T COLLAPSE is gone, which is what the measured 17.5x
+     *       impossibility was — but such a row can still occupy most of the recording and
+     *       outrank real work. <b>This product is an Equinox application, so this is its own
+     *       profile.</b> Stated as inference: it is derived from the frame shapes those APIs
+     *       produce, not from a measurement, and taking one needs a resident built from this
+     *       tree.</li>
+     *   <li><b>{@code javax.} WAS IN THIS LIST AND IS NOT ANY MORE</b>, because it is not the
+     *       JVM: {@code javax.servlet}, {@code javax.ws.rs} and {@code javax.inject} are
+     *       third-party API jars, so a thread genuinely blocked inside one was being reported
+     *       as a thread waiting for work and LEAVING the ranking. Dropping it costs the
+     *       JDK-owned {@code javax.*} packages ({@code javax.crypto}, {@code javax.net}),
+     *       which now read as program frames — the safer direction, since naming a frame that
+     *       is arguably infrastructure is a smaller error than losing real blocked time.</li>
+     * </ul>
      */
     private static final List<String> RUNTIME_PREFIXES =
-        List.of("java.", "javax.", "jdk.", "sun.", "com.sun.");
+        List.of("java.", "jdk.", "sun.", "com.sun.");
 
     /**
      * The method that was BLOCKED — the innermost frame belonging to a PROGRAM rather than to
      * the JVM — or {@code null} when the whole stack is runtime.
      *
-     * <p><b>A null answer is the discriminator M13 needs, and it falls out of the definition
-     * rather than being imposed.</b> A thread waiting FOR work has no work on its stack: an
+     * <p><b>A null answer means NO JDK-NAMESPACE-ONLY STACK HELD A PROGRAM FRAME, which is a
+     * narrower claim than "this thread was idle" — see the residual on
+     * {@link #RUNTIME_PREFIXES}.</b> Within that scope it falls out of the definition rather
+     * than being imposed: a thread waiting FOR work has no work on its stack. An
      * idle pool worker parks under {@code ForkJoinPool.awaitWork} beneath
      * {@code ForkJoinWorkerThread.run}, every frame of it runtime, so there is no program
      * method to attribute the wait to. A thread blocked IN work has the method that was blocked
@@ -557,9 +634,31 @@ public final class JfrParser {
      * no real method appeared at all.</p>
      */
     private static String blockedSymbol(RecordedEvent event) {
+        return innermostProgramFrame(readableFrames(event));
+    }
+
+    /**
+     * The frames of this event that resolve to a {@code Type#method}, innermost first.
+     *
+     * <p><b>An EMPTY answer is not the same fact as an all-runtime one, and the C15 audit found
+     * the two being folded together.</b> A stack whose every frame has an unresolvable method
+     * yields no symbols, which {@link #innermostProgramFrame} then answers {@code null} for —
+     * the same answer it gives a thread that was genuinely waiting for work. So an event nobody
+     * could read was being counted as idle time, which is a claim about the program rather than
+     * about the recording. {@link #wallHotspots} now checks for the empty case first and counts
+     * it among the events it could not attribute.</p>
+     *
+     * <p>Note for whoever consolidates this: {@code topFrameSymbol} answers {@code null} when
+     * the TOP frame alone is unresolvable, where this SKIPS it and keeps walking. That
+     * divergence is older than this method and is deliberately left alone here rather than
+     * changed under a checkpoint that was not about it — the architect watch homed it to a
+     * later stage, and silently altering what the cpu dimension attributes would be exactly the
+     * kind of unchosen behaviour change it was flagging.</p>
+     */
+    private static List<String> readableFrames(RecordedEvent event) {
         RecordedStackTrace stack = event.getStackTrace();
         if (stack == null) {
-            return null;
+            return List.of();
         }
         List<String> symbols = new ArrayList<>();
         for (RecordedFrame frame : stack.getFrames()) {
@@ -569,7 +668,7 @@ public final class JfrParser {
             }
             symbols.add(method.getType().getName() + "#" + method.getName());
         }
-        return innermostProgramFrame(symbols);
+        return symbols;
     }
 
     /**

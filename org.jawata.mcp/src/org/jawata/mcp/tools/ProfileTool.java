@@ -433,9 +433,20 @@ public class ProfileTool extends AbstractTool {
                 + "). Either call BLOCKS for this long."));
         properties.put("dimension", Map.of("type", "string",
             "enum", List.of("cpu", "alloc", "wall", "lock", "gc"),
+            // C15 audit / architect F1: this string IS the contract an agent reads, and it
+            // still said parked time was in the wall ranking after the ranking stopped
+            // including it — reintroducing, on the only published surface, the very confusion
+            // the repair was written to remove ("nothing was waiting" versus "the waiting is
+            // not shown here"). The two keys that resolve it were undocumented here.
             "description", "hotspots: which profile to rank by (default cpu). cpu/alloc/lock "
-                + "rank by sample count; wall ranks by total elapsed milliseconds per method "
-                + "(on-CPU time plus time blocked/parked/in I/O); gc is a pause summary."));
+                + "rank by sample count; wall ranks by total elapsed milliseconds per method — "
+                + "on-CPU time plus time BLOCKED IN work, attributed to the blocked method "
+                + "itself rather than to the JVM primitive it parked in. Time whose stack held "
+                + "no program frame at all is a thread WAITING FOR work: it is reported beside "
+                + "the ranking as idleWallMillis/idleEvents and is NOT in the rows, because one "
+                + "collapsed park row otherwise outranks every real method. Each row carries "
+                + "blockingEvents and cpuSamples, the observations its milliseconds were summed "
+                + "from, and sharePercent of the ranked total. gc is a pause summary."));
         properties.put("className", Map.of("type", "string",
             "description", "latency_seam: the fully-qualified class (Outer$Inner for a "
                 + "nested one) declaring the seam method — JDT-resolved against the "
@@ -904,7 +915,10 @@ public class ProfileTool extends AbstractTool {
         // profile DECLARES it needs no loaded project (requiresLoadedProject()
         // -> false), so the seam hands this tool a NULL service whenever the
         // workspace holds nothing. call_counts and latency_seam are the only
-        // two of the 23 actions that then READ the model, and reading it
+        // two actions that then READ the model, and reading it
+        // (the count that stood here went stale the moment ACTIONS grew; it is
+        // gone rather than corrected, because a number beside a list has
+        // nothing holding it to the list — this file's own recurring lesson)
         // unguarded threw an NPE out of executeWithService that came back as
         // INTERNAL_ERROR "this may be a bug" — accusing us of a defect for a
         // state the USER owns, and telling the agent nothing it can act on.

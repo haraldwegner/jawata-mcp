@@ -1,6 +1,7 @@
 package org.jawata.mcp.runtime.profile;
 
 import jdk.jfr.Recording;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -197,16 +198,24 @@ class WallTimeNamesWorkNotWaitingTest {
                 // HALF 2. The measure asks for the method reported AT ITS SHARE.
                 () -> assertNotNull(mine == null ? null : mine.get("sharePercent"),
                     () -> "every row carries its share of the ranked total: " + mine),
-                // THE COUNT SITS BESIDE THE TIME. Without it a row built from ONE long block and
-                // a row built from four hundred short ones rank identically while being
-                // different facts about the program — and every other dimension already carried
-                // this field, including for the suite's own rankability guard to read. It is the
-                // number of EVENTS the milliseconds came from, NOT an invocation count; true
-                // per-method counts need a live trace and stay with action=call_counts.
-                () -> assertTrue(mine != null && mine.get("samples") != null
-                        && ((Number) mine.get("samples")).longValue() > 0,
-                    () -> "the row says how many events its milliseconds were summed from: "
-                        + mine),
+                // THE COUNTS SIT BESIDE THE TIME, IN THEIR OWN UNITS. Without any count, a row
+                // built from ONE long block and a row built from four hundred short ones rank
+                // identically while being different facts about the program. And the C15 audit
+                // caught the first version publishing ONE field named `samples` that counted
+                // blocking EVENTS on one branch and execution SAMPLES on the other — one name
+                // over two units, which is the same relabeling shape as a defect this product
+                // already shipped once. Neither is an invocation count; those need a live trace
+                // and stay with action=call_counts.
+                () -> assertNotNull(mine == null ? null : mine.get("blockingEvents"),
+                    () -> "the row says how many BLOCKING EVENTS it summed: " + mine),
+                () -> assertNotNull(mine == null ? null : mine.get("cpuSamples"),
+                    () -> "and how many on-CPU SAMPLES, separately: " + mine),
+                () -> assertTrue(mine != null
+                        && ((Number) mine.get("samples")).longValue()
+                            == ((Number) mine.get("blockingEvents")).longValue()
+                                + ((Number) mine.get("cpuSamples")).longValue(),
+                    () -> "and `samples` is exactly their sum, so the one field the rankability"
+                        + " guard reads cannot drift from the two that explain it: " + mine),
                 // AND THE SHARE IS A SHARE — a figure that cannot exceed the whole.
                 () -> assertTrue(mine == null
                         || ((Number) mine.get("sharePercent")).doubleValue() <= 100.0,
@@ -228,7 +237,42 @@ class WallTimeNamesWorkNotWaitingTest {
                 () -> assertTrue(result.get("idleWallMillis") != null
                         && ((Number) result.get("idleWallMillis")).longValue() > 0,
                     () -> "and the waiting carries real milliseconds beside the ranking rather"
-                        + " than merely a key: " + result));
+                        + " than merely a key: " + result),
+
+                // C15 AUDIT BLOCKER 3 — THE TWO LOAD-BEARING PROPERTIES WERE ASSERTED AND
+                // GATED BY NOTHING. The clauses were `sharePercent != null` and `<= 100`, and
+                // the audit named two mutations that stay fully green under them: restoring
+                // idle into `totalWallMillis` (the pre-repair meaning), and dividing the share
+                // by twice the total. Both leave every share non-null and under 100. So "the
+                // share is OF THE RANKED TOTAL" — the sentence the code makes twice — was
+                // prose. These two clauses are what hold it.
+                () -> {
+                    double sum = rows.stream()
+                        .map(r -> r.get("sharePercent"))
+                        .filter(Number.class::isInstance)
+                        .mapToDouble(v -> ((Number) v).doubleValue())
+                        .sum();
+                    assertTrue(sum > 99.0 && sum < 101.0,
+                        () -> "every row's share is of ONE total, so over the whole unpaged"
+                            + " answer they sum to 100 (+-rounding); " + sum + " means the"
+                            + " denominator is not the total these rows came from: " + rows);
+                },
+                () -> {
+                    long ranked = ((Number) result.get("totalWallMillis")).longValue();
+                    long idle = ((Number) result.get("idleWallMillis")).longValue();
+                    long rowSum = rows.stream()
+                        .map(r -> r.get("wallMillis"))
+                        .filter(Number.class::isInstance)
+                        .mapToLong(v -> ((Number) v).longValue())
+                        .sum();
+                    assertTrue(Math.abs(ranked - rowSum) <= rows.size(),
+                        () -> "totalWallMillis is the RANKED total — the rows' own sum, within"
+                            + " per-row truncation — and NOT the old meaning that included"
+                            + " idle. ranked=" + ranked + " rowSum=" + rowSum + " idle=" + idle);
+                    assertTrue(idle > 0 && ranked > 0,
+                        () -> "and the two are genuinely separate quantities here, so the clause"
+                            + " above is not passing because one of them is empty: " + result);
+                });
         } finally {
             idleByConstruction.cancel();
             Files.deleteIfExists(jfr);
@@ -241,5 +285,115 @@ class WallTimeNamesWorkNotWaitingTest {
      */
     private static void parkInsideAMethodOfThisClass() {
         LockSupport.parkNanos(Duration.ofMillis(250).toNanos());
+    }
+
+    /**
+     * C15 AUDIT BLOCKER 4 — <b>a truncated path must say it was truncated</b>, and this was the
+     * sharper half of that finding.
+     *
+     * <p>The tree's {@code render} already declared how many children it cut. {@code hotPath} —
+     * named in its own commit as "the deliverable, not the tree", and the thing the profiler
+     * seat is instructed to report — ran out at the depth limit and emitted nothing. A path that
+     * stops without saying it stopped reads as the end of the chain, which is exactly the lie
+     * the marker exists to prevent, on the output that matters most.</p>
+     *
+     * <p><b>Why it is tested HERE and not through the tool, which is a measurement rather than a
+     * preference.</b> A first version asserted it against {@code HotLoopTarget} through
+     * {@code profile(action=call_tree)} and FAILED: that fixture's sampled tree is exactly two
+     * deep ({@code main -> burnCpu}, burnCpu being the innermost frame of every sample) while
+     * the door clamps {@code maxDepth} to at least 1 — so the shallowest accepted request
+     * already reaches the end of the chain and nothing is cut. Loosening the clamp to make the
+     * assertion pass would have been changing the product to suit the test. A chain of this
+     * class's own methods is deep by construction, and the parser applies no clamp.</p>
+     */
+    @Test
+    @DisplayName("a hot path cut at the depth limit says so, and names what is below it")
+    void a_truncated_hot_path_says_it_was_truncated() throws Exception {
+        Path jfr = Files.createTempFile("s15-tree-", ".jfr");
+        try {
+            Recording recording = new Recording();
+            recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(5));
+            recording.start();
+            burnThroughAChainOfFourOfOurOwnFrames();
+            recording.stop();
+            recording.dump(jfr);
+            recording.close();
+
+            String entry = WallTimeNamesWorkNotWaitingTest.class.getName()
+                + "#burnThroughAChainOfFourOfOurOwnFrames";
+            Map<String, Object> deep = JfrParser.callTree(jfr, entry, 10);
+            Map<String, Object> cut = JfrParser.callTree(jfr, entry, 1);
+
+            @SuppressWarnings("unchecked")
+            List<String> fullPath = (List<String>) deep.get("hotPath");
+            @SuppressWarnings("unchecked")
+            List<String> shortPath = (List<String>) cut.get("hotPath");
+
+            // THE SAMPLER CAN MISS, AND THAT IS NOT THIS CLAUSE'S SUBJECT — so it ABORTS here
+            // rather than failing, which is the convention this suite already uses for its
+            // profiling tests (HotspotTest#assumeRankable, and the standing
+            // "CPU profile too thin to rank" skip the plan records for a loaded machine).
+            //
+            // It is in the file because it HAPPENED: the first run of this case, immediately
+            // after a clean build with the machine still loaded, returned an EMPTY path from
+            // both calls and reported it as "the path was not truncated" — a sampler miss
+            // wearing a truncation defect's message. An empty tree means no execution sample
+            // named this chain at all, which says nothing whatever about the marker. Three
+            // later runs of this class alone were green, and the identical configuration did
+            // not reproduce it, so the discriminator is machine load and not configuration.
+            Assumptions.assumeFalse(fullPath.isEmpty(),
+                "no execution sample named this chain — the sampler missed a 1200ms burn, which"
+                    + " happens on a loaded machine. Nothing is asserted about truncation here;"
+                    + " this is a skip rather than a pass.");
+
+            assertAll(
+                // PROOF OF LIFE, and it is also the precondition that makes the clause below
+                // mean anything: the chain really is deeper than the limit being imposed.
+                // Reached only once samples exist, per the assumption above.
+                () -> assertTrue(fullPath.size() > 2,
+                    () -> "the chain must be deeper than the cut, or there is nothing to"
+                        + " truncate and this case measures nothing. Path: " + fullPath),
+                () -> assertTrue(shortPath.stream().anyMatch(s -> s.contains("cut at maxDepth")),
+                    () -> "a path cut at the depth limit SAYS it was cut: " + shortPath),
+                () -> assertTrue(shortPath.stream().anyMatch(s -> s.contains("callee(s) below")),
+                    () -> "and names how many callees are below the cut, so the reader knows"
+                        + " there is more rather than guessing: " + shortPath),
+                () -> assertTrue(shortPath.size() < fullPath.size(),
+                    () -> "and the cut answer really is shorter than the uncut one, so the"
+                        + " marker is not being asserted on a complete path. short="
+                        + shortPath + " full=" + fullPath));
+        } finally {
+            Files.deleteIfExists(jfr);
+        }
+    }
+
+    // A chain four of our own frames deep, so a depth limit has something to cut. Each level is
+    // its own method rather than a loop, because the tree is built from frames and a loop
+    // produces one frame however many times it runs.
+    private static void burnThroughAChainOfFourOfOurOwnFrames() {
+        chainLevelTwo();
+    }
+
+    private static void chainLevelTwo() {
+        chainLevelThree();
+    }
+
+    private static void chainLevelThree() {
+        chainLevelFourBurnsTheCpu();
+    }
+
+    // 1200ms rather than a few hundred: at a 5ms sampling period a short burn is thin enough
+    // that a loaded machine misses it entirely, which is the miss the assumption above names.
+    // Raising the burn makes the miss rarer; it does not make it impossible, which is why the
+    // assumption stays rather than being replaced by a longer sleep.
+    private static void chainLevelFourBurnsTheCpu() {
+        long until = System.nanoTime() + Duration.ofMillis(1200).toNanos();
+        long spin = 0;
+        while (System.nanoTime() < until) {
+            spin += 1;
+        }
+        if (spin == Long.MIN_VALUE) {
+            throw new IllegalStateException("unreachable; keeps the loop from being elided");
+        }
     }
 }
