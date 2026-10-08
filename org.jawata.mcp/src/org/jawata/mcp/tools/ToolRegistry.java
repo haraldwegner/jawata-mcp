@@ -580,7 +580,7 @@ public class ToolRegistry {
         // agent may ignore". v3.3.0 worded the cost but never charged it.
         ToolResponse unpaid = precedentCharge(caller, name, arguments);
         if (unpaid != null) {
-            return stamped(unpaid);
+            return stamped(name, arguments, unpaid);
         }
         // A paid override is a meta-argument of the CHOKE, not of the tool.
         arguments = withoutOverride(arguments);
@@ -600,7 +600,7 @@ public class ToolRegistry {
             ToolResponse refused = serverChecks.acceptance(caller, name, arguments,
                 eventTap.ledger());
             if (refused != null) {
-                return stamped(refused);
+                return stamped(name, arguments, refused);
             }
         }
 
@@ -643,12 +643,13 @@ public class ToolRegistry {
             // Runs BEFORE the tap so it reflects PAST experience, not this call's
             // own outcome; appended, never replacing the tool's own line.
             precedent(caller, name, arguments, response);
-            // Sprint 28g (D42): the PRIOR-WORK block — what the knowledge store already knows
-            // about the thing this call is working on. Beside the precedent push and sharing its
-            // target derivation, but a different lane: that one is what TOOLS did here before,
-            // this one is what the store KNOWS about here. On the response because the hook
-            // channel reaches one client of six.
-            priorWork(name, arguments, response);
+            // Sprint 28g (D42): the PRIOR-WORK block IS NOT EMITTED HERE, and the move is the
+            // C14a repair. It rides `stamped` below — the funnel every return point already uses
+            // — because this position is the NORMAL path only: the two refusals the choke itself
+            // mints (an unpaid precedent charge, a failed acceptance check) and both catch blocks
+            // return without passing this line. Those are precisely the answers the block matters
+            // most on, by its own stated reason: a caller whose tool just declined is the one
+            // most likely to go and do the thing by hand.
             // Sprint 26: the event tap — every outcome becomes a learner label
             // as a side effect of the call itself (D7: training is a side
             // effect of use). Tap failures are the tap's own concern (loud
@@ -696,12 +697,12 @@ public class ToolRegistry {
                     log.error("Store-notice supplier failed after {}", name, e);
                 }
             }
-            return stamped(response);
+            return stamped(name, arguments, response);
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
             ToolResponse error = ToolResponse.internalError(e);
             tap(caller, name, arguments, error, System.currentTimeMillis() - startTime);
-            return stamped(error);
+            return stamped(name, arguments, error);
         } catch (Error err) {
             // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
             // pathological scan) escaped every catch(Exception), killed the
@@ -711,7 +712,7 @@ public class ToolRegistry {
             log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
             ToolResponse error = ToolResponse.internalError(err);
             tap(caller, name, arguments, error, System.currentTimeMillis() - startTime);
-            return stamped(error);
+            return stamped(name, arguments, error);
         } finally {
             // mcp#42: the call came back, however it came back. In a finally rather than
             // beside each return, because a ticket left behind by a path someone forgot is
@@ -733,9 +734,27 @@ public class ToolRegistry {
      * <p>A no-op when nothing is degraded — {@code stamp()} answers null then, so an
      * ordinary response is byte-unchanged and the whole mechanism is invisible until it
      * has something to say.</p>
+     *
+     * <p><b>Sprint 28g C14a — THE D42 PRIOR-WORK BLOCK RIDES HERE TOO, and it did not
+     * before.</b> The same argument this method's own first paragraph makes about the
+     * degradation stamp is true of it word for word: the state is equally true of all
+     * five return points, so the answer is equally owed on all five. D42 emitted it on
+     * the NORMAL path, which left it silent on the two refusals the choke mints and on
+     * both catch blocks — and {@link #priorWork} carries a paragraph arguing that a
+     * refusal is exactly where the block matters MOST. <b>That half of the repair had
+     * been made and the other half had not:</b> the emission was moved onto
+     * {@code appendStoreAnswer}, which rides a refusal, while its one call site reached
+     * no refusal this registry produces. A method able to speak on a refusal, never
+     * called on one, reads identical to a method that cannot.</p>
+     *
+     * @param name the tool that was called, for the prior-work target derivation
+     * @param arguments that call's arguments, from which the target is derived
      */
-    private static ToolResponse stamped(ToolResponse response) {
+    private ToolResponse stamped(String name, JsonNode arguments, ToolResponse response) {
         if (response != null) {
+            // BEFORE the degradation stamp, so a degraded resident's warning is the LAST
+            // thing appended and stays the first thing read.
+            priorWork(name, arguments, response);
             response.stampDegradation(ResidentDegradation.stamp());
         }
         return response;

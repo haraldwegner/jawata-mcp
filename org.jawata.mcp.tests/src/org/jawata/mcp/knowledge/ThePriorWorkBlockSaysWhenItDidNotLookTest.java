@@ -207,6 +207,70 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
     }
 
     /**
+     * C14a — THE BLOCK RIDES A REFUSAL <b>THE REGISTRY ITSELF MINTS</b>, and until this
+     * checkpoint it did not.
+     *
+     * <p>The sibling above drives a refusal the TOOL returns, which leaves {@code callTool}
+     * by its NORMAL path — the one line the emission used to sit on. That method has four
+     * other exits: an unpaid precedent charge, a failed acceptance check, and two catch
+     * blocks. None of them passed that line, so the block was absent from every one, and
+     * {@code priorWork}'s own javadoc argues a refusal is where it matters MOST.</p>
+     *
+     * <p><b>The repair had been half-made, which is why the sibling above did not catch
+     * this.</b> The emission was moved onto {@code appendStoreAnswer}, which rides a
+     * refusal — and its single call site still reached no refusal this registry produces.
+     * A method able to speak on a refusal and never called on one reads identical to a
+     * method that cannot.</p>
+     *
+     * <p>This drives the cheapest of the four exits — a tool that THROWS — because it needs
+     * no collaborator wired. <b>The bound is stated rather than left to read as coverage:</b>
+     * {@code serverChecks} and {@code precedentLedger} are null on a bare registry, so the
+     * other two refusals are unreachable from here by construction and this case says
+     * nothing about them.</p>
+     */
+    @Test
+    void a_crash_the_registry_turned_into_an_answer_carries_what_the_store_knows()
+            throws Exception {
+        try (H2ExperienceStore knowing = H2ExperienceStore.openMemory()) {
+            knowing.put(ExperienceEntry.of(
+                SymbolFact.of("failure_mode", "this target bit somebody before",
+                    Confidence.HIGH).symbol(TARGET).build())
+                .situation("when touching this target")
+                .verdict("failed_avoid")
+                .build());
+
+            ToolRegistry reg = new ToolRegistry();
+            reg.setExperienceAdvisor(new ExperienceAdvisor(knowing, () -> null));
+            reg.register(new Tool() {
+                @Override public String getName() {
+                    return "analyze";
+                }
+                @Override public String getDescription() {
+                    return "analyze";
+                }
+                @Override public Map<String, Object> getInputSchema() {
+                    return Map.of();
+                }
+                @Override public ToolResponse execute(JsonNode arguments) {
+                    throw new IllegalStateException(
+                        "a tool that throws — the registry turns this into the answer");
+                }
+            });
+
+            ToolResponse r = reg.callTool("analyze",
+                OM.readTree("{\"typeName\":\"" + TARGET + "\"}"), CallerIdentity.supplied("s1"));
+            String steer = r.getMeta() == null ? null : r.getMeta().getSteering();
+
+            assertFalse(r.isSuccess(),
+                "PROOF OF LIFE: the throw really did become a structured refusal");
+            assertNotNull(steer,
+                "the block must ride the answer the REGISTRY built, not only the tool's own");
+            assertTrue(steer.contains("bit somebody before"),
+                () -> "carrying what the store knows: " + steer);
+        }
+    }
+
+    /**
      * THE PAIR, at the response. A healthy empty store produces NEITHER line: there is nothing
      * to report and no outage to announce. Without this, "the outage line appears" could be
      * satisfied by a registry that appends it to every response it ever builds.
