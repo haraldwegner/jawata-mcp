@@ -147,6 +147,22 @@ class WallTimeNamesWorkNotWaitingTest {
             recording.enable("jdk.JavaMonitorWait").withThreshold(Duration.ofMillis(1));
             recording.start();
 
+            // THE TIMER'S WAIT MUST END INSIDE THE WINDOW OR IT IS NEVER EMITTED, and this is
+            // the version of the fixture that works. JFR records a wait when it COMPLETES,
+            // because that is when the duration is known — so a Timer with nothing scheduled
+            // waits indefinitely, the wait is still in progress when the recording stops, and
+            // no event exists at all. The first version of this case relied on that and its
+            // idle clauses were `assertNotNull`, which pass at zero; a mutation showed the
+            // clauses reddening for a reason unrelated to idleness, which is what exposed it.
+            // Scheduling a task makes the thread wake, which ENDS the preceding wait — and the
+            // wait's own stack is still TimerThread#mainLoop, all JDK, which is the shape under
+            // test. The task body is irrelevant and runs after the wait it closes.
+            idleByConstruction.schedule(new java.util.TimerTask() {
+                @Override public void run() {
+                    // nothing: its only job is to end the wait that preceded it
+                }
+            }, 60);
+
             parkInsideAMethodOfThisClass();
 
             recording.stop();
@@ -188,10 +204,21 @@ class WallTimeNamesWorkNotWaitingTest {
                         + " total: " + mine),
                 // WAITING IS REPORTED, NEVER DROPPED. Excluding it silently would replace one
                 // dishonest answer with a quieter one.
-                () -> assertNotNull(result.get("idleWallMillis"),
-                    () -> "waiting is reported beside the ranking: " + result),
-                () -> assertNotNull(result.get("idleEvents"),
-                    () -> "and so is how many waits it came from: " + result));
+                //
+                // A COUNT RATHER THAN assertNotNull, and the difference is the whole point: a
+                // non-null check passes at ZERO, so it would have been satisfied by a parser
+                // that classified nothing as idle — including by the pre-repair one, which had
+                // no idle path at all. This clause requires that the Timer's all-JDK wait was
+                // actually SEEN and actually counted there.
+                () -> assertTrue(result.get("idleEvents") != null
+                        && ((Number) result.get("idleEvents")).longValue() > 0,
+                    () -> "the Timer's thread waited with an all-JDK stack and its wait ended"
+                        + " inside the window, so at least one wait must be counted as idle —"
+                        + " at zero this case proves only the work half: " + result),
+                () -> assertTrue(result.get("idleWallMillis") != null
+                        && ((Number) result.get("idleWallMillis")).longValue() > 0,
+                    () -> "and the waiting carries real milliseconds beside the ranking rather"
+                        + " than merely a key: " + result));
         } finally {
             idleByConstruction.cancel();
             Files.deleteIfExists(jfr);
