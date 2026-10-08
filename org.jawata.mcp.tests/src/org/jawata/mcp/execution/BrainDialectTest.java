@@ -62,9 +62,17 @@ class BrainDialectTest {
             // between "writes allowed" and "an older build that could not say".
             () -> assertEquals("manual", valueOf(permitted, "--permission-mode"),
                 "a caller who opted out gets the other value, explicitly: " + permitted),
-            // ALL FOUR BRAINS NOW CARRY A WRITE BOUND BY DEFAULT, which they did not before: cursor
-            // always had one, claude and copilot gained theirs at C16, and codex's is its sandbox.
-            // The inconsistency was on the one property that matters most about an unattended run.
+            // ALL FOUR BRAINS CARRY A WRITE-CONTAINMENT FLAG BY DEFAULT — and a FLAG IS NOT A
+            // BOUND, which this comment used to blur and a measurement then settled. Three of the
+            // four are bounded by a MECHANISM: claude's plan mode disables the editing tool,
+            // codex's sandbox was observed rejecting an attempted apply_patch outright, and
+            // copilot's containment is its own headless default, which a with-and-without control
+            // showed our deny flags do not create. CURSOR IS NOT: 5 writes in 15 runs of plan
+            // mode, 10 in 10 with the sandbox alone, and no mechanism refusal ever seen.
+            //
+            // So what is asserted below is that each dialect SENDS its flag, which is the half
+            // jawata owns. Whether a vendor honours it is the vendor's contract and is measured by
+            // the containment probes in build/, never here.
             //
             // EACH IS READ OFF ITS OWN FLAG BY INDEX, not by membership. An earlier version of the
             // cursor clause asked `command(...).contains("plan")`, which passes on ANY argv element
@@ -72,13 +80,16 @@ class BrainDialectTest {
             // says nothing about --mode. An audit named it and it was right.
             () -> assertEquals("plan", valueOf(new CursorDialect().command("x", List.of()), "--mode"),
                 "cursor: --mode plan"),
-            // AND ITS SANDBOX, added after plan mode alone was MEASURED TO FAIL: told to write a
-            // file under it, this brain refused four times in five runs and wrote once. The flag
-            // is pinned here; what it CONTAINS is not claimed, because every refusal observed
-            // cited plan mode rather than the sandbox.
+            // AND ITS SANDBOX, whose effect on writes is now MEASURED AT NONE. It was added when
+            // plan mode alone failed, on the reasoning that a sandbox is stronger than an
+            // instruction. Isolated at the CLI with --mode plan omitted — which the hire path
+            // cannot do, since it always sends both — it stopped nothing: 10 runs, 10 writes. The
+            // flag is still pinned because the product still sends it and a reader of an argv
+            // should find it, but NOTHING may claim it contains a write.
             () -> assertEquals("enabled",
                 valueOf(new CursorDialect().command("x", List.of()), "--sandbox"),
-                "cursor: --sandbox enabled, the only lever stronger than an instruction"),
+                "cursor: --sandbox enabled, which this hire sends and which was measured to"
+                    + " bound no write at all"),
             () -> assertEquals("read-only",
                 valueOf(new CodexDialect().command("x", List.of()), "--sandbox"),
                 "codex: --sandbox read-only, which is its whole containment"),

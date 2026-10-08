@@ -115,12 +115,21 @@ public final class CursorDialect implements BrainDialect {
             // what it can do, and an instruction a model follows four times in five is not
             // containment.
             //
-            // WHAT IS AND IS NOT CLAIMED FOR THIS FLAG. It is the vendor's own documented sandbox
-            // ("Explicitly enable or disable sandbox mode", choices enabled|disabled). MEASURED:
-            // three runs with it complete normally and answer, so it does not break a hire. NOT
-            // MEASURED: that it is what stops a write — every refusal observed cited plan mode, so
-            // its independent effect is unestablished. It is here because it is the only lever
-            // stronger than an instruction, and this comment says which half is evidence.
+            // AND ITS INDEPENDENT EFFECT ON WRITES IS NOW MEASURED: THERE IS NONE. An earlier
+            // version of this comment said "NOT MEASURED: that it is what stops a write ... its
+            // independent effect is unestablished", and kept the flag on the reasoning that it is
+            // the only lever stronger than an instruction. The measurement that was missing could
+            // not be taken through the hire path, which always sends both flags; taken at the CLI
+            // with --mode plan OMITTED, this flag stopped nothing — TEN runs across two
+            // independent probe runs, TEN writes, and the CLI's own init event reporting
+            // permissionMode:"default" each time.
+            //
+            // SO THE FLAG STAYS AND THE CLAIM GOES, which is the smaller change and the honest
+            // one. What it is documented for is "sandbox mode" at large; whether it bounds SHELL
+            // or NETWORK is not measured here and may well be real. What it does not do is bound
+            // a write to the working directory, so no part of this hire's write containment may
+            // rest on it. Removing it would be a behaviour change justified by a measurement
+            // scoped to one of the things it claims.
             argv.add("--sandbox");
             argv.add("enabled");
         }
@@ -142,11 +151,12 @@ public final class CursorDialect implements BrainDialect {
         // product does not have is worse than one that states none, because a reader stops
         // checking.
         return ToolAttachment.cannotBeTold(readOnly
-            ? "--mode plan plus --sandbox enabled, both passed by this hire. MEASURED CAVEAT: plan"
-                + " mode is an instruction this brain carries out rather than a bound — told to"
-                + " write a file under it, it refused four times in five runs and wrote once. The"
-                + " sandbox is the vendor's stronger lever and its independent effect is not"
-                + " established here. Treat a cursor hire as UNCONTAINED for writes"
+            ? "--mode plan plus --sandbox enabled, both passed by this hire. MEASURED: NEITHER"
+                + " BOUNDS A WRITE. Plan mode is an instruction this brain carries out rather than"
+                + " a bound — told to write a file under it, it wrote 5 times in 15 runs across"
+                + " three independent measurements, and no run ever produced a mechanism refusal."
+                + " The sandbox, measured alone with plan mode omitted, stopped nothing at all: 10"
+                + " runs, 10 writes. Treat a cursor hire as UNCONTAINED for writes"
             : "--mode plan|ask (NOT passed by this hire, which therefore has write and shell"
                 + " access), --sandbox, and the hire's own wall-clock, cost and step ceilings");
     }

@@ -35,7 +35,7 @@ four classes**, and two of them cannot express it at all:
 
 | dialect | how the policy is said | can it be said? |
 |---|---|---|
-| `CursorDialect` | `readOnly` field, default true → `--mode plan` | yes |
+| `CursorDialect` | `readOnly` field, default true → `--mode plan` + `--sandbox enabled` | **it can be SAID and it does not BIND** — see the measured table below |
 | `ClaudeCodeDialect` | `readOnly` field, default true → `--permission-mode plan` | yes, **as of this checkpoint** |
 | `CodexDialect` | `--sandbox read-only`, hard-coded, no field | not as a decision — only as a fact |
 | `CopilotDialect` | ~~nothing~~ → `readOnly` field, default true → `--deny-tool write --deny-tool shell` | **yes, and the row above was FALSE** |
@@ -52,6 +52,37 @@ refused again, and answered *"I couldn't create the file because write permissio
 copilot's headless DEFAULT denies writes; the flags state the hire's intent and are not what
 contains it. Both the dialect's javadoc and its attachment report now say so, and neither claims
 deny-over-allow precedence for tools, which the help documents for URLs only.
+
+**AND THE ACTUATOR'S THREE VALUES ARE NOW MEASURED RATHER THAN PROPOSED.** When F1 was written,
+the three-valued shape was an argument by analogy with `ToolAttachment`. An isolating probe
+(`build/c16-containment-isolated.sh`) then drove each CLI directly, one containment flag at a
+time — which the hire path cannot do, because it always sends every flag a dialect has — and the
+categories came back populated:
+
+| value | brains | the evidence, and it is the MECHANISM that decides the category |
+|---|---|---|
+| contained per run, **by a mechanism** | claude `--permission-mode plan`; codex `--sandbox read-only` | claude 5/5 contained across all measurements; codex 2/2, and its sandbox was observed **rejecting an attempted `apply_patch`** verbatim — *"patch rejected: writing is blocked by read-only sandbox"* |
+| contained **out of band**, by the vendor's own default | copilot | 3/3 with our `--deny-tool` flags and **3/3 without them** — so the flags state this hire's intent and are not what contains it |
+| **cannot be contained**, and here is what bounds it instead | cursor | 5 writes in 15 plan-mode runs; **10 writes in 10** with `--sandbox enabled` alone. No mechanism refusal has ever been observed. What remains is the hire's own wall-clock, cost and step ceilings |
+
+**The discriminator between the first category and the third is not the refusal RATE.** Cursor
+refuses roughly two-thirds of the time, which a small sample reads as containment — and did, at
+4-of-5. What separates them is whether a refusal arriving from something **other than the model**
+appears anywhere in the record. For claude and codex it does; for cursor, across 25 runs, it never
+has. That is the property `writeContainment()` should answer, and stating it as a rate would
+reproduce the error this measurement corrected.
+
+**Two claims of ours died here, and both were in code rather than in a report.** `CursorDialect`
+said the sandbox was *"the vendor's stronger lever"* whose *"independent effect is not established
+here"* — established now, and for writes it is none. `BrainDialectTest` said *"ALL FOUR BRAINS NOW
+CARRY A WRITE BOUND BY DEFAULT ... cursor always had one"*, which conflated a flag with a bound.
+Both corrected in place. The sandbox flag STAYS: it is documented for sandboxing at large, whether
+it bounds shell or network is not measured, and removing it would be a behaviour change justified
+by a measurement scoped to one of the things it claims.
+
+**It also falsifies the PLAN, not only the product.** Stage 16 Step 0 asserts cursor *"CAN be told
+READ-ONLY via `--mode plan`"* and builds the honest-report argument on that. The flag can be sent;
+it is not a read-only bound.
 
 **Why that is a bandage rather than four correct local choices.** A fifth brain added tomorrow
 gets no default at all and nothing notices — which is exactly how claude stood until a probe told
