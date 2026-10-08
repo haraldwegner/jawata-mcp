@@ -26,9 +26,18 @@ import org.jawata.mcp.tools.ToolRegistry;
  * <ol>
  *   <li><b>The step names a tool that does not exist.</b> A plan declaring {@code compile_wrokspace}
  *       must not pass; it has been gated by nothing.</li>
- *   <li><b>The tool threw.</b> A gate that crashed knows less than one that refused.</li>
- *   <li><b>The tool REFUSED</b> — no project loaded, an invalid parameter, a precondition unmet. It
- *       answered about itself and not about the tree, so it has no error count to give.</li>
+ *   <li><b>The tool threw</b> — and it does NOT arrive here as an exception, which is worth saying
+ *       because this class first claimed it did. Measured by a mutation that stayed green:
+ *       {@link ToolRegistry#callTool} catches {@code Exception} AND {@code Error} around its own
+ *       dispatch, taps the failure, and returns {@code internalError}. So a crashing gate reaches
+ *       this runner as case 3, a refusal — and the {@code RuntimeException} catch below guards only
+ *       the registry's own machinery before that dispatch, which nothing in the suite can reach.</li>
+ *   <li><b>The tool REFUSED</b> — no project loaded, an invalid parameter, a precondition unmet, or
+ *       a crash converted by the line above. It answered about ITSELF and not about the tree, so it
+ *       has no error count to give. <b>And it is not enough that it usually publishes none:</b> the
+ *       four-argument {@code ToolResponse.error} sets the response's own data, so a refusal carrying
+ *       a diagnosis map can publish {@code errorCount: 0} — which case 4 would then read as a clean
+ *       gate. That shape is what makes this branch a claim of its own rather than a duplicate.</li>
  *   <li><b>The tool succeeded in a shape this runner cannot read.</b> Measured: the error count
  *       lives under {@code errorCount} for the compile, diagnostics, refresh and syntax tools and
  *       under {@code failed} for the test runner. A response carrying neither is a response nothing
@@ -82,8 +91,18 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             // work and suppresses no recording either. It was one fact expressed twice.
             return didNotAnswer(step, "no tool named '" + step.tool() + "' answered the gate");
         } catch (RuntimeException e) {
-            // Case 2. Deliberately broad: a gate's crash must not become the hire's crash, because
-            // the run itself already happened and its record is still owed to a reader.
+            // Case 2, and it is a BACKSTOP rather than the handler a reader would assume.
+            //
+            // A mutation that made this rethrow stayed GREEN, which measured what it actually
+            // guards: `callTool` catches Exception and Error around its own dispatch and returns
+            // `internalError`, so a tool that throws arrives below as a refusal and never here.
+            // What is left unprotected is the registry's own machinery BEFORE that dispatch — the
+            // precedent charge, the acceptance check, the in-flight ticket — and no test in this
+            // suite can reach it.
+            //
+            // It stays because the costs are not symmetric: an unreachable branch costs a reader
+            // one paragraph, while letting a RuntimeException out of here loses the record of a
+            // run that already happened, which is the one thing a hired run must not do.
             log.log(Level.WARNING, "gate " + step.tool() + " threw", e);
             return didNotAnswer(step, "it threw " + e.getClass().getSimpleName());
         }
@@ -91,7 +110,12 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             return didNotAnswer(step, "it returned nothing at all");
         }
         if (!response.isSuccess()) {
-            // Case 3. It answered about ITSELF, not about the tree.
+            // Case 3. It answered about ITSELF, not about the tree — and this is where a crashing
+            // tool lands too, as `internalError`. Load-bearing even when the refusal publishes a
+            // count, which the four-argument `ToolResponse.error` allows: `ResponseFacts` reads a
+            // response's data without asking whether the call succeeded, correctly, since it
+            // reports what was published and leaves the judgement to the caller. This line IS
+            // that judgement for a gate.
             return didNotAnswer(step, "it refused");
         }
 

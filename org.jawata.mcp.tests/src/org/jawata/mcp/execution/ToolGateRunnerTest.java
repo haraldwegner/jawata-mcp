@@ -123,7 +123,7 @@ class ToolGateRunnerTest {
     }
 
     @Test
-    @DisplayName("a gate that threw knows less than one that refused, and neither answers")
+    @DisplayName("a gate that threw, refused, or refused WITH a count has answered about none of it")
     void aCrashingOrRefusingGateDoesNotAnswer() {
         ToolGateRunner runner = new ToolGateRunner(registryWith(
             new FakeGate("crashing_gate", () -> {
@@ -146,7 +146,10 @@ class ToolGateRunnerTest {
 
         assertAll(
             // A gate's crash must not become the hire's crash: the run already happened and its
-            // record is still owed to a reader.
+            // record is still owed to a reader. WHICH branch delivers that is not the obvious one,
+            // and a mutation settled it — the registry catches the tool's exception itself and
+            // returns internalError, so this arrives as a REFUSAL. The runner's own catch is a
+            // backstop for the registry's machinery and nothing here can reach it.
             () -> assertFalse(runner.run(step("crashing_gate")).succeeded()),
             // A refusal answers about the TOOL, not about the tree, so it has no count to give.
             () -> assertFalse(runner.run(step("refusing_gate")).succeeded()),
