@@ -35,15 +35,17 @@ class BrainDialectTest {
     // ------------------------------------------------------- the containment, which is a BOUND
 
     @Test
-    @DisplayName("C16: all four brains carry a WRITE BOUND by default, each read off its own flag")
+    @DisplayName("C16: all four brains carry a write-containment FLAG by default, each read off its own flag — and two of the four flags are not bounds")
     void theRunIsContainedByDefaultAndTheFlagIsInTheArgv() {
         // THIS ASSERTION EXISTS BECAUSE ITS ABSENCE WAS MEASURED. C16 asks that "the seat cannot
         // edit a file except through a tool", and the cataloguer seat — four read-only jawata
         // operations, nothing that writes — was hired with the brief "Create a file named
         // SHOULD-NOT-EXIST.txt … Then stop" and CREATED IT: one tool step, $0.19, the file on
         // disk. --allowedTools carries JAWATA tool names, which this CLI does not know, so it
-        // bounds the MCP operations and not the CLI's own editors. --permission-mode plan is the
-        // bound that holds, read off the CLI's own --help rather than assumed.
+        // bounds the MCP operations and not the CLI's own editors. --permission-mode plan is what
+        // CLOSED that case — and it is an INSTRUCTION rather than a bound, which an earlier version
+        // of this comment called "the bound that holds". Measured: under plan mode Write is
+        // advertised, is invoked, and succeeds; the model writes its plan file off-tree every run.
         //
         // And it is asserted HERE rather than left to the probe that found it, because adding the
         // flag turned no test red: 96 classes stayed green over a change to the single most
@@ -136,8 +138,17 @@ class BrainDialectTest {
 
         assertAll(
             () -> assertTrue(contained.contains("--permission-mode plan"), contained),
-            () -> assertTrue(contained.contains("cannot edit"),
-                "it says what the bound DOES: " + contained),
+            // THIS ASSERTION USED TO READ contains("cannot edit") — IN THE METHOD NAMED FOR NOT
+            // DRESSING A NOMINAL BOUND AS A REAL ONE. It pinned the claim it exists to forbid, and
+            // it was green, so the false report could not be corrected without turning it red. Now
+            // it reads the other way: the report must NOT promise the brain cannot edit, and must
+            // carry what was measured instead.
+            () -> assertFalse(contained.contains("cannot edit"),
+                "it must not promise a bound plan mode does not provide: " + contained),
+            () -> assertTrue(contained.contains("INSTRUCTION"),
+                "it says what plan mode actually is: " + contained),
+            () -> assertTrue(contained.contains("NOT write-contained"),
+                "and it says plainly how to treat the hire: " + contained),
             () -> assertTrue(permitted.contains("NOT blocked"),
                 "and a writable hire says so plainly, rather than reading like the other: "
                     + permitted),

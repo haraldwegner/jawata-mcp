@@ -109,16 +109,25 @@ public final class ClaudeCodeDialect implements BrainDialect {
         List<String> argv = new ArrayList<>(List.of(
             binary, "-p", prompt == null ? "" : prompt,
             "--output-format", "stream-json",
-            // THE CONTAINMENT THAT ACTUALLY CONTAINS, read off this CLI's own --help on 2026-10-08:
-            // `--permission-mode <mode>` takes "plan" among its values, and plan mode analyses and
-            // proposes without editing. It is added FIRST among the optional flags because it is
-            // the one flag whose absence was measured to let a read-only seat write a file.
+            // THE FLAG THAT NARROWS WHAT THIS BRAIN WILL WRITE — and NOT, as this comment used to
+            // claim, "the containment that actually contains". Read off the CLI's own --help on
+            // 2026-10-08: `--permission-mode <mode>` takes "plan" among its values. It is added
+            // FIRST among the optional flags because it is the one flag whose absence was measured
+            // to let a read-only seat write a file into the directory it was pointed at.
             //
-            // It is not belt-and-braces over --allowedTools below; it is the only one of the two
-            // that binds. The allowlist carries the seat's JAWATA tool names, which this CLI does
-            // not know, so it bounds nothing it owns. Both are sent: the allowlist is still the
-            // right instruction for the MCP tools the brain reaches through jawata, and plan mode
-            // is what stops its own editors.
+            // MEASURED 2026-10-08, and it retires the sentence that stood here: plan mode is an
+            // INSTRUCTION this brain carries out, not a bound on what it can do. Under it the init
+            // event still ADVERTISES Edit, Write and NotebookEdit; Write was INVOKED and returned
+            // "File created successfully"; permission_denials is EMPTY in every run. What the model
+            // does is narrate the rule — "plan mode permits edits only to this plan file" — and
+            // then write that file, outside the hire's working directory, on every run.
+            //
+            // So it held for the working directory in 5 of 5 runs and it bounds nothing. The
+            // allowlist below is weaker still for this purpose: it carries the seat's JAWATA tool
+            // names, which this CLI does not know, so it bounds the MCP operations and not the
+            // CLI's own editors. Both are sent, and NEITHER is a mechanism. Compare codex, whose
+            // sandbox was observed rejecting an attempted apply_patch, and copilot, which answers
+            // permission_denied — those are mechanisms; this is not.
             "--permission-mode", readOnly ? "plan" : "manual",
             "--verbose",
             "--max-turns", Integer.toString(maxTurns)));
@@ -145,8 +154,12 @@ public final class ClaudeCodeDialect implements BrainDialect {
         // because the allowlist carries jawata's tool names and this CLI does not know them. A
         // record in which a nominal bound reads like a real one is worse than no record.
         return ToolAttachment.perRun((readOnly
-            ? "--permission-mode plan, which this hire passes: read-only, so it analyses and"
-                + " proposes and cannot edit — this is the bound that holds; plus "
+            ? "--permission-mode plan, which this hire passes. MEASURED CAVEAT: it is an"
+                + " INSTRUCTION this brain carries out rather than a bound — under it Edit, Write"
+                + " and NotebookEdit stay advertised, Write was invoked and succeeded, and no"
+                + " permission denial was ever recorded. It held for the working directory in 5 of"
+                + " 5 runs and wrote the brain's own plan file OUTSIDE it every time. Treat a"
+                + " claude hire as NOT write-contained by a mechanism; plus "
             : "--permission-mode manual: writes are NOT blocked for this hire, by explicit"
                 + " request; plus ")
             + "--allowedTools, which carries the seat's jawata operations and bounds those"
