@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -263,6 +264,99 @@ class HotspotTest {
         int burnCpuRankInCpu = rankOf(cpuRows, "com.example.debug.WallTimeTarget#burnCpu");
         assertTrue(burnCpuRankInCpu > 0 && burnCpuRankInCpu <= 3,
             "burnCpu is a top CPU hotspot (that is where the CPU goes): " + cpuRows);
+    }
+
+    /**
+     * Sprint 28g C15 — <b>the hot PATH, which a top-of-stack ranking structurally cannot
+     * name.</b>
+     *
+     * <p>A hotspot ranking credits each sample to the method executing at that instant, so a
+     * method whose time goes entirely into what it CALLS scores zero and never appears. The
+     * ranking names where the CPU was; it never says what the work was FOR. On this very
+     * fixture the ranking names {@code burnCpu} — correctly — and cannot tell you that
+     * {@code main} holds that same time, because {@code main} is never on top of the stack.</p>
+     *
+     * <p>The two halves are ordered deliberately, which is this class's own discipline: the
+     * DETERMINISTIC claims first (an unrun entry point, and a missing one), then the
+     * sampling-dependent one behind its own assumption. A rank asserted on a recording that
+     * never caught the thread reports a conclusion the data cannot support.</p>
+     */
+    @Test
+    @DisplayName("call_tree: the hot PATH from a named entry point, not only the hot leaf")
+    void callTreeNamesThePathAndNotOnlyTheLeaf() throws Exception {
+        String sessionId = launchAndResume("com.example.debug.HotLoopTarget");
+
+        ObjectNode sample = profileAction("sample");
+        sample.put("sessionId", sessionId);
+        sample.put("durationSeconds", 5);
+        String artifactId = (String) data(profile.execute(sample)).get("artifactId");
+
+        // DETERMINISTIC 1 — a method the recording never ran is an ABSENCE OF SAMPLES, and must
+        // not read as "this method is fast". That distinction is the whole reason the note
+        // exists, and it depends on no sampling luck at all.
+        ObjectNode unrun = profileAction("call_tree");
+        unrun.put("artifactId", artifactId);
+        unrun.put("entryPoint", "com.example.debug.NoSuchTargetAtAll#neverRan");
+        Map<String, Object> absent = data(profile.execute(unrun));
+
+        // DETERMINISTIC 2 — no entry point at all is REFUSED rather than rooted at Thread#run,
+        // which would name nothing while looking like an answer.
+        ObjectNode rootless = profileAction("call_tree");
+        rootless.put("artifactId", artifactId);
+        ToolResponse refused = profile.execute(rootless);
+
+        // THE SAMPLING-DEPENDENT HALF.
+        ObjectNode tree = profileAction("call_tree");
+        tree.put("artifactId", artifactId);
+        tree.put("entryPoint", "com.example.debug.HotLoopTarget#main");
+        ToolResponse r = profile.execute(tree);
+        assertTrue(r.isSuccess(), () -> "call_tree must be a real action: " + r.getError());
+        Map<String, Object> d = data(r);
+
+        assertAll(
+            () -> assertEquals(0L,
+                ((Number) absent.get("samplesThroughEntryPoint")).longValue(),
+                () -> "a method that never ran has no samples through it: " + absent),
+            () -> assertTrue(String.valueOf(absent.get("note")).contains("absence of samples"),
+                () -> "and it SAYS that, rather than letting an empty tree read as a"
+                    + " measurement that the method is cheap: " + absent),
+            () -> assertTrue(((List<?>) absent.get("hotPath")).isEmpty(),
+                () -> "with no path invented for it: " + absent),
+            () -> assertFalse(refused.isSuccess(),
+                () -> "a tree with no named root must be refused: " + data(refused)));
+
+        long through = ((Number) d.get("samplesThroughEntryPoint")).longValue();
+        Assumptions.assumeTrue(through >= MIN_SAMPLES_TO_RANK,
+            () -> "recording too thin for a PATH: only " + through + " sample(s) passed through"
+                + " the entry point, under the " + MIN_SAMPLES_TO_RANK + " needed for the"
+                + " heaviest-child ordering to mean anything. Not a failure of the tree — the"
+                + " recording never caught the thread often enough. Answer: " + d);
+
+        @SuppressWarnings("unchecked")
+        List<String> hotPath = (List<String>) d.get("hotPath");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> root = (Map<String, Object>) d.get("tree");
+
+        assertAll(
+            () -> assertFalse(hotPath.isEmpty(), () -> "a sampled entry point has a path: " + d),
+            () -> assertTrue(hotPath.get(0).startsWith("com.example.debug.HotLoopTarget#main"),
+                () -> "the path starts at the entry point the caller NAMED, not at Thread#run:"
+                    + " " + hotPath),
+            () -> assertTrue(hotPath.stream().anyMatch(step -> step.contains("burnCpu")),
+                () -> "and it REACHES the hot leaf — which is the point of the clause: the"
+                    + " ranking already names burnCpu and can never tell you that main holds"
+                    + " that time, because main is never on top of the stack. Path: " + hotPath),
+            () -> assertTrue(hotPath.size() >= 2,
+                () -> "a path of one is a leaf wearing a path's name: " + hotPath),
+            // INCLUSIVE, which is what credits a caller at all.
+            () -> assertTrue(((Number) root.get("inclusiveMillis")).longValue() > 0,
+                () -> "the root carries its whole subtree's time, so the caller is credited"
+                    + " with what it caused: " + root),
+            // AND THE COUNT SITS BESIDE THE TIME, so a reader can tell a 3-sample node from a
+            // 300-sample one — which is exactly what this class's own assumeRankable exists to
+            // check and what a time without a count hides.
+            () -> assertNotNull(root.get("samples"),
+                () -> "every node reports the samples behind its number: " + root));
     }
 
     @Test

@@ -67,7 +67,8 @@ public class ProfileTool extends AbstractTool {
 
     private static final List<String> ACTIONS = List.of(
         "threads", "deadlock", "histogram", "gc", "nmt", "heap_dump",
-        "sample", "jfr_dump", "hotspots", "call_counts", "domain_events", "latency_seam",
+        "sample", "jfr_dump", "hotspots", "call_tree", "call_counts",
+        "domain_events", "latency_seam",
         "incident_arm", "incident_status", "incident_get", "incident_disarm",
         "jmx_read", "log_level",
         "native_hs_err", "native_nmt", "native_handoff",
@@ -411,7 +412,20 @@ public class ProfileTool extends AbstractTool {
                 + "GC (default true, smaller); false includes unreachable garbage too."));
         properties.put("artifactId", Map.of("type", "string",
             "description", "artifact_delete: which artifact to remove. hotspots: which "
-                + "JFR artifact to rank (from action=sample or action=jfr_dump)."));
+                + "JFR artifact to rank (from action=sample or action=jfr_dump). call_tree: "
+                + "the same — the tree reads a recording already taken, so it costs no "
+                + "second sample."));
+        properties.put("entryPoint", Map.of("type", "string",
+            "description", "call_tree (required): the method the tree is rooted at, as "
+                + "Type#method, or a bare Type to enter at any of its methods. Samples whose "
+                + "stack never passes through it are not this question's business, and a tree "
+                + "with no root is every thread's Thread#run, which names nothing. Zero "
+                + "samples through it is reported as an ABSENCE of samples rather than as a "
+                + "measurement that the method is fast."));
+        properties.put("maxDepth", Map.of("type", "integer",
+            "description", "call_tree: how deep to render below the entry point (default 12, "
+                + "max 40). A node whose children are cut says how many were cut, because a "
+                + "tree truncated in silence reads as a leaf."));
         properties.put("durationSeconds", Map.of("type", "integer",
             "description", "sample: how long to record (default " + DEFAULT_SAMPLE_SECONDS
                 + ", max " + MAX_SAMPLE_SECONDS + "). latency_seam: how long to trace "
@@ -493,6 +507,7 @@ public class ProfileTool extends AbstractTool {
                 case "sample" -> sample(arguments);
                 case "jfr_dump" -> jfrDump(arguments);
                 case "hotspots" -> hotspots(arguments);
+                case "call_tree" -> callTree(arguments);
                 case "call_counts" -> callCounts(service, arguments);
                 case "domain_events" -> domainEvents(arguments);
                 case "latency_seam" -> latencySeam(service, arguments);
@@ -740,6 +755,61 @@ public class ProfileTool extends AbstractTool {
         data.put("bytes", bytes);
         return ToolResponse.success(data, ResponseMeta.builder()
             .steering("Rank it with profile(action=hotspots, artifactId=\"" + artifactId + "\").")
+            .build());
+    }
+
+    /**
+     * A CALL TREE FROM A NAMED ENTRY POINT — C15's "one call away" clause.
+     *
+     * <p>Reads a stored recording, the same artifact {@code hotspots} ranks, so getting the tree
+     * costs no second JVM and no second sample: one call against a recording already taken.</p>
+     *
+     * <p><b>It answers a question the ranking structurally cannot.</b> A hotspot ranking credits
+     * each sample to the method on top of the stack, so a method whose time goes entirely into
+     * what it CALLS scores zero and never appears — the ranking names where the CPU was, never
+     * what the work was for. The tree carries each node's whole subtree, so a caller is credited
+     * with everything it caused, and {@code hotPath} is the heaviest chain from the entry point
+     * down, which is the hot PATH rather than the hot leaf.</p>
+     */
+    private ToolResponse callTree(JsonNode arguments) throws Exception {
+        String artifactId = getStringParam(arguments, "artifactId");
+        if (artifactId == null || artifactId.isBlank()) {
+            return ToolResponse.invalidParameter("artifactId",
+                "call_tree needs an artifactId (from action=sample or action=jfr_dump).");
+        }
+        if (!artifacts.exists(artifactId)) {
+            return ToolResponse.symbolNotFound("No artifact '" + artifactId + "'.");
+        }
+        Path jfrFile = artifacts.root().resolve(artifactId).resolve(JFR_FILE_NAME);
+        if (!Files.exists(jfrFile)) {
+            return ToolResponse.error("NOT_A_JFR_ARTIFACT",
+                "Artifact '" + artifactId + "' has no " + JFR_FILE_NAME + " — it was not "
+                    + "produced by action=sample or action=jfr_dump.",
+                "Use action=artifacts to see what kind each artifact is.");
+        }
+        String entryPoint = getStringParam(arguments, "entryPoint");
+        if (entryPoint == null || entryPoint.isBlank()) {
+            return ToolResponse.invalidParameter("entryPoint",
+                "call_tree needs entryPoint — the method the tree is rooted at, as "
+                    + "Type#method or a bare Type to enter at any of its methods. A tree with "
+                    + "no root is every thread's Thread#run, which names nothing.");
+        }
+        int maxDepth = Math.min(40, Math.max(1, getIntParam(arguments, "maxDepth", 12)));
+
+        Map<String, Object> data =
+            new LinkedHashMap<>(JfrParser.callTree(jfrFile, entryPoint, maxDepth));
+        data.put("artifactId", artifactId);
+
+        long through = data.get("samplesThroughEntryPoint") instanceof Number n ? n.longValue() : 0;
+        return ToolResponse.success(data, ResponseMeta.builder()
+            .steering(through == 0
+                ? "No sample passed through " + entryPoint + ". That is an ABSENCE of samples, "
+                    + "not a measurement that it is fast — check the name, or sample while it "
+                    + "is actually running."
+                : "`hotPath` is the heaviest chain from the entry point down — the hot PATH, "
+                    + "which a top-of-stack ranking cannot name. For TRUE per-method call "
+                    + "counts (not these sample counts) use action=call_counts, which needs a "
+                    + "LIVE session because it traces calls rather than reading a recording.")
             .build());
     }
 

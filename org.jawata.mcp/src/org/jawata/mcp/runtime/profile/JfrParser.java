@@ -222,6 +222,173 @@ public final class JfrParser {
         return result;
     }
 
+    /**
+     * A CALL TREE FROM A NAMED ENTRY POINT — Sprint 28g S15, C15's hot-path clause.
+     *
+     * <p><b>Why a flat ranking cannot answer this, and the store had it written down before the
+     * stage opened:</b> <i>"a ranking that credits each sample only to its top stack frame never
+     * names the method that holds the time"</i> — because a self-time ranking credits the method
+     * executing at that instant, so a caller whose time goes entirely into what it calls scores
+     * ZERO and never appears at all. {@link #wallHotspots} names where the CPU was; it cannot
+     * name what the work was FOR. That is not a defect in it — self time is the right answer to
+     * its own question — it is a different question, and this is it.</p>
+     *
+     * <p>Each node carries the time of its whole SUBTREE (inclusive), so a caller is credited
+     * with everything it caused, and the sample count beside it — which is what C15 means by
+     * call counts sitting beside times rather than behind a second call with its own required
+     * argument.</p>
+     *
+     * <p><b>{@code hotPath} is the deliverable, not the tree.</b> Following the heaviest child
+     * down from the entry point is the one thing a reader actually wants and the one thing a leaf
+     * ranking structurally cannot give, so it is computed here rather than left as an exercise
+     * for whoever reads the nesting.</p>
+     *
+     * <p>Inclusive time double-counts BY DESIGN — a caller's milliseconds include its callees'.
+     * That is what makes a caller visible, and it is why these numbers are reported as a tree
+     * rather than as shares: siblings sum to their parent, and no level sums to 100%.</p>
+     *
+     * @param entryPoint {@code Type#method}, or a bare {@code Type} to enter at any of its
+     *                   methods — the frame the tree is rooted at, and samples whose stack never
+     *                   passes through it are not this question's business
+     */
+    public static Map<String, Object> callTree(Path jfrFile, String entryPoint, int maxDepth)
+            throws IOException {
+        List<List<String>> stacks = new ArrayList<>();
+        List<Long> timesNanos = new ArrayList<>();
+
+        try (RecordingFile rf = new RecordingFile(jfrFile)) {
+            while (rf.hasMoreEvents()) {
+                RecordedEvent event = rf.readEvent();
+                if (!"jdk.ExecutionSample".equals(event.getEventType().getName())
+                        || !hasStack(event)) {
+                    continue;
+                }
+                List<String> frames = new ArrayList<>();
+                for (RecordedFrame frame : event.getStackTrace().getFrames()) {
+                    RecordedMethod method = frame.getMethod();
+                    if (method != null && method.getType() != null) {
+                        frames.add(method.getType().getName() + "#" + method.getName());
+                    }
+                }
+                stacks.add(frames);
+                timesNanos.add(event.getStartTime().toEpochMilli() * 1_000_000L);
+            }
+        }
+
+        long intervalNanos = medianGapNanos(timesNanos);
+        Node root = new Node(entryPoint);
+        long matched = 0;
+
+        for (List<String> frames : stacks) {
+            // JFR hands frames INNERMOST first, so the entry point is the OUTERMOST match and
+            // the callees are at lower indices. Searching from the outside in is deliberate:
+            // on a recursive stack the outermost occurrence is the one the caller named.
+            int entry = -1;
+            for (int i = frames.size() - 1; i >= 0; i--) {
+                if (matchesEntry(frames.get(i), entryPoint)) {
+                    entry = i;
+                    break;
+                }
+            }
+            if (entry < 0) {
+                continue;
+            }
+            matched++;
+            Node at = root;
+            at.add(intervalNanos);
+            for (int i = entry - 1; i >= 0; i--) {
+                at = at.child(frames.get(i));
+                at.add(intervalNanos);
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("entryPoint", entryPoint);
+        result.put("samplesThroughEntryPoint", matched);
+        result.put("samplingIntervalMillis", intervalNanos / 1_000_000);
+        if (matched == 0) {
+            // AN ABSENCE IS AN ANSWER, and it is not the same answer as an empty tree. A caller
+            // who named a method the recording never executed is told that, rather than handed
+            // a tree with no children and left to read it as "this method is cheap".
+            result.put("tree", Map.of());
+            result.put("hotPath", List.of());
+            result.put("note", "no sample's stack passed through " + entryPoint
+                + " — this is not a measurement that it is fast, it is an absence of samples."
+                + " Either it did not run during the recording, or the name does not match a"
+                + " frame (a bare Type enters at any of its methods).");
+            return result;
+        }
+        result.put("tree", root.render(maxDepth));
+        result.put("hotPath", root.hotPath(maxDepth));
+        return result;
+    }
+
+    /** Whether a frame is the named entry — a bare {@code Type} enters at any of its methods. */
+    private static boolean matchesEntry(String frameSymbol, String entryPoint) {
+        if (frameSymbol.equals(entryPoint)) {
+            return true;
+        }
+        return entryPoint.indexOf('#') < 0 && frameSymbol.startsWith(entryPoint + "#");
+    }
+
+    /** One method in the tree, holding its subtree's time and the samples that passed through. */
+    private static final class Node {
+        private final String symbol;
+        private long nanos;
+        private long samples;
+        private final Map<String, Node> children = new LinkedHashMap<>();
+
+        Node(String symbol) {
+            this.symbol = symbol;
+        }
+
+        void add(long interval) {
+            nanos += interval;
+            samples++;
+        }
+
+        Node child(String childSymbol) {
+            return children.computeIfAbsent(childSymbol, Node::new);
+        }
+
+        /** The heaviest child first, which is what makes the first-child chain the hot path. */
+        private List<Node> byWeight() {
+            List<Node> sorted = new ArrayList<>(children.values());
+            sorted.sort((a, b) -> Long.compare(b.nanos, a.nanos));
+            return sorted;
+        }
+
+        Map<String, Object> render(int maxDepth) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("symbol", symbol);
+            out.put("inclusiveMillis", nanos / 1_000_000);
+            out.put("samples", samples);
+            if (maxDepth > 0 && !children.isEmpty()) {
+                List<Map<String, Object>> kids = new ArrayList<>();
+                for (Node c : byWeight()) {
+                    kids.add(c.render(maxDepth - 1));
+                }
+                out.put("children", kids);
+            } else if (!children.isEmpty()) {
+                // SAY WHAT WAS CUT. A tree truncated in silence reads as a leaf, which is the
+                // same lie the top-frame ranking told one level up.
+                out.put("childrenNotShown", children.size());
+            }
+            return out;
+        }
+
+        List<String> hotPath(int maxDepth) {
+            List<String> path = new ArrayList<>();
+            Node at = this;
+            for (int depth = 0; depth <= maxDepth && at != null; depth++) {
+                path.add(at.symbol + " (" + (at.nanos / 1_000_000) + "ms, " + at.samples + ")");
+                List<Node> kids = at.byWeight();
+                at = kids.isEmpty() ? null : kids.get(0);
+            }
+            return path;
+        }
+    }
+
     /** The median gap between consecutive (unsorted) timestamps — robust to one hiccup. */
     private static long medianGapNanos(List<Long> timestampsNanos) {
         if (timestampsNanos.size() < 2) {
