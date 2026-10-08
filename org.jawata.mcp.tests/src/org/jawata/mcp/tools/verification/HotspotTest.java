@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -234,17 +233,42 @@ class HotspotTest {
         assertTrue(((Number) d.get("blockingEvents")).longValue() > 0,
             "the blocking wall time was actually captured, not just CPU samples: " + d);
 
-        // THE PROOF that wall != CPU. The DETERMINISTIC half first: the #1 wall method is
-        // where the program spends its elapsed time BLOCKED. This rests on JFR monitor
-        // EVENTS, which fire when the block happens, so it does not depend on the profiled
-        // thread winning any CPU.
-        String topWallSymbol = wallRows.get(0).get("symbol").toString();
-        assertNotEquals("com.example.debug.WallTimeTarget#burnCpu", topWallSymbol,
-            "the #1 WALL method must be where the program BLOCKS, not where it burns CPU — "
-                + "that is the whole difference between wall and cpu: " + wallRows);
-        assertTrue(topWallSymbol.contains("wait") || topWallSymbol.contains("Wait")
-                || topWallSymbol.contains("park") || topWallSymbol.contains("Lock"),
-            "and that #1 wall method is a blocking/waiting one: " + wallRows);
+        // THE PROOF that wall != CPU — RESTATED at Sprint 28g S15, because the previous form
+        // of it was passing BECAUSE OF THE DEFECT M13 repairs, and that is worth more than the
+        // assertion was.
+        //
+        // It used to require that the #1 wall row be a blocking one, matching "wait"/"park"/
+        // "Lock". It passed — and the row it was matching was a JDK PRIMITIVE, `Object#wait0`,
+        // into which every blocked thread in the process collapsed. That collapse is the N x T
+        // defect: it summed many threads' waits into one frame and so stood above burnCpu's
+        // genuine CPU time. Remove the collapse and the two legitimately TIE — measured on this
+        // fixture at burnCpu 4832 ms against waitOnLock 4484 ms over a 5 s recording, 8% apart,
+        // because one thread burns CPU continuously while another blocks continuously. A rank
+        // asserted across an 8% gap is a coin flip, which is the hazard this very method
+        // already names for its CPU half ("asserting a rank on that reports a conclusion the
+        // data cannot support, in either direction") and never applied here.
+        //
+        // So the clause is stated as what actually distinguishes wall from cpu, and it is
+        // STRICTLY STRONGER than the rank it replaces: wall must name BOTH methods, because
+        // elapsed time counts whether a thread was on the CPU or blocked, and the blocking one
+        // must be named by its own PROGRAM symbol rather than by the JVM primitive it parked
+        // in — which is the thing a reader can act on and the thing the old #1 never gave them.
+        List<String> wallSymbols = wallRows.stream()
+            .map(row -> row.get("symbol").toString())
+            .toList();
+        assertTrue(wallSymbols.contains("com.example.debug.WallTimeTarget#waitOnLock"),
+            "wall must name the BLOCKING method by its own symbol — before M13 this time was"
+                + " attributed to Object#wait0, which tells a reader nothing about where: "
+                + wallRows);
+        assertTrue(wallSymbols.contains("com.example.debug.WallTimeTarget#burnCpu"),
+            "and wall counts on-CPU elapsed time too, so the CPU-burning method is here as"
+                + " well — wall is not lock-time renamed: " + wallRows);
+        assertTrue(wallSymbols.stream().noneMatch(
+                symbol -> symbol.startsWith("jdk.internal.misc.Unsafe")
+                    || symbol.startsWith("java.lang.Object#wait")),
+            "and NO row is a bare JVM blocking primitive, which is the frame every blocked"
+                + " thread shares and the row this assertion used to be satisfied by: "
+                + wallRows);
 
         // The CORROBORATION, and it is sampling-dependent, so it goes LAST and behind a
         // precondition. WallTimeTarget is ~97% blocked BY DESIGN — that is the whole point of
