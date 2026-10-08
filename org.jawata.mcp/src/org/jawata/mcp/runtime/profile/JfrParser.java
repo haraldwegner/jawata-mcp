@@ -380,6 +380,13 @@ public final class JfrParser {
         // could never do, and a test can gate on recording thickness without its gate being
         // satisfiable by a defect in the matching it is testing.
         //
+        // IT COUNTS STACK-BEARING SAMPLES, and the C15 round-4 audit asked for that to be said
+        // rather than left for a reader to derive: the loop above skips an event with no stack
+        // trace before `stacks` is touched, so a sample JFR emitted without one is not in this
+        // figure. In practice that is not a shape JFR produces, which is why the loop treats it
+        // as a filter rather than reporting it — but "no execution samples" and "no samples we
+        // could read a stack from" are different sentences and this is the second.
+        //
         // It is also the observation this file's own absence note and the profiler seat both
         // want and could not get: "the method did not run" versus "the name does not match a
         // frame" is exactly `matched == 0` with this figure high.

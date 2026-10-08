@@ -388,7 +388,9 @@ class HotspotTest {
         ObjectNode unrun = profileAction("call_tree");
         unrun.put("artifactId", artifactId);
         unrun.put("entryPoint", "com.example.debug.NoSuchTargetAtAll#neverRan");
-        Map<String, Object> absent = data(profile.execute(unrun));
+        ToolResponse absentResponse = profile.execute(unrun);
+        Map<String, Object> absent = data(absentResponse);
+        String absentSteering = absentResponse.getMeta().getSteering();
 
         // DETERMINISTIC 2 — no entry point at all is REFUSED rather than rooted at Thread#run,
         // which would name nothing while looking like an answer.
@@ -422,6 +424,28 @@ class HotspotTest {
                 () -> "and it names the THIRD cause — ran, but off-CPU throughout, which this"
                     + " tree is built from execution samples and cannot see — rather than"
                     + " offering only did-not-run and name-does-not-match: " + absent),
+            // C15 ROUND 4's F1 — THE DISCRIMINATING STEERING HAD NO NEEDLE, which is round 2's
+            // A2 recurring one layer out: new published text, nothing holding it. Nothing in
+            // this suite read `ResponseMeta` for this tool, so folding the two branches back
+            // into one message would have reddened nothing.
+            //
+            // This case is the deterministic way in. `HotLoopTarget` burns CPU for the whole
+            // recording while this entry point names a class that does not exist, so
+            // `executionSamplesInRecording > 0` and `samplesThroughEntryPoint == 0` both hold
+            // by construction — exactly the branch that says the sampler WAS working and this
+            // entry point is what it never caught. The needle is wording only that branch
+            // emits; the other branch is unreachable from a test, because no fixture here can
+            // produce a recording with zero samples on demand (the plan records 0 of ~80 with
+            // the cause unestablished), and asserting it would be a flake.
+            () -> assertTrue(absentSteering.contains("the sampler WAS working"),
+                () -> "the steering must say WHICH absence this is — samples in the recording"
+                    + " but none through the entry point — rather than one message for both"
+                    + " cases, which sent a reader to the wrong half of the time: "
+                    + absentSteering),
+            () -> assertTrue(absentSteering.contains("hotspots(dimension=wall)"),
+                () -> "and it must name the tool that CAN see an off-CPU method, since this"
+                    + " tree is built from execution samples and structurally cannot: "
+                    + absentSteering),
             () -> assertTrue(((List<?>) absent.get("hotPath")).isEmpty(),
                 () -> "with no path invented for it: " + absent),
             () -> assertFalse(refused.isSuccess(),
