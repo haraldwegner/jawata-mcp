@@ -126,15 +126,19 @@ class SeatHireTest {
     }
 
     @Test
-    @DisplayName("a four-line comment inside the frontmatter is not read as four fields")
-    void commentsAreNotFields() {
+    @DisplayName("a four-line prose comment above the real fields does not disturb them")
+    void aCommentDoesNotDisturbTheFieldsBelowIt() {
         SeatHire pm = SeatHire.read(PM);
 
         // Every shipped seat carries a prose tier-justification comment, and three of its four
-        // lines contain a colon. A reader splitting on the first colon without skipping comments
-        // would store fragments of prose under keys like "# tier justification (the product is a
-        // JUDGEMENT — is this stage done, is this instruction" — and, worse, a comment line
-        // beginning "# model:" would silently override the seat's real brain.
+        // lines contain a colon.
+        //
+        // THIS CASE IS WEAKER THAN IT LOOKS AND SAYS SO. A mutation deleting the comment skip left
+        // it GREEN, which is the finding: a comment CANNOT shadow a real field, because
+        // `# model: x` splits at its own colon into the key "# model" rather than "model". So what
+        // keeps the fields below intact is the `#` landing inside the key, not the skip — and an
+        // earlier version of this comment claimed the opposite. The clauses below are therefore a
+        // REGRESSION LOCK on reading a real seat whole, not a proof that the skip is load-bearing.
         assertAll(
             () -> assertEquals("claude-sonnet-5", pm.model(),
                 "the real model survived the comment above it"),

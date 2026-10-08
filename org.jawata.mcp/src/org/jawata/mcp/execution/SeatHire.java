@@ -208,9 +208,17 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 break;
             }
             // A seat's frontmatter carries COMMENTS — every shipped seat has a multi-line tier
-            // justification in one. A reader that split those on their first colon would store
-            // fragments of prose under keys like "# tier justification (the product is a
-            // JUDGEMENT - is this stage done".
+            // justification in one, and three of those lines contain a colon. Skipped so they do
+            // not become junk keys like "# /main's, and wrong here costs a whole stage rather than
+            // one finding. No schedule".
+            //
+            // WHAT THIS SKIP DOES NOT BUY, stated because the first version of this comment
+            // claimed it did: a comment CANNOT shadow a real field. `# model: x` splits at its own
+            // colon into the key "# model", which is not "model" — so without this skip the junk
+            // key is stored and the real field still wins. A mutation deleting the skip left every
+            // test green, which is how the false claim was found. The skip is kept because junk
+            // keys in a map a caller may iterate are worth not having, not because anything
+            // downstream would otherwise break.
             if (line.startsWith("#") || line.isEmpty()) {
                 continue;
             }
