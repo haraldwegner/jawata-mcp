@@ -2507,12 +2507,14 @@ public final class ExperienceTool implements Tool {
      * <h2>Batched on purpose, and store-only on purpose</h2>
      *
      * <p>A turn adds several members at once, and this answers about all of them in ONE call —
-     * which is what the sentence about round trips was always about. <b>Internally it is also ONE
-     * statement</b>, since 2026-10-08: the store is asked, for exactly the members named, which of
-     * them carry a row. (This paragraph said <i>"it now reads the store once per member"</i> and
-     * argued for that as fewer statements — true of the fold before last and left standing by the
-     * one that replaced it. The per-member read existed to put a page cap out of reach; a keyed
-     * read needs neither the page nor the N statements.) It needs NO project: a job row is
+     * which is what the sentence about round trips was always about. <b>Internally it is ONE
+     * keyed QUERY for the whole member list</b>, since 2026-10-08, where it was one query per
+     * member before that and a corpus-wide page before that. It is not one STATEMENT: every row
+     * returned still costs a second select for its symptoms, so the true shape is one plus one
+     * per row found. (This paragraph claimed <i>"it is also ONE statement"</i> and deleted the
+     * sentence that had carried the per-row cost correctly — a round-2 audit struck it. Trading
+     * a true statement for a tidier false one is the defect this whole checkpoint is about, and
+     * it happened inside the repair for it.) It needs NO project: a job row is
      * anchored by an FQN string, and whether one EXISTS is a question about the store. That
      * is what lets this answer while a resident has nothing loaded — which is the state a
      * stop gate most often finds.</p>
@@ -2694,9 +2696,11 @@ public final class ExperienceTool implements Tool {
      * bounded by the members ASKED ABOUT, so an absent key is an absence and there is no third
      * state to report.</p>
      *
-     * <p>It is also one statement rather than one per member, which the per-member version was
-     * not: that fold traded a corpus read for N reads to put the cap out of reach, and the keyed
-     * read needs neither.</p>
+     * <p>It is also one QUERY for the whole member list rather than one per member: that fold
+     * traded a corpus read for N reads to put the cap out of reach, and the keyed read needs
+     * neither. Not one statement — each row found still costs a select for its symptoms. (Said
+     * "one statement" until a round-2 audit counted them; the sibling paragraph on
+     * {@code describeJobsFor} carried the same error and the same sweep missed this one.)</p>
      */
     private JobsHeld jobsByMember(java.util.Collection<String> members) {
         java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();

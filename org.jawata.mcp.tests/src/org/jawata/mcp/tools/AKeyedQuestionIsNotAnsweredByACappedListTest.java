@@ -38,10 +38,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * prefix-shaped scope fills the page with OTHER anchors' rows and the one asked about can sit
  * outside it. Every caller then read "not on the page" as "does not exist".</p>
  *
- * <p><b>And all four act on the absence.</b> Three tell an agent to describe the member or the
- * package; the fourth is D30's own write gate, which REPLACES an existing row and INSERTS when
- * it finds none. So the page size decided how many duplicate descriptions the product asked
- * for — and the gate minted them itself, rather than any caller ignoring it.</p>
+ * <p><b>And all three keyed callers act on the absence.</b> Two tell an agent to describe the
+ * member or the package; the third is D30's own write gate, which REPLACES an existing row and
+ * INSERTS when it finds none. <b>Reachable rather than observed</b>, and the distinction is the
+ * point: an anchor comes from the caller and nothing validates its shape, so a type- or
+ * package-shaped one fills the page — but the duplicates measured in this store are
+ * member-anchored, which cannot prefix-match, and predate that gate. This paragraph claimed the
+ * gate "minted them itself"; a round-2 audit struck it, because the fold that corrected that
+ * tense elsewhere left it standing here.</p>
  *
  * <h2>Why the fix is a new read and not a bigger window</h2>
  *
@@ -63,9 +67,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * each case actually carries is listed here rather than asserted as a uniform property:</p>
  *
  * <ul>
- *   <li><b>The two store cases and the two tool cases</b> pair with the old read and assert the
- *       page was FULL — so a fixture that stops reaching the defect fails loudly instead of
- *       reading as "nothing is there".</li>
+ *   <li><b>FOUR cases call the old read; THREE of them assert the page was FULL</b> — so a
+ *       fixture that stops reaching the defect fails loudly instead of reading as "nothing is
+ *       there". The fourth, the write-gate case, asserts the narrower clause that the row is
+ *       OUTSIDE the page, which is as strong here: under this fixture a row can only be absent
+ *       from a fifty-row page if fifty newer rows filled it.
+ *       <br><b>This bullet said all four assert a full page.</b> A round-2 audit counted them
+ *       and it was three — the second consecutive round in which this list's own arithmetic was
+ *       wrong, in the paragraph written to correct the first wrong version of it. The count is
+ *       now per clause rather than per group, because grouping is what hid it both times.</li>
  *   <li><b>{@code everyAnchorAskedAboutIsAnswered} has no pairing and cannot have one</b>: its
  *       subject is a window on the ANSWER rather than on the matched rows, which the old read
  *       had no form of. Its discriminator is the mutation that re-adds a {@code LIMIT}.</li>
@@ -308,8 +318,12 @@ class AKeyedQuestionIsNotAnsweredByACappedListTest {
     /**
      * THE CASE THAT MATTERS. The write gate is the one-job-per-member invariant: it replaces the
      * existing row and inserts when it sees none. While it found that row by sifting a capped
-     * page, a buried row meant an INSERT — so the gate minted the duplicates D30 exists to
-     * prevent, and no test could see it because D30's own tests verify through the same read.
+     * page, a buried row meant an INSERT — the duplicate D30 exists to prevent, reachable
+     * through an anchor whose shape nothing validates. (This said the gate "minted the
+     * duplicates D30 exists to prevent"; struck at round 2, because the measured duplicates are
+     * member-anchored — which cannot prefix-match — and predate the gate. The fold that
+     * corrected that tense at the gate itself left it standing here.) And no test could see the
+     * hazard, because D30's own tests verified through the same read.
      */
     @Test
     @DisplayName("D30: the write gate REPLACES a buried row rather than inserting beside it")

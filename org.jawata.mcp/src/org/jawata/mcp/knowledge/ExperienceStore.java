@@ -385,14 +385,21 @@ public interface ExperienceStore extends AutoCloseable {
      * it. Filtering the page in the caller cannot tell "there is no such row" from "it was
      * not on this page" — the two arrive as the same empty result.</p>
      *
-     * <p><b>That is not a theoretical hazard: it shipped, in four callers at once.</b>
-     * Sprint 28g Stage 14 / D30 — three of them instructed an agent to describe a member
-     * or a package it had already described, and the fourth was an invariant's own write
-     * gate, which INSERTED a second row every time the first fell outside the page. So the
-     * page size decided how many duplicate writes the product performed. The explanation
-     * sat on {@link #anchoredAt} alone until a review pointed out that a caller reaching
-     * for a listing never opens the cure's javadoc — the warning belongs here, on the read
-     * they do open.</p>
+     * <p><b>That is not a theoretical hazard: it shipped, in THREE keyed callers at once.</b>
+     * Sprint 28g Stage 14 / D30 — two of them instructed an agent to describe a member or a
+     * package, and the third was an invariant's own write gate, which inserts a second row
+     * when it finds none. <b>Reachable rather than observed:</b> an anchor is taken from the
+     * caller and its shape is never validated, so a type- or package-shaped one prefix-matches
+     * everything beneath it and fills the page — while the duplicates actually measured in this
+     * store are member-anchored, which cannot prefix-match at all, and predate that gate
+     * existing. (This paragraph said "four callers" and claimed the gate had performed those
+     * duplicates "every time" — both struck by a round-2 audit. The count disagreed with the
+     * same commit's own correction, and the past tense was the exact claim that commit
+     * retracted elsewhere: one change cannot both withdraw and re-assert a sentence.)</p>
+     *
+     * <p>The explanation sat on {@link #anchoredAt} alone until a review pointed out that a
+     * caller reaching for a listing never opens the cure's javadoc — the warning belongs here,
+     * on the read they do open.</p>
      */
     List<StoredEntry> listEntries(String type, String status, String scope, String language, int limit);
 

@@ -175,26 +175,33 @@ public final class Landmarks {
                 try {
                     Entry computed = new Entry(rank(service, PROGRESS.get(key)),
                         System.currentTimeMillis());
-                    // AN EMPTY RANKING IS NOT CACHED, 2026-10-08.
+                    // AN EMPTY RANKING IS NOT CACHED — a LATENT defect, 2026-10-08.
                     //
-                    // The key is the project NAME (see cacheKey), the map is static, and
-                    // `invalidate()` has ZERO production callers — so whatever lands here is
-                    // served to every later caller in the process until it ages out. An EMPTY
-                    // list cached under a reused name is then handed back through the fast path
-                    // above as `ready: true, count: 0`, which this feature's own documentation
-                    // says must mean "this workspace genuinely has no landmarks" and is the one
-                    // reading it must never be confused with. Measured: that is how the C14
-                    // post-fold suite went red — the test polls for `ready` and got an
-                    // authoritative zero, with no ranking-failure warning anywhere in the log,
-                    // so the ranking had succeeded against a workspace that was empty to it.
-                    // Test harnesses reuse one project path and name by construction, which is
-                    // what makes a name-keyed static cache reachable at all.
+                    // WHAT THIS COMMENT SAID AND WHY IT WAS STRUCK. It claimed the key is the
+                    // project NAME, cited cacheKey for it, and called that the measured cause of
+                    // a red suite run. All three were wrong, and the field's own javadoc 120
+                    // lines above says so: the key is each project's ROOT plus its source-file
+                    // count plus its load instant, and NAME-keying is the Sprint-24 defect that
+                    // was already FIXED. I asserted a mechanism while citing the method that
+                    // refutes it, inside a comment whose word was "measured". A round-2 audit
+                    // caught it.
                     //
-                    // NOT cached means RECOMPUTED next call, which is the conservative
-                    // direction: a genuinely empty workspace still answers empty, it simply
-                    // pays for the answer again rather than freezing it. Caching a zero buys
-                    // nothing — there is no expensive result to keep — and costs the one
-                    // distinction the caller depends on.
+                    // THE CONSEQUENCE, stated because it is the part that matters: the test
+                    // harness builds a FRESH temp directory per test method, so projectRoot and
+                    // loadedAt are unique per method and this key CANNOT collide across tests.
+                    // The fast path above therefore served nothing, and THIS GUARD DOES NOT
+                    // EXPLAIN THAT RED RUN. It is kept on its own merits and on nothing else.
+                    //
+                    // Its own merits are real: stillResolves answers true VACUOUSLY on an empty
+                    // list, so an empty entry that does reach this map is served thereafter as
+                    // `ready: true, count: 0` for the whole staleness window — the one reading
+                    // this feature's documentation says must never be confused with a genuine
+                    // absence. Not caching means recomputing, which is the conservative
+                    // direction: a genuinely empty workspace still answers empty and simply pays
+                    // again. (Cost, named rather than waved away: a workspace that legitimately
+                    // ranks to zero now re-runs the O(source types) search every cycle instead
+                    // of once per staleness window. A zero is cheap to HOLD and expensive to
+                    // PRODUCE, and the first version of this comment conflated the two.)
                     if (!computed.ranked().isEmpty()) {
                         if (CACHE.size() >= MAX_ENTRIES) {
                             CACHE.clear();
@@ -223,6 +230,34 @@ public final class Landmarks {
         try {
             Entry done = waitOn.get(FIRST_WAIT_MILLIS, TimeUnit.MILLISECONDS);
             List<Map<String, Object>> ranked = done.ranked();
+            // NOTHING OVER SOMETHING IS NOT AN ANSWER, 2026-10-08 — and this, not the cache
+            // guard above, is the honest fix for the red run that found this file.
+            //
+            // A ranking that comes back EMPTY while the workspace HOLDS source types has not
+            // answered the question; it has failed to. Both ways that can happen swallow their
+            // own cause at DEBUG — the package-fragment-root walk in sourceTypes and the
+            // per-type search in rank — so the absence of a WARN proves only that rank() did
+            // not THROW, which is the inference the struck comment above leaned on. Reporting
+            // that as `ready` renders a failure as the authoritative sentence "this workspace
+            // has nothing worth naming", which is the one confusion this feature's own
+            // documentation forbids.
+            //
+            // So it reports NOT READY instead, which is already a state every caller handles
+            // and which makes the next call retry. The cost is the honest one: a genuinely
+            // broken ranking now spins a polling caller until its own deadline rather than
+            // handing it a confident zero — a loud failure in place of a quiet wrong answer.
+            //
+            // IT ALSO CLOSES THE FAILURE PATH BELOW, where the catch completes the future with
+            // an empty Entry: that lands here too, so a ranking that threw no longer reaches a
+            // caller wearing `ready`. An EMPTY WORKSPACE still answers ready-and-empty, because
+            // there the zero is the truth — which is what makes this a discrimination rather
+            // than a blanket refusal.
+            if (ranked.isEmpty() && !sourceTypes(service).isEmpty()) {
+                log.warn("Landmark ranking came back empty over a workspace that holds source"
+                    + " types — reporting NOT READY rather than an authoritative zero."
+                    + " Raise org.jawata.mcp.tools.shared.Landmarks to DEBUG for the cause.");
+                return new Ranking(List.of(), false, 0, 0);
+            }
             return new Ranking(
                 ranked.size() > limit ? new ArrayList<>(ranked.subList(0, limit)) : ranked,
                 true, ranked.size(), ranked.size());
