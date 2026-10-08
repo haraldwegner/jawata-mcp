@@ -131,6 +131,17 @@ class ToolGateRunnerTest {
             }),
             new FakeGate("refusing_gate",
                 () -> ToolResponse.error("PROJECT_NOT_LOADED", "no project", null)),
+            // THE REFUSAL THAT CARRIES A COUNT, and it is the only shape that reaches the
+            // refusal branch. A mutation disabling that branch stayed GREEN against the bare
+            // refusal above, because a refusal with no data publishes no count either, so the
+            // unreadable-shape case answered in its place. But ToolResponse.error has a
+            // four-argument form that sets the response's own data — for the reason its javadoc
+            // gives, that a refusal caused by something in the user's world must say WHICH thing
+            // — and ResponseFacts reads that data without asking whether the call succeeded. So
+            // a compile gate refusing with a diagnosis map is a refusal publishing errorCount 0,
+            // and reading it would certify a step that never ran.
+            new FakeGate("refusing_gate_with_a_count", () -> ToolResponse.error(
+                "PROJECT_NOT_LOADED", "no project", null, Map.of("errorCount", 0))),
             new FakeGate("empty_gate", () -> null)));
 
         assertAll(
@@ -139,6 +150,13 @@ class ToolGateRunnerTest {
             () -> assertFalse(runner.run(step("crashing_gate")).succeeded()),
             // A refusal answers about the TOOL, not about the tree, so it has no count to give.
             () -> assertFalse(runner.run(step("refusing_gate")).succeeded()),
+            // And it has none EVEN WHEN IT PUBLISHES ONE. This is the discriminating case: the
+            // response carries errorCount 0 as its diagnosis, so every later line of the runner
+            // would read it as a clean gate. Only the refusal branch can tell that the tool
+            // declined rather than ran.
+            () -> assertFalse(runner.run(step("refusing_gate_with_a_count")).succeeded(),
+                "a refusal publishing a count has still not looked at the tree"),
+            () -> assertEquals(0, runner.run(step("refusing_gate_with_a_count")).errorCount()),
             () -> assertFalse(runner.run(step("empty_gate")).succeeded()),
             // All three report zero, which is exactly why the boolean beside it is load-bearing.
             () -> assertEquals(0, runner.run(step("crashing_gate")).errorCount()),
