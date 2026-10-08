@@ -127,13 +127,21 @@ public final class HiredBrain {
      *     the dialect's, because what to run is the dialect's answer and where to run it is the
      *     caller's
      * @param prompt  the brief
+     * @param tools   the tools this run may use. Handed to the dialect, which attaches them if it
+     *     CAN — and a dialect whose {@link BrainDialect#toolAttachment()} is not
+     *     {@code PER_RUN} will ignore them. <b>That is why this method does not report the tools
+     *     as attached:</b> what reaches the brain is the dialect's answer, so the hirer reads the
+     *     attachment and says which of the three it got. Passing a list to a brain that cannot be
+     *     told is not an error and must not read as success.
      */
     public static Outcome hire(HostProcesses host, BrainDialect dialect, HostCommand base,
-            String prompt, Ceilings ceilings) throws IOException, InterruptedException {
+            String prompt, List<String> tools, Ceilings ceilings)
+            throws IOException, InterruptedException {
         // The dialect owns argv (the prompt travels as one argument, unquoted); the caller owns
         // where and with what environment. Stderr is forced APART whatever the caller asked for:
         // a dialect reads stdout, and a merged stream would feed it a crash to misread.
-        HostCommand command = new HostCommand(dialect.command(prompt), base.workingDirectory(),
+        HostCommand command = new HostCommand(
+            dialect.command(prompt, tools == null ? List.of() : tools), base.workingDirectory(),
             base.environment(), ceilings.wallClock(), false, base.cleanEnvironment());
 
         Process child = host.start(command);

@@ -131,7 +131,7 @@ class BrainDialectTest {
     void theCommandIsArgvRatherThanAString() {
         // A seat brief routinely contains newlines, quotes and shell metacharacters. argv means
         // nothing has to escape them and nothing can mis-escape them.
-        List<String> argv = claude.command("do the thing\nwith \"quotes\" and $PATH");
+        List<String> argv = claude.command("do the thing\nwith \"quotes\" and $PATH", List.of());
         assertAll(
             () -> assertEquals("claude", argv.get(0)),
             () -> assertEquals("-p", argv.get(1)),
@@ -140,7 +140,7 @@ class BrainDialectTest {
             () -> assertTrue(argv.contains("stream-json"), "the dialect this class reads"),
             () -> assertTrue(argv.contains("--max-turns")),
             () -> assertFalse(argv.contains("--model"), "no model asked for means none passed"));
-        assertTrue(new ClaudeCodeDialect("claude", 4, "opus").command("x").contains("opus"),
+        assertTrue(new ClaudeCodeDialect("claude", 4, "opus").command("x", List.of()).contains("opus"),
             "and a model that IS asked for is passed");
     }
 
@@ -168,7 +168,7 @@ class BrainDialectTest {
     @Test
     @DisplayName("the script command puts the prompt last, after its own arguments")
     void theScriptCommandOrdersItsArgumentsBeforeThePrompt() {
-        List<String> argv = new ScriptDialect("/bin/sh", List.of("-c", "cat")).command("brief");
+        List<String> argv = new ScriptDialect("/bin/sh", List.of("-c", "cat")).command("brief", List.of());
         assertEquals(List.of("/bin/sh", "-c", "cat", "brief"), argv);
     }
 }

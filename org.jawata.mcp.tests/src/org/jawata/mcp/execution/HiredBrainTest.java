@@ -79,7 +79,7 @@ class HiredBrainTest {
             echo "done"
             """);
         HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
-            "the brief", HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+            "the brief", List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
 
         assertAll(
             () -> assertTrue(outcome.clean(), "it exited 0, on its own, inside every ceiling"),
@@ -105,7 +105,7 @@ class HiredBrainTest {
             exit 9
             """);
         HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
-            "the brief", HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+            "the brief", List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
 
         assertAll(
             () -> assertTrue(outcome.text().isEmpty(), "it really did say nothing on stdout"),
@@ -129,7 +129,7 @@ class HiredBrainTest {
             echo "COST-USD: 99.99"
             """);
         HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
-            "the brief", HiredBrain.Ceilings.of(Duration.ofSeconds(2)));
+            "the brief", List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(2)));
 
         assertAll(
             () -> assertTrue(outcome.timedOut(), "the wall clock reaped it"),
@@ -155,7 +155,7 @@ class HiredBrainTest {
             echo "never reached"
             """);
         HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
-            "the brief", new HiredBrain.Ceilings(Duration.ofSeconds(25), 1, null));
+            "the brief", List.of(), new HiredBrain.Ceilings(Duration.ofSeconds(25), 1, null));
 
         assertAll(
             () -> assertTrue(outcome.stoppedBy().isPresent(), "a ceiling fired"),
@@ -179,7 +179,7 @@ class HiredBrainTest {
             echo "never reached"
             """);
         HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
-            "the brief", new HiredBrain.Ceilings(Duration.ofSeconds(25), 0, 1.00));
+            "the brief", List.of(), new HiredBrain.Ceilings(Duration.ofSeconds(25), 0, 1.00));
 
         assertAll(
             () -> assertTrue(outcome.stoppedBy().orElse("").startsWith("cost"),

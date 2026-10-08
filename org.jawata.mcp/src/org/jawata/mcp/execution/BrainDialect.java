@@ -38,8 +38,25 @@ public interface BrainDialect {
      * <p>Returned as argv rather than a string, so nothing has to quote a prompt that contains a
      * newline, a quote or a shell metacharacter — the prompt is a whole seat brief and routinely
      * contains all three.</p>
+     *
+     * @param prompt the whole brief, travelling as one argument
+     * @param tools the tools this run may use. <b>A dialect whose {@link #toolAttachment()} is not
+     *     {@link ToolAttachment.Reach#PER_RUN} IGNORES this, and that is not a defect</b> — it is
+     *     the measured truth about that CLI, which is why the hirer reads the attachment rather
+     *     than assuming the list took effect. An empty list means "ask for nothing in
+     *     particular", never "no tools": a brain with its own configured tools keeps them.
      */
-    List<String> command(String prompt);
+    List<String> command(String prompt, List<String> tools);
+
+    /**
+     * How this brain can be told which tools to attach — or that it cannot be told (D36).
+     *
+     * <p><b>This exists so that a brain which cannot be told is REPORTED rather than quietly left
+     * out of the count</b>, which is C16's clause verbatim. Measured 2026-10-08, the four brains
+     * answer three different ways and one of them is {@code NONE}, so a seam that assumed an
+     * allowlist would have made cursor-agent either unreportable or silently misreported.</p>
+     */
+    ToolAttachment toolAttachment();
 
     /**
      * Read one line of this brain's output.

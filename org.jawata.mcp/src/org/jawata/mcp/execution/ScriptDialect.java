@@ -45,13 +45,37 @@ public final class ScriptDialect implements BrainDialect {
         return "script:" + command;
     }
 
+    /**
+     * {@code tools} is deliberately IGNORED here, and the ignoring is reported rather than
+     * silent — see {@link #toolAttachment()}. An arbitrary script has no flag this class could
+     * know, and inventing one (a {@code --tools} argument, an environment variable) would mean
+     * every script that does not happen to read it gets a tool list it silently drops while the
+     * run reports the tools as attached. That is the shape D36's reporting clause exists against.
+     */
     @Override
-    public List<String> command(String prompt) {
+    public List<String> command(String prompt, List<String> tools) {
         List<String> argv = new ArrayList<>();
         argv.add(command);
         argv.addAll(args);
         argv.add(prompt == null ? "" : prompt);
         return List.copyOf(argv);
+    }
+
+    /**
+     * A script cannot be told which tools to attach, and what it CAN be bounded by is the hirer's
+     * own containment rather than anything this dialect passes.
+     *
+     * <p>The second string is required by {@link ToolAttachment} and is the honest answer rather
+     * than the word "none": whoever configured the script chose its argv, so the tools it can
+     * reach were decided there — and the hire's wall clock, cost and step ceilings still bound it
+     * whatever it reaches for. Reporting a bare "unsupported" would read as "uncontained", which
+     * is false.</p>
+     */
+    @Override
+    public ToolAttachment toolAttachment() {
+        return ToolAttachment.cannotBeTold(
+            "the script's own argv, fixed when it was configured, plus the hire's wall-clock,"
+                + " cost and step ceilings");
     }
 
     @Override

@@ -69,8 +69,20 @@ public final class ClaudeCodeDialect implements BrainDialect {
         return "claude-code";
     }
 
+    /**
+     * {@code --allowedTools} is this CLI's own flag, read off its {@code --help} on 2026-10-08
+     * rather than assumed: {@code --allowedTools, --allowed-tools <tools...>}. It takes the names
+     * as separate arguments, which is why they are added individually and not joined — a
+     * comma-joined single argument is the shape that silently attaches one tool named
+     * "a,b,c".
+     *
+     * <p>An EMPTY list adds no flag at all, and the difference is not cosmetic: passing
+     * {@code --allowedTools} with nothing after it would hand the CLI a flag with a missing value,
+     * and asking for nothing in particular is not the same instruction as asking for an empty
+     * set.</p>
+     */
     @Override
-    public List<String> command(String prompt) {
+    public List<String> command(String prompt, List<String> tools) {
         List<String> argv = new ArrayList<>(List.of(
             binary, "-p", prompt == null ? "" : prompt,
             "--output-format", "stream-json",
@@ -80,7 +92,21 @@ public final class ClaudeCodeDialect implements BrainDialect {
             argv.add("--model");
             argv.add(model);
         }
+        if (tools != null && !tools.isEmpty()) {
+            argv.add("--allowedTools");
+            for (String tool : tools) {
+                if (tool != null && !tool.isBlank()) {
+                    argv.add(tool);
+                }
+            }
+        }
         return List.copyOf(argv);
+    }
+
+    @Override
+    public ToolAttachment toolAttachment() {
+        return ToolAttachment.perRun("--allowedTools (with --mcp-config / --strict-mcp-config"
+            + " available to bound which servers are reachable at all)");
     }
 
     @Override

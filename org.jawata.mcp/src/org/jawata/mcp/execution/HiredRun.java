@@ -122,7 +122,14 @@ public final class HiredRun {
 
         // THE BRIEF IS ISSUED. Everything after this happened without supervision,
         // which is why every part of it is written down.
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialect, base, brief, ceilings);
+        // THE EMPTY TOOL LIST IS DELIBERATE AND IS NOT "no tools". Nothing yet holds a
+        // seat's declared tool set — that arrives with the brain-as-data work on the seat
+        // definition — so this run asks for nothing in particular and the brain keeps
+        // whatever it is configured with. What this method DOES owe a reader is which of
+        // the three reaches it got, and that is reported below from the dialect rather
+        // than inferred from this argument: a list handed to a brain that cannot be told
+        // is silently dropped, so the argument is no evidence that anything was attached.
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialect, base, brief, List.of(), ceilings);
 
         // THE GATES RUN, and the LEDGER rules on each. Stopping at the first
         // refusal is deliberate: a plan's steps are ordered, so a step whose gate
@@ -183,6 +190,13 @@ public final class HiredRun {
         p.put("kind", "proposal");
         p.put("plan", plan.value());
         p.put("brain", dialect.name());
+        // WHICH OF THE THREE REACHES THIS BRAIN HAS. A brain that cannot be told which
+        // tools to attach is REPORTED here rather than left out, because an absent field
+        // reads as "not applicable" and the honest answer is "not possible, and here is
+        // what bounds it instead". Measured 2026-10-08, the four brains answer three
+        // different ways and one of them cannot be told at all.
+        p.put("toolAttachment", dialect.toolAttachment().report());
+        p.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
         p.put("stepsPassed", passed);
         p.put("ofSteps", steps.size());
         p.put("toolSteps", outcome.toolSteps());
@@ -204,6 +218,12 @@ public final class HiredRun {
         out.append("# Proposal from an unattended run\n\n");
         out.append("**NOTHING HERE WAS APPLIED.** A hired run proposes; a human decides.\n\n");
         out.append("- brain: ").append(dialect.name()).append('\n');
+        // IN THE FILE A HUMAN READS, not only in the manifest. The reader of an
+        // unattended run's proposal is deciding whether to trust it, and how tightly the
+        // brain was bounded is part of that judgement — a brain that could not be handed
+        // a tool list had more latitude than one that was, and the record must not leave
+        // them looking identical.
+        out.append("- tools: ").append(dialect.toolAttachment().report()).append('\n');
         out.append("- steps past their gates: ").append(passed).append(" of ")
             .append(steps.size()).append('\n');
         if (refusedBecause != null) {
