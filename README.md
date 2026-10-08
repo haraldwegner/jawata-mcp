@@ -26,7 +26,7 @@ tool getting it subtly wrong.
   after every edit.
 - **Reversible** — every mutating tool returns an `undoChangeId`; one call rolls the change back.
 
-**43 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
+**44 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
 (Fowler / SOLID / Kerievsky), apply pattern-targeted refactorings, modernise, generate, manage
 dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
 
@@ -251,12 +251,12 @@ ships, fails the build. The prose that follows groups the same names by what the
 | `find_string_literals` | `find_tests` | `format` |
 | `generate` | `get_at_position` | `get_call_hierarchy` |
 | `get_diagnostics` | `go_to_definition` | `health_check` |
-| `hierarchy` | `inline` | `inspect` |
-| `load_project` | `move` | `organize_imports` |
-| `profile` | `project` | `quick_fix` |
-| `refactoring` | `refactor_to_pattern` | `refresh_workspace` |
-| `rename_symbol` | `run_tests` | `search_symbols` |
-| `validate_syntax` |  |  |
+| `hierarchy` | `hire` | `inline` |
+| `inspect` | `load_project` | `move` |
+| `organize_imports` | `profile` | `project` |
+| `quick_fix` | `refactoring` | `refactor_to_pattern` |
+| `refresh_workspace` | `rename_symbol` | `run_tests` |
+| `search_symbols` | `validate_syntax` |  |
 <!-- TOOLS:END -->
 
 

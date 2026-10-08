@@ -186,7 +186,7 @@ esac
 # the signed spec says "one new tool"; the architect report records the tension with 28d-rescue's
 # 46 -> 42 consolidation and the alternative (`inline kind=anonymous_implementation`, which would
 # return the count to 42), and the spec's wording stands until ruled otherwise.
-EXPECTED_TOOLS=43
+EXPECTED_TOOLS=44
 TOOLS="$(printf '%s' "$H" | grep -oE '"toolCount"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+')"
 if [ "${TOOLS:-missing}" = "$EXPECTED_TOOLS" ]; then
     pass "tool-count-still-$EXPECTED_TOOLS health_check reports exactly $EXPECTED_TOOLS tools"
