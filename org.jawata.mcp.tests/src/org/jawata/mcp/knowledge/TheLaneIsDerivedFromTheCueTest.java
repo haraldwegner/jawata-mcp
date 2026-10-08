@@ -44,8 +44,15 @@ class TheLaneIsDerivedFromTheCueTest {
     private static final String SHARED_WORDS = "ledger totals drift after an amendment";
 
     /**
-     * The package the `area` row is anchored to — deliberately NOT the anchor's own package,
-     * so a symptom cue cannot fit it and it can only arrive as an analogy.
+     * The package the {@code area} row is anchored to — deliberately NOT the anchor's own, so
+     * the row is reached by the cue's WORDS rather than by its address.
+     *
+     * <p>This javadoc first ended "so a symptom cue cannot fit it and it can only arrive as an
+     * analogy". Both halves are struck: the arrival route is NOT established (see
+     * {@link #an_area_row_is_excluded_by_the_derivation_too}), and the case's own proof-of-life
+     * shows the row IS returned on a symptom cue once the lane is named. A re-audit found this
+     * sentence standing 47 lines above the withdrawal of the same claim, in a javadoc the
+     * withdrawing commit itself wrote.</p>
      */
     private static final String AREA_PACKAGE = "com.example.otherarea";
 
@@ -90,10 +97,11 @@ class TheLaneIsDerivedFromTheCueTest {
         // makes this row worth having rather than a fourth near-duplicate. It is anchored to a
         // PACKAGE other than the anchor's, so a symptom cue cannot FIT it.
         //
-        // IT WAS ADDED TO REACH THE ANALOGY-POOL EXCLUSION AND IT DOES NOT — measured by
-        // disabling that exclusion alone, which left the case green. The keyword filter has
-        // already removed every code-lane candidate by then. The withdrawn claim is kept
-        // visible here and in the case's own javadoc rather than quietly replaced.
+        // IT WAS ADDED TO REACH THE ANALOGY-POOL EXCLUSION AND IT DOES NOT. Two mutations say
+        // so jointly: disabling the analogy exclusion alone left this case GREEN, and disabling
+        // the KEYWORD filter alone turned it RED. So the keyword filter is what excludes this
+        // row and the analogy pool is not involved. The withdrawn claim is kept visible here
+        // and in the case's own javadoc rather than quietly replaced.
         store.put(ExperienceEntry.of(
             SymbolFact.of("area", "This package is where the " + SHARED_WORDS
                 + " is decided", Confidence.MEDIUM)
@@ -232,25 +240,31 @@ class TheLaneIsDerivedFromTheCueTest {
      * EXPERIENCE where an anchored {@code job} classifies as a FACT. Those two travel
      * different routes through the retrieval, and only this case covers the second.</p>
      *
-     * <p><b>WHAT THIS CASE DOES NOT DO, measured rather than assumed — and it was written
-     * believing the opposite.</b> It was added to close the analogy-pool exclusion that round 1
-     * declared uncovered. It does not: disabling that exclusion ALONE leaves this case GREEN,
-     * so the row is removed somewhere earlier — the keyword filter, which on a non-code-shaped
-     * cue has already dropped every code-lane candidate before the analogy pool is assembled.
-     * The javadoc that stood here claimed the analogy pool was "its only route in", and the
-     * mutation refuted that. <b>The claim is withdrawn rather than softened, and the assertion
-     * was NOT weakened to match it</b> — what changed is the description, because the case is
-     * genuine coverage of the area kind and worth keeping on its own terms.</p>
+     * <p><b>WHAT THIS CASE DOES NOT DO, and it was written believing the opposite.</b> It was
+     * added to close the analogy-pool exclusion that round 1 declared uncovered, and it does
+     * not reach it. TWO mutations establish that jointly, and neither alone would have:</p>
+     * <ul>
+     *   <li>the ANALOGY exclusion disabled alone — this case stayed GREEN, so that branch is
+     *       not what excludes the row;</li>
+     *   <li>the KEYWORD filter disabled alone — this case went RED, so that filter is.</li>
+     * </ul>
      *
-     * <p><b>So the analogy-pool exclusion remains exercised by nothing, and the gap is now
-     * sharper than round 1 could state it.</b> Round 1 said closing it needed an embedding
-     * corpus; that reason is wrong, since {@code AnalogyPolicy.nominate} fuses a LEXICAL stream
-     * and documents that "a row only one stream finds is still nominated". The real obstacle is
-     * ORDER: the only cue shape that makes the analogy exclusion fire is the same shape whose
-     * candidates the keyword filter has already emptied of code-lane rows. Whether any input
-     * can reach that branch at all — or whether it is unreachable for the non-code-shaped case
-     * and the two filters overlap — is an architecture question, recorded for the architect
-     * rather than ground at with further fixtures.</p>
+     * <p>So the assertion below is LIVE rather than vacuous — it reddens on a real mutation —
+     * and what it covers is the keyword filter's exclusion of an {@code area} row, not the
+     * analogy pool's. The javadoc that stood here claimed the analogy pool was "its only route
+     * in"; that is withdrawn, and the assertion was NOT weakened to match, because the case
+     * measures something real under a corrected description.</p>
+     *
+     * <p><b>WHAT IS STILL NOT MEASURED, stated so the next reader does not inherit a guess.</b>
+     * Which response key the row arrives under once the filter is off is unknown — the helper
+     * merges {@code entries}, {@code analogies} and {@code candidates}, so no run of this test
+     * can answer it. A re-audit traced a LEXICAL nomination route into the pool that needs no
+     * embedding corpus ({@code AnalogyPolicy} floors the lexical stream at negative infinity,
+     * and this row's summary carries the cue verbatim), so round 1's "it needs a corpus" is
+     * probably wrong — but whether that route ever delivers this row is open. An earlier
+     * version of this paragraph asserted the obstacle was ORDER and routed an architecture
+     * conclusion off that; the attribution was inference, not measurement, and is withdrawn.
+     * <b>The analogy-pool exclusion remains exercised by nothing.</b></p>
      */
     @Test
     void an_area_row_is_excluded_by_the_derivation_too() {
