@@ -107,6 +107,12 @@ class ToolGateRunnerTest {
 
         // A misspelled gate is the quietest way to gate nothing at all: the plan declares a step,
         // the step names a tool, and no tool runs.
+        //
+        // WHICH branch answers this is worth naming, because a mutation settled it. The runner
+        // used to ask the registry first; disabling that question changed nothing any test could
+        // see, so it is gone and the registry's own {@code ToolNotFoundException} is what answers
+        // here. That the exception is CAUGHT at all is the compiler's doing — it is checked — but
+        // what the catch then reports is not, which is what the assertions below pin.
         GateOutcome typo = runner.run(step("compile_wrokspace"));
 
         assertAll(

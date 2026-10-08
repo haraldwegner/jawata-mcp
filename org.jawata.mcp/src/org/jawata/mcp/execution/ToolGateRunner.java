@@ -66,19 +66,21 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
         if (step == null) {
             throw new IllegalArgumentException("a gate outcome must say which step it is about");
         }
-        if (!tools.hasTool(step.tool())) {
-            // Case 1. A misspelled gate is the quietest way to gate nothing at all.
-            return didNotAnswer(step, "no tool named '" + step.tool() + "' is registered");
-        }
-
         ToolResponse response;
         try {
             response = tools.callTool(step.tool(), step.gateArguments());
         } catch (ToolRegistry.ToolNotFoundException e) {
-            // Case 1 again, arriving as an exception — which is why the check above is not the
-            // only guard: the registry is mutable, and a tool present when the plan was read can
-            // be gone when the gate runs.
-            return didNotAnswer(step, "the tool was gone by the time the gate ran");
+            // Case 1, and this is the ONLY place it can be caught — a misspelled gate is the
+            // quietest way to gate nothing at all, and so is a tool that was present when the
+            // plan was read and gone when the gate ran.
+            //
+            // A `tools.hasTool(...)` pre-check stood here and was DELETED, because a mutation
+            // disabling it changed nothing any test could see. Measured rather than reasoned:
+            // `hasTool` is `containsKey` on the same map `callTool` does `get` on, so the two
+            // cannot disagree; and the null check is `callTool`'s FIRST statement, before the
+            // log, the disk sync, the precedent charge and the tap, so a pre-check saves no
+            // work and suppresses no recording either. It was one fact expressed twice.
+            return didNotAnswer(step, "no tool named '" + step.tool() + "' answered the gate");
         } catch (RuntimeException e) {
             // Case 2. Deliberately broad: a gate's crash must not become the hire's crash, because
             // the run itself already happened and its record is still owed to a reader.
