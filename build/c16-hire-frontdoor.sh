@@ -79,11 +79,24 @@ mkdir -p "$BIN"
 for brain in claude cursor-agent copilot codex; do
     cat > "$BIN/$brain" <<'BRAIN'
 #!/bin/sh
+# IT WRITES ONE FILE into whatever directory it was run in. That is what makes C16's
+# "every changed file attributed to the run" measurable: a brain edits through its own
+# tools, so the only witness is the directory, and a stand-in that changed nothing could
+# never tell an empty attribution from a working one.
+echo 'written by the stand-in brain' > brain-wrote-this.txt
 echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I catalogued the execution package."},{"type":"tool_use"},{"type":"tool_use"}]}}'
 echo '{"type":"result","result":"done","total_cost_usd":0.07}'
 BRAIN
     chmod +x "$BIN/$brain"
 done
+
+# A GIT WORKING TREE for the attribution case. The first hire runs in a plain temp directory,
+# where the honest answer is a stated absence; this one is a repository, where the census runs.
+REPO="$WS/repo"
+mkdir -p "$REPO"
+git -C "$REPO" init -q 2>/dev/null \
+    || { echo "could not git init the attribution fixture — refusing to report a false absence" >&2
+         exit 2; }
 # A LOUD GUARD, because the failure this replaces was silent and billable. If a stand-in is not
 # what resolves, the run must not proceed to spawn whatever does.
 export PATH="$BIN:$PATH"
@@ -111,6 +124,7 @@ done
                         tail -20 "$LOG" >&2; exit 2; }
 
 PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_WS="$WS" PROBE_PROJECT="$FIXTURE_PROJECT" \
+PROBE_REPO="$REPO" \
 python3 -I - << 'PY'
 import json, os, urllib.request
 
@@ -118,6 +132,7 @@ PORT = os.environ["PROBE_PORT"]
 TOKEN = os.environ["PROBE_TOKEN"]
 WS = os.environ["PROBE_WS"]
 PROJECT = os.environ["PROBE_PROJECT"]
+REPO = os.environ["PROBE_REPO"]
 
 passed = failed = 0
 def ok(msg):
@@ -271,6 +286,63 @@ if d.get("artifactId") and d.get("plan"):
     ok("the artifact id and the plan id are both on the answer")
 else:
     bad("artifactId=%r plan=%r" % (d.get("artifactId"), d.get("plan")))
+
+# EVERY CHANGED FILE ATTRIBUTED TO THE RUN — C16's clause. The throwaway working directory is not
+# a git repository, so the honest answer here is an ABSENCE with its reason, and `changedFiles`
+# must be missing rather than empty. That distinction is the clause's whole content: a caller shown
+# [] would be told the brain touched nothing when nobody looked.
+basis = d.get("changedFilesBasis")
+if basis:
+    ok("the run states the BASIS of its file attribution, always: %s" % str(basis)[:90])
+else:
+    bad("no changedFilesBasis on the answer — a list with no basis invites assumed exactness")
+
+if "changedFiles" not in d and "NOT ATTRIBUTABLE" in str(basis):
+    ok("an un-censusable directory reports an ABSENCE, not an empty list")
+elif "changedFiles" in d:
+    ok("the census ran and attributed %d file(s)" % len(d["changedFiles"]))
+else:
+    bad("neither a list nor a stated absence: basis=%r" % basis)
+
+# ------------- 3b. THE CLAUSE'S REAL CASE: a brain that WRITES, in a repository
+# The stand-in writes one file into whatever directory it is run in. Hired above in a plain
+# temp directory that answer was an honest absence; hired here, in a git working tree, the run
+# must NAME the file. The contrast between the two is the discriminator — either alone would
+# pass against a product that always reported an absence, or always reported an empty list.
+wrote = call("hire", {
+    "hirer": "pm",
+    "seat": "cataloguer",
+    "seatFile": WS + "/cataloguer.md",
+    "brief": "Describe every member of org.jawata.mcp.execution.",
+    "workingDirectory": REPO,
+    "steps": [{"tool": "compile_workspace", "arguments": {}}],
+})
+w = wrote.get("data", {})
+if wrote.get("success"):
+    ok("a second hire ran in a git working tree")
+else:
+    bad("the hire in the repository was refused: %s" % json.dumps(wrote)[:300])
+
+attributed = w.get("changedFiles")
+if attributed is not None and "brain-wrote-this.txt" in attributed:
+    ok("EVERY CHANGED FILE ATTRIBUTED: the run names the file its brain wrote (%s)"
+       % ", ".join(attributed))
+else:
+    bad("the file the brain wrote was not attributed: changedFiles=%r basis=%r"
+        % (attributed, w.get("changedFilesBasis")))
+
+# AND IT IS IN THE FILE A HUMAN READS, not only in the tool's answer.
+rec2 = w.get("record")
+if rec2 and os.path.isfile(rec2):
+    with open(rec2) as fh:
+        body = fh.read()
+    if "## What it changed" in body and "brain-wrote-this.txt" in body:
+        ok("and the proposal record carries it under its own heading")
+    else:
+        bad("the record does not name what changed:\n%s" % body[-500:])
+else:
+    bad("no record for the second hire: %r" % rec2)
+
 
 # --------- 4. A BRAIN THAT CANNOT BE TOLD WHICH TOOLS IS REPORTED, NOT DROPPED
 cursor = call("hire", {

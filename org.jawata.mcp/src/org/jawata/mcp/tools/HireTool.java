@@ -307,6 +307,16 @@ public class HireTool extends AbstractTool {
         data.put("stepsPassed", proposal.stepsPassed());
         data.put("stepsDeclared", steps.size());
         data.put("gates", gateRows(proposal));
+        // EVERY CHANGED FILE ATTRIBUTED TO THE RUN — C16's clause, and the absence is an absence.
+        // `changedFiles` is left OUT of the answer entirely when no census could be taken, rather
+        // than sent as an empty list: a caller reading [] would be told the brain touched nothing
+        // when in truth nobody looked, which is the one fact they most need right before deciding
+        // whether to accept a proposal. `changedFilesBasis` is always present and says which.
+        proposal.changed().changed().ifPresent(files -> {
+            data.put("changedFiles", files);
+            data.put("changedFileCount", files.size());
+        });
+        data.put("changedFilesBasis", proposal.changed().basis());
         // WHAT THE BRAIN DID, and the three absences are reported as absences. A brain that
         // published no dollar cost is not a brain that cost nothing — only one of the four does —
         // and `saidNothing` is what keeps "it produced nothing" apart from "it failed".

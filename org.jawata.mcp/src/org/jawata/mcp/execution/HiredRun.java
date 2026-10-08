@@ -77,10 +77,14 @@ public final class HiredRun {
      * @param gates       each step's gate outcome, in order
      * @param stepsPassed how far the LEDGER let the plan advance — not a count
      *     this class formed
+     * @param changed     every file the run changed in its working directory, or the stated
+     *     reason no claim can be made (Sprint 28g S16, C16). It is on the Proposal and not only
+     *     in the record so a caller deciding what to show a human need not re-parse the file this
+     *     class just wrote — and so the two cannot disagree about what the run touched
      */
     public record Proposal(PlanId plan, String artifactId, Path record,
                            HiredBrain.Outcome outcome, List<GateOutcome> gates,
-                           int stepsPassed) {
+                           int stepsPassed, TreeAttribution.Attribution changed) {
 
         /** Did every declared step get past its own gate? */
         public boolean complete() {
@@ -162,7 +166,24 @@ public final class HiredRun {
         // measured truth about two of the four brains rather than a defect. So what this method
         // reports below is the ATTACHMENT read off the dialect, never this argument: a list handed
         // to a brain that cannot be told is no evidence that anything was attached.
+        // WHAT THE RUN CHANGES IS CENSUSED EITHER SIDE OF IT (Sprint 28g S16, C16's clause "every
+        // changed file attributed to the run"). It has to be taken here, around the spawn, because
+        // a brain edits through its OWN tools: no gate reports those writes, no tap sees them, and
+        // the brain's answer is prose. The directory before and after is the only witness.
+        TreeAttribution census = base.workingDirectory() == null
+            ? null
+            : TreeAttribution.before(host, base.workingDirectory());
+
         HiredBrain.Outcome outcome = HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
+
+        // Taken immediately, before the gates run. A gate is a jawata tool and may legitimately
+        // rewrite files itself, and folding its edits into the BRAIN's attribution would blame the
+        // brain for a cleanup the plan asked for.
+        TreeAttribution.Attribution changed = census == null
+            ? new TreeAttribution.Attribution(java.util.Optional.empty(),
+                "NOT ATTRIBUTABLE: this hire named no working directory, so there was no tree to"
+                    + " census. A hire issued through the `hire` tool always names one.")
+            : census.after();
 
         // THE GATES RUN, and the LEDGER rules on each. Stopping at the first
         // refusal is deliberate: a plan's steps are ordered, so a step whose gate
@@ -199,8 +220,9 @@ public final class HiredRun {
         Path dir = artifacts.createArtifactDir(artifactId);
         Path record = dir.resolve("proposal.md");
         Files.writeString(record, render(brief, dialect, outcome, steps, ran, passed,
-            last.advanced() ? null : last.refusedBecause()), StandardCharsets.UTF_8);
-        artifacts.writeManifest(artifactId, provenance(plan, dialect, outcome, steps, passed));
+            last.advanced() ? null : last.refusedBecause(), changed), StandardCharsets.UTF_8);
+        artifacts.writeManifest(artifactId,
+            provenance(plan, dialect, outcome, steps, passed, changed));
 
         // JOURNALLED. Its own try: a run that happened must not be lost because
         // recording it failed.
@@ -213,12 +235,13 @@ public final class HiredRun {
                 // the proposal is already on disk; the journal row is bookkeeping
             }
         }
-        return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed);
+        return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed, changed);
     }
 
     /** What the manifest carries, so a reader of the artifact alone can judge the run. */
     private static Map<String, Object> provenance(PlanId plan, BrainDialect dialect,
-            HiredBrain.Outcome outcome, List<GatedStep> steps, int passed) {
+            HiredBrain.Outcome outcome, List<GatedStep> steps, int passed,
+            TreeAttribution.Attribution changed) {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("kind", "proposal");
         p.put("plan", plan.value());
@@ -241,12 +264,21 @@ public final class HiredRun {
         p.put("timedOut", outcome.timedOut());
         p.put("stoppedBy", outcome.stoppedBy().orElse(null));
         p.put("exitCode", outcome.exitCode().isPresent() ? outcome.exitCode().getAsInt() : null);
+        // EVERY CHANGED FILE ATTRIBUTED TO THE RUN, and NULL when nobody could look. The two must
+        // not collapse: a manifest reading `changedFiles: []` for a tree that was never censused
+        // tells a reader the brain touched nothing, which is the one thing they most need to be
+        // right about before accepting a proposal. `changedFilesBasis` is always present and says
+        // which it is, including the case the census cannot see.
+        p.put("changedFiles", changed.changed().orElse(null));
+        p.put("changedFileCount", changed.count().orElse(null));
+        p.put("changedFilesBasis", changed.basis());
         p.put("applied", false);
         return p;
     }
 
     private static String render(String brief, BrainDialect dialect, HiredBrain.Outcome outcome,
-            List<GatedStep> steps, List<GateOutcome> ran, int passed, String refusedBecause) {
+            List<GatedStep> steps, List<GateOutcome> ran, int passed, String refusedBecause,
+            TreeAttribution.Attribution changed) {
         StringBuilder out = new StringBuilder();
         out.append("# Proposal from an unattended run\n\n");
         out.append("**NOTHING HERE WAS APPLIED.** A hired run proposes; a human decides.\n\n");
@@ -306,6 +338,19 @@ public final class HiredRun {
                 out.append(g.errorCount() == 0 ? "passed" : g.errorCount() + " error(s)");
             }
             out.append('\n');
+        }
+        // WHAT IT CHANGED, in the file a human reads, because that is what they are deciding
+        // about. Three distinct renderings and never two of them merged: a measured empty list
+        // says the brain touched nothing, a measured list names what to review, and an ABSENT
+        // census says nobody looked — which a reader must not mistake for the first.
+        out.append("\n## What it changed\n\n");
+        if (changed.changed().isEmpty()) {
+            out.append("**NOT ATTRIBUTED.** ").append(changed.basis()).append('\n');
+        } else if (changed.changed().get().isEmpty()) {
+            out.append("Nothing. ").append(changed.basis()).append('\n');
+        } else {
+            changed.changed().get().forEach(path -> out.append("- ").append(path).append('\n'));
+            out.append("\n_").append(changed.basis()).append("_\n");
         }
         return out.toString();
     }
