@@ -264,12 +264,23 @@ class HireToolTest {
     @Test
     @DisplayName("C16: the result is JOURNALLED — a row is read back, not a record file inspected")
     void theRunLandsInTheJournal() throws Exception {
-        // THE CLAUSE THIS CLASS COULD NOT PREVIOUSLY FAIL ON. "result journalled" was evidenced by
-        // a probe asserting proposal.md exists on disk — which is the ARTIFACT, a different thing —
-        // by a counter in another script literally named `journalled` that incremented on the
-        // tool's success flag, and by a javadoc. None read a journal row, and `HiredRun` appends
-        // inside a try whose catch swallows, so a journal that threw still returned a successful
-        // proposal. Nothing in the repository reddened if the append stopped happening.
+        // THE CLAUSE THIS CLASS COULD NOT PREVIOUSLY FAIL ON. The evidence the C16 record CITED
+        // for "result journalled" was a probe asserting proposal.md exists on disk — which is the
+        // ARTIFACT, a different thing — a counter in another script literally named `journalled`
+        // that incremented on the tool's own success flag, and a javadoc. None of the three reads
+        // a journal row, and `HiredRun` appends inside a try whose catch swallows, so a journal
+        // that threw still returned a successful proposal.
+        //
+        // AN EARLIER VERSION OF THIS COMMENT WENT ON TO CLAIM "nothing in the repository reddened
+        // if the append stopped happening", AND THAT WAS FALSE WHEN WRITTEN. A C16 audit found it:
+        // `HiredRunProposesTest.oneHiredRunEndToEnd` has asserted the same row delta against a
+        // real store since before this class existed — confirmed at revision 7d791453, where it
+        // reads `countByKind().getOrDefault(KIND_HIRED_RUN, 0L)` under the message "one row for
+        // one run". The repository did redden; the record's evidence could not.
+        //
+        // So what this case adds is narrower and still worth having: that assertion drives
+        // `HiredRun.issue` DIRECTLY, and this one drives the published `hire` tool — the
+        // production caller, which nothing covered.
         HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
             aRegistryWithACleanGate());
 

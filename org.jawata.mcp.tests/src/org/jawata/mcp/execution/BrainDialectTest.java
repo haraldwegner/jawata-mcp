@@ -63,12 +63,22 @@ class BrainDialectTest {
             () -> assertEquals("manual", valueOf(permitted, "--permission-mode"),
                 "a caller who opted out gets the other value, explicitly: " + permitted),
             // ALL FOUR BRAINS CARRY A WRITE-CONTAINMENT FLAG BY DEFAULT — and a FLAG IS NOT A
-            // BOUND, which this comment used to blur and a measurement then settled. Three of the
-            // four are bounded by a MECHANISM: claude's plan mode disables the editing tool,
-            // codex's sandbox was observed rejecting an attempted apply_patch outright, and
-            // copilot's containment is its own headless default, which a with-and-without control
-            // showed our deny flags do not create. CURSOR IS NOT: 5 writes in 15 runs of plan
-            // mode, 10 in 10 with the sandbox alone, and no mechanism refusal ever seen.
+            // BOUND, which this comment twice blurred before a measurement settled it. TWO of the
+            // four are bounded by a MECHANISM, not three: copilot answers `permission_denied` in
+            // 6 of 6 runs, naming our own rules when we pass them ("denied due to the following
+            // rules: `write`") and denying anyway when we do not; and codex's sandbox was observed
+            // rejecting an attempted apply_patch outright.
+            //
+            // CLAUDE IS AN INSTRUCTION, and an earlier version of this comment said "plan mode
+            // disables the editing tool", which the raw logs contradict. Under
+            // --permission-mode plan the init event ADVERTISES Edit, Write and NotebookEdit;
+            // Write was INVOKED and returned "File created successfully"; permission_denials is
+            // empty in every run. What plan mode does is tell the model to write only its plan
+            // file, which the model then narrates — "plan mode permits edits only to this plan
+            // file". It held for the working tree in 5 of 5 runs and it is not a bound.
+            //
+            // CURSOR IS AN INSTRUCTION THAT FAILS: 5 writes in 15 runs of plan mode, 10 in 10
+            // with the sandbox alone, and no mechanism refusal ever seen.
             //
             // So what is asserted below is that each dialect SENDS its flag, which is the half
             // jawata owns. Whether a vendor honours it is the vendor's contract and is measured by
