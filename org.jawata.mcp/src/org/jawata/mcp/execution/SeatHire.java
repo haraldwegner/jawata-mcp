@@ -1,0 +1,288 @@
+package org.jawata.mcp.execution;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * A seat definition's own declaration of WHICH BRAIN it is hired as, and under what bounds
+ * (Sprint 28g S16, D37).
+ *
+ * <p>Until this existed, the hire path could bound a run and could not learn those bounds from
+ * anywhere: {@code HiredRun} passed an EMPTY tool list with a comment saying so, and a seat's
+ * {@code tools:}, {@code cost_budget_usd:} and {@code max_tool_steps:} were read by nothing. This
+ * reads the frontmatter a seat already carries and answers with the three things a hire needs — a
+ * dialect, a tool list, and ceilings.</p>
+ *
+ * <h2>{@code brain:} IS ITS OWN FIELD, and deriving it from {@code model:} would be WRONG</h2>
+ *
+ * <p>Every seat shipped today says {@code model: claude-sonnet-5} or {@code claude-haiku-4-5}, which
+ * makes "read the brain off the model's prefix" look obviously right. <b>It is measurably wrong.</b>
+ * Running copilot on 2026-10-08 produced {@code session.auto_mode_resolved} with
+ * {@code "chosenModel":"claude-haiku-4.5"} — a CLAUDE MODEL running on the COPILOT BRAIN, chosen by
+ * copilot's own router from its {@code availableModels}. A seat naming that model would have been
+ * routed to {@link ClaudeCodeDialect} and spawned the wrong CLI. The model is which weights answer;
+ * the brain is whose process we start, and they are not the same question.</p>
+ *
+ * <p>Absent, the brain defaults to Claude Code, because that is what every seat in the tree means
+ * today — they were written for it and name its flags nowhere else. An UNKNOWN brain is REFUSED
+ * rather than defaulted: a seat asking for a brain this product has no dialect for must not quietly
+ * be hired as a different one, which is the failure the default is otherwise one typo away from.</p>
+ *
+ * <h2>A DECLARED COST BUDGET IS NOT NECESSARILY AN ENFORCEABLE ONE, and this says which</h2>
+ *
+ * <p>Measured by running all four brains: <b>only Claude Code publishes a dollar cost.</b> cursor
+ * and codex publish token counts; copilot publishes {@code usage.premiumRequests}, a fractional
+ * count of subscription requests. So a seat declaring {@code cost_budget_usd: 2.0} and
+ * {@code brain: cursor} has written down a bound that can never fire — the ceiling is carried
+ * faithfully into {@link HiredBrain.Ceilings} and nothing will ever compare against it, because
+ * nothing reports a cost to compare.</p>
+ *
+ * <p>{@link #budgetReport()} is what keeps that from being silent. It is not a refusal: the seat's
+ * declaration is legitimate and may become enforceable the day a vendor publishes a cost, and
+ * refusing the hire would make this product's reading of a vendor's output into a veto over a
+ * human's written intent. It is a REPORT, for the same reason {@link ToolAttachment} reports a brain
+ * that cannot be told which tools rather than dropping it from the count.</p>
+ *
+ * @param seat     the seat's name, which is what a journal row and a proposal are attributed to
+ * @param brain    which CLI to spawn
+ * @param model    which weights to ask that CLI for, or null to take its own default
+ * @param tools    the tools this seat may use — handed to the dialect, which attaches them if it CAN
+ * @param ceilings what the run may consume, assembled from the seat's own declared limits
+ */
+public record SeatHire(String seat, Brain brain, String model, List<String> tools,
+                       HiredBrain.Ceilings ceilings) {
+
+    /** The brains this product has a dialect for. A seat may name no other. */
+    public enum Brain {
+        CLAUDE_CODE("claude-code", "claude"),
+        CURSOR("cursor", "cursor-agent"),
+        COPILOT("copilot"),
+        CODEX("codex");
+
+        private final List<String> spellings;
+
+        Brain(String... spellings) {
+            this.spellings = List.of(spellings);
+        }
+
+        /**
+         * The brain a seat means by this word, or absent.
+         *
+         * <p>Several spellings per brain because a seat is written by a human who will reasonably
+         * write either the product's name or its binary's — {@code cursor} and
+         * {@code cursor-agent} are the same brain, and refusing one of them would be a rule about
+         * our vocabulary rather than about theirs. Case and surrounding space are ignored for the
+         * same reason.</p>
+         */
+        public static Optional<Brain> named(String word) {
+            if (word == null || word.isBlank()) {
+                return Optional.empty();
+            }
+            String wanted = word.strip().toLowerCase(Locale.ROOT);
+            for (Brain brain : values()) {
+                if (brain.spellings.contains(wanted)) {
+                    return Optional.of(brain);
+                }
+            }
+            return Optional.empty();
+        }
+    }
+
+    /** How long a seat may run when it declares no {@code ttl_secs}. */
+    private static final Duration DEFAULT_WALL_CLOCK = Duration.ofMinutes(10);
+
+    public SeatHire {
+        if (seat == null || seat.isBlank()) {
+            throw new IllegalArgumentException("a seat with no name cannot be reported on");
+        }
+        if (brain == null) {
+            throw new IllegalArgumentException("a hire must say which brain it starts: a run whose"
+                + " brain is unknown cannot be given a dialect, and a dialect guessed from the"
+                + " model name is how a copilot seat gets spawned as claude");
+        }
+        tools = tools == null ? List.of() : List.copyOf(tools);
+        if (ceilings == null) {
+            throw new IllegalArgumentException("a hire with no ceilings is an unbounded run, which"
+                + " is the thing this whole path exists to prevent");
+        }
+    }
+
+    /**
+     * Read a seat definition's frontmatter.
+     *
+     * @param markdown the seat file's whole text
+     * @throws IllegalArgumentException if the file declares a brain this product cannot start, or
+     *     declares no name
+     */
+    public static SeatHire read(String markdown) {
+        Map<String, String> front = frontmatter(markdown);
+
+        String declared = front.get("brain");
+        Brain brain = declared == null || declared.isBlank()
+            ? Brain.CLAUDE_CODE
+            : Brain.named(declared).orElseThrow(() -> new IllegalArgumentException(
+                "seat declares brain '" + declared + "', which this product has no dialect for."
+                    + " Known: claude-code, cursor, copilot, codex. NOT defaulted on purpose — a"
+                    + " seat hired as a brain it did not ask for is worse than one that refuses"
+                    + " to start"));
+
+        return new SeatHire(
+            front.getOrDefault("name", ""),
+            brain,
+            emptyToNull(front.get("model")),
+            list(front.get("tools")),
+            new HiredBrain.Ceilings(
+                seconds(front.get("ttl_secs")).orElse(DEFAULT_WALL_CLOCK),
+                integer(front.get("max_tool_steps")).orElse(0),
+                // null, not 0.0 — an undeclared budget is NO ceiling, and zero would be a ceiling
+                // of nothing that fired on the first reported cent.
+                decimal(front.get("cost_budget_usd")).orElse(null)));
+    }
+
+    /** The dialect for this seat's brain, with the seat's own model asked for where it can be. */
+    public BrainDialect dialect() {
+        return switch (brain) {
+            case CLAUDE_CODE -> new ClaudeCodeDialect("claude",
+                ClaudeCodeDialect.DEFAULT_MAX_TURNS, model);
+            case CURSOR -> new CursorDialect("cursor-agent", true, model);
+            // Neither of these takes a model from this product: copilot ROUTES its own (its
+            // auto_mode_resolved event reports which it chose and why), and codex's is set in its
+            // config, out of band. Passing one would be a flag invented rather than measured.
+            case COPILOT -> new CopilotDialect();
+            case CODEX -> new CodexDialect();
+        };
+    }
+
+    /**
+     * What this seat's declared cost budget actually BUYS on the brain it chose — see the type
+     * javadoc. Absent when the seat declared no budget, because there is then nothing to report.
+     */
+    public Optional<String> budgetReport() {
+        Double budget = ceilings.maxCostUsd();
+        if (budget == null) {
+            return Optional.empty();
+        }
+        boolean publishesDollars = brain == Brain.CLAUDE_CODE;
+        return Optional.of(publishesDollars
+            ? "cost budget $" + budget + " is ENFORCEABLE: " + brain + " reports a dollar cost"
+            : "cost budget $" + budget + " CANNOT FIRE on " + brain + ", which publishes no dollar"
+                + " cost — the run is still bounded by its wall clock and step ceiling");
+    }
+
+    /**
+     * The frontmatter's scalar fields.
+     *
+     * <p><b>A deliberate second implementation, and the reason is that the shared part is smaller
+     * than it looks.</b> {@code ExperienceMaintenance} also reads markdown frontmatter, and the
+     * architect seat's standing rule refuses a second implementation of a job the system already
+     * does. What those two readers share is finding the fences and splitting on the first colon —
+     * six lines. What they do NOT share is the value shapes: that one needs a YAML BLOCK list for
+     * its cues, this one needs an inline bracket list for its tools, and a common helper handing
+     * each a {@code Map<String,String>} would leave both re-parsing their own values anyway while
+     * adding a type neither owns. Extracting it would also mean editing a shipped reader in the
+     * knowledge package to serve a new feature in the execution package, for a six-line saving.</p>
+     *
+     * <p>Recorded as a declared duplicate rather than taken silently: if a THIRD reader ever wants
+     * frontmatter, that is the moment the shared type pays for itself, and this paragraph is the
+     * evidence for it.</p>
+     */
+    private static Map<String, String> frontmatter(String markdown) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        if (markdown == null) {
+            return fields;
+        }
+        String[] lines = markdown.split("\n", -1);
+        if (lines.length == 0 || !lines[0].strip().equals("---")) {
+            // No frontmatter at all. An empty map rather than a throw: the CALLER decides which
+            // absent field is fatal, and only the brain and the name are.
+            return fields;
+        }
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i].strip();
+            if (line.equals("---")) {
+                break;
+            }
+            // A seat's frontmatter carries COMMENTS — every shipped seat has a multi-line tier
+            // justification in one. A reader that split those on their first colon would store
+            // fragments of prose under keys like "# tier justification (the product is a
+            // JUDGEMENT - is this stage done".
+            if (line.startsWith("#") || line.isEmpty()) {
+                continue;
+            }
+            int colon = line.indexOf(':');
+            if (colon <= 0) {
+                continue;
+            }
+            fields.put(line.substring(0, colon).strip(), unquote(line.substring(colon + 1).strip()));
+        }
+        return fields;
+    }
+
+    /** An inline {@code [a, b, c]} list, which is how every shipped seat writes its tools. */
+    private static List<String> list(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        String inner = value.strip();
+        if (inner.startsWith("[") && inner.endsWith("]")) {
+            inner = inner.substring(1, inner.length() - 1);
+        }
+        List<String> items = new ArrayList<>();
+        for (String part : inner.split(",")) {
+            String item = unquote(part.strip());
+            if (!item.isEmpty()) {
+                items.add(item);
+            }
+        }
+        return List.copyOf(items);
+    }
+
+    private static String unquote(String value) {
+        if (value.length() >= 2
+            && ((value.startsWith("\"") && value.endsWith("\""))
+                || (value.startsWith("'") && value.endsWith("'")))) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
+    }
+
+    private static String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * A declared number, or ABSENT — never a substituted default.
+     *
+     * <p>A seat that writes {@code max_tool_steps: banana} has declared NO ceiling, and reading it
+     * as zero or as some default would silently bound a run by a number nobody wrote. The same
+     * reasoning the script dialect gives for a malformed cost line.</p>
+     */
+    private static Optional<Integer> integer(String value) {
+        try {
+            return value == null || value.isBlank()
+                ? Optional.empty()
+                : Optional.of(Integer.valueOf(value.strip()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<Double> decimal(String value) {
+        try {
+            return value == null || value.isBlank()
+                ? Optional.empty()
+                : Optional.of(Double.valueOf(value.strip()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<Duration> seconds(String value) {
+        return integer(value).filter(s -> s > 0).map(Duration::ofSeconds);
+    }
+}

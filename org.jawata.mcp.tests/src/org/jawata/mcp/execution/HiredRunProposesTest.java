@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -15,6 +16,7 @@ import java.util.Map;
 
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
+import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
@@ -104,6 +106,151 @@ class HiredRunProposesTest {
     /** A gate that answered and found nothing. */
     private static GateOutcome passed(GatedStep step) {
         return new GateOutcome(step.tool(), step.gateArguments(), 0, true);
+    }
+
+    /**
+     * A process boundary that REMEMBERS the command line it was asked to start, and then starts a
+     * harmless stand-in instead.
+     *
+     * <p>Why it exists: every brain a {@link SeatHire} can construct is a real vendor CLI, so
+     * driving the seat form for real would spawn {@code claude} from a unit test. Recording the
+     * argv is what makes the seat's own declaration observable without that — the flags under test
+     * are the ones this product produced, and the process that actually runs is a shell script.</p>
+     */
+    private static final class RecordsTheArgv implements HostProcesses {
+
+        private final HostProcesses real;
+        private final HostCommand standIn;
+        private List<String> asked;
+
+        RecordsTheArgv(HostProcesses real, HostCommand standIn) {
+            this.real = real;
+            this.standIn = standIn;
+        }
+
+        List<String> asked() {
+            return asked == null ? List.of() : asked;
+        }
+
+        @Override
+        public Process start(HostCommand command) throws IOException {
+            this.asked = command.argv();
+            return real.start(standIn);
+        }
+
+        @Override
+        public HostProcessOutcome run(HostCommand command) throws InterruptedException {
+            return real.run(command);
+        }
+
+        @Override
+        public List<String> executableCandidates(String base) {
+            return real.executableCandidates(base);
+        }
+
+        @Override
+        public List<String> wrapperNames(String base) {
+            return real.wrapperNames(base);
+        }
+    }
+
+    @Test
+    @DisplayName("D37: a seat's own declared brain, tools and model reach the command line that is started")
+    void aSeatsDeclarationReachesTheRunItHires() throws Exception {
+        // THE STAND-IN SPEAKS THE SEAT'S OWN BRAIN, not the script dialect's declarations. The spy
+        // replaces the PROCESS and not the DIALECT — which is the point, since the dialect is what
+        // the seat chose — so a stand-in emitting `TOOL-STEPS: 3` would be unreadable to claude's
+        // reader and the step count would come back zero. These two lines are claude's measured
+        // shape: three tool_use BLOCKS in one turn, then the terminal event with its cost.
+        HostCommand standIn = brain("""
+            echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I would catalogue the execution package."},{"type":"tool_use"},{"type":"tool_use"},{"type":"tool_use"}]}}'
+            echo '{"type":"result","result":"catalogued","total_cost_usd":0.11}'
+            """);
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        HiredRun run = new HiredRun(spy, artifacts, plans, events);
+
+        // A seat of the shape jawata-studio ships, plus the brain field D37 adds.
+        SeatHire seat = SeatHire.read("""
+            ---
+            name: cataloguer
+            brain: claude-code
+            model: claude-sonnet-5
+            tools: [search_symbols, inspect, experience]
+            ttl_secs: 30
+            max_tool_steps: 25
+            cost_budget_usd: 1.5
+            ---
+
+            You are the cataloguer seat.
+            """);
+
+        HiredRun.Proposal proposal = run.issue(seat, standIn, "Catalogue the execution package.",
+            twoSteps(), HiredRunProposesTest::passed);
+        List<String> argv = spy.asked();
+        int allowlist = argv.indexOf("--allowedTools");
+
+        assertAll(
+            // THE WIRING D37 IS FOR. Before it, this method passed an empty list with a comment
+            // saying nothing held a seat's tool set; the seat held it all along and nothing read it.
+            () -> assertTrue(allowlist >= 0, "the seat's tools reached the command line: " + argv),
+            () -> assertEquals(List.of("search_symbols", "inspect", "experience"),
+                argv.subList(allowlist + 1, argv.size()),
+                "in the seat's own order, each its own argument: " + argv),
+            // The brain the seat NAMED, not one derived from a model that happens to say "claude".
+            () -> assertEquals("claude", argv.get(0), argv.toString()),
+            () -> assertTrue(argv.contains("claude-sonnet-5"),
+                "and the model it asked that brain for: " + argv),
+            // The seat's ceilings travelled too, and BOTH are measured against what came back:
+            // three tool_use blocks against the seat's ceiling of 25, and $0.11 against its
+            // budget of $1.50. Neither fired, which is what makes the run a clean one rather
+            // than a bound that was never reached.
+            () -> assertEquals(3, proposal.outcome().toolSteps()),
+            () -> assertEquals(0.11, proposal.outcome().costUsd().orElseThrow(), 1e-9),
+            () -> assertTrue(proposal.outcome().stoppedBy().isEmpty(),
+                "neither of the seat's two ceilings fired"),
+            // And this seat's budget CAN fire, because it chose the one brain that reports
+            // dollars — the other half of the pair the sibling case pins.
+            () -> assertTrue(seat.budgetReport().orElseThrow().contains("ENFORCEABLE"),
+                seat.budgetReport().orElseThrow()),
+            // And the record a human reads names the attachment, which is the clause the seat
+            // form inherits from step 1 rather than re-stating.
+            () -> assertTrue(Files.readString(proposal.record()).contains("--allowedTools"),
+                "the proposal says how this brain was told which tools to use"));
+    }
+
+    @Test
+    @DisplayName("...and a seat whose budget cannot fire on its brain says so rather than going quiet")
+    void aSeatsUnenforceableBudgetIsReported() {
+        // Measured: only Claude Code publishes a dollar cost. A seat declaring a budget for one of
+        // the other three has written down a bound nothing can compare against — and the hire is
+        // still bounded, by its wall clock and steps, which is what the report must not obscure.
+        SeatHire onCursor = SeatHire.read("""
+            ---
+            name: watcher
+            brain: cursor
+            cost_budget_usd: 1.5
+            ttl_secs: 30
+            max_tool_steps: 10
+            ---
+            """);
+        SeatHire onClaude = SeatHire.read("""
+            ---
+            name: watcher
+            brain: claude-code
+            cost_budget_usd: 1.5
+            ttl_secs: 30
+            max_tool_steps: 10
+            ---
+            """);
+
+        assertAll(
+            () -> assertTrue(onCursor.budgetReport().orElseThrow().contains("CANNOT FIRE"),
+                onCursor.budgetReport().orElseThrow()),
+            () -> assertTrue(onClaude.budgetReport().orElseThrow().contains("ENFORCEABLE"),
+                onClaude.budgetReport().orElseThrow()),
+            // The ceiling is carried either way: this product does not edit a human's written
+            // intent because a vendor publishes no cost.
+            () -> assertEquals(1.5, onCursor.ceilings().maxCostUsd(), 1e-9));
     }
 
     @Test

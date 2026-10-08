@@ -105,8 +105,36 @@ public final class HiredRun {
     }
 
     /**
-     * Issue the brief, drive the brain, run each step's gate, journal it, and write
-     * the record.
+     * Issue a SEAT's brief, with the brain, the tools and the ceilings the seat itself declared
+     * (Sprint 28g S16, D37).
+     *
+     * <p><b>This is the form a caller should use, and it is three parameters shorter for a reason
+     * rather than for brevity.</b> The dialect, the tool list and the ceilings are not independent
+     * choices — they are one seat's declaration — and handing them over separately is what makes it
+     * possible to run one seat's brain under another seat's budget. A {@link SeatHire} cannot be
+     * mismatched against itself.</p>
+     *
+     * <p>A seat whose declared cost budget cannot fire on the brain it chose is not refused here;
+     * {@link SeatHire#budgetReport()} is where that is said, because the seat's written intent is
+     * legitimate and this product's reading of a vendor's output must not become a veto over it.</p>
+     *
+     * @param seat  the seat being hired: which brain, which tools, under what bounds
+     * @param base  the command's shape (working directory, environment); its argv is the dialect's
+     * @param brief what the brain is asked to do
+     * @param steps the plan's declared steps and their gates
+     * @param gates how to run one
+     */
+    public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
+            GateRunner gates) throws IOException, InterruptedException {
+        return issue(seat.dialect(), base, brief, seat.tools(), seat.ceilings(), steps, gates);
+    }
+
+    /**
+     * Issue a brief with no tool list — the form that asks the brain for nothing in particular.
+     *
+     * <p>An empty list is NOT "no tools": a brain keeps whatever it is configured with, and the
+     * dialects say so in their own words. Prefer {@link #issue(SeatHire, HostCommand, String, List,
+     * GateRunner)} wherever a seat is what is being hired.</p>
      *
      * @param dialect  how this brain speaks
      * @param base     the command's shape; its argv is the dialect's
@@ -118,18 +146,23 @@ public final class HiredRun {
     public Proposal issue(BrainDialect dialect, HostCommand base, String brief,
             HiredBrain.Ceilings ceilings, List<GatedStep> steps, GateRunner gates)
             throws IOException, InterruptedException {
+        return issue(dialect, base, brief, List.of(), ceilings, steps, gates);
+    }
+
+    private Proposal issue(BrainDialect dialect, HostCommand base, String brief,
+            List<String> tools, HiredBrain.Ceilings ceilings, List<GatedStep> steps,
+            GateRunner gates) throws IOException, InterruptedException {
         PlanId plan = plans.open(steps);
 
         // THE BRIEF IS ISSUED. Everything after this happened without supervision,
         // which is why every part of it is written down.
-        // THE EMPTY TOOL LIST IS DELIBERATE AND IS NOT "no tools". Nothing yet holds a
-        // seat's declared tool set — that arrives with the brain-as-data work on the seat
-        // definition — so this run asks for nothing in particular and the brain keeps
-        // whatever it is configured with. What this method DOES owe a reader is which of
-        // the three reaches it got, and that is reported below from the dialect rather
-        // than inferred from this argument: a list handed to a brain that cannot be told
-        // is silently dropped, so the argument is no evidence that anything was attached.
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialect, base, brief, List.of(), ceilings);
+        //
+        // THE TOOL LIST IS CARRIED AND IS NOT EVIDENCE. It reaches the dialect, which attaches it
+        // if it CAN — and a dialect whose reach is not PER_RUN drops it silently, which is the
+        // measured truth about two of the four brains rather than a defect. So what this method
+        // reports below is the ATTACHMENT read off the dialect, never this argument: a list handed
+        // to a brain that cannot be told is no evidence that anything was attached.
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
 
         // THE GATES RUN, and the LEDGER rules on each. Stopping at the first
         // refusal is deliberate: a plan's steps are ordered, so a step whose gate
