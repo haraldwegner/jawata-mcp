@@ -100,9 +100,15 @@ public final class TreeAttribution {
         before.keySet().stream().filter(path -> !now.containsKey(path)).forEach(changed::add);
         changed.sort(String::compareTo);
         return new Attribution(Optional.of(List.copyOf(changed)),
-            "git status --porcelain in " + directory + ", before and after the run. A file ALREADY"
-                + " modified before the hire and modified again by it is NOT in this list: a"
-                + " status letter is not a content hash, so the two cases are indistinguishable.");
+            "git status --porcelain in " + directory + ", before and after the run. TWO BOUNDS, and"
+                + " an EMPTY list means neither was crossed rather than \"the brain wrote nothing\"."
+                + " FIRST: a file ALREADY modified before the hire and modified again by it is"
+                + " NOT in this list — a status letter is not a content hash, so the two cases are"
+                + " indistinguishable. SECOND: this census sees ONLY this directory, so a write to"
+                + " any absolute path outside it is invisible here. That is not hypothetical — a"
+                + " brain under a read-only mode was measured writing its own plan file outside the"
+                + " hire's tree on every run, and an instrument scoped like this one reported the"
+                + " run as having changed nothing.");
     }
 
     /** Why no claim can be made — read only when the census could not be taken. */

@@ -156,6 +156,44 @@ class TreeAttributionTest {
     }
 
     @Test
+    @DisplayName("a write OUTSIDE the tree is invisible, and an empty list must not read as nothing")
+    void aWriteOutsideTheTreeIsInvisibleAndTheBasisSaysSo() throws Exception {
+        // THE SECOND BOUND, asserted because the FIRST one's absence is what invalidated a
+        // measurement at C16. The containment probe judged a brain CONTAINED on exactly this
+        // signal — nothing in the work tree — while that brain wrote a file on every single run,
+        // to an absolute path the census cannot see. A C16 audit then pointed out that the
+        // attribution clause rides the same instrument, so `changed` being PRESENT-AND-EMPTY is
+        // what an off-tree write produces here too. Same false zero, one clause over.
+        Path repo = aRepository();
+        Path elsewhere = Files.createTempDirectory("c16-offtree");
+        try {
+            TreeAttribution census = TreeAttribution.before(host, repo);
+
+            // The run writes, and not where anyone is looking.
+            Files.writeString(elsewhere.resolve("written-by-the-run.txt"), "no\n");
+
+            TreeAttribution.Attribution attribution = census.after();
+
+            assertAll(
+                // PRESENT, so a reader cannot tell this from a census that ran and found nothing —
+                // which is precisely why the basis has to carry the warning.
+                () -> assertTrue(attribution.changed().isPresent(),
+                    "the census ran, so it answers with a list rather than an absence"),
+                () -> assertTrue(attribution.changed().orElseThrow().isEmpty(),
+                    "and the list is EMPTY, which is the false zero: " + attribution.changed()),
+                () -> assertTrue(attribution.basis().contains("outside it is invisible"),
+                    "so the basis must name this bound, not only the already-modified one: "
+                        + attribution.basis()),
+                () -> assertTrue(attribution.basis().contains("neither was crossed"),
+                    "and must say what an empty list does and does not mean: "
+                        + attribution.basis()));
+        } finally {
+            Files.walk(elsewhere).sorted(Comparator.reverseOrder()).map(Path::toFile)
+                .forEach(java.io.File::delete);
+        }
+    }
+
+    @Test
     @DisplayName("THE BOUND, asserted: a file already modified and modified AGAIN is invisible")
     void anAlreadyDirtyFileEditedAgainCannotBeSeen() throws Exception {
         Path repo = aRepository();

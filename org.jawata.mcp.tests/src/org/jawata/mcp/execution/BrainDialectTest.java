@@ -32,7 +32,7 @@ class BrainDialectTest {
 
     private final BrainDialect claude = new ClaudeCodeDialect();
 
-    // ------------------------------------------------------- the containment, which is a BOUND
+    // ----------------------------------- the containment FLAGS, two of which are not bounds
 
     @Test
     @DisplayName("C16: all four brains carry a write-containment FLAG by default, each read off its own flag — and two of the four flags are not bounds")
