@@ -81,6 +81,19 @@ class WallTimeNamesWorkNotWaitingTest {
             "java.util.TimerThread#mainLoop",
             "java.util.TimerThread#run");
 
+        // THE CONTROL FOR DROPPING `javax.` FROM THE RUNTIME PREFIXES — C15 blocker 1, which
+        // had no control at all until the round-2 audit said so. A `javax.` package is NOT
+        // reliably the JVM's own: a servlet, a JSR-330 component or a JAX-RS resource is
+        // application code living there, so treating the prefix as runtime files a genuinely
+        // blocked application method as a thread waiting for work — the exact misclassification
+        // M13 exists to remove, pointed the other way. Re-adding the prefix makes this clause
+        // red, which is what the other three could not do.
+        List<String> blockedInAJavaxFrame = List.of(
+            "jdk.internal.misc.Unsafe#park",
+            "java.util.concurrent.locks.LockSupport#park",
+            "javax.servlet.http.HttpServlet#service",
+            "java.lang.Thread#run");
+
         assertAll(
             () -> assertNull(JfrParser.innermostProgramFrame(idlePoolWorker),
                 "a pool worker waiting FOR work has no work on its stack, which is the whole"
@@ -91,6 +104,10 @@ class WallTimeNamesWorkNotWaitingTest {
                     + " INNERMOST program frame is that method rather than its caller"),
             () -> assertNull(JfrParser.innermostProgramFrame(idleTimerThread),
                 "the same holds for a monitor wait, not only a park"),
+            () -> assertEquals("javax.servlet.http.HttpServlet#service",
+                JfrParser.innermostProgramFrame(blockedInAJavaxFrame),
+                "a javax. frame is application code, not the JVM's own, so a thread blocked in"
+                    + " one is a NAMED blocked method and not a thread waiting for work"),
             () -> assertNull(JfrParser.innermostProgramFrame(List.of()),
                 "and a stack with no frames at all is not attributable to anything"));
     }
@@ -206,10 +223,34 @@ class WallTimeNamesWorkNotWaitingTest {
                 // over two units, which is the same relabeling shape as a defect this product
                 // already shipped once. Neither is an invocation count; those need a live trace
                 // and stay with action=call_counts.
-                () -> assertNotNull(mine == null ? null : mine.get("blockingEvents"),
-                    () -> "the row says how many BLOCKING EVENTS it summed: " + mine),
+                // AND A FLOOR RATHER THAN assertNotNull, which the C15 round-2 audit had to
+                // put back: the fold that split the counters DELETED the pre-existing
+                // `samples > 0` and left two non-null checks plus the sum identity below —
+                // eighteen lines under the comment in this same method saying a non-null
+                // check passes at ZERO. Measured on this fixture that was strictly weaker:
+                // `new Recording()` here enables only the two blocking events and NO
+                // execution samples, so every row's `cpuSamples` is structurally 0, the
+                // identity reads `b == b + 0`, and deleting the blocking counter outright
+                // left all three clauses green where the old one went red.
+                //
+                // This park is a real blocking event taken in this class's own method, so a
+                // floor on it is as deterministic as the idle clauses further down. The
+                // `cpuSamples` half CANNOT get a floor here — there are no samples to count
+                // in this recording by construction — so it is asserted where samples exist,
+                // in HotspotTest's wall case, which profiles a live JVM.
+                () -> assertTrue(mine != null && mine.get("blockingEvents") != null
+                        && ((Number) mine.get("blockingEvents")).longValue() > 0,
+                    () -> "the row says how many BLOCKING EVENTS it summed, and at least one"
+                        + " was summed — at zero this clause would be satisfied by a parser"
+                        + " that counted nothing: " + mine),
+                () -> assertTrue(mine != null && mine.get("samples") != null
+                        && ((Number) mine.get("samples")).longValue() > 0,
+                    () -> "the rankability figure the guard reads carries a magnitude, which"
+                        + " is the clause the counter split removed: " + mine),
                 () -> assertNotNull(mine == null ? null : mine.get("cpuSamples"),
-                    () -> "and how many on-CPU SAMPLES, separately: " + mine),
+                    () -> "and how many on-CPU SAMPLES, separately — PRESENCE only, because"
+                        + " this recording has no execution samples and a floor here would"
+                        + " be a clause that can never pass: " + mine),
                 () -> assertTrue(mine != null
                         && ((Number) mine.get("samples")).longValue()
                             == ((Number) mine.get("blockingEvents")).longValue()
@@ -246,6 +287,14 @@ class WallTimeNamesWorkNotWaitingTest {
                 // by twice the total. Both leave every share non-null and under 100. So "the
                 // share is OF THE RANKED TOTAL" — the sentence the code makes twice — was
                 // prose. These two clauses are what hold it.
+                // AND THE SUM CLAUSE BELOW ONLY MEANS ANYTHING ON AN UNPAGED ANSWER, which
+                // this call asks for (limit 50) and which was ASSUMED rather than checked —
+                // A5 at the round-2 audit. A paged answer's shares legitimately sum to less
+                // than 100, so without this the clause would fail for a reason that is not a
+                // defect, and a reader would go looking for one.
+                () -> assertFalse(Boolean.TRUE.equals(result.get("truncated")),
+                    () -> "this answer must be unpaged, or the share sum below is measuring a"
+                        + " page rather than the whole: " + result),
                 () -> {
                     double sum = rows.stream()
                         .map(r -> r.get("sharePercent"))
@@ -329,22 +378,47 @@ class WallTimeNamesWorkNotWaitingTest {
             @SuppressWarnings("unchecked")
             List<String> shortPath = (List<String>) cut.get("hotPath");
 
-            // THE SAMPLER CAN MISS, AND THAT IS NOT THIS CLAUSE'S SUBJECT — so it ABORTS here
-            // rather than failing, which is the convention this suite already uses for its
-            // profiling tests (HotspotTest#assumeRankable, and the standing
-            // "CPU profile too thin to rank" skip the plan records for a loaded machine).
+            // THE SAMPLER CAN MISS, AND THAT IS NOT THIS CLAUSE'S SUBJECT — so a miss ABORTS
+            // rather than failing. But it gates on the INPUT, never on the output under test,
+            // and the C15 round-2 audit is why.
             //
-            // It is in the file because it HAPPENED: the first run of this case, immediately
-            // after a clean build with the machine still loaded, returned an EMPTY path from
-            // both calls and reported it as "the path was not truncated" — a sampler miss
-            // wearing a truncation defect's message. An empty tree means no execution sample
-            // named this chain at all, which says nothing whatever about the marker. Three
-            // later runs of this class alone were green, and the identical configuration did
-            // not reproduce it, so the discriminator is machine load and not configuration.
-            Assumptions.assumeFalse(fullPath.isEmpty(),
-                "no execution sample named this chain — the sampler missed a 1200ms burn, which"
-                    + " happens on a loaded machine. Nothing is asserted about truncation here;"
-                    + " this is a skip rather than a pass.");
+            // The first version read `fullPath.isEmpty()`, which IS `hotPath`'s own return
+            // value — so it would have turned every one of these into a silent skip:
+            // `hotPath` returning `List.of()`, its loop guard never entering, `matchesEntry`
+            // returning false, the frame-collection guard inverted. The method this case
+            // exists to protect could have been neutered and the suite would have stayed
+            // green. A gate in front of an assertion must not be satisfiable by the defect
+            // the assertion is looking for.
+            //
+            // `samplesThroughEntryPoint` is the honest gate, and the parser already publishes
+            // it in this same map. It counts what went IN — samples whose stack reached the
+            // entry point — so it fires on the real miss while leaving every `hotPath` defect
+            // to the clauses below, where the proof-of-life clause reddens on an empty path
+            // instead of skipping it.
+            //
+            // That is also what the two precedents the first version CITED actually do, which
+            // it got wrong: `HotspotTest#assumeRankable` reads `max(row.samples)` and the
+            // entry-point case reads `samplesThroughEntryPoint` — both input thickness, not
+            // the thing being asserted.
+            //
+            // WHY THE GATE IS HERE AT ALL, stated as what was observed rather than as a cause:
+            // the first run of this case returned an EMPTY path from both calls and reported
+            // it as "the path was not truncated". Three later solo runs were green and the
+            // identical configuration did not reproduce it, so the run was NON-DETERMINISTIC
+            // and the configuration is not the discriminator. THE CAUSE IS NOT ESTABLISHED.
+            // Machine load was the first guess, and this project bans that reflex without a
+            // discriminating observation; the one that would have settled it — the total
+            // execution-sample count in the dump, beside this figure — was not taken and is
+            // no longer takeable. Sampler startup latency, interpreter state on a first run
+            // and buffer-flush timing are all equally consistent with what was seen. The
+            // abort is correct whichever it was, and the message now carries the numbers so a
+            // recurrence arrives as evidence rather than as another guess.
+            long through = ((Number) deep.get("samplesThroughEntryPoint")).longValue();
+            Assumptions.assumeFalse(through == 0,
+                "no execution sample reached this chain (samplesThroughEntryPoint=0), so there"
+                    + " is no tree to truncate and nothing here is a statement about the"
+                    + " marker. This is a skip, not a pass. hotPath=" + fullPath
+                    + " deep=" + deep);
 
             assertAll(
                 // PROOF OF LIFE, and it is also the precondition that makes the clause below
@@ -382,10 +456,13 @@ class WallTimeNamesWorkNotWaitingTest {
         chainLevelFourBurnsTheCpu();
     }
 
-    // 1200ms rather than a few hundred: at a 5ms sampling period a short burn is thin enough
-    // that a loaded machine misses it entirely, which is the miss the assumption above names.
-    // Raising the burn makes the miss rarer; it does not make it impossible, which is why the
-    // assumption stays rather than being replaced by a longer sleep.
+    // 1200ms is a MARGIN, not a figure derived from a mechanism — the round-2 audit caught the
+    // first version claiming the second. At a 5ms sampling period even the original 400ms was
+    // about 80 sampling opportunities on a thread that is inside this chain for the whole
+    // window and does nothing else, so the observed outcome was 0 of ~80 and not "a burn thin
+    // enough to miss". Tripling the opportunities to ~240 does not address a zero. It is here
+    // because more margin cannot hurt and the cause is unknown, which is also why the
+    // assumption above stays: a longer burn does not make a miss impossible.
     private static void chainLevelFourBurnsTheCpu() {
         long until = System.nanoTime() + Duration.ofMillis(1200).toNanos();
         long spin = 0;

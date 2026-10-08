@@ -441,10 +441,12 @@ public class ProfileTool extends AbstractTool {
             "description", "hotspots: which profile to rank by (default cpu). cpu/alloc/lock "
                 + "rank by sample count; wall ranks by total elapsed milliseconds per method — "
                 + "on-CPU time plus time BLOCKED IN work, attributed to the blocked method "
-                + "itself rather than to the JVM primitive it parked in. Time whose stack held "
-                + "no program frame at all is a thread WAITING FOR work: it is reported beside "
-                + "the ranking as idleWallMillis/idleEvents and is NOT in the rows, because one "
-                + "collapsed park row otherwise outranks every real method. Each row carries "
+                + "itself rather than to the JVM primitive it parked in. Time whose stack is "
+                + "READABLE but entirely JVM namespaces is a thread WAITING FOR work: it is "
+                + "reported beside the ranking as idleWallMillis/idleEvents and is NOT in the "
+                + "rows, because one collapsed park row otherwise outranks every real method. An "
+                + "event whose frames could not be read at all is a different fact and is "
+                + "counted as eventsWithoutStack, never as idle. Each row carries "
                 + "blockingEvents and cpuSamples, the observations its milliseconds were summed "
                 + "from, and sharePercent of the ranked total. gc is a pause summary."));
         properties.put("className", Map.of("type", "string",

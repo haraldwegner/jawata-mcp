@@ -295,8 +295,11 @@ class HotspotTest {
         // share in CPU, which expresses wall-is-not-cpu as a relation between the dimensions
         // rather than as a floor. It is better and it is NOT what this is. The cpu dimension
         // publishes no share, so it would have to be computed from a CAPPED page's sample sum,
-        // which compares a whole-answer share against a page share — unlike things. Recorded as
-        // the better clause once the cpu dimension carries a share of its own.
+        // which compares a whole-answer share against a page share — unlike things. It is owed
+        // once the cpu dimension carries a share of its own, and that is carried as a named
+        // deferral in the 28g plan's C15 carried-items list rather than left as a note here:
+        // a comment saying "recorded" with no destination is a finding nobody will ever pick up,
+        // which the round-2 audit called out as class 3.
         Map<String, Object> blockingRow = wallRows.stream()
             .filter(row -> "com.example.debug.WallTimeTarget#waitOnLock".equals(row.get("symbol")))
             .findFirst().orElseThrow();
@@ -306,6 +309,33 @@ class HotspotTest {
                 + " the list — this is the magnitude dimension the dropped rank used to carry,"
                 + " and the fixture blocks by design, so 10% is a floor with ~5x headroom. Got "
                 + blockingShare + "% from " + blockingRow);
+
+        // THE COUNTER SPLIT IS FALSIFIABLE HERE AND NOWHERE ELSE — C15 blocker 2, which the
+        // round-2 audit found had shipped with no control that could fail.
+        //
+        // A wall row's milliseconds can come from blocking events or from on-CPU samples, so
+        // the row publishes `blockingEvents` and `cpuSamples` separately and `samples` as their
+        // sum. The parser-level test asserts that split on a recording it makes itself — and
+        // that recording enables only the two blocking events, so every row's `cpuSamples` is
+        // structurally ZERO there, the sum identity reads `b == b + 0`, and reverting the two
+        // maps to one conflated counter left all of it green.
+        //
+        // This case profiles a LIVE JVM with execution samples, so both halves have something
+        // to count, and the fixture puts them in DIFFERENT rows by construction: burnCpu burns
+        // CPU and waitOnLock blocks. Requiring a floor on each in its own row is what no
+        // single-map mutation can satisfy — fold the two counters together and whichever map
+        // is left empty reads 0 for one of these two keys.
+        Map<String, Object> cpuRow = wallRows.stream()
+            .filter(row -> "com.example.debug.WallTimeTarget#burnCpu".equals(row.get("symbol")))
+            .findFirst().orElseThrow();
+        assertTrue(((Number) cpuRow.get("cpuSamples")).longValue() > 0,
+            "the CPU-burning method's wall row must count on-CPU SAMPLES — this is the half the"
+                + " parser-level test cannot reach, because its own recording has none: "
+                + cpuRow);
+        assertTrue(((Number) blockingRow.get("blockingEvents")).longValue() > 0,
+            "and the blocking method's row must count BLOCKING EVENTS, so the two counters are"
+                + " shown to be separate quantities rather than one wearing two names: "
+                + blockingRow);
 
         // The CORROBORATION, and it is sampling-dependent, so it goes LAST and behind a
         // precondition. WallTimeTarget is ~97% blocked BY DESIGN — that is the whole point of
@@ -381,6 +411,17 @@ class HotspotTest {
             () -> assertTrue(String.valueOf(absent.get("note")).contains("absence of samples"),
                 () -> "and it SAYS that, rather than letting an empty tree read as a"
                     + " measurement that the method is cheap: " + absent),
+            // C15 blocker 5 HAD NO CONTROL until the round-2 audit said so. The note was
+            // widened from two causes to three, and the only assertion on it was the
+            // substring above — which the OLD two-cause note satisfied just as well, so
+            // reverting the widening reddened nothing. The third cause is the one that
+            // matters: the method ran and was OFF-CPU throughout, which an execution-sample
+            // tree cannot see at all. Reporting that as "it did not run" is this note's own
+            // worst failure, and it is the only cause whose remedy is a different tool.
+            () -> assertTrue(String.valueOf(absent.get("note")).contains("OFF-CPU"),
+                () -> "and it names the THIRD cause — ran, but off-CPU throughout, which this"
+                    + " tree is built from execution samples and cannot see — rather than"
+                    + " offering only did-not-run and name-does-not-match: " + absent),
             () -> assertTrue(((List<?>) absent.get("hotPath")).isEmpty(),
                 () -> "with no path invented for it: " + absent),
             () -> assertFalse(refused.isSuccess(),

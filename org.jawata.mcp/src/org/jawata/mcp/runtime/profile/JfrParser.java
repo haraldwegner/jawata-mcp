@@ -258,6 +258,17 @@ public final class JfrParser {
         result.put("idleEvents", idleEvents);
         result.put("onCpuSamples", executionSampleSymbols.size());
         result.put("samplingIntervalMillis", sampleIntervalNanos / 1_000_000);
+        // THIS `blockingEvents` IS THE RESULT-WIDE COUNT AND A ROW'S IS PER-SYMBOL, so the
+        // identity a reader needs is stated rather than left to be discovered by subtraction:
+        //
+        //     result.blockingEvents  ==  SUM(every ranked row's blockingEvents)  +  idleEvents
+        //
+        // over an UNPAGED answer. Paged, the row sum is short by whatever did not fit, which
+        // `truncated` below declares. The round-2 audit flagged the shared name, and it is kept
+        // deliberately: both are counts of the same KIND of thing at two scopes, exactly as
+        // `totalWallMillis` stands to a row's `wallMillis`. What would have been a defect is
+        // leaving the gap between them unexplained, because a reader summing rows and comparing
+        // to this total finds a difference and has no way to know it is the idle events.
         result.put("blockingEvents", blockingEvents);
         result.put("truncated", offset + rows.size() < ranked.size());
         if (eventsWithoutStack > 0) {
@@ -651,9 +662,13 @@ public final class JfrParser {
      * <p>Note for whoever consolidates this: {@code topFrameSymbol} answers {@code null} when
      * the TOP frame alone is unresolvable, where this SKIPS it and keeps walking. That
      * divergence is older than this method and is deliberately left alone here rather than
-     * changed under a checkpoint that was not about it — the architect watch homed it to a
-     * later stage, and silently altering what the cpu dimension attributes would be exactly the
-     * kind of unchosen behaviour change it was flagging.</p>
+     * changed under a checkpoint that was not about it — silently altering what the cpu
+     * dimension attributes would be exactly the kind of unchosen behaviour change the architect
+     * watch was flagging. <b>Its destination is named rather than left as "a later stage",
+     * which the C15 round-2 audit refused as a deferral with nowhere to go:</b> it is carried in
+     * the 28g plan's C15 carried-items list, as owed to the next work that touches the cpu
+     * dimension's attribution — the same place the cpu-share clause this file's wall test wants
+     * is carried, because both are changes to what that dimension publishes.</p>
      */
     private static List<String> readableFrames(RecordedEvent event) {
         RecordedStackTrace stack = event.getStackTrace();
