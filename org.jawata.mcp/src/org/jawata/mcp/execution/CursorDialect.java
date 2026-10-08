@@ -108,6 +108,21 @@ public final class CursorDialect implements BrainDialect {
         if (readOnly) {
             argv.add("--mode");
             argv.add("plan");
+            // AND THE SANDBOX, because --mode plan ALONE WAS MEASURED TO FAIL. C16 told this seat,
+            // under plan mode, to create a file: across five runs with identical flags it refused
+            // four times — each answer citing plan mode and "markdown-only edits" — and ONCE IT
+            // WROTE THE FILE. Plan mode is an instruction the model carries out, not a bound on
+            // what it can do, and an instruction a model follows four times in five is not
+            // containment.
+            //
+            // WHAT IS AND IS NOT CLAIMED FOR THIS FLAG. It is the vendor's own documented sandbox
+            // ("Explicitly enable or disable sandbox mode", choices enabled|disabled). MEASURED:
+            // three runs with it complete normally and answer, so it does not break a hire. NOT
+            // MEASURED: that it is what stops a write — every refusal observed cited plan mode, so
+            // its independent effect is unestablished. It is here because it is the only lever
+            // stronger than an instruction, and this comment says which half is evidence.
+            argv.add("--sandbox");
+            argv.add("enabled");
         }
         if (model != null && !model.isBlank()) {
             argv.add("--model");
@@ -121,9 +136,17 @@ public final class CursorDialect implements BrainDialect {
 
     @Override
     public ToolAttachment toolAttachment() {
+        // THE WORDING NO LONGER PROMISES WHAT WAS MEASURED TO FAIL. It used to read "read-only, so
+        // it analyses and proposes and cannot edit or run shell commands" — and under exactly
+        // those flags this brain wrote a file once in five runs. A record that states a bound the
+        // product does not have is worse than one that states none, because a reader stops
+        // checking.
         return ToolAttachment.cannotBeTold(readOnly
-            ? "--mode plan, which this hire passes: read-only, so it analyses and proposes and"
-                + " cannot edit or run shell commands"
+            ? "--mode plan plus --sandbox enabled, both passed by this hire. MEASURED CAVEAT: plan"
+                + " mode is an instruction this brain carries out rather than a bound — told to"
+                + " write a file under it, it refused four times in five runs and wrote once. The"
+                + " sandbox is the vendor's stronger lever and its independent effect is not"
+                + " established here. Treat a cursor hire as UNCONTAINED for writes"
             : "--mode plan|ask (NOT passed by this hire, which therefore has write and shell"
                 + " access), --sandbox, and the hire's own wall-clock, cost and step ceilings");
     }

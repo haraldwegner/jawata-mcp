@@ -115,8 +115,8 @@ def call(tool, args):
 # comes — a gate that could not answer says so, which is ToolGateRunner's whole point.
 STEPS = [{"tool": "health_check", "arguments": {}}]
 
-journalled = 0
-reported = 0
+ran = 0
+refused = 0
 rows = []
 
 for brain in ("claude-code", "cursor", "copilot", "codex"):
@@ -130,7 +130,7 @@ for brain in ("claude-code", "cursor", "copilot", "codex"):
     })
     d = answer.get("data") or {}
     if answer.get("success"):
-        journalled += 1
+        ran += 1
         record = d.get("record")
         on_disk = bool(record) and os.path.isfile(record)
         rows.append({
@@ -149,7 +149,7 @@ for brain in ("claude-code", "cursor", "copilot", "codex"):
         # A REFUSAL IS A REPORT, not a gap — as long as it says why. That is the difference M12
         # asks for between a brain that cannot be told and a brain quietly left out of the count.
         err = answer.get("error") or {}
-        reported += 1
+        refused += 1
         rows.append({
             "brain": brain,
             "ran": False,
@@ -159,9 +159,11 @@ for brain in ("claude-code", "cursor", "copilot", "codex"):
 
 print(json.dumps(rows, indent=2))
 print("")
-print("M12-FOUR-BRAINS journalled=%d reported=%d of 4" % (journalled, reported))
+print("M12-FOUR-BRAINS ran=%d refused=%d accounted=%d of 4 (a refusal that says why is an\n                 accounted brain, not a gap; the JOURNAL row itself is asserted in\n                 HireToolTest, since the event store publishes no row-level read)"\n      % (ran, refused, ran + refused))
 # Every brain must be ACCOUNTED FOR. A run that failed honestly counts; silence does not.
-raise SystemExit(0 if journalled + reported == 4 else 1)
+# The two counters are ALTERNATIVES and their SUM is the gate, which the render now says —
+# an audit read 'reported=0 of 4' as a conjunctive shortfall, and it reads that way.
+raise SystemExit(0 if ran + refused == 4 else 1)
 PY
 PROBE_STATUS=$?
 exit $PROBE_STATUS

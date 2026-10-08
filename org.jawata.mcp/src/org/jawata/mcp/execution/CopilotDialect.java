@@ -55,13 +55,31 @@ public final class CopilotDialect implements BrainDialect {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * The tool names this CLI's OWN HELP uses for writing and for running commands.
+     *
+     * <p>Taken from its examples rather than guessed: {@code copilot --allow-tool='write'} is
+     * documented as "Allow all file editing", and {@code --allow-tool='shell(git:*)'} shows that
+     * {@code shell} is the command-running tool. Denying both is the symmetric instruction, and
+     * {@code --deny-tool} says of itself that the CLI "does not have permission to use" them and
+     * "will not prompt".</p>
+     */
+    private static final List<String> WRITING_TOOLS = List.of("write", "shell");
+
     private final String binary;
     private final boolean disableBuiltinMcps;
     private final List<String> disableMcpServers;
+    private final boolean readOnly;
 
-    /** Built-in MCP servers off, no server disabled by name — see {@link #CopilotDialect}. */
+    /** Built-in MCP servers off, no server disabled by name, READ-ONLY — see {@link #CopilotDialect}. */
     public CopilotDialect() {
-        this("copilot", true, List.of());
+        this("copilot", true, List.of(), true);
+    }
+
+    /** The three-argument form keeps its callers and is READ-ONLY, like every other brain's. */
+    public CopilotDialect(String binary, boolean disableBuiltinMcps,
+            List<String> disableMcpServers) {
+        this(binary, disableBuiltinMcps, disableMcpServers, true);
     }
 
     /**
@@ -73,11 +91,37 @@ public final class CopilotDialect implements BrainDialect {
      *     one that broke the first run was a local server nothing in this product could enumerate.
      *     A caller whose run reports {@code compaction_static_context_blocked} fills this in.
      */
-    public CopilotDialect(String binary, boolean disableBuiltinMcps, List<String> disableMcpServers) {
+    /**
+     * @param readOnly pass {@code --deny-tool write --deny-tool shell}, which is this CLI's own
+     *     way of saying a run may not edit or execute. DEFAULTED ON, for the reason every other
+     *     dialect gives: an unattended run PROPOSES, and a caller who means to let it write passes
+     *     false and says so.
+     *     <p>It was added at C16 after a FALSE CLAIM OF MINE — the architect report for that
+     *     checkpoint said this brain could not be told to stay read-only at all, "nothing", "can
+     *     it be said? no", while its own {@code --help} offers {@code --deny-tool},
+     *     {@code --excluded-tools} and {@code --available-tools} and names {@code write} as the
+     *     file-editing tool.</p>
+     *     <p><b>AND THE CONTROL THEN SHOWED THESE FLAGS ARE NOT WHAT CONTAINS IT.</b> Two runs of
+     *     the same brief in scratch directories, one with these flags and one without: NEITHER
+     *     wrote. Without them the model called {@code apply_patch}, was refused, reasoned about
+     *     "needing approval due to security measures", routed around to {@code bash} with
+     *     {@code printf 'no' > …}, was refused again, and answered <i>"I couldn't create the file
+     *     because write permission was denied."</i> So this CLI's HEADLESS DEFAULT denies writes,
+     *     and the containment a hire gets from it is the vendor's rather than ours.</p>
+     *     <p>The flags stay because they state the intent explicitly and would still read as the
+     *     hire's decision if that default changed or if a configuration elsewhere turned on
+     *     {@code --allow-all-tools}. What is NOT claimed: that deny takes precedence over allow
+     *     for TOOLS — the help documents that precedence for {@code --deny-url} only, and
+     *     inferring it for tools from a URL example would be exactly the kind of inference in
+     *     measurement language this checkpoint spent the day removing.</p>
+     */
+    public CopilotDialect(String binary, boolean disableBuiltinMcps,
+            List<String> disableMcpServers, boolean readOnly) {
         this.binary = binary == null || binary.isBlank() ? "copilot" : binary;
         this.disableBuiltinMcps = disableBuiltinMcps;
         this.disableMcpServers = disableMcpServers == null ? List.of()
             : List.copyOf(disableMcpServers);
+        this.readOnly = readOnly;
     }
 
     @Override
@@ -97,6 +141,16 @@ public final class CopilotDialect implements BrainDialect {
             binary, "-p", prompt == null ? "" : prompt,
             // Measured: 'json' here means JSONL, one object per line — NOT a single JSON document.
             "--output-format", "json"));
+        // THE WRITE BOUND, FIRST among the optional flags because it is the one whose absence
+        // means an unattended run can edit the directory it was pointed at. `--deny-tool` is
+        // stronger than an allowlist for this purpose: it says the CLI "does not have permission
+        // to use" the tool and "will not prompt", so there is no approval channel to leave open.
+        if (readOnly) {
+            for (String tool : WRITING_TOOLS) {
+                argv.add("--deny-tool");
+                argv.add(tool);
+            }
+        }
         if (disableBuiltinMcps) {
             argv.add("--disable-builtin-mcps");
         }
@@ -119,7 +173,13 @@ public final class CopilotDialect implements BrainDialect {
 
     @Override
     public ToolAttachment toolAttachment() {
-        return ToolAttachment.perRun("--available-tools (\"only these tools will be available to"
+        return ToolAttachment.perRun((readOnly
+            ? "--deny-tool write --deny-tool shell, which this hire passes — though MEASURED, this"
+                + " CLI's headless default already denies writes and that is what contains a run;"
+                + " the flags state the intent rather than create it; plus "
+            : "writes are not blocked BY THIS HIRE, by explicit request — note the CLI's own"
+                + " headless default may still deny them; plus ")
+            + "--available-tools (\"only these tools will be available to"
             + " the model\"), with --disable-builtin-mcps and --disable-mcp-server bounding which"
             + " servers load at all — which on this machine decided whether the brain could run");
     }

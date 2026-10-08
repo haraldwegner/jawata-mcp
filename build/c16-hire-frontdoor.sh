@@ -277,8 +277,11 @@ else:
 # RESULT JOURNALLED — the record is a file a human opens, at the path the answer gives.
 record = d.get("record")
 if record and os.path.isfile(record):
-    ok("RESULT JOURNALLED: the record a human reads is on disk at %s"
-       % os.path.basename(record))
+    # THE ARTIFACT, AND THIS LINE USED TO CLAIM THE JOURNAL. It said "RESULT JOURNALLED" while
+    # checking proposal.md — a file on disk, which is a different thing from a row in the event
+    # store. An audit named it. The journal row is asserted in HireToolTest against the store's
+    # own counters, because LearnerEventStore publishes no row-level read for a probe to use.
+    ok("THE RECORD IS ON DISK (the artifact, not the journal) at %s" % os.path.basename(record))
 else:
     bad("no record at the path the response gave: %r" % record)
 

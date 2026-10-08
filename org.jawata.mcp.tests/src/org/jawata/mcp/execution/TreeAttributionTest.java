@@ -96,14 +96,15 @@ class TreeAttributionTest {
     }
 
     @Test
-    @DisplayName("a file written, a file deleted, and a file edited are each attributed")
+    @DisplayName("a file written, a file edited, and one written in a subdirectory are attributed")
     void itNamesWhatTheRunDidToTheTree() throws Exception {
         Path repo = aRepository();
         TreeAttribution census = TreeAttribution.before(host, repo);
 
-        // The three things a brain does to a directory. The DELETION is the one a naive diff
-        // misses: it is present in the before census and absent from the after, so a comparison
-        // that only walks the new reading would never see it.
+        // Three of the four things a brain does to a directory. The DELETION is the fourth and it
+        // is NOT here — it needs a file dirty before the census, so it has its own method below.
+        // An earlier version of this name claimed the deletion and this comment discussed it; an
+        // audit found the mismatch, which is a display name describing a test it is not.
         Files.writeString(repo.resolve("written.txt"), "new\n");
         Files.writeString(repo.resolve("tracked.txt"), "one\ntwo\n");
         Files.createDirectory(repo.resolve("sub"));

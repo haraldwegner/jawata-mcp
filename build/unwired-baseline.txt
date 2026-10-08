@@ -35,7 +35,6 @@ org.jawata.mcp.embed.WordPieceTokenizer#vocabSize()
 # ratchet working — do not carry these entries past it.
 org.jawata.mcp.execution.HiredBrain.Ceilings#of(Duration)
 org.jawata.mcp.execution.HiredRun#issue(BrainDialect,HostCommand,String,Ceilings,List<GatedStep>,GateRunner)
-org.jawata.mcp.execution.HiredRun.Proposal#complete()
 org.jawata.mcp.execution.SeatScheduler#start()
 org.jawata.mcp.field.FieldPile#countErrorShapes()
 org.jawata.mcp.field.InFlightCalls#liveCount()
@@ -67,7 +66,6 @@ org.jawata.mcp.knowledge.ExperienceRetrieval#keywordOnly(ExperienceStore,Supplie
 # The same shape is already accepted here many times over — JdtServiceImpl#dispose,
 # SearchService#getProject, WorkspaceManager#getRoot — all implementations reached through
 # their interface.
-
 org.jawata.mcp.knowledge.H2ExperienceStore#appliedSampleCount(String)
 org.jawata.mcp.knowledge.H2ExperienceStore#useClock(Clock)
 org.jawata.mcp.knowledge.LearnerEventStore#failedWrites()
@@ -130,7 +128,6 @@ org.jawata.mcp.refactoring.RefactoringChangeCache#size()
 org.jawata.mcp.runtime.RuntimeSessionRegistry#size()
 org.jawata.mcp.tools.AbstractApplyingRefactoringTool.Preparation#of(Change,String)
 org.jawata.mcp.tools.SearchSymbolsTool#teachTheAddress(String,List<Map<String,Object>>)
-org.jawata.mcp.tools.ToolRegistry#callTool(String,JsonNode)
 org.jawata.mcp.tools.ToolRegistry#getTool(String)
 org.jawata.mcp.tools.ToolRegistry#getToolNames()
 org.jawata.mcp.tools.ToolRegistry#hasTool(String)

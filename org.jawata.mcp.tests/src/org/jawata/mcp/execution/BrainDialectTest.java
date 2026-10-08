@@ -35,7 +35,7 @@ class BrainDialectTest {
     // ------------------------------------------------------- the containment, which is a BOUND
 
     @Test
-    @DisplayName("C16: a hire is READ-ONLY unless a caller says otherwise, and the flag says which")
+    @DisplayName("C16: all four brains carry a WRITE BOUND by default, each read off its own flag")
     void theRunIsContainedByDefaultAndTheFlagIsInTheArgv() {
         // THIS ASSERTION EXISTS BECAUSE ITS ABSENCE WAS MEASURED. C16 asks that "the seat cannot
         // edit a file except through a tool", and the cataloguer seat — four read-only jawata
@@ -55,21 +55,52 @@ class BrainDialectTest {
         assertAll(
             () -> assertTrue(contained.contains("--permission-mode"),
                 "the containment flag travels: " + contained),
-            () -> assertEquals("plan",
-                contained.get(contained.indexOf("--permission-mode") + 1),
+            () -> assertEquals("plan", valueOf(contained, "--permission-mode"),
                 "and its VALUE is the read-only mode, not merely the flag's presence"),
             // The opt-out is a different value rather than a missing flag, so a reader of an argv
             // can always tell which of the two a run had — an absent flag would be ambiguous
             // between "writes allowed" and "an older build that could not say".
-            () -> assertEquals("manual",
-                permitted.get(permitted.indexOf("--permission-mode") + 1),
+            () -> assertEquals("manual", valueOf(permitted, "--permission-mode"),
                 "a caller who opted out gets the other value, explicitly: " + permitted),
-            // THE TWO BRAINS THAT CAN BE CONTAINED NOW AGREE, which they did not before. Cursor
-            // has defaulted to read-only since it was written, for the reason its own javadoc
-            // gives; claude did not, and the inconsistency was on the one property that matters
-            // most about an unattended run.
-            () -> assertTrue(new CursorDialect().command("x", List.of()).contains("plan"),
-                "cursor's default is read-only too, and the pair is the point"));
+            // ALL FOUR BRAINS NOW CARRY A WRITE BOUND BY DEFAULT, which they did not before: cursor
+            // always had one, claude and copilot gained theirs at C16, and codex's is its sandbox.
+            // The inconsistency was on the one property that matters most about an unattended run.
+            //
+            // EACH IS READ OFF ITS OWN FLAG BY INDEX, not by membership. An earlier version of the
+            // cursor clause asked `command(...).contains("plan")`, which passes on ANY argv element
+            // equal to "plan" — including a model called plan, or a prompt that is the word — and
+            // says nothing about --mode. An audit named it and it was right.
+            () -> assertEquals("plan", valueOf(new CursorDialect().command("x", List.of()), "--mode"),
+                "cursor: --mode plan"),
+            // AND ITS SANDBOX, added after plan mode alone was MEASURED TO FAIL: told to write a
+            // file under it, this brain refused four times in five runs and wrote once. The flag
+            // is pinned here; what it CONTAINS is not claimed, because every refusal observed
+            // cited plan mode rather than the sandbox.
+            () -> assertEquals("enabled",
+                valueOf(new CursorDialect().command("x", List.of()), "--sandbox"),
+                "cursor: --sandbox enabled, the only lever stronger than an instruction"),
+            () -> assertEquals("read-only",
+                valueOf(new CodexDialect().command("x", List.of()), "--sandbox"),
+                "codex: --sandbox read-only, which is its whole containment"),
+            () -> assertTrue(new CopilotDialect().command("x", List.of()).contains("--deny-tool"),
+                "copilot: --deny-tool, which this product did not pass until C16 — the architect"
+                    + " report had claimed this brain could not be told at all, and its own --help"
+                    + " offers --deny-tool, --excluded-tools and --available-tools"),
+            () -> assertEquals("write",
+                valueOf(new CopilotDialect().command("x", List.of()), "--deny-tool"),
+                "and the first tool it denies is the one its help calls file editing"));
+    }
+
+    /**
+     * The value that FOLLOWS a named flag in an argv, or null.
+     *
+     * <p>Exists because `List.contains` is the wrong instrument for a flag's value: it answers
+     * whether a word appears anywhere, so it passes on a model, a prompt or a path that happens to
+     * equal it. An audit found exactly that in this class's first cursor assertion.</p>
+     */
+    private static String valueOf(List<String> argv, String flag) {
+        int at = argv.indexOf(flag);
+        return at >= 0 && at + 1 < argv.size() ? argv.get(at + 1) : null;
     }
 
     @Test

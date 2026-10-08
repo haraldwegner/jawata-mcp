@@ -18,6 +18,7 @@ import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
+import org.jawata.mcp.learn.LearnerEvent;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
@@ -258,6 +259,47 @@ class HireToolTest {
             // AND THE SEAT'S BRAIN CAN BE TOLD WHICH TOOLS, which is the other half of the clause
             // the cursor case below exercises.
             () -> assertEquals(Boolean.TRUE, data.get("toolsSettableByTheHirer")));
+    }
+
+    @Test
+    @DisplayName("C16: the result is JOURNALLED — a row is read back, not a record file inspected")
+    void theRunLandsInTheJournal() throws Exception {
+        // THE CLAUSE THIS CLASS COULD NOT PREVIOUSLY FAIL ON. "result journalled" was evidenced by
+        // a probe asserting proposal.md exists on disk — which is the ARTIFACT, a different thing —
+        // by a counter in another script literally named `journalled` that incremented on the
+        // tool's success flag, and by a javadoc. None read a journal row, and `HiredRun` appends
+        // inside a try whose catch swallows, so a journal that threw still returned a successful
+        // proposal. Nothing in the repository reddened if the append stopped happening.
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
+            aRegistryWithACleanGate());
+
+        // BEFORE, so the assertion is about THIS run and not about a store that happened to hold
+        // a row already.
+        long hiredRunsBefore = events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L);
+        long totalBefore = events.totalEvents();
+
+        ToolResponse response = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
+
+        assertAll(
+            () -> assertEquals(hiredRunsBefore + 1,
+                events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
+                "one hired-run row landed in the journal, counted from the store itself"),
+            () -> assertEquals(totalBefore + 1, events.totalEvents()),
+            // AND THE WRITE REALLY SUCCEEDED. The store counts its own failures, so a row that
+            // threw on the way in would leave the count above unchanged AND this non-zero — two
+            // different failures that must not be read as one.
+            () -> assertEquals(0, events.failedWrites(),
+                "and no journal write failed, which the store counts for itself"));
+
+        // THE BOUND, and it is the store's rather than this test's: LearnerEventStore publishes
+        // `append`, `countByKind`, `totalEvents` and `failedWrites` — and NO ROW-LEVEL READ. So
+        // the clause "result journalled" is assertable as "a row of this kind landed" and NOT as
+        // "the row says which brain, which plan and how far it got", even though `HiredRun` writes
+        // all three into the payload. Nobody — not this test and not a human asking what a run
+        // recorded — can read that payload back through the published API. Filed as a finding
+        // rather than worked around here by reaching into the schema, which would pin a test to
+        // SQL the store exists to own.
     }
 
     @Test

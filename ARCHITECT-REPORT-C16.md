@@ -38,7 +38,20 @@ four classes**, and two of them cannot express it at all:
 | `CursorDialect` | `readOnly` field, default true → `--mode plan` | yes |
 | `ClaudeCodeDialect` | `readOnly` field, default true → `--permission-mode plan` | yes, **as of this checkpoint** |
 | `CodexDialect` | `--sandbox read-only`, hard-coded, no field | not as a decision — only as a fact |
-| `CopilotDialect` | nothing | **no** |
+| `CopilotDialect` | ~~nothing~~ → `readOnly` field, default true → `--deny-tool write --deny-tool shell` | **yes, and the row above was FALSE** |
+
+**THE COPILOT ROW WAS WRONG AND IS CORRECTED IN PLACE RATHER THAN QUIETLY REPLACED.** It said this
+brain had nothing and could not be told. Its own `--help` offers `--deny-tool`, `--excluded-tools`
+and `--available-tools`, and names `write` as the file-editing tool. I asserted an absence from not
+having looked — the shape this very report calls the run's structure 1.
+
+**AND THE CONTROL THEN CORRECTED THE CORRECTION.** Two runs of one brief in scratch directories,
+with the new flags and without: NEITHER wrote. Without them the model called `apply_patch`, was
+refused, reasoned about *"needing approval due to security measures"*, routed around to `bash`, was
+refused again, and answered *"I couldn't create the file because write permission was denied."* So
+copilot's headless DEFAULT denies writes; the flags state the hire's intent and are not what
+contains it. Both the dialect's javadoc and its attachment report now say so, and neither claims
+deny-over-allow precedence for tools, which the help documents for URLs only.
 
 **Why that is a bandage rather than four correct local choices.** A fifth brain added tomorrow
 gets no default at all and nothing notices — which is exactly how claude stood until a probe told
