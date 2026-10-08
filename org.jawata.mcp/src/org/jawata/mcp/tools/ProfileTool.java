@@ -814,11 +814,27 @@ public class ProfileTool extends AbstractTool {
         data.put("artifactId", artifactId);
 
         long through = data.get("samplesThroughEntryPoint") instanceof Number n ? n.longValue() : 0;
+        // THE TWO FIGURES TOGETHER TELL THE READER WHICH ABSENCE THIS IS, which neither does
+        // alone — the reason `executionSamplesInRecording` was added at the C15 round-3 audit.
+        // Samples in the recording but none through the entry point means the NAME is wrong or
+        // the method was off-CPU; nothing in the recording at all means the sampler caught
+        // nothing and the entry point is not implicated. Saying "check the name, or sample
+        // while it is running" for both sent a reader to the wrong half of the time.
+        long inRecording =
+            data.get("executionSamplesInRecording") instanceof Number s ? s.longValue() : 0;
         return ToolResponse.success(data, ResponseMeta.builder()
             .steering(through == 0
-                ? "No sample passed through " + entryPoint + ". That is an ABSENCE of samples, "
-                    + "not a measurement that it is fast — check the name, or sample while it "
-                    + "is actually running."
+                ? (inRecording > 0
+                    ? "No sample passed through " + entryPoint + ", though the recording holds "
+                        + inRecording + " execution sample(s) — so the sampler WAS working and "
+                        + "this entry point is what it never caught. Either the name does not "
+                        + "match a frame (a bare Type enters at any of its methods), or the "
+                        + "method ran OFF-CPU throughout, which an execution-sample tree cannot "
+                        + "see at all; for that case ask hotspots(dimension=wall)."
+                    : "The recording holds NO execution samples at all, so this says nothing "
+                        + "about " + entryPoint + " — the sampler caught nothing in that "
+                        + "window. Sample again while the work is actually running; a longer "
+                        + "durationSeconds is the usual fix.")
                 : "`hotPath` is the heaviest chain from the entry point down — the hot PATH, "
                     + "which a top-of-stack ranking cannot name. For TRUE per-method call "
                     + "counts (not these sample counts) use action=call_counts, which needs a "

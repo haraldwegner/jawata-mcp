@@ -321,6 +321,28 @@ class WallTimeNamesWorkNotWaitingTest {
                     assertTrue(idle > 0 && ranked > 0,
                         () -> "and the two are genuinely separate quantities here, so the clause"
                             + " above is not passing because one of them is empty: " + result);
+                },
+                // AND THE EVENT IDENTITY IS GATED RATHER THAN MERELY DOCUMENTED — the round-3
+                // audit's A4 note, and the shape this whole checkpoint keeps producing. The
+                // result publishes `blockingEvents` and so does every row, at two scopes, and
+                // the comment in `wallHotspots` states how they relate. A stated identity that
+                // no test evaluates is a claim, so here it is evaluated: the result-wide count
+                // is every readable blocking event, each of which went either to a row or to
+                // idle, so over this unpaged answer the three must close exactly.
+                () -> {
+                    long total = ((Number) result.get("blockingEvents")).longValue();
+                    long idleCount = ((Number) result.get("idleEvents")).longValue();
+                    long rowEvents = rows.stream()
+                        .map(r -> r.get("blockingEvents"))
+                        .filter(Number.class::isInstance)
+                        .mapToLong(v -> ((Number) v).longValue())
+                        .sum();
+                    assertEquals(total, rowEvents + idleCount,
+                        () -> "result.blockingEvents must be the ranked rows' own sum plus"
+                            + " idleEvents — every readable blocking event goes to exactly one"
+                            + " of the two, so a gap would mean events are being counted at the"
+                            + " top and attributed nowhere. total=" + total + " rows="
+                            + rowEvents + " idle=" + idleCount + " from " + result);
                 });
         } finally {
             idleByConstruction.cancel();
@@ -390,16 +412,26 @@ class WallTimeNamesWorkNotWaitingTest {
             // green. A gate in front of an assertion must not be satisfiable by the defect
             // the assertion is looking for.
             //
-            // `samplesThroughEntryPoint` is the honest gate, and the parser already publishes
-            // it in this same map. It counts what went IN — samples whose stack reached the
-            // entry point — so it fires on the real miss while leaving every `hotPath` defect
-            // to the clauses below, where the proof-of-life clause reddens on an empty path
-            // instead of skipping it.
+            // THE SECOND VERSION GATED ON `samplesThroughEntryPoint` AND WAS STILL WRONG, which
+            // the round-3 audit caught by reading what that figure actually counts. It is
+            // `matched`, incremented only AFTER `matchesEntry` succeeds over frames the
+            // collection loop produced — so it is an OUTPUT of the matching, not an input. It
+            // closed two of the four defects above (`hotPath` returning empty, and its loop
+            // guard never entering, both of which leave `matched` untouched) and left the other
+            // two — `matchesEntry` always false, the frame-collection guard inverted — still
+            // aborting the case instead of failing it. Measured by that audit: under a
+            // `matchesEntry`-always-false mutation the whole suite reports 2 aborts and 0
+            // failures, because the one hard assertion on that quantity sits behind an
+            // assumption the same defect trips first.
             //
-            // That is also what the two precedents the first version CITED actually do, which
-            // it got wrong: `HotspotTest#assumeRankable` reads `max(row.samples)` and the
-            // entry-point case reads `samplesThroughEntryPoint` — both input thickness, not
-            // the thing being asserted.
+            // `executionSamplesInRecording` is the honest gate, and this commit adds it to the
+            // parser for the purpose: it is the size of the sample list, filled BEFORE any
+            // matching, so no defect in the matching or in the tree can suppress it. All four
+            // defects now fail rather than skip.
+            //
+            // And it is the observation the paragraph below says was not taken — so publishing
+            // it closes this gate AND hands the unexplained intermittent its instrument, which
+            // is why the fix is one `result.put` rather than a test-side workaround.
             //
             // WHY THE GATE IS HERE AT ALL, stated as what was observed rather than as a cause:
             // the first run of this case returned an EMPTY path from both calls and reported
@@ -413,12 +445,20 @@ class WallTimeNamesWorkNotWaitingTest {
             // and buffer-flush timing are all equally consistent with what was seen. The
             // abort is correct whichever it was, and the message now carries the numbers so a
             // recurrence arrives as evidence rather than as another guess.
+            //
+            // THE DISCRIMINATOR IS NOW AVAILABLE, which is the round-3 fix's second effect: a
+            // recurrence reports both figures, and they separate the two explanations outright.
+            // Many samples in the recording with none through the chain rules load OUT and
+            // points at matching or at frames; near-zero samples overall rules it IN. The next
+            // occurrence therefore settles what this one could not.
+            long inRecording =
+                ((Number) deep.get("executionSamplesInRecording")).longValue();
             long through = ((Number) deep.get("samplesThroughEntryPoint")).longValue();
-            Assumptions.assumeFalse(through == 0,
-                "no execution sample reached this chain (samplesThroughEntryPoint=0), so there"
-                    + " is no tree to truncate and nothing here is a statement about the"
-                    + " marker. This is a skip, not a pass. hotPath=" + fullPath
-                    + " deep=" + deep);
+            Assumptions.assumeFalse(inRecording == 0,
+                "the sampler captured NOTHING in this window (executionSamplesInRecording=0), so"
+                    + " there is no recording to build a tree from and nothing here is a"
+                    + " statement about the marker. This is a skip, not a pass."
+                    + " samplesThroughEntryPoint=" + through + " hotPath=" + fullPath);
 
             assertAll(
                 // PROOF OF LIFE, and it is also the precondition that makes the clause below

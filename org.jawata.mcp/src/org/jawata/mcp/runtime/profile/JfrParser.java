@@ -263,8 +263,13 @@ public final class JfrParser {
         //
         //     result.blockingEvents  ==  SUM(every ranked row's blockingEvents)  +  idleEvents
         //
-        // over an UNPAGED answer. Paged, the row sum is short by whatever did not fit, which
-        // `truncated` below declares. The round-2 audit flagged the shared name, and it is kept
+        // over an UNPAGED answer. Paged, the row sum is short by whatever is not on this page,
+        // and `truncated` below does NOT reliably say so — the round-3 audit caught that gloss:
+        // it is `offset + rows.size() < ranked.size()`, so a caller asking for the TAIL
+        // (`offset > 0`, every remaining row returned) gets `truncated: false` while the row sum
+        // is still short by the head it skipped. `offset` is caller-supplied, so that is
+        // reachable rather than hypothetical. Read `returnedRows` against `totalMethods` to know
+        // whether you hold all of them. The round-2 audit flagged the shared name, and it is kept
         // deliberately: both are counts of the same KIND of thing at two scopes, exactly as
         // `totalWallMillis` stands to a row's `wallMillis`. What would have been a defect is
         // leaving the gap between them unexplained, because a reader summing rows and comparing
@@ -362,7 +367,24 @@ public final class JfrParser {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("entryPoint", entryPoint);
+        // TWO DIFFERENT QUESTIONS, AND CONFLATING THEM COST THE C15 ROUND-3 AUDIT TO FIND.
+        //
+        // `samplesThroughEntryPoint` is `matched`, incremented only AFTER `matchesEntry`
+        // succeeds, so it answers "how much of the recording reached this entry point" — it is
+        // an OUTPUT of the matching. Zero can mean the recording was empty OR that the matching
+        // is broken, and the two are indistinguishable from it.
+        //
+        // `executionSamplesInRecording` is the size of `stacks`, filled before any matching
+        // happens, so it answers "how much did the sampler actually capture" — the INPUT. A
+        // caller can now tell a thin recording from a failed match, which the first figure alone
+        // could never do, and a test can gate on recording thickness without its gate being
+        // satisfiable by a defect in the matching it is testing.
+        //
+        // It is also the observation this file's own absence note and the profiler seat both
+        // want and could not get: "the method did not run" versus "the name does not match a
+        // frame" is exactly `matched == 0` with this figure high.
         result.put("samplesThroughEntryPoint", matched);
+        result.put("executionSamplesInRecording", stacks.size());
         result.put("samplingIntervalMillis", intervalNanos / 1_000_000);
         if (matched == 0) {
             // AN ABSENCE IS AN ANSWER, and it is not the same answer as an empty tree. A caller

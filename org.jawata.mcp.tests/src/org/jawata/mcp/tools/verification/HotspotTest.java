@@ -427,6 +427,32 @@ class HotspotTest {
             () -> assertFalse(refused.isSuccess(),
                 () -> "a tree with no named root must be refused: " + data(refused)));
 
+        // C15 AUDIT BLOCKER 7 — the bare-Type entry form is advertised in the published schema
+        // and in the absence note, and BOTH existing cases passed a Type#method. So the
+        // capability was correct and unproven: making its clause return false reddened nothing.
+        //
+        // IT SITS HERE, ABOVE THE RANKABILITY ASSUMPTION, and the round-3 audit is why. It was
+        // below it, and that assumption reads `samplesThroughEntryPoint` — which is an OUTPUT of
+        // the matching. So a `matchesEntry`-always-false defect aborted the case before reaching
+        // the one clause in the suite that would have caught it: measured, the whole suite
+        // reported 2 aborts and 0 failures under that mutation. A claim about MATCHING must not
+        // sit behind a gate the matching's own failure trips.
+        //
+        // Its own precondition is the recording's thickness instead, which no matching defect
+        // can suppress — so a bare Type that stops entering at any of its methods now FAILS.
+        ObjectNode bare = profileAction("call_tree");
+        bare.put("artifactId", artifactId);
+        bare.put("entryPoint", "com.example.debug.HotLoopTarget");
+        Map<String, Object> byType = data(profile.execute(bare));
+
+        Assumptions.assumeTrue(
+            ((Number) byType.get("executionSamplesInRecording")).longValue() > 0,
+            () -> "the sampler captured nothing in this window, so no entry form can be"
+                + " exercised against it — a skip, not a pass: " + byType);
+        assertTrue(((Number) byType.get("samplesThroughEntryPoint")).longValue() > 0,
+            "a bare Type enters at any of its methods, which the schema promises and nothing"
+                + " exercised: " + byType);
+
         long through = ((Number) d.get("samplesThroughEntryPoint")).longValue();
         Assumptions.assumeTrue(through >= MIN_SAMPLES_TO_RANK,
             () -> "recording too thin for a PATH: only " + through + " sample(s) passed through"
@@ -470,17 +496,6 @@ class HotspotTest {
         // `WallTimeNamesWorkNotWaitingTest` instead, over a deliberately deep chain and against
         // the parser, where no clamp applies.
 
-        // C15 AUDIT BLOCKER 7 — the bare-Type entry form is advertised in the published schema
-        // and in the absence note, and BOTH existing cases passed a Type#method. So the
-        // capability was correct and unproven: making its clause return false reddened nothing.
-        ObjectNode bare = profileAction("call_tree");
-        bare.put("artifactId", artifactId);
-        bare.put("entryPoint", "com.example.debug.HotLoopTarget");
-        Map<String, Object> byType = data(profile.execute(bare));
-
-        assertTrue(((Number) byType.get("samplesThroughEntryPoint")).longValue() > 0,
-            "a bare Type enters at any of its methods, which the schema promises and nothing"
-                + " exercised: " + byType);
     }
 
     @Test
