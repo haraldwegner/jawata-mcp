@@ -43,6 +43,12 @@ class TheLaneIsDerivedFromTheCueTest {
     /** Words in BOTH summaries, so a symptom cue reaches both through the summary match. */
     private static final String SHARED_WORDS = "ledger totals drift after an amendment";
 
+    /**
+     * The package the `area` row is anchored to — deliberately NOT the anchor's own package,
+     * so a symptom cue cannot fit it and it can only arrive as an analogy.
+     */
+    private static final String AREA_PACKAGE = "com.example.otherarea";
+
     private H2ExperienceStore store;
     private ExperienceRetrieval retrieval;
 
@@ -74,6 +80,24 @@ class TheLaneIsDerivedFromTheCueTest {
         store.put(ExperienceEntry.of(
             SymbolFact.of("api_contract", "The " + SHARED_WORDS + " only across a settlement",
                 Confidence.MEDIUM).symbol(ANCHOR).build())
+            .status(ExperienceEntry.ACCEPTED).build());
+
+        // C14a — THE OTHER CODE-LANE KIND. `CodeKind` declares JOB and AREA, and the three
+        // rows above only ever exercise the first.
+        //
+        // An `area` is NOT address-bound, so `KnowledgeKind.of` answers EXPERIENCE where an
+        // anchored `job` answers FACT — a different route through the retrieval, which is what
+        // makes this row worth having rather than a fourth near-duplicate. It is anchored to a
+        // PACKAGE other than the anchor's, so a symptom cue cannot FIT it.
+        //
+        // IT WAS ADDED TO REACH THE ANALOGY-POOL EXCLUSION AND IT DOES NOT — measured by
+        // disabling that exclusion alone, which left the case green. The keyword filter has
+        // already removed every code-lane candidate by then. The withdrawn claim is kept
+        // visible here and in the case's own javadoc rather than quietly replaced.
+        store.put(ExperienceEntry.of(
+            SymbolFact.of("area", "This package is where the " + SHARED_WORDS
+                + " is decided", Confidence.MEDIUM)
+                .scope(List.of(AREA_PACKAGE), List.of()).build())
             .status(ExperienceEntry.ACCEPTED).build());
     }
 
@@ -196,6 +220,50 @@ class TheLaneIsDerivedFromTheCueTest {
         Set<String> derived = typesFrom(retrieval.nominate(SHARED_WORDS, null, 15_000));
         assertFalse(derived.contains("job"),
             () -> "prose must never reach the code lane — the deliverable's sharpest clause."
+                + " Found " + derived);
+    }
+
+    /**
+     * C14a — THE DERIVATION EXCLUDES AN {@code area} ROW TOO, not only a {@code job}.
+     *
+     * <p>{@code CodeKind} declares TWO code-lane kinds and every case above exercises one of
+     * them. This exercises the other, and it is not a restatement: an {@code area} is anchored
+     * to a PACKAGE rather than a symbol and is not address-bound, so it classifies as an
+     * EXPERIENCE where an anchored {@code job} classifies as a FACT. Those two travel
+     * different routes through the retrieval, and only this case covers the second.</p>
+     *
+     * <p><b>WHAT THIS CASE DOES NOT DO, measured rather than assumed — and it was written
+     * believing the opposite.</b> It was added to close the analogy-pool exclusion that round 1
+     * declared uncovered. It does not: disabling that exclusion ALONE leaves this case GREEN,
+     * so the row is removed somewhere earlier — the keyword filter, which on a non-code-shaped
+     * cue has already dropped every code-lane candidate before the analogy pool is assembled.
+     * The javadoc that stood here claimed the analogy pool was "its only route in", and the
+     * mutation refuted that. <b>The claim is withdrawn rather than softened, and the assertion
+     * was NOT weakened to match it</b> — what changed is the description, because the case is
+     * genuine coverage of the area kind and worth keeping on its own terms.</p>
+     *
+     * <p><b>So the analogy-pool exclusion remains exercised by nothing, and the gap is now
+     * sharper than round 1 could state it.</b> Round 1 said closing it needed an embedding
+     * corpus; that reason is wrong, since {@code AnalogyPolicy.nominate} fuses a LEXICAL stream
+     * and documents that "a row only one stream finds is still nominated". The real obstacle is
+     * ORDER: the only cue shape that makes the analogy exclusion fire is the same shape whose
+     * candidates the keyword filter has already emptied of code-lane rows. Whether any input
+     * can reach that branch at all — or whether it is unreachable for the non-code-shaped case
+     * and the two filters overlap — is an architecture question, recorded for the architect
+     * rather than ground at with further fixtures.</p>
+     */
+    @Test
+    void an_area_row_is_excluded_by_the_derivation_too() {
+        Set<String> overridden = recalled(bySymptom("code"));
+        assertTrue(overridden.contains("area"),
+            () -> "PROOF OF LIFE: the area row must be REACHABLE on a symptom cue when the"
+                + " caller names the code lane, or the exclusion below measures nothing. Found "
+                + overridden);
+
+        Set<String> derived = recalled(bySymptom(null));
+        assertFalse(derived.contains("area"),
+            () -> "an area row describing what a package is FOR must not answer a cue about a"
+                + " symptom — the derivation covers BOTH code-lane kinds, not just the job."
                 + " Found " + derived);
     }
 }
