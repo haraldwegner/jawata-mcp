@@ -135,6 +135,26 @@ class TreeAttributionTest {
     }
 
     @Test
+    @DisplayName("a file whose STATUS changes while it stays present is attributed")
+    void aStagedFileIsAChangeEvenThoughItWasAlreadyDirty() throws Exception {
+        Path repo = aRepository();
+        // Untracked before the census: git reports "??".
+        Files.writeString(repo.resolve("staged.txt"), "new\n");
+        TreeAttribution census = TreeAttribution.before(host, repo);
+
+        // The run STAGES it. Now git reports "A " — the path is in BOTH readings and its status
+        // differs, which is the one shape a presence-only comparison cannot see. It is also real
+        // behaviour: a brain that writes and then stages its work.
+        host.run(HostCommand.of(List.of("git", "add", "staged.txt")).in(repo));
+
+        List<String> changed = census.after().changed().orElseThrow();
+
+        assertTrue(changed.contains("staged.txt"),
+            "a path present in both readings with a DIFFERENT status was changed by the run: "
+                + changed);
+    }
+
+    @Test
     @DisplayName("THE BOUND, asserted: a file already modified and modified AGAIN is invisible")
     void anAlreadyDirtyFileEditedAgainCannotBeSeen() throws Exception {
         Path repo = aRepository();
