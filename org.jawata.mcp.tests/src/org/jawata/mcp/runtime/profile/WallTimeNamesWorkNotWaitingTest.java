@@ -197,6 +197,16 @@ class WallTimeNamesWorkNotWaitingTest {
                 // HALF 2. The measure asks for the method reported AT ITS SHARE.
                 () -> assertNotNull(mine == null ? null : mine.get("sharePercent"),
                     () -> "every row carries its share of the ranked total: " + mine),
+                // THE COUNT SITS BESIDE THE TIME. Without it a row built from ONE long block and
+                // a row built from four hundred short ones rank identically while being
+                // different facts about the program — and every other dimension already carried
+                // this field, including for the suite's own rankability guard to read. It is the
+                // number of EVENTS the milliseconds came from, NOT an invocation count; true
+                // per-method counts need a live trace and stay with action=call_counts.
+                () -> assertTrue(mine != null && mine.get("samples") != null
+                        && ((Number) mine.get("samples")).longValue() > 0,
+                    () -> "the row says how many events its milliseconds were summed from: "
+                        + mine),
                 // AND THE SHARE IS A SHARE — a figure that cannot exceed the whole.
                 () -> assertTrue(mine == null
                         || ((Number) mine.get("sharePercent")).doubleValue() <= 100.0,

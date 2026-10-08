@@ -123,6 +123,17 @@ public final class JfrParser {
     public static Map<String, Object> wallHotspots(Path jfrFile, int offset, int limit)
             throws IOException {
         Map<String, Long> wallNanos = new LinkedHashMap<>();
+        // C15 — A TIME WITH NO COUNT BESIDE IT CANNOT BE WEIGHED. Every other dimension's row
+        // carries `samples` — `assumeRankable` in the suite reads exactly that field to refuse
+        // ranking a thin recording — and the wall dimension carried times alone, so a reader
+        // could not tell a row built from ONE 4-second block from one built from four hundred
+        // short ones. Those are different facts about a program and they ranked identically.
+        //
+        // IT IS NOT A CALL COUNT AND IS NOT NAMED ONE. `callCounts`' own javadoc records that
+        // v2.13.0 relabelled a hotspot's top-of-stack sample count as an invocation count and a
+        // Sprint-24 audit caught it; true per-method counts need a live method trace, which is
+        // `call_counts`, and this is the number of EVENTS the milliseconds were summed from.
+        Map<String, Long> wallCounts = new LinkedHashMap<>();
         List<Long> executionSampleTimesNanos = new ArrayList<>();
         List<String> executionSampleSymbols = new ArrayList<>();
         long blockingEvents = 0;
@@ -163,6 +174,7 @@ public final class JfrParser {
                         idleEvents++;
                     } else {
                         wallNanos.merge(blocked, nanos, Long::sum);
+                        wallCounts.merge(blocked, 1L, Long::sum);
                     }
                 }
             }
@@ -174,6 +186,7 @@ public final class JfrParser {
         long sampleIntervalNanos = medianGapNanos(executionSampleTimesNanos);
         for (String symbol : executionSampleSymbols) {
             wallNanos.merge(symbol, sampleIntervalNanos, Long::sum);
+            wallCounts.merge(symbol, 1L, Long::sum);
         }
 
         List<Map.Entry<String, Long>> ranked = new ArrayList<>(wallNanos.entrySet());
@@ -197,6 +210,10 @@ public final class JfrParser {
             // say what one says.
             row.put("sharePercent", rankedNanos == 0 ? 0.0
                 : Math.round(entry.getValue() * 1000.0 / rankedNanos) / 10.0);
+            // The count the milliseconds were summed from, so a 1-event row and a 400-event row
+            // are distinguishable instead of ranking identically. Named `samples` to match every
+            // other dimension's row, which is also the field the suite's rankability guard reads.
+            row.put("samples", wallCounts.getOrDefault(entry.getKey(), 0L));
             rows.add(row);
         }
 
