@@ -416,8 +416,8 @@ public interface ExperienceStore extends AutoCloseable {
      * about and newest first within each key. An absent key is an ABSENCE.
      *
      * <p><b>Sprint 28g, folding the Stage 14 / D30 defect. This exists because
-     * {@link #listEntries} cannot answer a keyed question, and four callers were asking it
-     * one anyway.</b> That read takes a {@code scope} and matches
+     * {@link #listEntries} cannot answer a keyed question, and THREE keyed callers were asking
+     * it one anyway.</b> That read takes a {@code scope} and matches
      * {@code symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"}, plus the same pair on
      * {@code package_name}, then orders by {@code created_at DESC} and applies a {@code LIMIT}.
      * Asked "does this one anchor carry a row", a caller got a page of whatever the filter
@@ -426,11 +426,15 @@ public interface ExperienceStore extends AutoCloseable {
      * then read "not on the page" as "does not exist".</p>
      *
      * <p><b>A cap and a write instruction cannot coexist, which is why this is a new read rather
-     * than a bigger window.</b> Every one of those four callers acts on the absence: three tell
-     * an agent to describe the member, and the fourth is D30's own write gate, which INSERTS a
-     * second row when it sees none. So the page size decided how many duplicate descriptions
-     * the product asked for, and three successive repairs — a bigger corpus window, a per-member
-     * window, a third "undetermined" state — each only moved which rows the window hid. The
+     * than a bigger window.</b> Every one of those three callers acts on the absence: two tell
+     * an agent to describe the member or the package, and the third is D30's own write gate,
+     * which INSERTS a second row when it sees none — so the page size decides how many duplicate
+     * descriptions the product ASKS FOR. (Present tense, and the count is three: this paragraph
+     * said "four callers" and "the page size DECIDED how many duplicates", the second being the
+     * past-tense claim struck elsewhere in this very file one commit earlier and left standing
+     * forty lines down. Third consecutive audit round on the same sentence.) Three successive
+     * repairs — a bigger corpus window, a per-member window, a third "undetermined" state — each
+     * only moved which rows the window hid. The
      * answer here is bounded by the QUESTION: at most one row per anchor named, so there is
      * nothing to truncate and no third state to report.</p>
      *

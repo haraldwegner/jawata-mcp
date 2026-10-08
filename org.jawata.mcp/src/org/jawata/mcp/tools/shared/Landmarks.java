@@ -192,6 +192,12 @@ public final class Landmarks {
                     // The fast path above therefore served nothing, and THIS GUARD DOES NOT
                     // EXPLAIN THAT RED RUN. It is kept on its own merits and on nothing else.
                     //
+                    // AND THE FAST PATH DEPENDS ON THIS GUARD, which the first version of this
+                    // comment did not record while calling the guard "kept on its own merits and
+                    // on nothing else". This is the ONLY writer to CACHE, so it is the only
+                    // reason the fast path above cannot serve an empty entry as `ready: true`.
+                    // Removing it reopens that path, and nothing else would notice.
+                    //
                     // Its own merits are real: stillResolves answers true VACUOUSLY on an empty
                     // list, so an empty entry that does reach this map is served thereafter as
                     // `ready: true, count: 0` for the whole staleness window — the one reading
@@ -230,34 +236,36 @@ public final class Landmarks {
         try {
             Entry done = waitOn.get(FIRST_WAIT_MILLIS, TimeUnit.MILLISECONDS);
             List<Map<String, Object>> ranked = done.ranked();
-            // NOTHING OVER SOMETHING IS NOT AN ANSWER, 2026-10-08 — and this, not the cache
-            // guard above, is the honest fix for the red run that found this file.
+            // A GUARD STOOD HERE FOR ONE COMMIT AND WAS REVERTED. It reported NOT READY when
+            // the ranking came back empty while `sourceTypes` was non-empty, on the reasoning
+            // that nothing-over-something is a failure rather than an answer. A round-3 audit
+            // refused it and was right on three counts, each worse than the latent defect it
+            // was aimed at:
             //
-            // A ranking that comes back EMPTY while the workspace HOLDS source types has not
-            // answered the question; it has failed to. Both ways that can happen swallow their
-            // own cause at DEBUG — the package-fragment-root walk in sourceTypes and the
-            // per-type search in rank — so the absence of a WARN proves only that rank() did
-            // not THROW, which is the inference the struck comment above leaned on. Reporting
-            // that as `ready` renders a failure as the authoritative sentence "this workspace
-            // has nothing worth naming", which is the one confusion this feature's own
-            // documentation forbids.
+            //   1. IT REFUSED THE DOCUMENTED TRUE ZERO. `rank` skips every type with zero
+            //      references, so a loaded workspace whose types nothing references yields an
+            //      empty list with a non-empty `sourceTypes` — and `Ranking`'s own javadoc
+            //      above says in as many words that an empty list with `ready` true IS "a
+            //      workspace whose types nothing references". The guard drew its line in a
+            //      different place from the documentation it cited as its authority.
+            //   2. IT FALSIFIED THE PUBLISHED TOOL DESCRIPTION. `inspect`'s own text promises
+            //      that a not-ready answer means "still working" and that asking again JOINS
+            //      the running ranking. On the guard's path the ranking had finished, the
+            //      caller was told "0 of 0 source types" at the moment the guard had just
+            //      proved otherwise, and — because an empty result is not cached and INFLIGHT
+            //      is already cleared — every poll started a NEW ranking. That is mcp#41, the
+            //      defect this class exists to prevent, reached from a documented state.
+            //   3. ITS COST WAS CLAIMED EXHAUSTIVE AND WAS NOT. `sourceTypes` walks every
+            //      package-fragment root on the caller's thread, so the workspace was walked
+            //      twice per empty call, and a cheap instrument sat two lines away in
+            //      `LoadedProject.sourceFileCount()`.
             //
-            // So it reports NOT READY instead, which is already a state every caller handles
-            // and which makes the next call retry. The cost is the honest one: a genuinely
-            // broken ranking now spins a polling caller until its own deadline rather than
-            // handing it a confident zero — a loud failure in place of a quiet wrong answer.
-            //
-            // IT ALSO CLOSES THE FAILURE PATH BELOW, where the catch completes the future with
-            // an empty Entry: that lands here too, so a ranking that threw no longer reaches a
-            // caller wearing `ready`. An EMPTY WORKSPACE still answers ready-and-empty, because
-            // there the zero is the truth — which is what makes this a discrimination rather
-            // than a blanket refusal.
-            if (ranked.isEmpty() && !sourceTypes(service).isEmpty()) {
-                log.warn("Landmark ranking came back empty over a workspace that holds source"
-                    + " types — reporting NOT READY rather than an authoritative zero."
-                    + " Raise org.jawata.mcp.tools.shared.Landmarks to DEBUG for the cause.");
-                return new Ranking(List.of(), false, 0, 0);
-            }
+            // It also claimed to be "the honest fix for the red run" in the same commit that
+            // withdrew the only evidence placing that red run in this cell. THE RED RUN REMAINS
+            // UNDIAGNOSED, and the instrument for diagnosing it is not a guard here: it is that
+            // `sourceTypes` and `rank` swallow their causes at DEBUG, so the log cannot say
+            // which of them produced the empty list. Raising those is the next step, and it is
+            // recorded rather than taken, because this file has now cost two wrong diagnoses.
             return new Ranking(
                 ranked.size() > limit ? new ArrayList<>(ranked.subList(0, limit)) : ranked,
                 true, ranked.size(), ranked.size());

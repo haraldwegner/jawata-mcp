@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>The defect</h2>
  *
- * <p>Four callers asked {@code listEntries(type, null, scope, null, limit)} whether a
+ * <p>THREE keyed callers asked {@code listEntries(type, null, scope, null, limit)} whether a
  * particular anchor carried a row, and re-filtered the page in Java. That read's scope clause
  * is {@code symbol_fqn = ? OR symbol_fqn LIKE scope + ".%"} plus the same pair on
  * {@code package_name}, ordered {@code created_at DESC} under a {@code LIMIT} — so a

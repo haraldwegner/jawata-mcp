@@ -161,13 +161,23 @@ class LandmarksCoalescingTest {
      * 2026-10-08 — <b>AN EMPTY RANKING IS NOT CACHED, and the sibling above is why that needs
      * its own case.</b>
      *
-     * <p>The cache is static and keyed by the project NAME, and {@code invalidate()} has no
-     * production caller — so an empty list put there is served to every later caller in the
-     * process as {@code ready: true, count: 0}, which this feature's documentation says must
-     * mean <i>this workspace genuinely has no landmarks</i>. That is how the C14 post-fold
-     * suite went red: the test polled for {@code ready}, got an authoritative zero, and no
-     * ranking-failure warning appeared anywhere in the log — so a ranking had SUCCEEDED
-     * against a workspace that was empty to it, and frozen that answer.</p>
+     * <p><b>THIS PARAGRAPH CARRIED THREE FALSE CLAIMS AND IS REWRITTEN.</b> It said the cache is
+     * "keyed by the project NAME" — it is keyed by each project's ROOT, source-file count and
+     * load instant, and the field's own javadoc records NAME-keying as a Sprint-24 defect already
+     * fixed. It said this was "how the C14 post-fold suite went red" — the harness builds a fresh
+     * temp directory per test METHOD, so that key cannot collide and this cannot have been the
+     * cause. And it inferred from an absent warning that "a ranking had SUCCEEDED" — both paths
+     * that produce an empty list swallow their cause at DEBUG, so the absent warning proves only
+     * that the ranking did not THROW. A round-2 audit struck all three in the production file and
+     * this test, written in the same session, kept them; a round-3 audit found them here.</p>
+     *
+     * <p><b>What is true, and is why this test stays:</b> {@code invalidate()} has no production
+     * caller, and {@code stillResolves} answers true VACUOUSLY on an empty list — so an empty
+     * entry that reaches the cache is served as {@code ready: true, count: 0} for the whole
+     * staleness window, which this feature's documentation reserves for a workspace whose types
+     * nothing references. Not caching it is a latent-defect fix, and it is the only reason the
+     * fast path cannot serve such an entry at all. <b>The red run that led here remains
+     * undiagnosed.</b></p>
      *
      * <p><b>The discriminator is the start counter, as it is for every case here:</b> a
      * second call must start ANOTHER ranking rather than be served the zero. With the
