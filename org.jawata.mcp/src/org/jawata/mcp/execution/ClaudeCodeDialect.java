@@ -2,7 +2,6 @@ package org.jawata.mcp.execution;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.OptionalDouble;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -126,9 +125,10 @@ public final class ClaudeCodeDialect implements BrainDialect {
         }
         String type = event.path("type").asText("");
         return switch (type) {
-            case "result" -> new BrainLine(costOf(event), textOf(event.path("result")), 0, true);
-            case "assistant" -> new BrainLine(OptionalDouble.empty(), assistantText(event),
-                toolUseBlocks(event), true);
+            case "result" -> new BrainLine(costOf(event),
+                StreamJsonEvents.textOf(event.path("result")), 0, true);
+            case "assistant" -> new BrainLine(OptionalDouble.empty(),
+                StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true);
             // An event shape this dialect does not act on. Read, understood, nothing to say —
             // which is why it is `nothing()` and not `unreadable()`.
             default -> BrainLine.nothing();
@@ -140,39 +140,4 @@ public final class ClaudeCodeDialect implements BrainDialect {
         return cost.isNumber() ? OptionalDouble.of(cost.asDouble()) : OptionalDouble.empty();
     }
 
-    private static Optional<String> textOf(JsonNode node) {
-        return node.isTextual() && !node.asText().isEmpty()
-            ? Optional.of(node.asText())
-            : Optional.empty();
-    }
-
-    /** Every {@code text} block of the turn, joined — not {@code content[0]}. */
-    private static Optional<String> assistantText(JsonNode event) {
-        JsonNode content = event.path("message").path("content");
-        if (!content.isArray()) {
-            return Optional.empty();
-        }
-        List<String> parts = new ArrayList<>();
-        for (JsonNode block : content) {
-            if ("text".equals(block.path("type").asText(""))) {
-                textOf(block.path("text")).ifPresent(parts::add);
-            }
-        }
-        return parts.isEmpty() ? Optional.empty() : Optional.of(String.join("\n", parts));
-    }
-
-    /** Tool calls in this turn, counted as BLOCKS. */
-    private static int toolUseBlocks(JsonNode event) {
-        JsonNode content = event.path("message").path("content");
-        if (!content.isArray()) {
-            return 0;
-        }
-        int steps = 0;
-        for (JsonNode block : content) {
-            if ("tool_use".equals(block.path("type").asText(""))) {
-                steps++;
-            }
-        }
-        return steps;
-    }
 }

@@ -1,0 +1,161 @@
+package org.jawata.mcp.execution;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.OptionalDouble;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+/**
+ * cursor-agent headless, as a dialect (Sprint 28g S16, D36) — <b>the brain that CANNOT be told which
+ * tools to attach</b>, which is what makes it C16's subject rather than its fourth entry.
+ *
+ * <p>Everything below was measured on 2026-10-08 by reading this CLI's own {@code --help} and then
+ * RUNNING it, in an empty directory, with a prompt that needs no tools. Nothing here is inferred
+ * from another vendor's shape, and the two places where cursor and Claude Code genuinely agree are
+ * named as such rather than assumed.</p>
+ *
+ * <h2>Why it cannot be told, and why that is NOT "it cannot be contained"</h2>
+ *
+ * <p>Its {@code -p/--print} says outright: <i>"Has access to all tools, including write and
+ * shell."</i> There is no allowlist flag — the only tool-adjacent controls are {@code --mode
+ * plan|ask} (read-only), {@code --approve-mcps} (approve ALL) and {@code --sandbox}, and MCP servers
+ * are managed out of band by the {@code mcp} subcommand. So {@link #toolAttachment()} answers
+ * {@link ToolAttachment.Reach#NONE} — and it answers with the containment this brain DOES offer,
+ * because reporting a bare <i>unsupported</i> would have a reader conclude cursor is unusable when
+ * what is true is narrower: it is uncontainable <em>per tool</em>.</p>
+ *
+ * <h2>{@code --mode plan} is ON by default, and that is this class's one real decision</h2>
+ *
+ * <p>Not caution — alignment with the stance the whole hire path already takes. {@link HiredBrain}'s
+ * own contract is that <i>a hired run PROPOSES, because nobody is watching it</i>, and this is the
+ * one brain of the four whose unattended default is write-and-shell access to the working directory.
+ * Read-only is therefore what this product's own rule already implies for it, and defaulting it ON
+ * makes the containment REAL rather than merely reported. A caller who means to let it write says so
+ * explicitly, which is the direction a decision like this should have to travel.</p>
+ *
+ * <h2>Two things the RUN found that no {@code --help} states</h2>
+ *
+ * <p><b>It refuses an untrusted directory and does nothing.</b> First run: <i>"Workspace Trust
+ * Required … To proceed, you can either: run 'agent' interactively to decide; pass {@code --trust},
+ * {@code --yolo}, or {@code -f}"</i>, exit 1, no events at all. A dialect that omits the flag hires a
+ * brain that never starts, and the symptom is an EMPTY ANSWER — which is precisely the state
+ * {@link HiredBrain.Outcome#saidNothing()} exists to keep apart from genuine silence. {@code --trust}
+ * is used and not {@code -f}/{@code --yolo}: it is the narrow one, and it trusts the directory the
+ * HIRER chose rather than disabling the question.</p>
+ *
+ * <p><b>Its events are Claude Code's shape.</b> Measured, not assumed: the assistant event is
+ * {@code {"type":"assistant","message":{"role":"assistant","content":[{"type":"text",...}]}}} and the
+ * terminal event is {@code {"type":"result","subtype":"success","result":"ok",...}}. That is why the
+ * content-array walk lives in {@link StreamJsonEvents} and is CALLED here rather than copied — the
+ * architect seat's rule refuses a second implementation of a job the system already does.</p>
+ *
+ * <h2>IT REPORTS NO DOLLAR COST, and nothing here pretends otherwise</h2>
+ *
+ * <p>Its terminal event carries {@code usage:{inputTokens,outputTokens,cacheReadTokens,
+ * cacheWriteTokens}} and <b>no dollar figure of any kind</b>. So {@link BrainLine#costUsd()} is
+ * always ABSENT from this dialect, which {@link HiredBrain.Outcome} already keeps distinct from zero
+ * — and the consequence belongs in a caller's view rather than hidden here:
+ * {@link HiredBrain.Ceilings#maxCostUsd()} can never fire on this brain. Publishing a token count
+ * under the name of a dollar cost would be a unit error wearing the contracted measure's name, which
+ * is worse than reporting nothing.</p>
+ */
+public final class CursorDialect implements BrainDialect {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private final String binary;
+    private final boolean readOnly;
+    private final String model;
+
+    /** Read-only, which is what a run that may not apply anything should be. */
+    public CursorDialect() {
+        this("cursor-agent", true, null);
+    }
+
+    /**
+     * @param readOnly whether to pass {@code --mode plan}. Defaulting this to true is deliberate —
+     *     see the class javadoc. Passing false lets the hired brain write and run shell commands in
+     *     the working directory the caller supplied.
+     * @param model the model to ask for, or null to take the CLI's own default (it reports
+     *     {@code "model":"Auto"} when none is named).
+     */
+    public CursorDialect(String binary, boolean readOnly, String model) {
+        this.binary = binary == null || binary.isBlank() ? "cursor-agent" : binary;
+        this.readOnly = readOnly;
+        this.model = model;
+    }
+
+    @Override
+    public String name() {
+        return "cursor-agent";
+    }
+
+    /**
+     * {@code tools} is IGNORED, and the ignoring is reported rather than silent — see
+     * {@link #toolAttachment()}. This CLI has no allowlist flag to put them in, and inventing one
+     * would mean a run reporting tools as attached while the brain kept every tool it had.
+     */
+    @Override
+    public List<String> command(String prompt, List<String> tools) {
+        List<String> argv = new ArrayList<>(List.of(
+            binary, "--print",
+            "--output-format", "stream-json",
+            // WITHOUT THIS IT NEVER STARTS — measured, see the class javadoc. The narrow flag:
+            // it trusts the directory the hirer chose, rather than suppressing the question.
+            "--trust"));
+        if (readOnly) {
+            argv.add("--mode");
+            argv.add("plan");
+        }
+        if (model != null && !model.isBlank()) {
+            argv.add("--model");
+            argv.add(model);
+        }
+        // The prompt travels LAST and as one argument, so a brief containing newlines, quotes or
+        // shell metacharacters needs no escaping and cannot be mis-escaped.
+        argv.add(prompt == null ? "" : prompt);
+        return List.copyOf(argv);
+    }
+
+    @Override
+    public ToolAttachment toolAttachment() {
+        return ToolAttachment.cannotBeTold(readOnly
+            ? "--mode plan, which this hire passes: read-only, so it analyses and proposes and"
+                + " cannot edit or run shell commands"
+            : "--mode plan|ask (NOT passed by this hire, which therefore has write and shell"
+                + " access), --sandbox, and the hire's own wall-clock, cost and step ceilings");
+    }
+
+    @Override
+    public BrainLine read(String line) {
+        if (line == null || line.isBlank()) {
+            return BrainLine.nothing();
+        }
+        JsonNode event;
+        try {
+            event = MAPPER.readTree(line);
+        } catch (Exception e) {
+            // A fact the driver can count, not an error and not silence.
+            return BrainLine.unreadable();
+        }
+        if (event == null || !event.isObject()) {
+            return BrainLine.unreadable();
+        }
+        return switch (event.path("type").asText("")) {
+            // The terminal event. NO cost is published here by this brain — see the class javadoc.
+            case "result" -> new BrainLine(OptionalDouble.empty(),
+                StreamJsonEvents.textOf(event.path("result")), 0, true);
+            case "assistant" -> new BrainLine(OptionalDouble.empty(),
+                StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true);
+            // THINKING IS NOT THE ANSWER, and it arrives as a stream of deltas — measured: four
+            // `{"type":"thinking","subtype":"delta","text":...}` events for a one-word reply.
+            // Collecting them would put the brain's reasoning into the record as though it were
+            // what the brain said, and would do it in fragments.
+            case "thinking", "system", "user" -> BrainLine.nothing();
+            // An event shape this dialect does not act on: read, understood, nothing to say.
+            default -> BrainLine.nothing();
+        };
+    }
+}
