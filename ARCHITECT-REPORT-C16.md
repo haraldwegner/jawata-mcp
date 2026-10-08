@@ -61,14 +61,17 @@ categories came back populated:
 
 | value | brains | the evidence, and it is the MECHANISM that decides the category |
 |---|---|---|
-| contained per run, **by a mechanism** | claude `--permission-mode plan`; codex `--sandbox read-only` | claude 5/5 contained across all measurements; codex 2/2, and its sandbox was observed **rejecting an attempted `apply_patch`** verbatim — *"patch rejected: writing is blocked by read-only sandbox"* |
+| contained per run, **by a mechanism** | codex `--sandbox read-only`; copilot `--deny-tool` | codex 2/2, its sandbox observed **rejecting an attempted `apply_patch`** verbatim — *"patch rejected: writing is blocked by read-only sandbox"*; copilot `permission_denied` in **6 of 6**, naming our own rules when we pass them (*"denied due to the following rules: `write`"*) and denying anyway when we do not |
+| held by an **INSTRUCTION**, which is not containment | claude `--permission-mode plan`; cursor `--mode plan` | **claude was in the row above and does not belong there.** `Edit`, `Write` and `NotebookEdit` are ADVERTISED under plan mode, `Write` was INVOKED and returned *"File created successfully"*, and `permission_denials` is `[]` in every run; the model narrates the rule — *"plan mode permits edits only to this plan file"*. Its instruction HELD for the work tree in 5 of 5; cursor's FAILS, 5 writes in 15 |
 | contained **out of band**, by the vendor's own default | copilot | 3/3 with our `--deny-tool` flags and **3/3 without them** — so the flags state this hire's intent and are not what contains it |
 | **cannot be contained**, and here is what bounds it instead | cursor | 5 writes in 15 plan-mode runs; **10 writes in 10** with `--sandbox enabled` alone. No mechanism refusal has ever been observed. What remains is the hire's own wall-clock, cost and step ceilings |
 
 **The discriminator between the first category and the third is not the refusal RATE.** Cursor
 refuses roughly two-thirds of the time, which a small sample reads as containment — and did, at
 4-of-5. What separates them is whether a refusal arriving from something **other than the model**
-appears anywhere in the record. For claude and codex it does; for cursor, across 25 runs, it never
+appears anywhere in the record. For **codex and copilot** it does. For claude it does NOT — an
+earlier version of this sentence said it did, and the logs contradict it, which makes the split
+TWO of four rather than three. For cursor, across 25 runs, it never
 has. That is the property `writeContainment()` should answer, and stating it as a rate would
 reproduce the error this measurement corrected.
 
@@ -215,7 +218,11 @@ I did not conclude from it. The targeted duplicate check is what answered.
   (S16-14): the worktree adds exactly one registration and publishes 44 by both measures, against
   the released 4.3.3 resident's 42. Not this stage's.
 - `--permission-mode plan` still lets the brain write its PLAN file outside the working tree
-  (S16-21). The census is correctly scoped to the working directory; the clause therefore holds
-  for the directory a hire names and not for the client's own scratch areas.
+  (S16-21). The CENSUS is correctly scoped to the working directory — that is a fact about the
+  instrument. **THE CLAUSE IS NOT, and an earlier version of this line inferred one from the
+  other.** "The seat cannot edit a file except through a tool" names no directory, so a brain that
+  edits a file anywhere through an editor the hire does not govern has not met it. On that reading
+  claude's cell is UNMET rather than scoped-and-held: the capability is demonstrated, not merely
+  unobserved — `Write` invoked, a file created, six runs of six, no denial ever recorded.
 - The collected answer duplicates a short reply on two brains, so it is the shared stream reader
   (S16-18).
