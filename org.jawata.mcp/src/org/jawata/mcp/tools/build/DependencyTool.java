@@ -18,6 +18,12 @@ import java.util.function.Supplier;
  */
 public class DependencyTool extends AbstractTool {
 
+    /** {@code add} and {@code update} edit the build file and have no undo. */
+    @Override
+    public boolean changesCode() {
+        return true;
+    }
+
     private static final List<String> ACTIONS = List.of("add", "update", "find_unused");
 
     private final AddDependencyTool add;

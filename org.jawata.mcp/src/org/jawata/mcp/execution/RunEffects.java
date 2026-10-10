@@ -19,9 +19,13 @@ import java.util.function.Function;
  * <h2>Three classes of call, because there are three kinds of name</h2>
  *
  * <ul>
- *   <li><b>A jawata tool</b> (any {@code mcp__<server>__<tool>} form, or the bare name). The
- *       ENGINE's own flag decides: {@code Tool.isRevertible()} — "this changes the workspace and
- *       has an undo" — passed in as a function, so this class holds no copy of the tool list.</li>
+ *   <li><b>A jawata tool</b> (the {@code mcp__<jawata server>__<tool>} form, or the bare name).
+ *       The ENGINE's own flag decides: {@code Tool.changesCode()} — "a call can change source or
+ *       build files", which defaults to the revertible flag and is overridden by the tools that
+ *       write without an undo ({@code format}, {@code quick_fix}, {@code dependency}) — passed in
+ *       as a function, so this class holds no copy of the tool list. A tool of a FOREIGN MCP
+ *       server is never matched to a jawata tool; it is unknown. The sub-agent tool ({@code
+ *       Task}) is unknown too, because what a sub-agent does does not appear in this stream.</li>
  *   <li><b>The brain CLI's own editors</b> ({@code Write}, {@code Edit}, {@code apply_patch}, …).
  *       These are not jawata's and the engine knows nothing of them, so they are a fixed set here
  *       and say plainly that they are.</li>
@@ -48,7 +52,7 @@ public final class RunEffects {
 
     /** The brain CLIs' own readers and bookkeeping — they change nothing in the tree. */
     private static final Set<String> CLI_READERS = Set.of(
-        "Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "TodoWrite", "ToolSearch", "Task",
+        "Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "TodoWrite", "ToolSearch",
         "ExitPlanMode", "read_file", "view", "grep", "glob", "list_dir", "search", "ReadFile");
 
     private RunEffects() {
@@ -113,9 +117,23 @@ public final class RunEffects {
             List.copyOf(unknown), Math.max(0, unnamedSteps));
     }
 
-    /** {@code mcp__jawata-javata-dev__search_symbols} -> {@code search_symbols}. */
+    /**
+     * {@code mcp__jawata-javata-dev__search_symbols} -> {@code search_symbols}.
+     *
+     * <p>Only a JAWATA server's prefix is stripped. A foreign server's tool keeps its full
+     * qualified name, so it can never be matched to a jawata tool of the same bare name and
+     * inherit that tool's flag — it falls through to {@code unknown}, which is where a tool
+     * nobody here has classified belongs.</p>
+     */
     static String bareName(String name) {
-        int at = name.lastIndexOf("__");
-        return at >= 0 && name.startsWith("mcp__") ? name.substring(at + 2) : name;
+        if (!name.startsWith("mcp__")) {
+            return name;
+        }
+        int serverEnd = name.indexOf("__", "mcp__".length());
+        if (serverEnd < 0) {
+            return name;
+        }
+        String server = name.substring("mcp__".length(), serverEnd);
+        return server.startsWith("jawata") ? name.substring(serverEnd + 2) : name;
     }
 }

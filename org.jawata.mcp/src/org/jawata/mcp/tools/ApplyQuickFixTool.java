@@ -34,6 +34,12 @@ import java.util.function.Supplier;
  */
 public class ApplyQuickFixTool extends AbstractTool {
 
+    /** Rewrites source and has no undo, so the revertible flag does not say it. */
+    @Override
+    public boolean changesCode() {
+        return true;
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ApplyQuickFixTool.class);
 
     public ApplyQuickFixTool(Supplier<IJdtService> serviceSupplier) {

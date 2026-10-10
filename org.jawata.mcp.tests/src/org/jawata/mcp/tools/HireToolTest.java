@@ -296,6 +296,93 @@ class HireToolTest {
             () -> assertEquals(List.of(), clean.get("codeChangingCalls")));
     }
 
+    /** A tool that WRITES with no undo: not revertible, but it changes code. */
+    private static ToolRegistry aRegistryWithAWriterThatHasNoUndo() {
+        ToolRegistry registry = aRegistryWithACleanGate();
+        registry.register(new Tool() {
+            @Override
+            public String getName() {
+                return "format";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a writer with no undo";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of());
+            }
+
+            @Override
+            public boolean changesCode() {
+                return true;
+            }
+        });
+        return registry;
+    }
+
+    @Test
+    @DisplayName("M11: a tool that writes with NO undo is code-changing, which the revertible flag cannot say")
+    void aWriterWithNoUndoIsStillCodeChanging() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host,
+                aBrainCalling("mcp__jawata-javata-dev__format")),
+            events, aRegistryWithAWriterThatHasNoUndo());
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(List.of("mcp__jawata-javata-dev__format"), data.get("codeChangingCalls"),
+                "format is not revertible; reading that flag as 'changes code' classed it read-only"),
+            () -> assertEquals(Boolean.FALSE, data.get("performedNoCodeChangingOperation")),
+            () -> assertEquals(Boolean.FALSE, data.get("noCodeChangeIsComplete")));
+    }
+
+    @Test
+    @DisplayName("M11: a brain whose dialect does not show every call is never reported as a complete zero")
+    void aDialectThatDoesNotShowEveryCallIsNeverComplete() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainCalling("compile_workspace")),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> cursor = dataOf(hire.execute(hireArgs(seatFile(CURSOR_SEAT))));
+        Map<String, Object> claude = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(List.of(), cursor.get("codeChangingCalls")),
+            () -> assertEquals(Boolean.FALSE, cursor.get("noCodeChangeIsComplete"),
+                "cursor's stream was never measured on a run that uses tools"),
+            () -> assertTrue(String.valueOf(cursor.get("noCodeChangeIncompleteBecause"))
+                .contains("does not show every call"), String.valueOf(cursor)),
+            () -> assertEquals(Boolean.TRUE, claude.get("noCodeChangeIsComplete"),
+                "the control: the same run through the dialect that was measured"),
+            () -> assertEquals(List.of(), claude.get("noCodeChangeIncompleteBecause")));
+    }
+
+    @Test
+    @DisplayName("M11: a run that did not end on its own is not a complete zero, whatever its calls were")
+    void aRunThatFailedIsNotAComplete() throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, "#!/bin/sh\necho '{\"type\":\"assistant\",\"message\":{\"role\":"
+            + "\"assistant\",\"content\":[{\"type\":\"tool_use\",\"name\":\"compile_workspace\"}]}}'\n"
+            + "exit 3\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        HireTool hire = toolWith(new StandsIn(host, HostCommand.of(file.toString())),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, data.get("cleanExit")),
+            () -> assertEquals(List.of(), data.get("codeChangingCalls")),
+            () -> assertEquals(Boolean.FALSE, data.get("noCodeChangeIsComplete"),
+                "the calls seen were all reads, but the run did not end cleanly"),
+            () -> assertTrue(String.valueOf(data.get("noCodeChangeIncompleteBecause"))
+                .contains("did not end on its own"), String.valueOf(data)));
+    }
+
     @Test
     @DisplayName("C16: the PM seat hires the cataloguer end to end, and the record names both")
     void thePmSeatHiresTheCataloguer() throws Exception {

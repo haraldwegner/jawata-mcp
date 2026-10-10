@@ -18,9 +18,12 @@ import org.junit.jupiter.api.Test;
  * run's tool calls.
  *
  * <p>The engine's own flag is a PARAMETER here, so a case can say what the engine says without
- * dragging the registry in, and the class is held to holding no tool list of its own. Every case
- * that expects a zero also builds the same run with one call that should not be zero, because a
- * classifier that returned "none" for everything would pass every zero-case alone.</p>
+ * dragging the registry in. The CLI's own tool names ARE a fixed list in {@code RunEffects}, and
+ * the cases below pin its editor, shell and reader sets by example. The zero-cases are paired with
+ * a control only where the pair is named: {@code aRunOfReadsIsACompleteZero} with
+ * {@code oneRevertibleOperationIsNotAZero}, and the shell, unnamed and unknown cases each assert
+ * their own incompleteness directly — a classifier that returned "none" for everything would
+ * fail those.</p>
  */
 class RunEffectsTest {
 
@@ -94,6 +97,30 @@ class RunEffectsTest {
                     + " must not read as one whose calls were harmless"),
             () -> assertEquals(List.of("(unnamed block)"), emptyName.unknown(),
                 "a tool_use block with no name stays visible instead of vanishing"));
+    }
+
+    @Test
+    @DisplayName("a FOREIGN server's tool is never matched to a jawata tool of the same bare name")
+    void aForeignServersToolDoesNotInheritAJawataFlag() {
+        // "search_symbols" is a read the engine knows. Under a foreign server it must not be
+        // looked up by its bare name: a foreign tool of that name could write.
+        RunEffects.Classification c = RunEffects.classify(
+            List.of("mcp__some-other-server__search_symbols",
+                "mcp__jawata-patterns__search_symbols"), 0, ASK);
+        assertAll(
+            () -> assertEquals(List.of("mcp__some-other-server__search_symbols"), c.unknown()),
+            () -> assertEquals(List.of("mcp__jawata-patterns__search_symbols"), c.readOnly(),
+                "the control: a jawata server's prefix IS stripped"),
+            () -> assertFalse(c.zeroIsComplete()));
+    }
+
+    @Test
+    @DisplayName("the sub-agent tool is unknown: what a sub-agent does is not in this stream")
+    void aSubAgentIsNotAHarmlessRead() {
+        RunEffects.Classification c = RunEffects.classify(List.of("Task"), 0, ASK);
+        assertAll(
+            () -> assertEquals(List.of("Task"), c.unknown()),
+            () -> assertFalse(c.zeroIsComplete()));
     }
 
     @Test

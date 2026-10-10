@@ -16,6 +16,12 @@ import java.util.function.Supplier;
  */
 public class QuickFixTool extends AbstractTool {
 
+    /** {@code apply} rewrites source and has no undo, so the revertible flag does not say it. */
+    @Override
+    public boolean changesCode() {
+        return true;
+    }
+
     private static final List<String> ACTIONS = List.of("suggest_imports", "list", "apply");
 
     private final SuggestImportsTool suggestImports;

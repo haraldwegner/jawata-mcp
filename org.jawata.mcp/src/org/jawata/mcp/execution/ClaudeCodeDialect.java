@@ -146,6 +146,17 @@ public final class ClaudeCodeDialect implements BrainDialect {
         return List.copyOf(argv);
     }
 
+    /**
+     * Measured 2026-10-11 on a real run: every tool call the brain made arrived as a named
+     * {@code tool_use} block in an {@code assistant} event. A call made INSIDE a sub-agent does
+     * not appear in this stream, which is why the sub-agent tool is classified unknown rather
+     * than read-only.
+     */
+    @Override
+    public boolean observesEveryCall() {
+        return true;
+    }
+
     @Override
     public ToolAttachment toolAttachment() {
         // THE REPORT NAMES WHAT BINDS, and it used to name only what was sent. The earlier wording

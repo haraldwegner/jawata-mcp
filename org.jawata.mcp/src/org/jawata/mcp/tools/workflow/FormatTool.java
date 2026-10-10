@@ -39,6 +39,12 @@ import java.util.function.Supplier;
  */
 public class FormatTool extends AbstractTool {
 
+    /** Rewrites source buffers unless {@code dryRun}, and has no undo. */
+    @Override
+    public boolean changesCode() {
+        return true;
+    }
+
     private static final Logger log = LoggerFactory.getLogger(FormatTool.class);
 
     public FormatTool(Supplier<IJdtService> serviceSupplier) {

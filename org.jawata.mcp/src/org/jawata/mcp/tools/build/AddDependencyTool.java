@@ -31,6 +31,12 @@ import java.util.function.Supplier;
  */
 public class AddDependencyTool extends AbstractTool {
 
+    /** Edits the build file and has no undo. */
+    @Override
+    public boolean changesCode() {
+        return true;
+    }
+
     private static final Logger log = LoggerFactory.getLogger(AddDependencyTool.class);
 
     public AddDependencyTool(Supplier<IJdtService> serviceSupplier) {

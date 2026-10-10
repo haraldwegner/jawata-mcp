@@ -59,6 +59,20 @@ public interface BrainDialect {
     ToolAttachment toolAttachment();
 
     /**
+     * Does this dialect see EVERY tool call the brain makes, and by name?
+     *
+     * <p>The measure "this run performed no code-changing operation" is only as complete as the
+     * stream it was read from. A dialect that counts a subset of the brain's actions (codex counts
+     * only shell executions), cannot name what it counts (copilot), or was never measured on a run
+     * that uses tools (cursor) leaves calls the classification cannot see, and a zero over those is
+     * a clean bill for the runs it understood least. Defaults to false: a dialect must be MEASURED
+     * to claim it, and a new brain is therefore incomplete until someone has looked.</p>
+     */
+    default boolean observesEveryCall() {
+        return false;
+    }
+
+    /**
      * Read one line of this brain's output.
      *
      * <p>Must never throw: a hired brain can emit anything at all, including a stack trace from its

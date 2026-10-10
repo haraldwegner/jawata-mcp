@@ -29,6 +29,12 @@ import java.util.regex.Pattern;
  */
 public class UpdateDependencyTool extends AbstractTool {
 
+    /** Edits the build file and has no undo. */
+    @Override
+    public boolean changesCode() {
+        return true;
+    }
+
     private static final Logger log = LoggerFactory.getLogger(UpdateDependencyTool.class);
 
     public UpdateDependencyTool(Supplier<IJdtService> serviceSupplier) {

@@ -10,9 +10,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import org.jawata.core.IJdtService;
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
-import org.jawata.core.IJdtService;
+import org.jawata.mcp.execution.BrainDialect;
+import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
@@ -331,14 +333,16 @@ public class HireTool extends AbstractTool {
         ToolRegistry engine = registry.get();
         RunEffects.Classification effects = RunEffects.classify(
             proposal.outcome().toolNames(), proposal.outcome().unnamedToolSteps(),
-            bare -> engine.getTool(bare).map(Tool::isRevertible));
+            bare -> engine.getTool(bare).map(Tool::changesCode));
+        List<String> incomplete = incompleteReasons(effects, proposal.outcome(), seat.dialect());
         data.put("toolsCalled", proposal.outcome().toolNames());
         data.put("codeChangingCalls", effects.changesCode());
         data.put("shellCalls", effects.shell());
         data.put("unclassifiedCalls", effects.unknown());
         data.put("unnamedToolSteps", effects.unnamed());
         data.put("performedNoCodeChangingOperation", effects.performedNoCodeChangingOperation());
-        data.put("noCodeChangeIsComplete", effects.zeroIsComplete());
+        data.put("noCodeChangeIsComplete", incomplete.isEmpty());
+        data.put("noCodeChangeIncompleteBecause", incomplete);
         data.put("timedOut", proposal.outcome().timedOut());
         proposal.outcome().costUsd().ifPresentOrElse(
             cost -> data.put("costUsd", cost),
@@ -352,6 +356,42 @@ public class HireTool extends AbstractTool {
             seat.dialect().toolAttachment().settableByTheHirer());
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         return ToolResponse.success(data);
+    }
+
+    /**
+     * Why "this run changed no code" cannot be taken as complete — empty only when it can.
+     *
+     * <p>The call classification is not the whole question. A zero over a stream the dialect
+     * only partly observes, over lines the reader could not parse, or over a run a ceiling cut
+     * short (calls the brain made after the reader stopped are not in the list) is a clean bill
+     * for exactly the runs the measure saw least. Every reason is named, so a reader sees WHICH
+     * blind spot stands behind the zero rather than a bare false.</p>
+     */
+    private static List<String> incompleteReasons(RunEffects.Classification effects,
+            HiredBrain.Outcome outcome, BrainDialect dialect) {
+        List<String> reasons = new ArrayList<>();
+        if (!effects.changesCode().isEmpty()) {
+            reasons.add("the run made " + effects.changesCode().size() + " code-changing call(s)");
+        }
+        if (!effects.shell().isEmpty()) {
+            reasons.add("a shell ran; what it did is not in its name");
+        }
+        if (!effects.unknown().isEmpty()) {
+            reasons.add("calls nobody here can classify: " + effects.unknown());
+        }
+        if (effects.unnamed() > 0) {
+            reasons.add(effects.unnamed() + " call(s) were counted and never named");
+        }
+        if (!dialect.observesEveryCall()) {
+            reasons.add(dialect.name() + " does not show every call it makes, by name");
+        }
+        if (outcome.unreadableLines() > 0) {
+            reasons.add(outcome.unreadableLines() + " output line(s) could not be read");
+        }
+        if (!outcome.clean() || outcome.stoppedBy().isPresent()) {
+            reasons.add("the run did not end on its own: calls after the reader stopped are unseen");
+        }
+        return List.copyOf(reasons);
     }
 
     /**

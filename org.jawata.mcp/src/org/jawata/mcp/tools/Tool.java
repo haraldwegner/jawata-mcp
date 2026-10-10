@@ -77,6 +77,25 @@ public interface Tool {
     }
 
     /**
+     * Can a call to this tool change source or build files in the workspace?
+     *
+     * <p>Read by the hire path to classify what a hired brain's run did (Sprint 28g M11: <i>the
+     * PM seat performs 0 operations the engine classifies as changing code</i>). It is NOT
+     * {@link #isRevertible()}: that flag means "has an undo" and exists for the precedent guard.
+     * {@code format}, {@code quick_fix} and {@code dependency} write files and have no such
+     * undo, so reading the revertible flag as "changes code" classified a PM that formatted the
+     * tree as having touched nothing — a clean bill the measure exists to withhold.</p>
+     *
+     * <p>Defaults to {@link #isRevertible()}, so every refactoring base answers true once and no
+     * operation has to remember; a tool that writes without an undo overrides it. The answer is
+     * per TOOL, not per action: a tool that can write on one action and reads on another says
+     * true, so the measure over-reports rather than under-reports.</p>
+     */
+    default boolean changesCode() {
+        return isRevertible();
+    }
+
+    /**
      * Does this tool change a SIGNATURE or a HIERARCHY, whatever kind is asked for?
      *
      * <p>Read by the architect-involvement gate, which fires a review steer on a
