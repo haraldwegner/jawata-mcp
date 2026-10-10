@@ -45,7 +45,7 @@ class RunEffectsTest {
             0, ASK);
         assertAll(
             () -> assertTrue(c.performedNoCodeChangingOperation()),
-            () -> assertTrue(c.zeroIsComplete()),
+            () -> assertTrue(c.incompleteBecause().isEmpty()),
             () -> assertEquals(4, c.readOnly().size()));
     }
 
@@ -77,7 +77,7 @@ class RunEffectsTest {
             () -> assertEquals(List.of("Bash"), c.shell()),
             () -> assertTrue(c.performedNoCodeChangingOperation(),
                 "by the engine's classification alone nothing changed code"),
-            () -> assertFalse(c.zeroIsComplete(),
+            () -> assertFalse(c.incompleteBecause().isEmpty(),
                 "but that zero cannot be trusted while a shell ran, which the flag says"));
     }
 
@@ -90,9 +90,9 @@ class RunEffectsTest {
         RunEffects.Classification emptyName = RunEffects.classify(List.of(""), 0, ASK);
         assertAll(
             () -> assertEquals(List.of("some_vendor_tool"), unknownName.unknown()),
-            () -> assertFalse(unknownName.zeroIsComplete()),
+            () -> assertFalse(unknownName.incompleteBecause().isEmpty()),
             () -> assertTrue(unnamed.performedNoCodeChangingOperation()),
-            () -> assertFalse(unnamed.zeroIsComplete(),
+            () -> assertFalse(unnamed.incompleteBecause().isEmpty(),
                 "two calls were counted and never named — a dialect that cannot name its calls"
                     + " must not read as one whose calls were harmless"),
             () -> assertEquals(List.of("(unnamed block)"), emptyName.unknown(),
@@ -111,7 +111,7 @@ class RunEffectsTest {
             () -> assertEquals(List.of("mcp__some-other-server__search_symbols"), c.unknown()),
             () -> assertEquals(List.of("mcp__jawata-patterns__search_symbols"), c.readOnly(),
                 "the control: a jawata server's prefix IS stripped"),
-            () -> assertFalse(c.zeroIsComplete()));
+            () -> assertFalse(c.incompleteBecause().isEmpty()));
     }
 
     @Test
@@ -120,7 +120,7 @@ class RunEffectsTest {
         RunEffects.Classification c = RunEffects.classify(List.of("Task"), 0, ASK);
         assertAll(
             () -> assertEquals(List.of("Task"), c.unknown()),
-            () -> assertFalse(c.zeroIsComplete()));
+            () -> assertFalse(c.incompleteBecause().isEmpty()));
     }
 
     @Test

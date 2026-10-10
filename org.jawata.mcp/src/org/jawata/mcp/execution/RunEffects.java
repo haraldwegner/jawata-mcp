@@ -76,12 +76,25 @@ public final class RunEffects {
         }
 
         /**
-         * Whether the zero above can be trusted as "the run changed no code". It cannot while a
-         * shell was used, a call was unnamed, or a name was unclassifiable — those are the calls
-         * the measure could not see.
+         * Why the zero above cannot be trusted as "the run changed no code" — empty only when it
+         * can. A shell, a call nobody could name and a name nobody could classify are the calls
+         * the measure could not see; a code-changing call is the zero's own negation.
          */
-        public boolean zeroIsComplete() {
-            return changesCode.isEmpty() && shell.isEmpty() && unknown.isEmpty() && unnamed == 0;
+        public List<String> incompleteBecause() {
+            List<String> reasons = new ArrayList<>();
+            if (!changesCode.isEmpty()) {
+                reasons.add("the run made " + changesCode.size() + " code-changing call(s)");
+            }
+            if (!shell.isEmpty()) {
+                reasons.add("a shell ran; what it did is not in its name");
+            }
+            if (!unknown.isEmpty()) {
+                reasons.add("calls nobody here can classify: " + unknown);
+            }
+            if (unnamed > 0) {
+                reasons.add(unnamed + " call(s) were counted and never named");
+            }
+            return List.copyOf(reasons);
         }
     }
 

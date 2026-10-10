@@ -369,19 +369,7 @@ public class HireTool extends AbstractTool {
      */
     private static List<String> incompleteReasons(RunEffects.Classification effects,
             HiredBrain.Outcome outcome, BrainDialect dialect) {
-        List<String> reasons = new ArrayList<>();
-        if (!effects.changesCode().isEmpty()) {
-            reasons.add("the run made " + effects.changesCode().size() + " code-changing call(s)");
-        }
-        if (!effects.shell().isEmpty()) {
-            reasons.add("a shell ran; what it did is not in its name");
-        }
-        if (!effects.unknown().isEmpty()) {
-            reasons.add("calls nobody here can classify: " + effects.unknown());
-        }
-        if (effects.unnamed() > 0) {
-            reasons.add(effects.unnamed() + " call(s) were counted and never named");
-        }
+        List<String> reasons = new ArrayList<>(effects.incompleteBecause());
         if (!dialect.observesEveryCall()) {
             reasons.add(dialect.name() + " does not show every call it makes, by name");
         }
