@@ -1044,8 +1044,13 @@ public class ToolRegistry {
         this.precedentRetriever = retriever;
     }
 
-    /** v3.3.1: install the precedent ledger (application wiring / tests). */
-    public void setPrecedentLedger(org.jawata.mcp.learn.PrecedentLedger ledger) {
+    /**
+     * v3.3.1: install the precedent ledger. Package-private on purpose: nothing in production
+     * calls it (the registry builds its own), so it is a test seam — a clock-driven ledger for
+     * the expiry case — and a public one would be an exported member only tests reach, which
+     * the unwired-members release gate refuses.
+     */
+    void setPrecedentLedger(org.jawata.mcp.learn.PrecedentLedger ledger) {
         this.precedentLedger = ledger;
     }
 
