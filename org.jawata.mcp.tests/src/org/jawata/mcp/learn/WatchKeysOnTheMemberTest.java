@@ -49,10 +49,15 @@ class WatchKeysOnTheMemberTest {
             + "        try { Integer.parseInt(\"y\"); } catch (NumberFormatException ignore) {}\n"
             + "    }\n";
 
+    // THE LEAK COMES FIRST, and the order is the point. With it after the catch, the ordinal
+    // alone numbers it "#2" and surfaces it, so a key that dropped the kind of problem would
+    // pass this case (mutation C did, the first time). With it before, the leak is the first
+    // finding of the member, takes the catch's old bare key, and is silent — and the catch
+    // surfaces mislabelled as new — unless the kind is in the key.
     private static final String SWALLOWER_AND_LEAK =
         "    void watchSeededSwallower() {\n"
-            + "        try { Integer.parseInt(\"x\"); } catch (NumberFormatException ignore) {}\n"
             + "        java.io.StringReader leaked = new java.io.StringReader(\"y\");\n"
+            + "        try { Integer.parseInt(\"x\"); } catch (NumberFormatException ignore) {}\n"
             + "    }\n";
 
     private static final String ANOTHER_MEMBER =
