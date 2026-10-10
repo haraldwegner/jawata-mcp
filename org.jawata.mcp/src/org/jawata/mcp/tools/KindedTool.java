@@ -38,6 +38,22 @@ import java.util.Map;
 public interface KindedTool extends FrontDoor {
 
     /**
+     * Every routing door changes the workspace and returns an undo, so a precedent against one
+     * is exactly what the precedent guard is for (D8b, half 1).
+     *
+     * <p>Declared HERE and not on the two refactoring bases alone, because the six doors that
+     * matter most — {@code extract}, {@code inline}, {@code move}, {@code hierarchy},
+     * {@code generate}, {@code refactor_to_pattern} — extend {@code AbstractTool} directly. The
+     * first version of the fix overrode the declaration only on the bases, which left the guard
+     * silent on the tools it exists for while every stand-in in its own tests said otherwise.
+     * Found by the C4 audit.</p>
+     */
+    @Override
+    default boolean isRevertible() {
+        return true;
+    }
+
+    /**
      * Every kind this door publishes, mapped to the delegate that performs it, in the order
      * the door publishes them.
      */

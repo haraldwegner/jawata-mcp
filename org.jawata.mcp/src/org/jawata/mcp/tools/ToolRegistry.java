@@ -935,7 +935,7 @@ public class ToolRegistry {
                 return null;
             }
             String reason = justification(arguments);
-            if (reason != null && !saysSomething(reason)) {
+            if (reason != null && !isAbout(reason, name, target)) {
                 // D8b, half 3. A payment is accepted as a REASON, so it has to be one. "x",
                 // the name of the tool and the name of the target are each non-blank and
                 // none of them says why this case differs from the one that went wrong. The
@@ -945,10 +945,12 @@ public class ToolRegistry {
                 return ToolResponse.error("PRECEDENT_UNJUSTIFIED",
                     "`" + name + "` was reverted or errored on " + target + " in a case like"
                         + " this, and `precedentOverride=\"" + reason + "\"` is not a reason:"
-                        + " it says nothing about why THIS case differs.",
-                    "Say what is different, in a sentence — for example \"the earlier revert"
-                        + " was a bad range; this is a clean block\". A token, the tool's name"
-                        + " or the target's name does not pay.");
+                        + " it is not about the precedent that was charged.",
+                    "Say what went wrong before and what is different now, in a sentence that"
+                        + " names the tool, the target, or what happened (reverted, errored,"
+                        + " failed) — for example \"the earlier revert was a bad range; this is"
+                        + " a clean block\". A token, or a sentence that mentions none of them,"
+                        + " does not pay.");
             }
             if (reason != null) {
                 // Paid. The agent MAY defect from precedent — it may not defect
@@ -977,18 +979,44 @@ public class ToolRegistry {
         return t != null && t.isRevertible();
     }
 
+    /** Words that refer to what happened at the precedent: it went wrong and was undone. */
+    private static final java.util.regex.Pattern ABOUT_THE_OUTCOME = java.util.regex.Pattern.compile(
+        "(?i)\\b(revert\\w*|error\\w*|fail\\w*|undo\\w*|undid|broke\\w*|earlier|previous\\w*"
+            + "|before|last time)\\b");
+
     /**
-     * Whether a payment is a reason rather than a token.
+     * Whether a payment is a reason ABOUT THE PRECEDENT CHARGED (D8b, half 3).
      *
-     * <p>Deliberately the DECIDABLE floor and no more: at least three words. A single token
-     * — "x", "retry", the tool's name, the target's name — is not a statement about why THIS
-     * case differs. Whether the sentence is a good reason is the audit log's question and the
-     * human's; as with a {@code jawata-fallback:}, the declaration is self-certified and its
-     * value is that it is written down. What this refuses is the payment that was never a
-     * statement.</p>
+     * <p>The decidable reading of "about", and no more: at least three words, AND it names the
+     * tool, the target (in full or by its simple name), or what happened there (reverted,
+     * errored, failed, earlier, before). "x" and "retry" fail the first; "just try it again"
+     * passes the first and says nothing about the precedent, so it fails the second. Whether
+     * the sentence is a GOOD reason is the audit log's question and the human's — as with a
+     * {@code jawata-fallback:}, the declaration is self-certified and its value is that it is
+     * written down.</p>
+     *
+     * <p>The cost is stated: a true reason that names none of these ("a different range this
+     * time") is refused once, and the refusal teaches what to add. That is the price of the
+     * payment having to be about something.</p>
      */
-    static boolean saysSomething(String reason) {
-        return reason.trim().split("\\s+").length >= 3;
+    static boolean isAbout(String reason, String tool, String target) {
+        String text = reason.trim();
+        if (text.split("\\s+").length < 3) {
+            return false;
+        }
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        if (tool != null && !tool.isBlank() && lower.contains(tool.toLowerCase(java.util.Locale.ROOT))) {
+            return true;
+        }
+        if (target != null && !target.isBlank()) {
+            String full = target.toLowerCase(java.util.Locale.ROOT);
+            int cut = Math.max(full.lastIndexOf('.'), full.lastIndexOf('#'));
+            String simple = cut >= 0 ? full.substring(cut + 1) : full;
+            if (lower.contains(full) || (!simple.isBlank() && lower.contains(simple))) {
+                return true;
+            }
+        }
+        return ABOUT_THE_OUTCOME.matcher(text).find();
     }
 
     /** The written justification carried by the call, or {@code null} when absent/blank. */

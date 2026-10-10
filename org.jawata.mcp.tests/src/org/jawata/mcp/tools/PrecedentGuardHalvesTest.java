@@ -118,6 +118,36 @@ class PrecedentGuardHalvesTest {
             "without this, the case above would be satisfied by a guard that never charges");
     }
 
+    /**
+     * HALF 1, BOUND TO WHAT SHIPS. The cases above use stand-in tools that DECLARE they are
+     * revertible, so they pass whether or not any real tool does. The first version of this
+     * fix was exactly that: it overrode the declaration on the two refactoring bases and the
+     * lifecycle door, and {@code extract}, {@code inline}, {@code move}, {@code hierarchy},
+     * {@code generate} and {@code refactor_to_pattern} extend {@code AbstractTool} directly, so
+     * the guard never warned or charged on the tools it exists for. Found by the C4 audit.
+     */
+    @Test
+    @DisplayName("half 1, against the shipped tools: every refactoring tool is revertible, readers are not")
+    void theShippedRefactoringToolsAreAllSubjectsOfThePrecedent() {
+        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
+            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        List<AbstractTool> shipped = new java.util.ArrayList<>(
+            RefactoringDoors.all(() -> null, cache));
+        shipped.addAll(RefactoringDoors.standalone(() -> null, cache, () -> null));
+        shipped.add(new RefactoringTool(() -> null, cache));
+
+        assertFalse(shipped.isEmpty(), "proof of life: the derivation yields tools");
+        for (AbstractTool tool : shipped) {
+            assertTrue(tool.isRevertible(),
+                tool.getName() + " changes the workspace and has an undo, so a precedent against"
+                    + " it is exactly what the guard is for — and it answers false");
+        }
+        assertFalse(new InspectTool(() -> null).isRevertible(),
+            "inspect only reads: the guard must never charge it");
+        assertFalse(new ExperienceTool(() -> null, null).isRevertible(),
+            "the knowledge store is not a subject of precedent");
+    }
+
     // ── half 3: what pays ───────────────────────────────────────────────────────────────
 
     @Test
@@ -128,7 +158,10 @@ class PrecedentGuardHalvesTest {
         reg.callTool("analyze", WARM, CallerIdentity.supplied("s1"));
 
         // A token, the name of the tool, the name of the target: none of them is a reason.
-        for (String nothing : List.of("x", "ok", "extract", "com.foo.Bar", "retry")) {
+        // And a SENTENCE that is about nothing: three words clear a length floor and say
+        // nothing about the precedent charged ("about the precedent" is the spec's phrase).
+        for (String nothing : List.of("x", "ok", "extract", "com.foo.Bar", "retry",
+                "just try it again", "i really want this")) {
             ToolResponse refused = reg.callTool("extract", paying(nothing),
                 CallerIdentity.supplied("s1"));
             assertFalse(refused.isSuccess() || ran[0],
@@ -144,6 +177,16 @@ class PrecedentGuardHalvesTest {
             CallerIdentity.supplied("s1"));
         assertTrue(paid.isSuccess() && ran[0],
             "a sentence about why this case differs pays the cost: " + paid.getError());
+
+        // Naming the TARGET is also being about the precedent, without the word "revert".
+        boolean[] ran2 = {false};
+        ToolRegistry other = registryWarningAbout("extract", true, ran2);
+        other.callTool("analyze", WARM, CallerIdentity.supplied("s1"));
+        ToolResponse byTarget = other.callTool("extract",
+            paying("Bar now has a second caller so the block is safe"),
+            CallerIdentity.supplied("s1"));
+        assertTrue(byTarget.isSuccess() && ran2[0],
+            "a sentence naming the target is about it: " + byTarget.getError());
     }
 
     // ── half 4: who owes it, and for how long ───────────────────────────────────────────

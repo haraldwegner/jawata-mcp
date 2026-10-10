@@ -84,7 +84,9 @@ class AnalyzeChangeImpactToolTest {
 
         ToolResponse response = tool.execute(args);
 
-        assertTrue(response.isSuccess());
+        // C4: this assertion failed once in a full run (1 of 3470) with no message and passed
+        // 3 of 3 alone; the refusal is named so a recurrence says what refused.
+        assertTrue(response.isSuccess(), "refused: " + response.getError());
         Map<String, Object> data = getData(response);
         assertEquals(3, data.get("depth"), "Depth should be capped at 3");
     }
