@@ -303,4 +303,48 @@ class EntryFormTest {
         assertTrue(r.get().message().contains("WHEN an entry applies"),
             "the refusal must still teach what a situation is");
     }
+
+    /**
+     * D8c (feedback D9): A CONDITION THAT NAMES A FILE IS STILL A CONDITION.
+     *
+     * <p>Three of five refusals in the Sprint 8 window were task phrasings that happened to
+     * name something: the JDT class in the error being described, a data file, the parity
+     * scripts. Each was accepted once the name was taken out — which is the whole defect, since
+     * the name was often what said whose problem this was. The check asked whether the WHOLE
+     * situation matched a path or symbol pattern anywhere in it; a sentence with a file in it
+     * matches that without being a location.</p>
+     *
+     * <p>The rule that holds is the one the check was always for: refuse a situation that is
+     * NOTHING BUT a path or a symbol — nothing in it is a word. Every example below has words
+     * around the name.</p>
+     */
+    @Test
+    void a_situation_that_names_a_file_inside_a_sentence_is_admitted() {
+        for (String situation : List.of(
+                "when the parity scripts under build/parity/run.sh report a mismatch",
+                "when trades.csv is empty after the import and nothing was logged",
+                "when the error names RefactoringStatus.FATAL and no file was modified",
+                "when an agent edits docs/sprints/plan.md and the commit hook fires",
+                "when OrbJatsFunnel.java shows a shifted empty catch as new")) {
+            assertTrue(check(GOOD_PRINCIPLE, situation, "worked").isEmpty(),
+                "a condition with a name in it was refused as a location: " + situation);
+        }
+    }
+
+    /**
+     * The other half of the line: a situation with nothing but names in it is still a location,
+     * however many names there are. Without this the case above is satisfied by a check that
+     * accepts everything.
+     */
+    @Test
+    void a_situation_of_nothing_but_names_is_still_refused() {
+        for (String situation : List.of(
+                "src/main/java/com/example/Retry.java",
+                "build/parity/run.sh docs/sprints/plan.md",
+                "org.jawata.mcp.knowledge.H2ExperienceStore OrbJatsFunnel.java")) {
+            Optional<EntryForm.Refusal> r = check(GOOD_PRINCIPLE, situation, "worked");
+            assertTrue(r.isPresent(), "'" + situation + "' is names only, so no word says WHEN");
+            assertEquals("situation", r.get().field());
+        }
+    }
 }

@@ -133,9 +133,27 @@ public final class AdmissionPolicy {
      */
     public static boolean misplacedInSituation(String situation) {
         String s = situation == null ? "" : situation.strip();
-        Shape shape = classify(s);
+        if (s.isEmpty()) {
+            return false;
+        }
+        // D8c (feedback D9): a situation is a location only when NOTHING IN IT IS A WORD.
+        // This used to classify the whole text, and the path and address patterns match
+        // anywhere inside it — so a sentence that merely named a file, a script or the class
+        // in an error was refused as "a location", and was accepted once the name was taken
+        // out. The name was often what said whose problem it was. Judged per token: any token
+        // that is plain prose makes the situation a condition.
+        for (String token : s.split("\\s+")) {
+            if (!misplacedInSituationToken(token)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean misplacedInSituationToken(String token) {
+        Shape shape = classify(token);
         if (shape == Shape.CODE) {
-            return ADDRESS.matcher(s).find();
+            return ADDRESS.matcher(token).find();
         }
         return misplaced(shape);
     }
