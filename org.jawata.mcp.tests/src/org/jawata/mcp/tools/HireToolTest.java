@@ -384,6 +384,27 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("M11: a line the reader could not parse may have held a call, so the zero is not complete")
+    void anUnreadableLineMakesTheZeroIncomplete() throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, "#!/bin/sh\necho 'this is not json at all'\n"
+            + "echo '{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":"
+            + "[{\"type\":\"tool_use\",\"name\":\"compile_workspace\"}]}}'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01}'\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        HireTool hire = toolWith(new StandsIn(host, HostCommand.of(file.toString())),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, data.get("cleanExit"), "premise: the run ended on its own"),
+            () -> assertEquals(List.of(), data.get("codeChangingCalls")),
+            () -> assertEquals(Boolean.FALSE, data.get("noCodeChangeIsComplete")),
+            () -> assertTrue(String.valueOf(data.get("noCodeChangeIncompleteBecause"))
+                .contains("could not be read"), String.valueOf(data)));
+    }
+
+    @Test
     @DisplayName("C16: the PM seat hires the cataloguer end to end, and the record names both")
     void thePmSeatHiresTheCataloguer() throws Exception {
         HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
