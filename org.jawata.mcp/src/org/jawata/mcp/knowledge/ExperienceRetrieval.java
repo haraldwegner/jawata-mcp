@@ -1034,6 +1034,27 @@ public final class ExperienceRetrieval {
     }
 
     /**
+     * Whether this entry is a description of ANOTHER workspace's code — D8d.
+     *
+     * <p>The same rule the maintenance sweep already holds for judging anchors
+     * ({@code WorkspaceScopedJudgmentTest}): a store WITH a workspace identity answers only
+     * for rows stamped with it, and a row stamped with none counts as foreign, because
+     * nothing says it belongs here. A store WITHOUT an identity — tests, a standalone
+     * resident — keeps the see-everything behaviour.</p>
+     *
+     * <p>Code lane only. A lesson or a borrowed pattern is knowledge ABOUT work and travels
+     * between workspaces by design; a job or an area describes one workspace's packages and
+     * means nothing in another.</p>
+     */
+    private boolean foreignCode(StoredEntry e) {
+        if (!isCodeLane(e)) {
+            return false;
+        }
+        String mine = store.provenanceWorkspaceId();
+        return mine != null && !mine.isBlank() && !mine.equals(e.workspaceId());
+    }
+
+    /**
      * Three decimals for a score that rides into a response.
      *
      * <p>Not precision-shaving: these numbers exist to be READ by an agent
@@ -1081,6 +1102,7 @@ public final class ExperienceRetrieval {
 
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
         boolean narrowed = lane != null && !lane.isBlank();
+        int otherWorkspace = 0;
         for (StoredEntry e : StoreCorpus.of(store).live()) {
             // The lane narrows the POOL and never the scoring, which is the whole of why it
             // is safe here: the ranking below is untouched, so no bar arrives with it.
@@ -1092,6 +1114,15 @@ public final class ExperienceRetrieval {
             // ~10,000 rows that describe what members are for, returns the jobs whose wording
             // happens to be nearest and reads as if the store had an opinion about the question.
             if (isLive(e) && (narrowed ? inLane(lane, e) : !isCodeLane(e))) {
+                // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
+                // workspace on the machine and each row is stamped with the one that wrote it;
+                // the map a session opens with was ranked over the whole lane, so a session on
+                // one product was oriented by a description of another product's packages, on
+                // every prompt. Counted below, never silently dropped.
+                if (foreignCode(e)) {
+                    otherWorkspace++;
+                    continue;
+                }
                 byId.put(e.id(), e);
             }
         }
@@ -1209,6 +1240,11 @@ public final class ExperienceRetrieval {
         out.put("result", RESULT_NOMINATED);
         out.put("count", candidates.size());
         out.put("candidates", candidates);
+        if (otherWorkspace > 0) {
+            // Said out loud, for the reason every other withheld row in this file is: an
+            // absence the FILTER caused reads exactly like an absence in the store.
+            out.put("foreign_workspace_withheld", otherWorkspace);
+        }
         String degraded = meaningLanesFailed
             ? " DEGRADED: the meaning lanes could not be read, so this ranking is on"
                 + " WORDS ALONE — an entry that means the same thing in different words"
