@@ -57,6 +57,15 @@ public class RefactoringTool extends AbstractTool implements FrontDoor {
     }
 
     /**
+     * Applies and undoes changes, so it has a history that can go wrong — the lifecycle door is
+     * the one tool outside the two refactoring bases that does.
+     */
+    @Override
+    public boolean isRevertible() {
+        return true;
+    }
+
+    /**
      * The DISCRIMINATOR, which for this door is {@code action} and for every other is
      * {@code kind}.
      *

@@ -112,6 +112,13 @@ public final class ToolExperienceRecorder {
         String sid = caller.id();
 
         if (!response.isSuccess()) {
+            // D8b, half 2: a tool that DECLINED before acting did not fail at anything. The
+            // response says what to change and the next call is a different call; recording
+            // the refusal as an error against the target charged the corrected retry with it,
+            // and recorded the guard's own refusal as a precedent. See attemptedAndFailed().
+            if (response.getError() != null && !response.getError().attemptedAndFailed()) {
+                return;
+            }
             store.append(new ToolExperience(sid, situation(name, arguments), name,
                 ToolExperience.OUTCOME_ERROR, "{\"error\":true}"));
             countOutcomeAfterSteer(caller, name, target(name, arguments),

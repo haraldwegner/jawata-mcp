@@ -444,4 +444,10 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         return true;
     }
 
+    /** Every operation on this base produces a change that can be applied and undone. */
+    @Override
+    public boolean isRevertible() {
+        return true;
+    }
+
 }

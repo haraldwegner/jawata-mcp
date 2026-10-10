@@ -93,6 +93,28 @@ public class ErrorInfo {
         return hint;
     }
 
+    /**
+     * Did the tool ATTEMPT the work and fail at it — as opposed to declining before it began?
+     *
+     * <p>Most refusals in this product are the second kind: the arguments did not resolve, a
+     * precondition was not met, a parameter was missing, a charge was unpaid. Nothing was
+     * attempted, the response says what to change, and the next call is a DIFFERENT call. The
+     * precedent guard records outcomes so that a repeat of a failed attempt can be warned
+     * about; recording a refusal taught it that the corrected call had "errored here before",
+     * and recorded its own {@code PRECEDENT_UNJUSTIFIED} the same way, so its count grew with
+     * every refusal it produced (D8b, feedback D8).</p>
+     *
+     * <p>The attempted-and-failed set is the SMALL and CLOSED one, and everything else is a
+     * refusal. That is the safe direction to be wrong in: a code missed here costs one
+     * warning that did not fire, where a code missed the other way cost a refused call.</p>
+     */
+    public boolean attemptedAndFailed() {
+        return INTERNAL_ERROR.equals(code)
+            || REFACTORING_FAILED.equals(code)
+            || TIMEOUT.equals(code)
+            || "REFACTORING_BROKE_COMPILE".equals(code);
+    }
+
     @Override
     public String toString() {
         return code + " / " + message;

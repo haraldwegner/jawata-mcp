@@ -46,6 +46,12 @@ class PrecedentEnforcementTest {
             @Override public ToolResponse execute(JsonNode arguments) {
                 return exec.apply(arguments);
             }
+            // Every tool this file warns about stands in for a refactoring (extract, move). D8b
+            // limits the guard to tools whose work can be reverted, so a stand-in must say so;
+            // `analyze` is never the warned tool here, so the answer is moot for it.
+            @Override public boolean isRevertible() {
+                return true;
+            }
         };
     }
 

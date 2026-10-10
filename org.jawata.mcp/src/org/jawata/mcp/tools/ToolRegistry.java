@@ -867,7 +867,12 @@ public class ToolRegistry {
             org.jawata.mcp.learn.ToolExperience similar = null;
             for (org.jawata.mcp.learn.ToolExperience h : hits) {
                 if (org.jawata.mcp.learn.IdentityMatch.matches(h, target)) {
-                    identity.add(h);
+                    // D8b, half 1: only a tool whose work can be reverted has a precedent to
+                    // steer by. A read cannot be undone and costs nothing to repeat, and a
+                    // row naming one (or a tool no longer registered) steers at nothing.
+                    if (isRevertible(h.tool())) {
+                        identity.add(h);
+                    }
                 } else if (similar == null) {
                     similar = h;               // capped top-1, the plan constant
                 }
@@ -920,7 +925,7 @@ public class ToolRegistry {
      * enforcement by ambush would be worse than no enforcement.</p>
      */
     private ToolResponse precedentCharge(CallerIdentity caller, String name, JsonNode arguments) {
-        if (precedentLedger == null) {
+        if (precedentLedger == null || !isRevertible(name)) {
             return null;
         }
         try {
@@ -930,6 +935,21 @@ public class ToolRegistry {
                 return null;
             }
             String reason = justification(arguments);
+            if (reason != null && !saysSomethingAbout(reason, name, target)) {
+                // D8b, half 3. A payment is accepted as a REASON, so it has to be one. "x",
+                // the name of the tool and the name of the target are each non-blank and
+                // none of them says why this case differs from the one that went wrong. The
+                // charge stays outstanding, so paying again with a real sentence is still owed
+                // — and the refusal says what a payment is, because a refusal that does not is
+                // the same unexplained wall the guard was already being accused of.
+                return ToolResponse.error("PRECEDENT_UNJUSTIFIED",
+                    "`" + name + "` was reverted or errored on " + target + " in a case like"
+                        + " this, and `precedentOverride=\"" + reason + "\"` is not a reason:"
+                        + " it says nothing about why THIS case differs.",
+                    "Say what is different, in a sentence — for example \"the earlier revert"
+                        + " was a bad range; this is a clean block\". A token, the tool's name"
+                        + " or the target's name does not pay.");
+            }
             if (reason != null) {
                 // Paid. The agent MAY defect from precedent — it may not defect
                 // SILENTLY. Clear the charge so the reason is owed only once.
@@ -949,6 +969,29 @@ public class ToolRegistry {
             log.error("Precedent charge failed before {} — proceeding UNCHARGED", name, e);
             return null;
         }
+    }
+
+    /** Whether the named tool is registered and its work can be reverted — see {@link Tool#isRevertible()}. */
+    private boolean isRevertible(String toolName) {
+        Tool t = toolName == null ? null : tools.get(toolName);
+        return t != null && t.isRevertible();
+    }
+
+    /**
+     * Whether a payment is a reason rather than a token.
+     *
+     * <p>Deliberately the DECIDABLE floor and no more: at least three words, none of which
+     * is the whole payment being the tool's name or the target's. Whether the sentence is a
+     * good reason is the audit log's question and the human's — as with a
+     * {@code jawata-fallback:}, the declaration is self-certified and its value is that it is
+     * written down. What this refuses is the payment that was never a statement.</p>
+     */
+    static boolean saysSomethingAbout(String reason, String tool, String target) {
+        String trimmed = reason.trim();
+        if (trimmed.equalsIgnoreCase(tool) || trimmed.equalsIgnoreCase(target)) {
+            return false;
+        }
+        return trimmed.split("\\s+").length >= 3;
     }
 
     /** The written justification carried by the call, or {@code null} when absent/blank. */

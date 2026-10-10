@@ -57,6 +57,26 @@ public interface Tool {
     }
 
     /**
+     * Can this tool's work be REVERTED — does it change the workspace in a way that has an undo?
+     *
+     * <p>Read by the precedent guard (D8b). The guard warns "this tool was reverted or errored
+     * on this target before" and charges a written reason to use it anyway, and the whole
+     * premise is that a change can be wrong, undone, and wrong again. A tool that only answers
+     * a question has no such history to learn from: it cannot be undone and it costs nothing
+     * to repeat, so a refusal to repeat it buys nothing and costs the caller a turn. In Sprint 8
+     * the guard refused {@code inspect} twice and {@code experience record} once for exactly
+     * that, and kept a count of its own refusals as evidence.</p>
+     *
+     * <p>Same history as the three declarations above, and the same cure: the list of which
+     * tools this applied to was implicit in what the recorder happened to capture. The
+     * refactoring bases answer true once, so no operation has to remember; everything that
+     * answers a question inherits false and is outside the guard whatever it is called.</p>
+     */
+    default boolean isRevertible() {
+        return false;
+    }
+
+    /**
      * Does this tool change a SIGNATURE or a HIERARCHY, whatever kind is asked for?
      *
      * <p>Read by the architect-involvement gate, which fires a review steer on a

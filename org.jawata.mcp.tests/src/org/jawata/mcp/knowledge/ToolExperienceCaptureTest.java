@@ -98,12 +98,43 @@ class ToolExperienceCaptureTest {
         ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
             org.jawata.mcp.fixtures.ShippedGates.registry());
 
-        rec.onCall(CallerIdentity.supplied("s1"), "rename_symbol", args("symbol", "com.foo.Missing"),
-            ToolResponse.error("SYMBOL_NOT_FOUND", "no such symbol", "check the name"));
+        // A change that was ATTEMPTED and did not hold. (This case used SYMBOL_NOT_FOUND until
+        // D8b: a refusal is not an attempt, and recording it taught the guard that the right
+        // call, once the name was fixed, had "errored here before".)
+        rec.onCall(CallerIdentity.supplied("s1"), "rename_symbol", args("symbol", "com.foo.Bar#baz"),
+            ToolResponse.error("REFACTORING_FAILED", "the change did not hold", "see the diff"));
 
         assertEquals(1L, tes.count());
         assertEquals(ToolExperience.OUTCOME_ERROR,
             tes.recentMatching("rename_symbol", 1).get(0).outcome());
+        store.close();
+    }
+
+    /**
+     * D8b, half 2: A REFUSAL WHOSE REMEDY IS A CHANGED CALL IS NOT A FAILED PRECEDENT.
+     *
+     * <p>The tool declined before acting and said what to change. The changed call is a
+     * different call; recording the refusal as an {@code error} against the target charged the
+     * retry with the previous call's failure. It also made the guard's own refusal
+     * ({@code PRECEDENT_UNJUSTIFIED}) a precedent — "{@code inspect} was reverted/errored 11×",
+     * a count that grew with every refusal the guard produced.</p>
+     */
+    @Test
+    void a_refusal_is_not_a_failed_attempt_and_lands_no_row() {
+        H2ExperienceStore store = H2ExperienceStore.openMemory();
+        ToolExperienceStore tes = new ToolExperienceStore(store);
+        ToolExperienceRecorder rec = new ToolExperienceRecorder(tes,
+            org.jawata.mcp.fixtures.ShippedGates.registry());
+
+        for (String code : List.of("SYMBOL_NOT_FOUND", "INVALID_PARAMETER", "PRECONDITION_NOT_MET",
+                "INVALID_COORDINATES", "PRECEDENT_UNJUSTIFIED")) {
+            rec.onCall(CallerIdentity.supplied("s1"), "extract", args("symbol", "com.foo.Bar"),
+                ToolResponse.error(code, "declined before acting", "change the call and retry"));
+        }
+
+        assertEquals(0L, tes.count(),
+            "a tool that DECLINED before acting did not fail at anything — the five refusals"
+                + " above were each recorded as the tool having errored on this target");
         store.close();
     }
 

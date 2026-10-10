@@ -72,6 +72,11 @@ class QualityLedgerWiringTest {
             @Override public ToolResponse execute(JsonNode arguments) {
                 return exec.apply(arguments);
             }
+            // D8b: the guard steers only by tools whose work can be reverted; `extract` stands
+            // in for a refactoring here, `analyze` is never the tool a precedent names.
+            @Override public boolean isRevertible() {
+                return true;
+            }
         };
     }
 
@@ -205,14 +210,14 @@ class QualityLedgerWiringTest {
 
         // No steer yet: an outcome here must NOT be counted as outcome-after.
         recorder.onCall(CallerIdentity.supplied("s1"), "extract", json("{\"symbol\":\"com.unsteered.Thing\"}"),
-            ToolResponse.error("BOOM", "failed", "hint"));
+            ToolResponse.error("REFACTORING_FAILED", "failed", "hint"));
         assertFalse(counters().keySet().stream().anyMatch(k -> k.startsWith("outcome_after.")),
             "an outcome on a target nobody steered answers a different question");
 
         // Now the same pair is steered, and the next outcome on it counts.
         steers.warn(CallerIdentity.supplied("s1"), "extract", "com.foo.Bar");
         recorder.onCall(CallerIdentity.supplied("s1"), "extract", json("{\"symbol\":\"com.foo.Bar\"}"),
-            ToolResponse.error("BOOM", "failed", "hint"));
+            ToolResponse.error("REFACTORING_FAILED", "failed", "hint"));
         assertEquals(1L, counters().get("outcome_after.error"),
             "what happened after the steer, on the steered target");
     }
@@ -231,7 +236,7 @@ class QualityLedgerWiringTest {
             "precondition: paying removes the outstanding charge");
 
         recorder.onCall(CallerIdentity.supplied("s1"), "extract", json("{\"symbol\":\"com.foo.Bar\"}"),
-            ToolResponse.error("BOOM", "failed", "hint"));
+            ToolResponse.error("REFACTORING_FAILED", "failed", "hint"));
         assertEquals(1L, counters().get("outcome_after.error"),
             "a defection's outcome is exactly the case worth measuring — losing it "
             + "when the charge clears would drop the most informative half");

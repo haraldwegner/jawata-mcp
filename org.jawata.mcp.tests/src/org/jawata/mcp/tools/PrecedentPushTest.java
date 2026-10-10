@@ -51,6 +51,12 @@ class PrecedentPushTest {
             @Override public ToolResponse execute(JsonNode arguments) {
                 return exec.apply(arguments);
             }
+            // D8b: the guard steers only by tools whose work can be reverted. The tools this
+            // file names in a precedent (extract, move) are refactorings, so their stand-ins
+            // say so; `analyze` is never the tool a precedent names.
+            @Override public boolean isRevertible() {
+                return true;
+            }
         };
     }
 
@@ -112,6 +118,9 @@ class PrecedentPushTest {
             "extract", ToolExperience.OUTCOME_REVERTED, "{}"));
         ToolRegistry reg = new ToolRegistry();
         reg.setPrecedentRetriever(new KeywordPrecedentRetriever(tes));
+        // The precedent names `extract`; a precedent naming a tool this registry does not have
+        // steers at nothing, so the stand-in must be registered for the steer to be a steer.
+        reg.register(mock("extract", a -> ToolResponse.success(Map.of("ok", true))));
         reg.register(mock("analyze", a -> {
             ToolResponse r = ToolResponse.success(Map.of("ok", true));
             r.applySteering("TOOL-OWN: the next grounded step");
@@ -135,6 +144,7 @@ class PrecedentPushTest {
         reg.setPrecedentRetriever((query, limit) -> List.of(
             new ToolExperience("s1", "move com.foo.Bar", "move",
                 ToolExperience.OUTCOME_REVERTED, "{}")));
+        reg.register(mock("move", a -> ToolResponse.success(Map.of("ok", true))));
         reg.register(mock("analyze", a -> ToolResponse.success(Map.of("ok", true))));
 
         ToolResponse resp = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), CallerIdentity.supplied("s1"));
