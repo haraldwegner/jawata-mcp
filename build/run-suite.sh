@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# jawata-gate: suite
 # Sprint 23 (D2) — sharded full-suite runner: partition the in-framework test
 # classes across N boot JVMs, balanced by MEASURED per-class times (the C0
 # baseline timings file; unknown classes get a default estimate), run the

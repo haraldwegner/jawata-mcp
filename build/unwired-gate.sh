@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# jawata-gate: long
 # Sprint 28 (D-UNWIRED) — the release gate for hollow wiring.
 #
 # Runs the called_only_by_tests detector through the product's OWN FRONT DOOR,

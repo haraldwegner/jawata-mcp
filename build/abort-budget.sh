@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# jawata-gate: long
 # Sprint 28a (1b, M13) — every honest skip must be a decision somebody made.
 #
 # The suite's assumption-skips are a FEATURE: a cell that cannot be proven on

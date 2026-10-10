@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# jawata-gate: long
 # end-to-end-test.sh — the end-to-end test: prove each promise works in the
 # PRODUCT, not in unit tests.
 #
