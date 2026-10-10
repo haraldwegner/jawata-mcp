@@ -925,7 +925,7 @@ public class ToolRegistry {
      * enforcement by ambush would be worse than no enforcement.</p>
      */
     private ToolResponse precedentCharge(CallerIdentity caller, String name, JsonNode arguments) {
-        if (precedentLedger == null || !isRevertible(name)) {
+        if (precedentLedger == null) {
             return null;
         }
         try {
@@ -935,7 +935,7 @@ public class ToolRegistry {
                 return null;
             }
             String reason = justification(arguments);
-            if (reason != null && !saysSomethingAbout(reason, name, target)) {
+            if (reason != null && !saysSomething(reason)) {
                 // D8b, half 3. A payment is accepted as a REASON, so it has to be one. "x",
                 // the name of the tool and the name of the target are each non-blank and
                 // none of them says why this case differs from the one that went wrong. The
@@ -980,18 +980,15 @@ public class ToolRegistry {
     /**
      * Whether a payment is a reason rather than a token.
      *
-     * <p>Deliberately the DECIDABLE floor and no more: at least three words, none of which
-     * is the whole payment being the tool's name or the target's. Whether the sentence is a
-     * good reason is the audit log's question and the human's — as with a
-     * {@code jawata-fallback:}, the declaration is self-certified and its value is that it is
-     * written down. What this refuses is the payment that was never a statement.</p>
+     * <p>Deliberately the DECIDABLE floor and no more: at least three words. A single token
+     * — "x", "retry", the tool's name, the target's name — is not a statement about why THIS
+     * case differs. Whether the sentence is a good reason is the audit log's question and the
+     * human's; as with a {@code jawata-fallback:}, the declaration is self-certified and its
+     * value is that it is written down. What this refuses is the payment that was never a
+     * statement.</p>
      */
-    static boolean saysSomethingAbout(String reason, String tool, String target) {
-        String trimmed = reason.trim();
-        if (trimmed.equalsIgnoreCase(tool) || trimmed.equalsIgnoreCase(target)) {
-            return false;
-        }
-        return trimmed.split("\\s+").length >= 3;
+    static boolean saysSomething(String reason) {
+        return reason.trim().split("\\s+").length >= 3;
     }
 
     /** The written justification carried by the call, or {@code null} when absent/blank. */
