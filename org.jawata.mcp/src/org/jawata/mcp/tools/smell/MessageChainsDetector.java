@@ -1,16 +1,13 @@
 package org.jawata.mcp.tools.smell;
 
-import org.eclipse.jdt.core.dom.ASTNode;
+import java.util.List;
+
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.Expression;
-import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
-import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.domain.Finding;
-
-import java.util.List;
 
 /**
  * Sprint 17 (Fowler) — <b>Message Chains</b>. A navigation chain
@@ -51,7 +48,7 @@ public final class MessageChainsDetector extends AbstractAstDetector {
                         columnOf(ast, start), "warning",
                         "Method-call chain of length " + length + " (threshold " + threshold
                             + "). Consider Hide Delegate.",
-                        enclosingSymbol(node)));
+                        SmellAddress.enclosingSymbol(node)));
                 }
                 return true;
             }
@@ -85,29 +82,5 @@ public final class MessageChainsDetector extends AbstractAstDetector {
     private static int columnOf(CompilationUnit ast, int startPosition) {
         int zeroBased = ast.getColumnNumber(startPosition);
         return zeroBased < 0 ? -1 : zeroBased + 1;
-    }
-
-    /**
-     * WHERE THE CHAIN SITS, as an address rather than an identifier.
-     *
-     * <p>Hide Delegate is performed on the METHOD that reads through the chain, so that is
-     * what the finding names, qualified. A chain in a field initializer has no enclosing
-     * method at all — there the enclosing TYPE is the narrowest true address, and it is
-     * given rather than a null, because a finding carrying no symbol is one no door can be
-     * pointed at and this detector's own cure needs one.</p>
-     */
-    private static String enclosingSymbol(ASTNode node) {
-        for (ASTNode n = node.getParent(); n != null; n = n.getParent()) {
-            if (n instanceof MethodDeclaration method) {
-                return SmellAddress.qualifiedOr(
-                    org.jawata.mcp.models.CodeAddress.symbolOf(method.resolveBinding()),
-                    method.getName().getIdentifier());
-            }
-            if (n instanceof TypeDeclaration type) {
-                return SmellAddress.qualifiedOr(SmellAddress.owner(type),
-                    type.getName().getIdentifier());
-            }
-        }
-        return null;
     }
 }

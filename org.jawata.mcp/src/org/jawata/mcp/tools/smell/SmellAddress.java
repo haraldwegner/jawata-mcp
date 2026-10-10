@@ -19,7 +19,7 @@ import org.jawata.mcp.models.CodeAddress;
  * binding, kept in one place so a detector adds one call rather than its own resolution —
  * which is how the five copies of a type lookup this sprint already merged came about.</p>
  */
-final class SmellAddress {
+public final class SmellAddress {
 
     private SmellAddress() {
     }
@@ -42,11 +42,33 @@ final class SmellAddress {
         return node == null ? null : CodeAddress.symbolOf(node.resolveBinding());
     }
 
-    /** The qualified name of the method a node sits inside, or null if it sits in none. */
-    static String enclosingSymbol(ASTNode node) {
+    /**
+     * WHERE A NODE SITS, as an address rather than an identifier — the one answer to "which
+     * member is this in" that every emitter uses.
+     *
+     * <p>The narrowest enclosing METHOD, qualified. A node in a field initializer or an
+     * initializer block has no enclosing method at all; there the enclosing TYPE is the
+     * narrowest true address, and it is given rather than a null, because a finding carrying
+     * no symbol is one no door can be pointed at and one the architect watch can only key on
+     * its line — which is how a block that merely moved down a file was reported as new.</p>
+     *
+     * <p>Two copies of this lived in this package — one here that stopped at the method and
+     * returned a null, one in the message-chains detector that fell back to the type — and the
+     * architect watch's producer would have been a third. This is the survivor, with the
+     * fallback the second copy had, because the null of the first is the case the watch cannot
+     * key on.</p>
+     *
+     * @return the qualified symbol, the identifier where the binding did not resolve, or null
+     *         when the node sits in no method and no type
+     */
+    public static String enclosingSymbol(ASTNode node) {
         for (ASTNode at = node; at != null; at = at.getParent()) {
             if (at instanceof MethodDeclaration method) {
-                return CodeAddress.symbolOf(method.resolveBinding());
+                return qualifiedOr(CodeAddress.symbolOf(method.resolveBinding()),
+                    method.getName().getIdentifier());
+            }
+            if (at instanceof TypeDeclaration type) {
+                return qualifiedOr(owner(type), type.getName().getIdentifier());
             }
         }
         return null;

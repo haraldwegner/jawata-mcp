@@ -74,8 +74,9 @@ public class WatchEngine {
             filesInspected++;
             Set<String> current = new LinkedHashSet<>();
             List<String[]> details = new ArrayList<>();
+            Map<String, Integer> seen = new java.util.HashMap<>();
             for (String kind : WATCH_KINDS) {
-                collectFindings(kind, path, current, details);
+                collectFindings(kind, path, current, details, seen);
             }
             Set<String> baseline = loadBaseline(path);
             saveBaseline(path, current);
@@ -112,7 +113,7 @@ public class WatchEngine {
     }
 
     private void collectFindings(String kind, String path, Set<String> keys,
-            List<String[]> details) {
+            List<String[]> details, Map<String, Integer> seen) {
         try {
             ToolResponse r = detector.detect(kind, path);
             if (r == null || !r.isSuccess() || !(r.getData() instanceof Map<?, ?> map)) {
@@ -129,7 +130,7 @@ public class WatchEngine {
                     Object symbol = finding.get("symbol");
                     Object line = finding.get("line");
                     Object message = finding.get("message");
-                    add(keys, details, kind, path, line,
+                    add(keys, details, seen, kind, path, line,
                         symbol != null ? String.valueOf(symbol) : String.valueOf(line),
                         String.valueOf(message));
                 }
@@ -141,7 +142,7 @@ public class WatchEngine {
                     }
                     Object name = item.get("name");
                     Object line = item.get("line");
-                    add(keys, details, kind, path, line, String.valueOf(name),
+                    add(keys, details, seen, kind, path, line, String.valueOf(name),
                         "unused " + item.get("kind") + " " + name);
                 }
             }
@@ -166,7 +167,13 @@ public class WatchEngine {
                         row.get("type"), row.get("packageName"), line);
                     Object message = firstNonNull(row.get("message"), row.get("description"),
                         row.get("reason"), identity);
-                    add(keys, details, kind, path, line, String.valueOf(identity),
+                    // A row that names a KIND of problem keeps it in the identity: two
+                    // different bug codes in one member are two findings, and a member alone
+                    // would let the second hide behind the first.
+                    Object code = row.get("code");
+                    String rowIdentity = code == null
+                        ? String.valueOf(identity) : identity + "|" + code;
+                    add(keys, details, seen, kind, path, line, rowIdentity,
                         String.valueOf(message));
                 }
             }
@@ -194,9 +201,25 @@ public class WatchEngine {
         return null;
     }
 
-    private static void add(Set<String> keys, List<String[]> details, String kind,
-            String path, Object line, String identity, String message) {
-        String key = kind + "|" + path + "|" + identity;
+    /**
+     * Record one finding. The key is the file, the kind of check and the finding's IDENTITY —
+     * the symbol or member it sits in, never its line (D8a): a line is where something is
+     * today, and an edit above it moves it without changing the finding.
+     *
+     * <p>Two findings with one identity in one file — two empty catches in the same method —
+     * would otherwise share a key, and the second would be silent for ever behind the first.
+     * The second and later occurrences carry a {@code #n} ordinal, in the order the detector
+     * reported them. The first keeps the bare key, so a baseline stored before this ordinal
+     * existed still matches it. The corner this leaves is stated rather than hidden: if the
+     * first of two identical findings is fixed, the remaining one becomes the first and is
+     * recognised, which is right; if an unrelated one with the same identity replaces it, it
+     * is also recognised, which is the price of not putting the message in the key.</p>
+     */
+    private static void add(Set<String> keys, List<String[]> details, Map<String, Integer> seen,
+            String kind, String path, Object line, String identity, String message) {
+        String base = kind + "|" + path + "|" + identity;
+        int occurrence = seen.merge(base, 1, Integer::sum);
+        String key = occurrence == 1 ? base : base + "#" + occurrence;
         keys.add(key);
         details.add(new String[] {key,
             kind + " at " + path + (line != null ? ":" + line : "") + " — " + message});

@@ -22,6 +22,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.smell.SmellAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -307,6 +308,16 @@ public class FindPossibleBugsTool extends AbstractTool {
         int column = ast.getColumnNumber(node.getStartPosition()) + 1;
         issue.put("line", line);
         issue.put("column", column);
+
+        // WHICH MEMBER, because a line is not an identity. The architect watch compares a file's
+        // findings against what it remembered, and with no symbol on the row it fell back to the
+        // line: an extract that moved a pre-existing empty catch from 976 to 987 made it "new
+        // since your change", twice (feedback D7, Sprint 8). A finding is the same finding when it
+        // is the same kind of problem in the same member, wherever that member has drifted to.
+        String symbol = SmellAddress.enclosingSymbol(node);
+        if (symbol != null) {
+            issue.put("symbol", symbol);
+        }
 
         issues.add(issue);
     }
