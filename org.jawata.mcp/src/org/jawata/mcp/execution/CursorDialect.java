@@ -181,7 +181,8 @@ public final class CursorDialect implements BrainDialect {
             case "result" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.textOf(event.path("result")), 0, true);
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
-                StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true);
+                StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
+                StreamJsonEvents.toolUseNames(event));
             // THINKING IS NOT THE ANSWER, and it arrives as a stream of deltas — measured: four
             // `{"type":"thinking","subtype":"delta","text":...}` events for a one-word reply.
             // Collecting them would put the brain's reasoning into the record as though it were

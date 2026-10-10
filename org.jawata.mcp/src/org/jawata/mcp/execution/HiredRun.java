@@ -256,6 +256,12 @@ public final class HiredRun {
         p.put("stepsPassed", passed);
         p.put("ofSteps", steps.size());
         p.put("toolSteps", outcome.toolSteps());
+        // WHICH calls, not only how many: "the seat made no code-changing call" is a claim
+        // about names, and a count answers none of it. `unnamedToolSteps` is the part of the
+        // count no name accounts for — a dialect that counts what it cannot name — and it is
+        // reported because an empty list beside a non-zero count reads as "nothing was called".
+        p.put("toolNames", outcome.toolNames());
+        p.put("unnamedToolSteps", outcome.unnamedToolSteps());
         // ABSENT rather than zero when nothing reported one — see GateOutcome and
         // HiredBrain.Outcome. A manifest reading 0.0 for a reaped run is the lie
         // the Rust reference tells.
@@ -301,6 +307,13 @@ public final class HiredRun {
             out.append("  ^ THE PLAN STOPPED HERE: ").append(refusedBecause).append('\n');
         }
         out.append("- tool steps: ").append(outcome.toolSteps()).append('\n');
+        out.append("- tools called: ").append(outcome.toolNames().isEmpty()
+            ? "none named"
+            : String.join(", ", outcome.toolNames())).append('\n');
+        if (outcome.unnamedToolSteps() > 0) {
+            out.append("  ^ ").append(outcome.unnamedToolSteps()).append(" of those steps this brain's")
+                .append(" dialect counted and could NOT name — they are unclassified, not harmless\n");
+        }
         out.append("- cost: ").append(outcome.costUsd().isPresent()
             ? String.valueOf(outcome.costUsd().getAsDouble())
             : "NOT REPORTED (absent, which is not zero)").append('\n');

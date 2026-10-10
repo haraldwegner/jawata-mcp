@@ -187,7 +187,8 @@ public final class ClaudeCodeDialect implements BrainDialect {
             case "result" -> new BrainLine(costOf(event),
                 StreamJsonEvents.textOf(event.path("result")), 0, true);
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
-                StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true);
+                StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
+                StreamJsonEvents.toolUseNames(event));
             // An event shape this dialect does not act on. Read, understood, nothing to say —
             // which is why it is `nothing()` and not `unreadable()`.
             default -> BrainLine.nothing();

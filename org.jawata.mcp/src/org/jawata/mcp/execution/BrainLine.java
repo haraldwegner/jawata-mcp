@@ -36,9 +36,22 @@ import java.util.OptionalDouble;
  * @param toolSteps how many TOOL CALLS this line reports — blocks, not events, because one
  *                  assistant turn may contain several and a turn ceiling cannot see inside it
  * @param parsed    whether the line was intelligible to the dialect at all
+ * @param toolNames the NAMES of the tools this line's calls invoked, in order. May be SHORTER than
+ *                  {@code toolSteps}: a dialect that counts calls but does not see their names
+ *                  (codex, copilot) reports a count and an empty list, and a reader must treat the
+ *                  difference as calls it could not name rather than as calls that were harmless.
+ *                  The whole reason this exists is that a count cannot be classified — "the seat
+ *                  made no code-changing call" is a claim about WHICH calls, and a number of calls
+ *                  answers none of it
  */
 public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
-                        boolean parsed) {
+                        boolean parsed, java.util.List<String> toolNames) {
+
+    /** The shape every dialect used before names were recorded; callers that cannot name keep it. */
+    public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
+                     boolean parsed) {
+        this(costUsd, text, toolSteps, parsed, java.util.List.of());
+    }
 
     /** A line the dialect could not read at all — not JSON, or not this dialect's shape. */
     public static BrainLine unreadable() {

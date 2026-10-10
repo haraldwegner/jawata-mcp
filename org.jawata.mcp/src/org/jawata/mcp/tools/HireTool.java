@@ -14,6 +14,7 @@ import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.execution.HiredRun;
+import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.ToolGateRunner;
 import org.jawata.mcp.knowledge.LearnerEventStore;
@@ -322,6 +323,22 @@ public class HireTool extends AbstractTool {
         // and `saidNothing` is what keeps "it produced nothing" apart from "it failed".
         data.put("cleanExit", proposal.outcome().clean());
         data.put("toolSteps", proposal.outcome().toolSteps());
+        // M11: WHICH calls, classified by the ENGINE's own flag. A count of calls says nothing
+        // about whether any of them changed code; the names do, and the three lists that are not
+        // "changed code" are reported beside the zero because a zero that hides a shell call, an
+        // unclassifiable name or a call nobody could name is a clean bill for the runs the
+        // measure understood least.
+        ToolRegistry engine = registry.get();
+        RunEffects.Classification effects = RunEffects.classify(
+            proposal.outcome().toolNames(), proposal.outcome().unnamedToolSteps(),
+            bare -> engine.getTool(bare).map(Tool::isRevertible));
+        data.put("toolsCalled", proposal.outcome().toolNames());
+        data.put("codeChangingCalls", effects.changesCode());
+        data.put("shellCalls", effects.shell());
+        data.put("unclassifiedCalls", effects.unknown());
+        data.put("unnamedToolSteps", effects.unnamed());
+        data.put("performedNoCodeChangingOperation", effects.performedNoCodeChangingOperation());
+        data.put("noCodeChangeIsComplete", effects.zeroIsComplete());
         data.put("timedOut", proposal.outcome().timedOut());
         proposal.outcome().costUsd().ifPresentOrElse(
             cost -> data.put("costUsd", cost),

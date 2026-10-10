@@ -95,6 +95,37 @@ class HiredBrainTest {
     }
 
     @Test
+    @DisplayName("M11: the outcome carries the NAMES of the calls, and a dialect that only counts reports the rest as unnamed")
+    void theOutcomeCarriesWhichToolsWereCalled() throws Exception {
+        // A real stream-json dialect reading a script that speaks it: two turns, three calls.
+        HostCommand named = script("""
+            echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"search_symbols"},{"type":"tool_use","name":"Write"}]}}'
+            echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"},{"type":"text","text":"done"}]}}'
+            echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+            """);
+        HiredBrain.Outcome seen = HiredBrain.hire(host,
+            new ClaudeCodeDialect(named.argv().get(0), 12, null, false), named, "brief",
+            List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+
+        // The plain-text dialect COUNTS what it is told and names nothing.
+        HostCommand counted = script("""
+            echo "TOOL-STEPS: 3"
+            """);
+        HiredBrain.Outcome unnamed = HiredBrain.hire(host, dialectFor(counted), counted, "brief",
+            List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+
+        assertAll(
+            () -> assertEquals(List.of("search_symbols", "Write", "Bash"), seen.toolNames(),
+                "every call, in the order the brain made them, across turns"),
+            () -> assertEquals(3, seen.toolSteps()),
+            () -> assertEquals(0, seen.unnamedToolSteps(), "every counted call was named"),
+            () -> assertTrue(unnamed.toolNames().isEmpty()),
+            () -> assertEquals(3, unnamed.unnamedToolSteps(),
+                "three calls counted and none named — an empty list beside that count must not"
+                    + " read as 'nothing was called'"));
+    }
+
+    @Test
     @DisplayName("DEFECT 3: a crashed brain is a FAILURE, not 'the model said nothing'")
     void aCrashedBrainIsNotSilence() throws Exception {
         // The reference sends stderr to the void and never reads the exit status, so a dead

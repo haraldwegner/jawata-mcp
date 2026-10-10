@@ -221,6 +221,81 @@ class HireToolTest {
         return (Map<String, Object>) response.getData();
     }
 
+    /** A brain that makes exactly the named calls in one turn, then ends. */
+    private HostCommand aBrainCalling(String... names) throws Exception {
+        StringBuilder blocks = new StringBuilder("{\"type\":\"text\",\"text\":\"working\"}");
+        for (String name : names) {
+            blocks.append(",{\"type\":\"tool_use\",\"name\":\"").append(name).append("\"}");
+        }
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, "#!/bin/sh\necho '{\"type\":\"assistant\",\"message\":{\"role\":"
+            + "\"assistant\",\"content\":[" + blocks + "]}}'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01}'\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    /** The clean-gate registry plus an operation the ENGINE flags as changing code. */
+    private static ToolRegistry aRegistryWithAChangingOperation() {
+        ToolRegistry registry = aRegistryWithACleanGate();
+        registry.register(new Tool() {
+            @Override
+            public String getName() {
+                return "extract";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a code-changing fixture";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of());
+            }
+
+            @Override
+            public boolean isRevertible() {
+                return true;
+            }
+        });
+        return registry;
+    }
+
+    @Test
+    @DisplayName("M11: a hire classifies the run's calls by the ENGINE's flag, and a zero that hides a shell or an unnamed call says it is incomplete")
+    void aRunIsClassifiedByWhatTheEngineSays() throws Exception {
+        // The brain calls a revertible engine operation (through the mcp__ prefix a vendor adds),
+        // a registered read, a shell, and a name nothing classifies.
+        HireTool hire = toolWith(new StandsIn(host,
+                aBrainCalling("mcp__jawata-javata-dev__extract", "compile_workspace", "Bash",
+                    "some_vendor_tool")),
+            events, aRegistryWithAChangingOperation());
+        Map<String, Object> dirty = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        // The CONTROL: the same seat, a brain that only reads.
+        HireTool reader = toolWith(new StandsIn(host, aBrainCalling("compile_workspace")),
+            events, aRegistryWithAChangingOperation());
+        Map<String, Object> clean = dataOf(reader.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(List.of("mcp__jawata-javata-dev__extract"), dirty.get("codeChangingCalls")),
+            () -> assertEquals(List.of("Bash"), dirty.get("shellCalls")),
+            () -> assertEquals(List.of("some_vendor_tool"), dirty.get("unclassifiedCalls")),
+            () -> assertEquals(Boolean.FALSE, dirty.get("performedNoCodeChangingOperation")),
+            () -> assertEquals(Boolean.FALSE, dirty.get("noCodeChangeIsComplete")),
+            () -> assertEquals(4, ((List<?>) dirty.get("toolsCalled")).size()),
+            () -> assertEquals(Boolean.TRUE, clean.get("performedNoCodeChangingOperation")),
+            () -> assertEquals(Boolean.TRUE, clean.get("noCodeChangeIsComplete"),
+                "only the registered, non-revertible read: nothing hides behind the zero"),
+            () -> assertEquals(List.of(), clean.get("codeChangingCalls")));
+    }
+
     @Test
     @DisplayName("C16: the PM seat hires the cataloguer end to end, and the record names both")
     void thePmSeatHiresTheCataloguer() throws Exception {

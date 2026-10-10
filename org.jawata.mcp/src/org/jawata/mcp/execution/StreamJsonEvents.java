@@ -63,18 +63,32 @@ final class StreamJsonEvents {
         return parts.isEmpty() ? Optional.empty() : Optional.of(String.join("\n", parts));
     }
 
-    /** Tool calls in this turn, counted as BLOCKS rather than as turns. */
-    static int toolUseBlocks(JsonNode event) {
+    /**
+     * The NAMES of this turn's tool calls, in order, one per {@code tool_use} block.
+     *
+     * <p>A count cannot be classified. "The PM made no code-changing call" is a claim about which
+     * calls were made, and the step ceiling this file's {@code toolUseBlocks} feeds knows only how
+     * many. A block with no name is recorded as {@code ""} so the list stays the same length as
+     * the count and an unnamed call cannot quietly vanish from it.</p>
+     */
+    static List<String> toolUseNames(JsonNode event) {
         JsonNode content = event.path("message").path("content");
+        List<String> names = new ArrayList<>();
         if (!content.isArray()) {
-            return 0;
+            return names;
         }
-        int steps = 0;
         for (JsonNode block : content) {
             if ("tool_use".equals(block.path("type").asText(""))) {
-                steps++;
+                names.add(block.path("name").asText(""));
             }
         }
-        return steps;
+        return names;
+    }
+
+    /** Tool calls in this turn, counted as BLOCKS rather than as turns. */
+    static int toolUseBlocks(JsonNode event) {
+        // The count IS the length of the names list — one reader of the blocks, so the count and
+        // the names cannot disagree about how many calls the turn made.
+        return toolUseNames(event).size();
     }
 }

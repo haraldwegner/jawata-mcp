@@ -95,10 +95,30 @@ public final class HiredBrain {
      * @param exitCode        the child's exit status, absent when it was reaped before exiting
      * @param stderrTail      the tail of its stderr, which is where a crash goes
      * @param stoppedBy       the ceiling that ended it, or absent when it ended on its own
+     * @param toolNames       the names of the tools the brain called, in order. SHORTER than
+     *     {@code toolSteps} when the dialect counts calls it cannot name (codex, copilot); the
+     *     difference is calls nobody classified, and {@link #unnamedToolSteps()} says how many
      */
     public record Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
                           boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
-                          String stderrTail, Optional<String> stoppedBy) {
+                          String stderrTail, Optional<String> stoppedBy,
+                          List<String> toolNames) {
+
+        /** The shape every caller used before names were recorded. */
+        public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
+                       boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
+                       String stderrTail, Optional<String> stoppedBy) {
+            this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode,
+                stderrTail, stoppedBy, List.of());
+        }
+
+        /**
+         * Calls that were counted and never named. A classification built on {@link #toolNames}
+         * alone would read these as harmless; a reader must be told they are UNKNOWN.
+         */
+        public int unnamedToolSteps() {
+            return Math.max(0, toolSteps - toolNames.size());
+        }
 
         /** Did it exit cleanly, on its own, inside every ceiling? */
         public boolean clean() {
@@ -169,6 +189,7 @@ public final class HiredBrain {
         OptionalDouble cost = OptionalDouble.empty();
         boolean sawTerminalCost = false;
         int toolSteps = 0;
+        List<String> toolNames = new ArrayList<>();
         int unreadable = 0;
         String stoppedBy = null;
 
@@ -183,6 +204,7 @@ public final class HiredBrain {
                 }
                 read.text().ifPresent(said::add);
                 toolSteps += read.toolSteps();
+                toolNames.addAll(read.toolNames());
                 if (read.costUsd().isPresent()) {
                     cost = read.costUsd();
                     sawTerminalCost = true;
@@ -222,7 +244,8 @@ public final class HiredBrain {
             : OptionalInt.of(child.exitValue());
 
         return new Outcome(String.join("\n", said), cost, toolSteps, unreadable, sawTerminalCost,
-            reapedByClock[0], exitCode, stderrTail.toString(), Optional.ofNullable(stoppedBy));
+            reapedByClock[0], exitCode, stderrTail.toString(), Optional.ofNullable(stoppedBy),
+            List.copyOf(toolNames));
     }
 
     /**

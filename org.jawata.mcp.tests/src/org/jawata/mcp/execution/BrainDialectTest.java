@@ -211,6 +211,35 @@ class BrainDialectTest {
         assertEquals(0, line.toolSteps());
     }
 
+    @Test
+    @DisplayName("M11: the NAMES of the calls are read, in order, one per block — the count is their length")
+    void toolCallNamesAreReadInOrderAndEqualTheCount() {
+        // A count cannot be classified. "No code-changing call" is a claim about WHICH calls.
+        String turn = "{\"type\":\"assistant\",\"message\":{\"content\":["
+            + "{\"type\":\"text\",\"text\":\"looking\"},"
+            + "{\"type\":\"tool_use\",\"name\":\"mcp__jawata-javata-dev__search_symbols\",\"input\":{}},"
+            + "{\"type\":\"tool_use\",\"name\":\"Write\",\"input\":{}},"
+            + "{\"type\":\"tool_use\",\"input\":{}}]}}";
+        BrainLine claudeLine = claude.read(turn);
+        BrainLine cursorLine = new CursorDialect().read(turn);
+        for (BrainLine line : List.of(claudeLine, cursorLine)) {
+            assertAll(
+                () -> assertEquals(List.of("mcp__jawata-javata-dev__search_symbols", "Write", ""),
+                    line.toolNames(), "in order, and an unnamed block is KEPT as empty"),
+                () -> assertEquals(line.toolSteps(), line.toolNames().size(),
+                    "the count is the names' length — one reader of the blocks, so they cannot"
+                        + " disagree about how many calls the turn made"));
+        }
+    }
+
+    @Test
+    @DisplayName("M11: a turn that only talks names no tools, and a dialect that cannot name says so by count")
+    void aTurnThatTalksNamesNothing() {
+        BrainLine talks = claude.read("{\"type\":\"assistant\",\"message\":{\"content\":["
+            + "{\"type\":\"text\",\"text\":\"hi\"}]}}");
+        assertTrue(talks.toolNames().isEmpty());
+    }
+
     // --------------------------------------------------- the two the reference conflates or loses
 
     @Test
