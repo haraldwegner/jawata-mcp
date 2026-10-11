@@ -162,3 +162,18 @@ None. No change in this diff orders a second implementation of an existing job.
 
 - The `data` door's missing change-returning seam (C5 F1) — homed to the seam lane,
   unchanged, not re-argued.
+
+## D4 - what was asked of the experience store and the pattern catalogue, and what was selected
+
+**Recorded after the fact (2026-10-11), not before the design.** This checkpoint closed without the
+consultation Stage 6 requires, which was found by counting the reports on disk (2 of 9 carried one).
+The consultation below was run afterwards, over the checkpoint's subject as this report describes it.
+It informs the record and not the build, and the lateness is the finding.
+
+**Asked:** *a knowledge store's several write paths each derived a degraded-state notice or a derived
+value on their own, so one repair fixed two paths and left a third unfixed; how do the paths share one
+derivation.* Eight nominated, **none selected**. The nearest entries concern repairs that miss a sibling
+path in a trading slot's lifecycle, which is the same shape in a different system, and a transfer to this
+one was not argued for in this report.
+
+No catalogue pattern was selected in any case below.

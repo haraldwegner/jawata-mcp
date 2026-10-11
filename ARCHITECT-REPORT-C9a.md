@@ -171,3 +171,18 @@ honoured before a line was written) · the firing placed outside the monitor · 
 in-flight ticket · the hardcoded `"run_tests"` in `onSessionEvicted` · and **incomplete delegation,
 which was checked and does not fire** — `HiredRun` exposes no ledger method, `ServerChecks` exposes
 no registry method, and `Proposal` hands `Outcome` over whole rather than half-forwarding it.
+
+## D4 - what was asked of the experience store and the pattern catalogue, and what was selected
+
+**Recorded after the fact (2026-10-11), not before the design.** This checkpoint closed without the
+consultation Stage 6 requires, which was found by counting the reports on disk (2 of 9 carried one).
+The consultation below was run afterwards, over the checkpoint's subject as this report describes it.
+It informs the record and not the build, and the lateness is the finding.
+
+**Asked:** *a driver that hires an external coding agent and runs a plan of steps with gates must keep a
+ledger of progress and a record a human reads to decide whether to trust an unattended run; is the ledger
+the step contract or only the lane the steps travel in.* Eight nominated, **none selected**: the store
+holds nothing for this question. The nearest were about harness state versus agent context and about
+checks that share a trigger with the thing checked, and neither is the ledger-versus-contract question.
+
+No catalogue pattern was selected in any case below.

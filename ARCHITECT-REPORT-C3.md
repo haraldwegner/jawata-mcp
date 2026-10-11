@@ -340,3 +340,23 @@ at C3, before any of F1's work was scheduled:
 `/home/harald/CursorProjects/jawata-mcp` was not touched. Its evidence came from
 `git log`/`blame`/`diff`/`show`, file reads, and the jawata MCP `find_references` tool; four shell
 text reads over `.java` were declared `jawata-fallback:` with their reasons and are logged.*
+
+## D4 - what was asked of the experience store and the pattern catalogue, and what was selected
+
+**Recorded after the fact (2026-10-11), not before the design.** This checkpoint closed without the
+consultation Stage 6 requires, which was found by counting the reports on disk (2 of 9 carried one).
+The consultation below was run afterwards, over the checkpoint's subject as this report describes it.
+It informs the record and not the build, and the lateness is the finding.
+
+**Asked:** *eight engine-tool defects are repaired in a refactoring engine (an internal error with no
+phase named, a response far too large, a change-signature rewriting the wrong call, a forked test runner
+killed, a lane filter that silently drops a whole corpus); which repairs belong in the object that owns the
+behaviour, and which cap or flag is left opt-in at the call site.* Eight nominated, **one selected**:
+`6fecd8cb` (when a claim the product itself emits turns out false, the test that asserts it is the
+mechanism that kept it, so the producer and the test move together). It applies to the D7g finding in this report: D7g's
+`overloadAlternative` states something false on the success of the very run it says should not have
+happened, so the repair must move the claim and any assertion over it together. It did not change what
+was built. The other seven were not applicable (three are about review loops and refactoring order, not
+about where a behaviour lives).
+
+No catalogue pattern was selected in any case below.

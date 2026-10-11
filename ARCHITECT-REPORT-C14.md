@@ -95,3 +95,20 @@ found in one pass by one auditor. A recurring symptom, which rule 12 calls ordin
 - **F1** → the next stage opening the describing path: a self-verifying offered key.
 - **F2** → whichever stage next touches either hash producer.
 - **F3** → no actuator; recorded as a symptom.
+
+## D4 - what was asked of the experience store and the pattern catalogue, and what was selected
+
+**Recorded after the fact (2026-10-11), not before the design.** This checkpoint closed without the
+consultation Stage 6 requires, which was found by counting the reports on disk (2 of 9 carried one).
+The consultation below was run afterwards, over the checkpoint's subject as this report describes it.
+It informs the record and not the build, and the lateness is the finding.
+
+**Asked:** *a cataloguing pass describes source units, must be resumable, must re-queue a unit whose
+content changed, and must avoid describing the same job twice; where does the content-hash and duplicate
+check live.* Eight nominated, **two selected**: `265eea18` (recording a job ADDS a row rather than
+replacing it, so ask the store what a member already has before writing; measured 73 members with more
+than one job row) is the defect the checkpoint's one-job-per-member gate exists for; and `f46ed00f` (a
+test that reads state the way the enforcement does cannot see a defect in that read) applies to the three
+verification tests that held a copy of the production lookup. Neither changed the design after the fact.
+
+No catalogue pattern was selected in any case below.

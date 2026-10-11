@@ -226,3 +226,20 @@ I did not conclude from it. The targeted duplicate check is what answered.
   unobserved — `Write` invoked, a file created, six runs of six, no denial ever recorded.
 - The collected answer duplicates a short reply on two brains, so it is the shared stream reader
   (S16-18).
+
+## D4 - what was asked of the experience store and the pattern catalogue, and what was selected
+
+**Recorded after the fact (2026-10-11), not before the design.** This checkpoint closed without the
+consultation Stage 6 requires, which was found by counting the reports on disk (2 of 9 carried one).
+The consultation below was run afterwards, over the checkpoint's subject as this report describes it.
+It informs the record and not the build, and the lateness is the finding.
+
+**Asked:** *the hire path had seven callers and every one was a test, so a built and documented
+capability could not be reached by the live process; four different agent CLIs must be driven through one
+path with per-brain differences in how tool calls are reported.* Eight nominated, **one selected**:
+`39cdedbb` (a refusal rate cannot distinguish a bound from an instruction; it takes a refusal authored by
+something other than the model, or an inspectable enforcement point). It applies to the containment claims
+the checkpoint makes per brain, and it is the reason those claims rest on the per-brain probes rather than on
+runs in which the agent complied.
+
+No catalogue pattern was selected in any case below.
