@@ -230,29 +230,11 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         if (materialized.isPresent()) {
             return materialized.get();
         }
-        return switch (kind) {
-            case "encapsulate_field" -> encapsulateField.executeWithService(service, arguments);
-            case "hide_delegate" -> hideDelegate.executeWithService(service, arguments);
-            case "special_case" -> specialCase.executeWithService(service, arguments);
-            case "replace_primitive" -> replacePrimitive.executeWithService(service, arguments);
-            case "encapsulate_collection" ->
-                encapsulateCollection.executeWithService(service, arguments);
-            case "split_variable" -> splitVariable.executeWithService(service, arguments);
-            case "replace_derived_variable" ->
-                replaceDerived.executeWithService(service, arguments);
-            case "remove_setting_method" ->
-                removeSettingMethod.executeWithService(service, arguments);
-            case "encapsulate_record" ->
-                encapsulateRecord.executeWithService(service, arguments);
-            case "add_record_component" ->
-                addRecordComponent.executeWithService(service, arguments);
-            case "reference_to_value" ->
-                referenceToValue.executeWithService(service, arguments);
-            // Unreachable: the lookup above already refused an unrouted kind. It is here so
-            // that a delegate added to the routing table and forgotten HERE fails loudly at
-            // the call rather than being dispatched to whichever branch happened to be last.
-            default -> ToolResponse.invalidParameter("kind",
-                "'" + kind + "' is in the routing table and has no dispatch branch");
-        };
+        // DISPATCH THROUGH THE DELEGATE JUST LOOKED UP (C4-1). This door used to look the
+        // delegate up, throw it away, and route through an eleven-arm switch on the same
+        // string — two routing tables for one fact, with an "unreachable" default arm guarding
+        // the day they disagreed. There is one table now: a kind added to delegates() is
+        // dispatched by that fact alone and cannot be published and forgotten here.
+        return ((AbstractTool) delegate).executeWithService(service, arguments);
     }
 }

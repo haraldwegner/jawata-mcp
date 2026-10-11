@@ -191,33 +191,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
             return ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
-        return switch (kind) {
-            case "change_signature" -> changeSignature.executeWithService(service, arguments);
-            case "introduce_parameter_object" ->
-                introduceParameterObject.executeWithService(service, arguments);
-            case "replace_query_with_parameter" ->
-                replaceQueryWithParameter.executeWithService(service, arguments);
-            case "parameterize_function" ->
-                parameterizeFunction.executeWithService(service, arguments);
-            case "separate_query_from_modifier" ->
-                separateQueryFromModifier.executeWithService(service, arguments);
-            case "replace_parameter_with_query" ->
-                replaceParameterWithQuery.executeWithService(service, arguments);
-            case "replace_exception_with_precheck" ->
-                replaceExceptionWithPrecheck.executeWithService(service, arguments);
-            case "preserve_whole_object" ->
-                preserveWholeObject.executeWithService(service, arguments);
-            case "remove_flag_argument" ->
-                removeFlagArgument.executeWithService(service, arguments);
-            case "replace_command_with_function" ->
-                replaceCommandWithFunction.executeWithService(service, arguments);
-            case "replace_error_code_with_exception" ->
-                replaceErrorCodeWithException.executeWithService(service, arguments);
-            // Unreachable: the lookup above already refused an unrouted kind. It is here so
-            // that a delegate added to the routing table and forgotten HERE fails loudly at
-            // the call rather than being dispatched to whichever branch happened to be last.
-            default -> ToolResponse.invalidParameter("kind",
-                "'" + kind + "' is in the routing table and has no dispatch branch");
-        };
+        // DISPATCH THROUGH THE DELEGATE JUST LOOKED UP (C4-1) — see DataTool, which had the
+        // same discarded lookup and eleven-arm switch. One table, no unreachable default arm.
+        return ((AbstractTool) delegate).executeWithService(service, arguments);
     }
 }
