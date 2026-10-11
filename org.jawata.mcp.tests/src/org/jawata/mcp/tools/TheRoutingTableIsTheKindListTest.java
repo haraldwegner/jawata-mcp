@@ -95,13 +95,13 @@ class TheRoutingTableIsTheKindListTest {
         // and by literal keys on others.
         RefactoringChangeCache cache = new RefactoringChangeCache();
         java.util.function.Supplier<org.jawata.core.IJdtService> none = () -> null;
-        List<KindedTool> doors = List.of(
-            new ExtractTool(none, cache),
-            new InlineTool(none, cache),
-            new MoveTool(none, cache),
-            new RefactorToPatternTool(none, cache),
-            new org.jawata.mcp.tools.codegen.GenerateTool(none, cache),
-            new ApplyCleanupTool(none, cache));
+        // DERIVED (C4-2, Stage 9 M6c). This was a hand-written list of SIX doors beside a
+        // comment calling them "the converted doors", while the application registers nine:
+        // data, hierarchy and change_method_signature were checked by nothing here.
+        List<KindedTool> doors = new java.util.ArrayList<>();
+        for (AbstractTool tool : RefactoringDoors.all(none, cache)) {
+            doors.add((KindedTool) tool);
+        }
 
         int compared = 0;
         List<String> problems = new java.util.ArrayList<>();
@@ -115,10 +115,12 @@ class TheRoutingTableIsTheKindListTest {
             }
         }
         assertEquals(List.of(), problems, String.join("\n  ", problems));
-        // PROOF OF LIFE: six doors routing nothing would satisfy the loop.
-        // FIFTY-ONE since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`.
-        assertEquals(51, compared,
-            "the six converted doors route fifty-one kinds between them — extract 11,"
-                + " inline 6, move 6, refactor_to_pattern 11, generate 7, apply_cleanup 10");
+        // PROOF OF LIFE: doors routing nothing would satisfy the loop. A FLOOR, because the
+        // population is derived: the six doors this once listed route fifty-one kinds (extract
+        // 11, inline 6, move 6, refactor_to_pattern 11, generate 7, apply_cleanup 10), and the
+        // three it never listed add to that.
+        org.junit.jupiter.api.Assertions.assertTrue(compared >= 51,
+            "the derived doors route at least the fifty-one kinds the six hand-listed ones did: "
+                + compared);
     }
 }

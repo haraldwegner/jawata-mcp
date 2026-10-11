@@ -545,16 +545,12 @@ class FrontDoorDescriptionTest {
                     + generated + "\n  in: " + described);
         }
         // PROOF OF LIFE: an empty list would satisfy the loop.
-        assertEquals(10, adoptedDoors().size(),
-            "TEN doors have adopted the description seam — the six Stage 6a converted,"
-                + " refactoring, which takes the description half only, data, which"
-                + " adopted inside Stage 5 as it grew past its single operation, and"
-                + " change_method_signature, which adopted inside Stage 4 as it grew from"
-                + " one operation to eleven, and hierarchy inside Stage 7, which was the LAST;"
-                + " each must be ADDED here deliberately, because a door that adopts the"
-                + " seam and never reaches this loop is asserted by nothing — which is"
-                + " exactly the state Stage 4's door was left in, and what a C4 audit"
-                + " refused on: the property HELD in the code and no assertion asked it");
+        assertTrue(adoptedDoors().size() >= 10,
+            "at least ten doors have adopted the description seam — the nine refactoring doors"
+                + " RefactoringDoors constructs, plus the lifecycle door. The population is"
+                + " DERIVED now, so a door added to RefactoringDoors enters this loop without an"
+                + " edit here; this floor only proves the derivation reached today's doors and"
+                + " did not return an empty list, which would satisfy the loop above");
     }
 
     /**
@@ -566,22 +562,20 @@ class FrontDoorDescriptionTest {
      * which is why the count below is written out rather than taken from the list itself.</p>
      */
     private static List<FrontDoor> adoptedDoors() {
+        // DERIVED, not written (C4-2, Stage 9 M6c). This was a hand-written list of ten, and a
+        // C4 audit refused on exactly the failure a list has: change_method_signature adopted
+        // the seam, was not added here, and the property held in the code while no assertion
+        // asked it. The population now comes from the one place the application registers
+        // from, so a door added there enters this loop in the same edit.
         RefactoringChangeCache cache = new RefactoringChangeCache();
-        return List.of(
-            new ExtractTool(() -> null, cache),
-            new InlineTool(() -> null, cache),
-            new MoveTool(() -> null, cache),
-            new RefactorToPatternTool(() -> null, cache),
-            new org.jawata.mcp.tools.codegen.GenerateTool(() -> null, cache),
-            new ApplyCleanupTool(() -> null, cache),
-            new RefactoringTool(() -> null, cache),
-            new DataTool(() -> null, cache),
-            new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> null, cache),
-            // TENTH, and the last. Added in the SAME change that converted the door, because a
-            // C4 audit refused on precisely the opposite: change_method_signature adopted the
-            // seam and was not added here, so the property held in the code and no assertion
-            // asked it. There is no eleventh door.
-            new HierarchyTool(() -> null, cache));
+        List<FrontDoor> doors = new java.util.ArrayList<>();
+        for (AbstractTool tool : RefactoringDoors.all(() -> null, cache)) {
+            doors.add((FrontDoor) tool);
+        }
+        // The lifecycle door takes the description half only and is deliberately NOT in
+        // RefactoringDoors (its verbs are not operations), so it is named here, once.
+        doors.add(new RefactoringTool(() -> null, cache));
+        return doors;
     }
 
     private static int occurrences(String text, String needle) {
