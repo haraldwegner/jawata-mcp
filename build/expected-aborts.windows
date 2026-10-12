@@ -101,3 +101,22 @@ cannot make a directory unreadable
 # it would need the ACL equivalent (DENY on the current user), which is a different
 # mechanism and a separate piece of work.
 no POSIX permissions here
+
+# --- Sprint 28g, MEASURED on the 4.4.0 Windows run (CI 38139015649) ---
+#
+# The hired-brain tests stand a brain in with a shell script made executable by POSIX
+# permission bits: the hire, its ceilings, its journal, the scheduler that fires it, and
+# the process reaper's grandchild case. Windows runs neither the script nor the bits, so
+# the tests say so and abort. On that run 21 of them aborted unbudgeted, and the eleven
+# HireToolTest cases, which lacked the assumption, FAILED in Files.setPosixFilePermissions
+# instead; they now carry the same assumption, in the same words, as their siblings.
+#
+# Acceptable under Harald's ruling of 2026-10-07: Windows is not exercised until jawata is
+# the agent. Linux and macOS run all of them.
+#
+# The cost, stated: on Windows a hire, its ceilings, its journal row and the seat
+# scheduler are UNVERIFIED. Closing it needs a brain fixture Windows can start — a java
+# launcher stand-in, the same remedy M11 names for the .cmd fake above.
+the brain fixture is a POSIX shell script
+the fixtures are POSIX shell scripts
+the fixture is a POSIX shell; the Windows path has no equivalent one-liner

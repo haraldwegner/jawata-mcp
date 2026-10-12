@@ -75,10 +75,10 @@ class NoModuleSharesOneRootForSourceAndResourcesTest {
 
         for (String required : REQUIRED) {
             assertTrue(
-                poms.stream().anyMatch(p -> root.relativize(p.getParent()).toString().equals(required)),
+                poms.stream().anyMatch(p -> moduleKey(root, p).equals(required)),
                 () -> "the derivation lost a module this check cannot do without: expected "
                     + required + "/pom.xml under " + root + "; found "
-                    + poms.stream().map(p -> root.relativize(p.getParent()).toString()).toList()
+                    + poms.stream().map(p -> moduleKey(root, p)).toList()
                     + " — left alone this check would pass without reading the poms it is about");
         }
 
@@ -96,8 +96,7 @@ class NoModuleSharesOneRootForSourceAndResourcesTest {
             resources.addAll(resolveAll(directoriesIn(section(text, "resources")), base));
             resources.addAll(resolveAll(directoriesIn(section(text, "testResources")), base));
 
-            declaredBy.put(root.relativize(pom.getParent()).toString(),
-                           new int[] { sources.size(), resources.size() });
+            declaredBy.put(moduleKey(root, pom), new int[] { sources.size(), resources.size() });
 
             for (Map.Entry<String, Path> source : sources.entrySet()) {
                 for (Path resource : resources) {
@@ -173,14 +172,35 @@ class NoModuleSharesOneRootForSourceAndResourcesTest {
         try (Stream<Path> walk = Files.walk(build)) {
             return walk.filter(p -> p.getFileName().toString().equals("pom.xml"))
                        .filter(p -> {
-                           String rel = build.relativize(p).toString();
-                           return !rel.contains("target/") && !rel.contains("bin/");
+                           // By path ELEMENT, not by a "target/" substring: on Windows the
+                           // separator is a backslash, so the substring never matched there and
+                           // the packaged copies under target/ were read as module poms.
+                           for (Path element : build.relativize(p).getParent() == null
+                                   ? List.<Path>of() : build.relativize(p).getParent()) {
+                               String name = element.toString();
+                               if (name.equals("target") || name.equals("bin")) {
+                                   return false;
+                               }
+                           }
+                           return true;
                        })
                        .sorted()
                        .toList();
         } catch (IOException e) {
             throw new UncheckedIOException("could not enumerate the module poms under " + build, e);
         }
+    }
+
+    /**
+     * A module's directory relative to the checkout, always with forward slashes.
+     *
+     * <p>{@link #REQUIRED} names modules the way this file and every pom spell them. A
+     * {@code Path}'s {@code toString} uses the platform separator, so on Windows it read
+     * {@code build\catalogue} and the required-module check failed on a checkout that had both
+     * modules (4.4.0 CI, windows-latest).</p>
+     */
+    private static String moduleKey(Path root, Path pom) {
+        return root.relativize(pom.getParent()).toString().replace('\\', '/');
     }
 
     private static String read(Path pom) {

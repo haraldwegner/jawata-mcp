@@ -86,6 +86,32 @@ public final class LearnerEventStore {
         throw last;
     }
 
+    /**
+     * The widths {@code learner_event}'s bounded columns were created with (schema v5, see
+     * {@code SchemaMigrations.migrateToV5}). A value is FITTED to them before it is written.
+     *
+     * <p>A value that does not fit is not a write that can succeed on a retry: H2 refuses it the
+     * same way eight times, the row is dropped, and the event is gone. Measured on the 4.4.0 macOS
+     * CI run: a hired run's {@code tool} is {@code "script:" + the brain's path}, the path under
+     * macOS's temporary directory is 121 characters against a column of 80, and the run's journal
+     * row was lost on every attempt while the same run on Linux, under a shorter {@code /tmp},
+     * landed. Losing the row to keep a bookkeeping column exact is the wrong way round; the
+     * fitted value keeps its leading part and says it was cut.</p>
+     */
+    static final int SESSION_ID_WIDTH = 64;
+    static final int KIND_WIDTH = 40;
+    static final int TOOL_WIDTH = 80;
+    static final int WORKSPACE_ID_WIDTH = 80;
+    static final int PROJECT_ID_WIDTH = 80;
+
+    /** {@code value} unchanged when it fits, else its leading part ending in an ellipsis, at exactly {@code width}. */
+    static String fitted(String value, int width) {
+        if (value == null || value.length() <= width) {
+            return value;
+        }
+        return value.substring(0, width - 1) + "…";
+    }
+
     /** Appends one event. Never throws — a failure surviving all retries is
      *  logged + counted (loud, visible). */
     public void append(LearnerEvent event) {
@@ -96,12 +122,12 @@ public final class LearnerEventStore {
                     try (PreparedStatement ps = conn.prepareStatement(
                         "INSERT INTO learner_event (session_id, kind, tool, detail_json,"
                             + " workspace_id, project_id) VALUES (?, ?, ?, ?, ?, ?)")) {
-                        ps.setString(1, event.sessionId());
-                        ps.setString(2, event.kind());
-                        ps.setString(3, event.tool());
+                        ps.setString(1, fitted(event.sessionId(), SESSION_ID_WIDTH));
+                        ps.setString(2, fitted(event.kind(), KIND_WIDTH));
+                        ps.setString(3, fitted(event.tool(), TOOL_WIDTH));
                         ps.setString(4, event.detailJson());
-                        ps.setString(5, store.provenanceWorkspaceId());
-                        ps.setString(6, store.provenanceProjectId());
+                        ps.setString(5, fitted(store.provenanceWorkspaceId(), WORKSPACE_ID_WIDTH));
+                        ps.setString(6, fitted(store.provenanceProjectId(), PROJECT_ID_WIDTH));
                         ps.executeUpdate();
                     }
                 }, store::invalidateSharedConnection);

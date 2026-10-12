@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
@@ -88,6 +90,10 @@ class HireToolTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // Every case here hires a brain that is a shell script made executable with POSIX bits,
+        // the same fixture as the sibling HiredRunProposesTest, and with the same reason in the
+        // same words so one budget line in build/expected-aborts.windows covers both classes.
+        assumeTrue(!HostOS.current().isWindows(), "the brain fixture is a POSIX shell script");
         dir = Files.createTempDirectory("jawata-hire-tool-");
         store = H2ExperienceStore.openMemory();
         events = new LearnerEventStore(store);

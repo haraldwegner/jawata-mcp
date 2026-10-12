@@ -496,19 +496,24 @@ class WallTimeNamesWorkNotWaitingTest {
         chainLevelFourBurnsTheCpu();
     }
 
-    // 1200ms is a MARGIN, not a figure derived from a mechanism — the round-2 audit caught the
-    // first version claiming the second. At a 5ms sampling period even the original 400ms was
-    // about 80 sampling opportunities on a thread that is inside this chain for the whole
-    // window and does nothing else, so the observed outcome was 0 of ~80 and not "a burn thin
-    // enough to miss". Tripling the opportunities to ~240 does not address a zero. It is here
-    // because more margin cannot hurt and the cause is unknown, which is also why the
-    // assumption above stays: a longer burn does not make a miss impossible.
+    // THE CLOCK IS READ ONCE PER MILLION ITERATIONS, NOT EVERY ITERATION — and this is the cause
+    // the comment above could not name, now measured. A loop whose body is `spin += 1` around a
+    // System.nanoTime() call spends nearly all its time inside the native clock call, and a sample
+    // taken there is not attributed to this chain. Measured on JDK 21, Linux x64, same 5ms period
+    // and 1.2s window: clock-every-iteration put 2, 5 and 7 samples through the burn over three
+    // rounds; clock-every-million put 236, 236 and 232. Linux kept a few and passed; the 4.4.0
+    // macOS run kept none of this thread's and failed with an empty path while the recording held
+    // other threads' samples. With the clock read rarely the thread is in this method's own code
+    // almost the whole window, so the sampler has something to attribute on every platform. The
+    // assumption above stays: it gates on the recording's input, and a dead sampler still skips.
     private static void chainLevelFourBurnsTheCpu() {
         long until = System.nanoTime() + Duration.ofMillis(1200).toNanos();
         long spin = 0;
-        while (System.nanoTime() < until) {
-            spin += 1;
-        }
+        do {
+            for (int i = 0; i < 1_000_000; i++) {
+                spin = spin * 31 + i;
+            }
+        } while (System.nanoTime() < until);
         if (spin == Long.MIN_VALUE) {
             throw new IllegalStateException("unreachable; keeps the loop from being elided");
         }
