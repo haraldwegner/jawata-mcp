@@ -1235,10 +1235,14 @@ public class JawataApplication implements IApplication {
         // may answer null, because a degraded resident has no journal; the tool is still published
         // and refuses with that reason, since a tool missing from the list is a degradation no
         // client can see.
+        //
+        // The third supplier is this resident's OWN endpoint (4.4.1): a Claude hire is started with
+        // that as its only MCP server, so it talks to the resident that hired it under tool names
+        // its allowlist can say. Null on stdio and before the transport listens.
         toolRegistry.register(new HireTool(() -> jdtService, HostProcesses.system(),
             new org.jawata.mcp.runtime.RuntimeArtifactStore(),
             new org.jawata.mcp.learn.PlanLedger(),
-            () -> learnerEvents, () -> toolRegistry));
+            () -> learnerEvents, () -> toolRegistry, this::selfEndpoint));
 
         // Sprint 14 Phase B.1 (v1.8.0): consolidated lifecycle tool.
         toolRegistry.register(new RefreshWorkspaceTool(() -> jdtService));
@@ -1338,6 +1342,20 @@ public class JawataApplication implements IApplication {
             this.activeTransport = null;
         }
         return IApplication.EXIT_OK;
+    }
+
+    /**
+     * This resident's own endpoint, for a hired brain to be given as its one MCP server — or null
+     * when there is none a second process could reach: a stdio resident, or an HTTP one whose
+     * listener is not bound yet.
+     */
+    private org.jawata.mcp.execution.SelfEndpoint selfEndpoint() {
+        if (activeTransport instanceof org.jawata.mcp.transport.HttpTransport http) {
+            String url = http.localMcpUrl();
+            return url == null ? null
+                : new org.jawata.mcp.execution.SelfEndpoint(url, http.bearerToken());
+        }
+        return null;
     }
 
     /** The first cause of the given type in the chain, or null. */

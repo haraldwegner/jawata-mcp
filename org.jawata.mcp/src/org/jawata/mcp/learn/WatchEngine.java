@@ -116,7 +116,15 @@ public class WatchEngine {
             List<String[]> details, Map<String, Integer> seen) {
         try {
             ToolResponse r = detector.detect(kind, path);
-            if (r == null || !r.isSuccess() || !(r.getData() instanceof Map<?, ?> map)) {
+            if (r != null && !r.isSuccess()) {
+                // A REFUSAL IS A CHECK THAT DID NOT HAPPEN, logged as a throw is: without this
+                // line the watch's silence after a refused detector read exactly like "nothing
+                // new", and the one time it happened (the 4.4.1 release suite) left no trace.
+                log.warn("watch detector {} refused on {} — skipped: {}", kind, path,
+                    r.getError() == null ? "no reason given" : r.getError().getMessage());
+                return;
+            }
+            if (r == null || !(r.getData() instanceof Map<?, ?> map)) {
                 return;
             }
             // Two response shapes ride the quality door: the common

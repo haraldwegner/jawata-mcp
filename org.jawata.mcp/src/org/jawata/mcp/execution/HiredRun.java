@@ -99,13 +99,26 @@ public final class HiredRun {
     /** Nullable: a run without a journal still proposes, and says so by its absence. */
     private final LearnerEventStore journal;
 
+    /**
+     * Nullable: the hiring resident's own endpoint, handed to a seat's dialect so the brain talks
+     * to THIS resident and nothing else (see {@link SelfEndpoint}). Absent on stdio, where the
+     * resident has no endpoint a second process could reach.
+     */
+    private final SelfEndpoint self;
+
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal) {
+        this(host, artifacts, plans, journal, null);
+    }
+
+    public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
+            LearnerEventStore journal, SelfEndpoint self) {
         this.host = Objects.requireNonNull(host, "a hired run needs a process boundary");
         this.artifacts = Objects.requireNonNull(artifacts, "a proposal with nowhere to land"
             + " is not a proposal");
         this.plans = Objects.requireNonNull(plans, "the gate verdict is the ledger's");
         this.journal = journal;
+        this.self = self;
     }
 
     /**
@@ -122,7 +135,11 @@ public final class HiredRun {
      * {@link SeatHire#budgetReport()} is where that is said, because the seat's written intent is
      * legitimate and this product's reading of a vendor's output must not become a veto over it.</p>
      *
-     * @param seat  the seat being hired: which brain, which tools, under what bounds
+     * <p>The brain is asked {@link SeatHire#prompt(String)} — the seat's own stance, then the brief —
+     * and the record's "The brief" section carries exactly that, so a reader sees what the brain was
+     * actually given rather than the half of it the hirer wrote.</p>
+     *
+     * @param seat  the seat being hired: which brain, which tools, under what bounds, which rules
      * @param base  the command's shape (working directory, environment); its argv is the dialect's
      * @param brief what the brain is asked to do
      * @param steps the plan's declared steps and their gates
@@ -130,7 +147,8 @@ public final class HiredRun {
      */
     public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
             GateRunner gates) throws IOException, InterruptedException {
-        return issue(seat.dialect(), base, brief, seat.tools(), seat.ceilings(), steps, gates);
+        return issue(seat.dialect(self), base, seat.prompt(brief), seat.tools(), seat.ceilings(),
+            steps, gates);
     }
 
     /**

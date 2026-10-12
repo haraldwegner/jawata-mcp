@@ -18,6 +18,7 @@ import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
+import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.GatedStep;
@@ -101,6 +102,20 @@ public class HireTool extends AbstractTool {
     private final Supplier<ToolRegistry> registry;
 
     /**
+     * The resident's own endpoint, asked per call and answering NULL when there is none — on stdio,
+     * or before the transport is listening. A Claude hire given an endpoint starts with only this
+     * resident as its MCP server; without one it keeps the user's own setup. See {@link SelfEndpoint}.
+     */
+    private final Supplier<SelfEndpoint> self;
+
+    /** A hire with no endpoint of its own to hand the brain — the stdio resident's case. */
+    public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
+            RuntimeArtifactStore artifacts, PlanLedger plans,
+            Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry) {
+        this(serviceSupplier, host, artifacts, plans, journal, registry, () -> null);
+    }
+
+    /**
      * @param journal a SUPPLIER that may answer NULL, because the journal is conditional: it rides
      *     the experience store's H2 file, and a degraded resident has a non-H2 store and therefore
      *     no journal at all. The alternative was to register this tool only where the journal
@@ -109,10 +124,13 @@ public class HireTool extends AbstractTool {
      * @param registry a SUPPLIER because the cycle is real — this tool lives in the registry and
      *     its gates run through it. {@link ToolGateRunner} is built per call from whatever the
      *     supplier answers, so a tool registered after this one is still a reachable gate.
+     * @param self the resident's own endpoint, a SUPPLIER that may answer null for the same reason
+     *     the journal's may: whether this resident has one is known only once its transport listens.
      */
     public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
-            Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry) {
+            Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
+            Supplier<SelfEndpoint> self) {
         super(serviceSupplier);
         if (host == null || artifacts == null || plans == null || journal == null
                 || registry == null) {
@@ -126,6 +144,7 @@ public class HireTool extends AbstractTool {
         this.plans = plans;
         this.journal = journal;
         this.registry = registry;
+        this.self = self == null ? () -> null : self;
     }
 
     @Override
@@ -267,7 +286,10 @@ public class HireTool extends AbstractTool {
         // rather than a guess at its executable — `name()` answers the vendor ("claude-code"), not
         // the binary ("claude"), deliberately, so that a run pointed at a double is still
         // attributable to the brain whose dialect read it.
-        HostCommand base = HostCommand.of(List.of("placeholder:" + seat.dialect().name()));
+        // THE RESIDENT'S OWN ENDPOINT, so a Claude hire talks to this resident and nothing else.
+        SelfEndpoint endpoint = self.get();
+        BrainDialect dialect = seat.dialect(endpoint);
+        HostCommand base = HostCommand.of(List.of("placeholder:" + dialect.name()));
         // REQUIRED, and that is the other half of the fix above. Defaulting it meant the brain ran
         // in the RESIDENT's own directory — which is how a real claude came to run in the
         // developer's repository with the store attached. A hire that does not say where the brain
@@ -278,14 +300,14 @@ public class HireTool extends AbstractTool {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
 
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn);
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint);
         HiredRun.Proposal proposal;
         try {
             proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()));
         } catch (IOException e) {
             return ToolResponse.error("INTERNAL_ERROR",
                 "the brain could not be spawned: " + e.getMessage(),
-                "the " + seat.dialect().name() + " dialect runs its own executable — check that"
+                "the " + dialect.name() + " dialect runs its own executable — check that"
                     + " that CLI is installed and on the resident's PATH. Which executable a brain"
                     + " IS cannot be set per call; it is the dialect's, chosen by the seat's brain");
         } catch (InterruptedException e) {
@@ -334,7 +356,7 @@ public class HireTool extends AbstractTool {
         RunEffects.Classification effects = RunEffects.classify(
             proposal.outcome().toolNames(), proposal.outcome().unnamedToolSteps(),
             bare -> engine.getTool(bare).map(Tool::changesCode));
-        List<String> incomplete = incompleteReasons(effects, proposal.outcome(), seat.dialect());
+        List<String> incomplete = incompleteReasons(effects, proposal.outcome(), dialect);
         data.put("toolsCalled", proposal.outcome().toolNames());
         data.put("codeChangingCalls", effects.changesCode());
         data.put("shellCalls", effects.shell());
@@ -351,9 +373,8 @@ public class HireTool extends AbstractTool {
         data.put("answer", proposal.outcome().text());
         // C16's own clause: a brain that cannot be told which tools to attach is REPORTED here
         // rather than quietly left out of the count.
-        data.put("toolAttachment", seat.dialect().toolAttachment().report());
-        data.put("toolsSettableByTheHirer",
-            seat.dialect().toolAttachment().settableByTheHirer());
+        data.put("toolAttachment", dialect.toolAttachment().report());
+        data.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         return ToolResponse.success(data);
     }

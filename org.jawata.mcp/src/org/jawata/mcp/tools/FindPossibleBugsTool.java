@@ -106,10 +106,20 @@ public class FindPossibleBugsTool extends AbstractTool {
                 files = service.getAllJavaFiles();
             }
 
+            // A FILE THAT COULD NOT BE READ IS NOT A CLEAN FILE. Until 4.4.1 every way of not
+            // reading one — no compilation unit for the path, no AST, a thrown parse — was
+            // skipped at debug level, and the answer was a SUCCESS with zero issues: exactly
+            // what a file with no bugs looks like. The architect watch reads this tool through
+            // find_quality_issue, so it heard "nothing new" for an edit it never inspected
+            // (seen once in the 4.4.1 release suite, where its control went silent).
+            List<String> unread = new ArrayList<>();
             for (Path file : files) {
                 try {
                     ICompilationUnit cu = service.getCompilationUnit(file);
-                    if (cu == null) continue;
+                    if (cu == null) {
+                        unread.add(file + ": no compilation unit for this path in any loaded project");
+                        continue;
+                    }
 
                     // Parse to AST with bindings
                     ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
@@ -118,16 +128,33 @@ public class FindPossibleBugsTool extends AbstractTool {
                     parser.setBindingsRecovery(true);
 
                     CompilationUnit ast = (CompilationUnit) parser.createAST(null);
-                    if (ast == null) continue;
+                    if (ast == null) {
+                        unread.add(file + ": the parser produced no syntax tree");
+                        continue;
+                    }
 
                     findIssuesInFile(ast, file, service, issues, severity);
                 } catch (Exception e) {
-                    log.debug("Error analyzing file for bugs {}: {}", file, e.getMessage());
+                    unread.add(file + ": " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 }
+            }
+
+            // One named file that was not read means nothing was checked: refuse, with why.
+            if (filePath != null && !unread.isEmpty()) {
+                return ToolResponse.error("FILE_NOT_FOUND",
+                    "the file was not analysed, so no answer about its bugs can be given — "
+                        + unread.get(0),
+                    "pass a path inside a loaded project; zero issues would have read as a clean"
+                        + " file");
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("totalIssues", issues.size());
+            if (!unread.isEmpty()) {
+                // A project scan still answers, and names every file its count does not cover.
+                data.put("unreadFileCount", unread.size());
+                data.put("unreadFiles", unread);
+            }
 
             long highCount = issues.stream().filter(i -> "high".equals(i.get("severity"))).count();
             long mediumCount = issues.stream().filter(i -> "medium".equals(i.get("severity"))).count();

@@ -186,6 +186,28 @@ public class HttpTransport implements Transport {
     }
 
     /**
+     * The {@code /mcp} URL a process on THIS machine reaches this transport at, or null before
+     * {@link #run} has bound the listener — never blocks. A listener on every interface is reached
+     * at loopback; one on a named address is reached at that address. Used to hand a hired brain
+     * this resident as its one MCP server (jawata-mcp 4.4.1).
+     */
+    public String localMcpUrl() {
+        int port = actualPort;
+        if (port < 0) {
+            return null;
+        }
+        String host = "0.0.0.0".equals(bindAddress) || "::".equals(bindAddress)
+            ? "127.0.0.1"
+            : bindAddress;
+        return "http://" + (host.contains(":") ? "[" + host + "]" : host) + ":" + port + "/mcp";
+    }
+
+    /** The bearer token every request to this transport must carry. */
+    public String bearerToken() {
+        return token;
+    }
+
+    /**
      * Broadcast an SSE event to every currently-subscribed
      * {@code /mcp/events} client. Public API ready for tool-layer
      * progress integration (v1.8.6 wiring; see class-level Javadoc).

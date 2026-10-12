@@ -111,8 +111,12 @@ no POSIX permissions here
 # HireToolTest cases, which lacked the assumption, FAILED in Files.setPosixFilePermissions
 # instead; they now carry the same assumption, in the same words, as their siblings.
 #
-# Acceptable under Harald's ruling of 2026-10-07: Windows is not exercised until jawata is
-# the agent. Linux and macOS run all of them.
+# Declared under Sprint 28h's entry "2026-10-12 — The host question: which process starts a
+# brain" (jawata-enterprise, docs/sprints/jawata-mcp/sprint-28h-jawata-is-the-agent.md): 28h
+# decides which process starts a brain, and whichever does owns the Windows start, proved by
+# a hire that runs there. Until then these skips stay declared. (This block cited the 28g S2b
+# ruling until 4.4.1; that ruling was about studio's clients and does not cover the hire.)
+# Linux and macOS run all of them.
 #
 # The cost, stated: on Windows a hire, its ceilings, its journal row and the seat
 # scheduler are UNVERIFIED. Closing it needs a brain fixture Windows can start — a java

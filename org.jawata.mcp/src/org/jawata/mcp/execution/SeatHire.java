@@ -2,6 +2,7 @@ package org.jawata.mcp.execution;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,8 +21,8 @@ import java.util.Optional;
  *
  * <h2>{@code brain:} IS ITS OWN FIELD, and deriving it from {@code model:} would be WRONG</h2>
  *
- * <p>Every seat shipped today says {@code model: claude-sonnet-5} or {@code claude-haiku-4-5}, which
- * makes "read the brain off the model's prefix" look obviously right. <b>It is measurably wrong.</b>
+ * <p>Every seat shipped until studio 4.4.1 said {@code model: claude-sonnet-5} or
+ * {@code claude-haiku-4-5}, which made "read the brain off the model's prefix" look obviously right. <b>It is measurably wrong.</b>
  * Running copilot on 2026-10-08 produced {@code session.auto_mode_resolved} with
  * {@code "chosenModel":"claude-haiku-4.5"} — a CLAUDE MODEL running on the COPILOT BRAIN, chosen by
  * copilot's own router from its {@code availableModels}. A seat naming that model would have been
@@ -53,9 +54,11 @@ import java.util.Optional;
  * @param model    which weights to ask that CLI for, or null to take its own default
  * @param tools    the tools this seat may use — handed to the dialect, which attaches them if it CAN
  * @param ceilings what the run may consume, assembled from the seat's own declared limits
+ * @param stance   the seat's own rules — the markdown body below its frontmatter — which
+ *     {@link #prompt(String)} sends ahead of the brief. Empty when the seat has none.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
-                       HiredBrain.Ceilings ceilings) {
+                       HiredBrain.Ceilings ceilings, String stance) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -106,6 +109,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 + " model name is how a copilot seat gets spawned as claude");
         }
         tools = tools == null ? List.of() : List.copyOf(tools);
+        stance = stance == null ? "" : stance.strip();
         if (ceilings == null) {
             throw new IllegalArgumentException("a hire with no ceilings is an unbounded run, which"
                 + " is the thing this whole path exists to prevent");
@@ -141,14 +145,34 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 integer(front.get("max_tool_steps")).orElse(0),
                 // null, not 0.0 — an undeclared budget is NO ceiling, and zero would be a ceiling
                 // of nothing that fired on the first reported cent.
-                decimal(front.get("cost_budget_usd")).orElse(null)));
+                decimal(front.get("cost_budget_usd")).orElse(null)),
+            body(markdown));
     }
 
-    /** The dialect for this seat's brain, with the seat's own model asked for where it can be. */
-    public BrainDialect dialect() {
+    /**
+     * What the hired brain is asked: the seat's own rules, then the brief.
+     *
+     * <p>Until 4.4.1 a hire sent the brief ALONE. The seat file was read for its frontmatter — brain,
+     * model, tools, ceilings — and its body, the stance that says what the seat is and what it must
+     * refuse, never reached the brain: a hired cataloguer ran as a generic agent holding the PM's
+     * brief. The seat's file IS the hire, so its rules are part of what is asked.</p>
+     */
+    public String prompt(String brief) {
+        String asked = brief == null ? "" : brief.strip();
+        if (stance.isEmpty()) {
+            return asked;
+        }
+        return stance + "\n\n---\n\n## Your brief\n\n" + asked;
+    }
+
+    /**
+     * The dialect for this seat's brain, given the hiring resident's endpoint when it has one — see
+     * {@link SelfEndpoint} for what a Claude hire does with it. Null is the stdio case.
+     */
+    public BrainDialect dialect(SelfEndpoint self) {
         return switch (brain) {
             case CLAUDE_CODE -> new ClaudeCodeDialect("claude",
-                ClaudeCodeDialect.DEFAULT_MAX_TURNS, model);
+                ClaudeCodeDialect.DEFAULT_MAX_TURNS, model, true, self);
             case CURSOR -> new CursorDialect("cursor-agent", true, model);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
             // auto_mode_resolved event reports which it chose and why), and codex's is set in its
@@ -229,6 +253,27 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             fields.put(line.substring(0, colon).strip(), unquote(line.substring(colon + 1).strip()));
         }
         return fields;
+    }
+
+    /**
+     * Everything below the frontmatter's closing fence — the seat's stance. A file with no
+     * frontmatter is ALL stance; a file whose fence never closes has none, because what follows the
+     * opening fence is then frontmatter that was never finished, not rules anybody wrote.
+     */
+    private static String body(String markdown) {
+        if (markdown == null) {
+            return "";
+        }
+        String[] lines = markdown.split("\n", -1);
+        if (lines.length == 0 || !lines[0].strip().equals("---")) {
+            return markdown;
+        }
+        for (int i = 1; i < lines.length; i++) {
+            if (lines[i].strip().equals("---")) {
+                return String.join("\n", Arrays.copyOfRange(lines, i + 1, lines.length));
+            }
+        }
+        return "";
     }
 
     /** An inline {@code [a, b, c]} list, which is how every shipped seat writes its tools. */

@@ -202,14 +202,14 @@ class SeatHireTest {
         assertAll(
             () -> assertEquals(SeatHire.Brain.COPILOT, copilotSeat.brain(),
                 "the declared brain wins over a model name that looks like another vendor's"),
-            () -> assertInstanceOf(CopilotDialect.class, copilotSeat.dialect()),
+            () -> assertInstanceOf(CopilotDialect.class, copilotSeat.dialect(null)),
             // And the model is NOT passed to copilot, because copilot routes its own — passing one
             // would be a flag invented rather than measured.
             () -> assertEquals("claude-haiku-4.5", copilotSeat.model(),
                 "the seat's declaration is still carried, for the record"),
-            () -> assertFalse(copilotSeat.dialect().command("brief", List.of())
+            () -> assertFalse(copilotSeat.dialect(null).command("brief", List.of())
                 .contains("claude-haiku-4.5"),
-                "but it does not reach the argv: " + copilotSeat.dialect().command("brief",
+                "but it does not reach the argv: " + copilotSeat.dialect(null).command("brief",
                     List.of())));
     }
 
@@ -315,21 +315,47 @@ class SeatHireTest {
 
         assertAll(
             () -> assertInstanceOf(ClaudeCodeDialect.class,
-                SeatHire.read(seat.formatted("claude")).dialect()),
+                SeatHire.read(seat.formatted("claude")).dialect(null)),
             () -> assertInstanceOf(CursorDialect.class,
-                SeatHire.read(seat.formatted("cursor")).dialect()),
+                SeatHire.read(seat.formatted("cursor")).dialect(null)),
             () -> assertInstanceOf(CopilotDialect.class,
-                SeatHire.read(seat.formatted("copilot")).dialect()),
+                SeatHire.read(seat.formatted("copilot")).dialect(null)),
             () -> assertInstanceOf(CodexDialect.class,
-                SeatHire.read(seat.formatted("codex")).dialect()),
+                SeatHire.read(seat.formatted("codex")).dialect(null)),
             // claude and cursor both accept --model; the model reaches their argv.
-            () -> assertTrue(SeatHire.read(seat.formatted("claude")).dialect()
+            () -> assertTrue(SeatHire.read(seat.formatted("claude")).dialect(null)
                 .command("b", List.of()).contains("some-model")),
-            () -> assertTrue(SeatHire.read(seat.formatted("cursor")).dialect()
+            () -> assertTrue(SeatHire.read(seat.formatted("cursor")).dialect(null)
                 .command("b", List.of()).contains("some-model")),
             // codex's model is config, out of band — so nothing here invents a flag for it.
-            () -> assertFalse(SeatHire.read(seat.formatted("codex")).dialect()
+            () -> assertFalse(SeatHire.read(seat.formatted("codex")).dialect(null)
                 .command("b", List.of()).contains("some-model")));
+    }
+
+    @Test
+    @DisplayName("4.4.1: the seat's own rules are asked of the brain ahead of the brief, and its frontmatter is not")
+    void theStanceIsPartOfWhatTheBrainIsAsked() {
+        String asked = SeatHire.read(PM).prompt("Decide whether stage 3 is done.");
+
+        assertAll(
+            () -> assertTrue(asked.startsWith("You are the PM seat."), asked),
+            () -> assertTrue(asked.endsWith("Decide whether stage 3 is done."), asked),
+            () -> assertFalse(asked.contains("cost_budget_usd"),
+                "the frontmatter is the hire's bounds, not the brain's instructions: " + asked),
+            () -> assertFalse(asked.contains("tier justification"),
+                "nor its comments: " + asked));
+    }
+
+    @Test
+    @DisplayName("...a seat with no rules is asked the brief alone, and an unclosed fence holds no rules")
+    void noStanceMeansTheBriefAlone() {
+        assertAll(
+            () -> assertEquals("the brief",
+                SeatHire.read("---\nname: s\n---\n").prompt("the brief")),
+            // What follows an opening fence that never closes is frontmatter nobody finished, not
+            // rules anybody wrote — sending it would hand the brain half a settings block.
+            () -> assertEquals("the brief",
+                SeatHire.read("---\nname: s\nmodel: x\n").prompt("the brief")));
     }
 
     @Test

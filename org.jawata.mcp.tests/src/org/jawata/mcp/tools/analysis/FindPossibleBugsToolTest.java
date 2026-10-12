@@ -79,6 +79,21 @@ class FindPossibleBugsToolTest {
         assertEquals(0, getData(r).get("totalIssues"));
     }
 
+    @Test @DisplayName("4.4.1: a named file it could not read is a refusal, never a clean zero")
+    void anUnreadFileIsRefusedNotReportedClean() {
+        // Until 4.4.1 a path with no compilation unit answered success with totalIssues 0 —
+        // identical to a file with no bugs. The architect watch reads this tool and stayed
+        // silent on an edit it never inspected.
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", "src/main/java/com/example/DoesNotExist.java");
+
+        ToolResponse r = tool.execute(args);
+
+        assertFalse(r.isSuccess(), "an unread file must not read as a clean one");
+        assertTrue(r.getError().getMessage().contains("DoesNotExist.java"),
+            "and the refusal names the file: " + r.getError().getMessage());
+    }
+
     @Test @DisplayName("analyzes whole project")
     void analyzesWholeProject() {
         ToolResponse r = tool.execute(objectMapper.createObjectNode());

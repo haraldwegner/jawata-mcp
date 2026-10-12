@@ -215,7 +215,81 @@ class HiredRunProposesTest {
             // And the record a human reads names the attachment, which is the clause the seat
             // form inherits from step 1 rather than re-stating.
             () -> assertTrue(Files.readString(proposal.record()).contains("--allowedTools"),
-                "the proposal says how this brain was told which tools to use"));
+                "the proposal says how this brain was told which tools to use"),
+            // 4.4.1: THE SEAT'S RULES REACH THE BRAIN. Until then the prompt was the brief alone and
+            // the stance below the frontmatter was read by nothing — a hired cataloguer ran as a
+            // generic agent holding someone else's brief.
+            () -> assertTrue(argv.get(2).contains("You are the cataloguer seat."),
+                "the stance is in what the brain is asked: " + argv.get(2)),
+            () -> assertTrue(argv.get(2).indexOf("You are the cataloguer seat.")
+                    < argv.get(2).indexOf("Catalogue the execution package."),
+                "the rules come before the brief: " + argv.get(2)),
+            () -> assertFalse(argv.get(2).contains("cost_budget_usd"),
+                "and the frontmatter is not: " + argv.get(2)),
+            () -> assertTrue(Files.readString(proposal.record()).contains(
+                "You are the cataloguer seat."),
+                "the record shows what the brain was actually asked, not half of it"));
+    }
+
+    @Test
+    @DisplayName("4.4.1: a hire given the resident's endpoint starts the brain with ONLY that server, and an allowlist in the names it sees")
+    void aHireGivenTheResidentsEndpointTalksToThatResidentAlone() throws Exception {
+        HostCommand standIn = brain("""
+            echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+            """);
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        SelfEndpoint self = new SelfEndpoint("http://127.0.0.1:41234/mcp", "tok-123");
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, self);
+
+        SeatHire seat = SeatHire.read("""
+            ---
+            name: cataloguer
+            tools: [search_symbols, inspect]
+            ttl_secs: 30
+            ---
+
+            You are the cataloguer seat.
+            """);
+
+        run.issue(seat, standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed);
+        List<String> argv = spy.asked();
+        int config = argv.indexOf("--mcp-config");
+        int allowlist = argv.indexOf("--allowedTools");
+
+        assertAll(
+            // MEASURED in Sprint 28g: without these the brain loaded the user's every MCP server,
+            // setting and hook — $2.26 for a one-word answer — and its allowlist of bare jawata
+            // names matched nothing it could see.
+            () -> assertTrue(argv.contains("--strict-mcp-config"), argv.toString()),
+            () -> assertTrue(config >= 0, "the resident is handed over as the server: " + argv),
+            () -> assertTrue(argv.get(config + 1).contains("http://127.0.0.1:41234/mcp")
+                    && argv.get(config + 1).contains("Bearer tok-123"),
+                "with its own URL and token: " + argv.get(config + 1)),
+            () -> assertEquals("project", argv.get(argv.indexOf("--setting-sources") + 1),
+                "and none of the user's settings or hooks: " + argv),
+            () -> assertEquals(List.of("mcp__jawata__search_symbols", "mcp__jawata__inspect"),
+                argv.subList(allowlist + 1, argv.size()),
+                "the allowlist says the names the brain actually sees: " + argv));
+    }
+
+    @Test
+    @DisplayName("...and a hire with no endpoint (stdio) keeps the user's own setup and the bare names")
+    void aHireWithNoEndpointLeavesTheBrainsSetupAlone() throws Exception {
+        HostCommand standIn = brain("""
+            echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+            """);
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        HiredRun run = new HiredRun(spy, artifacts, plans, events);
+
+        run.issue(SeatHire.read("---\nname: c\ntools: [inspect]\nttl_secs: 30\n---\n"), standIn,
+            "Catalogue it.", twoSteps(), HiredRunProposesTest::passed);
+        List<String> argv = spy.asked();
+
+        assertAll(
+            () -> assertFalse(argv.contains("--strict-mcp-config"), argv.toString()),
+            () -> assertFalse(argv.contains("--mcp-config"), argv.toString()),
+            () -> assertEquals("inspect", argv.get(argv.indexOf("--allowedTools") + 1),
+                argv.toString()));
     }
 
     @Test

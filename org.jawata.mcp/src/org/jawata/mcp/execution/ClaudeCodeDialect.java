@@ -53,6 +53,9 @@ public final class ClaudeCodeDialect implements BrainDialect {
     private final String model;
     private final boolean readOnly;
 
+    /** The hiring resident's own endpoint, or null when it has none (stdio). See {@link SelfEndpoint}. */
+    private final SelfEndpoint self;
+
     public ClaudeCodeDialect() {
         this("claude", DEFAULT_MAX_TURNS, null);
     }
@@ -81,10 +84,22 @@ public final class ClaudeCodeDialect implements BrainDialect {
      *     containment it reported was a sentence rather than a fact.</p>
      */
     public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly) {
+        this(binary, maxTurns, model, readOnly, null);
+    }
+
+    /**
+     * @param self the hiring resident's endpoint. When given, the brain starts with ONLY that MCP
+     *     server ({@code --strict-mcp-config --mcp-config}), none of the user's settings or hooks
+     *     ({@code --setting-sources project}), and an allowlist in the names it actually sees
+     *     ({@code mcp__jawata__<tool>}). Null keeps the user's own setup, which is the stdio case.
+     */
+    public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly,
+            SelfEndpoint self) {
         this.binary = binary == null || binary.isBlank() ? "claude" : binary;
         this.maxTurns = maxTurns > 0 ? maxTurns : DEFAULT_MAX_TURNS;
         this.model = model;
         this.readOnly = readOnly;
+        this.self = self;
     }
 
     @Override
@@ -135,11 +150,23 @@ public final class ClaudeCodeDialect implements BrainDialect {
             argv.add("--model");
             argv.add(model);
         }
+        if (self != null) {
+            // THE HIRING RESIDENT, AND NOTHING ELSE. Without these the brain loaded the user's
+            // every MCP server, setting and hook — measured $2.26 for a one-word answer — and
+            // talked to whichever servers the user had rather than to the resident that hired it.
+            argv.add("--strict-mcp-config");
+            argv.add("--mcp-config");
+            argv.add(self.claudeMcpConfig());
+            argv.add("--setting-sources");
+            argv.add("project");
+        }
         if (tools != null && !tools.isEmpty()) {
             argv.add("--allowedTools");
             for (String tool : tools) {
                 if (tool != null && !tool.isBlank()) {
-                    argv.add(tool);
+                    // Given the resident's own server, the CLI sees a jawata tool as
+                    // mcp__jawata__<tool>; the bare name is one it does not know.
+                    argv.add(self != null ? SelfEndpoint.claudeToolName(tool) : tool);
                 }
             }
         }
@@ -173,9 +200,14 @@ public final class ClaudeCodeDialect implements BrainDialect {
                 + " claude hire as NOT write-contained by a mechanism; plus "
             : "--permission-mode manual: writes are NOT blocked for this hire, by explicit"
                 + " request; plus ")
-            + "--allowedTools, which carries the seat's jawata operations and bounds those"
-            + " rather than the CLI's own editors (with --mcp-config / --strict-mcp-config"
-            + " available to bound which servers are reachable at all)");
+            + (self != null
+                ? "only the hiring resident's MCP server (--strict-mcp-config --mcp-config), none of"
+                    + " the user's settings or hooks (--setting-sources project), and --allowedTools"
+                    + " naming the seat's jawata operations as the CLI sees them (mcp__jawata__<tool>);"
+                    + " the allowlist bounds those operations, not the CLI's own editors"
+                : "--allowedTools, which carries the seat's jawata operations by their bare names;"
+                    + " with no endpoint to give the brain, it keeps the user's own MCP servers, under"
+                    + " which those names bound nothing"));
     }
 
     @Override
