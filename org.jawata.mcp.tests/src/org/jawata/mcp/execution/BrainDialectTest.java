@@ -157,6 +157,25 @@ class BrainDialectTest {
             () -> assertTrue(contained.contains("--allowedTools")));
     }
 
+    @Test
+    @DisplayName("a hire with the resident's endpoint reports the built-in tools as removed, and says measured, not proven")
+    void theEndpointStartReportsWhatWasMeasuredAndNoMore() {
+        String report = new ClaudeCodeDialect("claude", 12, null, true,
+            new SelfEndpoint("http://127.0.0.1:1/mcp", "t")).toolAttachment().report();
+
+        assertAll(
+            () -> assertTrue(report.contains("--tools"), "it names the flag that removes the CLI's own"
+                + " tools: " + report),
+            () -> assertTrue(report.contains("MEASURED, NOT PROVEN"),
+                "it does not turn six observations into a guarantee: " + report),
+            () -> assertTrue(report.contains("counts an attempt as a call"),
+                "and it says why an attempt can read as a call: " + report),
+            () -> assertFalse(report.contains("cannot write") || report.contains("cannot edit"),
+                "no promise this product has not measured: " + report),
+            () -> assertFalse(report.contains("NOT write-contained"),
+                "the old no-endpoint verdict does not describe this start: " + report));
+    }
+
     // ------------------------------------------------------------ the shapes that carry something
 
     @Test

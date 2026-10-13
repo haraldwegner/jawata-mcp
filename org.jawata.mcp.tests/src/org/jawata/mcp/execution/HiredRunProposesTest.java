@@ -267,6 +267,10 @@ class HiredRunProposesTest {
                 "with its own URL and token: " + argv.get(config + 1)),
             () -> assertEquals("project", argv.get(argv.indexOf("--setting-sources") + 1),
                 "and none of the user's settings or hooks: " + argv),
+            // The CLI's own tools (Bash, Write, Agent, …) are not the seat's to hold: measured on
+            // a real PM hire, they were used although the seat's list named none of them.
+            () -> assertEquals("", argv.get(argv.indexOf("--tools") + 1),
+                "and none of the CLI's built-in tools: " + argv),
             () -> assertEquals(List.of("mcp__jawata__search_symbols", "mcp__jawata__inspect"),
                 argv.subList(allowlist + 1, argv.size()),
                 "the allowlist says the names the brain actually sees: " + argv));
@@ -288,6 +292,7 @@ class HiredRunProposesTest {
         assertAll(
             () -> assertFalse(argv.contains("--strict-mcp-config"), argv.toString()),
             () -> assertFalse(argv.contains("--mcp-config"), argv.toString()),
+            () -> assertFalse(argv.contains("--tools"), argv.toString()),
             () -> assertEquals("inspect", argv.get(argv.indexOf("--allowedTools") + 1),
                 argv.toString()));
     }

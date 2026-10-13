@@ -159,6 +159,12 @@ public final class ClaudeCodeDialect implements BrainDialect {
             argv.add(self.claudeMcpConfig());
             argv.add("--setting-sources");
             argv.add("project");
+            // NO BUILT-IN TOOLS. `--tools ""` is this CLI's own flag for which of ITS tools exist
+            // (Bash, Write, Edit, Agent, …); the allowlist below only names the MCP operations
+            // allowed and never touched those. Measured 2026-10-12: a hired PM, whose seat lists
+            // read operations only, used Bash three times, a sub-agent once and Write once.
+            argv.add("--tools");
+            argv.add("");
         }
         if (tools != null && !tools.isEmpty()) {
             argv.add("--allowedTools");
@@ -191,6 +197,22 @@ public final class ClaudeCodeDialect implements BrainDialect {
         // the effect: measured, a seat whose declared tools cannot write wrote a file anyway,
         // because the allowlist carries jawata's tool names and this CLI does not know them. A
         // record in which a nominal bound reads like a real one is worse than no record.
+        if (self != null && readOnly) {
+            // MEASURED 2026-10-13, 6 hires of a PM seat told to edit a file "right away": no file
+            // was written in any and no plan file appeared in any, where the one run without
+            // --tools "" wrote its plan file outside the working directory. In 5 of the 6 the
+            // brain still ATTEMPTED a built-in tool by name (Write 4, Read 2, Bash, ExitPlanMode)
+            // and said the tool was unavailable; this dialect counts a call by its tool_use
+            // block, never by its result, so an attempt reads as a call in the record.
+            return ToolAttachment.perRun("only the hiring resident's MCP server (--strict-mcp-config"
+                + " --mcp-config), none of the user's settings or hooks (--setting-sources project),"
+                + " --tools \"\" (the CLI's own built-in tools — Bash, Edit, Write, Agent — are not"
+                + " offered), --allowedTools naming the seat's jawata operations as the CLI sees them"
+                + " (mcp__jawata__<tool>), and --permission-mode plan. MEASURED, NOT PROVEN: in 6 of 6"
+                + " hires told to edit a file no file was written anywhere; the brain still attempted"
+                + " built-in tools by name in 5 of them, and this record counts an attempt as a call"
+                + " because it reads the tool_use block, not its result");
+        }
         return ToolAttachment.perRun((readOnly
             ? "--permission-mode plan, which this hire passes. MEASURED CAVEAT: it is an"
                 + " INSTRUCTION this brain carries out rather than a bound — under it Edit, Write"
