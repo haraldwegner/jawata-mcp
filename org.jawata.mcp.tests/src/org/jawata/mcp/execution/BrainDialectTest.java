@@ -168,12 +168,42 @@ class BrainDialectTest {
                 + " tools: " + report),
             () -> assertTrue(report.contains("MEASURED, NOT PROVEN"),
                 "it does not turn six observations into a guarantee: " + report),
-            () -> assertTrue(report.contains("counts an attempt as a call"),
-                "and it says why an attempt can read as a call: " + report),
+            () -> assertTrue(report.contains("attemptedButNotOffered"),
+                "it names where a refused attempt is listed instead of counted: " + report),
+            () -> assertTrue(report.contains("NOT CONTAINED BY ABSENCE"),
+                "and it says the resident's other jawata tools are still offered: " + report),
             () -> assertFalse(report.contains("cannot write") || report.contains("cannot edit"),
                 "no promise this product has not measured: " + report),
             () -> assertFalse(report.contains("NOT write-contained"),
                 "the old no-endpoint verdict does not describe this start: " + report));
+    }
+
+    @Test
+    @DisplayName("the CLI's init event says what it OFFERS the brain, and an empty list is an answer")
+    void theInitEventIsReadAsWhatTheBrainWasOffered() {
+        // MEASURED 2026-10-13: `claude --tools ""` printed this very shape with tools: [].
+        BrainLine none = claude.read(
+            "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[],\"mcp_servers\":[]}");
+        BrainLine some = claude.read(
+            "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"mcp__jawata__health_check\",\"Read\"]}");
+        BrainLine absentKey = claude.read("{\"type\":\"system\",\"subtype\":\"init\"}");
+        BrainLine otherSystem = claude.read("{\"type\":\"system\",\"subtype\":\"hook_started\"}");
+
+        assertAll(
+            () -> assertTrue(none.parsed()),
+            // An EMPTY offer is a fact ("nothing was offered"); an ABSENT one means nothing was said.
+            () -> assertEquals(java.util.Optional.of(java.util.List.of()), none.toolsOffered(),
+                "tools: [] reads as 'offered nothing', not as 'unknown'"),
+            () -> assertEquals(
+                java.util.Optional.of(java.util.List.of("mcp__jawata__health_check", "Read")),
+                some.toolsOffered()),
+            () -> assertTrue(absentKey.toolsOffered().isEmpty(),
+                "an init with no tools key says nothing about what was offered"),
+            () -> assertTrue(otherSystem.toolsOffered().isEmpty(),
+                "only the init event carries the offer"),
+            () -> assertTrue(claude.read(
+                    "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"x\"}]}}")
+                .toolsOffered().isEmpty(), "and an ordinary turn carries none"));
     }
 
     // ------------------------------------------------------------ the shapes that carry something

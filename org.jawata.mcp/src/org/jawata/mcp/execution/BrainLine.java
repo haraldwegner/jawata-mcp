@@ -45,7 +45,7 @@ import java.util.OptionalDouble;
  *                  answers none of it
  */
 public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
-                        boolean parsed, java.util.List<String> toolNames) {
+                        boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
 
     /** The shape every dialect used before names were recorded; callers that cannot name keep it. */
     public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
@@ -61,5 +61,9 @@ public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolS
     /** A line that was read and carried nothing a driver acts on. */
     public static BrainLine nothing() {
         return new BrainLine(OptionalDouble.empty(), Optional.empty(), 0, true);
+    }
+
+    public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps, boolean parsed, java.util.List<String> toolNames) {
+        this(costUsd, text, toolSteps, parsed, toolNames, java.util.Optional.empty());
     }
 }

@@ -355,9 +355,14 @@ public class HireTool extends AbstractTool {
         ToolRegistry engine = registry.get();
         RunEffects.Classification effects = RunEffects.classify(
             proposal.outcome().toolNames(), proposal.outcome().unnamedToolSteps(),
-            bare -> engine.getTool(bare).map(Tool::changesCode));
+            bare -> engine.getTool(bare).map(Tool::changesCode), proposal.outcome().toolsOffered());
         List<String> incomplete = incompleteReasons(effects, proposal.outcome(), dialect);
         data.put("toolsCalled", proposal.outcome().toolNames());
+        // WHAT THE CLI SAID IT OFFERED, and which of the brain's calls named something else. A call
+        // to an unoffered tool is an ATTEMPT the CLI refused, not a call that ran; it is listed here
+        // and kept out of the four buckets below, so a refused Write cannot read as a code change.
+        proposal.outcome().toolsOffered().ifPresent(offered -> data.put("toolsOffered", offered));
+        data.put("attemptedButNotOffered", effects.notOffered());
         data.put("codeChangingCalls", effects.changesCode());
         data.put("shellCalls", effects.shell());
         data.put("unclassifiedCalls", effects.unknown());

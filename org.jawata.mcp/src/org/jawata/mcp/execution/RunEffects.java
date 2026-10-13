@@ -68,7 +68,7 @@ public final class RunEffects {
      * @param unnamed      calls a dialect counted and could not name
      */
     public record Classification(List<String> changesCode, List<String> readOnly,
-                                 List<String> shell, List<String> unknown, int unnamed) {
+                                 List<String> shell, List<String> unknown, int unnamed, java.util.List<String> notOffered) {
 
         /** M11's measure, and only M11's: zero calls the engine classifies as changing code. */
         public boolean performedNoCodeChangingOperation() {
@@ -96,22 +96,35 @@ public final class RunEffects {
             }
             return List.copyOf(reasons);
         }
+
+        public Classification(List<String> changesCode, List<String> readOnly, List<String> shell, List<String> unknown, int unnamed) {
+            this(changesCode, readOnly, shell, unknown, unnamed, java.util.List.of());
+        }
     }
 
     /**
-     * @param names         the names of the calls the run made, in order
-     * @param unnamedSteps  calls counted and not named ({@code Outcome.unnamedToolSteps()})
-     * @param jawataChanges for a name that is a jawata tool, whether the ENGINE flags it as
-     *                      changing the workspace; empty when the name is not a jawata tool
+     * As above, given what the brain's own CLI said it OFFERED when it started (claude's init event).
+     *
+     * <p>A call to a tool the CLI did not offer cannot have run: the CLI answers it with an error and
+     * does nothing. Counting it as a call overstated what the brain DID — measured 2026-10-13, a PM
+     * hired with no built-in tools attempted Write, Bash and Read by name and every one was refused,
+     * yet the record read "the run made 1 code-changing call(s)". Those names are set aside in
+     * {@link Classification#notOffered()}, listed rather than dropped. An ABSENT offer list (a brain
+     * whose dialect does not read one) sets nothing aside: the old counting stands.</p>
      */
     public static Classification classify(List<String> names, int unnamedSteps,
-            Function<String, Optional<Boolean>> jawataChanges) {
+            Function<String, Optional<Boolean>> jawataChanges, Optional<List<String>> offered) {
         List<String> changes = new ArrayList<>();
         List<String> readOnly = new ArrayList<>();
         List<String> shell = new ArrayList<>();
         List<String> unknown = new ArrayList<>();
+        List<String> notOffered = new ArrayList<>();
         for (String raw : names) {
             String name = raw == null ? "" : raw;
+            if (!name.isEmpty() && offered.isPresent() && !offered.get().contains(name)) {
+                notOffered.add(name);
+                continue;
+            }
             String bare = bareName(name);
             Optional<Boolean> engine = name.isEmpty() ? Optional.empty() : jawataChanges.apply(bare);
             if (engine.isPresent()) {
@@ -127,7 +140,7 @@ public final class RunEffects {
             }
         }
         return new Classification(List.copyOf(changes), List.copyOf(readOnly), List.copyOf(shell),
-            List.copyOf(unknown), Math.max(0, unnamedSteps));
+            List.copyOf(unknown), Math.max(0, unnamedSteps), List.copyOf(notOffered));
     }
 
     /**

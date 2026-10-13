@@ -102,7 +102,7 @@ public final class HiredBrain {
     public record Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
                           boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
                           String stderrTail, Optional<String> stoppedBy,
-                          List<String> toolNames) {
+                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
 
         /** The shape every caller used before names were recorded. */
         public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
@@ -135,6 +135,10 @@ public final class HiredBrain {
          */
         public boolean saidNothing() {
             return text.isEmpty() && clean();
+        }
+
+        public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines, boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode, String stderrTail, Optional<String> stoppedBy, List<String> toolNames) {
+            this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, java.util.Optional.empty());
         }
     }
 
@@ -190,6 +194,8 @@ public final class HiredBrain {
         boolean sawTerminalCost = false;
         int toolSteps = 0;
         List<String> toolNames = new ArrayList<>();
+        // What the brain's own CLI said it offers, when its dialect reads that (claude's init event).
+        Optional<List<String>> toolsOffered = Optional.empty();
         int unreadable = 0;
         String stoppedBy = null;
 
@@ -205,6 +211,9 @@ public final class HiredBrain {
                 read.text().ifPresent(said::add);
                 toolSteps += read.toolSteps();
                 toolNames.addAll(read.toolNames());
+                if (read.toolsOffered().isPresent()) {
+                    toolsOffered = read.toolsOffered();
+                }
                 if (read.costUsd().isPresent()) {
                     cost = read.costUsd();
                     sawTerminalCost = true;
@@ -245,7 +254,7 @@ public final class HiredBrain {
 
         return new Outcome(String.join("\n", said), cost, toolSteps, unreadable, sawTerminalCost,
             reapedByClock[0], exitCode, stderrTail.toString(), Optional.ofNullable(stoppedBy),
-            List.copyOf(toolNames));
+            List.copyOf(toolNames), toolsOffered);
     }
 
     /**

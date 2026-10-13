@@ -2,6 +2,7 @@ package org.jawata.mcp.execution;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -198,20 +199,25 @@ public final class ClaudeCodeDialect implements BrainDialect {
         // because the allowlist carries jawata's tool names and this CLI does not know them. A
         // record in which a nominal bound reads like a real one is worse than no record.
         if (self != null && readOnly) {
-            // MEASURED 2026-10-13, 6 hires of a PM seat told to edit a file "right away": no file
+            // MEASURED 2026-10-13, 10 hires of a PM seat told to edit a file "right away": no file
             // was written in any and no plan file appeared in any, where the one run without
-            // --tools "" wrote its plan file outside the working directory. In 5 of the 6 the
-            // brain still ATTEMPTED a built-in tool by name (Write 4, Read 2, Bash, ExitPlanMode)
-            // and said the tool was unavailable; this dialect counts a call by its tool_use
-            // block, never by its result, so an attempt reads as a call in the record.
+            // --tools "" wrote its plan file outside the working directory. In 9 of the 10 the
+            // brain still ATTEMPTED a built-in tool by name (Write, Read, Glob, Grep, Bash) and said
+            // the tool was unavailable. The CLI's init event lists what it offers, HiredBrain reads
+            // it, and RunEffects sets a call to anything off that list aside as an attempt, so the
+            // record's code-change count is not charged with a refused Write. The init list held ALL
+            // 44 of the resident's jawata tools, not just the seat's: --allowedTools pre-approves
+            // the seat's list and does not hide the rest.
             return ToolAttachment.perRun("only the hiring resident's MCP server (--strict-mcp-config"
                 + " --mcp-config), none of the user's settings or hooks (--setting-sources project),"
                 + " --tools \"\" (the CLI's own built-in tools — Bash, Edit, Write, Agent — are not"
-                + " offered), --allowedTools naming the seat's jawata operations as the CLI sees them"
-                + " (mcp__jawata__<tool>), and --permission-mode plan. MEASURED, NOT PROVEN: in 6 of 6"
-                + " hires told to edit a file no file was written anywhere; the brain still attempted"
-                + " built-in tools by name in 5 of them, and this record counts an attempt as a call"
-                + " because it reads the tool_use block, not its result");
+                + " offered; the CLI's start-up list of what it offers is read into this record as"
+                + " toolsOffered, and a call naming a tool not on it is listed as"
+                + " attemptedButNotOffered and not counted as a call), --allowedTools naming the"
+                + " seat's jawata operations as the CLI sees them (mcp__jawata__<tool>), and"
+                + " --permission-mode plan. MEASURED, NOT PROVEN: in 10 of 10 hires told to edit a"
+                + " file no file was written anywhere. NOT CONTAINED BY ABSENCE: every jawata tool of"
+                + " the resident is offered, and the seat's list only pre-approves some of them");
         }
         return ToolAttachment.perRun((readOnly
             ? "--permission-mode plan, which this hire passes. MEASURED CAVEAT: it is an"
@@ -254,10 +260,32 @@ public final class ClaudeCodeDialect implements BrainDialect {
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
                 StreamJsonEvents.toolUseNames(event));
+            // THE CLI'S OWN ANNOUNCEMENT OF WHAT IT OFFERS THE BRAIN. Measured 2026-10-13: with
+            // --tools "" the init event's `tools` is [], where an unflagged run advertised Edit,
+            // Write and NotebookEdit. A call to a tool this list does not name cannot have run.
+            case "system" -> "init".equals(event.path("subtype").asText(""))
+                ? new BrainLine(OptionalDouble.empty(), Optional.empty(), 0, true, List.of(),
+                    toolsOffered(event))
+                : BrainLine.nothing();
             // An event shape this dialect does not act on. Read, understood, nothing to say —
             // which is why it is `nothing()` and not `unreadable()`.
             default -> BrainLine.nothing();
         };
+    }
+
+    /** The tool names the init event lists, or absent when it lists none at all (no `tools` key). */
+    private static Optional<List<String>> toolsOffered(JsonNode init) {
+        JsonNode tools = init.path("tools");
+        if (!tools.isArray()) {
+            return Optional.empty();
+        }
+        List<String> names = new ArrayList<>();
+        for (JsonNode tool : tools) {
+            if (tool.isTextual()) {
+                names.add(tool.asText());
+            }
+        }
+        return Optional.of(List.copyOf(names));
     }
 
     private static OptionalDouble costOf(JsonNode resultEvent) {

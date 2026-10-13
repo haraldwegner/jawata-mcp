@@ -40,9 +40,7 @@ class RunEffectsTest {
     @Test
     @DisplayName("a run of jawata reads is a COMPLETE zero")
     void aRunOfReadsIsACompleteZero() {
-        RunEffects.Classification c = RunEffects.classify(
-            List.of("mcp__jawata-javata-dev__search_symbols", "find_references", "Read", "Grep"),
-            0, ASK);
+        RunEffects.Classification c = RunEffects.classify(List.of("mcp__jawata-javata-dev__search_symbols", "find_references", "Read", "Grep"), 0, ASK, Optional.empty());
         assertAll(
             () -> assertTrue(c.performedNoCodeChangingOperation()),
             () -> assertTrue(c.incompleteBecause().isEmpty()),
@@ -52,8 +50,7 @@ class RunEffectsTest {
     @Test
     @DisplayName("the CONTROL: the same run plus one engine-flagged operation is not a zero")
     void oneRevertibleOperationIsNotAZero() {
-        RunEffects.Classification c = RunEffects.classify(
-            List.of("search_symbols", "mcp__jawata-javata-dev__extract"), 0, ASK);
+        RunEffects.Classification c = RunEffects.classify(List.of("search_symbols", "mcp__jawata-javata-dev__extract"), 0, ASK, Optional.empty());
         assertAll(
             () -> assertFalse(c.performedNoCodeChangingOperation()),
             () -> assertEquals(List.of("mcp__jawata-javata-dev__extract"), c.changesCode(),
@@ -61,10 +58,51 @@ class RunEffectsTest {
     }
 
     @Test
+    @DisplayName("a call to a tool the CLI never OFFERED is an attempt that could not run, set aside and listed")
+    void anAttemptAtAnUnofferedToolIsNotACall() {
+        // MEASURED 2026-10-13: a PM hired with `--tools ""` (the CLI's init listed no built-in tool)
+        // still named Write, Bash and Read in its turns; every one was refused, none ran, and the
+        // record read "the run made 1 code-changing call(s)".
+        Optional<List<String>> offered = Optional.of(List.of("mcp__jawata__search_symbols"));
+        RunEffects.Classification c = RunEffects.classify(
+            List.of("mcp__jawata__search_symbols", "Write", "Bash", "Read"), 0, ASK, offered);
+
+        assertAll(
+            () -> assertEquals(List.of("Write", "Bash", "Read"), c.notOffered(),
+                "listed, never dropped"),
+            () -> assertTrue(c.changesCode().isEmpty(), "a refused Write is not a code change"),
+            () -> assertTrue(c.shell().isEmpty(), "and a refused Bash is not a shell that ran"),
+            () -> assertTrue(c.performedNoCodeChangingOperation()),
+            () -> assertTrue(c.incompleteBecause().isEmpty(),
+                "so the zero is COMPLETE: " + c.incompleteBecause()));
+    }
+
+    @Test
+    @DisplayName("the CONTROL: a Write the CLI DID offer still changes code, and no offer list changes nothing")
+    void anOfferedWriteStillCountsAndNoOfferListKeepsTheOldCounting() {
+        RunEffects.Classification offeredWrite = RunEffects.classify(List.of("Write"), 0, ASK,
+            Optional.of(List.of("Write")));
+        RunEffects.Classification noList = RunEffects.classify(List.of("Write", "Bash"), 0, ASK,
+            Optional.empty());
+        RunEffects.Classification emptyOffer = RunEffects.classify(List.of(""), 0, ASK,
+            Optional.of(List.of()));
+
+        assertAll(
+            () -> assertEquals(List.of("Write"), offeredWrite.changesCode()),
+            () -> assertTrue(offeredWrite.notOffered().isEmpty()),
+            // A dialect that reads no offer (codex, copilot, cursor) keeps exactly the old reading.
+            () -> assertEquals(List.of("Write"), noList.changesCode()),
+            () -> assertEquals(List.of("Bash"), noList.shell()),
+            () -> assertTrue(noList.notOffered().isEmpty()),
+            // An unnamed block cannot be matched against an offer, so it stays unclassified.
+            () -> assertEquals(List.of("(unnamed block)"), emptyOffer.unknown()));
+    }
+
+    @Test
     @DisplayName("a brain CLI's own editor changes code even though the engine has never heard of it")
     void aCliEditorChangesCode() {
         for (String editor : List.of("Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch")) {
-            assertEquals(List.of(editor), RunEffects.classify(List.of(editor), 0, ASK).changesCode(),
+            assertEquals(List.of(editor), RunEffects.classify(List.of(editor), 0, ASK, Optional.empty()).changesCode(),
                 editor);
         }
     }
@@ -72,7 +110,7 @@ class RunEffectsTest {
     @Test
     @DisplayName("a shell is NEITHER code-changing NOR harmless: it is reported on its own, and the zero is incomplete")
     void aShellIsNotFoldedIntoEitherSide() {
-        RunEffects.Classification c = RunEffects.classify(List.of("Bash", "search_symbols"), 0, ASK);
+        RunEffects.Classification c = RunEffects.classify(List.of("Bash", "search_symbols"), 0, ASK, Optional.empty());
         assertAll(
             () -> assertEquals(List.of("Bash"), c.shell()),
             () -> assertTrue(c.performedNoCodeChangingOperation(),
@@ -85,9 +123,9 @@ class RunEffectsTest {
     @DisplayName("an unclassifiable name and an unnamed call each make the zero incomplete")
     void whatCouldNotBeClassifiedIsNotAbsorbedIntoTheZero() {
         RunEffects.Classification unknownName =
-            RunEffects.classify(List.of("some_vendor_tool"), 0, ASK);
-        RunEffects.Classification unnamed = RunEffects.classify(List.of("search_symbols"), 2, ASK);
-        RunEffects.Classification emptyName = RunEffects.classify(List.of(""), 0, ASK);
+            RunEffects.classify(List.of("some_vendor_tool"), 0, ASK, Optional.empty());
+        RunEffects.Classification unnamed = RunEffects.classify(List.of("search_symbols"), 2, ASK, Optional.empty());
+        RunEffects.Classification emptyName = RunEffects.classify(List.of(""), 0, ASK, Optional.empty());
         assertAll(
             () -> assertEquals(List.of("some_vendor_tool"), unknownName.unknown()),
             () -> assertFalse(unknownName.incompleteBecause().isEmpty()),
@@ -104,9 +142,8 @@ class RunEffectsTest {
     void aForeignServersToolDoesNotInheritAJawataFlag() {
         // "search_symbols" is a read the engine knows. Under a foreign server it must not be
         // looked up by its bare name: a foreign tool of that name could write.
-        RunEffects.Classification c = RunEffects.classify(
-            List.of("mcp__some-other-server__search_symbols",
-                "mcp__jawata-patterns__search_symbols"), 0, ASK);
+        RunEffects.Classification c = RunEffects.classify(List.of("mcp__some-other-server__search_symbols",
+		"mcp__jawata-patterns__search_symbols"), 0, ASK, Optional.empty());
         assertAll(
             () -> assertEquals(List.of("mcp__some-other-server__search_symbols"), c.unknown()),
             () -> assertEquals(List.of("mcp__jawata-patterns__search_symbols"), c.readOnly(),
@@ -117,7 +154,7 @@ class RunEffectsTest {
     @Test
     @DisplayName("the sub-agent tool is unknown: what a sub-agent does is not in this stream")
     void aSubAgentIsNotAHarmlessRead() {
-        RunEffects.Classification c = RunEffects.classify(List.of("Task"), 0, ASK);
+        RunEffects.Classification c = RunEffects.classify(List.of("Task"), 0, ASK, Optional.empty());
         assertAll(
             () -> assertEquals(List.of("Task"), c.unknown()),
             () -> assertFalse(c.incompleteBecause().isEmpty()));
@@ -129,6 +166,6 @@ class RunEffectsTest {
         Function<String, Optional<Boolean>> engineSaysWriteIsReadOnly =
             name -> "Write".equals(name) ? Optional.of(false) : Optional.empty();
         assertEquals(List.of("Write"),
-            RunEffects.classify(List.of("Write"), 0, engineSaysWriteIsReadOnly).readOnly());
+            RunEffects.classify(List.of("Write"), 0, engineSaysWriteIsReadOnly, Optional.empty()).readOnly());
     }
 }

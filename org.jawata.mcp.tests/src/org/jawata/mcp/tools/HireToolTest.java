@@ -229,12 +229,23 @@ class HireToolTest {
 
     /** A brain that makes exactly the named calls in one turn, then ends. */
     private HostCommand aBrainCalling(String... names) throws Exception {
+        return aBrainOfferedThenCalling(null, names);
+    }
+
+    /**
+     * As above, but the CLI first announces what it offers (claude's init event) — {@code offered}
+     * is the JSON array text of tool names, or null to announce nothing.
+     */
+    private HostCommand aBrainOfferedThenCalling(String offered, String... names) throws Exception {
         StringBuilder blocks = new StringBuilder("{\"type\":\"text\",\"text\":\"working\"}");
         for (String name : names) {
             blocks.append(",{\"type\":\"tool_use\",\"name\":\"").append(name).append("\"}");
         }
         Path file = Files.createTempFile(dir, "brain-", ".sh");
-        Files.writeString(file, "#!/bin/sh\necho '{\"type\":\"assistant\",\"message\":{\"role\":"
+        Files.writeString(file, "#!/bin/sh\n"
+            + (offered == null ? "" : "echo '{\"type\":\"system\",\"subtype\":\"init\",\"tools\":"
+                + offered + "}'\n")
+            + "echo '{\"type\":\"assistant\",\"message\":{\"role\":"
             + "\"assistant\",\"content\":[" + blocks + "]}}'\n"
             + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01}'\n");
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
@@ -300,6 +311,37 @@ class HireToolTest {
             () -> assertEquals(Boolean.TRUE, clean.get("noCodeChangeIsComplete"),
                 "only the registered, non-revertible read: nothing hides behind the zero"),
             () -> assertEquals(List.of(), clean.get("codeChangingCalls")));
+    }
+
+    @Test
+    @DisplayName("a brain whose CLI offered no built-in tools but which NAMED Write and Bash made attempts, not calls, and the zero is complete")
+    void anAttemptAtAnUnofferedToolIsReportedAsAnAttemptNotACall() throws Exception {
+        // MEASURED 2026-10-13: --tools "" gave init tools [] and the PM still named Write; the CLI
+        // refused it, no file was written, and the record read "1 code-changing call(s)".
+        HireTool refused = toolWith(new StandsIn(host,
+                aBrainOfferedThenCalling("[\"compile_workspace\"]", "compile_workspace", "Write", "Bash")),
+            events, aRegistryWithAChangingOperation());
+        Map<String, Object> data = dataOf(refused.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        // THE CONTROL: the same three names with NO offer announced keep the old reading.
+        HireTool silent = toolWith(new StandsIn(host,
+                aBrainCalling("compile_workspace", "Write", "Bash")),
+            events, aRegistryWithAChangingOperation());
+        Map<String, Object> noOffer = dataOf(silent.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(List.of("compile_workspace"), data.get("toolsOffered")),
+            () -> assertEquals(List.of("Write", "Bash"), data.get("attemptedButNotOffered")),
+            () -> assertEquals(List.of(), data.get("codeChangingCalls")),
+            () -> assertEquals(List.of(), data.get("shellCalls")),
+            () -> assertEquals(Boolean.TRUE, data.get("performedNoCodeChangingOperation")),
+            () -> assertEquals(Boolean.TRUE, data.get("noCodeChangeIsComplete"),
+                String.valueOf(data.get("noCodeChangeIncompleteBecause"))),
+            // The control: nothing announced, so a Write is a code change and a Bash is a shell.
+            () -> assertEquals(List.of("Write"), noOffer.get("codeChangingCalls")),
+            () -> assertEquals(List.of("Bash"), noOffer.get("shellCalls")),
+            () -> assertEquals(List.of(), noOffer.get("attemptedButNotOffered")),
+            () -> assertFalse(noOffer.containsKey("toolsOffered")));
     }
 
     /** A tool that WRITES with no undo: not revertible, but it changes code. */
