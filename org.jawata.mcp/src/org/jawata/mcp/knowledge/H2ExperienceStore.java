@@ -175,7 +175,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         refuseIfClosed();
         try {
             if (conn == null || conn.isClosed() || !conn.isValid(1)) {
-                conn = openBound(url);
+                conn = openUnlessClosed();
                 log.info("Experience store connection re-established");
             }
         } catch (SQLException e) {
@@ -312,7 +312,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         if (readConnections.get() < READ_POOL_SIZE
                 && readConnections.incrementAndGet() <= READ_POOL_SIZE) {
             try {
-                return openBound(url);
+                return openUnlessClosed();
             } catch (SQLException e) {
                 readConnections.decrementAndGet();
                 log.debug("read connection unavailable, falling back to the shared one: {}",
@@ -348,7 +348,7 @@ public final class H2ExperienceStore implements ExperienceStore {
         }
         closeQuietly(pooled);
         try {
-            return openBound(url);
+            return openUnlessClosed();
         } catch (SQLException e) {
             readConnections.decrementAndGet();
             return null;
@@ -356,10 +356,35 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     void releaseRead(Connection c, boolean healthy) {
-        if (!healthy || !readPool.offer(c)) {
+        // REL44-7: close() drains only what sits in the pool, so a connection a background pass
+        // had BORROWED when the owner closed the store is invisible to it. Pooled again here it
+        // would stay open for the life of the process, and an open file database keeps
+        // rewriting its lock file into a folder its owner has since deleted.
+        if (closed || !healthy || !readPool.offer(c)) {
             closeQuietly(c);
             readConnections.decrementAndGet();
+            return;
         }
+        if (closed) {
+            discardReadPool();   // close() ran between the check above and the offer
+        }
+    }
+
+    /**
+     * A new connection, unless the owner closed the store while it was being opened.
+     *
+     * <p>{@link #refuseIfClosed()} is checked BEFORE a connection is opened, and a close can land
+     * between that check and the open. The connection that results belongs to a store nobody can
+     * reach any more, so it is closed on the spot and the caller is refused as if the check had
+     * seen the close.</p>
+     */
+    private Connection openUnlessClosed() throws SQLException {
+        Connection opened = openBound(url);
+        if (closed) {
+            closeQuietly(opened);
+            refuseIfClosed();
+        }
+        return opened;
     }
 
     /** Drop every pooled read connection — the database went away under them. */
