@@ -42,7 +42,7 @@ class ACloseTakesEveryConnectionWithItTest {
     }
 
     @Test
-    void aClosedStoreRefusesToBorrowAndOpensNothing(@TempDir Path dir) {
+    void aClosedStoreRefusesToLendAConnection(@TempDir Path dir) {
         H2ExperienceStore store = H2ExperienceStore.openAt(dir);
         store.close();
         assertThrows(IllegalStateException.class, store::borrowRead);

@@ -346,6 +346,16 @@ public class HireTool extends AbstractTool {
         // published no dollar cost is not a brain that cost nothing — only one of the four does —
         // and `saidNothing` is what keeps "it produced nothing" apart from "it failed".
         data.put("cleanExit", proposal.outcome().clean());
+        // WHY it was not clean: a `false` above told a reader nothing while the exit status and the
+        // last of stderr sat in a record file the run's own scratch cleanup could remove. Measured
+        // 2026-10-14: a test-manager hire ended mid-sentence with cleanExit false, stoppedBy
+        // absent and timedOut false, and nothing in the answer said why. Absent exit status means
+        // the child was reaped before it exited.
+        data.put("exitCode", proposal.outcome().exitCode().isPresent()
+            ? proposal.outcome().exitCode().getAsInt() : null);
+        if (!proposal.outcome().stderrTail().isBlank()) {
+            data.put("stderrTail", proposal.outcome().stderrTail());
+        }
         data.put("toolSteps", proposal.outcome().toolSteps());
         // M11: WHICH calls, classified by the ENGINE's own flag. A count of calls says nothing
         // about whether any of them changed code; the names do, and the three lists that are not

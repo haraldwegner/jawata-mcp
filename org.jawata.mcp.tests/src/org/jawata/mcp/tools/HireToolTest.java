@@ -416,14 +416,23 @@ class HireToolTest {
         Path file = Files.createTempFile(dir, "brain-", ".sh");
         Files.writeString(file, "#!/bin/sh\necho '{\"type\":\"assistant\",\"message\":{\"role\":"
             + "\"assistant\",\"content\":[{\"type\":\"tool_use\",\"name\":\"compile_workspace\"}]}}'\n"
+            + "echo 'the brain fell over here' >&2\n"
             + "exit 3\n");
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
-        HireTool hire = toolWith(new StandsIn(host, HostCommand.of(file.toString())),
+        // Stderr kept APART, as a real hire starts it: the stand-in replaces the whole command, so
+        // without this the line below is merged into stdout and never reaches the stderr reader.
+        HireTool hire = toolWith(
+            new StandsIn(host, HostCommand.of(file.toString()).withSeparateStderr()),
             events, aRegistryWithACleanGate());
         Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
 
         assertAll(
             () -> assertEquals(Boolean.FALSE, data.get("cleanExit")),
+            () -> assertEquals(3, data.get("exitCode"),
+                "a cleanExit of false must say WHY: the exit status is in the answer, not only in"
+                    + " a record file a cleanup can remove"),
+            () -> assertTrue(String.valueOf(data.get("stderrTail")).contains("the brain fell over here"),
+                "and the last of what it said on stderr"),
             () -> assertEquals(List.of(), data.get("codeChangingCalls")),
             () -> assertEquals(Boolean.FALSE, data.get("noCodeChangeIsComplete"),
                 "the calls seen were all reads, but the run did not end cleanly"),
