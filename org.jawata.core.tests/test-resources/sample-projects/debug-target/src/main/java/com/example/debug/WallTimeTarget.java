@@ -36,11 +36,29 @@ public final class WallTimeTarget {
         }
     }
 
-    /** A little CPU work — where a CPU profile points. */
+    /** How long one burst of CPU work lasts. */
+    private static final long BURN_NANOS = 5_000_000L;
+
+    /**
+     * A little CPU work — where a CPU profile points.
+     *
+     * <p>Burns for a fixed slice of TIME, not a fixed number of iterations (REL44-9). A profiler
+     * takes samples in proportion to CPU TIME, so an iteration-counted loop gave a sample count
+     * that depended on how fast the machine was: 3 to 11 samples per 5 s recording on the
+     * development machine, and zero once on a fast CI runner, which failed the assertion that this
+     * method appears in the ranking. 5 ms of every ~85 ms keeps the program overwhelmingly BLOCKED
+     * (the point of this fixture) while guaranteeing a few dozen samples on any machine.</p>
+     *
+     * <p>The clock is read once per 20,000 iterations, not every iteration, so the top stack frame
+     * of a sample is this method and not {@code System.nanoTime}.</p>
+     */
     static long burnCpu() {
         long total = 0;
-        for (int i = 0; i < 200_000; i++) {
-            total += (i * 31) ^ (i >>> 3);
+        long end = System.nanoTime() + BURN_NANOS;
+        while (System.nanoTime() < end) {
+            for (int i = 0; i < 20_000; i++) {
+                total += (i * 31) ^ (i >>> 3);
+            }
         }
         return total;
     }
