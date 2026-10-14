@@ -58,15 +58,17 @@ class InspectToolTest {
     }
 
     @Test
-    @DisplayName("schema lists all eleven kinds (Sprint 23 'source' + Sprint 24 'landmarks'); requires kind")
+    @DisplayName("schema lists all twelve kinds (Sprint 23 'source', Sprint 24 'landmarks', Sprint 28g 'suite_policy'); requires kind")
     @SuppressWarnings("unchecked")
     void schema_lists_kinds() {
         Map<String, Object> schema = tool.getInputSchema();
         Map<String, Object> props = (Map<String, Object>) schema.get("properties");
         List<String> kinds = (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
-        assertEquals(11, kinds.size());
+        assertEquals(12, kinds.size());
         assertTrue(kinds.contains("source"), "Sprint 23 D8 lib-source kind: " + kinds);
         assertTrue(kinds.contains("landmarks"), "Sprint 24 D4 landmarks kind: " + kinds);
+        assertTrue(kinds.contains("suite_policy"),
+            "Sprint 28g D41: the accepted-abort policy answered on the read-only door: " + kinds);
         assertTrue(((List<String>) schema.get("required")).contains("kind"));
     }
 
@@ -84,6 +86,22 @@ class InspectToolTest {
             JsonNode p = mapper.valueToTree(viaParam.isSuccess() ? viaParam.getData() : viaParam.getError());
             assertEquals(n, p, "kind=" + kind + " payload parity");
         }
+    }
+
+    @Test
+    @DisplayName("kind=suite_policy answers from the project's own build/ lists, found=false when it has none")
+    void suite_policy_reads_the_project_lists() {
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "suite_policy");
+        ToolResponse response = tool.execute(a);
+
+        assertTrue(response.isSuccess(), String.valueOf(response));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        assertEquals(Boolean.FALSE, data.get("found"),
+            "the simple-maven fixture declares no expected-aborts list: an absence, said as one");
+        assertEquals(0, data.get("acceptedAbortCount"));
+        assertTrue(data.containsKey("projectKey"));
     }
 
     @Test

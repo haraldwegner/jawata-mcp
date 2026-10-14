@@ -25,7 +25,7 @@ public class InspectTool extends AbstractTool {
     private static final List<String> KINDS = List.of(
         "type_hierarchy", "document_symbols", "type_members", "classpath",
         "project_structure", "type_usage", "complexity", "dependency_graph",
-        "di_registrations", "source", "landmarks");
+        "di_registrations", "source", "landmarks", "suite_policy");
 
     private final GetTypeHierarchyTool typeHierarchy;
     private final GetDocumentSymbolsTool documentSymbols;
@@ -97,6 +97,13 @@ public class InspectTool extends AbstractTool {
                                  returnedChars, and a clipped one carries the
                                  offset to ask for next. A big JDK type is
                                  ~100K characters — one page, then continue.
+            - suite_policy     — the project's accepted aborts as a list, read from
+                                 build/expected-aborts.<os>: each pattern with the reason
+                                 written above it, its file and line, and the file's
+                                 last-commit date. Reads those files and no others.
+                                 No such file is found=false, never an empty list.
+                                 (No params; the coverage threshold policy is NOT here —
+                                 it surfaces on run_tests' coverage responses.)
 
             Requires load_project to be called first.
             """;
@@ -155,6 +162,7 @@ public class InspectTool extends AbstractTool {
             case "di_registrations"  -> diRegistrations.executeWithService(service, arguments);
             case "source"            -> libSource(service, arguments);
             case "landmarks"         -> landmarks(service, arguments);
+            case "suite_policy"      -> suitePolicy(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -238,6 +246,32 @@ public class InspectTool extends AbstractTool {
         } catch (Exception e) {
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * Sprint 28g D41 — the suite's accepted aborts as data. A READ, so it lives on this read-only
+     * door: a hired Claude is refused {@code run_tests} outright in plan mode, and the policy must
+     * be answerable by the seat that is asked about it.
+     */
+    private ToolResponse suitePolicy(IJdtService service, JsonNode arguments) {
+        String projectKey = getStringParam(arguments, "projectKey");
+        org.jawata.core.LoadedProject project;
+        if (projectKey != null && !projectKey.isBlank()) {
+            project = service.getProject(projectKey).orElse(null);
+            if (project == null) {
+                return ToolResponse.invalidParameter("projectKey",
+                    "Unknown projectKey '" + projectKey + "'. Use list_projects.");
+            }
+        } else {
+            project = service.allProjects().stream().findFirst().orElse(null);
+            if (project == null) {
+                return ToolResponse.projectNotLoaded();
+            }
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("projectKey", project.projectKey());
+        data.putAll(org.jawata.mcp.coverage.SuitePolicy.read(project.projectRoot()));
+        return ToolResponse.success(data);
     }
 
     /** Sprint 23 (D8) — source by FQN, origin always declared. */

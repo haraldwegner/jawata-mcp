@@ -1102,6 +1102,8 @@ public class RunTestsTool extends AbstractTool {
         return ToolResponse.success(data, ResponseMeta.builder().build());
     }
 
+    
+
     /** Stage 8 — import an external exec file; class-id gate applies at analysis. */
     private ToolResponse handleCoverageImport(IJdtService service, JsonNode arguments) {
         try {
@@ -1822,6 +1824,10 @@ public class RunTestsTool extends AbstractTool {
             summary.put("timedOutMutations", r.timedOutMutations);
             summary.put("noCoverage", r.noCoverage);
             data.put("summary", summary);
+            // The one count a hire gate reads: surviving mutations, i.e. changes no test noticed.
+            // Absent on the no-result path above ON PURPOSE — a run that produced nothing must read
+            // as "did not answer", never as zero survivors.
+            data.put("errorCount", r.survived);
             data.put("survivors", r.survivors);
             if (r.survived > 0) {
                 data.put("note", "SURVIVING mutations = code changes no test noticed — each "
