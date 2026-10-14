@@ -275,8 +275,9 @@ ships, fails the build. The prose that follows groups the same names by what the
   circular-deps / reflection / throws / catches · 18 Fowler smells · SOLID: dip / isp / srp_cohesion
   / lsp · Kerievsky: singleton / type_code — with a `family` filter: quality / fowler / solid /
   kerievsky)*
-- *Inspect* — `inspect` *(complexity / project_structure / classpath / type_usage /
-  dependency_graph / di_registrations)*
+- *Inspect* — `inspect` *(type_hierarchy / document_symbols / type_members / classpath /
+  project_structure / type_usage / complexity / dependency_graph / di_registrations / source /
+  landmarks / suite_policy / impacted_tests)*
 
 **Change**
 - *Refactor* — `rename_symbol`, `extract` *(method / variable / constant / interface /
