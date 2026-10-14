@@ -4,12 +4,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
 
 /**
  * The suite's standing policy, read as DATA (Sprint 28g D41, third clause: <i>"it holds suite
@@ -160,17 +164,18 @@ public final class SuitePolicy {
 
     private static String lastCommitDate(Path projectRoot, Path file) {
         try {
-            Process git = new ProcessBuilder("git", "-C", projectRoot.toString(), "log", "-1",
-                "--format=%cs", "--", projectRoot.relativize(file).toString())
-                .redirectErrorStream(false)
-                .start();
-            if (!git.waitFor(5, TimeUnit.SECONDS)) {
-                git.destroyForcibly();
-                return null;
+            // Through the host boundary: this is a spawn, and the boundary is where an
+            // executable's spelling and a timeout are decided once (HostBoundaryRulesTest).
+            HostProcessOutcome outcome = HostProcesses.system().run(HostCommand.of(List.of(
+                "git", "-C", projectRoot.toString(), "log", "-1", "--format=%cs", "--",
+                projectRoot.relativize(file).toString())).waitingAtMost(Duration.ofSeconds(5)));
+            if (outcome instanceof HostProcessOutcome.Completed completed
+                    && completed.exitCode() == 0) {
+                // The boundary merges stderr into the output, so only an actual date counts:
+                // a warning git printed beside it must never become the file's "date".
+                String date = completed.output().strip();
+                return date.matches("\\d{4}-\\d{2}-\\d{2}") ? date : null;
             }
-            String date = new String(git.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-            return git.exitValue() == 0 && !date.isEmpty() ? date : null;
-        } catch (IOException e) {
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
