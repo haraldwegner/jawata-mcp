@@ -501,6 +501,14 @@ public final class ExperienceTool implements Tool {
             + " situation. An EMPTY list is a real answer and often the right one — it"
             + " records that nothing applied, which is what the store previously could not"
             + " say. Ids the nomination did not offer are refused, not ignored."));
+        // Sprint 28g S16-7: delete and promote_rule READ `ids`, and this schema never declared it
+        // (it listed `id` and `selected_ids`), so a client building its call from the schema could
+        // not make either call: three INVALID_PARAMETER failures sat in the field pile, and an agent
+        // could not remove a malformed entry it had written.
+        props.put("ids", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description",
+            "delete: the entry ids to remove — exactly these and no others; a non-empty array,"
+            + " even for one id. promote_rule: the entry ids the rule is distilled from."));
         // The enum is DERIVED from the gate's own set, never re-typed here: a
         // second copy of a closed vocabulary drifts from the first with no test
         // noticing, which is the exact drift EntryForm's javadoc condemns about
