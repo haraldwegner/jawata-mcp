@@ -65,6 +65,21 @@ public final class StoreBackups {
     /** The setting, read per call so a change does not need a restart. */
     public static final String DEPTH_PROPERTY = "jawata.backups.depth";
 
+    /**
+     * Sprint 28g S13-9 — how many SCHEDULED copies are kept: two weeks of daily copies.
+     *
+     * <p>Its own ceiling, separate from {@link #DEFAULT_DEPTH}, for a reason that cuts both ways.
+     * One shared pool would let a bad day of wipes push every daily copy out, and a run of daily
+     * copies push out the one taken before a wipe, which is the copy a person reaches for first.</p>
+     */
+    public static final int DEFAULT_SCHEDULED_DEPTH = 14;
+
+    /** The verb a scheduled copy carries in its name, so it is told apart from a pre-verb copy. */
+    public static final String SCHEDULED_VERB = "scheduled";
+
+    /** A scheduled copy is due once the newest one is this old: the requirement is "every day". */
+    public static final java.time.Duration INTERVAL = java.time.Duration.ofHours(24);
+
     private final Supplier<H2ExperienceStore> store;
 
     public StoreBackups(Supplier<H2ExperienceStore> store) {
@@ -120,8 +135,151 @@ public final class StoreBackups {
             log.warn("Could not take the pre-{} backup at {}: {}", verb, target, e.getMessage());
             return null;
         }
-        evictBeyond(depth());
+        evict(depth(), false);
         return target;
+    }
+
+    /**
+     * Sprint 28g S13-9 — the daily copy, taken because a day has passed and not because a
+     * destructive verb was about to run.
+     *
+     * <p>Due when no scheduled copy exists or the newest is at least {@link #INTERVAL} old. The
+     * time is a parameter so a test can cross a day boundary without waiting for one, and so the
+     * caller states which clock it means.</p>
+     *
+     * <p>Answers the copy, or null when none was taken: nothing was due, the store has no file, the
+     * copy could not be written, or the copy was written and could not be read back. The last two
+     * are logged, because a backup that quietly does not happen is the failure this exists to end.
+     * A copy that cannot be read back is DELETED and not counted: it would otherwise sit in the
+     * rotation as the newest copy while being useless, and push a good one out.</p>
+     */
+    public Path takeIfDue(Instant now) {
+        H2ExperienceStore h2 = store.get();
+        if (h2 == null || h2.storeDir() == null) {
+            return null;
+        }
+        Instant newest = newestScheduled();
+        if (newest != null && java.time.Duration.between(newest, now).compareTo(INTERVAL) < 0) {
+            return null;
+        }
+        Path target = backupDir(h2).resolve(name(SCHEDULED_VERB, now));
+        try {
+            h2.backupTo(target);
+        } catch (RuntimeException e) {
+            log.warn("Could not take the scheduled backup at {}: {}", target, e.getMessage());
+            return null;
+        }
+        if (!readsBack(target)) {
+            log.warn("The scheduled backup at {} could not be read back — removing it, so it does"
+                + " not stand in the rotation as a copy that is not one", target);
+            try {
+                Files.deleteIfExists(target);
+            } catch (IOException e) {
+                log.warn("Could not remove the unreadable backup {}: {}", target, e.getMessage());
+            }
+            return null;
+        }
+        evict(scheduledDepth(), true);
+        return target;
+    }
+
+    /**
+     * Whether a copy can be read back end to end and holds a database file.
+     *
+     * <p>Reading every entry through to its end is what makes the zip check its own CRC; a copy that
+     * merely opens as a zip can still be truncated mid-database. "The file exists" and "the zip
+     * opens" are both checks a damaged copy passes. It stops short of restoring the copy into a
+     * second store, which the tests do on a sample and a scheduled job should not do on a 90 MB file
+     * every day.</p>
+     */
+    static boolean readsBack(Path zip) {
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.toFile())) {
+            boolean database = false;
+            byte[] buffer = new byte[1 << 16];
+            for (java.util.zip.ZipEntry entry : java.util.Collections.list(zf.entries())) {
+                long bytes = 0;
+                try (java.io.InputStream in = zf.getInputStream(entry)) {
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        bytes += read;
+                    }
+                }
+                if (entry.getName().endsWith(".mv.db") && bytes > 0) {
+                    database = true;
+                }
+            }
+            return database;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * What the copies look like right now, for the store's stats: how many, which is newest, and how
+     * old the newest SCHEDULED one is. A schedule nobody can see is a schedule nobody notices has
+     * stopped, which is how this store came to be a month behind.
+     */
+    public java.util.Map<String, Object> status(Instant now) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        List<Path> all = list();
+        out.put("count", all.size());
+        out.put("newest", all.isEmpty() ? null : all.get(0).getFileName().toString());
+        Path newestScheduled = all.stream().filter(StoreBackups::isScheduled).findFirst().orElse(null);
+        Instant at = newestScheduled == null ? null : instantOf(newestScheduled);
+        out.put("newestScheduled", newestScheduled == null ? null
+            : newestScheduled.getFileName().toString());
+        out.put("newestScheduledAgeHours", at == null ? null
+            : java.time.Duration.between(at, now).toHours());
+        out.put("dueNow", at == null || java.time.Duration.between(at, now).compareTo(INTERVAL) >= 0);
+        out.put("scheduledDepth", scheduledDepth());
+        return out;
+    }
+
+    /** How many scheduled copies are kept; the same floor of one as {@link #depth()}. */
+    public static int scheduledDepth() {
+        String raw = System.getProperty("jawata.backups.scheduled.depth");
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_SCHEDULED_DEPTH;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(raw.trim()));
+        } catch (NumberFormatException e) {
+            log.warn("jawata.backups.scheduled.depth is not a number ({}) — keeping {}", raw,
+                DEFAULT_SCHEDULED_DEPTH);
+            return DEFAULT_SCHEDULED_DEPTH;
+        }
+    }
+
+    private static boolean isScheduled(Path copy) {
+        return copy.getFileName().toString().endsWith("-" + SCHEDULED_VERB + ".zip");
+    }
+
+    /** The instant a copy was taken, read from its name; null when the name does not carry one. */
+    private static Instant instantOf(Path copy) {
+        String name = copy.getFileName().toString();
+        int dash = name.lastIndexOf('-');
+        try {
+            return Instant.from(STAMP.parse(dash < 0 ? name : name.substring(0, dash)));
+        } catch (java.time.format.DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private Instant newestScheduled() {
+        for (Path copy : list()) {
+            if (isScheduled(copy)) {
+                Instant at = instantOf(copy);
+                if (at != null) {
+                    return at;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Keep the newest {@code keep} of ONE kind — scheduled or not — and delete the rest. */
+    private void evict(int keep, boolean scheduled) {
+        deleteBeyond(list().stream().filter(p -> isScheduled(p) == scheduled).toList(), keep);
     }
 
     /** Newest first. Empty when there is no file store or no copy has been taken. */
@@ -152,12 +310,16 @@ public final class StoreBackups {
 
     /** Keep the newest {@code keep}; delete the rest. */
     public void evictBeyond(int keep) {
-        List<Path> all = list();
-        for (int i = keep; i < all.size(); i++) {
+        deleteBeyond(list(), keep);
+    }
+
+    /** Delete everything past the first {@code keep} of a newest-first list. */
+    private static void deleteBeyond(List<Path> newestFirst, int keep) {
+        for (int i = keep; i < newestFirst.size(); i++) {
             try {
-                Files.deleteIfExists(all.get(i));
+                Files.deleteIfExists(newestFirst.get(i));
             } catch (IOException e) {
-                log.warn("Could not evict old backup {}: {}", all.get(i), e.getMessage());
+                log.warn("Could not evict old backup {}: {}", newestFirst.get(i), e.getMessage());
             }
         }
     }
@@ -254,7 +416,12 @@ public final class StoreBackups {
      * makes the user reconstruct which was which from memory.</p>
      */
     static String name(String verb) {
-        return STAMP.format(Instant.now()) + "-" + verb + ".zip";
+        return name(verb, Instant.now());
+    }
+
+    /** The same name for a stated instant — a scheduled copy is named for the time it was due. */
+    static String name(String verb, Instant at) {
+        return STAMP.format(at) + "-" + verb + ".zip";
     }
 
     /**

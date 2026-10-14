@@ -981,6 +981,10 @@ public final class ExperienceTool implements Tool {
             hygiene.put("sample", headings.subList(0, Math.min(5, headings.size())));
         }
         out.put("hygiene", hygiene);
+        // Sprint 28g S13-9 — the copies, in the one place a person already looks to see whether
+        // the store is healthy. A schedule nobody can see is one nobody notices has stopped:
+        // the user-level store was a month behind before anyone could tell.
+        out.put("backups", backups.status(java.time.Instant.now()));
         out.put("substrate", substrateBlock());
         // Sprint 28f Stage 7 — how much of the code has been DESCRIBED, per bundle.
         //

@@ -113,6 +113,8 @@ public class JawataApplication implements IApplication {
     private volatile Transport activeTransport;
     /** Sprint 27a Stage 3b: interrupted at shutdown so the reconciliation loop exits. */
     private volatile Thread embeddingBackfillThread;
+    /** Sprint 28g S13-9: the daily store copy's schedule; interrupted at shutdown. */
+    private volatile Thread scheduledBackupThread;
 
     // Static instance for loading state access by tools
     private static volatile JawataApplication instance;
@@ -308,6 +310,10 @@ public class JawataApplication implements IApplication {
             // next start takes the next, so a large store converges over a few
             // restarts while staying keyword-reachable throughout.
             startEmbeddingBackfill(h2);
+            // Sprint 28g S13-9: the daily copy. Harald, 2026-10-14: "it should make backups
+            // every day" — on that day the newest copy was a month old, because copies were
+            // only ever taken before a destructive verb.
+            startScheduledBackups(h2);
             // Sprint 26a D3b: the deterministic architect-involvement gate — the
             // rule that replaces the retired edit-switch model.
             toolRegistry.setArchitectGate(new org.jawata.mcp.learn.ArchitectGate(
@@ -482,6 +488,45 @@ public class JawataApplication implements IApplication {
      *  "unknown" in the coverage log, matching the stats block. */
     private static String coverageFigure(long count) {
         return count < 0 ? "unknown" : String.valueOf(count);
+    }
+
+    /** How often the schedule looks at the clock. The copy itself is due once a day. */
+    private static final java.time.Duration BACKUP_CHECK_EVERY = java.time.Duration.ofHours(1);
+
+    /**
+     * Take the daily store copy when it is due: once at start, then on every hourly check.
+     *
+     * <p>Every resident runs this against the one shared file, and each starts by asking whether the
+     * newest scheduled copy is already less than a day old, so three engines starting together
+     * produce one copy, not three, bar a start inside the same second. A low-priority daemon thread,
+     * for the reason the embedding backfill is one: start-up must not wait for a 90 MB copy.</p>
+     */
+    private void startScheduledBackups(org.jawata.mcp.knowledge.H2ExperienceStore h2) {
+        Thread t = new Thread(() -> {
+            org.jawata.mcp.knowledge.StoreBackups backups =
+                new org.jawata.mcp.knowledge.StoreBackups(() -> h2);
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    java.nio.file.Path copy = backups.takeIfDue(java.time.Instant.now());
+                    if (copy != null) {
+                        log.info("Scheduled experience-store backup taken: {}", copy.getFileName());
+                    }
+                } catch (RuntimeException e) {
+                    // Never fatal, and never silent: the next hourly check tries again.
+                    log.warn("Scheduled experience-store backup failed ({}); retrying at the next"
+                        + " hourly check", e.toString());
+                }
+                try {
+                    Thread.sleep(BACKUP_CHECK_EVERY.toMillis());
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "jawata-store-backup");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        scheduledBackupThread = t;
+        t.start();
     }
 
     private void startEmbeddingBackfill(org.jawata.mcp.knowledge.H2ExperienceStore h2) {
@@ -1412,6 +1457,14 @@ public class JawataApplication implements IApplication {
                 Thread.currentThread().interrupt();
             }
             embeddingBackfillThread = null;
+        }
+        // The schedule is interrupted, not joined: a copy in progress is the store's own
+        // BACKUP TO, which finishes or fails on its own; the daemon thread never holds the
+        // process open, and a partial zip fails its read-back at the next start and is removed.
+        Thread backupSchedule = scheduledBackupThread;
+        if (backupSchedule != null) {
+            backupSchedule.interrupt();
+            scheduledBackupThread = null;
         }
         Transport t = activeTransport;
         if (t != null) {
