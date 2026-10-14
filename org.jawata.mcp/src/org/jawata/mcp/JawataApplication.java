@@ -1170,7 +1170,8 @@ public class JawataApplication implements IApplication {
         // Sprint 16b/A (v1.1.1): inspect(kind) collapses the 9 read-only structural
         // get_* tools; analyze(kind) collapses the 9 analyze_* tools. Narrow classes
         // stay in-package as delegates; they're no longer registered.
-        toolRegistry.register(new InspectTool(() -> jdtService));
+        InspectTool inspectTool = new InspectTool(() -> jdtService);
+        toolRegistry.register(inspectTool);
         toolRegistry.register(new AnalyzeTool(() -> jdtService));
 
         // Sprint 16b/A: get_at_position collapses the 9 read-only position-lookup tools.
@@ -1255,7 +1256,12 @@ public class JawataApplication implements IApplication {
 
         // Sprint 12 (v1.6.0): Ring 1 workspace verification tools.
         toolRegistry.register(new CompileWorkspaceTool(() -> jdtService));
-        toolRegistry.register(new RunTestsTool(() -> jdtService));
+        RunTestsTool runTestsTool = new RunTestsTool(() -> jdtService);
+        toolRegistry.register(runTestsTool);
+        // Sprint 28g S10-9: the impacted-test selection, on the read-only door too. A hired
+        // Claude is refused run_tests in plan mode; inspect is read-only, so the seat that is
+        // asked "does this change reach any test" can ask D21's own answer.
+        inspectTool.setImpactedTests(runTestsTool::impactedTests);
 
         // Sprint 24 (D5): the interactive debugger's front door. Dev/sim only —
         // production runs no agent and exposes no debug channel. It is given the

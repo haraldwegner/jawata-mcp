@@ -58,13 +58,15 @@ class InspectToolTest {
     }
 
     @Test
-    @DisplayName("schema lists all twelve kinds (Sprint 23 'source', Sprint 24 'landmarks', Sprint 28g 'suite_policy'); requires kind")
+    @DisplayName("schema lists all thirteen kinds (Sprint 23 'source', Sprint 24 'landmarks', Sprint 28g 'suite_policy' and 'impacted_tests'); requires kind")
     @SuppressWarnings("unchecked")
     void schema_lists_kinds() {
         Map<String, Object> schema = tool.getInputSchema();
         Map<String, Object> props = (Map<String, Object>) schema.get("properties");
         List<String> kinds = (List<String>) ((Map<String, Object>) props.get("kind")).get("enum");
-        assertEquals(12, kinds.size());
+        assertEquals(13, kinds.size());
+        assertTrue(kinds.contains("impacted_tests"),
+            "Sprint 28g S10-9: the impacted-test selection answered on the read-only door: " + kinds);
         assertTrue(kinds.contains("source"), "Sprint 23 D8 lib-source kind: " + kinds);
         assertTrue(kinds.contains("landmarks"), "Sprint 24 D4 landmarks kind: " + kinds);
         assertTrue(kinds.contains("suite_policy"),
@@ -102,6 +104,72 @@ class InspectToolTest {
             "the simple-maven fixture declares no expected-aborts list: an absence, said as one");
         assertEquals(0, data.get("acceptedAbortCount"));
         assertTrue(data.containsKey("projectKey"));
+    }
+
+    // ---- Sprint 28g S10-9: D41 clause 1 says the reach is computed "by the same compiler proof D21
+    // computes", and a hired Claude is refused run_tests in plan mode. The selection is therefore
+    // answered on this READ-ONLY door — as the SAME implementation, not a second one.
+
+    @Test
+    @DisplayName("kind=impacted_tests on a door nobody wired says so; it never answers an empty list")
+    void impacted_tests_unwired_is_refused_not_empty() {
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "impacted_tests");
+        ToolResponse response = tool.execute(a);
+
+        assertFalse(response.isSuccess(),
+            "an unwired door must not succeed: an empty selection reads as 'no test is impacted'");
+        assertTrue(String.valueOf(response.getError().getMessage()).contains("not available"),
+            "and it says why: " + response.getError().getMessage());
+    }
+
+    @Test
+    @DisplayName("kind=impacted_tests hands its arguments to the wired selection and returns its answer unchanged")
+    void impacted_tests_delegates_to_the_wired_selection() {
+        java.util.concurrent.atomic.AtomicReference<JsonNode> seen =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        ToolResponse canned = ToolResponse.success(Map.of("marker", "the selection's own answer"));
+        tool.setImpactedTests(args -> {
+            seen.set(args);
+            return canned;
+        });
+
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "impacted_tests");
+        a.put("forScope", "package:com.example");
+        a.putArray("symbols").add("com.example.Calculator#add");
+        ToolResponse response = tool.execute(a);
+
+        assertTrue(response.isSuccess(), String.valueOf(response));
+        assertEquals(canned.getData(), response.getData(), "the answer is the selection's, untouched");
+        assertEquals("package:com.example", seen.get().path("forScope").asText(),
+            "the selection received the caller's scope");
+        assertEquals("com.example.Calculator#add", seen.get().path("symbols").get(0).asText(),
+            "and the caller's symbols");
+    }
+
+    @Test
+    @DisplayName("kind=impacted_tests is the SAME answer as run_tests(action=coverage_impacted_tests)")
+    void impacted_tests_is_the_same_answer_as_run_tests() throws Exception {
+        JdtServiceImpl service = helper.loadProject("simple-maven");
+        RunTestsTool runTests = new RunTestsTool(() -> service);
+        InspectTool wired = new InspectTool(() -> service);
+        wired.setImpactedTests(runTests::impactedTests);
+
+        ObjectNode viaInspect = mapper.createObjectNode();
+        viaInspect.put("kind", "impacted_tests");
+        viaInspect.putArray("symbols").add("com.example.Calculator#add");
+        ObjectNode viaRunTests = mapper.createObjectNode();
+        viaRunTests.put("action", "coverage_impacted_tests");
+        viaRunTests.putArray("symbols").add("com.example.Calculator#add");
+
+        ToolResponse a = wired.execute(viaInspect);
+        ToolResponse b = runTests.execute(viaRunTests);
+
+        assertEquals(b.isSuccess(), a.isSuccess(), "success parity");
+        assertEquals(mapper.valueToTree(b.isSuccess() ? b.getData() : b.getError()),
+            mapper.valueToTree(a.isSuccess() ? a.getData() : a.getError()),
+            "payload parity: two doors onto one implementation cannot disagree");
     }
 
     @Test

@@ -1243,6 +1243,25 @@ public class RunTestsTool extends AbstractTool {
             .totalCount(covers.size()).returnedCount(covers.size()).build());
     }
 
+    /**
+     * Sprint 28g S10-9 — the SAME impacted-test selection, offered to a read-only door.
+     *
+     * <p>{@code run_tests} is refused to a hired Claude in plan mode because the tool is not
+     * read-only as a whole, while its {@code coverage_impacted_tests} action only reads evidence.
+     * D41's first clause says the reach is computed "by the same compiler proof D21 computes", and a
+     * seat that cannot call this action had to answer from the call graph instead. {@code inspect}
+     * (kind=impacted_tests) delegates here, so the proof is one implementation reached from two
+     * doors, not two implementations that can disagree.</p>
+     */
+    public ToolResponse impactedTests(JsonNode arguments) {
+        try {
+            return coverageImpactedTests(arguments);
+        } catch (Exception e) {
+            log.warn("impacted_tests threw unexpectedly: {}", e.getMessage(), e);
+            return ToolResponse.internalError(e);
+        }
+    }
+
     /** Stage 9 — smallest evidence-backed test set for a change. */
     private ToolResponse coverageImpactedTests(JsonNode arguments) throws Exception {
         ImpactedSelection sel = selectImpacted(arguments);

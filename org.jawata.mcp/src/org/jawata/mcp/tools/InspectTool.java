@@ -25,7 +25,20 @@ public class InspectTool extends AbstractTool {
     private static final List<String> KINDS = List.of(
         "type_hierarchy", "document_symbols", "type_members", "classpath",
         "project_structure", "type_usage", "complexity", "dependency_graph",
-        "di_registrations", "source", "landmarks", "suite_policy");
+        "di_registrations", "source", "landmarks", "suite_policy", "impacted_tests");
+
+    /**
+     * Sprint 28g S10-9 — the impacted-test selection, supplied by the application once
+     * {@code run_tests} exists. A hook and not a constructor argument because this door is built
+     * from a JDT supplier alone in thirteen places, and because the selection belongs to
+     * {@code run_tests}: this door only reads it. Null until wired, and then the kind says so.
+     */
+    private volatile java.util.function.Function<JsonNode, ToolResponse> impactedTests;
+
+    /** Wire the selection this door reads; called once by the application. */
+    public void setImpactedTests(java.util.function.Function<JsonNode, ToolResponse> selection) {
+        this.impactedTests = selection;
+    }
 
     private final GetTypeHierarchyTool typeHierarchy;
     private final GetDocumentSymbolsTool documentSymbols;
@@ -104,6 +117,15 @@ public class InspectTool extends AbstractTool {
                                  No such file is found=false, never an empty list.
                                  (No params; the coverage threshold policy is NOT here —
                                  it surfaces on run_tests' coverage responses.)
+            - impacted_tests   — the smallest evidence-backed set of tests a change reaches:
+                                 the SAME selection as run_tests(action=
+                                 coverage_impacted_tests), reached from a read-only door
+                                 because a hired seat cannot call run_tests. Optional:
+                                 symbols[] (else derived from the git diff), diff
+                                 (worktree|staged|range), range, forScope. Needs coverage
+                                 evidence recorded with attribution=true; without it the
+                                 answer says attributionAvailable=false and why, and
+                                 narrows nothing.
 
             Requires load_project to be called first.
             """;
@@ -135,6 +157,15 @@ public class InspectTool extends AbstractTool {
         properties.put("offset", Map.of("type", "integer", "description",
             "source: character offset into the source — the next page. A truncated reply's "
                 + "hint names the offset to ask for."));
+        properties.put("symbols", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "impacted_tests: explicit symbol list (else derived from the git diff)."));
+        properties.put("diff", Map.of("type", "string", "enum", List.of("worktree", "staged", "range"),
+            "description", "impacted_tests: which git diff (default worktree)."));
+        properties.put("range", Map.of("type", "string", "description",
+            "impacted_tests: commit range for diff=range, e.g. 'HEAD~1..HEAD'."));
+        properties.put("forScope", Map.of("type", "string", "description",
+            "impacted_tests: the scope you mean to narrow — 'whole-suite' (default) or "
+                + "'package:com.foo' — so the verdict is complete for that scope."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
@@ -163,6 +194,7 @@ public class InspectTool extends AbstractTool {
             case "source"            -> libSource(service, arguments);
             case "landmarks"         -> landmarks(service, arguments);
             case "suite_policy"      -> suitePolicy(service, arguments);
+            case "impacted_tests"    -> impactedTests(arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -246,6 +278,21 @@ public class InspectTool extends AbstractTool {
         } catch (Exception e) {
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * Sprint 28g S10-9 — the impacted-test selection, read. Answers from the one selection
+     * {@code run_tests} owns; when this resident never wired it the refusal says so rather than
+     * answering with an empty list, which would read as "no test is impacted".
+     */
+    private ToolResponse impactedTests(JsonNode arguments) {
+        java.util.function.Function<JsonNode, ToolResponse> selection = impactedTests;
+        if (selection == null) {
+            return ToolResponse.invalidParameter("kind",
+                "impacted_tests is not available on this resident: the impacted-test selection was"
+                    + " never wired to this door. This is NOT an answer that no test is impacted.");
+        }
+        return selection.apply(arguments);
     }
 
     /**
