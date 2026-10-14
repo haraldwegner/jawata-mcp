@@ -256,7 +256,8 @@ public final class ClaudeCodeDialect implements BrainDialect {
         String type = event.path("type").asText("");
         return switch (type) {
             case "result" -> new BrainLine(costOf(event),
-                StreamJsonEvents.textOf(event.path("result")), 0, true);
+                StreamJsonEvents.textOf(event.path("result")), 0, true, List.of(),
+                Optional.empty(), true);
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
                 StreamJsonEvents.toolUseNames(event));

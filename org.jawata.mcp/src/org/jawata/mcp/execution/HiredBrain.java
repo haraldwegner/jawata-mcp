@@ -208,7 +208,13 @@ public final class HiredBrain {
                     unreadable++;
                     continue;
                 }
-                read.text().ifPresent(said::add);
+                // S16-18: a brain's CLOSING line restates the answer its earlier lines already gave —
+                // a one-turn reply is in both, and collecting both made "READY" read "READY\nREADY".
+                // It is the answer only when nothing else was said, so a run that produced no turn
+                // text still reports the one thing it did say, an error message included.
+                if (!(read.terminal() && !said.isEmpty())) {
+                    read.text().ifPresent(said::add);
+                }
                 toolSteps += read.toolSteps();
                 toolNames.addAll(read.toolNames());
                 if (read.toolsOffered().isPresent()) {

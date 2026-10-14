@@ -69,6 +69,58 @@ class HiredBrainTest {
         return new ScriptDialect(command.argv().get(0), List.of());
     }
 
+    // ---- S16-18: the collected answer DUPLICATED a short reply. Both claude and cursor returned
+    // "READY\nREADY" for a brief asking for one word: the assistant event and the closing result
+    // event each contributed, and a one-turn reply is in both. The closing line restates what the
+    // earlier lines said; it is the answer only when nothing else was.
+
+    private HiredBrain.Outcome hireStreamJson(String body, boolean cursor) throws Exception {
+        HostCommand command = script(body);
+        BrainDialect dialect = cursor
+            ? new CursorDialect(command.argv().get(0), true, null)
+            : new ClaudeCodeDialect(command.argv().get(0), 12, null, false);
+        return HiredBrain.hire(host, dialect, command, "brief", List.of(),
+            HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+    }
+
+    private static final String ONE_WORD_REPLY = """
+        echo '{"type":"assistant","message":{"content":[{"type":"text","text":"READY"}]}}'
+        echo '{"type":"result","result":"READY","total_cost_usd":0.01}'
+        """;
+
+    @Test
+    @DisplayName("S16-18: a one-word reply is the answer ONCE (claude)")
+    void aShortReplyIsNotDuplicatedByTheClosingResult() throws Exception {
+        assertEquals("READY", hireStreamJson(ONE_WORD_REPLY, false).text(),
+            "the assistant line and the closing result say the same thing; the answer is one of them");
+    }
+
+    @Test
+    @DisplayName("S16-18: a one-word reply is the answer ONCE (cursor, the other dialect that returned both)")
+    void aShortReplyIsNotDuplicatedByTheClosingResultCursor() throws Exception {
+        assertEquals("READY", hireStreamJson(ONE_WORD_REPLY, true).text());
+    }
+
+    @Test
+    @DisplayName("S16-18: a multi-turn answer keeps every turn and still does not repeat the last")
+    void everyTurnIsKeptAndTheLastIsNotRepeated() throws Exception {
+        HiredBrain.Outcome outcome = hireStreamJson("""
+            echo '{"type":"assistant","message":{"content":[{"type":"text","text":"first"}]}}'
+            echo '{"type":"assistant","message":{"content":[{"type":"text","text":"second"}]}}'
+            echo '{"type":"result","result":"second","total_cost_usd":0.01}'
+            """, false);
+        assertEquals("first\nsecond", outcome.text());
+    }
+
+    @Test
+    @DisplayName("S16-18: when nothing else was said, the closing result IS the answer — an error must not vanish")
+    void theClosingResultIsTheAnswerWhenNothingElseWasSaid() throws Exception {
+        assertEquals("the brain stopped: out of turns", hireStreamJson("""
+            echo '{"type":"result","result":"the brain stopped: out of turns","total_cost_usd":0.01}'
+            """, false).text(),
+            "dropping the closing result outright would lose the only text a failed run produced");
+    }
+
     @Test
     @DisplayName("a clean run carries what the brain declared")
     void aCleanRunCarriesWhatTheBrainDeclared() throws Exception {

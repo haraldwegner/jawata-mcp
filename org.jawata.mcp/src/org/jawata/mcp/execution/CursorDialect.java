@@ -2,6 +2,7 @@ package org.jawata.mcp.execution;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -179,7 +180,8 @@ public final class CursorDialect implements BrainDialect {
         return switch (event.path("type").asText("")) {
             // The terminal event. NO cost is published here by this brain — see the class javadoc.
             case "result" -> new BrainLine(OptionalDouble.empty(),
-                StreamJsonEvents.textOf(event.path("result")), 0, true);
+                StreamJsonEvents.textOf(event.path("result")), 0, true, List.of(),
+                Optional.empty(), true);
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
                 StreamJsonEvents.toolUseNames(event));

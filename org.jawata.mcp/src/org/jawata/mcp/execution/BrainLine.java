@@ -43,9 +43,13 @@ import java.util.OptionalDouble;
  *                  The whole reason this exists is that a count cannot be classified — "the seat
  *                  made no code-changing call" is a claim about WHICH calls, and a number of calls
  *                  answers none of it
+ * @param terminal  whether this is the brain's CLOSING line — the result event that restates the
+ *                  answer its earlier lines already gave. A driver keeps its text only when nothing
+ *                  else was said (S16-18): a one-turn reply is in both the assistant line and the
+ *                  closing one, and collecting both made "READY" read "READY\nREADY"
  */
 public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
-                        boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
+                        boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, boolean terminal) {
 
     /** The shape every dialect used before names were recorded; callers that cannot name keep it. */
     public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
@@ -65,5 +69,9 @@ public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolS
 
     public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps, boolean parsed, java.util.List<String> toolNames) {
         this(costUsd, text, toolSteps, parsed, toolNames, java.util.Optional.empty());
+    }
+
+    public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps, boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
+        this(costUsd, text, toolSteps, parsed, toolNames, toolsOffered, false);
     }
 }
