@@ -329,8 +329,14 @@ public final class H2ExperienceStore implements ExperienceStore {
                 return validOrReplaced(waited);
             }
         } catch (InterruptedException e) {
+            // REFUSE, never return null: null sends the caller to read through the shared
+            // connection on a thread whose interrupt flag is still set, and a Java file channel
+            // closes for good when such a thread does I/O on it — H2 then shuts the database
+            // down for every resident (the Oct 12 outage).
             Thread.currentThread().interrupt();
-            return null;
+            throw new IllegalStateException("interrupted while waiting for a read slot — not"
+                + " reading on an interrupted thread: an interrupt inside the database file"
+                + " channel closes the store for every resident");
         }
         throw new IllegalStateException("experience store is BUSY: all " + READ_POOL_SIZE
             + " read slots are in use and none freed within " + READ_BORROW_TIMEOUT_MILLIS

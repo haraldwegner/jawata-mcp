@@ -46,13 +46,27 @@ final class UnreadableStore implements ExperienceStore {
         this.succeedAfterStall = succeedAfterStall;
     }
 
+    /** True once a stalled read was interrupted — see {@link #wasInterruptedWhileReading()}. */
+    private volatile boolean interruptedWhileReading;
+
+    /**
+     * Whether the caller's deadline INTERRUPTED a read that was in progress. The real store
+     * must never be interrupted mid-read: a thread interrupted inside a file channel read
+     * closes that channel for good, H2 panics and shuts the database down for every resident
+     * attached to it (the Oct 12 outage — {@code ClosedByInterruptException}, then 90098 for
+     * three days, then a half-written flush and a corrupt file). A deadline releases the
+     * CALLER; it has no business reaching into the reader.
+     */
+    boolean wasInterruptedWhileReading() {
+        return interruptedWhileReading;
+    }
+
     private void stall() {
         if (stallMillis > 0) {
             try {
                 Thread.sleep(stallMillis);
             } catch (InterruptedException e) {
-                // The bulkhead cancelled us. A real socket read would NOT unblock here —
-                // that is the honest limit written up on ExperienceRetrieval.within.
+                interruptedWhileReading = true;
                 Thread.currentThread().interrupt();
             }
         }

@@ -275,6 +275,34 @@ class KnowledgeUnavailableTest {
     }
 
     /**
+     * THE OCT 12 OUTAGE. A deadline releases the CALLER; it must never interrupt the reader.
+     *
+     * <p>The trace of the incident opens with {@code ClosedByInterruptException} inside a
+     * retrieval worker's file read: {@code within} timed out and called
+     * {@code task.cancel(true)}, which interrupted the thread while it was inside H2's file
+     * channel. A Java file channel closes for good when its thread is interrupted, so H2
+     * panicked, closed the database for every resident, and failed the flush it was
+     * writing — 90098 for three days and a corrupt file. This fixture records whether its
+     * stalled read was interrupted; on the old {@code cancel(true)} it was.</p>
+     */
+    @Test
+    void an_expired_budget_never_interrupts_the_read_in_progress() throws Exception {
+        UnreadableStore slow = new UnreadableStore(1_000, true);
+        ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(slow, () -> null);
+
+        Map<String, Object> result = retrieval.recall(
+            new RecallQuery("com.example.Anything", null, null, null, null),
+            org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
+        assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"),
+            "the caller IS released on its deadline");
+
+        Thread.sleep(2_500);   // long enough for the straggler to still be mid-read when released
+        assertFalse(slow.wasInterruptedWhileReading(),
+            "but the reader must not be interrupted: an interrupt inside a file channel read"
+                + " closes the channel, and H2 then closes the database for everyone");
+    }
+
+    /**
      * The rendered text says it too. The tool answers unavailable as an error in both
      * formats, so this path is not what the tool takes — it is here because a second
      * rendering path that quietly lapses is exactly how one honesty rule holds while

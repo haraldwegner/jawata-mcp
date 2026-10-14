@@ -487,9 +487,9 @@ public final class ExperienceRetrieval {
      * unavailable.</p>
      *
      * <p>Stated plainly, because it is a real limit: this frees the CALLER, not the
-     * stuck reader. The abandoned task is interrupted, and interrupting a thread blocked
-     * in a socket read does not end it — it keeps its H2 session lock until the socket
-     * gives up. Un-wedging the store itself is the structural work (narrow the monitor,
+     * stuck reader. The abandoned task is NOT interrupted — interrupting a thread inside
+     * H2's file channel closes the channel and takes the database down for every resident
+     * (the Oct 12 outage) — so it keeps its H2 session lock until its read gives up. Un-wedging the store itself is the structural work (narrow the monitor,
      * stop scanning the whole table); this is the bulkhead that stops one stuck read
      * from becoming every caller's timeout in the meantime.</p>
      */
@@ -510,7 +510,13 @@ public final class ExperienceRetrieval {
         try {
             return task.get(budgetMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.TimeoutException e) {
-            task.cancel(true);
+            // NEVER cancel(true). The reader is inside H2's file channel, and a Java file
+            // channel closes for good when its thread is interrupted: H2 then panics, closes
+            // the database for EVERY resident and fails the page it was flushing. That is the
+            // Oct 12 outage (ClosedByInterruptException in the trace, then 90098 for three days
+            // and a corrupt file). The deadline releases the CALLER; the reader finishes on its
+            // own and its late answer is discarded.
+            task.cancel(false);
             log.warn("retrieval exceeded its {}ms budget — reporting UNAVAILABLE", budgetMillis);
             return unavailable(out, "the store did not answer within " + budgetMillis
                 + "ms; it is unreachable or wedged");

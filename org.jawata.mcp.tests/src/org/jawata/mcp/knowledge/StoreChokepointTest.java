@@ -1,7 +1,11 @@
 package org.jawata.mcp.knowledge;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
@@ -10,11 +14,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * Stage 3 (jawata-mcp#37, the STRUCTURAL half) — the store stops being a
@@ -165,6 +166,42 @@ class StoreChokepointTest {
                 // never be sitting on the connection the writers serialise on.
                 assertFalse(held.contains(store.sharedConnection()),
                     "a pooled read must never hand back the writers' connection");
+            } finally {
+                for (java.sql.Connection c : held) {
+                    store.releaseRead(c, true);
+                }
+            }
+        }
+    }
+
+    /**
+     * A thread interrupted while it waits for a read slot must NOT go on to read.
+     *
+     * <p>{@code borrowRead} used to answer {@code null} on an interrupt, and {@code withRead}
+     * reads that as "no pooled connection, use the shared one" — so the interrupted thread
+     * went straight on into H2's file channel with its interrupt flag still set. A Java file
+     * channel closes for good when a thread with that flag does I/O on it, and H2 then closes
+     * the database for every resident (the Oct 12 outage). The interrupt has to end the read,
+     * not redirect it.</p>
+     */
+    @Test
+    @DisplayName("an interrupted thread waiting for a read slot is refused, not redirected")
+    void anInterruptedWaiterDoesNotReadThroughTheSharedConnection() throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.openMemory()) {
+            List<java.sql.Connection> held = new java.util.ArrayList<>();
+            try {
+                for (int i = 0; i < H2ExperienceStore.READ_POOL_SIZE; i++) {
+                    held.add(store.borrowRead());
+                }
+                Thread.currentThread().interrupt();
+                try {
+                    assertThrows(IllegalStateException.class, store::borrowRead,
+                        "an interrupt while waiting for a read slot must refuse the read —"
+                            + " answering null sends the thread into the file channel"
+                            + " still interrupted");
+                } finally {
+                    Thread.interrupted();   // leave the test thread clean for the next test
+                }
             } finally {
                 for (java.sql.Connection c : held) {
                     store.releaseRead(c, true);
