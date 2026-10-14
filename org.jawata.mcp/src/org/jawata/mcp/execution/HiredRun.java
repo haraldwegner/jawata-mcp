@@ -84,11 +84,15 @@ public final class HiredRun {
      */
     public record Proposal(PlanId plan, String artifactId, Path record,
                            HiredBrain.Outcome outcome, List<GateOutcome> gates,
-                           int stepsPassed, TreeAttribution.Attribution changed) {
+                           int stepsPassed, TreeAttribution.Attribution changed, List<String> answerGateRefusals) {
 
         /** Did every declared step get past its own gate? */
         public boolean complete() {
             return stepsPassed == gates.size() && !gates.isEmpty();
+        }
+
+        public Proposal(PlanId plan, String artifactId, Path record, HiredBrain.Outcome outcome, List<GateOutcome> gates, int stepsPassed, TreeAttribution.Attribution changed) {
+            this(plan, artifactId, record, outcome, gates, stepsPassed, changed, List.of());
         }
     }
 
@@ -148,7 +152,7 @@ public final class HiredRun {
     public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
             GateRunner gates) throws IOException, InterruptedException {
         return issue(seat.dialect(self), base, seat.prompt(brief), seat.tools(), seat.ceilings(),
-            steps, gates);
+            steps, gates, seat.answerGates());
     }
 
     /**
@@ -168,13 +172,19 @@ public final class HiredRun {
     public Proposal issue(BrainDialect dialect, HostCommand base, String brief,
             HiredBrain.Ceilings ceilings, List<GatedStep> steps, GateRunner gates)
             throws IOException, InterruptedException {
-        return issue(dialect, base, brief, List.of(), ceilings, steps, gates);
+        return issue(dialect, base, brief, List.of(), ceilings, steps, gates, List.of());
     }
 
     private Proposal issue(BrainDialect dialect, HostCommand base, String brief,
             List<String> tools, HiredBrain.Ceilings ceilings, List<GatedStep> steps,
-            GateRunner gates) throws IOException, InterruptedException {
-        PlanId plan = plans.open(steps);
+            GateRunner declaredGates, List<String> answerGates)
+            throws IOException, InterruptedException {
+        // THE SEAT'S OWN CHECKS OVER ITS ANSWER are steps of the plan, ahead of the hirer's: a
+        // seat whose message breaks its own rules has said nothing the later gates can vouch for.
+        // They are planned here, before the brain runs, because the plan is opened once; what they
+        // check is read off the outcome when they come up.
+        List<GatedStep> planned = withAnswerGates(steps, answerGates);
+        PlanId plan = plans.open(planned);
 
         // THE BRIEF IS ISSUED. Everything after this happened without supervision,
         // which is why every part of it is written down.
@@ -208,9 +218,17 @@ public final class HiredRun {
         // did not pass makes every later verdict a statement about a tree that was
         // never reached.
         List<GateOutcome> ran = new ArrayList<>();
+        List<String> answerRefusals = new ArrayList<>();
         PlanLedger.Advance last = null;
-        for (GatedStep step : steps) {
-            GateOutcome gate = gates.run(step);
+        for (GatedStep step : planned) {
+            GateOutcome gate;
+            if (UpwardMessageGate.STEP.equals(step.tool())) {
+                List<String> refusals = UpwardMessageGate.refusals(outcome.text());
+                answerRefusals.addAll(refusals);
+                gate = new GateOutcome(step.tool(), step.gateArguments(), refusals.size(), true);
+            } else {
+                gate = declaredGates.run(step);
+            }
             ran.add(gate);
             last = plans.advanceIfGatePassed(plan, gate);
             if (!last.advanced()) {
@@ -237,10 +255,17 @@ public final class HiredRun {
         String artifactId = artifacts.newArtifactId("proposal");
         Path dir = artifacts.createArtifactDir(artifactId);
         Path record = dir.resolve("proposal.md");
-        Files.writeString(record, render(brief, dialect, outcome, steps, ran, passed,
-            last.advanced() ? null : last.refusedBecause(), changed), StandardCharsets.UTF_8);
+        String rendered = render(brief, dialect, outcome, planned, ran, passed,
+            last.advanced() ? null : last.refusedBecause(), changed);
+        if (!answerRefusals.isEmpty()) {
+            // The gate row says HOW MANY; this says WHICH, in the file a human opens.
+            rendered += "\n## The seat's own answer was refused by its gate\n\n"
+                + answerRefusals.stream().map(r -> "- " + r).collect(
+                    java.util.stream.Collectors.joining("\n")) + "\n";
+        }
+        Files.writeString(record, rendered, StandardCharsets.UTF_8);
         artifacts.writeManifest(artifactId,
-            provenance(plan, dialect, outcome, steps, passed, changed));
+            provenance(plan, dialect, outcome, planned, passed, changed));
 
         // JOURNALLED. Its own try: a run that happened must not be lost because
         // recording it failed.
@@ -248,12 +273,35 @@ public final class HiredRun {
             try {
                 journal.append(new LearnerEvent(plan.value(), LearnerEvent.KIND_HIRED_RUN,
                     dialect.name(), "{\"artifactId\":\"" + artifactId + "\",\"stepsPassed\":"
-                        + passed + ",\"ofSteps\":" + steps.size() + "}"));
+                        + passed + ",\"ofSteps\":" + planned.size() + "}"));
             } catch (RuntimeException e) {
                 // the proposal is already on disk; the journal row is bookkeeping
             }
         }
-        return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed, changed);
+        return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed, changed,
+            List.copyOf(answerRefusals));
+    }
+
+    /**
+     * The plan the run is opened with: one step per answer gate the seat declares, then the hirer's
+     * own steps, renumbered to follow. A name this build has no check for is refused rather than
+     * skipped — a seat that declares a gate and is hired without it has been told something false.
+     */
+    private static List<GatedStep> withAnswerGates(List<GatedStep> steps, List<String> answerGates) {
+        List<GatedStep> planned = new ArrayList<>();
+        for (String name : answerGates) {
+            if (!"upward_message".equals(name)) {
+                throw new IllegalArgumentException("the seat declares answer gate '" + name
+                    + "', which this build has no check for. Known: upward_message");
+            }
+            planned.add(new GatedStep(planned.size(), UpwardMessageGate.STEP,
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()));
+        }
+        int shift = planned.size();
+        for (GatedStep step : steps) {
+            planned.add(new GatedStep(step.index() + shift, step.tool(), step.gateArguments()));
+        }
+        return List.copyOf(planned);
     }
 
     /** What the manifest carries, so a reader of the artifact alone can judge the run. */

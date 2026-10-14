@@ -227,6 +227,81 @@ class HireToolTest {
         return (Map<String, Object>) response.getData();
     }
 
+    /** The seat as filed, plus the one declaration under test: a check over its own answer. */
+    private static final String SEAT_WITH_UPWARD_GATE = CATALOGUER_SEAT
+        .replace("gates: []", "gates: []\nanswer_gates: [upward_message]");
+
+    private static final String WHOLE_UPWARD_MESSAGE = """
+        The brief is above.
+
+        **Upward message**
+
+        - **Fact.** The edit is not done.
+        - **Cause.** This seat has no code-changing operation, which enforces the no-writing rule.
+        - **Cost.** One hand-off of a three-call brief.
+        """;
+
+    /** A brain whose one answer is the given text, delivered the way claude's stream delivers it. */
+    private HostCommand aBrainSaying(String text) throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        String event = JSON.writeValueAsString(Map.of("type", "assistant", "message",
+            Map.of("role", "assistant", "content", List.of(Map.of("type", "text", "text", text)))));
+        Files.writeString(file, "#!/bin/sh\ncat <<'JAWATA_EVENT'\n" + event + "\nJAWATA_EVENT\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01}'\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    @Test
+    @DisplayName("D13: an upward message missing its cost is refused by the seat's own gate, and the plan stops there")
+    @SuppressWarnings("unchecked")
+    void anUpwardMessageMissingItsCostIsRefusedByTheSeatsOwnGate() throws Exception {
+        String noCost = WHOLE_UPWARD_MESSAGE.replaceAll("(?s)- \\*\\*Cost\\.\\*\\*.*", "");
+        HireTool hire = toolWith(new StandsIn(host, aBrainSaying(noCost).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(SEAT_WITH_UPWARD_GATE))));
+
+        List<Map<String, Object>> gates = (List<Map<String, Object>>) data.get("gates");
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, data.get("complete"), String.valueOf(data)),
+            () -> assertEquals(2, data.get("stepsDeclared"),
+                "the seat's check is a step of the plan, ahead of the hirer's compile gate"),
+            () -> assertEquals(List.of("answer_gate:upward_message"),
+                gates.stream().map(g -> g.get("tool")).toList(),
+                "the plan stopped at the refused message: the compile gate never ran"),
+            () -> assertTrue(String.valueOf(data.get("answerGateRefusals")).contains("COST"),
+                String.valueOf(data.get("answerGateRefusals"))));
+    }
+
+    @Test
+    @DisplayName("D13, the control: the same message made whole passes its gate and the hirer's gate runs")
+    @SuppressWarnings("unchecked")
+    void aWholeUpwardMessagePassesTheSeatsOwnGate() throws Exception {
+        HireTool hire = toolWith(
+            new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(SEAT_WITH_UPWARD_GATE))));
+
+        List<Map<String, Object>> gates = (List<Map<String, Object>>) data.get("gates");
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, data.get("complete"), String.valueOf(data)),
+            () -> assertEquals(List.of("answer_gate:upward_message", "compile_workspace"),
+                gates.stream().map(g -> g.get("tool")).toList()),
+            () -> assertEquals(List.of(), data.get("answerGateRefusals")));
+    }
+
+    @Test
+    @DisplayName("a seat that declares no answer gate is hired exactly as before: no extra step, no extra field")
+    void aSeatWithNoAnswerGateIsUnchanged() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE)),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(1, data.get("stepsDeclared")),
+            () -> assertFalse(data.containsKey("answerGateRefusals")));
+    }
+
     /** A brain that makes exactly the named calls in one turn, then ends. */
     private HostCommand aBrainCalling(String... names) throws Exception {
         return aBrainOfferedThenCalling(null, names);

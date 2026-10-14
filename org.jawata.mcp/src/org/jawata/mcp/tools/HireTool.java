@@ -330,7 +330,12 @@ public class HireTool extends AbstractTool {
         data.put("record", proposal.record().toString());
         data.put("complete", proposal.complete());
         data.put("stepsPassed", proposal.stepsPassed());
-        data.put("stepsDeclared", steps.size());
+        // The seat's own checks over its answer are steps of the plan too, ahead of the hirer's.
+        data.put("stepsDeclared", steps.size() + seat.answerGates().size());
+        if (!seat.answerGates().isEmpty()) {
+            data.put("answerGates", seat.answerGates());
+            data.put("answerGateRefusals", proposal.answerGateRefusals());
+        }
         data.put("gates", gateRows(proposal));
         // EVERY CHANGED FILE ATTRIBUTED TO THE RUN — C16's clause, and the absence is an absence.
         // `changedFiles` is left OUT of the answer entirely when no census could be taken, rather

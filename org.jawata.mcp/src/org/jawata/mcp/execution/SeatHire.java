@@ -56,9 +56,12 @@ import java.util.Optional;
  * @param ceilings what the run may consume, assembled from the seat's own declared limits
  * @param stance   the seat's own rules — the markdown body below its frontmatter — which
  *     {@link #prompt(String)} sends ahead of the brief. Empty when the seat has none.
+ * @param answerGates the checks the seat declares over its OWN answer ({@code answer_gates:} in
+ *     the frontmatter), each run as a step of the plan whose result lands in the run's record.
+ *     Today one is known: {@code upward_message}. Empty when the seat declares none.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
-                       HiredBrain.Ceilings ceilings, String stance) {
+                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -110,6 +113,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         }
         tools = tools == null ? List.of() : List.copyOf(tools);
         stance = stance == null ? "" : stance.strip();
+        answerGates = answerGates == null ? List.of() : List.copyOf(answerGates);
         if (ceilings == null) {
             throw new IllegalArgumentException("a hire with no ceilings is an unbounded run, which"
                 + " is the thing this whole path exists to prevent");
@@ -146,7 +150,8 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 // null, not 0.0 — an undeclared budget is NO ceiling, and zero would be a ceiling
                 // of nothing that fired on the first reported cent.
                 decimal(front.get("cost_budget_usd")).orElse(null)),
-            body(markdown));
+            body(markdown),
+            list(front.get("answer_gates")));
     }
 
     /**
@@ -337,5 +342,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     private static Optional<Duration> seconds(String value) {
         return integer(value).filter(s -> s > 0).map(Duration::ofSeconds);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance) {
+        this(seat, brain, model, tools, ceilings, stance, List.of());
     }
 }
