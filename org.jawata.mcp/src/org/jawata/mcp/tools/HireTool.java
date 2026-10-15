@@ -335,6 +335,19 @@ public class HireTool extends AbstractTool {
         // attributable to the brain whose dialect read it.
         // THE RESIDENT'S OWN ENDPOINT, so a Claude hire talks to this resident and nothing else.
         SelfEndpoint endpoint = self.get();
+        if (endpoint == null && seat.brain() == SeatHire.Brain.CLAUDE_CODE) {
+            // S16-36. Without an endpoint the claude CLI keeps the machine's own MCP servers,
+            // settings and hooks — measured $2.26 for a one-word answer — and the containment that
+            // actually removes its editors (--tools "") is sent only WITH one. A hire that cannot
+            // be bounded is refused before anything is spawned, which is cheaper than reporting it
+            // afterwards.
+            return ToolResponse.error("PRECONDITION_NOT_MET",
+                "a claude hire needs this resident's own endpoint, and this resident has none —"
+                    + " it is serving stdio, so there is nothing to attach the brain to",
+                "without an endpoint the brain would load every MCP server, setting and hook on"
+                    + " this machine and keep its own editors. Hire from a resident serving HTTP,"
+                    + " or give the seat another brain (cursor, codex or copilot)");
+        }
         BrainDialect dialect = seat.dialect(endpoint);
         HostCommand base = HostCommand.of(List.of("placeholder:" + dialect.name()));
         // REQUIRED, and that is the other half of the fix above. Defaulting it meant the brain ran

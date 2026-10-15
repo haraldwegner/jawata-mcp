@@ -18,6 +18,7 @@ import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.LearnerEvent;
@@ -174,7 +175,35 @@ class HireToolTest {
 
     private HireTool toolWith(HostProcesses processes, LearnerEventStore journal,
             ToolRegistry gates) {
-        return new HireTool(() -> null, processes, artifacts, plans, () -> journal, () -> gates);
+        // WITH the resident's endpoint, as a resident serving HTTP has. A claude hire without one
+        // is refused (S16-36); the case that pins that builds its tool without one on purpose.
+        return new HireTool(() -> null, processes, artifacts, plans, () -> journal, () -> gates,
+            () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"));
+    }
+
+    /** A host that fails the test if anything is spawned through it. */
+    private HostProcesses aHostThatMustNotSpawn() {
+        return new HostProcesses() {
+            @Override
+            public Process start(HostCommand command) {
+                throw new AssertionError("a refused hire must not spawn a process: " + command);
+            }
+
+            @Override
+            public HostProcessOutcome run(HostCommand command) throws InterruptedException {
+                return host.run(command);
+            }
+
+            @Override
+            public List<String> executableCandidates(String base) {
+                return host.executableCandidates(base);
+            }
+
+            @Override
+            public List<String> wrapperNames(String base) {
+                return host.wrapperNames(base);
+            }
+        };
     }
 
     /** A registry holding one gate that answers a clean compile. */
@@ -661,6 +690,38 @@ class HireToolTest {
             () -> assertEquals(row.tool(), shown.get("brain")),
             () -> assertEquals(data.get("artifactId"),
                 ((Map<?, ?>) shown.get("detail")).get("artifactId")));
+    }
+
+    @Test
+    @DisplayName("S16-36: a claude hire with no resident endpoint is refused BEFORE anything is spawned")
+    void aClaudeHireWithNoEndpointIsRefusedBeforeItSpawns() throws Exception {
+        // The stdio resident has no endpoint to hand the brain, and without one the claude CLI
+        // keeps the machine's own MCP servers, settings and hooks: measured $2.26 for a one-word
+        // answer, and --tools "" (the editors-absent containment) is only sent WITH an endpoint.
+        // An unbounded hire is refused rather than run and reported.
+        HireTool hire = new HireTool(() -> null, aHostThatMustNotSpawn(), artifacts, plans,
+            () -> events, () -> aRegistryWithACleanGate());
+
+        ToolResponse response = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+        assertAll(
+            () -> assertFalse(response.isSuccess()),
+            () -> assertEquals("PRECONDITION_NOT_MET", response.getError().getCode()),
+            () -> assertTrue(response.getError().getMessage().contains("endpoint"),
+                response.getError().getMessage()),
+            () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
+                "and nothing was journalled, because nothing ran"));
+    }
+
+    @Test
+    @DisplayName("S16-36: the refusal is claude's alone — a brain that does not attach the resident still hires without an endpoint")
+    void aBrainThatDoesNotUseTheEndpointStillHiresWithoutOne() throws Exception {
+        HireTool hire = new HireTool(() -> null, new StandsIn(host, aBrainThatAnswers()), artifacts,
+            plans, () -> events, () -> aRegistryWithACleanGate());
+
+        ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT)));
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
     }
 
     @Test
