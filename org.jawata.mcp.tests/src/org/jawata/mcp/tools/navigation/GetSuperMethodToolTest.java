@@ -55,12 +55,12 @@ class GetSuperMethodToolTest {
         assertNotNull(methodInfo.get("name"));
         assertNotNull(methodInfo.get("signature"));
 
-        // Verify overrides info (may be null if not overriding)
-        if (data.get("overrides") != null) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> overrides = (Map<String, Object>) data.get("overrides");
-            assertNotNull(overrides.get("declaringType"));
-        }
+        // REL44-22: asserted, not guarded — this test is about FINDING the super method, and an
+        // `if` let a lookup that found none pass the one check the test is named for.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> overrides = (Map<String, Object>) data.get("overrides");
+        assertNotNull(overrides, "the overriding method's super method must be found: " + data);
+        assertNotNull(overrides.get("declaringType"));
     }
 
     @Test @DisplayName("returns null overrides for non-overriding method")
@@ -74,10 +74,10 @@ class GetSuperMethodToolTest {
 
         assertTrue(r.isSuccess());
         Map<String, Object> data = getData(r);
-        // Should have null overrides or a message
-        if (data.get("overrides") == null) {
-            assertNotNull(data.get("message"));
-        }
+        // REL44-22: asserted, not guarded — the `if` let a base method reported as overriding
+        // something pass, which is the one wrong answer this test exists to catch.
+        assertNull(data.get("overrides"), "a base method overrides nothing: " + data);
+        assertNotNull(data.get("message"), "and says so: " + data);
     }
 
     @Test @DisplayName("requires filePath, line, column parameters")

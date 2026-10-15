@@ -93,10 +93,11 @@ class GetHoverInfoToolTest {
         assertNotNull(modifiers);
         assertTrue(modifiers.contains("public"));
 
+        // REL44-22: asserted, not guarded — Calculator.add is documented, and an `if` let a
+        // hover that dropped the doc comment pass.
         String docComment = (String) data.get("docComment");
-        if (docComment != null) {
-            assertTrue(docComment.contains("Add") || docComment.contains("sum"));
-        }
+        assertNotNull(docComment, "the documented method's doc comment is part of its hover: " + data);
+        assertTrue(docComment.contains("Add") || docComment.contains("sum"), docComment);
     }
 
     @Test

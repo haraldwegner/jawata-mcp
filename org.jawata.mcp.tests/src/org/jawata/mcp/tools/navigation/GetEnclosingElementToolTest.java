@@ -76,12 +76,12 @@ class GetEnclosingElementToolTest {
         assertEquals("com.example.Calculator", enclosingType.get("qualifiedName"));
         assertEquals("Class", enclosingType.get("kind"));
 
-        // Element info if present
+        // REL44-22: asserted, not guarded — a position inside a method body has an enclosing
+        // element, and an `if` let a lookup that returned none pass.
         Map<String, Object> element = (Map<String, Object>) data.get("element");
-        if (element != null) {
-            assertNotNull(element.get("name"));
-            assertNotNull(element.get("kind"));
-        }
+        assertNotNull(element, "a method-body position has an enclosing element: " + data);
+        assertNotNull(element.get("name"));
+        assertNotNull(element.get("kind"));
     }
 
     @Test

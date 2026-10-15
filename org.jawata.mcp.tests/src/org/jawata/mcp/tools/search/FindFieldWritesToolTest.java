@@ -55,11 +55,12 @@ class FindFieldWritesToolTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> writes = (List<Map<String, Object>>) data.get("writeLocations");
         assertNotNull(writes);
-        if (!writes.isEmpty()) {
-            Map<String, Object> write = writes.get(0);
-            assertNotNull(write.get("line"));
-            assertEquals("WRITE", write.get("accessType"));
-        }
+        // REL44-22: asserted, not guarded — the field is written in the fixture, and an `if`
+        // let a search that found no write pass.
+        assertFalse(writes.isEmpty(), "the fixture writes this field: " + data);
+        Map<String, Object> write = writes.get(0);
+        assertNotNull(write.get("line"));
+        assertEquals("WRITE", write.get("accessType"));
     }
 
     @Test @DisplayName("supports maxResults parameter")

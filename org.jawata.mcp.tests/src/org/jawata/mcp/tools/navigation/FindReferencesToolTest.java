@@ -75,12 +75,13 @@ class FindReferencesToolTest {
             ref.get("filePath") != null &&
             ref.get("filePath").toString().contains("UserService")));
 
-        if (!references.isEmpty()) {
-            Map<String, Object> ref = references.get(0);
-            assertNotNull(ref.get("filePath"));
-            assertNotNull(ref.get("line"));
-            assertNotNull(ref.get("column"));
-        }
+        // REL44-22: the `if (!references.isEmpty())` that stood here was redundant — the
+        // assertion above already requires a reference — and a guard that can never be false
+        // reads, to the next person, like a case that is allowed to be empty.
+        Map<String, Object> ref = references.get(0);
+        assertNotNull(ref.get("filePath"));
+        assertNotNull(ref.get("line"));
+        assertNotNull(ref.get("column"));
     }
 
     /**

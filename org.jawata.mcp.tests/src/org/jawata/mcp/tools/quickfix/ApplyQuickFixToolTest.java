@@ -71,15 +71,14 @@ class ApplyQuickFixToolTest {
         List<Map<String, Object>> edits = getEdits(data);
         assertNotNull(edits);
 
-        // Verify edit structure if present
-        if (!edits.isEmpty()) {
-            Map<String, Object> edit = edits.get(0);
-            assertNotNull(edit.get("type"));
-            String newText = (String) edit.get("newText");
-            if (newText != null) {
-                assertTrue(newText.contains("import") || newText.contains("java.util.Date"));
-            }
-        }
+        // REL44-22: asserted, not guarded — an add-import fix produces an edit inserting it, and
+        // the `if`s let a fix that produced nothing pass.
+        assertFalse(edits.isEmpty(), "an add-import fix must produce an edit: " + data);
+        Map<String, Object> edit = edits.get(0);
+        assertNotNull(edit.get("type"));
+        String newText = (String) edit.get("newText");
+        assertNotNull(newText, "the edit inserts text: " + edit);
+        assertTrue(newText.contains("import") || newText.contains("java.util.Date"), newText);
     }
 
     @Test

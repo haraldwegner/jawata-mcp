@@ -122,24 +122,40 @@ class GetQuickFixesToolTest {
         assertNotNull(response.getError());
     }
 
+    /**
+     * REL44-22. This asked about line 0 of a file with no problem on it, and checked the fixes'
+     * structure only inside {@code if (!fixes.isEmpty())} — so it could never check anything, and
+     * it stayed green while the tool answered zero problems on EVERY file (REL44-26). It now asks
+     * about a line that has a problem, in a copy of the fixture it is free to break.
+     */
     @Test
     @DisplayName("returns fixes with fixId and label when problems exist")
-    void returnsFixesWithStructure() {
+    void returnsFixesWithStructure() throws Exception {
+        JdtServiceImpl copy = helper.loadProjectCopy("simple-maven");
+        java.nio.file.Path broken = copy.getProjectRoot()
+            .resolve("src/main/java/com/example/HasAProblem.java");
+        java.nio.file.Files.writeString(broken, """
+            package com.example;
+
+            public class HasAProblem {
+                Object made = new ArrayList<String>();
+            }
+            """);
+        new org.jawata.core.workspace.StrictDiskSync(() -> copy).syncBeforeCall();
+
         ObjectNode args = objectMapper.createObjectNode();
-        args.put("filePath", projectPath.resolve("src/main/java/com/example/BugPatterns.java").toString());
-        args.put("line", 0);
+        args.put("filePath", broken.toString());
+        args.put("line", 3);
 
-        ToolResponse response = tool.execute(args);
+        ToolResponse response = new GetQuickFixesTool(() -> copy).execute(args);
 
-        assertTrue(response.isSuccess());
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
         Map<String, Object> data = getData(response);
         List<Map<String, Object>> fixes = getFixes(data);
 
-        // If there are fixes, verify they have required structure
-        if (!fixes.isEmpty()) {
-            Map<String, Object> fix = fixes.get(0);
-            assertNotNull(fix.get("fixId"));
-            assertNotNull(fix.get("label"));
-        }
+        assertFalse(fixes.isEmpty(), "a line with an unresolved type has fixes: " + data);
+        Map<String, Object> fix = fixes.get(0);
+        assertNotNull(fix.get("fixId"));
+        assertNotNull(fix.get("label"));
     }
 }

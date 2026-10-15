@@ -49,12 +49,13 @@ class FindTestsToolTest {
         List<Map<String, Object>> testClasses = (List<Map<String, Object>>) data.get("testClasses");
         assertNotNull(testClasses);
 
-        if (!testClasses.isEmpty()) {
-            Map<String, Object> tc = testClasses.get(0);
-            assertNotNull(tc.get("className"));
-            assertNotNull(tc.get("filePath"));
-            assertNotNull(tc.get("testMethods"));
-        }
+        // REL44-22: asserted, not guarded — the fixture has test classes, and an `if` here let
+        // a finder that found none pass the structure checks below without running them.
+        assertFalse(testClasses.isEmpty(), "the fixture's test classes must be found: " + data);
+        Map<String, Object> tc = testClasses.get(0);
+        assertNotNull(tc.get("className"));
+        assertNotNull(tc.get("filePath"));
+        assertNotNull(tc.get("testMethods"));
     }
 
     @Test @DisplayName("supports filtering options")

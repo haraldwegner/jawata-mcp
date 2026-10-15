@@ -149,10 +149,13 @@ class FindQualityIssueSummaryTest {
         assertTrue(trueCount >= page.size(),
             "conflictCount is the TRUE total, never the page size: " + trueCount
                 + " vs " + page.size());
-        if (trueCount > page.size()) {
-            assertEquals(Boolean.TRUE, data.get("conflictsTruncated"),
-                "a capped list must declare itself capped, never read as complete: " + data.keySet());
-        }
+        // REL44-22: asserted, not guarded — the cap is this test's subject, and an `if` let a
+        // fixture with too few conflicts to reach it pass without the cap ever being checked.
+        assertTrue(trueCount > page.size(),
+            "the fixture must carry more conflicts than the limit, or the cap is never exercised: "
+                + trueCount + " vs a page of " + page.size());
+        assertEquals(Boolean.TRUE, data.get("conflictsTruncated"),
+            "a capped list must declare itself capped, never read as complete: " + data.keySet());
     }
 
     /**
@@ -260,9 +263,13 @@ class FindQualityIssueSummaryTest {
         assertNotNull(listKey, kind + " returned no result list: " + unbounded.keySet());
         Object all = unbounded.get(listKey);
         int trueTotal = all instanceof List<?> l ? l.size() : 0;
-        if (trueTotal < 2) {
-            return; // nothing to page on this fixture; the summary test above still covers it
-        }
+        // REL44-22: asserted, not returned. A `return` here read as a PASS for any kind with
+        // fewer than two findings, so a detector that regressed to finding nothing would have
+        // left its paging unchecked and the run green. Measured 2026-10-15: every kind this
+        // test is parameterised over yields at least two on the fixture, so the return was
+        // never taken — which is exactly why it could hide the day it was.
+        assertTrue(trueTotal >= 2, kind + " found " + trueTotal + " on the fixture; paging needs"
+            + " at least two to be tested at all");
 
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", kind);

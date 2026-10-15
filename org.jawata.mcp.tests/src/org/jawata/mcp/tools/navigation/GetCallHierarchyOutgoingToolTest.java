@@ -56,12 +56,12 @@ class GetCallHierarchyOutgoingToolTest {
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> callees = (List<Map<String, Object>>) data.get("callees");
-        if (!callees.isEmpty()) {
-            Map<String, Object> callee = callees.get(0);
-            assertNotNull(callee.get("method"));
-            assertNotNull(callee.get("declaringClass"));
-            assertNotNull(callee.get("callType"));
-        }
+        // REL44-22: asserted, not guarded — an `if` let a hierarchy that found no callee pass.
+        assertFalse(callees.isEmpty(), "the method calls something, so callees are found: " + data);
+        Map<String, Object> callee = callees.get(0);
+        assertNotNull(callee.get("method"));
+        assertNotNull(callee.get("declaringClass"));
+        assertNotNull(callee.get("callType"));
     }
 
     @Test @DisplayName("requires filePath, line, column parameters")

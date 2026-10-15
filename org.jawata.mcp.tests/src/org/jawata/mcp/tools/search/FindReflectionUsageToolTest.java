@@ -59,11 +59,12 @@ class FindReflectionUsageToolTest {
         assertTrue(response.isSuccess());
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> calls = (List<Map<String, Object>>) getData(response).get("reflectionCalls");
-        if (!calls.isEmpty()) {
-            Map<String, Object> firstCall = calls.get(0);
-            assertNotNull(firstCall.get("reflectionMethod"), "Should include reflection method label");
-            // filePath and line may be absent if match is in a binary JAR
-        }
+        // REL44-22: asserted, not guarded — the fixture uses reflection, and an `if` let a scan
+        // that found none pass the label check this test is named for.
+        assertFalse(calls.isEmpty(), "the fixture's reflection calls must be found");
+        Map<String, Object> firstCall = calls.get(0);
+        assertNotNull(firstCall.get("reflectionMethod"), "Should include reflection method label");
+        // filePath and line may be absent if match is in a binary JAR
     }
 
     // ========== Summary Tests ==========
