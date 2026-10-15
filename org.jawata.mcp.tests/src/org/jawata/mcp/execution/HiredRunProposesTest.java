@@ -327,6 +327,14 @@ class HiredRunProposesTest {
                 onCursor.budgetReport().orElseThrow()),
             () -> assertTrue(onClaude.budgetReport().orElseThrow().contains("ENFORCEABLE"),
                 onClaude.budgetReport().orElseThrow()),
+            // S16-16: ENFORCEABLE is true of when the run STOPS, not of what it SPENDS. Claude
+            // reports its whole cost in one terminal event, so a single-turn hire measured at
+            // $2.26 against a $0.25 ceiling was stopped correctly and could not be prevented. The
+            // report must say so, or "ENFORCEABLE" reads as a cap on spend.
+            () -> assertTrue(onClaude.budgetReport().orElseThrow()
+                    .contains("CANNOT PREVENT THE SPEND"),
+                "the report says what the ceiling cannot do: "
+                    + onClaude.budgetReport().orElseThrow()),
             // The ceiling is carried either way: this product does not edit a human's written
             // intent because a vendor publishes no cost.
             () -> assertEquals(1.5, onCursor.ceilings().maxCostUsd(), 1e-9));

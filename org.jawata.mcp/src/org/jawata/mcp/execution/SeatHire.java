@@ -255,7 +255,10 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         }
         boolean publishesDollars = brain == Brain.CLAUDE_CODE;
         return Optional.of(publishesDollars
-            ? "cost budget $" + budget + " is ENFORCEABLE: " + brain + " reports a dollar cost"
+            ? "cost budget $" + budget + " is ENFORCEABLE: " + brain + " reports a dollar cost,"
+                + " but only when the run ends, so the ceiling STOPS a run that has passed it and"
+                + " CANNOT PREVENT THE SPEND — a single-turn hire measured at $2.26 against a"
+                + " $0.25 ceiling was stopped correctly and still cost $2.26"
             : "cost budget $" + budget + " CANNOT FIRE on " + brain + ", which publishes no dollar"
                 + " cost — the run is still bounded by its wall clock and step ceiling");
     }
