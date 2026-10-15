@@ -279,11 +279,21 @@ record = d.get("record")
 if record and os.path.isfile(record):
     # THE ARTIFACT, AND THIS LINE USED TO CLAIM THE JOURNAL. It said "RESULT JOURNALLED" while
     # checking proposal.md — a file on disk, which is a different thing from a row in the event
-    # store. An audit named it. The journal row is asserted in HireToolTest against the store's
-    # own counters, because LearnerEventStore publishes no row-level read for a probe to use.
+    # store. An audit named it. The journal row itself is read back by the hire answer (S16-27:
+    # `journal` and `journalRow`), asserted just below from the wire.
     ok("THE RECORD IS ON DISK (the artifact, not the journal) at %s" % os.path.basename(record))
 else:
     bad("no record at the path the response gave: %r" % record)
+
+# RESULT JOURNALLED, READ BACK BY ROW (S16-27): the answer says what the journal HOLDS for this
+# run, read by its plan id, and the row names the artifact the answer names.
+row = d.get("journalRow") or {}
+if d.get("journal") == "landed" and row.get("kind") == "hired_run" \
+        and (row.get("detail") or {}).get("artifactId") == d.get("artifactId"):
+    ok("THE JOURNAL ROW IS READ BACK and names this run's artifact (brain=%s)" % row.get("brain"))
+else:
+    bad("journal=%r journalRow=%r artifactId=%r"
+        % (d.get("journal"), d.get("journalRow"), d.get("artifactId")))
 
 if d.get("artifactId") and d.get("plan"):
     ok("the artifact id and the plan id are both on the answer")
