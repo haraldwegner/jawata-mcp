@@ -9,14 +9,29 @@ import java.util.Objects;
  *
  * <p>Line-based, 3 context lines, classic {@code --- a/ +++ b/ @@} framing.
  * The middle region (after common prefix/suffix trimming) is diffed with an
- * LCS table when small enough; beyond {@link #MAX_LCS_CELLS} it degrades to a
- * single whole-region replace hunk — bounded memory on pathological inputs,
- * still a correct (just non-minimal) diff.</p>
+ * LCS table when small enough. Beyond {@link #MAX_LCS_CELLS} it is aligned by
+ * Myers' shortest-edit search instead, whose cost grows with the number of
+ * CHANGED lines rather than with the region; only when even that exceeds
+ * {@link #MAX_EDITS} does it degrade to a single whole-region replace hunk —
+ * bounded memory on pathological inputs, still a correct (just non-minimal) diff.</p>
+ *
+ * <p>REL44-15 is why the middle tier exists. Two edits far apart in a large
+ * file make a large middle even when almost nothing changed: a staged
+ * change_method_signature touching one declaration, one call site and one
+ * javadoc line rendered as 1,561 lines added and 1,560 removed, which no one
+ * can review — and reviewing is what staging is for.</p>
  */
 public final class DiffRenderer {
 
     private static final int CONTEXT_LINES = 3;
     private static final long MAX_LCS_CELLS = 1_000_000L;
+
+    /**
+     * At most this many changed lines are aligned by {@link #myersOps}. Its trace keeps
+     * {@code 2d+1} ints for each step {@code d}, so this many steps cost about
+     * {@code MAX_EDITS²} ints — the same memory the LCS table is held to.
+     */
+    private static final int MAX_EDITS = (int) Math.sqrt(MAX_LCS_CELLS);
 
     private DiffRenderer() {}
 
@@ -155,8 +170,11 @@ public final class DiffRenderer {
 
         int aMid = a.length - prefix - suffix;
         int bMid = b.length - prefix - suffix;
-        if ((long) aMid * (long) bMid <= MAX_LCS_CELLS) {
-            ops.addAll(lcsOps(a, b, prefix, aMid, bMid));
+        List<Op> aligned = (long) aMid * (long) bMid <= MAX_LCS_CELLS
+            ? lcsOps(a, b, prefix, aMid, bMid)
+            : myersOps(a, b, prefix, aMid, bMid);
+        if (aligned != null) {
+            ops.addAll(aligned);
         } else {
             // Degenerate fallback: one replace block for the whole middle.
             for (int i = 0; i < aMid; i++) {
@@ -211,6 +229,92 @@ public final class DiffRenderer {
             j++;
         }
         return ops;
+    }
+
+    /**
+     * Myers' greedy shortest-edit search over the middle region, for when it is too large
+     * for the LCS table (REL44-15).
+     *
+     * <p>Each step {@code d} records, per diagonal {@code k = x - y}, how far along the old
+     * text a path of {@code d} edits reaches; the first step whose path reaches the end of
+     * both texts is the shortest edit script, and the recorded steps are walked back to
+     * recover it. The ops come out in the same shape {@link #lcsOps} produces — a deletion
+     * before the insertion that replaces it — so the hunk rendering cannot tell them apart.</p>
+     *
+     * @return the ops, or {@code null} when the region differs by more than {@link #MAX_EDITS}
+     *     lines, or when the walk back does not account for exactly the region — the caller
+     *     then falls back to the whole-region replace, which is never wrong
+     */
+    private static List<Op> myersOps(String[] a, String[] b, int offset, int n, int m) {
+        int max = Math.min(n + m, MAX_EDITS);
+        int off = max + 1;
+        int[] v = new int[2 * max + 3];
+        List<int[]> trace = new ArrayList<>();
+        int found = -1;
+        int endX = -1;
+        int endY = -1;
+        search:
+        for (int d = 0; d <= max; d++) {
+            for (int k = -d; k <= d; k += 2) {
+                int x = (k == -d || (k != d && v[off + k - 1] < v[off + k + 1]))
+                    ? v[off + k + 1]
+                    : v[off + k - 1] + 1;
+                int y = x - k;
+                while (x < n && y < m && a[offset + x].equals(b[offset + y])) {
+                    x++;
+                    y++;
+                }
+                v[off + k] = x;
+                if (x >= n && y >= m) {
+                    found = d;
+                    endX = x;
+                    endY = y;
+                    break search;
+                }
+            }
+            trace.add(java.util.Arrays.copyOfRange(v, off - d, off + d + 1));
+        }
+        if (found < 0 || endX != n || endY != m) {
+            return null;
+        }
+
+        List<Op> reversed = new ArrayList<>();
+        int x = n;
+        int y = m;
+        for (int d = found; d > 0; d--) {
+            int[] prev = trace.get(d - 1);          // diagonals -(d-1) .. d-1
+            int k = x - y;
+            boolean down = k == -d
+                || (k != d && prev[k - 1 + (d - 1)] < prev[k + 1 + (d - 1)]);
+            int prevK = down ? k + 1 : k - 1;
+            int prevX = prev[prevK + (d - 1)];
+            int prevY = prevX - prevK;
+            int startX = down ? prevX : prevX + 1;
+            int startY = down ? prevY + 1 : prevY;
+            while (x > startX && y > startY) {
+                x--;
+                y--;
+                reversed.add(new Op(' ', offset + x, offset + y, a[offset + x]));
+            }
+            if (prevX < 0 || prevY < 0 || (down ? prevY >= m : prevX >= n)) {
+                return null;
+            }
+            reversed.add(down
+                ? new Op('+', offset + prevX, offset + prevY, b[offset + prevY])
+                : new Op('-', offset + prevX, offset + prevY, a[offset + prevX]));
+            x = prevX;
+            y = prevY;
+        }
+        while (x > 0 && y > 0) {
+            x--;
+            y--;
+            reversed.add(new Op(' ', offset + x, offset + y, a[offset + x]));
+        }
+        if (x != 0 || y != 0) {
+            return null;
+        }
+        java.util.Collections.reverse(reversed);
+        return reversed;
     }
 
     // ========== rendering ==========

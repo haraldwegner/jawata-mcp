@@ -1,11 +1,14 @@
 package org.jawata.mcp.refactoring;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 class DiffRendererTest {
 
@@ -108,5 +111,104 @@ class DiffRendererTest {
         String diff = DiffRenderer.unifiedDiff("A.java", "", "a\nb\n");
         assertTrue(diff.contains("@@ -0,0 +1,2 @@"), diff);
         assertTrue(diff.contains("+a\n+b\n"), diff);
+    }
+
+    /**
+     * REL44-15. A staged change_method_signature on ExperienceRetrieval#fits — one declaration,
+     * one call site, one @param line — rendered as ONE hunk of 1,561 added and 1,560 removed lines,
+     * because the region between the first and the last change was too large for the LCS table
+     * and fell back to replacing all of it. A diff that restates the file cannot be reviewed,
+     * which is the whole point of staging one.
+     */
+    @Test
+    @DisplayName("REL44-15: three edits far apart in a large file render as three edited lines")
+    void farApartChangesInALargeFile_renderAsThemselves() {
+        String oldText = numbered(1600);
+        String newText = oldText
+            .replace("    statement20;\n", "    statement20(tally);\n")
+            .replace("    statement1580;\n", "    statement1580;\n    added;\n")
+            .replace("    statement1584;\n", "    statement1584(tally);\n");
+
+        String diff = DiffRenderer.unifiedDiff("Big.java", oldText, newText);
+
+        assertEquals(List.of(new DiffRenderer.FileSummary("Big.java", 2, 3, 2)),
+            DiffRenderer.summarize(diff),
+            () -> "two hunks, three lines added and two removed — not the whole file:\n"
+                + diff.lines().limit(12).reduce("", (x, y) -> x + y + "\n"));
+        assertEquals(newText, applied(oldText, diff), "and the diff must still say what changed");
+    }
+
+    @Test
+    @DisplayName("REL44-15: scattered edits over a large file apply back to the new text")
+    void scatteredEditsInALargeFile_applyBack() {
+        String oldText = numbered(2000);
+        List<String> lines = new ArrayList<>(oldText.lines().toList());
+        java.util.Random random = new java.util.Random(4415);
+        int edited = 30;
+        for (int e = 0; e < edited; e++) {
+            int at = random.nextInt(lines.size());
+            switch (random.nextInt(3)) {
+                case 0 -> lines.add(at, "    inserted" + e + ";");
+                case 1 -> lines.remove(at);
+                default -> lines.set(at, "    replaced" + e + ";");
+            }
+        }
+        String newText = String.join("\n", lines) + "\n";
+
+        String diff = DiffRenderer.unifiedDiff("Big.java", oldText, newText);
+
+        assertEquals(newText, applied(oldText, diff), "the diff must reproduce the new text");
+        DiffRenderer.FileSummary s = DiffRenderer.summarize(diff).get(0);
+        int changed = s.added() + s.removed();
+        int bound = 2 * edited;
+        assertTrue(changed <= bound,
+            () -> edited + " edits may change at most " + bound + " lines; the diff changed "
+                + changed + " — it restated the file instead of the edits");
+    }
+
+    /** {@code n} distinct lines, the way a large Java file is distinct line by line. */
+    private static String numbered(int n) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= n; i++) {
+            sb.append("    statement").append(i).append(";\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Applies a diff this class rendered to {@code oldText}, strictly: every context and removed
+     * line must be the old line it claims to be. A renderer that miscounted a hunk would be
+     * caught here rather than by a reader.
+     */
+    private static String applied(String oldText, String diff) {
+        List<String> a = oldText.lines().toList();
+        List<String> out = new ArrayList<>();
+        java.util.regex.Pattern hunk =
+            java.util.regex.Pattern.compile("^@@ -(\\d+),(\\d+) \\+(\\d+),(\\d+) @@$");
+        int next = 0;
+        for (String line : diff.split("\n")) {
+            java.util.regex.Matcher m = hunk.matcher(line);
+            if (m.matches()) {
+                int aStart = Integer.parseInt(m.group(1));
+                int from = Integer.parseInt(m.group(2)) == 0 ? aStart : aStart - 1;
+                while (next < from) {
+                    out.add(a.get(next++));
+                }
+            } else if (line.startsWith("--- a/") || line.startsWith("+++ b/")) {
+                continue;
+            } else if (line.startsWith(" ") || line.startsWith("-")) {
+                assertEquals(a.get(next), line.substring(1), "a context or removed line must be the old line");
+                if (line.startsWith(" ")) {
+                    out.add(a.get(next));
+                }
+                next++;
+            } else if (line.startsWith("+")) {
+                out.add(line.substring(1));
+            }
+        }
+        while (next < a.size()) {
+            out.add(a.get(next++));
+        }
+        return out.isEmpty() ? "" : String.join("\n", out) + "\n";
     }
 }
