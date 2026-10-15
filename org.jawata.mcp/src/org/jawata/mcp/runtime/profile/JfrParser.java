@@ -93,6 +93,7 @@ public final class JfrParser {
 
         List<Map.Entry<String, Long>> ranked = new ArrayList<>(counts.entrySet());
         ranked.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+        long rankedSamples = counts.values().stream().mapToLong(Long::longValue).sum();
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (int i = offset; i < ranked.size() && rows.size() < limit; i++) {
@@ -101,6 +102,13 @@ public final class JfrParser {
             row.put("rank", i + 1);
             row.put("symbol", entry.getKey());
             row.put("samples", entry.getValue());
+            // C15-2 — A SHARE OF THE WHOLE ANSWER, computed here where the whole answer is.
+            // Without it a reader comparing this dimension against wall had to divide a row by
+            // the sum of a CAPPED page, which compares a page share against wall's whole-answer
+            // share — unlike things. Of the RANKED samples, exactly as wall's share is of its
+            // ranked total, so the two dimensions' shares are the same kind of number.
+            row.put("sharePercent", rankedSamples == 0 ? 0.0
+                : Math.round(entry.getValue() * 1000.0 / rankedSamples) / 10.0);
             rows.add(row);
         }
 
@@ -110,6 +118,9 @@ public final class JfrParser {
         result.put("returnedRows", rows.size());
         result.put("totalMethods", ranked.size());
         result.put("totalSamples", totalEvents);
+        // The share's denominator, named: totalSamples also counts the events that could not be
+        // attributed (no stack, an unreadable top frame), which no row can hold a share of.
+        result.put("rankedSamples", rankedSamples);
         result.put("truncated", offset + rows.size() < ranked.size());
         if (eventsWithoutStack > 0) {
             result.put("samplesWithoutStack", eventsWithoutStack);

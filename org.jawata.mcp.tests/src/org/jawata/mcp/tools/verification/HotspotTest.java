@@ -293,13 +293,11 @@ class HotspotTest {
         //
         // The architect watch proposed a sharper form: waitOnLock's share in WALL exceeding its
         // share in CPU, which expresses wall-is-not-cpu as a relation between the dimensions
-        // rather than as a floor. It is better and it is NOT what this is. The cpu dimension
-        // publishes no share, so it would have to be computed from a CAPPED page's sample sum,
-        // which compares a whole-answer share against a page share — unlike things. It is owed
-        // once the cpu dimension carries a share of its own, and that is carried as a named
-        // deferral in the 28g plan's C15 carried-items list rather than left as a note here:
-        // a comment saying "recorded" with no destination is a finding nobody will ever pick up,
-        // which the round-2 audit called out as class 3.
+        // rather than as a floor. It could not be written while the cpu dimension published no
+        // share — computing one from a CAPPED page compares a page share against a whole-answer
+        // share. The cpu dimension carries its own share now (C15-2), and the relation is the
+        // last clause of this test. This floor stays: it holds on every recording, and the
+        // relation sits behind the cpu dimension's rankability assumption.
         Map<String, Object> blockingRow = wallRows.stream()
             .filter(row -> "com.example.debug.WallTimeTarget#waitOnLock".equals(row.get("symbol")))
             .findFirst().orElseThrow();
@@ -355,6 +353,49 @@ class HotspotTest {
         int burnCpuRankInCpu = rankOf(cpuRows, "com.example.debug.WallTimeTarget#burnCpu");
         assertTrue(burnCpuRankInCpu > 0 && burnCpuRankInCpu <= 3,
             "burnCpu is a top CPU hotspot (that is where the CPU goes): " + cpuRows);
+
+        // C15-2 — THE SHARPER CLAUSE, now that the cpu dimension carries a share of its own:
+        // wall-is-not-cpu as a RELATION between the two dimensions, not a floor in one. The
+        // blocking method holds a large share of the wall clock and almost none of the CPU,
+        // because a blocked thread is not on the CPU. Read off a COMPLETE cpu answer (a page
+        // big enough to hold every row), so absence from it means a share of zero rather than
+        // a row below the cut — the two would otherwise be the same empty lookup.
+        ObjectNode cpuWhole = profileAction("hotspots");
+        cpuWhole.put("artifactId", artifactId);
+        cpuWhole.put("dimension", "cpu");
+        cpuWhole.put("limit", 200);
+        Map<String, Object> cpuAnswer = data(profile.execute(cpuWhole));
+        assertEquals(Boolean.FALSE, cpuAnswer.get("truncated"),
+            "the cpu answer must be whole for an absent row to mean zero: " + cpuAnswer);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> everyCpuRow = (List<Map<String, Object>>) cpuAnswer.get("rows");
+        double blockingShareOfCpu = everyCpuRow.stream()
+            .filter(row -> "com.example.debug.WallTimeTarget#waitOnLock".equals(row.get("symbol")))
+            .mapToDouble(row -> ((Number) row.get("sharePercent")).doubleValue())
+            .findFirst().orElse(0.0);
+        assertTrue(everyCpuRow.stream().allMatch(row -> row.get("sharePercent") instanceof Number),
+            "every cpu row carries its share of the ranked samples: " + everyCpuRow);
+        // The denominator, pinned: over a WHOLE answer the shares are of one total, so they sum
+        // to 100 within the one-decimal rounding of each row.
+        double shareSum = everyCpuRow.stream()
+            .mapToDouble(row -> ((Number) row.get("sharePercent")).doubleValue()).sum();
+        assertTrue(Math.abs(shareSum - 100.0) <= 0.05 * everyCpuRow.size() + 0.001,
+            "the cpu shares of a whole answer sum to 100%, so they are shares of ONE total: "
+                + shareSum + " over " + everyCpuRow);
+        // And each row's share is ITS samples over the published denominator. The sum alone
+        // cannot see a wrong formula when one method holds every sample — one row, 100% either
+        // way — which a run of this fixture can produce; this can, whenever the answer is not 0.
+        long rankedSamples = ((Number) cpuAnswer.get("rankedSamples")).longValue();
+        for (Map<String, Object> row : everyCpuRow) {
+            double expected = Math.round(((Number) row.get("samples")).longValue() * 1000.0
+                / rankedSamples) / 10.0;
+            assertEquals(expected, ((Number) row.get("sharePercent")).doubleValue(), 0.0001,
+                "a row's share is its samples over rankedSamples (" + rankedSamples + "): " + row);
+        }
+        assertTrue(blockingShare > blockingShareOfCpu,
+            "wall is not cpu: the blocking method's share of the WALL clock (" + blockingShare
+                + "%) must exceed its share of the CPU (" + blockingShareOfCpu + "%), because a"
+                + " blocked thread is not on the CPU: " + everyCpuRow);
     }
 
     /**
