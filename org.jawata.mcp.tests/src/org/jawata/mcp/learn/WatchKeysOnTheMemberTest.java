@@ -84,7 +84,7 @@ class WatchKeysOnTheMemberTest {
 
     private void open() throws Exception {
         Path copy = helper.copyFixture("simple-maven");
-        service = new JdtServiceImpl();
+        service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(copy);
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> service);
         ObjectMapper mapper = new ObjectMapper();
@@ -118,6 +118,34 @@ class WatchKeysOnTheMemberTest {
             new org.eclipse.core.runtime.NullProgressMonitor());
     }
 
+    /**
+     * REL44-5 — what the bugs detector sees, asked again when the control comes back silent.
+     *
+     * <p>The control failed once in a release suite and never in eighteen attempts to repeat it,
+     * and three explanations remain: the detector refused (since 4.4.1 the watch logs that), it
+     * read the text from before the write, or it saw the catch and the watch dropped it. The
+     * detector's answer, whether the Java model's copy of the file holds the new member, and
+     * whether the file on disk does, tell those three apart. It is asked AFTER the failure, so
+     * a model copy that has caught up by then is itself the sign of a read that came too early.</p>
+     */
+    private String whatTheDetectorSaw() {
+        StringBuilder seen = new StringBuilder("Asked again: ");
+        try {
+            var bugs = binding.detect("bugs", src.toString());
+            seen.append("bugs detector success=").append(bugs.isSuccess());
+            seen.append(bugs.isSuccess() ? " data=" + bugs.getData()
+                : " error=" + (bugs.getError() == null ? "none" : bugs.getError().getMessage()));
+            var unit = service.getCompilationUnit(src);
+            seen.append("; the model's copy holds the new member=").append(unit == null
+                ? "no compilation unit" : unit.getSource().contains("watchSeededSwallower"));
+            seen.append("; the file on disk holds it=")
+                .append(Files.readString(src).contains("watchSeededSwallower"));
+        } catch (Exception e) {
+            seen.append("; asking failed: ").append(e);
+        }
+        return seen.toString();
+    }
+
     private static String withMember(String source, String member) {
         return source.replaceFirst("}\\s*$", member + "}\n");
     }
@@ -138,8 +166,8 @@ class WatchKeysOnTheMemberTest {
         // THE CONTROL: the empty catch is genuinely new here and must speak, or the silence
         // below would be satisfied by a watch that says nothing at all.
         assertTrue(introduced.isPresent() && introduced.get().contains("Empty catch"),
-            "the control: a newly written empty catch must surface. Got: "
-                + introduced.orElse("<silent>"));
+            () -> "the control: a newly written empty catch must surface. Got: "
+                + introduced.orElse("<silent>") + ". " + whatTheDetectorSaw());
 
         write(shifted(withMember(original, SWALLOWER)));
         Optional<String> afterShift = watchNow(freshEngine());
