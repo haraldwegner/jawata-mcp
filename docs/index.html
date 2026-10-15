@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>jawata — compiler-accurate Java analysis &amp; refactoring for AI agents</title>
-  <meta name="description" content="jawata is a JDT-backed MCP server: IDE-grade Java code intelligence for AI coding agents — compiler-accurate analysis, parity-gated reversible refactoring, whole-workspace scope, a grounded memory store, and enforcement that keeps agents on the compiler instead of grep. No Eclipse required. Open source, AGPL.">
+  <meta name="description" content="jawata is a JDT-backed MCP server: IDE-grade Java code intelligence for AI coding agents — compiler-accurate analysis, 62 of Fowler's 66 refactorings compile-verified and reversible, runtime debugging and profiling without code changes, tests chosen by compiler reach, whole-workspace scope, a grounded memory store, and enforcement that keeps agents on the compiler instead of grep. No Eclipse required. Open source, AGPL.">
   <link rel="canonical" href="https://jawata.org/">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <!-- Open Graph / Twitter -->
@@ -24,7 +24,7 @@
     "name": "jawata",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows",
-    "description": "Compiler-accurate Java analysis and refactoring for AI agents — a JDT-backed MCP server with parity-gated reversible refactoring, whole-workspace scope, a grounded memory store, and agent enforcement. Managed by the jawata-studio desktop app.",
+    "description": "Compiler-accurate Java analysis and refactoring for AI agents — a JDT-backed MCP server with 62 of Fowler's 66 refactorings, compile-verified and reversible, runtime debugging and profiling, tests chosen by compiler reach, whole-workspace scope, a grounded memory store, and agent enforcement. Managed by the jawata-studio desktop app.",
     "url": "https://jawata.org/",
     "downloadUrl": "https://github.com/haraldwegner/jawata-studio/releases",
     "license": "https://www.gnu.org/licenses/agpl-3.0.html",
@@ -119,17 +119,31 @@
         agent composes the refactoring <em>this</em> design problem needs — rename, move,
         extract, change signature, multi-step pattern plans — freely, on live code. Every
         change is compile-verified before it counts, applied for real, reversible with one
-        call. Design smells (Fowler, SOLID, Kerievsky) detected and cured. Your daily work
+        call. <strong>62 of Martin Fowler's 66 refactorings and 22 of his 24 code
+        smells</strong>, counted at start-up against what the engine actually publishes, so the
+        number cannot drift; the rest are declined in writing, each with its reason. Every
+        finding names the refactoring that cures it and where to run it. Your daily work
         isn't a migration; it's the change nobody wrote a recipe for.</li>
+    <li><strong>Debug and profile without editing a line.</strong> Launch or attach to a
+        JVM, set a breakpoint or a probe, and read live values while the program keeps
+        running — instead of the agent's reflex of adding log lines to production code.
+        Sample a running JVM and the hotspot comes back named as a symbol, not a stack dump.
+        Meant for development and simulation machines: a JVM not started for debugging cannot
+        be attached to at all.</li>
+    <li><strong>Only the tests your change reaches.</strong> Test runs are chosen by
+        compiler reach from coverage evidence, and widen themselves, with a printed reason,
+        where that evidence cannot carry the claim. Coverage and targeted mutation testing
+        say whether the tests would notice a change at all.</li>
     <li><strong>Enforcement: fluency over grounding doesn't stand a chance.</strong>
         Deployed hooks steer and, where it matters, <em>block</em> the agent's grep-and-guess
         reflex, injecting the compiler-accurate route instead. Other tools hope the agent
         uses them; jawata makes sure.</li>
-    <li><strong>Memory that doesn't live in a chat product.</strong> Portable files in
-        <em>your</em> git plus a grounded store anchored to <em>your</em> symbols — written
-        from any client, recalled from any client. A lesson recorded in Cursor today answers
-        by symbol in Claude Code tomorrow. One fitting fact or an honest nothing — never a
-        similarity pile.</li>
+    <li><strong>Memory that doesn't live in a chat product.</strong> A grounded store
+        anchored to <em>your</em> symbols, exported as portable markdown into <em>your</em>
+        git, copied every day and read back before the copy counts — written from any client,
+        recalled from any client. A lesson recorded in Cursor today answers by symbol in
+        Claude Code tomorrow. One fitting fact or an honest nothing — never a similarity
+        pile.</li>
     <li><strong>Whole codebases, not single projects.</strong> Multi-project workspaces with
         deterministic routing — an enterprise repo tree is one workspace, not a folder at a
         time. Something even IntelliJ doesn't give you: it opens one project per window;
