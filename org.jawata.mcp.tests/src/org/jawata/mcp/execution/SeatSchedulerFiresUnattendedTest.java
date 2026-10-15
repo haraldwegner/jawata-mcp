@@ -85,6 +85,12 @@ class SeatSchedulerFiresUnattendedTest {
         return HostCommand.of(file.toString());
     }
 
+    /** Where the stand-in runs; its argv is the dialect's to pass on, never the hire's to take. */
+    private static HireSite site(HostCommand command) {
+        return new HireSite(command.workingDirectory(), command.environment(),
+            command.cleanEnvironment());
+    }
+
     private static SeatScheduler.ScheduledSeat seat(String name, String schedule) {
         return new SeatScheduler.ScheduledSeat(name, schedule, "Tidy " + name + ".");
     }
@@ -112,7 +118,7 @@ class SeatSchedulerFiresUnattendedTest {
 
         SeatScheduler.Firing hire = s -> {
             firedOnThread.set(Thread.currentThread().getName());
-            proposal.set(run.issue(new ScriptDialect(command.executable(), List.of()), command,
+            proposal.set(run.issue(new ScriptDialect(command.executable(), List.of()), site(command),
                 s.brief(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)), List.of(step),
                 gate -> new GateOutcome(gate.tool(), gate.gateArguments(), 0, true)));
             fired.countDown();

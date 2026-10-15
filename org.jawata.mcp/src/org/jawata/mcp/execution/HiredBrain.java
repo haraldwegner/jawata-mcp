@@ -158,7 +158,7 @@ public final class HiredBrain {
      *     attachment and says which of the three it got. Passing a list to a brain that cannot be
      *     told is not an error and must not read as success.
      */
-    public static Outcome hire(HostProcesses host, BrainDialect dialect, HostCommand base,
+    public static Outcome hire(HostProcesses host, BrainDialect dialect, HireSite base,
             String prompt, List<String> tools, Ceilings ceilings)
             throws IOException, InterruptedException {
         // The dialect owns argv (the prompt travels as one argument, unquoted); the caller owns

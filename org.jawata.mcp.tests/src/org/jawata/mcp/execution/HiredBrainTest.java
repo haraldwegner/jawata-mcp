@@ -65,6 +65,12 @@ class HiredBrainTest {
         return HostCommand.of(file.toString());
     }
 
+    /** Where the stand-in runs; its argv is the dialect's to pass on, never the hire's to take. */
+    private static HireSite site(HostCommand command) {
+        return new HireSite(command.workingDirectory(), command.environment(),
+            command.cleanEnvironment());
+    }
+
     private BrainDialect dialectFor(HostCommand command) {
         return new ScriptDialect(command.argv().get(0), List.of());
     }
@@ -79,7 +85,7 @@ class HiredBrainTest {
         BrainDialect dialect = cursor
             ? new CursorDialect(command.argv().get(0), true, null)
             : new ClaudeCodeDialect(command.argv().get(0), 12, null, false);
-        return HiredBrain.hire(host, dialect, command, "brief", List.of(),
+        return HiredBrain.hire(host, dialect, site(command), "brief", List.of(),
             HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
     }
 
@@ -130,7 +136,7 @@ class HiredBrainTest {
             echo "COST-USD: 0.17"
             echo "done"
             """);
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), site(command),
             "the brief", List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
 
         assertAll(
@@ -156,14 +162,14 @@ class HiredBrainTest {
             echo '{"type":"result","result":"done","total_cost_usd":0.01}'
             """);
         HiredBrain.Outcome seen = HiredBrain.hire(host,
-            new ClaudeCodeDialect(named.argv().get(0), 12, null, false), named, "brief",
+            new ClaudeCodeDialect(named.argv().get(0), 12, null, false), site(named), "brief",
             List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
 
         // The plain-text dialect COUNTS what it is told and names nothing.
         HostCommand counted = script("""
             echo "TOOL-STEPS: 3"
             """);
-        HiredBrain.Outcome unnamed = HiredBrain.hire(host, dialectFor(counted), counted, "brief",
+        HiredBrain.Outcome unnamed = HiredBrain.hire(host, dialectFor(counted), site(counted), "brief",
             List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
 
         assertAll(
@@ -187,7 +193,7 @@ class HiredBrainTest {
             echo "Traceback: the adapter died" >&2
             exit 9
             """);
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), site(command),
             "the brief", List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
 
         assertAll(
@@ -211,7 +217,7 @@ class HiredBrainTest {
             sleep 60
             echo "COST-USD: 99.99"
             """);
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), site(command),
             "the brief", List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(2)));
 
         assertAll(
@@ -237,7 +243,7 @@ class HiredBrainTest {
             sleep 30
             echo "never reached"
             """);
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), site(command),
             "the brief", List.of(), new HiredBrain.Ceilings(Duration.ofSeconds(25), 1, null));
 
         assertAll(
@@ -261,7 +267,7 @@ class HiredBrainTest {
             sleep 30
             echo "never reached"
             """);
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), command,
+        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialectFor(command), site(command),
             "the brief", List.of(), new HiredBrain.Ceilings(Duration.ofSeconds(25), 0, 1.00));
 
         assertAll(

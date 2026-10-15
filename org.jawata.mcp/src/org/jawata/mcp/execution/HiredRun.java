@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.GateOutcome;
@@ -144,14 +143,14 @@ public final class HiredRun {
      * actually given rather than the half of it the hirer wrote.</p>
      *
      * @param seat  the seat being hired: which brain, which tools, under what bounds, which rules
-     * @param base  the command's shape (working directory, environment); its argv is the dialect's
+     * @param base  where the brain runs and with what environment; what it runs is the dialect's
      * @param brief what the brain is asked to do
      * @param steps the plan's declared steps and their gates
      * @param gates how to run one
      * @param hiddenTools the resident's code-changing tools the seat did not name, taken away from
      *     a brain that attaches the resident (REL44-6); empty for none
      */
-    public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
+    public Proposal issue(SeatHire seat, HireSite base, String brief, List<GatedStep> steps,
             GateRunner gates, List<String> hiddenTools) throws IOException, InterruptedException {
         BrainDialect dialect = seat.dialect(self, hiddenTools);
         WriteContainment containment = dialect.writeContainment();
@@ -174,23 +173,24 @@ public final class HiredRun {
      * Issue a brief with no tool list — the form that asks the brain for nothing in particular.
      *
      * <p>An empty list is NOT "no tools": a brain keeps whatever it is configured with, and the
-     * dialects say so in their own words. Prefer {@link #issue(SeatHire, HostCommand, String, List,
-     * GateRunner)} wherever a seat is what is being hired.</p>
+     * dialects say so in their own words. Prefer {@link #issue(SeatHire, HireSite, String, List,
+     * GateRunner, List)} wherever a seat is what is being hired.</p>
      *
      * @param dialect  how this brain speaks
-     * @param base     the command's shape; its argv is the dialect's
+     * @param base     where the brain runs and with what environment; what it runs is the
+     *     dialect's
      * @param brief    what the brain is asked to do
      * @param ceilings what the run may consume
      * @param steps    the plan's declared steps and their gates
      * @param gates    how to run one
      */
-    public Proposal issue(BrainDialect dialect, HostCommand base, String brief,
+    public Proposal issue(BrainDialect dialect, HireSite base, String brief,
             HiredBrain.Ceilings ceilings, List<GatedStep> steps, GateRunner gates)
             throws IOException, InterruptedException {
         return issue(dialect, base, brief, List.of(), ceilings, steps, gates, List.of());
     }
 
-    private Proposal issue(BrainDialect dialect, HostCommand base, String brief,
+    private Proposal issue(BrainDialect dialect, HireSite base, String brief,
             List<String> tools, HiredBrain.Ceilings ceilings, List<GatedStep> steps,
             GateRunner declaredGates, List<String> answerGates)
             throws IOException, InterruptedException {

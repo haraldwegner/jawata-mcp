@@ -1,7 +1,6 @@
 package org.jawata.mcp.execution;
 
 import java.util.OptionalLong;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.jawata.mcp.learn.GateOutcome;
@@ -30,8 +29,9 @@ import org.jawata.mcp.tools.ToolRegistry;
  *       because this class first claimed it did. Measured by a mutation that stayed green:
  *       {@link ToolRegistry#callTool} catches {@code Exception} AND {@code Error} around its own
  *       dispatch, taps the failure, and returns {@code internalError}. So a crashing gate reaches
- *       this runner as case 3, a refusal — and the {@code RuntimeException} catch below guards only
- *       the registry's own machinery before that dispatch, which nothing in the suite can reach.</li>
+ *       this runner as case 3, a refusal. There is no {@code RuntimeException} catch for the rest of
+ *       the registry's machinery either: each part of it fails open on its own, which is pinned where
+ *       a fault can be injected (S16-11), so the catch that stood here had nothing to catch.</li>
  *   <li><b>The tool REFUSED</b> — no project loaded, an invalid parameter, a precondition unmet, or
  *       a crash converted by the line above. It answered about ITSELF and not about the tree, so it
  *       has no error count to give. <b>And it is not enough that it usually publishes none:</b> the
@@ -91,22 +91,14 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             // log, the disk sync, the precedent charge and the tap, so a pre-check saves no
             // work and suppresses no recording either. It was one fact expressed twice.
             return didNotAnswer(step, "no tool named '" + step.tool() + "' answered the gate");
-        } catch (RuntimeException e) {
-            // Case 2, and it is a BACKSTOP rather than the handler a reader would assume.
-            //
-            // A mutation that made this rethrow stayed GREEN, which measured what it actually
-            // guards: `callTool` catches Exception and Error around its own dispatch and returns
-            // `internalError`, so a tool that throws arrives below as a refusal and never here.
-            // What is left unprotected is the registry's own machinery BEFORE that dispatch — the
-            // precedent charge, the acceptance check, the in-flight ticket — and no test in this
-            // suite can reach it.
-            //
-            // It stays because the costs are not symmetric: an unreachable branch costs a reader
-            // one paragraph, while letting a RuntimeException out of here loses the record of a
-            // run that already happened, which is the one thing a hired run must not do.
-            log.log(Level.WARNING, "gate " + step.tool() + " threw", e);
-            return didNotAnswer(step, "it threw " + e.getClass().getSimpleName());
         }
+        // NO CATCH FOR A RuntimeException, DELIBERATELY (S16-11). One stood here as a backstop, and
+        // a mutation that made it rethrow stayed green: `callTool` answers a throwing TOOL with an
+        // `internalError`, and every collaborator it runs before dispatch (the precedent charge, the
+        // acceptance check, the prior-work lookup, the disk sync, the store notice) catches its own
+        // failure and fails open, while the remainder cannot throw on any input. The property the
+        // backstop stood for is pinned at its source, where a fault can be injected:
+        // ToolRegistryAnswersWhateverItsOwnMachineryDoesTest, including a gate run through it.
         if (response == null) {
             return didNotAnswer(step, "it returned nothing at all");
         }

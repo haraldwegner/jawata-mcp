@@ -13,9 +13,9 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
-import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.BrainDialect;
+import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
 import org.jawata.mcp.execution.RunEffects;
@@ -372,13 +372,14 @@ public class HireTool extends AbstractTool {
                     + " codex or copilot), or add accepts_uncontained_writes: true to the seat's"
                     + " frontmatter to say it may run on this brain as it is");
         }
-        HostCommand base = HostCommand.of(List.of("placeholder:" + dialect.name()));
         // REQUIRED, and that is the other half of the fix above. Defaulting it meant the brain ran
         // in the RESIDENT's own directory — which is how a real claude came to run in the
         // developer's repository with the store attached. A hire that does not say where the brain
-        // works is a hire whose blast radius nobody stated.
+        // works is a hire whose blast radius nobody stated. (A site has no argv: what the brain
+        // runs is the dialect's alone.)
+        HireSite base;
         try {
-            base = base.in(Path.of(getStringParam(arguments, "workingDirectory")));
+            base = HireSite.in(Path.of(getStringParam(arguments, "workingDirectory")));
         } catch (InvalidPathException e) {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }

@@ -90,6 +90,12 @@ class HiredRunProposesTest {
         return HostCommand.of(file.toString());
     }
 
+    /** Where the stand-in runs; its argv is the dialect's to pass on, never the hire's to take. */
+    private static HireSite site(HostCommand command) {
+        return new HireSite(command.workingDirectory(), command.environment(),
+            command.cleanEnvironment());
+    }
+
     private static JsonNode json(String text) {
         try {
             return JSON.readTree(text);
@@ -168,7 +174,7 @@ class HiredRunProposesTest {
 
         IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalArgumentException.class,
-            () -> run.issue(cursor, standIn, "Do it.", twoSteps(), HiredRunProposesTest::passed,
+            () -> run.issue(cursor, site(standIn), "Do it.", twoSteps(), HiredRunProposesTest::passed,
                 List.of()));
 
         assertAll(
@@ -189,7 +195,7 @@ class HiredRunProposesTest {
         SeatHire cursor = SeatHire.read(
             "---\nname: pm\nbrain: cursor\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nbody\n");
 
-        HiredRun.Proposal proposal = run.issue(cursor, standIn, "Do it.", twoSteps(),
+        HiredRun.Proposal proposal = run.issue(cursor, site(standIn), "Do it.", twoSteps(),
             HiredRunProposesTest::passed, List.of());
 
         assertTrue(Files.exists(proposal.record()), "the hire ran and wrote its record");
@@ -226,7 +232,7 @@ class HiredRunProposesTest {
             You are the cataloguer seat.
             """);
 
-        HiredRun.Proposal proposal = run.issue(seat, standIn, "Catalogue the execution package.",
+        HiredRun.Proposal proposal = run.issue(seat, site(standIn), "Catalogue the execution package.",
             twoSteps(), HiredRunProposesTest::passed, List.of());
         List<String> argv = spy.asked();
         int allowlist = argv.indexOf("--allowedTools");
@@ -293,7 +299,7 @@ class HiredRunProposesTest {
             You are the cataloguer seat.
             """);
 
-        run.issue(seat, standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed,
+        run.issue(seat, site(standIn), "Catalogue it.", twoSteps(), HiredRunProposesTest::passed,
             List.of());
         List<String> argv = spy.asked();
         int config = argv.indexOf("--mcp-config");
@@ -333,7 +339,7 @@ class HiredRunProposesTest {
         // dialect builds with none, not about whether the hire is allowed.
         run.issue(SeatHire.read(
                 "---\nname: c\naccepts_uncontained_writes: true\ntools: [inspect]\nttl_secs: 30\n---\n"),
-            standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed, List.of());
+            site(standIn), "Catalogue it.", twoSteps(), HiredRunProposesTest::passed, List.of());
         List<String> argv = spy.asked();
 
         assertAll(
@@ -398,7 +404,7 @@ class HiredRunProposesTest {
         HiredRun run = new HiredRun(host, artifacts, plans, events);
 
         HiredRun.Proposal proposal = run.issue(
-            new ScriptDialect(command.executable(), List.of()), command,
+            new ScriptDialect(command.executable(), List.of()), site(command),
             "Tidy the ledger's naming.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)),
             twoSteps(), HiredRunProposesTest::passed);
 
@@ -460,7 +466,7 @@ class HiredRunProposesTest {
 
         // Step 0's gate passes; step 1's answers and finds two errors.
         HiredRun.Proposal proposal = run.issue(
-            new ScriptDialect(command.executable(), List.of()), command,
+            new ScriptDialect(command.executable(), List.of()), site(command),
             "A change that does not compile.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)),
             twoSteps(),
             step -> step.index() == 0 ? passed(step)
@@ -493,7 +499,7 @@ class HiredRunProposesTest {
         HiredRun run = new HiredRun(host, artifacts, plans, events);
 
         HiredRun.Proposal proposal = run.issue(
-            new ScriptDialect(command.executable(), List.of()), command,
+            new ScriptDialect(command.executable(), List.of()), site(command),
             "A change whose gate could not run.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)),
             twoSteps(),
             step -> new GateOutcome(step.tool(), step.gateArguments(), 0, false));
@@ -519,7 +525,7 @@ class HiredRunProposesTest {
         HiredRun run = new HiredRun(host, artifacts, plans, null);
 
         HiredRun.Proposal proposal = run.issue(
-            new ScriptDialect(command.executable(), List.of()), command,
+            new ScriptDialect(command.executable(), List.of()), site(command),
             "No journal wired.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)),
             twoSteps(), HiredRunProposesTest::passed);
 
@@ -549,7 +555,7 @@ class HiredRunProposesTest {
         HiredRun run = new HiredRun(host, artifacts, plans, events);
 
         HiredRun.Proposal proposal = run.issue(
-            new ScriptDialect(command.executable(), List.of()), command,
+            new ScriptDialect(command.executable(), List.of()), site(command),
             "A brief whose brain dies.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)),
             twoSteps(), HiredRunProposesTest::passed);
 
@@ -581,7 +587,7 @@ class HiredRunProposesTest {
         HiredRun run = new HiredRun(host, artifacts, plans, events);
 
         HiredRun.Proposal proposal = run.issue(
-            new ScriptDialect(command.executable(), List.of()), command,
+            new ScriptDialect(command.executable(), List.of()), site(command),
             "A run that will be reaped.", HiredBrain.Ceilings.of(Duration.ofSeconds(2)),
             twoSteps(), HiredRunProposesTest::passed);
 
