@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
@@ -214,6 +215,17 @@ public class HireTool extends AbstractTool {
     }
 
     /**
+     * The names of the inputs this tool reads — the keys of its own published schema, so the
+     * refusal of an unread argument and the schema a client is shown cannot disagree.
+     *
+     * @return the property names of {@link #getInputSchema()}
+     */
+    @SuppressWarnings("unchecked")
+    private Set<String> schemaProperties() {
+        return ((Map<String, Object>) getInputSchema().get("properties")).keySet();
+    }
+
+    /**
      * FALSE, deliberately: a hire does not need a loaded project and its GATES answer for
      * themselves.
      *
@@ -240,6 +252,26 @@ public class HireTool extends AbstractTool {
                     + " would find it",
                 "the journal rides the experience store's H2 file; a degraded (non-H2) store has"
                     + " none, which the resident's own startup log states");
+        }
+        // S16-12: AN ARGUMENT THIS TOOL DOES NOT READ IS REFUSED, NEVER IGNORED. The first version
+        // published a `binary` input and ignored it, and a probe that set it to a stand-in ran the
+        // real claude in the developer's repository. Deleting the input from the schema left the
+        // same hole for any caller still sending it, because an ignored argument IS an inert
+        // input. Which executable a brain is comes from the seat file alone.
+        if (arguments != null) {
+            Set<String> read = schemaProperties();
+            List<String> unread = new ArrayList<>();
+            arguments.fieldNames().forEachRemaining(name -> {
+                if (!read.contains(name)) {
+                    unread.add(name);
+                }
+            });
+            if (!unread.isEmpty()) {
+                return ToolResponse.error("INVALID_PARAMETER",
+                    "hire does not read " + unread + ", so passing it changes nothing a hire does",
+                    "drop it; which brain and which executable a hire runs is the seat file's"
+                        + " frontmatter, and the inputs hire reads are " + read);
+            }
         }
         for (String required : List.of("hirer", "seat", "seatFile", "brief", "workingDirectory")) {
             ToolResponse missing = requireParam(arguments, required);

@@ -755,6 +755,58 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S16-12: an argument the hire does not read is refused before any brain starts")
+    void anArgumentTheHireDoesNotReadIsRefusedBeforeAnyBrainStarts() throws Exception {
+        // The incident: the first hire tool published a `binary` input and then ignored it, so a
+        // probe that pointed it at a shell stand-in ran the REAL claude in the developer's
+        // repository. Deleting the input from the schema does not stop a caller that still sends
+        // it — an ignored argument is the same inert input. Which executable a brain is comes
+        // from the seat file and from nothing a caller passes.
+        HostCommand brain = aBrainThatAnswers();
+        java.util.concurrent.atomic.AtomicInteger starts = new java.util.concurrent.atomic.AtomicInteger();
+        HostProcesses counting = new HostProcesses() {
+            @Override
+            public Process start(HostCommand command) throws IOException {
+                starts.incrementAndGet();
+                return host.start(brain);
+            }
+
+            @Override
+            public HostProcessOutcome run(HostCommand command) throws InterruptedException {
+                return host.run(command);
+            }
+
+            @Override
+            public List<String> executableCandidates(String base) {
+                return host.executableCandidates(base);
+            }
+
+            @Override
+            public List<String> wrapperNames(String base) {
+                return host.wrapperNames(base);
+            }
+        };
+        HireTool hire = toolWith(counting, events, aRegistryWithACleanGate());
+        JsonNode withBinary = hireArgs(seatFile(CATALOGUER_SEAT)).deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) withBinary).put("binary", "/bin/sh");
+
+        ToolResponse refused = hire.execute(withBinary);
+
+        assertAll(
+            () -> assertFalse(refused.isSuccess(),
+                "an argument the hire ignores lets a caller believe it chose what runs"),
+            () -> assertTrue(String.valueOf(refused.getError()).contains("binary"),
+                "and the refusal names it: " + refused.getError()),
+            () -> assertEquals(0, starts.get(), "no brain was started — a hire is a paid run"));
+
+        // The control: the same hire without the extra argument runs, through the same host.
+        ToolResponse ran = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        assertAll(
+            () -> assertTrue(ran.isSuccess(), "the plain hire runs: " + ran.getError()),
+            () -> assertEquals(1, starts.get(), "and its brain started once"));
+    }
+
+    @Test
     @DisplayName("a hire does not require a loaded project, so its gates answer for themselves")
     void aHireDoesNotRequireALoadedProject() throws Exception {
         // The service supplier answers null throughout this class, which is a resident with no
