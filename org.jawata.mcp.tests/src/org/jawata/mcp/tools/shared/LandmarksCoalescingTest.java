@@ -199,7 +199,7 @@ class LandmarksCoalescingTest {
     @Test
     @DisplayName("an EMPTY ranking is not cached — a zero must not be frozen as a fact")
     void anEmptyRankingIsNotCached() throws Exception {
-        JdtServiceImpl empty = new JdtServiceImpl();
+        JdtServiceImpl empty = helper.disposeAfter(new JdtServiceImpl());
         Landmarks.invalidate();
 
         Landmarks.Ranking first = awaitReady(empty);

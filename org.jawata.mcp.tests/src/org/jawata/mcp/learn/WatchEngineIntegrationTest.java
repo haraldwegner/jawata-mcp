@@ -43,7 +43,7 @@ class WatchEngineIntegrationTest {
         // A TEMP COPY — this test mutates sources; the shared fixture must
         // stay pristine (a polluted fixture poisons every later run).
         java.nio.file.Path copy = helper.copyFixture("simple-maven");
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(copy);
         FindQualityIssueTool tool = new FindQualityIssueTool(() -> service);
         ObjectMapper mapper = new ObjectMapper();

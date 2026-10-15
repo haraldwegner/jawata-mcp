@@ -114,7 +114,7 @@ class LibSourceAndHierarchyTest {
                 <classpathentry kind="output" path="bin"/>
             </classpath>
             """.formatted(libJar));
-        JdtServiceImpl libService = new JdtServiceImpl();
+        JdtServiceImpl libService = helper.disposeAfter(new JdtServiceImpl());
         libService.loadProject(project);
         InspectTool libInspect = new InspectTool(() -> libService);
         Map<String, Object> lib = source(libInspect, "com.libx.LibThing");

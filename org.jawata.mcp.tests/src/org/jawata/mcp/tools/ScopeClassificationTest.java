@@ -185,7 +185,7 @@ class ScopeClassificationTest {
         seedUnusedImportWarning(testsCopy.resolve("src/com/example/exttests/SeededTest.java"),
             "com.example.exttests");
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(mainCopy);
         service.addProject(testsCopy);
         org.jawata.mcp.tools.CompileWorkspaceTool tool =

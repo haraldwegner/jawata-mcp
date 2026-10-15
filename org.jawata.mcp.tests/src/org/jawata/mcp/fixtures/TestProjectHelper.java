@@ -36,10 +36,27 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
 
     private Path tempDirectory;
     private JdtServiceImpl loadedService;
+    /** Services a test built for itself and handed here to be disposed (REL44-29). */
+    private final java.util.List<JdtServiceImpl> disposeAfter = new java.util.ArrayList<>();
 
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
         tempDirectory = Files.createTempDirectory("jawata-test-");
+    }
+
+    /**
+     * Dispose {@code service} after this test, as this helper disposes the one it loads.
+     *
+     * <p>A test that builds its own {@code JdtServiceImpl} hands it here, so the projects it
+     * loads leave the shared workspace even when an assertion throws before the end of the
+     * test. Ten classes built their own and disposed none (REL44-29).</p>
+     *
+     * @param service the service the test built
+     * @return the same service, so a construction can be wrapped in place
+     */
+    public JdtServiceImpl disposeAfter(JdtServiceImpl service) {
+        disposeAfter.add(service);
+        return service;
     }
 
     @Override
@@ -53,6 +70,10 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
             loadedService.dispose();
             loadedService = null;
         }
+        for (JdtServiceImpl service : disposeAfter) {
+            service.dispose();
+        }
+        disposeAfter.clear();
         // Clean up temp directory if created
         if (tempDirectory != null && Files.exists(tempDirectory)) {
             try {

@@ -28,6 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class GradleDepToolsIntegrationTest {
 
+    /** Disposes the service each case builds, so its project leaves the shared workspace. */
+    @org.junit.jupiter.api.extension.RegisterExtension
+    org.jawata.mcp.fixtures.TestProjectHelper helper = new org.jawata.mcp.fixtures.TestProjectHelper();
+
     @Test
     @DisplayName("add_dependency dispatches to Gradle when only build.gradle is present")
     void addDependency_appendsToBuildGradle(@TempDir Path tempDir) throws Exception {
@@ -40,7 +44,7 @@ class GradleDepToolsIntegrationTest {
             }
             """, false);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(projectRoot);
         AddDependencyTool tool = new AddDependencyTool(() -> service);
         ObjectMapper om = new ObjectMapper();
@@ -74,7 +78,7 @@ class GradleDepToolsIntegrationTest {
             }
             """, false);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(projectRoot);
         UpdateDependencyTool tool = new UpdateDependencyTool(() -> service);
         ObjectMapper om = new ObjectMapper();
@@ -116,7 +120,7 @@ class GradleDepToolsIntegrationTest {
                 + "    public String get() { return StringUtils.EMPTY; }\n"
                 + "}\n");
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(projectRoot);
         FindUnusedDependenciesTool tool = new FindUnusedDependenciesTool(() -> service);
         ObjectMapper om = new ObjectMapper();
@@ -151,7 +155,7 @@ class GradleDepToolsIntegrationTest {
             }
             """, true);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(projectRoot);
         AddDependencyTool tool = new AddDependencyTool(() -> service);
         ObjectMapper om = new ObjectMapper();

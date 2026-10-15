@@ -27,6 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ProjectImporterClasspathDedupeTest {
 
+    /** Disposes the service each case builds, so its project leaves the shared workspace. */
+    @org.junit.jupiter.api.extension.RegisterExtension
+    org.jawata.core.fixtures.TestProjectHelper helper = new org.jawata.core.fixtures.TestProjectHelper();
+
     @Test
     @DisplayName("Project with .classpath listing the same lib jar twice loads without DUPLICATE_CLASSPATH_ENTRY")
     void loadProject_withDuplicateClasspathEntries_succeeds(@TempDir Path tempDir) throws Exception {
@@ -50,7 +54,7 @@ class ProjectImporterClasspathDedupeTest {
         // "Build path contains duplicate entry" and the load fails with an
         // INTERNAL_ERROR. After the fix, the duplicate is collapsed and the
         // load succeeds.
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(tempDir);
 
         IJavaProject jp = service.allProjects().iterator().next().javaProject();
@@ -87,7 +91,7 @@ class ProjectImporterClasspathDedupeTest {
             </classpath>
             """);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(tempDir);
 
         IJavaProject jp = service.allProjects().iterator().next().javaProject();
@@ -117,7 +121,7 @@ class ProjectImporterClasspathDedupeTest {
             </classpath>
             """);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(tempDir);
 
         IJavaProject jp = service.allProjects().iterator().next().javaProject();

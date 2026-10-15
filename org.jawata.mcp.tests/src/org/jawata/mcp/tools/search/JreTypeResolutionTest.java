@@ -81,7 +81,7 @@ class JreTypeResolutionTest {
         JdtServiceImpl first = helper.loadProject("simple-maven");
         assertNotNull(first.findType("java.lang.String"), "first load must resolve JRE types");
 
-        JdtServiceImpl second = new JdtServiceImpl();
+        JdtServiceImpl second = helper.disposeAfter(new JdtServiceImpl());
         second.loadProject(helper.getFixturePath("simple-maven"));
         IType viaSecond = second.findType("java.lang.String");
         assertNotNull(viaSecond,

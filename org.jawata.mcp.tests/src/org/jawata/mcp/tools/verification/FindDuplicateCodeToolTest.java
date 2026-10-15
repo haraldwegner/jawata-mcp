@@ -190,7 +190,7 @@ class FindDuplicateCodeToolTest {
         Files.writeString(
             copy.resolve("src/main/java/com/example/GiantLiteralHolder.java"), source);
 
-        JdtServiceImpl svc = new JdtServiceImpl();
+        JdtServiceImpl svc = helper.disposeAfter(new JdtServiceImpl());
         svc.loadProject(copy);
         FindDuplicateCodeTool giantTool = new FindDuplicateCodeTool(() -> svc);
 

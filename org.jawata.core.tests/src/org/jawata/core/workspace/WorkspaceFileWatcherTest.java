@@ -39,7 +39,7 @@ class WorkspaceFileWatcherTest {
     void setUp() throws Exception {
         dataDir = Files.createTempDirectory("jawata-workspace-watcher-test-");
         workspaceJson = dataDir.resolve("workspace.json");
-        service = new JdtServiceImpl();
+        service = helper.disposeAfter(new JdtServiceImpl());
     }
 
     @AfterEach

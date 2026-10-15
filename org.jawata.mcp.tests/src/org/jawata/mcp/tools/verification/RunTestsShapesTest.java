@@ -76,7 +76,7 @@ class RunTestsShapesTest {
             }
             """);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(root);
         RunTestsTool tool = new RunTestsTool(() -> service);
 
@@ -143,7 +143,7 @@ class RunTestsShapesTest {
             }
             """);
 
-        JdtServiceImpl service = new JdtServiceImpl();
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(root);
         RunTestsTool tool = new RunTestsTool(() -> service);
 
