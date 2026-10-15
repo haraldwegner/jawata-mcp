@@ -71,6 +71,12 @@ one_run() {
     # its own log as a change made by the brain — every cell, including the contained ones,
     # reported WROTE. The tree being measured must hold nothing the probe put there.
     local log="$OUT/$label.rawlog"
+    # AND CHECKED, so the fault cannot come back by an edit (S16-28): a probe whose own log sits
+    # inside the tree it measures reports every cell as a breach and makes its timeout and
+    # empty-answer verdicts unreachable.
+    case "$log" in
+        "$work"/*) say "  ????  $label - the probe's log is inside the tree it measures"; return ;;
+    esac
     ( cd "$work" && timeout "$ttl" "$@" > "$log" 2>&1 )
     local status=$?
 
