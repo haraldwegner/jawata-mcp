@@ -156,6 +156,44 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("S16-38: the HIRE refuses a seat whose brain is not contained by a mechanism, whoever calls it")
+    void theHireItselfRefusesAnUncontainedBrainWithoutTheSeatsOptIn() throws Exception {
+        // The hire tool checks this first, with a friendlier answer. The scheduler (and any caller
+        // after it) reaches HiredRun without passing the tool, so the check has to live where every
+        // path passes. Nothing may be spawned, planned, artifacted or journalled on a refusal.
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        HiredRun run = new HiredRun(spy, artifacts, plans, events);
+        SeatHire cursor = SeatHire.read("---\nname: pm\nbrain: cursor\nttl_secs: 30\n---\n\nbody\n");
+
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> run.issue(cursor, standIn, "Do it.", twoSteps(), HiredRunProposesTest::passed));
+
+        assertAll(
+            () -> assertTrue(refused.getMessage().contains("accepts_uncontained_writes"),
+                "the way out is named: " + refused.getMessage()),
+            () -> assertTrue(refused.getMessage().contains("INSTRUCTION"), refused.getMessage()),
+            () -> assertEquals(List.of(), artifacts.list(), "no artifact was made"),
+            () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
+                "and nothing was journalled, because nothing ran"));
+    }
+
+    @Test
+    @DisplayName("S16-38: the same seat WITH its opt-in is hired by the same call")
+    void theSameSeatWithItsOptInIsHired() throws Exception {
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01}'");
+        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events);
+        SeatHire cursor = SeatHire.read(
+            "---\nname: pm\nbrain: cursor\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nbody\n");
+
+        HiredRun.Proposal proposal = run.issue(cursor, standIn, "Do it.", twoSteps(),
+            HiredRunProposesTest::passed);
+
+        assertTrue(Files.exists(proposal.record()), "the hire ran and wrote its record");
+    }
+
+    @Test
     @DisplayName("D37: a seat's own declared brain, tools and model reach the command line that is started")
     void aSeatsDeclarationReachesTheRunItHires() throws Exception {
         // THE STAND-IN SPEAKS THE SEAT'S OWN BRAIN, not the script dialect's declarations. The spy
@@ -175,6 +213,7 @@ class HiredRunProposesTest {
             ---
             name: cataloguer
             brain: claude-code
+            accepts_uncontained_writes: true
             model: claude-sonnet-5
             tools: [search_symbols, inspect, experience]
             ttl_secs: 30
@@ -286,8 +325,12 @@ class HiredRunProposesTest {
         RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
         HiredRun run = new HiredRun(spy, artifacts, plans, events);
 
-        run.issue(SeatHire.read("---\nname: c\ntools: [inspect]\nttl_secs: 30\n---\n"), standIn,
-            "Catalogue it.", twoSteps(), HiredRunProposesTest::passed);
+        // The opt-in is the seat's word that it may run on a brain no mechanism contains (claude
+        // without an endpoint is held only by an instruction): this case is about the ARGV the
+        // dialect builds with none, not about whether the hire is allowed.
+        run.issue(SeatHire.read(
+                "---\nname: c\naccepts_uncontained_writes: true\ntools: [inspect]\nttl_secs: 30\n---\n"),
+            standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed);
         List<String> argv = spy.asked();
 
         assertAll(

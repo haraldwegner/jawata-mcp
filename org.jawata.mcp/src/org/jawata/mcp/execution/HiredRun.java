@@ -151,7 +151,18 @@ public final class HiredRun {
      */
     public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
             GateRunner gates) throws IOException, InterruptedException {
-        return issue(seat.dialect(self), base, seat.prompt(brief), seat.tools(), seat.ceilings(),
+        BrainDialect dialect = seat.dialect(self);
+        WriteContainment containment = dialect.writeContainment();
+        if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
+            // S16-38. The hire tool refuses this first, with a friendlier answer; this is the
+            // check every OTHER path passes (a scheduler firing a seat), so an unattended run
+            // cannot hire a brain held only by an instruction without the seat saying it may.
+            throw new IllegalArgumentException("seat '" + seat.seat() + "' would run on "
+                + dialect.name() + ", whose writes are not refused by a mechanism — "
+                + containment.report() + ". Add accepts_uncontained_writes: true to the seat's"
+                + " frontmatter to say it may run on this brain as it is");
+        }
+        return issue(dialect, base, seat.prompt(brief), seat.tools(), seat.ceilings(),
             steps, gates, seat.answerGates());
     }
 

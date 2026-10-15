@@ -64,9 +64,15 @@ import java.util.Optional;
  *     hire tool; this record only carries the fact.
  * @param script the executable a {@link Brain#SCRIPT} seat runs, from its {@code script:} line;
  *     null for every other brain, which {@link #read(String)} enforces in both directions.
+ * @param acceptsUncontainedWrites the seat's own word, {@code accepts_uncontained_writes: true},
+ *     that it may be hired on a brain whose writes no mechanism refuses (S16-38). Carried on the
+ *     hire so that the refusal lives where every path passes: {@link HiredRun#issue(SeatHire,
+ *     org.jawata.core.host.HostCommand, String, java.util.List, HiredRun.GateRunner)} enforces it,
+ *     whichever caller — the hire tool, a scheduler — reaches it.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
-                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script) {
+                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
+                       boolean acceptsUncontainedWrites) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -189,7 +195,8 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             body(markdown),
             list(front.get("answer_gates")),
             enabled(front.get("enabled")),
-            script);
+            script,
+            acceptsUncontainedWrites(markdown));
     }
 
     /**
@@ -424,6 +431,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
     }
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled) {
-        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, null);
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, null, false);
     }
 }

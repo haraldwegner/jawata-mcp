@@ -291,11 +291,8 @@ public class HireTool extends AbstractTool {
         String brief = getStringParam(arguments, "brief");
 
         SeatHire seat;
-        boolean acceptsUncontainedWrites;
         try {
-            String seatMarkdown = readSeatFile(getStringParam(arguments, "seatFile"));
-            seat = SeatHire.read(seatMarkdown);
-            acceptsUncontainedWrites = SeatHire.acceptsUncontainedWrites(seatMarkdown);
+            seat = SeatHire.read(readSeatFile(getStringParam(arguments, "seatFile")));
         } catch (IOException | InvalidPathException e) {
             return ToolResponse.error("FILE_NOT_FOUND",
                 "the hired seat's file could not be read: " + e.getMessage(),
@@ -354,7 +351,7 @@ public class HireTool extends AbstractTool {
         }
         BrainDialect dialect = seat.dialect(endpoint);
         WriteContainment containment = dialect.writeContainment();
-        if (!containment.isContained() && !acceptsUncontainedWrites) {
+        if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
             // THE ARCHITECT'S F1, option A. A brain whose writes are held only by an instruction to
             // the model (cursor: breached in 5 of 15 runs) or by nothing is refused BEFORE anything
             // spawns, unless the seat's own file says it accepts that. An unbounded hire reported
