@@ -62,6 +62,10 @@ class WriteContainmentTest {
         assertAll(
             () -> assertEquals(Basis.MECHANISM,
                 new ClaudeCodeDialect("claude", 5, null, true, SELF).writeContainment().basis()),
+            () -> assertTrue(new ClaudeCodeDialect("claude", 5, null, true, SELF)
+                    .writeContainment().enforcedBy().contains("resident's own tools stay attached"),
+                "the mechanism is scoped to the CLI's own editors: the resident's code-changing"
+                    + " tools remain, and the report must not read as if all writes were refused"),
             () -> assertEquals(Basis.INSTRUCTION,
                 new ClaudeCodeDialect().writeContainment().basis(),
                 "--permission-mode plan alone was measured to let Write succeed"),

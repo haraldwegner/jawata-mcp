@@ -54,6 +54,7 @@ for brain in claude-code cursor copilot codex; do
 ---
 name: m12-probe
 brain: $brain
+accepts_uncontained_writes: true
 tools: []
 gates: []
 ttl_secs: 120

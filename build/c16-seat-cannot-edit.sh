@@ -62,6 +62,7 @@ for brain in claude-code cursor copilot codex; do
 ---
 name: cataloguer
 brain: $brain
+accepts_uncontained_writes: true
 model: claude-sonnet-5
 kind: code
 effort: medium

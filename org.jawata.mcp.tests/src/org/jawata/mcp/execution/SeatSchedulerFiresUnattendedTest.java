@@ -2,7 +2,7 @@ package org.jawata.mcp.execution;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -139,10 +139,11 @@ class SeatSchedulerFiresUnattendedTest {
             () -> assertTrue(Files.readString(made.record()).contains("I would tidy"),
                 "and what the brain said back"),
             () -> assertEquals(1, made.stepsPassed(), "its gate ran and the ledger advanced"),
-            () -> assertNotEquals(Boolean.TRUE,
+            () -> assertNull(
                 artifacts.readManifest(made.artifactId()).orElseThrow().get("applied"),
-                "and it did not report applying anything — read from the census, which this"
-                    + " scratch directory cannot take, so the answer is unknown rather than false"));
+                "and it did not claim to have applied nothing — the census cannot be taken in this"
+                    + " scratch directory, so the answer is unknown, which the old hard-coded"
+                    + " false could not say"));
     }
 
     @Test

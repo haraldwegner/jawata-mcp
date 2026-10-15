@@ -732,7 +732,9 @@ class HireToolTest {
                 response.getError().getMessage()),
             () -> assertTrue(String.valueOf(response.getError().getHint())
                     .contains("accepts_uncontained_writes"),
-                "the way out is named: " + response.getError().getHint()));
+                "the way out is named: " + response.getError().getHint()),
+            () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
+                "and nothing was journalled, because nothing ran"));
     }
 
     @Test

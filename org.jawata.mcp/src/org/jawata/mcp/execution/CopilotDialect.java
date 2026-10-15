@@ -180,12 +180,13 @@ public final class CopilotDialect implements BrainDialect {
     public WriteContainment writeContainment() {
         if (readOnly) {
             return WriteContainment.mechanism("the CLI's own headless default denial of write"
-                + " (measured 6 of 6 with this hire's --deny-tool flags and 3 of 3 without them,"
-                + " so the flags state the intent rather than create the bound)");
+                + " (measured: permission_denied in 6 of 6 runs, and in a control with and"
+                + " without this hire's --deny-tool flags neither wrote — so the flags state the"
+                + " intent rather than create the bound)");
         }
         return WriteContainment.none("--deny-tool is not passed, by explicit request; the CLI's"
-            + " headless default denied writes in 3 of 3 measured runs, which this hire does not"
-            + " rely on");
+            + " headless default denied the write in the measured control run without the flags,"
+            + " which this hire does not rely on");
     }
 
     @Override

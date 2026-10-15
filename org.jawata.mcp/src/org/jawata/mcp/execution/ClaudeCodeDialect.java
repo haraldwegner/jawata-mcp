@@ -202,8 +202,11 @@ public final class ClaudeCodeDialect implements BrainDialect {
     @Override
     public WriteContainment writeContainment() {
         if (self != null) {
-            return WriteContainment.mechanism("--tools \"\": the CLI's own editors (Edit, Write,"
-                + " NotebookEdit) are not offered to the brain, so there is nothing to refuse");
+            return WriteContainment.mechanism("--tools \"\": the CLI's OWN editors (Edit, Write,"
+                + " NotebookEdit) are not offered to the brain, so there is nothing to refuse."
+                + " The resident's own tools stay attached and some of them change code; those are"
+                + " governed by the hirer's tool list and the record's code-change count, not by"
+                + " this bound");
         }
         if (readOnly) {
             return WriteContainment.instruction("--permission-mode plan",
