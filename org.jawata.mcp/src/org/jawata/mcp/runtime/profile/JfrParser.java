@@ -69,6 +69,7 @@ public final class JfrParser {
         Map<String, Long> counts = new LinkedHashMap<>();
         long totalEvents = 0;
         long eventsWithoutStack = 0;
+        long eventsWithUnreadableTop = 0;
 
         try (RecordingFile rf = new RecordingFile(jfrFile)) {
             while (rf.hasMoreEvents()) {
@@ -77,12 +78,16 @@ public final class JfrParser {
                     continue;
                 }
                 totalEvents++;
-                String symbol = topFrameSymbol(event);
-                if (symbol == null) {
+                TopOfStack top = topOfStack(framesWithGaps(event));
+                if (top.kind() == TopOfStack.Kind.NO_STACK) {
                     eventsWithoutStack++;
                     continue;
                 }
-                counts.merge(symbol, 1L, Long::sum);
+                if (top.kind() == TopOfStack.Kind.UNREADABLE_TOP) {
+                    eventsWithUnreadableTop++;
+                    continue;
+                }
+                counts.merge(top.symbol(), 1L, Long::sum);
             }
         }
 
@@ -108,6 +113,11 @@ public final class JfrParser {
         result.put("truncated", offset + rows.size() < ranked.size());
         if (eventsWithoutStack > 0) {
             result.put("samplesWithoutStack", eventsWithoutStack);
+        }
+        // C15-1: a stack WAS recorded and its top frame could not be named. Not attributed —
+        // its caller was not the method running — and not called stackless either.
+        if (eventsWithUnreadableTop > 0) {
+            result.put("samplesWithUnreadableTopFrame", eventsWithUnreadableTop);
         }
         return result;
     }
@@ -146,6 +156,7 @@ public final class JfrParser {
         List<String> executionSampleSymbols = new ArrayList<>();
         long blockingEvents = 0;
         long eventsWithoutStack = 0;
+        long samplesWithUnreadableTop = 0;
         long idleNanos = 0;
         long idleEvents = 0;
 
@@ -153,17 +164,22 @@ public final class JfrParser {
             while (rf.hasMoreEvents()) {
                 RecordedEvent event = rf.readEvent();
                 String type = event.getEventType().getName();
-                String symbol = topFrameSymbol(event);
 
                 if ("jdk.ExecutionSample".equals(type)) {
                     // On-CPU: defer — attributed one MEASURED sampling interval each, once we
-                    // know the interval from the samples themselves (below).
-                    if (symbol == null) {
+                    // know the interval from the samples themselves (below). The TOP frame or
+                    // nothing (C15-1): its caller was not on the CPU.
+                    TopOfStack top = topOfStack(framesWithGaps(event));
+                    if (top.kind() == TopOfStack.Kind.NO_STACK) {
                         eventsWithoutStack++;
                         continue;
                     }
+                    if (top.kind() == TopOfStack.Kind.UNREADABLE_TOP) {
+                        samplesWithUnreadableTop++;
+                        continue;
+                    }
                     executionSampleTimesNanos.add(event.getStartTime().toEpochMilli() * 1_000_000L);
-                    executionSampleSymbols.add(symbol);
+                    executionSampleSymbols.add(top.symbol());
                 } else if (WALL_BLOCKING_EVENTS.contains(type)) {
                     if (!hasStack(event)) {
                         eventsWithoutStack++;
@@ -278,6 +294,9 @@ public final class JfrParser {
         result.put("truncated", offset + rows.size() < ranked.size());
         if (eventsWithoutStack > 0) {
             result.put("eventsWithoutStack", eventsWithoutStack);
+        }
+        if (samplesWithUnreadableTop > 0) {
+            result.put("samplesWithUnreadableTopFrame", samplesWithUnreadableTop);
         }
         return result;
     }
@@ -688,16 +707,12 @@ public final class JfrParser {
      * about the recording. {@link #wallHotspots} now checks for the empty case first and counts
      * it among the events it could not attribute.</p>
      *
-     * <p>Note for whoever consolidates this: {@code topFrameSymbol} answers {@code null} when
-     * the TOP frame alone is unresolvable, where this SKIPS it and keeps walking. That
-     * divergence is older than this method and is deliberately left alone here rather than
-     * changed under a checkpoint that was not about it — silently altering what the cpu
-     * dimension attributes would be exactly the kind of unchosen behaviour change the architect
-     * watch was flagging. <b>Its destination is named rather than left as "a later stage",
-     * which the C15 round-2 audit refused as a deferral with nowhere to go:</b> it is carried in
-     * the 28g plan's C15 carried-items list, as owed to the next work that touches the cpu
-     * dimension's attribution — the same place the cpu-share clause this file's wall test wants
-     * is carried, because both are changes to what that dimension publishes.</p>
+     * <p><b>This SKIPS an unresolvable frame and keeps walking; {@link #topOfStack} does not —
+     * and the divergence is deliberate (C15-1).</b> A blocking event wants the innermost
+     * PROGRAM frame, so skipping frames is the point here. An execution sample says its TOP
+     * frame was on the CPU, so the top-of-stack dimensions answer that frame or nothing, and
+     * report an unreadable top as {@code samplesWithUnreadableTopFrame} rather than giving it
+     * to a caller that was not running.</p>
      */
     private static List<String> readableFrames(RecordedEvent event) {
         RecordedStackTrace stack = event.getStackTrace();
@@ -756,19 +771,64 @@ public final class JfrParser {
         return stack != null && !stack.getFrames().isEmpty();
     }
 
-    private static String topFrameSymbol(RecordedEvent event) {
+    /**
+     * C15-1 — what a top-of-stack dimension attributes one event to: the top frame's symbol,
+     * or WHY there is none.
+     *
+     * @param kind   {@code READ} with a symbol; {@code UNREADABLE_TOP} when a stack was recorded
+     *               but its top frame's method could not be resolved; {@code NO_STACK} when no
+     *               stack was recorded at all
+     * @param symbol the top frame's {@code Type#method} when {@code READ}, else {@code null}
+     */
+    record TopOfStack(Kind kind, String symbol) {
+        enum Kind { NO_STACK, UNREADABLE_TOP, READ }
+    }
+
+    /**
+     * C15-1 — THE TOP-OF-STACK DECISION for the cpu, alloc and lock dimensions, as a pure
+     * function over the frame list so a test can reach it (a {@code RecordedEvent} cannot be
+     * built in one).
+     *
+     * <p><b>It answers the TOP frame or nothing, and never its caller.</b> An execution sample
+     * says the top frame was ON the CPU; giving it to the next readable frame, as
+     * {@link #readableFrames} does for the wall dimension's blocking events, would bill CPU time
+     * to a method that was not running. That divergence is deliberate: a blocking event wants
+     * the innermost PROGRAM frame, where skipping frames is the point.</p>
+     *
+     * <p><b>And it says which kind of nothing.</b> An unreadable top frame used to be counted as
+     * {@code samplesWithoutStack} — a stack that WAS recorded reported as one that was not, the
+     * same fold the C15 audit removed from the wall dimension's idle time.</p>
+     *
+     * @param framesInnermostFirst one entry per recorded frame, innermost first: its
+     *                             {@code Type#method}, or {@code null} where the frame's method
+     *                             could not be resolved
+     * @return the attribution, never {@code null}
+     */
+    static TopOfStack topOfStack(List<String> framesInnermostFirst) {
+        if (framesInnermostFirst.isEmpty()) {
+            return new TopOfStack(TopOfStack.Kind.NO_STACK, null);
+        }
+        String top = framesInnermostFirst.get(0);
+        return top == null
+            ? new TopOfStack(TopOfStack.Kind.UNREADABLE_TOP, null)
+            : new TopOfStack(TopOfStack.Kind.READ, top);
+    }
+
+    /** Every recorded frame, innermost first, with {@code null} where a method is unresolvable. */
+    private static List<String> framesWithGaps(RecordedEvent event) {
         if (!event.hasField("stackTrace")) {
-            return null;
+            return List.of();
         }
         RecordedStackTrace stack = event.getStackTrace();
-        if (stack == null || stack.getFrames().isEmpty()) {
-            return null;
+        if (stack == null) {
+            return List.of();
         }
-        RecordedFrame frame = stack.getFrames().get(0);
-        RecordedMethod method = frame.getMethod();
-        if (method == null || method.getType() == null) {
-            return null;
+        List<String> frames = new ArrayList<>();
+        for (RecordedFrame frame : stack.getFrames()) {
+            RecordedMethod method = frame.getMethod();
+            frames.add(method == null || method.getType() == null
+                ? null : method.getType().getName() + "#" + method.getName());
         }
-        return method.getType().getName() + "#" + method.getName();
+        return frames;
     }
 }
