@@ -164,6 +164,12 @@ TMP_BEFORE="$OUT/.tmp-before"
 "$ROOT/build/readme-tool-count-test.sh" --quiet \
     || { echo "FATAL: the README tool-count check fails its own self-test."; exit 2; }
 
+# S16-1 — the build's error-stub guard proves its own matching here too: it runs inside every
+# module build, where a guard that stopped matching would pass silently over code that does not
+# compile, which is the blindness it exists to end.
+"$ROOT/build/stub-class-guard-test.sh" --quiet \
+    || { echo "FATAL: the build's error-stub guard fails its own self-test."; exit 2; }
+
 # mcp#52 — and the same argument one level out: the verdict gate's arithmetic is proved
 # above against INVENTED counters, which says nothing about whether the runner ever
 # PRODUCES them. mcp#54 and mcp#51 each shipped a container-level marker and counter that

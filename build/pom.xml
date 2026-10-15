@@ -62,6 +62,11 @@
         <v.jackson>2.19.0</v.jackson>
         <v.h2>2.2.224</v.h2>
         <v.slf4j>2.0.18</v.slf4j>
+
+        <!-- S16-1: where the error-stub guard below looks. Each module's own output by default;
+             build/stub-class-guard-test.sh points it at a scratch folder, so the guard's own
+             rule is what the self-test drives, not a copy of it. -->
+        <stub.scan.dir>${project.build.directory}</stub.scan.dir>
     </properties>
 
     <build>
@@ -117,14 +122,14 @@
                         <goals><goal>run</goal></goals>
                         <configuration>
                             <target>
-                                <fileset id="stubs" dir="${project.build.directory}"
+                                <fileset id="stubs" dir="${stub.scan.dir}"
                                          includes="classes/**/*.class,test-classes/**/*.class"
                                          erroronmissingdir="false">
                                     <contains text="Unresolved compilation problem"/>
                                 </fileset>
                                 <pathconvert refid="stubs" property="stub.list"
                                              pathsep="${line.separator}  "/>
-                                <fail message="Error-stub class(es) in ${project.build.directory} - code that does not compile, written there by another compiler (an editor's Java language server shares this output folder), would be packaged as if it built:${line.separator}  ${stub.list}${line.separator}Fix the source, or delete the class and rebuild.">
+                                <fail message="Error-stub class(es) in ${stub.scan.dir} - code that does not compile, written there by another compiler (an editor's Java language server shares this output folder), would be packaged as if it built:${line.separator}  ${stub.list}${line.separator}Fix the source, or delete the class and rebuild.">
                                     <condition>
                                         <resourcecount refid="stubs" when="greater" count="0"/>
                                     </condition>
