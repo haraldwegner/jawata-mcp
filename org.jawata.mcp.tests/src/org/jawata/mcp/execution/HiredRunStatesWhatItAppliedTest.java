@@ -67,6 +67,23 @@ class HiredRunStatesWhatItAppliedTest {
     }
 
     @Test
+    @DisplayName("S16-21: every state of the first line carries the bound, so 'changed' and 'not established' do not read as covering the whole machine")
+    void everyStateOfTheHeadlineSaysWhatTheCensusCouldSee() {
+        // The architect's disposition on S16-21 (accept the off-tree blindness as a disclosed limit)
+        // rested on the disclosure being sufficient, and named the gap: only the "nothing applied"
+        // line carried the bound. A reader who meets the other two lines first is told what the run
+        // changed, or that it is not established, without being told the census is blind elsewhere.
+        String some = HiredRun.headline(changed("A.java"));
+        String unknown = HiredRun.headline(noCensus());
+
+        assertAll(
+            () -> assertTrue(some.contains("sees only that directory"), some),
+            () -> assertTrue(unknown.contains("sees only the working directory"), unknown),
+            () -> assertTrue(HiredRun.headline(changed()).contains("sees only that directory"),
+                "and the line that already carried it still does"));
+    }
+
+    @Test
     @DisplayName("a mechanism is WITNESSED only when the run's own init list offered no editor")
     void aMechanismIsWitnessedFromTheLog() {
         WriteContainment mechanism = WriteContainment.mechanism("--tools \"\"");

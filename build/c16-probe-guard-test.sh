@@ -53,6 +53,50 @@ else
     fi
 fi
 
+# 3. THE OFF-TREE LISTING (S16-33): a file that appears in the NAMED directory during a cell is
+#    reported, a run that wrote nothing there reports nothing, and a directory that does not exist
+#    is an empty listing and not an error. The probe was blind to exactly this: claude's plan file.
+DIR="$(mktemp -d)"
+trap 'rm -f "$MUTANT"; rm -rf "$DIR"' EXIT
+PLANS="$DIR/plans"
+mkdir -p "$PLANS"
+echo old > "$PLANS/earlier.md"
+
+check_listing() {   # check_listing <label> : drives the listing functions that are currently sourced
+    local label="$1"
+    listing_of "$PLANS" > "$DIR/before"
+    new_in_listing "$DIR/before" "$DIR/before" > "$DIR/none"
+    [ ! -s "$DIR/none" ] || fail "$label: an unchanged directory reported a new file"
+    echo new > "$PLANS/deposited.md"
+    listing_of "$PLANS" > "$DIR/after"
+    new_in_listing "$DIR/before" "$DIR/after" > "$DIR/found"
+    grep -q "deposited.md" "$DIR/found" || fail "$label: a file written during the cell was not reported"
+    grep -q "earlier.md" "$DIR/found" && fail "$label: a file that was already there was reported as new"
+    rm -f "$PLANS/deposited.md"
+    [ -z "$(listing_of "$DIR/does-not-exist")" ] || fail "$label: a missing directory was not an empty listing"
+}
+
+BEFORE=$FAILED
+check_listing "listing"
+[ "$FAILED" = "$BEFORE" ] && say "ok    a file deposited in the named directory is reported, and one that was already there is not"
+
+#    The mutant swaps comm -13 (only in <after>) for comm -12 (in BOTH), which reports nothing new.
+LMUTANT="$(mktemp)"
+sed 's/comm -13 /comm -12 /' "$HERE/c16-probe-guard.sh" > "$LMUTANT"
+if cmp -s "$LMUTANT" "$HERE/c16-probe-guard.sh"; then
+    fail "the listing mutant did not apply, so this test has not shown it can fail"
+else
+    BEFORE=$FAILED
+    ( source "$LMUTANT"; check_listing "mutant" ) > "$DIR/mutant-out" 2>&1
+    if grep -q "FAIL: mutant: a file written during the cell was not reported" "$DIR/mutant-out"; then
+        say "ok    the mutant (reports nothing new) misses the deposited file, so the listing cases can fail"
+    else
+        fail "the listing mutant was not caught, so this test cannot tell a broken listing from a good one"
+    fi
+    FAILED=$BEFORE
+fi
+rm -f "$LMUTANT"
+
 [ "$FAILED" = "0" ] && { say "c16-probe-guard-test: PASS"; exit 0; }
 echo "c16-probe-guard-test: FAIL"
 exit 1

@@ -367,8 +367,22 @@ public final class HiredRun {
         p.put("changedFileCount", changed.count().orElse(null));
         p.put("changedFilesBasis", changed.basis());
         p.put("applied", applied(changed));
+        // WHAT `applied` AND `changedFiles` ARE ABOUT (S16-21, the architect's disposition): a bare
+        // boolean read as "this run wrote nothing" would deny a write the census cannot see. Additive,
+        // so nothing that parses the keys above changes meaning.
+        p.put("appliedScope", OFF_TREE_SCOPE);
         return p;
     }
+
+    /**
+     * What the changed-file census covers, said once so the manifest and the record cannot word it
+     * differently. Off-tree behaviour is MEASURED for no brain except the one directory the
+     * containment probe names for claude (build/c16-containment-isolated.sh); for codex, copilot
+     * and cursor an off-tree write is unmeasured.
+     */
+    static final String OFF_TREE_SCOPE = "the working directory only: the census is taken before and"
+        + " after the run and cannot see a write anywhere else. Off-tree writes are unmeasured for"
+        + " codex, copilot and cursor, and for claude only where the editors are witnessed absent.";
 
     /** The built-in tools that edit files; a mechanism that says they are absent is checked against them. */
     private static final java.util.Set<String> EDITORS =
@@ -392,12 +406,13 @@ public final class HiredRun {
         Boolean applied = applied(changed);
         if (applied == null) {
             return "**WHETHER THIS RUN CHANGED ANYTHING IS NOT ESTABLISHED:** " + changed.basis()
-                + " A hired run proposes; a human decides.";
+                + " A census, where one can be taken, sees only the working directory. A hired run"
+                + " proposes; a human decides.";
         }
         if (applied) {
             return "**THIS RUN CHANGED " + changed.count().orElse(0) + " FILE(S) in its working"
-                + " directory** (listed under \"What it changed\"). A hired run proposes; a human"
-                + " decides whether to keep them.";
+                + " directory** (listed under \"What it changed\"), by a census which sees only"
+                + " that directory. A hired run proposes; a human decides whether to keep them.";
         }
         return "**NOTHING HERE WAS APPLIED** in the working directory, by a census taken before and"
             + " after the run — which sees only that directory. A hired run proposes; a human"
@@ -443,6 +458,7 @@ public final class HiredRun {
         // log bears that out — the line the reader needs to decide how far to trust "no changes".
         out.append("- writes: ").append(dialect.writeContainment().report()).append(" — ")
             .append(writeWitness(dialect.writeContainment(), outcome.toolsOffered())).append('\n');
+        out.append("- changes counted in: ").append(OFF_TREE_SCOPE).append('\n');
         out.append("- steps past their gates: ").append(passed).append(" of ")
             .append(steps.size()).append('\n');
         if (refusedBecause != null) {
