@@ -116,7 +116,8 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             // response's data without asking whether the call succeeded, correctly, since it
             // reports what was published and leaves the judgement to the caller. This line IS
             // that judgement for a gate.
-            return didNotAnswer(step, "it refused");
+            return didNotAnswer(step, "it refused" + (response.getError() == null ? ""
+                : ": " + response.getError().getCode() + " — " + response.getError().getMessage()));
         }
 
         OptionalLong errors = ResponseFacts.errorCount(response);
@@ -133,16 +134,14 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
 
     /**
      * A gate that did not answer — zero errors and {@code succeeded: false}, which is the pair a
-     * reader must not collapse.
+     * reader must not collapse — carrying WHICH of the four reasons it was (S16-10).
      *
-     * <p>The reason is LOGGED and not carried, because {@link GateOutcome} has nowhere to put it:
-     * it reports whether a gate answered and not why it did not. So a proposal's record can say
-     * DID NOT ANSWER and cannot say which of the four it was, and the log is the only place that
-     * distinction survives. Recorded as a finding rather than fixed here, since widening a shipped
-     * record reaches every caller of it.</p>
+     * <p>Until {@link GateOutcome#notAnsweredBecause()} existed the reason was only logged, so a
+     * proposal's record could say DID NOT ANSWER and never which, and the log was the one place the
+     * distinction survived.</p>
      */
     private static GateOutcome didNotAnswer(GatedStep step, String why) {
         log.info(() -> "gate " + step.tool() + " did not answer: " + why);
-        return new GateOutcome(step.tool(), step.gateArguments(), 0, false);
+        return new GateOutcome(step.tool(), step.gateArguments(), 0, false, why);
     }
 }

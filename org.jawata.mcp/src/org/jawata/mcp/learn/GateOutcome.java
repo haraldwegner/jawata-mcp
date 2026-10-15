@@ -29,8 +29,14 @@ import com.fasterxml.jackson.databind.JsonNode;
  *     anything — every one of them reports zero. {@code EventTap} guards exactly
  *     this with an {@code isSuccess()} check before its own gate branch, and
  *     nothing here did until this component was added
+ * @param notAnsweredBecause WHY a gate that did not answer did not (Sprint 28g S16-10), or null.
+ *     A gate can fail to answer four ways — no such tool, it threw, it refused, it succeeded in a
+ *     shape nothing reads — and all four are {@code (tool, arguments, 0, false)}, so without this
+ *     a record could say DID NOT ANSWER and never which, while each sends a reader somewhere
+ *     different. Null on an answered gate, which the constructor enforces; null on an unanswered
+ *     one means its producer gave no reason, which a record must say rather than invent
  */
-public record GateOutcome(String tool, JsonNode arguments, long errorCount, boolean succeeded) {
+public record GateOutcome(String tool, JsonNode arguments, long errorCount, boolean succeeded, String notAnsweredBecause) {
 
     public GateOutcome {
         Objects.requireNonNull(tool, "a gate outcome with no tool names no gate");
@@ -41,5 +47,13 @@ public record GateOutcome(String tool, JsonNode arguments, long errorCount, bool
             throw new IllegalArgumentException(
                 "a negative error count is not a count: " + errorCount);
         }
+        if (succeeded && notAnsweredBecause != null) {
+            throw new IllegalArgumentException("a gate that answered has no reason not to have"
+                + " answered, and this one was given one: " + notAnsweredBecause);
+        }
+    }
+
+    public GateOutcome(String tool, JsonNode arguments, long errorCount, boolean succeeded) {
+        this(tool, arguments, errorCount, succeeded, null);
     }
 }

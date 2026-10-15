@@ -412,7 +412,9 @@ public final class HiredRun {
             GateOutcome g = ran.get(i);
             out.append("- step ").append(i).append(" (").append(steps.get(i).tool()).append("): ");
             if (!g.succeeded()) {
-                out.append("DID NOT ANSWER — its zero error count says nothing");
+                out.append("DID NOT ANSWER (").append(g.notAnsweredBecause() == null
+                    ? "no reason was given" : g.notAnsweredBecause())
+                    .append(") — its zero error count says nothing");
             } else {
                 out.append(g.errorCount() == 0 ? "passed" : g.errorCount() + " error(s)");
             }

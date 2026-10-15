@@ -541,10 +541,18 @@ public class HireTool extends AbstractTool {
      */
     private static List<Map<String, Object>> gateRows(HiredRun.Proposal proposal) {
         List<Map<String, Object>> rows = new ArrayList<>();
-        proposal.gates().forEach(gate -> rows.add(Map.of(
-            "tool", gate.tool(),
-            "errorCount", gate.errorCount(),
-            "answered", gate.succeeded())));
+        proposal.gates().forEach(gate -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("tool", gate.tool());
+            row.put("errorCount", gate.errorCount());
+            row.put("answered", gate.succeeded());
+            // S16-10: WHICH of the four ways it failed to answer, so the hirer is sent to the
+            // plan, the tool's complaint or the reader rather than to the log.
+            if (gate.notAnsweredBecause() != null) {
+                row.put("notAnsweredBecause", gate.notAnsweredBecause());
+            }
+            rows.add(row);
+        });
         return rows;
     }
 

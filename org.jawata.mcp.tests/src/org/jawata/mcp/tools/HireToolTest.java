@@ -664,6 +664,29 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S16-10: a gate that did not answer says WHY, in the answer and in the record a human opens")
+    void aGateThatDidNotAnswerSaysWhyInTheAnswer() throws Exception {
+        // A registry with NO compile_workspace: the plan names a gate and no tool answers it.
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
+            new ToolRegistry());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> gates = (List<Map<String, Object>>) data.get("gates");
+        Map<String, Object> compile = gates.stream()
+            .filter(row -> "compile_workspace".equals(row.get("tool")))
+            .findFirst().orElseThrow(() -> new AssertionError("no compile gate row: " + gates));
+        String record = Files.readString(Path.of((String) data.get("record")));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, compile.get("answered")),
+            () -> assertTrue(String.valueOf(compile.get("notAnsweredBecause"))
+                .contains("no tool named 'compile_workspace'"), String.valueOf(compile)),
+            () -> assertTrue(record.contains("no tool named 'compile_workspace'"),
+                "the record says which of the four it was, not only DID NOT ANSWER: " + record));
+    }
+
+    @Test
     @DisplayName("S16-27: the journal part of the answer has three states, and 'could not read it' is not 'not there'")
     void theJournalPartOfTheAnswerHasThreeStates() {
         LearnerEvent run = new LearnerEvent("plan-1", LearnerEvent.KIND_HIRED_RUN, "codex",

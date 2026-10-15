@@ -167,6 +167,59 @@ class ToolGateRunnerTest {
     }
 
     @Test
+    @DisplayName("S16-10: a gate that did not answer says WHICH of its four reasons it was")
+    void aGateThatDidNotAnswerSaysWhy() {
+        ToolGateRunner runner = new ToolGateRunner(registryWith(
+            new FakeGate("refusing_gate",
+                () -> ToolResponse.error("PROJECT_NOT_LOADED", "no project", null)),
+            new FakeGate("crashing_gate", () -> {
+                throw new IllegalStateException("the gate fell over");
+            }),
+            new FakeGate("mute_gate", () -> data("{\"operation\": \"something_else\"}")),
+            new FakeGate("clean_gate", () -> data("{\"errorCount\": 0}"))));
+
+        // All four report (tool, arguments, 0, false), so before this component a record could say
+        // DID NOT ANSWER and never which — and each sends a reader somewhere different: a typo to
+        // the plan, a refusal to the tool's own complaint, a crash to the exception, a mute gate
+        // to this runner's reader.
+        //
+        // A CRASH ARRIVES AS A REFUSAL, and so does a tool that returns nothing: the registry
+        // catches both around its own dispatch and answers INTERNAL_ERROR (measured — this case
+        // first expected the runner's "returned nothing" text and got the registry's
+        // NullPointerException complaint). So the crash is told apart by the complaint the
+        // refusal carries, and the runner's own catch and null branches stay the backstops they
+        // are documented as.
+        String missing = runner.run(step("compile_wrokspace")).notAnsweredBecause();
+        String refused = runner.run(step("refusing_gate")).notAnsweredBecause();
+        String crashed = runner.run(step("crashing_gate")).notAnsweredBecause();
+        String mute = runner.run(step("mute_gate")).notAnsweredBecause();
+
+        assertAll(
+            () -> assertTrue(String.valueOf(missing).contains("no tool named 'compile_wrokspace'"),
+                missing),
+            () -> assertTrue(String.valueOf(refused).contains("refused")
+                    && String.valueOf(refused).contains("PROJECT_NOT_LOADED"),
+                "a refusal carries the tool's own complaint, which is where a reader goes next: "
+                    + refused),
+            () -> assertTrue(String.valueOf(crashed).contains("the gate fell over"),
+                "a crash names the exception it threw: " + crashed),
+            () -> assertTrue(String.valueOf(mute).contains("published no error count"), mute),
+            () -> assertEquals(4, java.util.stream.Stream.of(missing, refused, crashed, mute)
+                .distinct().count(), "four causes, four different answers"),
+            () -> assertEquals(null, runner.run(step("clean_gate")).notAnsweredBecause(),
+                "a gate that answered has no reason not to have"));
+    }
+
+    @Test
+    @DisplayName("S16-10: an answered gate cannot carry a reason for not answering")
+    void anAnsweredGateCarriesNoReason() {
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+            () -> new GateOutcome("compile_workspace", null, 0, true, "it refused"));
+
+        assertTrue(refused.getMessage().contains("answered"), refused.getMessage());
+    }
+
+    @Test
     @DisplayName("an answering gate's count is the gate's verdict, under either measured key")
     void anAnsweringGateReportsItsCount() {
         ToolGateRunner runner = new ToolGateRunner(registryWith(
