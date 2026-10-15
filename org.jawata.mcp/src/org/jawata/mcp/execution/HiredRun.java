@@ -155,8 +155,10 @@ public final class HiredRun {
         WriteContainment containment = dialect.writeContainment();
         if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
             // S16-38. The hire tool refuses this first, with a friendlier answer; this is the
-            // check every OTHER path passes (a scheduler firing a seat), so an unattended run
-            // cannot hire a brain held only by an instruction without the seat saying it may.
+            // check every path that hands the hire a SEAT passes (a scheduler firing a seat), so
+            // such a run cannot hire a brain held only by an instruction without the seat saying
+            // it may. The overload taking a bare BrainDialect has no seat to ask and is NOT
+            // covered: a caller choosing a dialect by hand is choosing its containment by hand.
             throw new IllegalArgumentException("seat '" + seat.seat() + "' would run on "
                 + dialect.name() + ", whose writes are not refused by a mechanism — "
                 + containment.report() + ". Add accepts_uncontained_writes: true to the seat's"

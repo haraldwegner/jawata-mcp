@@ -156,7 +156,7 @@ class HiredRunProposesTest {
     }
 
     @Test
-    @DisplayName("S16-38: the HIRE refuses a seat whose brain is not contained by a mechanism, whoever calls it")
+    @DisplayName("S16-38: the HIRE refuses a seat whose brain is not contained by a mechanism, whichever caller hands it a SeatHire")
     void theHireItselfRefusesAnUncontainedBrainWithoutTheSeatsOptIn() throws Exception {
         // The hire tool checks this first, with a friendlier answer. The scheduler (and any caller
         // after it) reaches HiredRun without passing the tool, so the check has to live where every
@@ -174,6 +174,7 @@ class HiredRunProposesTest {
             () -> assertTrue(refused.getMessage().contains("accepts_uncontained_writes"),
                 "the way out is named: " + refused.getMessage()),
             () -> assertTrue(refused.getMessage().contains("INSTRUCTION"), refused.getMessage()),
+            () -> assertEquals(List.of(), spy.asked(), "and no process was started"),
             () -> assertEquals(List.of(), artifacts.list(), "no artifact was made"),
             () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
                 "and nothing was journalled, because nothing ran"));
