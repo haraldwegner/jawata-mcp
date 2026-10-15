@@ -63,14 +63,27 @@ public final class CoverageAttribution {
         return out;
     }
 
-    /** Locate the .class file of an FQN under the manifest's class roots. */
+    /**
+     * Locate the .class file of an FQN under the manifest's class roots.
+     *
+     * <p>REL44-19: the name may be the SOURCE form of a nested type, {@code a.b.Outer.Inner}, whose
+     * class file is {@code a/b/Outer$Inner.class}. Replacing every dot with a slash looked for
+     * {@code a/b/Outer/Inner.class}, found nothing, and the type was answered as reached by no test.
+     * So the dotted path is tried first and then each boundary from the right is read as a nesting
+     * {@code $} in turn — the binary form ({@code a.b.Outer$Inner}) resolves on the first try.</p>
+     */
     public static Path classFile(CoverageManifest manifest, String fqn) {
-        String rel = fqn.replace('.', '/') + ".class";
-        for (String root : manifest.classRoots) {
-            Path candidate = Path.of(root).resolve(rel);
-            if (Files.isRegularFile(candidate)) return candidate;
+        String name = fqn;
+        while (true) {
+            String rel = name.replace('.', '/') + ".class";
+            for (String root : manifest.classRoots) {
+                Path candidate = Path.of(root).resolve(rel);
+                if (Files.isRegularFile(candidate)) return candidate;
+            }
+            int dot = name.lastIndexOf('.');
+            if (dot < 0) return null;
+            name = name.substring(0, dot) + '$' + name.substring(dot + 1);
         }
-        return null;
     }
 
     /**
