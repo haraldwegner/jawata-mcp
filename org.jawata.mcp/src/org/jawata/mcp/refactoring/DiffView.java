@@ -31,7 +31,7 @@ import java.util.Map;
  * reads — so nothing is destroyed by the cap, only left out of the default answer.</p>
  */
 public record DiffView(String diff, List<DiffRenderer.FileSummary> files,
-                       boolean truncated, int fullLength) {
+                       boolean truncated, int fullLength, List<String> placeholders) {
 
     /** The house cap, shared with {@code inspect kind=source} rather than chosen again. */
     public static final int DEFAULT_MAX_CHARS = 24_000;
@@ -49,9 +49,9 @@ public record DiffView(String diff, List<DiffRenderer.FileSummary> files,
         String text = diff == null ? "" : diff;
         List<DiffRenderer.FileSummary> files = DiffRenderer.summarize(text);
         if (full || text.length() <= DEFAULT_MAX_CHARS) {
-            return new DiffView(text, files, false, text.length());
+            return new DiffView(text, files, false, text.length(), DiffRenderer.addedPlaceholders(text));
         }
-        return new DiffView(text.substring(0, DEFAULT_MAX_CHARS), files, true, text.length());
+        return new DiffView(text.substring(0, DEFAULT_MAX_CHARS), files, true, text.length(), DiffRenderer.addedPlaceholders(text));
     }
 
     /** Reads the caller's {@code fullDiff} flag; absent means capped. */
@@ -81,6 +81,14 @@ public record DiffView(String diff, List<DiffRenderer.FileSummary> files,
             summary.add(row);
         }
         data.put("diffSummary", summary);
+        // REL44-25: a placeholder the engine wrote is SAID, not left to be found in the diff —
+        // and read off the WHOLE diff, so a cut text still reports what lies below the cut.
+        if (!placeholders.isEmpty()) {
+            data.put("placeholdersAdded", placeholders);
+            data.put("placeholdersNote", placeholders.size() + " line(s) this change adds carry"
+                + " a to-do marker the engine wrote (an empty javadoc tag, a generated stub)."
+                + " They compile; they are not finished. Fill or remove each before keeping it.");
+        }
         if (truncated) {
             data.put("truncated", true);
             data.put("diffLength", fullLength);

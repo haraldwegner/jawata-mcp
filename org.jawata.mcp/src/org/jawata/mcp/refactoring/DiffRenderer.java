@@ -110,6 +110,60 @@ public final class DiffRenderer {
         return List.copyOf(files);
     }
 
+    /**
+     * REL44-25 — the lines a diff ADDS that carry a to-do marker, each as
+     * {@code "<path>: <line>"}. (Spelled out here rather than written as the marker itself,
+     * which the IDE would read as a task in THIS file.)
+     *
+     * <p>An engine can write a placeholder into the code it changes: JDT's change-signature
+     * wrote an {@code @param tally} tag with a to-do marker for its text, and the answer said
+     * nothing about it. A caller reviewing the summary cannot see that, so it is read off the
+     * diff, which is the one thing every apply-shaped answer already carries.</p>
+     *
+     * <p>A marker the change only MOVES is not one it wrote: an added line whose text a removed
+     * line anywhere in the same diff also carries is cancelled against it, once, so code moved
+     * between files is not reported as a new stub.</p>
+     *
+     * @param unifiedDiff a diff produced by this class
+     * @return the added placeholder lines, in diff order; empty when there are none
+     */
+    public static List<String> addedPlaceholders(String unifiedDiff) {
+        if (unifiedDiff == null || unifiedDiff.isEmpty()) {
+            return List.of();
+        }
+        String[] lines = unifiedDiff.split("\n", -1);
+        java.util.Map<String, Integer> removed = new java.util.HashMap<>();
+        List<String[]> added = new ArrayList<>();
+        String path = null;
+        for (int i = 0; i < lines.length; i++) {
+            String header = headerPathAt(lines, i);
+            if (header != null) {
+                path = header;
+                i++;                        // the '+++ b/' half of the pair, already read
+                continue;
+            }
+            String line = lines[i];
+            if (path == null || line.startsWith("@@")) {
+                continue;
+            }
+            if (line.startsWith("-")) {
+                removed.merge(line.substring(1).trim(), 1, Integer::sum);
+            } else if (line.startsWith("+") && line.contains("TODO")) {
+                added.add(new String[] {path, line.substring(1).trim()});
+            }
+        }
+        List<String> out = new ArrayList<>();
+        for (String[] candidate : added) {
+            Integer moved = removed.get(candidate[1]);
+            if (moved != null && moved > 0) {
+                removed.put(candidate[1], moved - 1);
+                continue;
+            }
+            out.add(candidate[0] + ": " + candidate[1]);
+        }
+        return List.copyOf(out);
+    }
+
     /** The path a header pair names at {@code i}, or null when {@code i} is not one. */
     private static String headerPathAt(String[] lines, int i) {
         if (!lines[i].startsWith("--- a/") || i + 1 >= lines.length) {
