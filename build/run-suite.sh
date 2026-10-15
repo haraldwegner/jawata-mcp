@@ -158,6 +158,12 @@ TMP_BEFORE="$OUT/.tmp-before"
 "$ROOT/build/tmp-sweep-test.sh" --quiet \
     || { echo "FATAL: the /tmp sweep fails its own self-test — refusing to run it over /tmp."; exit 2; }
 
+# S16-23 — the README prose-count check the end-to-end gate calls proves its own matching here,
+# for the same reason as the two above: the end-to-end gate runs only before a release, and a
+# check whose matching broke would pass there on nothing.
+"$ROOT/build/readme-tool-count-test.sh" --quiet \
+    || { echo "FATAL: the README tool-count check fails its own self-test."; exit 2; }
+
 # mcp#52 — and the same argument one level out: the verdict gate's arithmetic is proved
 # above against INVENTED counters, which says nothing about whether the runner ever
 # PRODUCES them. mcp#54 and mcp#51 each shipped a container-level marker and counter that

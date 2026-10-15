@@ -235,6 +235,19 @@ else
           added or removed the tool."
 fi
 
+# --- readme-prose-tool-count: the NUMBERS in the README's prose against the running product ---
+# S16-23. The table above is held to the product by set comparison; the two counts written in
+# prose beside it were held to nothing, and one stood wrong ("44 tools total" while 43 shipped)
+# until a 44th tool made it true by accident. Counted from the live list, not EXPECTED_TOOLS, so
+# a prose count cannot pass by agreeing with a constant that is itself stale.
+LIVE_COUNT="$(printf '%s\n' $LIVE_TOOLS | grep -c .)"
+if RTC="$("$REPO_ROOT/build/readme-tool-count.sh" "$REPO_ROOT/README.md" "$LIVE_COUNT" 2>&1)"; then
+    pass "readme-prose-tool-count $RTC"
+else
+    fail "readme-prose-tool-count $RTC
+          Update every count in README.md's prose in the same change that added or removed the tool."
+fi
+
 # --- recall-by-meaning: recall by MEANING, the release's central claim ---------------------
 call experience '{"kind":"record","type":"lesson",
   "summary":"the roof leaked because nobody swept the gutters in autumn",
