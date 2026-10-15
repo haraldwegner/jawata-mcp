@@ -120,4 +120,76 @@ class OrganizeImportsAddsMissingTest {
                 "a guess between two candidates is worse than no import: " + after),
             () -> assertFalse(after.contains("import java.awt.List;"), after));
     }
+
+    /**
+     * REL44-13. Declining is right; declining SILENTLY is not. With the ambiguous name the only
+     * thing to do, the answer was {@code hasChanges=false, importsAdded=0} — word for word what
+     * an already-organised file returns — so a caller had no way to learn that a name was left
+     * unresolved, or which. Measured live on HireTool's {@code Set}: java.util.Set, ASM's
+     * Attribute.Set and H2's dml.Set.
+     */
+    @Test
+    @DisplayName("REL44-13: a declined name is NAMED, with its candidates, when nothing else changed")
+    void aDeclinedNameIsNamedWhenNothingElseChanged() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path file = write(service, "NamesTheDecline", """
+            package com.example;
+
+            public class NamesTheDecline {
+                public List<String> make() {
+                    return null;
+                }
+            }
+            """);
+
+        ToolResponse response = organize(service, file);
+
+        assertTrue(response.isSuccess(), "got: " + response.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        assertEquals(false, data.get("hasChanges"),
+            () -> "the control: the decline is the only thing that happened: " + data);
+        assertDeclined(data, "List", 4);
+    }
+
+    @Test
+    @DisplayName("REL44-13: a declined name is named beside the imports that were added")
+    void aDeclinedNameIsNamedBesideTheAddedOnes() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path file = write(service, "AddsAndDeclines", """
+            package com.example;
+
+            public class AddsAndDeclines {
+                public List<String> make() {
+                    return new ArrayList<>();
+                }
+            }
+            """);
+
+        ToolResponse response = organize(service, file);
+
+        assertTrue(response.isSuccess(), "got: " + response.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        assertEquals(1, data.get("importsAdded"),
+            () -> "the control: the unambiguous name was added: " + data);
+        assertDeclined(data, "List", 4);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void assertDeclined(Map<String, Object> data, String name, int line) {
+        Object declined = data.get("declinedAmbiguous");
+        assertTrue(declined instanceof java.util.List<?> l && l.size() == 1,
+            () -> "exactly one declined name must be listed: " + data);
+        Map<String, Object> entry = ((java.util.List<Map<String, Object>>) declined).get(0);
+        java.util.List<String> candidates = (java.util.List<String>) entry.get("candidates");
+        assertAll(
+            () -> assertEquals(name, entry.get("name"), "got: " + entry),
+            () -> assertEquals(line, entry.get("line"), "where the reference is: " + entry),
+            () -> assertTrue(candidates.contains("java.util." + name),
+                "the candidates must be named so the caller can choose: " + entry),
+            () -> assertTrue(candidates.size() >= 2,
+                "a declined name has more than one candidate, or it would not be declined: "
+                    + entry));
+    }
 }

@@ -80,8 +80,10 @@ import java.util.function.Supplier;
  *
  * <p>What it still will not do is GUESS. An ambiguous simple name — {@code List} is
  * {@code java.util.List} and {@code java.awt.List} — is left out rather than picked,
- * which is what jdt.ls does with no UI to ask. The declined name is not reported, so a
- * file that still does not resolve after a successful run is where to look.</p>
+ * which is what jdt.ls does with no UI to ask. Every declined name is REPORTED, in
+ * {@code declinedAmbiguous} with its line and its candidates (REL44-13): declined silently,
+ * the answer for a file whose only problem was an ambiguous name read
+ * {@code hasChanges=false, importsAdded=0} — word for word an already-organised file.</p>
  */
 public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
 
@@ -126,9 +128,9 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             Missing imports are ADDED as well as unused ones removed (mcp#16). An
             AMBIGUOUS name is the one thing it will not do: `List` is java.util.List
             and java.awt.List, and with no human to ask it is left out rather than
-            guessed. `importsAdded` counts what arrived; a name declined for
-            ambiguity is not named, so a file that still does not resolve after a
-            successful run is the case to look at.
+            guessed. `importsAdded` counts what arrived, and every name declined
+            for ambiguity is listed in `declinedAmbiguous` with its line and its
+            candidates — add the one you mean by hand.
             Applies the change directly (default) and returns
             { filesModified, diff, undoChangeId, summary }; when imports are
             already organized, returns hasChanges: false without touching the
@@ -202,6 +204,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             data.put("totalImports", organized.totalImports());
             data.put("importsAdded", 0);
             data.put("importsRemoved", 0);
+            putDeclined(data, organized.declined());
             return Preparation.fail(ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "get_diagnostics to check for remaining issues"))
@@ -220,6 +223,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         extras.put("importsAdded", organized.added());
         extras.put("importsRemoved", organized.removed());
         extras.put("organizedImportBlock", previewImportBlock(cu, organized.edit()));
+        putDeclined(extras, organized.declined());
 
         String summary = "organize imports (" + organized.added() + " added, "
             + organized.removed() + " removed)";
@@ -251,6 +255,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
         List<Map<String, Object>> modified = new ArrayList<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
+        List<Map<String, Object>> declined = new ArrayList<>();
         int added = 0;
         int removed = 0;
 
@@ -258,6 +263,14 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             String where = pathOf(service, cu);
             try {
                 Organized organized = organize(cu);
+                // Before the no-change check: a file whose ONLY finding is an ambiguous name
+                // is exactly the file a caller cannot otherwise find (REL44-13).
+                for (Map<String, Object> name : organized.declined()) {
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("filePath", where);
+                    entry.putAll(name);
+                    declined.add(entry);
+                }
                 if (!organized.hasChanges()) {
                     continue;
                 }
@@ -301,6 +314,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         // `filesScanned` when it split the count in two.
         counts.put("modifiedFiles", modified);
         counts.put("skippedFiles", skipped);
+        putDeclined(counts, declined);
 
         if (edits.isEmpty()) {
             Map<String, Object> data = new LinkedHashMap<>(counts);
@@ -324,12 +338,28 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
 
     // ------------------------------------------------------------------ the engine
 
-    /** What one file's organize produced. A null edit means nothing to do. */
-    private record Organized(TextEdit edit, int added, int removed, int totalImports) {
+    /**
+     * What one file's organize produced. A null edit means nothing to do; {@code declined}
+     * holds every ambiguous name the headless policy left out, which is NOT a change and is
+     * reported whether or not anything else changed.
+     */
+    private record Organized(TextEdit edit, int added, int removed, int totalImports,
+                             List<Map<String, Object>> declined) {
         boolean hasChanges() {
             return edit != null
                 && (edit.hasChildren() || edit.getLength() > 0 || added > 0 || removed > 0);
         }
+    }
+
+    /** {@code declinedAmbiguous} and what to do about it, when anything was declined. */
+    private static void putDeclined(Map<String, Object> data, List<Map<String, Object>> declined) {
+        if (declined.isEmpty()) {
+            return;
+        }
+        data.put("declinedAmbiguous", declined);
+        data.put("declinedNote", declined.size() + " name(s) left unresolved because more than"
+            + " one type matches — this tool never guesses between them. Add the import you"
+            + " mean by hand; the candidates are listed with each name.");
     }
 
     /**
@@ -346,16 +376,36 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         CompilationUnit ast = (CompilationUnit) parser.createAST(null);
 
         // Headless ambiguity policy: never guess between candidates — skip them
-        // (returning an empty choice), exactly what jdt.ls does without a UI.
-        OrganizeImportsOperation.IChooseImportQuery skipAmbiguous =
-            (openChoices, ranges) -> new TypeNameMatch[0];
+        // (returning an empty choice), exactly what jdt.ls does without a UI. What it
+        // skips is RECORDED, name, line and candidates, so the answer can say so (REL44-13).
+        List<Map<String, Object>> declined = new ArrayList<>();
+        OrganizeImportsOperation.IChooseImportQuery skipAmbiguous = (openChoices, ranges) -> {
+            for (int i = 0; i < openChoices.length; i++) {
+                TypeNameMatch[] candidates = openChoices[i];
+                if (candidates == null || candidates.length == 0) {
+                    continue;
+                }
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("name", candidates[0].getSimpleTypeName());
+                if (ranges != null && i < ranges.length && ranges[i] != null) {
+                    entry.put("line", ast.getLineNumber(ranges[i].getOffset()));
+                }
+                List<String> names = new ArrayList<>();
+                for (TypeNameMatch candidate : candidates) {
+                    names.add(candidate.getFullyQualifiedName());
+                }
+                entry.put("candidates", names);
+                declined.add(entry);
+            }
+            return new TypeNameMatch[0];
+        };
         OrganizeImportsOperation operation = new OrganizeImportsOperation(
             cu, ast, /* ignoreLowerCaseNames */ true, /* save */ false,
             /* allowSyntaxErrors */ true, skipAmbiguous);
 
         TextEdit edit = operation.createTextEdit(new NullProgressMonitor());
         return new Organized(edit, operation.getNumberOfImportsAdded(),
-            operation.getNumberOfImportsRemoved(), ast.imports().size());
+            operation.getNumberOfImportsRemoved(), ast.imports().size(), List.copyOf(declined));
     }
 
     /** The organized import block, for the response: apply the edit to a copy. */

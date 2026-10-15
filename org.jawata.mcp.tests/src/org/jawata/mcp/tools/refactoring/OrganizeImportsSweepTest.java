@@ -161,4 +161,39 @@ class OrganizeImportsSweepTest {
         assertTrue(String.valueOf(r.getError()).contains("scope=workspace"),
             "and the refusal must name the way to ask for a sweep; got: " + r.getError());
     }
+
+    /**
+     * REL44-13 at the broad scopes. A file whose ONLY finding is an ambiguous name produces no
+     * change, so it never reaches {@code changedFiles} — and before the fix a sweep said nothing
+     * about it at all, which is the one file a caller could not otherwise find.
+     */
+    @Test
+    @DisplayName("REL44-13: a sweep names a declined ambiguous name, with its file")
+    void aSweepNamesTheDeclinedNameWithItsFile() throws Exception {
+        Path projectRoot = service.allProjects().iterator().next().projectRoot();
+        Path ambiguous = projectRoot.resolve("src/main/java/com/example/SweepDeclines.java");
+        Files.writeString(ambiguous, """
+            package com.example;
+
+            public class SweepDeclines {
+                public List<String> make() {
+                    return null;
+                }
+            }
+            """, StandardCharsets.UTF_8);
+        service.getJavaProject().getProject().refreshLocal(
+            org.eclipse.core.resources.IResource.DEPTH_INFINITE,
+            new org.eclipse.core.runtime.NullProgressMonitor());
+
+        ToolResponse r = tool.execute(args("project"));
+        assertTrue(r.isSuccess(), "tool must succeed; got: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+
+        assertTrue(data.get("declinedAmbiguous") instanceof List<?> declined
+                && declined.stream().anyMatch(e -> e instanceof Map<?, ?> m
+                    && "List".equals(m.get("name"))
+                    && String.valueOf(m.get("filePath")).endsWith("SweepDeclines.java")),
+            "the sweep must name the ambiguous List and the file it is in; data=" + data);
+    }
 }
