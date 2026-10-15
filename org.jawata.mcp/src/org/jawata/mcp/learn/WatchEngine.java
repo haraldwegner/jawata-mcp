@@ -65,6 +65,10 @@ public class WatchEngine {
             return Optional.empty();
         }
         List<String> emitted = new ArrayList<>();
+        // REL44-16: whether any emitted finding came from a file the watch HAD a record of. A
+        // file with no stored baseline is a first look: its findings may predate the change, and
+        // calling them "new since your change" asked the agent to defend code it did not write.
+        boolean anyAgainstARecord = false;
         long now = System.currentTimeMillis();
         int filesInspected = 0;
         for (String path : deltaPaths) {
@@ -78,6 +82,7 @@ public class WatchEngine {
             for (String kind : WATCH_KINDS) {
                 collectFindings(kind, path, current, details, seen);
             }
+            boolean firstLook = !hasBaseline(path);
             Set<String> baseline = loadBaseline(path);
             saveBaseline(path, current);
             for (String[] d : details) {
@@ -93,7 +98,9 @@ public class WatchEngine {
                     continue;
                 }
                 recentlyEmitted.put(key, now);
-                emitted.add(d[1]);
+                emitted.add(firstLook ? d[1] + " (first look at this file — may predate your change)"
+                    : d[1]);
+                anyAgainstARecord |= !firstLook;
                 if (events != null) {
                     events.append(new LearnerEvent(sessionId,
                         LearnerEvent.KIND_WATCH_FINDING, "watch",
@@ -104,8 +111,10 @@ public class WatchEngine {
         if (emitted.isEmpty()) {
             return Optional.empty();
         }
-        StringBuilder block = new StringBuilder(
-            "ARCHITECT WATCH (new since your change — design fix or bandage?):");
+        StringBuilder block = new StringBuilder(anyAgainstARecord
+            ? "ARCHITECT WATCH (new since your change — design fix or bandage?):"
+            : "ARCHITECT WATCH (first look at this file — there is no record of it before your"
+                + " change, so these may predate your change; design fix or bandage?):");
         for (String line : emitted) {
             block.append("\n- ").append(line);
         }
@@ -265,6 +274,15 @@ public class WatchEngine {
             // key would collide silently, which is worse than not remembering at all.
             throw new IllegalStateException("SHA-256 unavailable; cannot key watch state", e);
         }
+    }
+
+    /**
+     * Whether the watch has a RECORD of this file — a stored baseline, even an empty one. An
+     * empty stored baseline is a look that happened and found nothing; no stored baseline is no
+     * look at all (REL44-16). No store means no record, ever.
+     */
+    private boolean hasBaseline(String path) {
+        return events != null && events.loadState(baselineKey(path)).isPresent();
     }
 
     private Set<String> loadBaseline(String path) {
