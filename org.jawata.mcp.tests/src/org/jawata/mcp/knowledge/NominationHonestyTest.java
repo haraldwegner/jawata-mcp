@@ -211,6 +211,11 @@ class NominationHonestyTest {
      */
     @Test
     void a_ranking_over_unembedded_entries_says_how_much_it_could_see() {
+        // The partial case needs ONE row embedded, so it needs an embedder. Without one this
+        // FAILED rather than skipped, for a reason that is not its subject (REL44-21).
+        org.junit.jupiter.api.Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder — the partial-coverage case needs one row WITH a vector, so it did"
+                + " NOT run: " + EmbeddingService.shared().unavailableReason());
         // ONE of the two lands with no vector — the genuinely partial case, which
         // is stronger than a store where nothing is embedded: a total blackout
         // could be reported by a check that merely noticed the index was empty.
@@ -254,13 +259,15 @@ class NominationHonestyTest {
 
         Map<?, ?> coverage = (Map<?, ?>) n.get("meaning_coverage");
         assertNotNull(coverage, "coverage is reported either way");
-        // Guarded rather than asserted blind: if this build has no embedder the
-        // index covers nothing, and demanding silence would fail for a reason that
-        // is not this test's subject. The assertion runs when there IS coverage.
-        if (coverage.get("embedded").equals(coverage.get("entries"))) {
-            assertTrue(!String.valueOf(n.get("message")).contains("PARTIAL"),
-                () -> "full coverage must not warn: " + n.get("message"));
-        }
+        // An ASSUMPTION rather than an if: with no embedder the index covers nothing and
+        // demanding silence would fail for a reason that is not this test's subject — but an
+        // if around the assertion made that case a PASS that checked nothing (REL44-21).
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            coverage.get("embedded").equals(coverage.get("entries")),
+            () -> "no full coverage to test — no embedder, so the subject did NOT run: "
+                + coverage);
+        assertTrue(!String.valueOf(n.get("message")).contains("PARTIAL"),
+            () -> "full coverage must not warn: " + n.get("message"));
     }
 
     /**

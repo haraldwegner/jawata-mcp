@@ -2166,6 +2166,16 @@ public final class ExperienceTool implements Tool {
             org.jawata.mcp.knowledge.BackgroundEmbedding.request(index);
             data.put("embedding", "background");
             data.put("unembedded", index.remainingUnembedded());
+        } else {
+            // REL44-21: with no index these rows cannot answer by meaning and nothing can count
+            // them. Leaving both keys out read exactly like "nothing to report"; this answers
+            // the way vectorise already does when the embedder is absent.
+            data.put("embedding", "unavailable");
+            data.put("unembedded", "unknown");
+            data.put("embeddingNote", "These rows have no meaning vector: this resident has no"
+                + " meaning index (no embedder loaded, or a store that keeps no vectors), so"
+                + " the remainder cannot be counted. Recall finds them on the keyword path"
+                + " alone until an embedder is present.");
         }
         return data;
     }

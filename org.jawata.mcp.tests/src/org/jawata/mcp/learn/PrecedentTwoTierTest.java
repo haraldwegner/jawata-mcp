@@ -35,9 +35,9 @@ class PrecedentTwoTierTest {
     @Test
     void the_semantic_retriever_widens_but_keyword_hits_come_first() {
         EmbeddingService svc = EmbeddingService.shared();
-        if (!svc.available()) {
-            return;
-        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "no embedder — the semantic tier this test ranks did NOT run: "
+                + svc.unavailableReason());
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         try {
             ToolExperienceStore lane = new ToolExperienceStore(store);

@@ -489,11 +489,11 @@ class SchemaMigrationsTest {
                 store.get(id).get().get("summary"), "and nothing it held was rewritten");
 
             EmbeddingIndex index = EmbeddingIndex.forStore(store);
-            if (index == null || !index.available()) {
-                // Not an abort dressed as a pass: with no embedder there is no
-                // vector to place in a lane, and the columns were asserted above.
-                return;
-            }
+            // An ABORT, not a return: the columns were asserted above, but the re-embedding
+            // this test is named for did not run, and a bare return said so as a PASS
+            // (REL44-21).
+            org.junit.jupiter.api.Assumptions.assumeTrue(index != null && index.available(),
+                "no embedder — the v11 columns exist, but re-embedding into them did NOT run");
             assertTrue(index.backfill(50) > 0,
                 "the aged identity is what makes the row STALE — without the version "
                     + "bump the backfill selects nothing and the lanes stay empty");

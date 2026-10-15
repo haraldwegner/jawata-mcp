@@ -185,11 +185,11 @@ class EmbeddingRecipeTest {
     void a_row_embedded_under_the_previous_recipe_is_found_stale_and_re_embedded()
             throws Exception {
         EmbeddingService svc = EmbeddingService.shared();
-        if (!svc.available()) {
-            // Not an abort dressed as a pass: with no embedder there is no vector to
-            // make stale, and the degrade path is asserted by EmbeddingStoreTest.
-            return;
-        }
+        // An ABORT, not a return. With no embedder there is no vector to make stale, so this
+        // test cannot run — and a bare return said so as a PASS (REL44-21).
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "no embedder — there is no vector to make stale, so this did NOT run: "
+                + svc.unavailableReason());
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             String id = store.put(ExperienceEntry.of(
                     SymbolFact.of("lesson", SUMMARY, Confidence.MEDIUM).details(DETAILS).build())

@@ -44,17 +44,16 @@ class DispatchRecallTest {
     }
 
     /**
-     * True when the bundled embedder loaded. A silently-skipped test counts as
-     * a pass, which is how a green suite comes to prove nothing — so a skip
-     * SAYS so, and the run's output shows how much of this class actually ran.
+     * ABORT when the bundled embedder did not load. A silently-skipped test counts
+     * as a pass, which is how a green suite comes to prove nothing. Printing "NOT
+     * RUN" did not change that — JUnit still counted a pass, and the accepted-abort
+     * budget never saw it (REL44-21) — so this is an assumption, which a run
+     * reports as a skip.
      */
-    private boolean embedderAvailable() {
-        boolean up = EmbeddingService.shared().available();
-        if (!up) {
-            System.out.println("DispatchRecallTest: NOT RUN — no embedder available "
-                + "(this class asserts nothing in this run)");
-        }
-        return up;
+    private static void requireEmbedder() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder — dispatch recall is meaning recall, and this did NOT run: "
+                + EmbeddingService.shared().unavailableReason());
     }
 
     /** One journal line in the runner's own shape (camelCase, schema 1). */
@@ -145,9 +144,7 @@ class DispatchRecallTest {
 
     @Test
     void a_prose_cue_near_a_past_run_returns_its_seat_verdict_and_outcome() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         seatRun("javadoc-writer", "org.jawata.mcp.refactoring.PurityCheck",
             "document the five undocumented public methods on this type",
             "accepted", "applied");
@@ -169,9 +166,7 @@ class DispatchRecallTest {
 
     @Test
     void a_novel_shape_returns_honest_nothing() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         seatRun("javadoc-writer", "org.jawata.mcp.refactoring.PurityCheck",
             "document the five undocumented public methods on this type",
             "accepted", "applied");
@@ -186,9 +181,7 @@ class DispatchRecallTest {
 
     @Test
     void an_unjudged_run_says_so_rather_than_implying_acceptance() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         seatRun("test-writer", "org.jawata.mcp.knowledge.EmbeddingIndex",
             "write characterization tests for the uncovered nomination path",
             null, "proposed");
@@ -204,9 +197,7 @@ class DispatchRecallTest {
 
     @Test
     void a_past_run_arrives_as_an_analogy_not_as_a_rule() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         seatRun("architect", "org.jawata.mcp.knowledge.ExperienceRetrieval",
             "review the recall pipeline against the sprint architecture",
             "accepted", "applied");
@@ -231,9 +222,7 @@ class DispatchRecallTest {
 
     @Test
     void the_same_facts_arrive_however_the_run_was_found() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         seatRun("debugger", "org.jawata.mcp.tools.ExperienceTool",
             "attach and probe the null returned by the dedup hook",
             "accepted", "applied");
@@ -270,9 +259,7 @@ class DispatchRecallTest {
      */
     @Test
     void the_seat_command_record_shape_is_not_dropped_just_because_it_is_unstructured() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         SymbolFact f = SymbolFact.of("lesson",
                 "javadoc-writer seat on RecallQuery: added grounded Javadoc to 5 public "
                 + "has* methods. Gates: compile 0/0. Verdict: accepted (human yes).",

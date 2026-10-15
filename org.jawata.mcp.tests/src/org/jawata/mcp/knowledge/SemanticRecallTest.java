@@ -67,9 +67,9 @@ class SemanticRecallTest {
      *
      * <p>A bare {@code return} is recorded by JUnit as a PASS, which makes a
      * gate that never ran indistinguishable from one that held —
-     * {@link CalibrationGateTest} prints "NOT RUN" for exactly this reason. The
-     * older tests in this file still use the bare return; the C2 gates must
-     * not, because they are the ones being called blocking.</p>
+     * {@link CalibrationGateTest} prints "NOT RUN" for exactly this reason. Every
+     * test in this file uses it: the seven older ones returned bare until REL44-21,
+     * and {@code AMissingEmbedderIsASkipNotAPassTest} now refuses that shape.</p>
      */
     private void requireEmbedder() {
         org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
@@ -78,9 +78,7 @@ class SemanticRecallTest {
 
     @Test
     void a_paraphrase_reaches_experience_that_keyword_recall_cannot_find() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         String target = putExperience(
             "never remove the algo from the map until the broker confirms",
             "premature removal routes a late cancel callback to the wrong algo on a reused slot",
@@ -119,9 +117,7 @@ class SemanticRecallTest {
 
     @Test
     void an_analogy_is_never_dressed_as_a_fact() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         putExperience("never free the slot before the broker confirms the cancel",
             "a late confirmation can reach a reused slot", null);
         Map<String, Object> r = semantic.recall(symptom(
@@ -146,9 +142,7 @@ class SemanticRecallTest {
 
     @Test
     void no_rendering_anywhere_contains_a_similarity_number() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         putExperience("the webview renders blank on linux",
             "the DMABUF compositor path fails silently on some drivers", null);
         // Cue chosen from a MEASURED score, not from intuition: this cue scores
@@ -183,9 +177,7 @@ class SemanticRecallTest {
 
     @Test
     void experience_whose_code_is_gone_still_returns_with_its_provenance() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         // The ruling that forced the ontology: an old refactoring lesson is
         // still good experience even when the class it was learned on is gone.
         putExperience("extract was reverted twice on a long method",
@@ -204,9 +196,7 @@ class SemanticRecallTest {
 
     @Test
     void a_fact_that_fails_its_address_gate_is_not_smuggled_back_as_an_analogy() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         // A FACT about code at an address. The cue does not contain that
         // address, so the gate must not admit it - and the meaning nominator
         // must not offer it either, or the hard gate becomes decorative.
@@ -223,9 +213,7 @@ class SemanticRecallTest {
 
     @Test
     void analogies_are_capped_so_the_context_cannot_be_flooded() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         for (int i = 0; i < 8; i++) {
             putExperience("broker confirmation lesson number " + i,
                 "never act before the broker confirms the cancel, case " + i, null);
@@ -240,9 +228,7 @@ class SemanticRecallTest {
 
     @Test
     void equality_boosts_the_ranking_but_never_decides_admission() {
-        if (!svc.available()) {
-            return;
-        }
+        requireEmbedder();
         String sameOp = store.put(ExperienceEntry.of(
             SymbolFact.of("lesson", "renaming across modules needs a full rebuild",
                 Confidence.MEDIUM).details("stale binaries hid the breakage").build())

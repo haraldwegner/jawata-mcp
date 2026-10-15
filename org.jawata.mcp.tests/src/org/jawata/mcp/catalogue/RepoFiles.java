@@ -37,7 +37,7 @@ import java.nio.file.Path;
  * bare missing-file exception from somewhere inside a walk. {@link #root} throws instead,
  * because a caller asking for the root has nothing useful to say about its absence.</p>
  */
-final class RepoFiles {
+public final class RepoFiles {
 
     /** The marker that identifies the repository root: the shared catalogue's own module. */
     private static final String MARKER = "org.jawata.catalogue";
@@ -49,7 +49,7 @@ final class RepoFiles {
      *
      * @param repoRelative e.g. {@code build/acceptance} or a path under a bundle
      */
-    static Path sourceOf(String repoRelative) {
+    public static Path sourceOf(String repoRelative) {
         for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
             Path candidate = p.resolve(repoRelative);
             if (Files.exists(candidate)) {

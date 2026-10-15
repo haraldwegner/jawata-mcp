@@ -85,17 +85,16 @@ class WritePathDedupTest {
     }
 
     /**
-     * True when the bundled embedder loaded. A silently-skipped test counts as
-     * a pass, which is how a green suite comes to prove nothing — so a skip
-     * SAYS so.
+     * ABORT when the bundled embedder did not load. A silently-skipped test counts
+     * as a pass, which is how a green suite comes to prove nothing. Printing "NOT
+     * RUN" did not change that — JUnit still counted a pass, and the accepted-abort
+     * budget never saw it (REL44-21) — so this is an assumption, which a run
+     * reports as a skip.
      */
-    private boolean embedderAvailable() {
-        boolean up = EmbeddingService.shared().available();
-        if (!up) {
-            System.out.println("WritePathDedupTest: NOT RUN — no embedder available "
-                + "(the dedup assertions below assert nothing in this run)");
-        }
-        return up;
+    private static void requireEmbedder() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder — write-path dedup compares meanings, and this did NOT run: "
+                + EmbeddingService.shared().unavailableReason());
     }
 
     // ---- the fixtures: real text shapes from the C0 corpus scan ----------
@@ -112,9 +111,7 @@ class WritePathDedupTest {
 
     @Test
     void a_byte_identical_re_record_is_flagged_as_a_duplicate() {
-        if (!embedderAvailable()) {
-            return;                        // C3's degrade path has its own test
-        }
+        requireEmbedder();                 // C3's degrade path has its own test
         Map<String, Object> first = data(tool.execute(record(SLIP_A, null)));
         String firstId = (String) first.get("id");
         assertNull(first.get("duplicate_of"),
@@ -132,9 +129,7 @@ class WritePathDedupTest {
 
     @Test
     void a_re_phrasing_of_the_same_knowledge_is_flagged() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         String firstId = (String) data(tool.execute(record(SLIP_A, null))).get("id");
         Map<String, Object> second = data(tool.execute(record(SLIP_B, null)));
         assertEquals(firstId, second.get("duplicate_of"),
@@ -144,9 +139,7 @@ class WritePathDedupTest {
 
     @Test
     void genuinely_new_knowledge_is_admitted_unflagged() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         data(tool.execute(record(SLIP_A, null)));
         Map<String, Object> fresh = data(tool.execute(record(NEW_LESSON, null)));
         assertNull(fresh.get("duplicate_of"),
@@ -159,9 +152,7 @@ class WritePathDedupTest {
 
     @Test
     void near_but_distinct_knowledge_is_not_flagged() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         // The hand-labeled WALL: the highest-scoring pair that is NOT a
         // duplicate (0.8970 — two different sprints of the same project). If
         // the threshold ever slides down to catch more, this is the first
@@ -183,9 +174,7 @@ class WritePathDedupTest {
      */
     @Test
     void a_section_that_quotes_a_fact_is_not_a_duplicate_of_it() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         String fact = "Never remove a slot until the broker confirms the cancel.";
         data(tool.execute(record(fact, null)));
 
@@ -203,9 +192,7 @@ class WritePathDedupTest {
 
     @Test
     void the_production_wrapper_path_flags_too() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         // In the resident the store is WRAPPED (RecoveringExperienceStore), and
         // an `instanceof H2ExperienceStore` against it is FALSE — the C4-F1
         // lesson. This test exists so the hook can never silently stop working
@@ -287,9 +274,7 @@ class WritePathDedupTest {
 
     @Test
     void the_flag_never_claims_a_number() {
-        if (!embedderAvailable()) {
-            return;
-        }
+        requireEmbedder();
         data(tool.execute(record(SLIP_A, null)));
         Map<String, Object> second = data(tool.execute(record(SLIP_A, null)));
         String note = String.valueOf(second.get("duplicate_note"));

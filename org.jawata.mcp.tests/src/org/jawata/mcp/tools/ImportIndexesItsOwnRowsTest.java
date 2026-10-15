@@ -158,11 +158,12 @@ class ImportIndexesItsOwnRowsTest {
                 }
             });
 
-        if (!EmbeddingService.shared().available()) {
-            System.out.println("=== import: no embedder — the count assertions below cannot"
-                + " run, and the response-shape assertions above did ===");
-            return;
-        }
+        // An ABORT, not a return: the control below is what makes the assertion above about
+        // the verb at all, so without it this test has not run (REL44-21).
+        org.junit.jupiter.api.Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder — the response-shape assertions above held, but the control that"
+                + " makes them about the verb did NOT run: "
+                + EmbeddingService.shared().unavailableReason());
 
         // THE CONTROL. The same rows written straight through the store — what a restore
         // does — must be left waiting. Without this the zero above is equally true of a

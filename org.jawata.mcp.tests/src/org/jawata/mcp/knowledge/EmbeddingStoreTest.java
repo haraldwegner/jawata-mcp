@@ -176,9 +176,9 @@ class EmbeddingStoreTest {
     @Test
     void a_superseded_identity_is_re_embedded_rather_than_compared() throws Exception {
         EmbeddingService svc = EmbeddingService.shared();
-        if (!svc.available()) {
-            return;
-        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "no embedder — this test's subject is the vectors, and it did NOT run: "
+                + svc.unavailableReason());
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         try {
             store.put(entry("first lesson", "details one"));
@@ -210,9 +210,9 @@ class EmbeddingStoreTest {
     @Test
     void backfill_embeds_only_the_rows_that_need_it() throws Exception {
         EmbeddingService svc = EmbeddingService.shared();
-        if (!svc.available()) {
-            return;
-        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "no embedder — this test's subject is the vectors, and it did NOT run: "
+                + svc.unavailableReason());
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         try {
             String keep = store.put(entry("already embedded", "has a vector"));
@@ -236,9 +236,9 @@ class EmbeddingStoreTest {
     @Test
     void meaning_nomination_ranks_a_paraphrase_above_unrelated_entries() throws Exception {
         EmbeddingService svc = EmbeddingService.shared();
-        if (!svc.available()) {
-            return;
-        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(svc.available(),
+            "no embedder — this test's subject is the vectors, and it did NOT run: "
+                + svc.unavailableReason());
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         try {
             String target = store.put(entry(
