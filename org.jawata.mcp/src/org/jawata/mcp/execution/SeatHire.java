@@ -66,9 +66,10 @@ import java.util.Optional;
  *     null for every other brain, which {@link #read(String)} enforces in both directions.
  * @param acceptsUncontainedWrites the seat's own word, {@code accepts_uncontained_writes: true},
  *     that it may be hired on a brain whose writes no mechanism refuses (S16-38). Carried on the
- *     hire so that the refusal lives where every path passes: {@link HiredRun#issue(SeatHire,
- *     org.jawata.core.host.HostCommand, String, java.util.List, HiredRun.GateRunner)} enforces it,
- *     whichever caller — the hire tool, a scheduler — reaches it.
+ *     hire so that the refusal lives where every path that hands the hire a seat passes:
+ *     {@link HiredRun#issue(SeatHire, org.jawata.core.host.HostCommand, String, java.util.List,
+ *     HiredRun.GateRunner, java.util.List)} enforces it, whichever caller — the hire tool, a
+ *     scheduler — reaches it with a seat.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
