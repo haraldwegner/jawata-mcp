@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * HTTP transport using the JDK's built-in
@@ -72,6 +73,11 @@ public class HttpTransport implements Transport {
 
     private static final Duration DEFAULT_HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
 
+    /** REL44-32: three silent probes 30 seconds apart — about 90 seconds to notice a dead listener. */
+    private static final Duration DEFAULT_WATCHDOG_INTERVAL = Duration.ofSeconds(30);
+    private static final int DEFAULT_WATCHDOG_FAILURES = 3;
+    private static final Duration WATCHDOG_PROBE_TIMEOUT = Duration.ofSeconds(5);
+
     private final int requestedPort;
     private final String bindAddress;
     private final String token;
@@ -86,6 +92,15 @@ public class HttpTransport implements Transport {
     private final Duration heartbeatInterval;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final List<SseSubscriber> subscribers = new CopyOnWriteArrayList<>();
+
+    /**
+     * REL44-32: how often the transport asks its own listener whether it answers, how many
+     * CONSECUTIVE silences declare it deaf, and what to do then (production: exit non-zero).
+     */
+    private final Duration watchdogInterval;
+    private final int watchdogFailures;
+    private final Runnable onDeaf;
+    private ScheduledExecutorService watchdog;
 
     private HttpServer server;
     private final CountDownLatch readyLatch = new CountDownLatch(1);
@@ -119,6 +134,24 @@ public class HttpTransport implements Transport {
 
     private HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
                           String readyTokenField) {
+        this(port, bindAddress, token, heartbeatInterval, readyTokenField,
+            DEFAULT_WATCHDOG_INTERVAL, DEFAULT_WATCHDOG_FAILURES, HttpTransport::exitBecauseDeaf);
+    }
+
+    /**
+     * Package-private, for the test that must see the watchdog fire quickly and must not exit the
+     * test's own process: a short probe interval, a small failure threshold, and what to do on
+     * deafness (REL44-32).
+     */
+    HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
+                  Duration watchdogInterval, int watchdogFailures, Runnable onDeaf) {
+        this(port, bindAddress, token, heartbeatInterval, "token=" + token,
+            watchdogInterval, watchdogFailures, onDeaf);
+    }
+
+    private HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
+                          String readyTokenField, Duration watchdogInterval, int watchdogFailures,
+                          Runnable onDeaf) {
         if (bindAddress == null || bindAddress.isBlank()) {
             throw new IllegalArgumentException("bindAddress required");
         }
@@ -133,6 +166,9 @@ public class HttpTransport implements Transport {
         this.token = token;
         this.readyTokenField = readyTokenField;
         this.heartbeatInterval = heartbeatInterval;
+        this.watchdogInterval = watchdogInterval;
+        this.watchdogFailures = watchdogFailures;
+        this.onDeaf = onDeaf;
     }
 
     /**
@@ -170,6 +206,13 @@ public class HttpTransport implements Transport {
         readyLatch.countDown();
 
         log.info("HTTP transport listening on {}:{}", bindAddress, actualPort);
+
+        // REL44-32: ask the listener itself, on a schedule. The JDK server runs its accept loop on
+        // ONE dispatcher thread and, if that dies, the process lives on deaf — measured: ten hours,
+        // zero HTTP threads, 51 connections queued, a main thread waiting on the latch below.
+        watchdog = new ServerWatchdog(
+            ServerWatchdog.httpProbe(localMcpUrl(), WATCHDOG_PROBE_TIMEOUT), watchdogFailures,
+            onDeaf).start(watchdogInterval);
 
         shutdownLatch.await();
         log.info("HTTP transport shutdown signal received");
@@ -222,8 +265,44 @@ public class HttpTransport implements Transport {
         }
     }
 
+    /**
+     * What a resident does when its listener has stopped answering: say so, then exit non-zero so
+     * whatever supervises it sees a dead process instead of a deaf one (REL44-32). A graceful exit
+     * is tried first so the shared store closes cleanly; if that hangs — a deaf process may have
+     * other things wrong with it — the process is halted after fifteen seconds.
+     */
+    private static void exitBecauseDeaf() {
+        log.error("HTTP LISTENER STOPPED ANSWERING while the process is alive — exiting with status 70"
+            + " so the resident is restarted instead of staying deaf");
+        Thread fallback = new Thread(() -> {
+            try {
+                Thread.sleep(15_000);
+            } catch (InterruptedException ignored) {
+                return;
+            }
+            Runtime.getRuntime().halt(70);
+        }, "HttpTransport-deaf-halt");
+        fallback.setDaemon(true);
+        fallback.start();
+        System.exit(70);
+    }
+
+    /**
+     * Test seam: stop the HTTP listener WITHOUT the transport's own shutdown, which reproduces the
+     * measured failure — the listener gone while the process lives (REL44-32).
+     */
+    void stopListenerOnly() {
+        if (server != null) {
+            server.stop(0);
+        }
+    }
+
     @Override
     public void close() {
+        if (watchdog != null) {
+            watchdog.shutdownNow();
+            watchdog = null;
+        }
         // Close subscribers first so SSE threads exit their wait loops
         // before server.stop() pulls their socket out from under them.
         for (SseSubscriber sub : subscribers) {
