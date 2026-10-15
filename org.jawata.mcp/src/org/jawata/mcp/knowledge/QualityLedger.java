@@ -154,16 +154,6 @@ public final class QualityLedger {
     }
 
     /**
-     * One fit-gate criterion was consulted, and what it said.
-     *
-     * @param criterion symbol / package / symptom / external_system / operation
-     * @param passed    whether this criterion admitted the candidate
-     */
-    public void gate(String criterion, boolean passed) {
-        gate(criterion, passed ? 1 : 0, passed ? 0 : 1);
-    }
-
-    /**
      * Many verdicts of one fit-gate criterion, counted in one write per counter (REL44-8).
      *
      * <p>A recall checks every candidate entry against its cue, and counting each check as it

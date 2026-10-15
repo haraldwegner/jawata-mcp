@@ -52,9 +52,9 @@ class QualityLedgerTest {
 
     @Test
     void the_gate_counts_checked_and_the_verdict_per_criterion() {
-        ledger.gate("symbol", true);
-        ledger.gate("symbol", false);
-        ledger.gate("symptom", false);
+        ledger.gate("symbol", 1, 0);
+        ledger.gate("symbol", 0, 1);
+        ledger.gate("symptom", 0, 1);
 
         Map<String, Long> c = ledger.counters();
         assertEquals(2L, c.get("gate.symbol.checked"));
@@ -126,7 +126,7 @@ class QualityLedgerTest {
         ledger.warned();
         ledger.defected();
         ledger.outcomeAfter("compiled");
-        ledger.gate("symbol", true);
+        ledger.gate("symbol", 1, 0);
     }
 
     @Test
