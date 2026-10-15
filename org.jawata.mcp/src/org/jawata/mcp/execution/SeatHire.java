@@ -62,16 +62,23 @@ import java.util.Optional;
  * @param enabled whether the seat is switched ON — false when its file says {@code enabled: false},
  *     which studio writes when the user turns the seat off. A hire of an off seat is refused by the
  *     hire tool; this record only carries the fact.
+ * @param script the executable a {@link Brain#SCRIPT} seat runs, from its {@code script:} line;
+ *     null for every other brain, which {@link #read(String)} enforces in both directions.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
-                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled) {
+                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
         CLAUDE_CODE("claude-code", "claude"),
         CURSOR("cursor", "cursor-agent"),
         COPILOT("copilot"),
-        CODEX("codex");
+        CODEX("codex"),
+        /**
+         * Any executable, named by the seat's {@code script:} line — {@link ScriptDialect}, the
+         * escape hatch for a CLI with no dialect of its own (S16-6).
+         */
+        SCRIPT("script");
 
         private final List<String> spellings;
 
@@ -138,9 +145,24 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             ? Brain.CLAUDE_CODE
             : Brain.named(declared).orElseThrow(() -> new IllegalArgumentException(
                 "seat declares brain '" + declared + "', which this product has no dialect for."
-                    + " Known: claude-code, cursor, copilot, codex. NOT defaulted on purpose — a"
-                    + " seat hired as a brain it did not ask for is worse than one that refuses"
+                    + " Known: claude-code, cursor, copilot, codex, script. NOT defaulted on purpose"
+                    + " — a seat hired as a brain it did not ask for is worse than one that refuses"
                     + " to start"));
+
+        // S16-6: the script escape hatch names its executable here, the one place an executable
+        // may be named (S16-12 removed the hire tool's). Both mismatches are refused: a script
+        // brain with nothing to run cannot start, and a script line on another brain would be
+        // IGNORED — the inert-input shape that ran the real claude when a stand-in was meant.
+        String script = emptyToNull(front.get("script"));
+        if (brain == Brain.SCRIPT && script == null) {
+            throw new IllegalArgumentException("seat declares brain 'script' and no 'script:' line"
+                + " naming the executable to run, so there is nothing to start");
+        }
+        if (brain != Brain.SCRIPT && script != null) {
+            throw new IllegalArgumentException("seat declares script '" + script + "' on brain '"
+                + brain.spellings.get(0) + "', which would ignore it — set brain: script to run it,"
+                + " or remove the line");
+        }
 
         return new SeatHire(
             front.getOrDefault("name", ""),
@@ -155,7 +177,8 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 decimal(front.get("cost_budget_usd")).orElse(null)),
             body(markdown),
             list(front.get("answer_gates")),
-            enabled(front.get("enabled")));
+            enabled(front.get("enabled")),
+            script);
     }
 
     /**
@@ -210,6 +233,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             // config, out of band. Passing one would be a flag invented rather than measured.
             case COPILOT -> new CopilotDialect();
             case CODEX -> new CodexDialect();
+            case SCRIPT -> new ScriptDialect(script, List.of());
         };
     }
 
@@ -221,6 +245,13 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         Double budget = ceilings.maxCostUsd();
         if (budget == null) {
             return Optional.empty();
+        }
+        if (brain == Brain.SCRIPT) {
+            // A script publishes a dollar cost only if it prints one — ScriptDialect reads a
+            // `COST-USD: <n>` line — so the budget's force is the script's to give, not ours.
+            return Optional.of("cost budget $" + budget + " fires only on the COST-USD: lines the"
+                + " script prints; one that prints none is still bounded by its wall clock and step"
+                + " ceiling");
         }
         boolean publishesDollars = brain == Brain.CLAUDE_CODE;
         return Optional.of(publishesDollars
@@ -376,5 +407,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, true);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, null);
     }
 }

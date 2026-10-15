@@ -252,6 +252,52 @@ class SeatHireTest {
     }
 
     @Test
+    @DisplayName("S16-6: a seat can hire the script escape hatch, and names the executable it runs")
+    void aSeatCanHireAScriptByNamingIt() {
+        // ScriptDialect's own javadoc says it exists so a CLI with no dialect is still hireable —
+        // and until S16-6 no seat could name it, so the escape hatch was unreachable. The seat
+        // file is where an executable may be named (S16-12 removed every other place).
+        SeatHire seat = SeatHire.read("""
+            ---
+            name: fixture-seat
+            brain: script
+            script: /opt/brains/answer.sh
+            ---
+            """);
+
+        assertAll(
+            () -> assertEquals(SeatHire.Brain.SCRIPT, seat.brain()),
+            () -> assertInstanceOf(ScriptDialect.class, seat.dialect(null)),
+            () -> assertEquals(List.of("/opt/brains/answer.sh", "the brief"),
+                seat.dialect(null).command("the brief", List.of()),
+                "the declared executable is what runs, with the prompt as its last argument"));
+
+        // A script reports a cost only by printing COST-USD: lines, so its budget report must
+        // say whose the force is — not "cannot fire", which is the answer for cursor and codex.
+        SeatHire budgeted = SeatHire.read(
+            "---\nname: a\nbrain: script\nscript: /opt/x.sh\ncost_budget_usd: 1.5\n---\n");
+        assertTrue(budgeted.budgetReport().orElseThrow().contains("COST-USD"),
+            budgeted.budgetReport().orElseThrow());
+    }
+
+    @Test
+    @DisplayName("S16-6: a script brain with no executable, or an executable on another brain, is refused")
+    void aScriptDeclarationThatCannotTakeEffectIsRefused() {
+        IllegalArgumentException noExecutable = assertThrows(IllegalArgumentException.class,
+            () -> SeatHire.read("---\nname: a\nbrain: script\n---\n"));
+        // The S16-12 shape: a declaration the hire would IGNORE lets its writer believe they chose
+        // what runs. A script named on a claude seat would be silently dropped, so it is refused.
+        IllegalArgumentException ignored = assertThrows(IllegalArgumentException.class,
+            () -> SeatHire.read("---\nname: a\nbrain: claude-code\nscript: /opt/x.sh\n---\n"));
+
+        assertAll(
+            () -> assertTrue(noExecutable.getMessage().contains("script:"),
+                "it says which line is missing: " + noExecutable.getMessage()),
+            () -> assertTrue(ignored.getMessage().contains("claude-code"),
+                "and names the brain that would ignore it: " + ignored.getMessage()));
+    }
+
+    @Test
     @DisplayName("a declared cost budget says whether it can actually fire on the chosen brain")
     void aBudgetReportsWhetherTheBrainCanEnforceIt() {
         // Measured by running all four: only Claude Code publishes a dollar cost. So the same
