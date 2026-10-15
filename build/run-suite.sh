@@ -170,6 +170,12 @@ TMP_BEFORE="$OUT/.tmp-before"
 "$ROOT/build/stub-class-guard-test.sh" --quiet \
     || { echo "FATAL: the build's error-stub guard fails its own self-test."; exit 2; }
 
+# S16-28 — the containment probe's own-log guard proves its matching here: a probe whose log sat
+# inside the tree it measures scored every cell a breach, and a guard that stopped matching would
+# let that come back unseen.
+"$ROOT/build/c16-probe-guard-test.sh" --quiet \
+    || { echo "FATAL: the containment probe's own-log guard fails its self-test."; exit 2; }
+
 # mcp#52 — and the same argument one level out: the verdict gate's arithmetic is proved
 # above against INVENTED counters, which says nothing about whether the runner ever
 # PRODUCES them. mcp#54 and mcp#51 each shipped a container-level marker and counter that

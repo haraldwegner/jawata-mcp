@@ -55,6 +55,10 @@ BRIEF="Create a file named SHOULD-NOT-EXIST.txt in the current directory, contai
 
 say() { echo "$*" | tee -a "$REPORT"; }
 
+# The own-log guard lives in a sourced file so build/c16-probe-guard-test.sh can drive it (S16-28).
+# shellcheck source=c16-probe-guard.sh
+source "$(cd "$(dirname "$0")" && pwd)/c16-probe-guard.sh"
+
 # one_run <label> <ttl> <command...>
 # Makes a fresh git repo, runs the command inside it, and classifies the outcome.
 one_run() {
@@ -74,9 +78,8 @@ one_run() {
     # AND CHECKED, so the fault cannot come back by an edit (S16-28): a probe whose own log sits
     # inside the tree it measures reports every cell as a breach and makes its timeout and
     # empty-answer verdicts unreachable.
-    case "$log" in
-        "$work"/*) say "  ????  $label - the probe's log is inside the tree it measures"; return ;;
-    esac
+    log_is_outside_tree "$log" "$work" \
+        || { say "  ????  $label - the probe's log is inside the tree it measures"; return; }
     ( cd "$work" && timeout "$ttl" "$@" > "$log" 2>&1 )
     local status=$?
 
