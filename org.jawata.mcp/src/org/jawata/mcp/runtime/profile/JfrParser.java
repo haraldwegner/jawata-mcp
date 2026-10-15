@@ -68,8 +68,7 @@ public final class JfrParser {
 
         Map<String, Long> counts = new LinkedHashMap<>();
         long totalEvents = 0;
-        long eventsWithoutStack = 0;
-        long eventsWithUnreadableTop = 0;
+        TopOfStackTally tally = new TopOfStackTally();
 
         try (RecordingFile rf = new RecordingFile(jfrFile)) {
             while (rf.hasMoreEvents()) {
@@ -78,16 +77,10 @@ public final class JfrParser {
                     continue;
                 }
                 totalEvents++;
-                TopOfStack top = topOfStack(framesWithGaps(event));
-                if (top.kind() == TopOfStack.Kind.NO_STACK) {
-                    eventsWithoutStack++;
-                    continue;
+                String symbol = tally.attribute(topOfStack(framesWithGaps(event)));
+                if (symbol != null) {
+                    counts.merge(symbol, 1L, Long::sum);
                 }
-                if (top.kind() == TopOfStack.Kind.UNREADABLE_TOP) {
-                    eventsWithUnreadableTop++;
-                    continue;
-                }
-                counts.merge(top.symbol(), 1L, Long::sum);
             }
         }
 
@@ -122,14 +115,9 @@ public final class JfrParser {
         // attributed (no stack, an unreadable top frame), which no row can hold a share of.
         result.put("rankedSamples", rankedSamples);
         result.put("truncated", offset + rows.size() < ranked.size());
-        if (eventsWithoutStack > 0) {
-            result.put("samplesWithoutStack", eventsWithoutStack);
-        }
         // C15-1: a stack WAS recorded and its top frame could not be named. Not attributed —
         // its caller was not the method running — and not called stackless either.
-        if (eventsWithUnreadableTop > 0) {
-            result.put("samplesWithUnreadableTopFrame", eventsWithUnreadableTop);
-        }
+        tally.publishInto(result, "samplesWithoutStack");
         return result;
     }
 
@@ -166,8 +154,7 @@ public final class JfrParser {
         List<Long> executionSampleTimesNanos = new ArrayList<>();
         List<String> executionSampleSymbols = new ArrayList<>();
         long blockingEvents = 0;
-        long eventsWithoutStack = 0;
-        long samplesWithUnreadableTop = 0;
+        TopOfStackTally tally = new TopOfStackTally();
         long idleNanos = 0;
         long idleEvents = 0;
 
@@ -180,20 +167,15 @@ public final class JfrParser {
                     // On-CPU: defer — attributed one MEASURED sampling interval each, once we
                     // know the interval from the samples themselves (below). The TOP frame or
                     // nothing (C15-1): its caller was not on the CPU.
-                    TopOfStack top = topOfStack(framesWithGaps(event));
-                    if (top.kind() == TopOfStack.Kind.NO_STACK) {
-                        eventsWithoutStack++;
-                        continue;
-                    }
-                    if (top.kind() == TopOfStack.Kind.UNREADABLE_TOP) {
-                        samplesWithUnreadableTop++;
+                    String symbol = tally.attribute(topOfStack(framesWithGaps(event)));
+                    if (symbol == null) {
                         continue;
                     }
                     executionSampleTimesNanos.add(event.getStartTime().toEpochMilli() * 1_000_000L);
-                    executionSampleSymbols.add(top.symbol());
+                    executionSampleSymbols.add(symbol);
                 } else if (WALL_BLOCKING_EVENTS.contains(type)) {
                     if (!hasStack(event)) {
-                        eventsWithoutStack++;
+                        tally.countWithoutStack();
                         continue;
                     }
                     // AN UNREADABLE STACK IS NOT AN IDLE THREAD. `hasStack` above proved the
@@ -201,7 +183,7 @@ public final class JfrParser {
                     // to attribute and nothing to conclude — counting it as idle would be a
                     // claim about the program made from a gap in the recording.
                     if (readableFrames(event).isEmpty()) {
-                        eventsWithoutStack++;
+                        tally.countWithoutStack();
                         continue;
                     }
                     blockingEvents++;
@@ -303,12 +285,7 @@ public final class JfrParser {
         // to this total finds a difference and has no way to know it is the idle events.
         result.put("blockingEvents", blockingEvents);
         result.put("truncated", offset + rows.size() < ranked.size());
-        if (eventsWithoutStack > 0) {
-            result.put("eventsWithoutStack", eventsWithoutStack);
-        }
-        if (samplesWithUnreadableTop > 0) {
-            result.put("samplesWithUnreadableTopFrame", samplesWithUnreadableTop);
-        }
+        tally.publishInto(result, "eventsWithoutStack");
         return result;
     }
 
@@ -823,6 +800,56 @@ public final class JfrParser {
         return top == null
             ? new TopOfStack(TopOfStack.Kind.UNREADABLE_TOP, null)
             : new TopOfStack(TopOfStack.Kind.READ, top);
+    }
+
+    /**
+     * C15-1 — WHERE AN EVENT THAT CREDITS NO METHOD IS COUNTED, AND SAID, for both dimensions
+     * that rank by the top frame.
+     *
+     * <p>The two loops each kept their own counters and their own publishing lines, so the fold
+     * this row removed — an unreadable top frame counted as no stack — could have come back in
+     * either loop with every test green: {@link #topOfStack} was tested, the counting was not, and
+     * no live recording produces an unreadable top frame on demand. Here the counting and the
+     * publishing are one object a test can drive with all three outcomes.</p>
+     */
+    static final class TopOfStackTally {
+        private long withoutStack;
+        private long unreadableTop;
+
+        /**
+         * The method to credit with this event, or {@code null} when it credits none — in which
+         * case it is counted as the kind of nothing it was.
+         */
+        String attribute(TopOfStack top) {
+            switch (top.kind()) {
+                case NO_STACK -> withoutStack++;
+                case UNREADABLE_TOP -> unreadableTop++;
+                case READ -> {
+                    return top.symbol();
+                }
+            }
+            return null;
+        }
+
+        /** An event that reached no top-frame decision because no frame of it is readable. */
+        void countWithoutStack() {
+            withoutStack++;
+        }
+
+        /**
+         * Publish the counts, each only when non-zero. An unreadable top frame is NOT folded into
+         * the no-stack count: a stack WAS recorded, and its top frame could not be named.
+         *
+         * @param withoutStackKey the field the calling dimension already publishes that count as
+         */
+        void publishInto(Map<String, Object> result, String withoutStackKey) {
+            if (withoutStack > 0) {
+                result.put(withoutStackKey, withoutStack);
+            }
+            if (unreadableTop > 0) {
+                result.put("samplesWithUnreadableTopFrame", unreadableTop);
+            }
+        }
     }
 
     /** Every recorded frame, innermost first, with {@code null} where a method is unresolvable. */

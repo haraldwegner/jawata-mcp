@@ -1,9 +1,12 @@
 package org.jawata.mcp.runtime.profile;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,5 +51,31 @@ class TopOfStackIsNeverTheCallersTest {
     void anEmptyStackIsNoStack() {
         assertEquals(new JfrParser.TopOfStack(JfrParser.TopOfStack.Kind.NO_STACK, null),
             JfrParser.topOfStack(List.of()));
+    }
+
+    /**
+     * The FOLD this row removed lived in the loops that count, not in the decision above — and no
+     * live recording yields an unreadable top frame, so only this reaches it. Both dimensions
+     * count through the tally: an unreadable top frame is published as its own field and never
+     * added to the no-stack count, which a dimension publishes under its own name.
+     */
+    @Test
+    @DisplayName("C15-1: what credits no method is counted as its own kind and published as such")
+    void theTallyKeepsTheTwoKindsOfNothingApart() {
+        JfrParser.TopOfStackTally tally = new JfrParser.TopOfStackTally();
+        assertEquals("a.B#run", tally.attribute(JfrParser.topOfStack(List.of("a.B#run"))));
+        assertNull(tally.attribute(JfrParser.topOfStack(Arrays.asList(null, "a.C#call"))));
+        assertNull(tally.attribute(JfrParser.topOfStack(Arrays.asList(null, null))));
+        assertNull(tally.attribute(JfrParser.topOfStack(List.of())));
+        tally.countWithoutStack();
+
+        Map<String, Object> published = new LinkedHashMap<>();
+        tally.publishInto(published, "samplesWithoutStack");
+        assertEquals(Map.of("samplesWithoutStack", 2L, "samplesWithUnreadableTopFrame", 2L),
+            published, "two stacks that were recorded and could not be named, two with none");
+
+        Map<String, Object> nothing = new LinkedHashMap<>();
+        new JfrParser.TopOfStackTally().publishInto(nothing, "eventsWithoutStack");
+        assertEquals(Map.of(), nothing, "a field is published only when something was counted");
     }
 }
