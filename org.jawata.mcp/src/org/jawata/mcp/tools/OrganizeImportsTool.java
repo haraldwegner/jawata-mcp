@@ -8,8 +8,6 @@ import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.manipulation.OrganizeImportsOperation;
 import org.eclipse.jdt.core.search.TypeNameMatch;
@@ -22,6 +20,7 @@ import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.tools.shared.CompilationProblems;
 import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -413,16 +412,16 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
      * every scope runs the same one. That is the point of the fold.
      */
     private static Organized organize(ICompilationUnit cu) throws Exception {
-        // Parse with bindings — the operation resolves references to decide
-        // used/unused and to find candidates for missing imports.
-        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
-        parser.setSource(cu);
-        parser.setResolveBindings(true);
-        parser.setBindingsRecovery(true);
-        // REL44-27 reads this AST's problems, and a resolved AST can be served from cache
-        // with none attached — an empty list would then read as "nothing unresolved".
-        parser.setForceProblemDetection(true);
-        CompilationUnit ast = (CompilationUnit) parser.createAST(null);
+        // Parse with bindings — the operation resolves references to decide used/unused and to
+        // find candidates for missing imports — and with the problems FORCED, because REL44-27
+        // reads them and a resolved AST can be served from cache with none attached. That is
+        // CompilationProblems' whole job, so this reads through it rather than keeping a second
+        // copy of the parse (the C20 architect watch).
+        CompilationUnit ast = CompilationProblems.parse(cu);
+        if (ast == null) {
+            throw new IllegalStateException(cu.getElementName() + " could not be parsed, so its"
+                + " imports cannot be organised");
+        }
 
         // Headless ambiguity policy: never guess between candidates — skip them
         // (returning an empty choice), exactly what jdt.ls does without a UI. What it
