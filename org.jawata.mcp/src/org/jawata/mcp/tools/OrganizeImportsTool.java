@@ -413,10 +413,9 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
      */
     private static Organized organize(ICompilationUnit cu) throws Exception {
         // Parse with bindings — the operation resolves references to decide used/unused and to
-        // find candidates for missing imports — and with the problems FORCED, because REL44-27
-        // reads them and a resolved AST can be served from cache with none attached. That is
-        // CompilationProblems' whole job, so this reads through it rather than keeping a second
-        // copy of the parse (the C20 architect watch).
+        // find candidates for missing imports — and with the compile problems computed, because
+        // REL44-27 reads them. That is CompilationProblems' whole job, so this reads through it
+        // rather than keeping a second copy of the parse (the C20 architect watch).
         CompilationUnit ast = CompilationProblems.parse(cu);
         if (ast == null) {
             throw new IllegalStateException(cu.getElementName() + " could not be parsed, so its"

@@ -128,6 +128,31 @@ class ProblemsInAFileNobodyHasOpenAreReadTest {
             () -> assertEquals(true, diag.get("hasProblems"), "and says so: " + diag));
     }
 
+    /**
+     * REL44-30 — the one case the shared parse FORCES problem detection for: a working copy.
+     *
+     * <p>On a unit nobody has open the problems arrive without forcing: with it off, every test
+     * above stayed green. The comments said forcing was needed because a resolved AST can be
+     * served with no problems attached, and the case that can happen in is a WORKING COPY — the
+     * shape a refactoring holds while it edits. This opens the broken file as one and reads its
+     * problems through the same parse.</p>
+     */
+    @Test
+    @DisplayName("REL44-30: a broken unit held as a working copy still has its problems read")
+    void aWorkingCopysProblemsAreRead() throws Exception {
+        org.eclipse.jdt.core.ICompilationUnit copy =
+            service.getCompilationUnit(broken).getWorkingCopy(null);
+        try {
+            org.eclipse.jdt.core.dom.CompilationUnit ast =
+                org.jawata.mcp.tools.shared.CompilationProblems.parse(copy);
+            assertTrue(ast != null && ast.getProblems().length >= 1,
+                () -> "a working copy of a file the compiler rejects must not read as clean: "
+                    + (ast == null ? "no tree" : List.of(ast.getProblems())));
+        } finally {
+            copy.discardWorkingCopy();
+        }
+    }
+
     private ObjectNode fileArgs(Path file) {
         ObjectNode args = mapper.createObjectNode();
         args.put("filePath", file.toString());

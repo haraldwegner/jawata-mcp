@@ -15,10 +15,11 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
  * at a line the compiler had just reported, and both analyze kinds called a broken file clean.
  * GetDiagnosticsTool found the same fact in Sprint 21e and reads build markers instead.</p>
  *
- * <p>A parse with forced problem detection computes the problems from the unit's current
- * source whether or not anything has it open. Forced, because a resolved AST can otherwise be
- * served from a cache with no problems attached — the same reason RemoveDeadCodeRule and
- * organize_imports force it.</p>
+ * <p>A parse with bindings computes the problems from the unit's current source whether or not
+ * anything has it open. Problem detection is also FORCED, and that is a defensive setting, not a
+ * measured need (REL44-30): with it off, the problems are still read — for a unit nobody has
+ * open and for a working copy alike, which are the two shapes this server holds. The cached-AST
+ * case it was written against is not shown to occur here.</p>
  */
 public final class CompilationProblems {
 
