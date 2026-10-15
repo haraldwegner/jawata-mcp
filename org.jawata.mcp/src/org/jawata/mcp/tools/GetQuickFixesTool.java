@@ -1,17 +1,20 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.compiler.IProblem;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTNode;
-import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
-import org.eclipse.jdt.core.dom.NodeFinder;
 import org.eclipse.jdt.core.search.IJavaSearchConstants;
 import org.eclipse.jdt.core.search.IJavaSearchScope;
 import org.eclipse.jdt.core.search.SearchEngine;
@@ -24,13 +27,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Get available quick fixes for a problem at a specific position.
@@ -119,21 +116,15 @@ public class GetQuickFixesTool extends AbstractTool {
                 return ToolResponse.fileNotFound(filePath);
             }
 
-            // Reconcile to get problems
-            CompilationUnit ast = cu.reconcile(
-                AST.getJLSLatest(),
-                ICompilationUnit.FORCE_PROBLEM_DETECTION,
-                null,
-                null
-            );
+            // REL44-26: NOT reconcile — it answers null for a unit no editor has open, which
+            // in this server is every unit, and the null used to be reported as problemCount 0.
+            CompilationUnit ast = org.jawata.mcp.tools.shared.CompilationProblems.parse(cu);
 
             if (ast == null) {
-                return ToolResponse.success(Map.of(
-                    "filePath", service.getPathUtils().formatPath(path),
-                    "line", line,
-                    "problemCount", 0,
-                    "fixes", List.of()
-                ));
+                return ToolResponse.error("PROBLEMS_UNKNOWN",
+                    "The file could not be parsed, so its problems are unknown — this is not"
+                        + " an answer of zero problems.",
+                    "Run get_diagnostics on the file, which reads the build's own markers.");
             }
 
             IProblem[] problems = ast.getProblems();

@@ -1,6 +1,11 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IField;
@@ -10,7 +15,6 @@ import org.eclipse.jdt.core.ITypeHierarchy;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.Signature;
 import org.eclipse.jdt.core.compiler.IProblem;
-import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.jawata.core.IJdtService;
@@ -19,11 +23,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Comprehensive type analysis in a single call.
@@ -376,21 +376,25 @@ public class AnalyzeTypeTool extends AbstractTool {
         int warningCount = 0;
 
         try {
-            CompilationUnit ast = (CompilationUnit) cu.reconcile(
-                AST.getJLSLatest(),
-                ICompilationUnit.FORCE_PROBLEM_DETECTION,
-                null,
-                null
-            );
+            // REL44-26: NOT reconcile — it answers null for a unit no editor has open, which
+            // in this server is every unit, and this method then reported hasProblems=false.
+            CompilationUnit ast = org.jawata.mcp.tools.shared.CompilationProblems.parse(cu);
 
-            if (ast != null) {
+            if (ast == null) {
+                result.put("problemsRead", false);
+                result.put("problemsNote", "the file could not be parsed, so the counts below"
+                    + " are not a measurement — run get_diagnostics on it");
+            } else {
                 for (IProblem problem : ast.getProblems()) {
                     if (problem.isError()) errorCount++;
                     else if (problem.isWarning()) warningCount++;
                 }
             }
-        } catch (JavaModelException e) {
+        } catch (RuntimeException e) {
             log.debug("Error collecting diagnostics: {}", e.getMessage());
+            result.put("problemsRead", false);
+            result.put("problemsNote", "reading the file's problems failed (" + e.getMessage()
+                + "), so the counts below are not a measurement — run get_diagnostics on it");
         }
 
         result.put("errorCount", errorCount);
