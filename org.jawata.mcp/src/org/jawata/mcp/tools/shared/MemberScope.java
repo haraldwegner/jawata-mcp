@@ -122,7 +122,76 @@ public final class MemberScope {
         for (TextEdit leaf : inside) {
             restricted.addChild(leaf.copy());
         }
+        TextEdit separator = separatorOf(inside, outside, start, end, ast);
+        if (separator != null) {
+            restricted.addChild(separator.copy());
+        }
         return Result.of(restricted);
+    }
+
+    /**
+     * REL44-23 — the whitespace JDT deletes TOGETHER with a member it removes.
+     *
+     * <p>JDT removes a member as two leaves: the declaration, exactly the member's range, and
+     * the separator after it — the line break, the blank line and the next member's
+     * indentation. The separator lies OUTSIDE the member, so the range test above dropped it,
+     * and a member removed by name left its line behind as indentation plus a doubled blank
+     * line. Measured on DeadMembers: {@code [104,172)} the method, {@code [172,178)} its
+     * separator, {@code [98,104)} the PREVIOUS member's separator.</p>
+     *
+     * <p>So when the narrowed edit deletes the member whole, ONE whitespace-only deletion
+     * touching it goes with it: the trailing one, or — for a member with nothing after it —
+     * the leading one. Never both: the leading one belongs to the previous member's removal,
+     * and taking it beside the trailing one would join the previous line to the next.</p>
+     */
+    private static TextEdit separatorOf(List<TextEdit> inside, List<TextEdit> outside,
+                                        int start, int end, CompilationUnit ast) {
+        boolean removesTheMember = inside.stream().anyMatch(e ->
+            deletes(e) && e.getOffset() == start && e.getOffset() + e.getLength() == end);
+        String source = removesTheMember && ast.getTypeRoot() != null
+            ? sourceOf(ast.getTypeRoot()) : null;
+        if (source == null) {
+            return null;
+        }
+        TextEdit before = null;
+        for (TextEdit e : outside) {
+            if (!deletes(e) || !onlyWhitespace(source, e.getOffset(), e.getOffset() + e.getLength())) {
+                continue;
+            }
+            if (e.getOffset() == end) {
+                return e;
+            }
+            if (e.getOffset() + e.getLength() == start) {
+                before = e;
+            }
+        }
+        return before;
+    }
+
+    /** A leaf that removes text and inserts none. */
+    private static boolean deletes(TextEdit e) {
+        return e instanceof org.eclipse.text.edits.DeleteEdit
+            || (e instanceof org.eclipse.text.edits.ReplaceEdit r && r.getText().isEmpty());
+    }
+
+    private static boolean onlyWhitespace(String source, int from, int to) {
+        if (from < 0 || to > source.length() || from >= to) {
+            return false;
+        }
+        for (int i = from; i < to; i++) {
+            if (!Character.isWhitespace(source.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String sourceOf(org.eclipse.jdt.core.ITypeRoot root) {
+        try {
+            return root.getSource();
+        } catch (org.eclipse.jdt.core.JavaModelException e) {
+            return null;
+        }
     }
 
     /**
