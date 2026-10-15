@@ -89,5 +89,51 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- S16-1: NEVER PACKAGE A CLASS THAT DOES NOT COMPILE.
+
+                 An editor that imports these modules as Maven projects (VS Code's Java
+                 language server does) compiles into the SAME target/classes as this build,
+                 with the Eclipse compiler, and on code that does not compile it writes an
+                 error-stub class whose every entry point throws "Unresolved compilation
+                 problem". Its class is then NEWER than the source, so maven-compiler-plugin
+                 answers "Nothing to compile - all classes are up to date" and this build
+                 packages the stub: BUILD SUCCESS, exit 0, no ERROR line - measured
+                 2026-10-15 over a source with a syntax error; the stub was written 0.6 s
+                 after the edit. Every gate that judged a build by its exit status was blind
+                 to it, and the failure surfaced only at run time.
+
+                 So the build reads its own output for the marker every such stub carries,
+                 whoever compiled it, and refuses. Bound to process-test-classes so that
+                 -DskipTests, which skips running tests and not compiling them, still runs it. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>refuse-error-stub-classes</id>
+                        <phase>process-test-classes</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <fileset id="stubs" dir="${project.build.directory}"
+                                         includes="classes/**/*.class,test-classes/**/*.class"
+                                         erroronmissingdir="false">
+                                    <contains text="Unresolved compilation problem"/>
+                                </fileset>
+                                <pathconvert refid="stubs" property="stub.list"
+                                             pathsep="${line.separator}  "/>
+                                <fail message="Error-stub class(es) in ${project.build.directory} - code that does not compile, written there by another compiler (an editor's Java language server shares this output folder), would be packaged as if it built:${line.separator}  ${stub.list}${line.separator}Fix the source, or delete the class and rebuild.">
+                                    <condition>
+                                        <resourcecount refid="stubs" when="greater" count="0"/>
+                                    </condition>
+                                </fail>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>
