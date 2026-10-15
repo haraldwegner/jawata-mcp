@@ -204,13 +204,6 @@ public class ToolRegistry {
     }
 
     /**
-     * Check if a tool exists.
-     */
-    public boolean hasTool(String name) {
-        return tools.containsKey(name);
-    }
-
-    /**
      * Get all registered tool names.
      */
     public Set<String> getToolNames() {

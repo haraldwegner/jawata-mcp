@@ -112,7 +112,7 @@ class ToolRegistryTest {
 
         registry.register(tool);
 
-        assertTrue(registry.hasTool("test_tool"));
+        assertTrue(registry.getTool("test_tool").isPresent());
         assertEquals(1, registry.getToolCount());
     }
 
@@ -141,9 +141,9 @@ class ToolRegistryTest {
         registry.registerAll(tool1, tool2, tool3);
 
         assertEquals(3, registry.getToolCount());
-        assertTrue(registry.hasTool("tool1"));
-        assertTrue(registry.hasTool("tool2"));
-        assertTrue(registry.hasTool("tool3"));
+        assertTrue(registry.getTool("tool1").isPresent());
+        assertTrue(registry.getTool("tool2").isPresent());
+        assertTrue(registry.getTool("tool3").isPresent());
     }
 
     // ========== Lookup Tests ==========
@@ -169,17 +169,17 @@ class ToolRegistryTest {
     }
 
     @Test
-    @DisplayName("hasTool should return true for registered tool")
-    void hasTool_returnsTrueForRegistered() {
+    @DisplayName("getTool should be present for a registered tool")
+    void getTool_isPresentForRegistered() {
         registry.register(new MockTool("exists", "Exists"));
 
-        assertTrue(registry.hasTool("exists"));
+        assertTrue(registry.getTool("exists").isPresent());
     }
 
     @Test
-    @DisplayName("hasTool should return false for missing tool")
-    void hasTool_returnsFalseForMissing() {
-        assertFalse(registry.hasTool("missing"));
+    @DisplayName("getTool should be absent for a missing tool")
+    void getTool_isAbsentForMissing() {
+        assertFalse(registry.getTool("missing").isPresent());
     }
 
     // ========== Enumeration Tests ==========

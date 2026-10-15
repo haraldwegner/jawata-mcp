@@ -83,7 +83,8 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             // quietest way to gate nothing at all, and so is a tool that was present when the
             // plan was read and gone when the gate ran.
             //
-            // A `tools.hasTool(...)` pre-check stood here and was DELETED, because a mutation
+            // A `tools.hasTool(...)` pre-check stood here and was DELETED (and `hasTool` with it,
+            // S16-9, once nothing but its own tests called it), because a mutation
             // disabling it changed nothing any test could see. Measured rather than reasoned:
             // `hasTool` is `containsKey` on the same map `callTool` does `get` on, so the two
             // cannot disagree; and the null check is `callTool`'s FIRST statement, before the

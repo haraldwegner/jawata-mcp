@@ -129,7 +129,6 @@ org.jawata.mcp.runtime.RuntimeSessionRegistry#size()
 org.jawata.mcp.tools.AbstractApplyingRefactoringTool.Preparation#of(Change,String)
 org.jawata.mcp.tools.SearchSymbolsTool#teachTheAddress(String,List<Map<String,Object>>)
 org.jawata.mcp.tools.ToolRegistry#getToolNames()
-org.jawata.mcp.tools.ToolRegistry#hasTool(String)
 org.jawata.mcp.tools.ToolRegistry#registerAll(Tool[])
 # v4.1.0: exposes the retired-name redirects so a guard can check every one answers.
 org.jawata.mcp.tools.ToolRegistry#retiredNames()
