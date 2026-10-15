@@ -240,14 +240,10 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
     /**
      * The dialect for this seat's brain, given the hiring resident's endpoint when it has one — see
      * {@link SelfEndpoint} for what a Claude hire does with it. Null is the stdio case.
-     */
-    public BrainDialect dialect(SelfEndpoint self) {
-        return dialect(self, List.of());
-    }
-
-    /**
-     * As {@link #dialect(SelfEndpoint)}, taking {@code hiddenTools} away from a brain that attaches
-     * the resident (REL44-6). A brain that does not attach it has nothing to hide from.
+     *
+     * @param hiddenTools the resident's tools to take away from a brain that attaches the resident
+     *     (REL44-6) — the code-changing ones the seat did not name; empty for none. A brain that
+     *     does not attach the resident has nothing to hide from and ignores it.
      */
     public BrainDialect dialect(SelfEndpoint self, List<String> hiddenTools) {
         return switch (brain) {

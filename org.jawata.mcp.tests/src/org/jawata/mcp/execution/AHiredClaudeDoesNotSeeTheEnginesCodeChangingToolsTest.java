@@ -59,7 +59,7 @@ class AHiredClaudeDoesNotSeeTheEnginesCodeChangingToolsTest {
         assertAll(
             () -> assertTrue(claude.dialect(SELF, List.of("extract")).command("b", List.of())
                 .contains("--disallowedTools")),
-            () -> assertEquals(cursor.dialect(SELF).command("b", List.of()),
+            () -> assertEquals(cursor.dialect(SELF, List.of()).command("b", List.of()),
                 cursor.dialect(SELF, List.of("extract")).command("b", List.of()),
                 "cursor does not attach the resident, so there is nothing to hide from it"));
     }

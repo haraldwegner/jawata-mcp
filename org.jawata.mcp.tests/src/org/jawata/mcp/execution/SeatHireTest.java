@@ -202,14 +202,14 @@ class SeatHireTest {
         assertAll(
             () -> assertEquals(SeatHire.Brain.COPILOT, copilotSeat.brain(),
                 "the declared brain wins over a model name that looks like another vendor's"),
-            () -> assertInstanceOf(CopilotDialect.class, copilotSeat.dialect(null)),
+            () -> assertInstanceOf(CopilotDialect.class, copilotSeat.dialect(null, List.of())),
             // And the model is NOT passed to copilot, because copilot routes its own — passing one
             // would be a flag invented rather than measured.
             () -> assertEquals("claude-haiku-4.5", copilotSeat.model(),
                 "the seat's declaration is still carried, for the record"),
-            () -> assertFalse(copilotSeat.dialect(null).command("brief", List.of())
+            () -> assertFalse(copilotSeat.dialect(null, List.of()).command("brief", List.of())
                 .contains("claude-haiku-4.5"),
-                "but it does not reach the argv: " + copilotSeat.dialect(null).command("brief",
+                "but it does not reach the argv: " + copilotSeat.dialect(null, List.of()).command("brief",
                     List.of())));
     }
 
@@ -267,9 +267,9 @@ class SeatHireTest {
 
         assertAll(
             () -> assertEquals(SeatHire.Brain.SCRIPT, seat.brain()),
-            () -> assertInstanceOf(ScriptDialect.class, seat.dialect(null)),
+            () -> assertInstanceOf(ScriptDialect.class, seat.dialect(null, List.of())),
             () -> assertEquals(List.of("/opt/brains/answer.sh", "the brief"),
-                seat.dialect(null).command("the brief", List.of()),
+                seat.dialect(null, List.of()).command("the brief", List.of()),
                 "the declared executable is what runs, with the prompt as its last argument"));
 
         // A script reports a cost only by printing COST-USD: lines, so its budget report must
@@ -361,20 +361,20 @@ class SeatHireTest {
 
         assertAll(
             () -> assertInstanceOf(ClaudeCodeDialect.class,
-                SeatHire.read(seat.formatted("claude")).dialect(null)),
+                SeatHire.read(seat.formatted("claude")).dialect(null, List.of())),
             () -> assertInstanceOf(CursorDialect.class,
-                SeatHire.read(seat.formatted("cursor")).dialect(null)),
+                SeatHire.read(seat.formatted("cursor")).dialect(null, List.of())),
             () -> assertInstanceOf(CopilotDialect.class,
-                SeatHire.read(seat.formatted("copilot")).dialect(null)),
+                SeatHire.read(seat.formatted("copilot")).dialect(null, List.of())),
             () -> assertInstanceOf(CodexDialect.class,
-                SeatHire.read(seat.formatted("codex")).dialect(null)),
+                SeatHire.read(seat.formatted("codex")).dialect(null, List.of())),
             // claude and cursor both accept --model; the model reaches their argv.
-            () -> assertTrue(SeatHire.read(seat.formatted("claude")).dialect(null)
+            () -> assertTrue(SeatHire.read(seat.formatted("claude")).dialect(null, List.of())
                 .command("b", List.of()).contains("some-model")),
-            () -> assertTrue(SeatHire.read(seat.formatted("cursor")).dialect(null)
+            () -> assertTrue(SeatHire.read(seat.formatted("cursor")).dialect(null, List.of())
                 .command("b", List.of()).contains("some-model")),
             // codex's model is config, out of band — so nothing here invents a flag for it.
-            () -> assertFalse(SeatHire.read(seat.formatted("codex")).dialect(null)
+            () -> assertFalse(SeatHire.read(seat.formatted("codex")).dialect(null, List.of())
                 .command("b", List.of()).contains("some-model")));
     }
 

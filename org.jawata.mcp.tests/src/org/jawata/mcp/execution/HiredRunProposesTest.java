@@ -168,7 +168,8 @@ class HiredRunProposesTest {
 
         IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
             IllegalArgumentException.class,
-            () -> run.issue(cursor, standIn, "Do it.", twoSteps(), HiredRunProposesTest::passed));
+            () -> run.issue(cursor, standIn, "Do it.", twoSteps(), HiredRunProposesTest::passed,
+                List.of()));
 
         assertAll(
             () -> assertTrue(refused.getMessage().contains("accepts_uncontained_writes"),
@@ -189,7 +190,7 @@ class HiredRunProposesTest {
             "---\nname: pm\nbrain: cursor\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nbody\n");
 
         HiredRun.Proposal proposal = run.issue(cursor, standIn, "Do it.", twoSteps(),
-            HiredRunProposesTest::passed);
+            HiredRunProposesTest::passed, List.of());
 
         assertTrue(Files.exists(proposal.record()), "the hire ran and wrote its record");
     }
@@ -226,7 +227,7 @@ class HiredRunProposesTest {
             """);
 
         HiredRun.Proposal proposal = run.issue(seat, standIn, "Catalogue the execution package.",
-            twoSteps(), HiredRunProposesTest::passed);
+            twoSteps(), HiredRunProposesTest::passed, List.of());
         List<String> argv = spy.asked();
         int allowlist = argv.indexOf("--allowedTools");
 
@@ -292,7 +293,8 @@ class HiredRunProposesTest {
             You are the cataloguer seat.
             """);
 
-        run.issue(seat, standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed);
+        run.issue(seat, standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed,
+            List.of());
         List<String> argv = spy.asked();
         int config = argv.indexOf("--mcp-config");
         int allowlist = argv.indexOf("--allowedTools");
@@ -331,7 +333,7 @@ class HiredRunProposesTest {
         // dialect builds with none, not about whether the hire is allowed.
         run.issue(SeatHire.read(
                 "---\nname: c\naccepts_uncontained_writes: true\ntools: [inspect]\nttl_secs: 30\n---\n"),
-            standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed);
+            standIn, "Catalogue it.", twoSteps(), HiredRunProposesTest::passed, List.of());
         List<String> argv = spy.asked();
 
         assertAll(

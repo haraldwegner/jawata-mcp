@@ -35,7 +35,7 @@ class TheBrainsHeldOnlyByAnInstructionAreTheOnesStudioListsTest {
             SeatHire seat = SeatHire.read("---\nname: probe\nbrain: " + brain + "\n---\n");
             // As a resident serving HTTP hires: claude is given the endpoint, which is what makes
             // its answer a mechanism.
-            if (!seat.dialect(SELF).writeContainment().isContained()) {
+            if (!seat.dialect(SELF, List.of()).writeContainment().isContained()) {
                 notContained.add(brain);
             }
         }

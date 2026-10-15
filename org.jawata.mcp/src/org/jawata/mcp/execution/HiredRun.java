@@ -148,15 +148,8 @@ public final class HiredRun {
      * @param brief what the brain is asked to do
      * @param steps the plan's declared steps and their gates
      * @param gates how to run one
-     */
-    public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
-            GateRunner gates) throws IOException, InterruptedException {
-        return issue(seat, base, brief, steps, gates, List.of());
-    }
-
-    /**
-     * As the form above, taking {@code hiddenTools} away from a brain that attaches the resident
-     * (REL44-6): the engine's code-changing tools the seat did not name.
+     * @param hiddenTools the resident's code-changing tools the seat did not name, taken away from
+     *     a brain that attaches the resident (REL44-6); empty for none
      */
     public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
             GateRunner gates, List<String> hiddenTools) throws IOException, InterruptedException {
