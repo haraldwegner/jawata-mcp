@@ -79,8 +79,12 @@ class HireToolTest {
         """;
 
     /** The same seat, switched to the brain that CANNOT be told which tools to attach. */
-    private static final String CURSOR_SEAT = CATALOGUER_SEAT
+    /** A brain whose writes are held only by an instruction: refused unless the seat opts in. */
+    private static final String CURSOR_SEAT_WITHOUT_OPT_IN = CATALOGUER_SEAT
         .replace("name: cataloguer", "name: cataloguer\nbrain: cursor");
+
+    private static final String CURSOR_SEAT = CURSOR_SEAT_WITHOUT_OPT_IN
+        .replace("brain: cursor", "brain: cursor\naccepts_uncontained_writes: true");
 
     private Path dir;
     private H2ExperienceStore store;
@@ -711,6 +715,50 @@ class HireToolTest {
                 response.getError().getMessage()),
             () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
                 "and nothing was journalled, because nothing ran"));
+    }
+
+    @Test
+    @DisplayName("architect F1: a brain whose writes are held only by an INSTRUCTION is refused before it spawns, unless the seat opts in")
+    void anInstructionOnlyBrainIsRefusedUnlessTheSeatOptsIn() throws Exception {
+        HireTool hire = new HireTool(() -> null, aHostThatMustNotSpawn(), artifacts, plans,
+            () -> events, () -> aRegistryWithACleanGate());
+
+        ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT_WITHOUT_OPT_IN)));
+
+        assertAll(
+            () -> assertFalse(response.isSuccess()),
+            () -> assertEquals("PRECONDITION_NOT_MET", response.getError().getCode()),
+            () -> assertTrue(response.getError().getMessage().contains("INSTRUCTION"),
+                response.getError().getMessage()),
+            () -> assertTrue(String.valueOf(response.getError().getHint())
+                    .contains("accepts_uncontained_writes"),
+                "the way out is named: " + response.getError().getHint()));
+    }
+
+    @Test
+    @DisplayName("architect F1: with the seat's opt-in the same hire runs, and its answer states the basis it ran on")
+    void theOptInRunsAndTheAnswerStatesTheBasis() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
+            aRegistryWithACleanGate());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CURSOR_SEAT))));
+
+        assertAll(
+            () -> assertEquals("INSTRUCTION", data.get("writeContainmentBasis")),
+            () -> assertTrue(String.valueOf(data.get("writeContainment")).contains("INSTRUCTION"),
+                String.valueOf(data.get("writeContainment"))));
+    }
+
+    @Test
+    @DisplayName("architect F1: a brain contained by a mechanism needs no opt-in")
+    void aMechanismContainedBrainNeedsNoOptIn() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
+            aRegistryWithACleanGate());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(
+            CATALOGUER_SEAT.replace("name: cataloguer", "name: cataloguer\nbrain: codex")))));
+
+        assertEquals("MECHANISM", data.get("writeContainmentBasis"));
     }
 
     @Test

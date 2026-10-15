@@ -22,6 +22,7 @@ import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
+import org.jawata.mcp.execution.WriteContainment;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.LearnerEvent;
@@ -290,8 +291,11 @@ public class HireTool extends AbstractTool {
         String brief = getStringParam(arguments, "brief");
 
         SeatHire seat;
+        boolean acceptsUncontainedWrites;
         try {
-            seat = SeatHire.read(readSeatFile(getStringParam(arguments, "seatFile")));
+            String seatMarkdown = readSeatFile(getStringParam(arguments, "seatFile"));
+            seat = SeatHire.read(seatMarkdown);
+            acceptsUncontainedWrites = SeatHire.acceptsUncontainedWrites(seatMarkdown);
         } catch (IOException | InvalidPathException e) {
             return ToolResponse.error("FILE_NOT_FOUND",
                 "the hired seat's file could not be read: " + e.getMessage(),
@@ -349,6 +353,19 @@ public class HireTool extends AbstractTool {
                     + " or give the seat another brain (cursor, codex or copilot)");
         }
         BrainDialect dialect = seat.dialect(endpoint);
+        WriteContainment containment = dialect.writeContainment();
+        if (!containment.isContained() && !acceptsUncontainedWrites) {
+            // THE ARCHITECT'S F1, option A. A brain whose writes are held only by an instruction to
+            // the model (cursor: breached in 5 of 15 runs) or by nothing is refused BEFORE anything
+            // spawns, unless the seat's own file says it accepts that. An unbounded hire reported
+            // afterwards costs the run it could not stop; refusing costs a line in the seat.
+            return ToolResponse.error("PRECONDITION_NOT_MET",
+                "seat '" + seat.seat() + "' would run on " + dialect.name() + ", whose writes are"
+                    + " not refused by a mechanism — " + containment.report(),
+                "give the seat a brain that is contained (claude with this resident's endpoint,"
+                    + " codex or copilot), or add accepts_uncontained_writes: true to the seat's"
+                    + " frontmatter to say it may run on this brain as it is");
+        }
         HostCommand base = HostCommand.of(List.of("placeholder:" + dialect.name()));
         // REQUIRED, and that is the other half of the fix above. Defaulting it meant the brain ran
         // in the RESIDENT's own directory — which is how a real claude came to run in the
@@ -459,6 +476,11 @@ public class HireTool extends AbstractTool {
         // C16's own clause: a brain that cannot be told which tools to attach is REPORTED here
         // rather than quietly left out of the count.
         data.put("toolAttachment", dialect.toolAttachment().report());
+        // WHAT STOPS THIS BRAIN WRITING, and whether this run's own log bears it out.
+        data.put("writeContainment", containment.report());
+        data.put("writeContainmentBasis", containment.basis().name());
+        data.put("writeContainmentWitnessed",
+            HiredRun.writeWitness(containment, proposal.outcome().toolsOffered()));
         data.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         return ToolResponse.success(data);

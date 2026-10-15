@@ -60,7 +60,7 @@ You are the cataloguer seat.
 SEAT
 
 # The same seat on the brain that CANNOT be told which tools to attach.
-sed 's/^name: cataloguer$/name: cataloguer\nbrain: cursor/' "$WS/cataloguer.md" > "$WS/cursor-seat.md"
+sed 's/^name: cataloguer$/name: cataloguer\nbrain: cursor\naccepts_uncontained_writes: true/' "$WS/cataloguer.md" > "$WS/cursor-seat.md"
 
 # THE STAND-IN BRAINS, SUBSTITUTED ON **PATH** AND NOT THROUGH ANY PRODUCT INPUT.
 #

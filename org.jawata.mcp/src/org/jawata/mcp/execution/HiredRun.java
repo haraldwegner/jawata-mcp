@@ -395,7 +395,7 @@ public final class HiredRun {
      * init event's list of offered tools is the witness. A brain that publishes no list can only be
      * believed, and the record says so rather than printing a bare claim.
      */
-    static String writeWitness(WriteContainment containment, java.util.Optional<java.util.List<String>> offered) {
+    public static String writeWitness(WriteContainment containment, java.util.Optional<java.util.List<String>> offered) {
         if (!containment.isContained()) {
             return "not applicable: " + containment.basis() + " has no refusal point to witness";
         }

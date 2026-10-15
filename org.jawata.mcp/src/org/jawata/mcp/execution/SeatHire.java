@@ -137,6 +137,17 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      * @throws IllegalArgumentException if the file declares a brain this product cannot start, or
      *     declares no name
      */
+    /**
+     * Whether the seat's file says {@code accepts_uncontained_writes: true} — its own word that it
+     * may be hired on a brain whose writes are held only by an instruction to the model, or by
+     * nothing (the architect's F1). Absent means NO: the default is the refusal, and a seat that
+     * wants the other answer has to say so in the file a human reads.
+     */
+    public static boolean acceptsUncontainedWrites(String markdown) {
+        String value = frontmatter(markdown).get("accepts_uncontained_writes");
+        return value != null && "true".equalsIgnoreCase(value.trim());
+    }
+
     public static SeatHire read(String markdown) {
         Map<String, String> front = frontmatter(markdown);
 
