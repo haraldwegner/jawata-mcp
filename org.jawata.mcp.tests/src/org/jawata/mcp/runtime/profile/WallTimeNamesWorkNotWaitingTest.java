@@ -429,6 +429,12 @@ class WallTimeNamesWorkNotWaitingTest {
             // matching, so no defect in the matching or in the tree can suppress it. All four
             // defects now fail rather than skip.
             //
+            // C15-3 — BUT IT IS STILL THE PARSER'S NUMBER, so a defect in the loop that FILLS the
+            // sample list zeroes it too: the event type tested the wrong way round, the stack
+            // guard inverted, the sample never added. Each of those skipped this case. The gate
+            // now counts the recording with the JDK's own reader (ExecutionSampleCount), which
+            // nothing in the parser can move, and the parser's figure is ASSERTED equal to it.
+            //
             // And it is the observation the paragraph below says was not taken — so publishing
             // it closes this gate AND hands the unexplained intermittent its instrument, which
             // is why the fix is one `result.put` rather than a test-side workaround.
@@ -451,14 +457,18 @@ class WallTimeNamesWorkNotWaitingTest {
             // Many samples in the recording with none through the chain rules load OUT and
             // points at matching or at frames; near-zero samples overall rules it IN. The next
             // occurrence therefore settles what this one could not.
+            long sampled = ExecutionSampleCount.of(jfr);
             long inRecording =
                 ((Number) deep.get("executionSamplesInRecording")).longValue();
             long through = ((Number) deep.get("samplesThroughEntryPoint")).longValue();
-            Assumptions.assumeFalse(inRecording == 0,
-                "the sampler captured NOTHING in this window (executionSamplesInRecording=0), so"
-                    + " there is no recording to build a tree from and nothing here is a"
-                    + " statement about the marker. This is a skip, not a pass."
+            Assumptions.assumeFalse(sampled == 0,
+                "the sampler captured NOTHING in this window (counted from the file without the"
+                    + " parser), so there is no recording to build a tree from and nothing here"
+                    + " is a statement about the marker. This is a skip, not a pass."
                     + " samplesThroughEntryPoint=" + through + " hotPath=" + fullPath);
+            assertEquals(sampled, inRecording,
+                "the parser reads every stack-bearing sample the recording holds; a smaller"
+                    + " figure is samples its collection loop dropped");
 
             assertAll(
                 // PROOF OF LIFE, and it is also the precondition that makes the clause below

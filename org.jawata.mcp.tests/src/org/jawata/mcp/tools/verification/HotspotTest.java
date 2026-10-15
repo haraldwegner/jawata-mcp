@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
+import org.jawata.mcp.runtime.profile.ExecutionSampleCount;
 import org.jawata.mcp.tools.DebugTool;
 import org.jawata.mcp.tools.ProfileTool;
 import org.junit.jupiter.api.AfterEach;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,12 +47,21 @@ class HotspotTest {
     private ObjectMapper om;
     private Path targetClasses;
 
+    /**
+     * C15-3 — the recordings land HERE rather than in the default runtime directory, so a case
+     * can open an artifact's file and count its samples without the parser under test.
+     */
+    @TempDir
+    Path runtimeDir;
+    private RuntimeArtifactStore artifacts;
+
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("debug-target");
         sessions = new RuntimeSessionRegistry();
         debug = new DebugTool(() -> service, sessions);
-        profile = new ProfileTool(() -> service, sessions);
+        artifacts = new RuntimeArtifactStore(runtimeDir);
+        profile = new ProfileTool(() -> service, sessions, artifacts);
         om = new ObjectMapper();
 
         targetClasses = Files.createTempDirectory("jawata-hotspot-target-");
@@ -505,15 +517,25 @@ class HotspotTest {
         //
         // Its own precondition is the recording's thickness instead, which no matching defect
         // can suppress — so a bare Type that stops entering at any of its methods now FAILS.
+        //
+        // C15-3 — and the thickness is counted from the FILE, not read off the parser. The
+        // parser's executionSamplesInRecording is filled by its own collection loop, so a defect
+        // there zeroed the figure and skipped this case; the JDK's reader cannot be zeroed by
+        // anything of ours, and the parser is then held to the number it found.
         ObjectNode bare = profileAction("call_tree");
         bare.put("artifactId", artifactId);
         bare.put("entryPoint", "com.example.debug.HotLoopTarget");
         Map<String, Object> byType = data(profile.execute(bare));
 
-        Assumptions.assumeTrue(
-            ((Number) byType.get("executionSamplesInRecording")).longValue() > 0,
-            () -> "the sampler captured nothing in this window, so no entry form can be"
-                + " exercised against it — a skip, not a pass: " + byType);
+        long sampled = ExecutionSampleCount.of(
+            artifacts.root().resolve(artifactId).resolve("recording.jfr"));
+        Assumptions.assumeTrue(sampled > 0,
+            () -> "the sampler captured nothing in this window (counted from the file without"
+                + " the parser), so no entry form can be exercised against it — a skip, not a"
+                + " pass: " + byType);
+        assertEquals(sampled, ((Number) byType.get("executionSamplesInRecording")).longValue(),
+            () -> "the parser reads every stack-bearing sample the recording holds; a smaller"
+                + " figure is samples its collection loop dropped: " + byType);
         assertTrue(((Number) byType.get("samplesThroughEntryPoint")).longValue() > 0,
             "a bare Type enters at any of its methods, which the schema promises and nothing"
                 + " exercised: " + byType);
