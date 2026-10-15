@@ -3,6 +3,7 @@ package org.jawata.mcp.execution;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -380,12 +381,21 @@ class HiredRunProposesTest {
             () -> assertTrue(Files.exists(proposal.record()), "the record is a file"),
             () -> assertTrue(artifacts.list().contains(proposal.artifactId()),
                 "and it is an artifact the existing tooling lists"),
-            () -> assertEquals(Boolean.FALSE,
+            // THE HEADLINE, now READ from the census instead of asserted. This run's working
+            // directory is not a git tree, so no census could be taken, and the honest answer is
+            // that nothing is established — never "applied: false". The three states are pinned in
+            // HiredRunStatesWhatItAppliedTest.
+            () -> assertNull(
                 artifacts.readManifest(proposal.artifactId()).orElseThrow().get("applied"),
-                "THE HEADLINE: a hired run PROPOSES. Nothing was applied, and the manifest"
-                    + " says so where a reader of the artifact alone will see it"),
-            () -> assertTrue(record.contains("NOTHING HERE WAS APPLIED"),
-                "and the record says it in words too"),
+                "no census, so the manifest does not claim nothing was applied"),
+            () -> assertTrue(record.contains("NOT ESTABLISHED"),
+                "and the record says it in words too: " + record),
+            () -> assertTrue(record.contains("- writes: "),
+                "and the record states what stops this brain writing: " + record),
+            () -> assertEquals("NONE", ((java.util.Map<?, ?>) artifacts
+                    .readManifest(proposal.artifactId()).orElseThrow().get("writeContainment"))
+                    .get("basis"),
+                "a script has no containment of the hire's making, and the manifest says so"),
 
             // THE CONTROL for the crashed-brain case: this run exited cleanly, so the
             // record must NOT carry the did-not-exit-cleanly line. Without this, emitting

@@ -319,6 +319,13 @@ public final class HiredRun {
         // different ways and one of them cannot be told at all.
         p.put("toolAttachment", dialect.toolAttachment().report());
         p.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
+        WriteContainment containment = dialect.writeContainment();
+        Map<String, Object> writes = new LinkedHashMap<>();
+        writes.put("basis", containment.basis().name());
+        writes.put("enforcedBy", containment.enforcedBy());
+        writes.put("boundedInstead", containment.boundedInstead());
+        p.put("writeContainment", writes);
+        p.put("writeContainmentWitnessed", writeWitness(containment, outcome.toolsOffered()));
         p.put("stepsPassed", passed);
         p.put("ofSteps", steps.size());
         p.put("toolSteps", outcome.toolSteps());
@@ -344,8 +351,64 @@ public final class HiredRun {
         p.put("changedFiles", changed.changed().orElse(null));
         p.put("changedFileCount", changed.count().orElse(null));
         p.put("changedFilesBasis", changed.basis());
-        p.put("applied", false);
+        p.put("applied", applied(changed));
         return p;
+    }
+
+    /** The built-in tools that edit files; a mechanism that says they are absent is checked against them. */
+    private static final java.util.Set<String> EDITORS =
+        java.util.Set.of("Edit", "Write", "NotebookEdit", "MultiEdit");
+
+    /**
+     * Whether the run applied anything, READ from the changed-file census rather than asserted:
+     * true when it named files, false when it named none, and NULL when nobody could look — which
+     * must not be told as false, because "nothing applied" for a tree that was never censused is
+     * the one claim a reader deciding whether to accept a proposal must not be given falsely.
+     */
+    static Boolean applied(TreeAttribution.Attribution changed) {
+        return changed.changed().map(files -> !files.isEmpty()).orElse(null);
+    }
+
+    /**
+     * The first line of the record a human reads, following the census in its three states. The
+     * old unconditional "NOTHING HERE WAS APPLIED" said so for a run that had written files.
+     */
+    static String headline(TreeAttribution.Attribution changed) {
+        Boolean applied = applied(changed);
+        if (applied == null) {
+            return "**WHETHER THIS RUN CHANGED ANYTHING IS NOT ESTABLISHED:** " + changed.basis()
+                + " A hired run proposes; a human decides.";
+        }
+        if (applied) {
+            return "**THIS RUN CHANGED " + changed.count().orElse(0) + " FILE(S) in its working"
+                + " directory** (listed under \"What it changed\"). A hired run proposes; a human"
+                + " decides whether to keep them.";
+        }
+        return "**NOTHING HERE WAS APPLIED** in the working directory, by a census taken before and"
+            + " after the run — which sees only that directory. A hired run proposes; a human"
+            + " decides.";
+    }
+
+    /**
+     * Whether this run's own log bears out the write containment its dialect declares. Only a
+     * MECHANISM has a refusal point to witness; for the one that says the editors are absent, the
+     * init event's list of offered tools is the witness. A brain that publishes no list can only be
+     * believed, and the record says so rather than printing a bare claim.
+     */
+    static String writeWitness(WriteContainment containment, java.util.Optional<java.util.List<String>> offered) {
+        if (!containment.isContained()) {
+            return "not applicable: " + containment.basis() + " has no refusal point to witness";
+        }
+        if (offered.isEmpty()) {
+            return "declared, not witnessed: this brain publishes no list of the tools it offered";
+        }
+        for (String tool : offered.get()) {
+            if (EDITORS.contains(tool)) {
+                return "CONTRADICTED: the run's own init list offered the editor " + tool;
+            }
+        }
+        return "WITNESSED: the run's own init list of " + offered.get().size()
+            + " tool(s) offered no editor";
     }
 
     private static String render(String brief, BrainDialect dialect, HiredBrain.Outcome outcome,
@@ -353,7 +416,7 @@ public final class HiredRun {
             TreeAttribution.Attribution changed) {
         StringBuilder out = new StringBuilder();
         out.append("# Proposal from an unattended run\n\n");
-        out.append("**NOTHING HERE WAS APPLIED.** A hired run proposes; a human decides.\n\n");
+        out.append(headline(changed)).append("\n\n");
         out.append("- brain: ").append(dialect.name()).append('\n');
         // IN THE FILE A HUMAN READS, not only in the manifest. The reader of an
         // unattended run's proposal is deciding whether to trust it, and how tightly the
@@ -361,6 +424,10 @@ public final class HiredRun {
         // a tool list had more latitude than one that was, and the record must not leave
         // them looking identical.
         out.append("- tools: ").append(dialect.toolAttachment().report()).append('\n');
+        // WHAT STOPS IT WRITING, as a mechanism or an instruction, and whether this run's own
+        // log bears that out — the line the reader needs to decide how far to trust "no changes".
+        out.append("- writes: ").append(dialect.writeContainment().report()).append(" — ")
+            .append(writeWitness(dialect.writeContainment(), outcome.toolsOffered())).append('\n');
         out.append("- steps past their gates: ").append(passed).append(" of ")
             .append(steps.size()).append('\n');
         if (refusedBecause != null) {
