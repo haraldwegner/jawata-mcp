@@ -131,10 +131,12 @@ class SweepHardeningTest {
         int total = ((Number) d.get("count")).intValue();
         assertTrue(findings.size() <= 2, () -> "findings capped to the limit: " + findings.size());
         assertEquals(findings.size(), ((Number) d.get("returnedCount")).intValue());
-        if (total > 2) {
-            assertEquals(Boolean.TRUE, d.get("truncated"), "an over-limit sweep is flagged truncated");
-            assertTrue(d.containsKey("hint"), "a paging hint is offered");
-        }
+        // REL44-22: a sweep at threshold 1 over this fixture finds more than the limit, so the
+        // cap is asserted to bite rather than checked only on the days it happens to.
+        assertTrue(total > 2, () -> "the fixture must produce more findings than the limit of 2,"
+            + " or truncation is never exercised: " + total);
+        assertEquals(Boolean.TRUE, d.get("truncated"), "an over-limit sweep is flagged truncated");
+        assertTrue(d.containsKey("hint"), "a paging hint is offered");
     }
 
     @Test

@@ -123,12 +123,12 @@ class UsageLedgerTest {
         String queryId = String.valueOf(nominated.get("query_id"));
         int count = ((Number) nominated.get("count")).intValue();
 
-        if (count == 0) {
-            // No lane could rank it here (no embedder in this fixture). The demand
-            // half is still the honest thing to assert, and it is asserted above.
-            call("decide", "query_id", queryId);
-            return;
-        }
+        // REL44-22: this used to decide and RETURN when nothing ranked the question, checking
+        // nothing and passing. With no embedder no lane can rank it, so neither choice can be
+        // exercised here — a skip, reported as one.
+        org.junit.jupiter.api.Assumptions.assumeTrue(count > 0,
+            "no embedder ranked the question here, so neither choice can be exercised — a skip,"
+                + " not a pass");
 
         call("decide", "query_id", queryId, "selected_ids", id);
         Map<String, Object> sweep = call("review_sweep", "min_times", "1", "min_shown", "1");

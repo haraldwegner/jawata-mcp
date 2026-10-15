@@ -95,6 +95,7 @@ class FindNamingViolationsToolTest {
             "PROOF OF LIFE: the project must produce violations, or this checks nothing");
 
         int checked = 0;
+        int fieldRows = 0;
         for (Map<String, Object> row : rows) {
             java.nio.file.Path file = service.getProjectRoot()
                 .resolve(String.valueOf(row.get("filePath"))).normalize();
@@ -133,6 +134,7 @@ class FindNamingViolationsToolTest {
             // watching the class stay green.
             String elementType = String.valueOf(row.get("elementType"));
             if ("field".equals(elementType) || "constant".equals(elementType)) {
+                fieldRows++;
                 assertTrue(at.contains(name),
                     "'" + name + "' is a field row, which addresses the fragment itself, so"
                         + " the identifier must be ON its line; that line reads: " + at);
@@ -142,6 +144,10 @@ class FindNamingViolationsToolTest {
         assertTrue(checked >= 3,
             () -> "only " + drove + " violation rows were read against their files; with that"
                 + " few an empty failure list says nothing about the coordinate base");
+        // REL44-22: the field-row clause runs only for field rows, so the run must have had one,
+        // or the clause the C8b audit restored is dead again with the class green.
+        assertTrue(fieldRows >= 1, "no field or constant row was read, so the field-row clause"
+            + " checked nothing");
     }
 
     @SuppressWarnings("unchecked")

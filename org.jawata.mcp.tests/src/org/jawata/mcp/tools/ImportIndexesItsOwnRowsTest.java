@@ -142,21 +142,20 @@ class ImportIndexesItsOwnRowsTest {
         // It hands them to the background vectoriser and says so, so the claim is now that
         // they become findable WITHOUT another call — polled, because the worker runs
         // behind the answer. LoadEmbedsInBackgroundTest proves the answer comes first.
-        org.junit.jupiter.api.Assertions.assertAll(
-            () -> assertNotNull(report.get("unembedded"),
-                () -> "the import must say how many rows cannot yet answer by meaning, the"
-                    + " number a caller acts on: " + report),
-            () -> {
-                if (EmbeddingService.shared().available()) {
-                    assertEquals("background", report.get("embedding"),
-                        () -> "and that the vectors are being computed behind it: " + report);
-                    assertEquals(0L, pendingAfterWaiting(),
-                        () -> "THE CLAIM: rows an import hands over must become FINDABLE with"
-                            + " nobody asking again. This is the defect the stage was opened"
-                            + " for — imported rows sat outside the meaning index while the"
-                            + " catalogue sat inside it. Pending was: " + pending());
-                }
-            });
+        assertNotNull(report.get("unembedded"),
+            () -> "the import must say how many rows cannot yet answer by meaning, the"
+                + " number a caller acts on: " + report);
+        // REL44-22: THE CLAIM sat inside an if inside assertAll, so with no embedder this test
+        // passed having checked only the line above. An assumption reports that as a skip.
+        org.junit.jupiter.api.Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder — the claim that imported rows become findable did NOT run");
+        assertEquals("background", report.get("embedding"),
+            () -> "and that the vectors are being computed behind it: " + report);
+        assertEquals(0L, pendingAfterWaiting(),
+            () -> "THE CLAIM: rows an import hands over must become FINDABLE with"
+                + " nobody asking again. This is the defect the stage was opened"
+                + " for — imported rows sat outside the meaning index while the"
+                + " catalogue sat inside it. Pending was: " + pending());
 
         // An ABORT, not a return: the control below is what makes the assertion above about
         // the verb at all, so without it this test has not run (REL44-21).

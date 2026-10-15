@@ -377,17 +377,16 @@ class DebugClosureTest {
         assertTrue(description.contains("PROFESSIONAL JUDGMENT"), "got: " + description);
 
         // The same three statements in the README, where a human reads them.
-        Path readme = Path.of("README.md");
-        if (!Files.isRegularFile(readme)) {
-            readme = Path.of(System.getProperty("user.dir"), "README.md");
-        }
-        if (Files.isRegularFile(readme)) {
-            String text = Files.readString(readme);
-            assertTrue(text.contains("Runtime debugging — what it does to the target"),
-                "the README carries the section");
-            assertTrue(text.contains("suspends threads and changes state"), "statement 1");
-            assertTrue(text.contains("development or simulation machine"), "statement 2");
-            assertTrue(text.contains("your professional judgment"), "statement 3");
-        }
+        // REL44-22: a README this test could not find made it check nothing and pass. It is
+        // found by walking up from the working directory, and its absence is a failure.
+        Path readme = org.jawata.mcp.catalogue.RepoFiles.sourceOf("README.md");
+        assertNotNull(readme, "the repository README must be found above " + Path.of("")
+            .toAbsolutePath());
+        String text = Files.readString(readme);
+        assertTrue(text.contains("Runtime debugging — what it does to the target"),
+            "the README carries the section");
+        assertTrue(text.contains("suspends threads and changes state"), "statement 1");
+        assertTrue(text.contains("development or simulation machine"), "statement 2");
+        assertTrue(text.contains("your professional judgment"), "statement 3");
     }
 }

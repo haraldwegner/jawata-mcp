@@ -52,10 +52,12 @@ class GetJavadocToolTest {
         assertNotNull(data.get("kind"));
         assertNotNull(data.get("hasDocumentation"));
 
-        if ((Boolean) data.get("hasDocumentation")) {
-            assertNotNull(data.get("summary"));
-            // May have @param, @return, @throws depending on the method
-        }
+        // REL44-22: the method at this position IS documented, so the parse is asserted rather
+        // than skipped when the tool says it found nothing — which was a pass that read nothing.
+        assertEquals(Boolean.TRUE, data.get("hasDocumentation"),
+            "the add method carries a javadoc: " + data);
+        assertNotNull(data.get("summary"));
+        // May have @param, @return, @throws depending on the method
     }
 
     @Test @DisplayName("returns hasDocumentation false for undocumented symbol")
