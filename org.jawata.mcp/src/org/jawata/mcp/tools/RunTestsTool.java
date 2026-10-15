@@ -1429,11 +1429,26 @@ public class RunTestsTool extends AbstractTool {
                         t.put("test", k);
                         t.put("evidenceKind", m.evidenceKind);
                         t.put("coversSymbols", new ArrayList<String>());
+                        t.put("evidenceScope", new ArrayList<String>());
                         return t;
                     });
                     @SuppressWarnings("unchecked")
                     java.util.List<String> covers = (java.util.List<String>) row.get("coversSymbols");
                     if (!covers.contains(symbol)) covers.add(symbol);
+                    // REL44-20: rows are read from EVERY finalized attribution run — deliberately,
+                    // so a unit run and an integration run both answer (C9) — while the verdict's
+                    // evidenceScope describes the newest run alone, the one it judges. So each row
+                    // names the scope of the run(s) it was read from, and a row from an older run
+                    // is never presented as if the verdict's scope covered it.
+                    @SuppressWarnings("unchecked")
+                    java.util.List<String> from = (java.util.List<String>) row.get("evidenceScope");
+                    for (java.util.List<String> selected : java.util.Arrays.asList(
+                            m.selectClasses, m.selectMethods, m.selectPackages)) {
+                        if (selected == null) continue;
+                        for (String s : selected) {
+                            if (!from.contains(s)) from.add(s);
+                        }
+                    }
                 }
             }
         }

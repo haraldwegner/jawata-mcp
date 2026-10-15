@@ -272,6 +272,38 @@ class ImpactedTestsFromDiffTest {
     }
 
     @Test
+    @DisplayName("REL44-20: a row says which run's evidence it was read from")
+    void eachRowNamesTheEvidenceItWasReadFrom() throws Exception {
+        // Found by a hired test manager on 2026-10-15: after two attribution runs the verdict's
+        // evidenceScope named only the newer one while a row came from the older one, and the
+        // answer read as contradicting itself. Rows are read from every finalized run on purpose —
+        // a unit run and an integration run both answer (CoverageAttributionTest, C9) — so the
+        // cure is not to drop the older run but to have each row say where it came from.
+        RunTestsTool tool = attributedFixture();              // older evidence: CoveredTest
+        runAttribution(tool, "com.example.cov.FlipTest");     // newer evidence: FlipTest only
+        ObjectNode args = om.createObjectNode();
+        args.put("action", "coverage_impacted_tests");
+        args.putArray("symbols").add(COVERED_CLASS + "#alwaysCalled");
+        ToolResponse r = tool.execute(args);
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        Map<String, Object> impacted = cast2(r.getData());
+        List<Map<String, Object>> rows = cast(impacted.get("impactedTests"));
+
+        assertEquals(List.of("com.example.cov.FlipTest"),
+            strings(cast2(impacted.get("selectionVerdict")).get("evidenceScope")),
+            "the control: the verdict judges the newest run; got: " + impacted);
+        assertTrue(rows.stream().anyMatch(row -> String.valueOf(row.get("test")).contains("CoveredTest")),
+            "the control: the older run still answers, which C9 depends on; got: " + impacted);
+        for (Map<String, Object> row : rows) {
+            String test = String.valueOf(row.get("test"));
+            List<String> from = strings(row.get("evidenceScope"));
+            assertTrue(from.stream().anyMatch(test::startsWith),
+                "the row " + test + " must name the run it was read from; it says " + from
+                    + "; got: " + impacted);
+        }
+    }
+
+    @Test
     @DisplayName("D21: the same evidence is a yes for the scope it did cover")
     void theSameEvidenceAnswersDifferentlyPerScope() throws Exception {
         // THE CONTROL for the sibling above, and without it that refusal could
