@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -23,11 +24,13 @@ import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.GatedStep;
+import org.jawata.mcp.learn.LearnerEvent;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * One seat hires another: the front door onto {@link HiredRun} (Sprint 28g S16, C16).
@@ -95,6 +98,9 @@ public class HireTool extends AbstractTool {
      * PATH holding an executable of the brain's own name. That is where "which claude" is decided
      * for every other program on the machine, and it needs no product surface at all.
      */
+
+    /** Reads a journal row's payload back into an object for the answer (S16-27). */
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final HostProcesses host;
     private final RuntimeArtifactStore artifacts;
@@ -369,6 +375,11 @@ public class HireTool extends AbstractTool {
         // and the record the journal refers to cannot drift apart.
         data.put("artifactId", proposal.artifactId());
         data.put("record", proposal.record().toString());
+        // S16-27: what the journal HOLDS for this run, read back by its plan id rather than
+        // assumed from the write — `HiredRun` appends inside a catch that swallows, so a run whose
+        // row was lost still returns a proposal.
+        data.putAll(journalReport(landsIn.eventsOfSession(proposal.plan().value()),
+            landsIn.failedWrites()));
         data.put("complete", proposal.complete());
         data.put("stepsPassed", proposal.stepsPassed());
         // The seat's own checks over its answer are steps of the plan too, ahead of the hirer's.
@@ -438,6 +449,60 @@ public class HireTool extends AbstractTool {
         data.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         return ToolResponse.success(data);
+    }
+
+    /**
+     * What the journal holds for a run, from its rows read back by the run's plan id (S16-27) — so
+     * "journalled" is something the answer SHOWS rather than something a caller assumes.
+     *
+     * <p>THREE states, never two. {@code landed} carries the run's own row: which brain, and the
+     * payload naming the artifact and how far the plan got. {@code not landed} means the journal
+     * was read and holds no hired-run row for the plan; the store's own count of dropped writes is
+     * named beside it, because a write the store gave up on is how that usually happens.
+     * {@code unknown} means the journal could not be read at all. That says nothing about the row,
+     * and reporting it as "not landed" would be a claim nobody established.</p>
+     *
+     * @param read          the journal's rows for the plan, or absent when it could not be read
+     * @param droppedWrites the store's own count of writes it gave up on
+     */
+    static Map<String, Object> journalReport(Optional<List<LearnerEvent>> read, long droppedWrites) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        if (read.isEmpty()) {
+            report.put("journal", "unknown");
+            report.put("journalBasis", "the journal could not be read back, so whether this run's row"
+                + " landed is not established — which is not the same as its being absent");
+            return report;
+        }
+        Optional<LearnerEvent> row = read.get().stream()
+            .filter(event -> LearnerEvent.KIND_HIRED_RUN.equals(event.kind()))
+            .reduce((earlier, later) -> later);
+        if (row.isEmpty()) {
+            report.put("journal", "not landed");
+            report.put("journalBasis", "read back from the journal by this run's plan id: no"
+                + " hired-run row is there. The journal has counted " + droppedWrites
+                + " dropped write(s) since this resident started");
+            return report;
+        }
+        Map<String, Object> shown = new LinkedHashMap<>();
+        shown.put("kind", row.get().kind());
+        shown.put("brain", row.get().tool());
+        shown.put("detail", detailOf(row.get().detailJson()));
+        report.put("journal", "landed");
+        report.put("journalRow", shown);
+        report.put("journalBasis", "read back from the journal by this run's plan id");
+        return report;
+    }
+
+    /** A row's payload as an object, or as the text it was written as when it does not parse. */
+    private static Object detailOf(String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            return JSON.readValue(json, Map.class);
+        } catch (IOException e) {
+            return json;
+        }
     }
 
     /**

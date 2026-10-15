@@ -7,7 +7,9 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -162,6 +164,42 @@ public final class LearnerEventStore {
 
     public long totalEvents() {
         return countByKind().values().stream().mapToLong(Long::longValue).sum();
+    }
+
+    /**
+     * Every event written under {@code sessionId}, oldest first, each as it was written (S16-27).
+     *
+     * <p>The row-level read the journal lacked: a hired run writes its brain, its artifact and how
+     * far its plan got under the plan's id, and without this nobody — the hirer, a later tool, a
+     * human asking what a run recorded — could read that back. Values are returned as stored, so a
+     * bounded column that was {@linkplain #fitted fitted} on the way in comes back fitted.</p>
+     *
+     * @return the rows, empty when nothing was written under the id; ABSENT when the journal could
+     *     not be read. The two are different answers — an empty list is a reading, an absence is
+     *     the lack of one — and a caller must not be able to mistake the second for the first.
+     */
+    public Optional<List<LearnerEvent>> eventsOfSession(String sessionId) {
+        synchronized (store) {
+            try {
+                Connection conn = store.sharedConnection();
+                try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT session_id, kind, tool, detail_json FROM learner_event"
+                        + " WHERE session_id = ? ORDER BY id")) {
+                    ps.setString(1, fitted(sessionId, SESSION_ID_WIDTH));
+                    try (ResultSet rs = ps.executeQuery()) {
+                        List<LearnerEvent> rows = new ArrayList<>();
+                        while (rs.next()) {
+                            rows.add(new LearnerEvent(rs.getString(1), rs.getString(2),
+                                rs.getString(3), rs.getString(4)));
+                        }
+                        return Optional.of(List.copyOf(rows));
+                    }
+                }
+            } catch (Exception e) {
+                log.error("learner_event read failed for session {}", sessionId, e);
+                return Optional.empty();
+            }
+        }
     }
 
     /** A learner's persisted state (model + rolling record), if any. */

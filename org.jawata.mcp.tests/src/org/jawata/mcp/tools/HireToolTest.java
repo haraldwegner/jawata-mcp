@@ -618,14 +618,80 @@ class HireToolTest {
             () -> assertEquals(0, events.failedWrites(),
                 "and no journal write failed, which the store counts for itself"));
 
-        // THE BOUND, and it is the store's rather than this test's: LearnerEventStore publishes
-        // `append`, `countByKind`, `totalEvents` and `failedWrites` — and NO ROW-LEVEL READ. So
-        // the clause "result journalled" is assertable as "a row of this kind landed" and NOT as
-        // "the row says which brain, which plan and how far it got", even though `HiredRun` writes
-        // all three into the payload. Nobody — not this test and not a human asking what a run
-        // recorded — can read that payload back through the published API. Filed as a finding
-        // rather than worked around here by reaching into the schema, which would pin a test to
-        // SQL the store exists to own.
+        // What the row SAYS is the next case's: this one counts, and a count cannot tell a row
+        // carrying the wrong artifact from the right one (S16-27).
+    }
+
+    @Test
+    @DisplayName("S16-27: the run's journal row is READ BACK and says which brain, which artifact and how far the plan got")
+    void theRunsOwnRowSaysWhatTheRunWas() throws Exception {
+        // The journal used to publish `append` and three counters and NO ROW-LEVEL READ, so the
+        // case above could assert "a row of this kind landed" and never "the row says which brain,
+        // which artifact and how far it got" — which `HiredRun` writes and nobody could read back.
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
+            aRegistryWithACleanGate());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        String plan = (String) data.get("plan");
+
+        // FROM THE STORE, by the identity the run was written under: the reading a human or a
+        // later tool has, knowing nothing about how this run went.
+        List<LearnerEvent> rows = events.eventsOfSession(plan).orElseThrow(
+            () -> new AssertionError("the journal could not be read back at all"));
+        assertEquals(1, rows.size(), "one row for one run: " + rows);
+        LearnerEvent row = rows.get(0);
+        JsonNode detail = JSON.readTree(row.detailJson());
+        assertAll(
+            () -> assertEquals(LearnerEvent.KIND_HIRED_RUN, row.kind()),
+            () -> assertEquals("claude-code", row.tool(),
+                "the brain the seat's own file chose, which defaults to Claude Code"),
+            () -> assertEquals(data.get("artifactId"), detail.path("artifactId").asText(),
+                "the artifact the run wrote, which the answer names too"),
+            () -> assertEquals(data.get("stepsPassed"), detail.path("stepsPassed").asInt(),
+                "how far the plan got"),
+            () -> assertEquals(data.get("stepsDeclared"), detail.path("ofSteps").asInt(),
+                "out of how many steps"));
+
+        // AND THE HIRER IS TOLD, in the answer it already reads, what the journal holds — so
+        // "journalled" is something the run's answer shows rather than something a caller assumes.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> shown = (Map<String, Object>) data.get("journalRow");
+        assertAll(
+            () -> assertEquals("landed", data.get("journal"), String.valueOf(data.get("journalBasis"))),
+            () -> assertEquals(row.tool(), shown.get("brain")),
+            () -> assertEquals(data.get("artifactId"),
+                ((Map<?, ?>) shown.get("detail")).get("artifactId")));
+    }
+
+    @Test
+    @DisplayName("S16-27: the journal part of the answer has three states, and 'could not read it' is not 'not there'")
+    void theJournalPartOfTheAnswerHasThreeStates() {
+        LearnerEvent run = new LearnerEvent("plan-1", LearnerEvent.KIND_HIRED_RUN, "codex",
+            "{\"artifactId\":\"proposal-9\",\"stepsPassed\":1,\"ofSteps\":2}");
+        LearnerEvent unrelated = new LearnerEvent("plan-1", LearnerEvent.KIND_GATE_CALL,
+            "compile_workspace", "{}");
+
+        Map<String, Object> landed = HireTool.journalReport(
+            java.util.Optional.of(List.of(unrelated, run)), 0);
+        Map<String, Object> missing = HireTool.journalReport(
+            java.util.Optional.of(List.of(unrelated)), 3);
+        Map<String, Object> unread = HireTool.journalReport(java.util.Optional.empty(), 0);
+
+        assertAll(
+            () -> assertEquals("landed", landed.get("journal")),
+            () -> assertEquals(Map.of("kind", LearnerEvent.KIND_HIRED_RUN, "brain", "codex",
+                    "detail", Map.of("artifactId", "proposal-9", "stepsPassed", 1, "ofSteps", 2)),
+                landed.get("journalRow"), "the run's row, not the gate call beside it"),
+            () -> assertEquals("not landed", missing.get("journal")),
+            () -> assertFalse(missing.containsKey("journalRow")),
+            () -> assertTrue(String.valueOf(missing.get("journalBasis")).contains("3 dropped"),
+                "and the store's own count of dropped writes is named: "
+                    + missing.get("journalBasis")),
+            () -> assertEquals("unknown", unread.get("journal"),
+                "a journal that could not be read has not said the row is missing"),
+            () -> assertFalse(unread.containsKey("journalRow")),
+            () -> assertTrue(String.valueOf(unread.get("journalBasis")).contains("could not be read"),
+                String.valueOf(unread.get("journalBasis"))));
     }
 
     @Test
