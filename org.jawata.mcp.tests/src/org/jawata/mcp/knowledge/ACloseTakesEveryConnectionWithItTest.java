@@ -47,4 +47,38 @@ class ACloseTakesEveryConnectionWithItTest {
         store.close();
         assertThrows(IllegalStateException.class, store::borrowRead);
     }
+
+    /**
+     * S10-5: the race arm in {@code releaseRead}. The owner's {@code close()} lands AFTER the
+     * hand-back's own closed-check and BEFORE the connection is offered to the pool — so the first
+     * check passes, the connection goes into a pool {@code close()} has already drained, and only
+     * the second check closes it. Driven through the seam so the window is hit every time.
+     */
+    @Test
+    void aCloseBetweenTheHandBacksCheckAndItsPoolOfferStillClosesTheConnection(@TempDir Path dir)
+            throws Exception {
+        H2ExperienceStore store = H2ExperienceStore.openAt(dir);
+        Connection borrowed = store.borrowRead();
+        assertNotNull(borrowed, "the control: a file store gives out a read connection");
+        store.beforePoolOffer = store::close;
+
+        store.releaseRead(borrowed, true);
+
+        assertTrue(borrowed.isClosed(),
+            "a close that lands between the check and the offer still closes what was handed back");
+    }
+
+    /**
+     * S10-5: the race arm in {@code openUnlessClosed}. {@code borrowRead} checks the store is open,
+     * then opens a connection — and the owner's {@code close()} lands in between. The re-check
+     * after the open refuses the borrow rather than handing out a connection to a closed store.
+     */
+    @Test
+    void aCloseWhileAConnectionIsOpeningRefusesTheBorrow(@TempDir Path dir) {
+        H2ExperienceStore store = H2ExperienceStore.openAt(dir);
+        store.afterOpen = store::close;
+
+        assertThrows(IllegalStateException.class, store::borrowRead,
+            "a connection opened for a store closed meanwhile is not handed out");
+    }
 }

@@ -55,6 +55,18 @@ public final class H2ExperienceStore implements ExperienceStore {
     /** mcp#38: shut down by its owner, as distinct from a connection that merely dropped.
      *  Volatile because {@code close()} is synchronized and {@code live()} is not. */
     private volatile boolean closed;
+    /**
+     * S10-5 test seam: runs in {@link #releaseRead} after its first closed-check and before the
+     * connection is offered to the pool — the window a {@code close()} can land in. No-op in
+     * production; a test sets it to {@code close()} so the second check is reached on purpose
+     * rather than by luck.
+     */
+    volatile Runnable beforePoolOffer = () -> { };
+    /**
+     * S10-5 test seam: runs in {@link #openUnlessClosed} after a connection is opened and before
+     * the closed re-check — the window between {@code borrowRead}'s own check and the open.
+     */
+    volatile Runnable afterOpen = () -> { };
     private final String url;
     /** The backing {@code .mv.db} file (null for in-memory) — self-exclusion in recovery. */
     private final Path storeFile;
@@ -366,7 +378,13 @@ public final class H2ExperienceStore implements ExperienceStore {
         // had BORROWED when the owner closed the store is invisible to it. Pooled again here it
         // would stay open for the life of the process, and an open file database keeps
         // rewriting its lock file into a folder its owner has since deleted.
-        if (closed || !healthy || !readPool.offer(c)) {
+        if (closed || !healthy) {
+            closeQuietly(c);
+            readConnections.decrementAndGet();
+            return;
+        }
+        beforePoolOffer.run();
+        if (!readPool.offer(c)) {
             closeQuietly(c);
             readConnections.decrementAndGet();
             return;
@@ -386,6 +404,7 @@ public final class H2ExperienceStore implements ExperienceStore {
      */
     private Connection openUnlessClosed() throws SQLException {
         Connection opened = openBound(url);
+        afterOpen.run();
         if (closed) {
             closeQuietly(opened);
             refuseIfClosed();
