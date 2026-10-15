@@ -368,4 +368,20 @@ class SeatHireTest {
 
         assertTrue(refused.getMessage().contains("no name"), refused.getMessage());
     }
+
+    @Test
+    @DisplayName("C11-6: the seat file's on/off switch is read, absent means on, and a misspelling is refused")
+    void theOnOffSwitchIsReadStrictlyFromTheSeatFile() {
+        // studio writes `enabled: false` under the name line when the user switches a seat off.
+        String off = PM.replace("name: pm\n", "name: pm\nenabled: false\n");
+        assertAll(
+            () -> assertFalse(SeatHire.read(off).enabled(), "enabled: false reads as off"),
+            () -> assertTrue(SeatHire.read(PM).enabled(),
+                "a shipped seat with no line is on — a seat nobody switched off is on"),
+            () -> assertTrue(SeatHire.read(PM.replace("name: pm\n", "name: pm\nenabled: true\n"))
+                .enabled(), "and true is on"),
+            () -> assertThrows(IllegalArgumentException.class,
+                () -> SeatHire.read(PM.replace("name: pm\n", "name: pm\nenabled: no\n")),
+                "a switch that is neither true nor false is refused, not read as on"));
+    }
 }

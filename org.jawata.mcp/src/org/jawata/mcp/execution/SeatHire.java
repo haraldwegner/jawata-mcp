@@ -59,9 +59,12 @@ import java.util.Optional;
  * @param answerGates the checks the seat declares over its OWN answer ({@code answer_gates:} in
  *     the frontmatter), each run as a step of the plan whose result lands in the run's record.
  *     Today one is known: {@code upward_message}. Empty when the seat declares none.
+ * @param enabled whether the seat is switched ON — false when its file says {@code enabled: false},
+ *     which studio writes when the user turns the seat off. A hire of an off seat is refused by the
+ *     hire tool; this record only carries the fact.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
-                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates) {
+                       HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -151,7 +154,30 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 // of nothing that fired on the first reported cent.
                 decimal(front.get("cost_budget_usd")).orElse(null)),
             body(markdown),
-            list(front.get("answer_gates")));
+            list(front.get("answer_gates")),
+            enabled(front.get("enabled")));
+    }
+
+    /**
+     * The seat's on/off switch, read STRICTLY — C11-6.
+     *
+     * <p>studio writes {@code enabled: false} into a seat's file when the user switches the seat
+     * off, because the file is the one thing every reader opens; the settings sidecar was read by
+     * the deploy alone, so a switched-off seat could still be hired. Absent means on. Anything but
+     * {@code true} or {@code false} is refused, the same as studio's own parser refuses it: a
+     * switch read as on because it was misspelled would hire the seat the user turned off.</p>
+     */
+    private static boolean enabled(String value) {
+        if (value == null || value.isBlank()) {
+            return true;
+        }
+        return switch (value.strip()) {
+            case "true" -> true;
+            case "false" -> false;
+            default -> throw new IllegalArgumentException("seat declares enabled '" + value.strip()
+                + "': expected true or false. NOT read as on — a misspelled switch would hire a seat"
+                + " its owner turned off");
+        };
     }
 
     /**
@@ -346,5 +372,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance) {
         this(seat, brain, model, tools, ceilings, stance, List.of());
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, true);
     }
 }

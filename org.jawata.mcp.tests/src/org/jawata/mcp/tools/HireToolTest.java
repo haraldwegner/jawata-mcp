@@ -710,6 +710,51 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("C11-6: a seat its owner switched OFF is refused before any brain starts")
+    void aSwitchedOffSeatIsRefusedBeforeAnyBrainStarts() throws Exception {
+        HostCommand brain = aBrainThatAnswers();
+        java.util.concurrent.atomic.AtomicInteger starts = new java.util.concurrent.atomic.AtomicInteger();
+        HostProcesses counting = new HostProcesses() {
+            @Override
+            public Process start(HostCommand command) throws IOException {
+                starts.incrementAndGet();
+                return host.start(brain);
+            }
+
+            @Override
+            public HostProcessOutcome run(HostCommand command) throws InterruptedException {
+                return host.run(command);
+            }
+
+            @Override
+            public List<String> executableCandidates(String base) {
+                return host.executableCandidates(base);
+            }
+
+            @Override
+            public List<String> wrapperNames(String base) {
+                return host.wrapperNames(base);
+            }
+        };
+        HireTool hire = toolWith(counting, events, aRegistryWithACleanGate());
+
+        ToolResponse off = hire.execute(hireArgs(seatFile(
+            CATALOGUER_SEAT.replace("name: cataloguer\n", "name: cataloguer\nenabled: false\n"))));
+        assertAll(
+            () -> assertFalse(off.isSuccess(), "an off seat is not hired"),
+            () -> assertTrue(String.valueOf(off.getError()).contains("switched off"),
+                "and the refusal says why, in the user's own terms: " + off.getError()),
+            () -> assertEquals(0, starts.get(), "no brain was started for it — a hire is a paid run"));
+
+        // The control: the same seat switched on is hired, through the same counting host.
+        ToolResponse on = hire.execute(hireArgs(seatFile(
+            CATALOGUER_SEAT.replace("name: cataloguer\n", "name: cataloguer\nenabled: true\n"))));
+        assertAll(
+            () -> assertTrue(on.isSuccess(), "an on seat is hired: " + on.getError()),
+            () -> assertEquals(1, starts.get(), "and its brain started once"));
+    }
+
+    @Test
     @DisplayName("a hire does not require a loaded project, so its gates answer for themselves")
     void aHireDoesNotRequireALoadedProject() throws Exception {
         // The service supplier answers null throughout this class, which is a resident with no

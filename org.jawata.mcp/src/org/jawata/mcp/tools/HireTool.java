@@ -267,6 +267,15 @@ public class HireTool extends AbstractTool {
                 "check its brain: field — an unknown brain is refused rather than defaulted");
         }
 
+        if (!seat.enabled()) {
+            // C11-6: the user switched this seat OFF in studio, which writes `enabled: false` into
+            // the seat file. Refused before any brain starts — a hire is a paid run, and the switch
+            // is the user's written word that this seat does not run.
+            return ToolResponse.error("PRECONDITION_NOT_MET",
+                "seat '" + seat.seat() + "' is switched off (its file says enabled: false)",
+                "turn it on in studio's Seats view, or hire a seat that is on");
+        }
+
         List<GatedStep> steps;
         try {
             steps = gatedSteps(arguments);
