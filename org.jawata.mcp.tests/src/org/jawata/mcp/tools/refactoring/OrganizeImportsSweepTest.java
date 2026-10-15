@@ -179,6 +179,10 @@ class OrganizeImportsSweepTest {
                 public List<String> make() {
                     return null;
                 }
+
+                public int biggest(int a, int b) {
+                    return max(a, b);
+                }
             }
             """, StandardCharsets.UTF_8);
         service.getJavaProject().getProject().refreshLocal(
@@ -195,5 +199,11 @@ class OrganizeImportsSweepTest {
                     && "List".equals(m.get("name"))
                     && String.valueOf(m.get("filePath")).endsWith("SweepDeclines.java")),
             "the sweep must name the ambiguous List and the file it is in; data=" + data);
+        // REL44-27 at the broad scopes: the static call the engine never searches for.
+        assertTrue(data.get("unresolved") instanceof List<?> unresolved
+                && unresolved.stream().anyMatch(e -> e instanceof Map<?, ?> m
+                    && "max".equals(m.get("name"))
+                    && String.valueOf(m.get("filePath")).endsWith("SweepDeclines.java")),
+            "the sweep must name the unresolved static call and its file; data=" + data);
     }
 }

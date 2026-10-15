@@ -174,6 +174,47 @@ class OrganizeImportsAddsMissingTest {
         assertEquals(1, data.get("importsAdded"),
             () -> "the control: the unambiguous name was added: " + data);
         assertDeclined(data, "List", 4);
+        assertEquals(null, data.get("unresolved"),
+            () -> "REL44-27's exclusions: ArrayList was imported by this run and List is"
+                + " already named as declined, so nothing is left to report as unresolved: "
+                + data);
+    }
+
+    /**
+     * REL44-27. JDT's engine adds type imports and never searches for static members, so a
+     * file calling {@code max(a, b)} with no static import came back
+     * {@code hasChanges=false, importsAdded=0} with the error still in it — the shape REL44-13
+     * fixed for an ambiguous type, arriving from a name the engine never looks for.
+     */
+    @Test
+    @DisplayName("REL44-27: a name still unresolved after the run is NAMED, not reported as done")
+    void aNameStillUnresolvedIsNamed() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path file = write(service, "NeedsStatic", """
+            package com.example;
+
+            public class NeedsStatic {
+                public int biggest(int a, int b) {
+                    return max(a, b);
+                }
+            }
+            """);
+
+        ToolResponse response = organize(service, file);
+
+        assertTrue(response.isSuccess(), "got: " + response.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> unresolved =
+            (java.util.List<Map<String, Object>>) data.get("unresolved");
+        assertAll(
+            () -> assertEquals(false, data.get("hasChanges"),
+                "the control: there was no import to add or remove: " + data),
+            () -> assertTrue(unresolved != null && unresolved.size() == 1,
+                "the one name the run could not resolve must be listed: " + data),
+            () -> assertEquals("max", unresolved.get(0).get("name"), "got: " + data),
+            () -> assertEquals(5, unresolved.get(0).get("line"), "where it is: " + data));
     }
 
     @SuppressWarnings("unchecked")

@@ -84,6 +84,10 @@ import java.util.function.Supplier;
  * {@code declinedAmbiguous} with its line and its candidates (REL44-13): declined silently,
  * the answer for a file whose only problem was an ambiguous name read
  * {@code hasChanges=false, importsAdded=0} — word for word an already-organised file.</p>
+ *
+ * <p>And what it never LOOKS for is reported too (REL44-27): JDT's engine adds type imports
+ * and never searches for static members, so every name an import could have resolved that a
+ * run left unresolved is listed in {@code unresolved}, read off the compiler's own problems.</p>
  */
 public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
 
@@ -130,7 +134,10 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             and java.awt.List, and with no human to ask it is left out rather than
             guessed. `importsAdded` counts what arrived, and every name declined
             for ambiguity is listed in `declinedAmbiguous` with its line and its
-            candidates — add the one you mean by hand.
+            candidates — add the one you mean by hand. A STATIC member is never
+            searched for, so a call such as max(a, b) with no static import is not
+            fixed; every name an import could have resolved and this run did not is
+            listed in `unresolved`, with its line and the compiler's message.
             Applies the change directly (default) and returns
             { filesModified, diff, undoChangeId, summary }; when imports are
             already organized, returns hasChanges: false without touching the
@@ -205,6 +212,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             data.put("importsAdded", 0);
             data.put("importsRemoved", 0);
             putDeclined(data, organized.declined());
+            putUnresolved(data, organized.unresolved());
             return Preparation.fail(ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "get_diagnostics to check for remaining issues"))
@@ -224,6 +232,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         extras.put("importsRemoved", organized.removed());
         extras.put("organizedImportBlock", previewImportBlock(cu, organized.edit()));
         putDeclined(extras, organized.declined());
+        putUnresolved(extras, organized.unresolved());
 
         String summary = "organize imports (" + organized.added() + " added, "
             + organized.removed() + " removed)";
@@ -256,6 +265,8 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         List<Map<String, Object>> modified = new ArrayList<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
         List<Map<String, Object>> declined = new ArrayList<>();
+        List<Map<String, Object>> unresolved = new ArrayList<>();
+        List<String> unchecked = new ArrayList<>();
         int added = 0;
         int removed = 0;
 
@@ -270,6 +281,16 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
                     entry.put("filePath", where);
                     entry.putAll(name);
                     declined.add(entry);
+                }
+                if (organized.unresolved() == null) {
+                    unchecked.add(where);
+                } else {
+                    for (Map<String, Object> name : organized.unresolved()) {
+                        Map<String, Object> entry = new LinkedHashMap<>();
+                        entry.put("filePath", where);
+                        entry.putAll(name);
+                        unresolved.add(entry);
+                    }
                 }
                 if (!organized.hasChanges()) {
                     continue;
@@ -315,6 +336,10 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         counts.put("modifiedFiles", modified);
         counts.put("skippedFiles", skipped);
         putDeclined(counts, declined);
+        putUnresolved(counts, unresolved);
+        if (!unchecked.isEmpty()) {
+            counts.put("unresolvedNotCheckedIn", unchecked);
+        }
 
         if (edits.isEmpty()) {
             Map<String, Object> data = new LinkedHashMap<>(counts);
@@ -344,11 +369,32 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
      * reported whether or not anything else changed.
      */
     private record Organized(TextEdit edit, int added, int removed, int totalImports,
-                             List<Map<String, Object>> declined) {
+                             List<Map<String, Object>> declined, List<Map<String, Object>> unresolved) {
         boolean hasChanges() {
             return edit != null
                 && (edit.hasChildren() || edit.getLength() > 0 || added > 0 || removed > 0);
         }
+    }
+
+    /**
+     * {@code unresolved} and what it means, when the run left any name an import could fix;
+     * {@code null} means the check could not be made, and says so.
+     */
+    private static void putUnresolved(Map<String, Object> data,
+                                      List<Map<String, Object>> unresolved) {
+        if (unresolved == null) {
+            data.put("unresolvedNotChecked", "this run added an on-demand import, whose reach a"
+                + " simple name cannot be checked against — get_diagnostics answers instead");
+            return;
+        }
+        if (unresolved.isEmpty()) {
+            return;
+        }
+        data.put("unresolved", unresolved);
+        data.put("unresolvedNote", unresolved.size() + " name(s) are still unresolved after this"
+            + " run and no import was added for them: a static member (this engine never searches"
+            + " for those), a type not on the classpath, or a misspelling. The compiler's own"
+            + " message is given with each.");
     }
 
     /** {@code declinedAmbiguous} and what to do about it, when anything was declined. */
@@ -373,6 +419,9 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         parser.setSource(cu);
         parser.setResolveBindings(true);
         parser.setBindingsRecovery(true);
+        // REL44-27 reads this AST's problems, and a resolved AST can be served from cache
+        // with none attached — an empty list would then read as "nothing unresolved".
+        parser.setForceProblemDetection(true);
         CompilationUnit ast = (CompilationUnit) parser.createAST(null);
 
         // Headless ambiguity policy: never guess between candidates — skip them
@@ -404,8 +453,104 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             /* allowSyntaxErrors */ true, skipAmbiguous);
 
         TextEdit edit = operation.createTextEdit(new NullProgressMonitor());
+        List<Map<String, Object>> unresolved = stillUnresolved(cu, ast, edit, declined);
         return new Organized(edit, operation.getNumberOfImportsAdded(),
-            operation.getNumberOfImportsRemoved(), ast.imports().size(), List.copyOf(declined));
+            operation.getNumberOfImportsRemoved(), ast.imports().size(), List.copyOf(declined), unresolved);
+    }
+
+    /**
+     * REL44-27 — every name an import could have fixed that this run left unresolved.
+     *
+     * <p>JDT's engine adds TYPE imports and never searches for static members, so a file
+     * calling {@code max(a, b)} with no static import came back {@code hasChanges=false,
+     * importsAdded=0} with the error still in it: the same silence REL44-13 removed for an
+     * ambiguous type, from a name the engine never looks for. So the compiler's own problems
+     * on the parsed file are read for the import-fixable kinds — an unresolved type, an
+     * unqualified call to an undefined method, an unqualified unknown name — and every one
+     * the run did not just import, and that is not already listed as declined, is reported.</p>
+     *
+     * @return the names, empty when none; {@code null} when the run added an ON-DEMAND
+     *     import, whose reach a simple name cannot be checked against — reported as not
+     *     checked rather than guessed
+     */
+    private static List<Map<String, Object>> stillUnresolved(ICompilationUnit cu,
+            CompilationUnit ast, TextEdit edit, List<Map<String, Object>> declined) {
+        java.util.Set<String> before = new java.util.HashSet<>();
+        for (Object o : ast.imports()) {
+            org.eclipse.jdt.core.dom.ImportDeclaration d = (org.eclipse.jdt.core.dom.ImportDeclaration) o;
+            before.add((d.isStatic() ? "static " : "") + d.getName().getFullyQualifiedName()
+                + (d.isOnDemand() ? ".*" : ""));
+        }
+        java.util.Set<String> resolvedByRun = new java.util.HashSet<>();
+        for (Map<String, Object> d : declined) {
+            resolvedByRun.add(String.valueOf(d.get("name")));
+        }
+        if (edit != null) {
+            for (String line : previewImportBlock(cu, edit).split("\n")) {
+                String imported = line.replaceFirst("^import\\s+", "").replace(";", "").trim();
+                if (imported.isEmpty() || before.contains(imported)) {
+                    continue;
+                }
+                if (imported.endsWith(".*")) {
+                    return null;
+                }
+                resolvedByRun.add(imported.substring(imported.lastIndexOf('.') + 1));
+            }
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (org.eclipse.jdt.core.compiler.IProblem problem : ast.getProblems()) {
+            String name = importableName(ast, problem);
+            if (name == null || resolvedByRun.contains(name) || !seen.add(name)) {
+                continue;
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", name);
+            entry.put("line", problem.getSourceLineNumber());
+            entry.put("problem", problem.getMessage());
+            out.add(entry);
+        }
+        return List.copyOf(out);
+    }
+
+    /** The simple name an import could resolve at {@code problem}, or null for any other problem. */
+    private static String importableName(CompilationUnit ast,
+            org.eclipse.jdt.core.compiler.IProblem problem) {
+        int start = problem.getSourceStart();
+        int length = problem.getSourceEnd() - start + 1;
+        if (start < 0 || length <= 0) {
+            return null;
+        }
+        org.eclipse.jdt.core.dom.ASTNode node =
+            org.eclipse.jdt.core.dom.NodeFinder.perform(ast, start, length);
+        switch (problem.getID()) {
+            case org.eclipse.jdt.core.compiler.IProblem.UndefinedType: {
+                if (node instanceof org.eclipse.jdt.core.dom.SimpleType t) {
+                    node = t.getName();
+                }
+                return node instanceof org.eclipse.jdt.core.dom.SimpleName n
+                        && !(n.getParent() instanceof org.eclipse.jdt.core.dom.QualifiedName)
+                        && !(n.getParent() instanceof org.eclipse.jdt.core.dom.QualifiedType)
+                    ? n.getIdentifier() : null;
+            }
+            case org.eclipse.jdt.core.compiler.IProblem.UndefinedMethod: {
+                for (org.eclipse.jdt.core.dom.ASTNode n = node; n != null; n = n.getParent()) {
+                    if (n instanceof org.eclipse.jdt.core.dom.MethodInvocation call) {
+                        return call.getExpression() == null ? call.getName().getIdentifier() : null;
+                    }
+                }
+                return null;
+            }
+            case org.eclipse.jdt.core.compiler.IProblem.UndefinedName:
+            case org.eclipse.jdt.core.compiler.IProblem.UnresolvedVariable: {
+                return node instanceof org.eclipse.jdt.core.dom.SimpleName n
+                        && !(n.getParent() instanceof org.eclipse.jdt.core.dom.QualifiedName)
+                        && !(n.getParent() instanceof org.eclipse.jdt.core.dom.FieldAccess)
+                    ? n.getIdentifier() : null;
+            }
+            default:
+                return null;
+        }
     }
 
     /** The organized import block, for the response: apply the edit to a copy. */
