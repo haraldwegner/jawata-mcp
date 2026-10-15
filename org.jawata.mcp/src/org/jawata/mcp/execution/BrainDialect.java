@@ -59,6 +59,18 @@ public interface BrainDialect {
     ToolAttachment toolAttachment();
 
     /**
+     * What stops this brain writing as THIS dialect is configured — and whether that is a mechanism
+     * or an instruction to the model (the architect's F1; S16-35).
+     *
+     * <p>NO DEFAULT, on the same rule {@link #toolAttachment()} follows: a default would let a fifth
+     * brain ship without anyone having said what bounds its writes, which is how a flag credited
+     * with a bound it does not have stayed credited for a checkpoint. The answer is read from a
+     * fact the dialect already holds, and every {@code --flag} it cites must be one its
+     * {@link #command} actually sends — a test sweeps that.</p>
+     */
+    WriteContainment writeContainment();
+
+    /**
      * Does this dialect see EVERY tool call the brain makes, and by name?
      *
      * <p>The measure "this run performed no code-changing operation" is only as complete as the

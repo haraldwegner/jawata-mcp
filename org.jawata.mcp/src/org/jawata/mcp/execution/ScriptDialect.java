@@ -61,6 +61,13 @@ public final class ScriptDialect implements BrainDialect {
         return List.copyOf(argv);
     }
 
+    /** A script writes whatever its own argv lets it; this hire adds no bound to that. */
+    @Override
+    public WriteContainment writeContainment() {
+        return WriteContainment.none("the script's own argv decides what it can reach; this hire"
+            + " adds no write bound of its own");
+    }
+
     /**
      * A script cannot be told which tools to attach, and what it CAN be bounded by is the hirer's
      * own containment rather than anything this dialect passes.

@@ -191,6 +191,29 @@ public final class ClaudeCodeDialect implements BrainDialect {
         return true;
     }
 
+    /**
+     * Given the resident's endpoint the brain starts with {@code --tools ""}: the CLI's own
+     * editors (Edit, Write, NotebookEdit) are not offered, and a tool that is absent from the
+     * process is a mechanism — re-measured 2026-10-15, the init event listed no tools and the
+     * "create a file" brief wrote nothing, in the work tree or off it. Without an endpoint (which
+     * the hire tool now refuses) only {@code --permission-mode plan} remains, and that was
+     * measured to let Write succeed.
+     */
+    @Override
+    public WriteContainment writeContainment() {
+        if (self != null) {
+            return WriteContainment.mechanism("--tools \"\": the CLI's own editors (Edit, Write,"
+                + " NotebookEdit) are not offered to the brain, so there is nothing to refuse");
+        }
+        if (readOnly) {
+            return WriteContainment.instruction("--permission-mode plan",
+                "measured, Write was advertised, invoked and succeeded, and no permission denial"
+                    + " was ever recorded; the run is bounded by its ceilings only");
+        }
+        return WriteContainment.none("--permission-mode manual, by explicit request: writes are"
+            + " not blocked for this hire");
+    }
+
     @Override
     public ToolAttachment toolAttachment() {
         // THE REPORT NAMES WHAT BINDS, and it used to name only what was sent. The earlier wording

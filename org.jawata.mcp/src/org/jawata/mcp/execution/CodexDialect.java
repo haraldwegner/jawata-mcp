@@ -111,6 +111,16 @@ public final class CodexDialect implements BrainDialect {
         return List.copyOf(argv);
     }
 
+    /** The CLI's own sandbox, observed rejecting an attempted apply_patch — a mechanism while read-only. */
+    @Override
+    public WriteContainment writeContainment() {
+        if ("read-only".equals(sandbox)) {
+            return WriteContainment.mechanism("--sandbox read-only: the CLI's own sandbox, observed"
+                + " rejecting an attempted apply_patch");
+        }
+        return WriteContainment.none("--sandbox " + sandbox + " permits writes, by explicit request");
+    }
+
     @Override
     public ToolAttachment toolAttachment() {
         return ToolAttachment.outOfBand("codex mcp (servers) and -c key=value (config), both before"

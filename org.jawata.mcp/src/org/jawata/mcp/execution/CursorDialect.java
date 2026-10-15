@@ -144,6 +144,22 @@ public final class CursorDialect implements BrainDialect {
         return List.copyOf(argv);
     }
 
+    /**
+     * {@code --mode plan} is an instruction: measured, a brief to create a file was refused in
+     * ten runs and carried out in five of fifteen pooled. {@code --sandbox enabled}, which this
+     * dialect also sends, was measured to add NO write bound, so it is not named as a basis.
+     */
+    @Override
+    public WriteContainment writeContainment() {
+        if (readOnly) {
+            return WriteContainment.instruction("--mode plan",
+                "breached in 5 of 15 measured runs; --sandbox enabled, also sent, added no write"
+                    + " bound (ten of ten runs wrote with --mode plan omitted)");
+        }
+        return WriteContainment.none("--mode plan is not passed, by explicit request: writes and"
+            + " shell commands are permitted in the working directory");
+    }
+
     @Override
     public ToolAttachment toolAttachment() {
         // THE WORDING NO LONGER PROMISES WHAT WAS MEASURED TO FAIL. It used to read "read-only, so
