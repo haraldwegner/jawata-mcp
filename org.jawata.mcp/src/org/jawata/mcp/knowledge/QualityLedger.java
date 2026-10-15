@@ -160,9 +160,28 @@ public final class QualityLedger {
      * @param passed    whether this criterion admitted the candidate
      */
     public void gate(String criterion, boolean passed) {
+        gate(criterion, passed ? 1 : 0, passed ? 0 : 1);
+    }
+
+    /**
+     * Many verdicts of one fit-gate criterion, counted in one write per counter (REL44-8).
+     *
+     * <p>A recall checks every candidate entry against its cue, and counting each check as it
+     * happened cost two synchronous writes per entry — about 22,000 for one recall over an
+     * 11,000-entry store, which is what pushed the hook's recall past its 200 ms deadline. The
+     * counts are the same either way; only the number of statements changes. A verdict that never
+     * occurred is not written, so a criterion that never passed still shows no {@code passed} row
+     * — an absence, not a zero.</p>
+     *
+     * @param criterion symbol / package / symptom / external_system / operation
+     * @param passed    how many candidates this criterion admitted
+     * @param rejected  how many it turned away
+     */
+    public void gate(String criterion, long passed, long rejected) {
         String c = "gate." + safe(criterion);
-        bump(c + ".checked");
-        bump(passed ? c + ".passed" : c + ".rejected");
+        add(c + ".checked", passed + rejected);
+        add(c + ".passed", passed);
+        add(c + ".rejected", rejected);
     }
 
     // ---- reading -----------------------------------------------------------
@@ -239,14 +258,27 @@ public final class QualityLedger {
     // ---- the write ---------------------------------------------------------
 
     private void bump(String name) {
+        add(name, 1);
+    }
+
+    /**
+     * Advance one counter by {@code amount}, in ONE statement — the single place this ledger
+     * writes, so the number of statements a caller causes is the number of calls here, which is
+     * the cost REL44-8 was about. An amount of zero or less writes nothing.
+     */
+    private void add(String name, long amount) {
+        if (amount <= 0) {
+            return;
+        }
         try {
-            // MERGE is H2's upsert: first sighting inserts 1, later ones add.
+            // MERGE is H2's upsert: first sighting inserts the amount, later ones add it.
             try (PreparedStatement ps = store.sharedConnection().prepareStatement(
                     "MERGE INTO quality_counter (name, count) KEY(name)"
                     + " VALUES (?, COALESCE((SELECT count FROM quality_counter"
-                    + " WHERE name = ?), 0) + 1)")) {
+                    + " WHERE name = ?), 0) + ?)")) {
                 ps.setString(1, name);
                 ps.setString(2, name);
+                ps.setLong(3, amount);
                 ps.executeUpdate();
             }
         } catch (SQLException | RuntimeException e) {

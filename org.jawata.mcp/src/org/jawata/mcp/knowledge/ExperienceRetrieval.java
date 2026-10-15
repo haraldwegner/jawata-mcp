@@ -292,13 +292,18 @@ public final class ExperienceRetrieval {
         // The gate stops excluding; it only routes.
         List<StoredEntry> fitting = new ArrayList<>();
         List<StoredEntry> turnedAwayExperience = new ArrayList<>();
+        // REL44-8: the gate's verdicts are tallied here and written once below, not once per
+        // candidate — per candidate it was two synchronous writes each, ~22,000 for one recall
+        // over an 11,000-entry store, which is what pushed the hook's recall past its deadline.
+        GateTally tally = new GateTally();
         for (StoredEntry e : candidates) {
-            if (fits(e, q)) {
+            if (fits(e, q, tally)) {
                 fitting.add(e);
             } else if (KnowledgeKind.of(e).isExperience()) {
                 turnedAwayExperience.add(e);
             }
         }
+        count(() -> tally.flushInto(quality));
         // Sprint 27 D2 — the SECOND nominator. Keyword gathered `candidates`
         // above; meaning gathers its own, and the two are a UNION, never a
         // replacement: an FQN cue is answered deterministically by the keyword
@@ -1825,20 +1830,42 @@ public final class ExperienceRetrieval {
     // --- Phase 2: fit gate (scope-containment) -----------------------------------------
 
     /**
+     * One recall's fit-gate verdicts, counted in memory and written in one statement per counter
+     * when the scan ends (REL44-8). Each recall owns its own, so concurrent recalls never share
+     * one.
+     */
+    static final class GateTally {
+        private final Map<String, long[]> verdicts = new LinkedHashMap<>();
+
+        /** One criterion's verdict on one candidate. */
+        void record(String criterion, boolean passed) {
+            verdicts.computeIfAbsent(criterion, k -> new long[2])[passed ? 0 : 1]++;
+        }
+
+        /** Every criterion's totals, one {@link QualityLedger#gate(String, long, long)} each. */
+        void flushInto(QualityLedger ledger) {
+            verdicts.forEach((criterion, v) -> ledger.gate(criterion, v[0], v[1]));
+        }
+    }
+
+    /**
      * True iff the entry's scope contains the cue. <b>Subject</b> cues (symbol / package /
      * symptom / external_system) locate the knowledge — when any is present the entry must
      * fit on a subject (OR over subjects). <b>operation</b> is a <b>refinement</b>, not an
      * independent matcher: it narrows a subject fit (an entry declaring a <em>different</em>
      * operation is dropped) and only stands alone in an operation-only query. This stops a
      * same-kind failure on an unrelated symbol from leaking through on the operation alone.
+     *
+     * @param tally this recall's verdict tally — each criterion's verdict is recorded there and
+     *     written once when the scan ends, never per candidate (REL44-8)
      */
-    boolean fits(StoredEntry e, RecallQuery q) {
+    boolean fits(StoredEntry e, RecallQuery q, GateTally tally) {
         boolean subjectPresent =
             q.hasSymbol() || q.hasPackage() || q.hasSymptom() || q.hasExternalSystem();
         if (!subjectPresent) {
             // Operation-only (refinement) query: fit iff the entry is that operation.
             boolean only = q.hasOperation() && eqIgnoreCase(e.operation(), q.operation());
-            count(() -> quality.gate("operation", only));
+            tally.record("operation", only);
             return only;
         }
         // Sprint 27 D6: each criterion is counted for what IT said, not for what
@@ -1851,20 +1878,18 @@ public final class ExperienceRetrieval {
         boolean symptomOk = q.hasSymptom() && symptomFits(e, q.symptom());
         boolean externalOk = q.hasExternalSystem()
             && eqIgnoreCase(e.externalSystem(), q.externalSystem());
-        count(() -> {
-            if (q.hasSymbol()) {
-                quality.gate("symbol", symbolOk);
-            }
-            if (q.hasPackage()) {
-                quality.gate("package", packageOk);
-            }
-            if (q.hasSymptom()) {
-                quality.gate("symptom", symptomOk);
-            }
-            if (q.hasExternalSystem()) {
-                quality.gate("external_system", externalOk);
-            }
-        });
+        if (q.hasSymbol()) {
+            tally.record("symbol", symbolOk);
+        }
+        if (q.hasPackage()) {
+            tally.record("package", packageOk);
+        }
+        if (q.hasSymptom()) {
+            tally.record("symptom", symptomOk);
+        }
+        if (q.hasExternalSystem()) {
+            tally.record("external_system", externalOk);
+        }
         if (!(symbolOk || packageOk || symptomOk || externalOk)) {
             return false;
         }
@@ -1872,7 +1897,7 @@ public final class ExperienceRetrieval {
         boolean refined = !(q.hasOperation() && e.operation() != null && !e.operation().isBlank()
             && !eqIgnoreCase(e.operation(), q.operation()));
         if (q.hasOperation()) {
-            count(() -> quality.gate("operation", refined));
+            tally.record("operation", refined);
         }
         return refined;
     }
