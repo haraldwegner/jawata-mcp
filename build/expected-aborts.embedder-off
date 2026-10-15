@@ -1,0 +1,19 @@
+# The skips a suite run with the embedder SWITCHED OFF (-Djawata.embed.disabled=true)
+# is expected to make, on top of its platform's own budget. Used by CI's embedder-off job
+# as `abort-budget.sh <log> linux,embedder-off`. One pattern per line; a line is matched
+# as a substring of the abort message.
+#
+# --- REL44-24 (Sprint 28g), 2026-10-15 ---
+# Why the job exists: no gate ran ANY test with the embedder off, so a test that FAILS
+# without an embedder - rather than skipping - was invisible on every machine that has
+# one, which is every machine this project builds on. Running nine classes that way turned
+# up two such tests and one assertion hidden behind an if (REL44-21). The degrade path the
+# product promises - a broken embedder leaves the product working exactly as before - was
+# exercised only by the few tests that switch it off themselves.
+#
+# Why these skips are acceptable: a test whose subject IS meaning recall cannot run without
+# the model, and says so instead of passing. Every such assumption in the suite words its
+# reason one of these two ways; a skip worded otherwise fails the budget, which is the
+# point - a new skip is a decision, read before it is accepted.
+no embedder
+embedder unavailable

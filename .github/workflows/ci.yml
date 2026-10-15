@@ -241,3 +241,69 @@ jobs:
           exit 1
         fi
         echo "ok: git status clean after the Gradle cell"
+
+  # REL44-24 (Sprint 28g): the whole suite with the embedder SWITCHED OFF.
+  #
+  # Every machine this project builds on has the embedder, so a test that FAILS without
+  # one - rather than skipping - was invisible everywhere. Running nine classes that way
+  # turned up two such tests and an assertion hidden behind an if (REL44-21), and the
+  # degrade path the product promises (a broken embedder leaves it working exactly as
+  # before) was exercised only by the few tests that switch it off themselves. The whole
+  # suite, not a list of classes: the dangerous test is the one that depends on the
+  # embedder WITHOUT naming it, which no list derived from the source would contain.
+  #
+  # Its cost is this runner's time and nobody's wall clock: nothing waits on it locally.
+  embedder-off:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v5
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build
+      shell: bash
+      run: mvn -B -f build/pom.xml install -DskipTests
+
+    - name: The suite with the embedder switched off
+      timeout-minutes: 100
+      shell: bash
+      run: |
+        java -Djawata.embed.disabled=true \
+             -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
+             -Djawata.experience.shared.dir="$RUNNER_TEMP/jawata-test-store" \
+             -Djawata.skip.gradle=true \
+             -jar build/dist/target/dist/jawata.jar -runTests 2>&1 | tee embedder-off.log
+        test ${PIPESTATUS[0]} -eq 0
+        line="$(grep 'SPIKE-TESTS' embedder-off.log | tail -1)"
+        echo "$line"
+        # Capital F: `failed=0` would also match `containersFailed=0` were it lower-case.
+        case "$line" in
+          *"containersFailed=0"*) ;;
+          *) echo "FAIL: a container failed - a @BeforeAll, @AfterAll or class initializer threw."
+             exit 1 ;;
+        esac
+        # PROOF THE SWITCH TOOK. A run in which nothing skipped for want of an embedder
+        # did not run with it off, and would have proved nothing while reporting green.
+        if ! grep -qE '~~ ABORTED .*(no embedder|embedder unavailable)' embedder-off.log; then
+          echo "FAIL: no test skipped for want of an embedder - the switch did not take."
+          exit 1
+        fi
+        echo "ok: the suite ran with the embedder off, and nothing failed for it"
+
+    - name: Abort budget - the embedder skips are the only new ones
+      if: always()
+      shell: bash
+      run: build/abort-budget.sh embedder-off.log linux,embedder-off
+
+    - name: Upload test log
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: test-log-embedder-off
+        path: embedder-off.log

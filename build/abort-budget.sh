@@ -11,8 +11,13 @@
 # message names the abort so the reader can either fix it or add the line WITH
 # its justification.
 #
-# Usage: build/abort-budget.sh <log-dir-or-file> [os]
+# Usage: build/abort-budget.sh <log-dir-or-file> [os[,budget...]]
 #        (os defaults to the running platform: linux | windows | macos)
+#
+# REL44-24: several budgets may be named, comma-separated, and their patterns are
+# unioned — `linux,embedder-off` is the Linux budget PLUS the skips a run with the
+# embedder switched off is expected to make. A second copy of the Linux file would
+# be two lists of one fact, which drift.
 #
 # Takes a DIRECTORY of shard logs (the local sharded runner) or a single log
 # file (CI runs the suite unsharded into test-run.log) — the budget must apply
@@ -33,28 +38,34 @@ else
     esac
 fi
 
-EXPECTED="$ROOT/build/expected-aborts.$OS"
-if [ ! -f "$EXPECTED" ]; then
-    echo "FATAL: no committed abort budget for '$OS' ($EXPECTED)."
-    echo "A platform with no budget file has no agreed skip set — write one,"
-    echo "with a reason per line, rather than letting this pass unchecked."
-    exit 2
-fi
-
-# Patterns: non-empty, non-comment lines.
+# Patterns: non-empty, non-comment lines, from every budget named.
 #
 # read-loop, not mapfile: macOS ships bash 3.2, where mapfile does not exist.
 # The first CI run of this gate died there with "mapfile: command not found"
 # followed by "PATTERNS: unbound variable" — a portability assumption inside
 # the very script that polices portability assumptions.
 PATTERNS=()
-while IFS= read -r line; do
-    PATTERNS+=("$line")
-done < <(grep -v '^[[:space:]]*#' "$EXPECTED" | grep -v '^[[:space:]]*$')
-if [ "${#PATTERNS[@]}" -eq 0 ]; then
-    echo "FATAL: $EXPECTED lists no patterns — an empty budget would accept every skip."
-    exit 2
-fi
+FILES=""
+IFS=',' read -r -a BUDGETS <<< "$OS"
+for budget in "${BUDGETS[@]}"; do
+    EXPECTED="$ROOT/build/expected-aborts.$budget"
+    FILES="${FILES:+$FILES or }$EXPECTED"
+    if [ ! -f "$EXPECTED" ]; then
+        echo "FATAL: no committed abort budget for '$budget' ($EXPECTED)."
+        echo "A platform with no budget file has no agreed skip set — write one,"
+        echo "with a reason per line, rather than letting this pass unchecked."
+        exit 2
+    fi
+    before=${#PATTERNS[@]}
+    while IFS= read -r line; do
+        PATTERNS+=("$line")
+    done < <(grep -v '^[[:space:]]*#' "$EXPECTED" | grep -v '^[[:space:]]*$')
+    if [ "${#PATTERNS[@]}" -eq "$before" ]; then
+        echo "FATAL: $EXPECTED lists no patterns — an empty budget would accept every skip."
+        exit 2
+    fi
+done
+EXPECTED="$FILES"
 
 # Every abort line the run produced.
 if [ -d "$LOG_TARGET" ]; then
