@@ -349,7 +349,16 @@ public class HireTool extends AbstractTool {
                     + " this machine and keep its own editors. Hire from a resident serving HTTP,"
                     + " or give the seat another brain (cursor, codex or copilot)");
         }
-        BrainDialect dialect = seat.dialect(endpoint);
+        // REL44-6: the engine's code-changing tools the seat did not name are taken away from a
+        // brain that attaches this resident, by the engine's own flag. --allowedTools only
+        // PRE-APPROVES; the rest stayed offered (a read-only PM's init event listed all 44).
+        ToolRegistry engineTools = registry.get();
+        List<String> hiddenTools = engineTools.getToolNames().stream()
+            .filter(name -> engineTools.getTool(name).map(Tool::changesCode).orElse(false))
+            .filter(name -> !seat.tools().contains(name))
+            .sorted()
+            .toList();
+        BrainDialect dialect = seat.dialect(endpoint, hiddenTools);
         WriteContainment containment = dialect.writeContainment();
         if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
             // THE ARCHITECT'S F1, option A. A brain whose writes are held only by an instruction to
@@ -377,7 +386,8 @@ public class HireTool extends AbstractTool {
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint);
         HiredRun.Proposal proposal;
         try {
-            proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()));
+            proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
+                hiddenTools);
         } catch (IOException e) {
             return ToolResponse.error("INTERNAL_ERROR",
                 "the brain could not be spawned: " + e.getMessage(),

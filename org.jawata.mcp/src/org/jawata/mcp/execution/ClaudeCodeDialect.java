@@ -54,6 +54,9 @@ public final class ClaudeCodeDialect implements BrainDialect {
     private final String model;
     private final boolean readOnly;
 
+    /** The resident's tools taken away from the brain; see the constructor. */
+    private final List<String> hiddenTools;
+
     /** The hiring resident's own endpoint, or null when it has none (stdio). See {@link SelfEndpoint}. */
     private final SelfEndpoint self;
 
@@ -96,11 +99,24 @@ public final class ClaudeCodeDialect implements BrainDialect {
      */
     public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly,
             SelfEndpoint self) {
+        this(binary, maxTurns, model, readOnly, self, List.of());
+    }
+
+    /**
+     * @param hiddenTools the resident's tools to take AWAY from the brain with
+     *     {@code --disallowedTools} (REL44-6) — the code-changing ones the seat did not name.
+     *     {@code --allowedTools} pre-approves a list and does not hide the rest; measured, a
+     *     read-only hire's init event listed all 44 of the resident's tools. Only meaningful with
+     *     an endpoint, because the names are the ones the CLI sees through that server.
+     */
+    public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly,
+            SelfEndpoint self, List<String> hiddenTools) {
         this.binary = binary == null || binary.isBlank() ? "claude" : binary;
         this.maxTurns = maxTurns > 0 ? maxTurns : DEFAULT_MAX_TURNS;
         this.model = model;
         this.readOnly = readOnly;
         this.self = self;
+        this.hiddenTools = hiddenTools == null ? List.of() : List.copyOf(hiddenTools);
     }
 
     @Override
@@ -175,6 +191,15 @@ public final class ClaudeCodeDialect implements BrainDialect {
                     // mcp__jawata__<tool>; the bare name is one it does not know.
                     argv.add(self != null ? SelfEndpoint.claudeToolName(tool) : tool);
                 }
+            }
+        }
+        if (self != null && !hiddenTools.isEmpty()) {
+            // REL44-6: take away what the allowlist only fails to approve. An allowlist
+            // PRE-APPROVES; a tool outside it is still OFFERED, and whether it is refused then
+            // rests on the permission mode, an instruction. This removes it from the offer.
+            argv.add("--disallowedTools");
+            for (String tool : hiddenTools) {
+                argv.add(SelfEndpoint.claudeToolName(tool));
             }
         }
         return List.copyOf(argv);

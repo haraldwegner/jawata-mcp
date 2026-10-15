@@ -151,7 +151,16 @@ public final class HiredRun {
      */
     public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
             GateRunner gates) throws IOException, InterruptedException {
-        BrainDialect dialect = seat.dialect(self);
+        return issue(seat, base, brief, steps, gates, List.of());
+    }
+
+    /**
+     * As the form above, taking {@code hiddenTools} away from a brain that attaches the resident
+     * (REL44-6): the engine's code-changing tools the seat did not name.
+     */
+    public Proposal issue(SeatHire seat, HostCommand base, String brief, List<GatedStep> steps,
+            GateRunner gates, List<String> hiddenTools) throws IOException, InterruptedException {
+        BrainDialect dialect = seat.dialect(self, hiddenTools);
         WriteContainment containment = dialect.writeContainment();
         if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
             // S16-38. The hire tool refuses this first, with a friendlier answer; this is the

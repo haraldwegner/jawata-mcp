@@ -242,9 +242,17 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      * {@link SelfEndpoint} for what a Claude hire does with it. Null is the stdio case.
      */
     public BrainDialect dialect(SelfEndpoint self) {
+        return dialect(self, List.of());
+    }
+
+    /**
+     * As {@link #dialect(SelfEndpoint)}, taking {@code hiddenTools} away from a brain that attaches
+     * the resident (REL44-6). A brain that does not attach it has nothing to hide from.
+     */
+    public BrainDialect dialect(SelfEndpoint self, List<String> hiddenTools) {
         return switch (brain) {
             case CLAUDE_CODE -> new ClaudeCodeDialect("claude",
-                ClaudeCodeDialect.DEFAULT_MAX_TURNS, model, true, self);
+                ClaudeCodeDialect.DEFAULT_MAX_TURNS, model, true, self, hiddenTools);
             case CURSOR -> new CursorDialect("cursor-agent", true, model);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
             // auto_mode_resolved event reports which it chose and why), and codex's is set in its

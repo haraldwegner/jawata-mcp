@@ -138,14 +138,21 @@ class HireToolTest {
 
         private final HostProcesses real;
         private final HostCommand standIn;
+        /** The argv the product ASKED to start, which the stand-in replaces. */
+        private volatile List<String> asked = List.of();
 
         StandsIn(HostProcesses real, HostCommand standIn) {
             this.real = real;
             this.standIn = standIn;
         }
 
+        List<String> asked() {
+            return asked;
+        }
+
         @Override
         public Process start(HostCommand command) throws IOException {
+            this.asked = command.argv();
             return real.start(standIn);
         }
 
@@ -749,6 +756,31 @@ class HireToolTest {
             () -> assertEquals("INSTRUCTION", data.get("writeContainmentBasis")),
             () -> assertTrue(String.valueOf(data.get("writeContainment")).contains("INSTRUCTION"),
                 String.valueOf(data.get("writeContainment"))));
+    }
+
+    @Test
+    @DisplayName("REL44-6: the hire hides the engine's code-changing tools from claude, except the ones the seat names")
+    void aHiredClaudeIsNotOfferedTheEnginesCodeChangingToolsTheSeatDidNotAskFor() throws Exception {
+        StandsIn spy = new StandsIn(host, aBrainThatAnswers());
+        HireTool hire = toolWith(spy, events, aRegistryWithAChangingOperation());
+
+        hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        List<String> argv = spy.asked();
+        int hidden = argv.indexOf("--disallowedTools");
+
+        // THE CONTROL: a seat that names the changing tool itself keeps it.
+        StandsIn spy2 = new StandsIn(host, aBrainThatAnswers());
+        toolWith(spy2, events, aRegistryWithAChangingOperation()).execute(hireArgs(seatFile(
+            CATALOGUER_SEAT.replace("tools: [inspect,", "tools: [extract, inspect,"))));
+
+        assertAll(
+            () -> assertTrue(hidden >= 0, "the changing fixture 'extract' is hidden: " + argv),
+            () -> assertEquals("mcp__jawata__extract", argv.get(hidden + 1), argv.toString()),
+            () -> assertFalse(argv.contains("mcp__jawata__compile_workspace")
+                    && argv.indexOf("mcp__jawata__compile_workspace") > hidden,
+                "a read-only tool is not hidden: " + argv),
+            () -> assertFalse(spy2.asked().contains("--disallowedTools"),
+                "a seat that asked for the tool by name keeps it: " + spy2.asked()));
     }
 
     @Test
