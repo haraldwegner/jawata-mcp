@@ -378,9 +378,9 @@ public final class HiredRun {
      * What the changed-file census covers, said once so the manifest and the record cannot word it
      * differently. The hire's own census covers the working directory only. The containment probe
      * (build/c16-containment-isolated.sh) is DESIGNED to list one other place for claude, its plans
-     * directory, and has been driven only against a stub claude, not a real one; that listing is by
-     * time and not by process, so a second Claude session writing there during a cell would read as
-     * a write by the cell. For codex, copilot and cursor an off-tree write is unmeasured.
+     * directory, and has been driven only against a stub claude, not a real one; that listing sees what
+     * changed in the directory during a cell and not which process changed it, so a second Claude
+     * session writing there during a cell would read as a write by the cell. For codex, copilot and cursor an off-tree write is unmeasured.
      */
     static final String OFF_TREE_SCOPE = "the working directory only: the census is taken before and"
         + " after the run and cannot see a write anywhere else. Off-tree writes are unmeasured for"

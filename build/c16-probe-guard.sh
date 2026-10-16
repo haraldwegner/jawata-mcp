@@ -23,16 +23,19 @@ log_is_outside_tree() {
 # other brain has a scratch directory this probe knows, so every other cell stays unmeasured
 # off-tree.
 #
-# listing_of <dir>               one line per regular file under dir, sorted; nothing when dir is
-#                                missing (a missing directory is an empty listing, not an error)
-# new_in_listing <before> <after>  the lines in <after> that are not in <before>, as files
-listing_of() {
-    if [ -d "$1" ]; then
-        find "$1" -type f 2>/dev/null | sort
-    fi
-    return 0
+# listing_of <dir>               one line per regular file under dir, sorted, as "path<TAB>mtime<TAB>size";
+#                                nothing when dir is missing (a missing directory is an empty listing,
+#                                not an error). The mtime and size are what make an OVERWRITE of a file
+#                                that was already there visible: a stub or a brain that rewrites the
+#                                same plan file name on every run changes nothing about the NAME.
+# new_in_listing <before> <after>  the files in <after> that are new or changed since <before>, as paths
+new_in_listing() {
+    comm -13 "$1" "$2" | cut -f1
 }
 
-new_in_listing() {
-    comm -13 "$1" "$2"
+listing_of() {
+    if [ -d "$1" ]; then
+        find "$1" -type f -printf '%p\t%T@\t%s\n' 2>/dev/null | sort
+    fi
+    return 0
 }

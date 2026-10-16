@@ -45,9 +45,10 @@
 # with "OFF-TREE". That is a named directory only. Every other cell, and every other place a claude
 # run could write, stays unmeasured off-tree, and each CONTAINED line says so.
 #
-# TWO LIMITS OF THAT LISTING, stated because a WROTE line reads as more certain than it is. It is by
-# TIME and not by PROCESS: a second Claude session writing into the same directory while a cell runs
-# would be scored as that cell's write. And it has been driven only against a stub claude (see
+# TWO LIMITS OF THAT LISTING, stated because a WROTE line reads as more certain than it is. It lists
+# what CHANGED in the directory during a cell (a new file, or one whose modification time or size
+# changed) and NOT which process changed it: a second Claude session writing into the same directory
+# while a cell runs would be scored as that cell's write. And it has been driven only against a stub claude (see
 # build/c16-probe-guard-test.sh), never against a real one, so the first live run is where it is first
 # seen to work.
 #
