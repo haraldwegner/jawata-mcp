@@ -427,26 +427,76 @@ public class ToolRegistry {
     }
 
     /**
-     * Sprint 22a P2 rider: renamed / consolidated tool names → their current
-     * front door, so a call to an old name gets a "did you mean" hint instead of
-     * a bare not-found (the tool surface collapsed many narrow tools into
-     * parametric front doors across Sprints 11–19).
+     * Every tool name this product has PUBLISHED and no longer does → the live call that
+     * replaced it, so a call to an old name gets a "did you mean" pointer instead of a bare
+     * not-found.
+     *
+     * <p><b>This table is exactly the retired half of {@code build/published-tool-names.txt}</b>,
+     * which is derived from each release's own registered tools, and
+     * {@code PublishedToolNamesTest} checks both directions: a published name that is neither live
+     * nor a row here fails, and a row here for a name nobody published fails. It was written from
+     * memory before that, and 35 of the 65 retired names answered a bare not-found while four
+     * patches each corrected the one copy of the surface a failure had happened to expose.</p>
+     *
+     * <p><b>Each pointer names the KIND or ACTION as well as the front door</b>, because told only
+     * that a name is now {@code inspect}, a caller has a dozen kinds to guess between and that guess
+     * is the whole cost of the fold. The same test reads the live tools' schemas and fails a pointer
+     * whose front door is not live or whose kind, action, direction or scope that door does not
+     * accept, so a pointer cannot go stale when a door is renamed.</p>
      */
     private static final Map<String, String> RENAMED_TOOLS = Map.ofEntries(
-        Map.entry("get_type_members", "inspect"),
-        Map.entry("get_type_hierarchy", "inspect"),
-        Map.entry("get_type_usage_summary", "inspect"),
-        Map.entry("get_symbol_info", "get_at_position"),
-        Map.entry("get_call_hierarchy_incoming", "get_call_hierarchy"),
-        Map.entry("get_call_hierarchy_outgoing", "get_call_hierarchy"),
-        Map.entry("find_method_references", "find_references"),
-        Map.entry("move_class", "move"),
-        Map.entry("move_package", "move"),
-        Map.entry("pull_up", "move_in_hierarchy"),
-        Map.entry("push_down", "move_in_hierarchy"),
-        Map.entry("extract_method", "extract"),
-        Map.entry("extract_variable", "extract"),
-        Map.entry("inline_method", "inline"),
+        // inspect
+        Map.entry("get_type_members", "inspect kind=type_members"),
+        Map.entry("get_type_hierarchy", "inspect kind=type_hierarchy"),
+        Map.entry("get_type_usage_summary", "inspect kind=type_usage"),
+        Map.entry("get_classpath_info", "inspect kind=classpath"),
+        Map.entry("get_complexity_metrics", "inspect kind=complexity"),
+        Map.entry("get_dependency_graph", "inspect kind=dependency_graph"),
+        Map.entry("get_di_registrations", "inspect kind=di_registrations"),
+        Map.entry("get_document_symbols", "inspect kind=document_symbols"),
+        Map.entry("get_project_structure", "inspect kind=project_structure"),
+        // get_at_position
+        Map.entry("get_symbol_info", "get_at_position kind=symbol"),
+        Map.entry("get_type_at_position", "get_at_position kind=type"),
+        Map.entry("get_method_at_position", "get_at_position kind=method"),
+        Map.entry("get_field_at_position", "get_at_position kind=field"),
+        Map.entry("get_hover_info", "get_at_position kind=hover"),
+        Map.entry("get_javadoc", "get_at_position kind=javadoc"),
+        Map.entry("get_signature_help", "get_at_position kind=signature"),
+        Map.entry("get_enclosing_element", "get_at_position kind=enclosing"),
+        Map.entry("get_super_method", "get_at_position kind=super"),
+        // get_call_hierarchy and find_references
+        Map.entry("get_call_hierarchy_incoming", "get_call_hierarchy direction=incoming"),
+        Map.entry("get_call_hierarchy_outgoing", "get_call_hierarchy direction=outgoing"),
+        Map.entry("find_method_references", "find_references kind=method_references"),
+        Map.entry("find_implementations", "find_references kind=implementations"),
+        // analyze
+        Map.entry("analyze_change_impact", "analyze kind=change_impact"),
+        Map.entry("analyze_control_flow", "analyze kind=control_flow"),
+        Map.entry("analyze_data_flow", "analyze kind=data_flow"),
+        Map.entry("analyze_file", "analyze kind=file"),
+        Map.entry("analyze_javadocs", "analyze kind=javadocs"),
+        Map.entry("analyze_method", "analyze kind=method"),
+        Map.entry("analyze_naming", "analyze kind=naming"),
+        Map.entry("analyze_nullness", "analyze kind=nullness"),
+        Map.entry("analyze_type", "analyze kind=type"),
+        // move, hierarchy, extract, inline, generate
+        Map.entry("move_class", "move kind=class"),
+        Map.entry("move_package", "move kind=package"),
+        Map.entry("pull_up", "hierarchy direction=up"),
+        Map.entry("push_down", "hierarchy direction=down"),
+        Map.entry("extract_method", "extract kind=method"),
+        Map.entry("extract_variable", "extract kind=variable"),
+        Map.entry("extract_constant", "extract kind=constant"),
+        Map.entry("extract_interface", "extract kind=interface"),
+        Map.entry("inline_method", "inline kind=method"),
+        Map.entry("inline_variable", "inline kind=variable"),
+        Map.entry("generate_constructor", "generate kind=constructor"),
+        Map.entry("generate_equals_hashcode", "generate kind=equals_hashcode"),
+        Map.entry("generate_getters_setters", "generate kind=getters_setters"),
+        Map.entry("generate_test_skeleton", "generate kind=test_skeleton"),
+        Map.entry("generate_tostring", "generate kind=tostring"),
+        Map.entry("override_methods", "generate kind=override_methods"),
         // Sprint 28d-rescue (stage 1): the four folds and the two renames. A fold's
         // pointer names the KIND as well as the front door — for these six the front
         // door alone would leave a caller to guess which of its kinds replaced their
@@ -456,8 +506,22 @@ public class ToolRegistry {
             "refactor_to_pattern kind=replace_pattern_with_idiom"),
         Map.entry("replace_duplicates", "extract kind=replace_inline_code"),
         Map.entry("optimize_imports_workspace", "organize_imports with scope=workspace"),
-        Map.entry("encapsulate_field", "data"),
-        Map.entry("move_in_hierarchy", "hierarchy")
+        Map.entry("encapsulate_field", "data kind=encapsulate_field"),
+        Map.entry("move_in_hierarchy", "hierarchy"),
+        // refactoring: the staged-change lifecycle is one door with an action
+        Map.entry("apply_refactoring", "refactoring action=apply"),
+        Map.entry("undo_refactoring", "refactoring action=undo"),
+        Map.entry("inspect_refactoring", "refactoring action=inspect"),
+        // project, quick_fix, dependency
+        Map.entry("add_project", "project action=add"),
+        Map.entry("remove_project", "project action=remove"),
+        Map.entry("list_projects", "project action=list"),
+        Map.entry("apply_quick_fix", "quick_fix action=apply"),
+        Map.entry("get_quick_fixes", "quick_fix action=list"),
+        Map.entry("suggest_imports", "quick_fix action=suggest_imports"),
+        Map.entry("add_dependency", "dependency action=add"),
+        Map.entry("update_dependency", "dependency action=update"),
+        Map.entry("find_unused_dependencies", "dependency action=find_unused")
     );
 
     /**
@@ -511,12 +575,10 @@ public class ToolRegistry {
             }
             return direct;
         }
-        if (name.startsWith("analyze_")) {
-            return "analyze";
-        }
-        if (name.startsWith("inspect_")) {
-            return "inspect";
-        }
+        // No prefix guess for a name the table does not hold. Two used to stand here
+        // (analyze_* and inspect_*), and they answered for names nobody ever published and
+        // answered inspect_refactoring with the wrong door; the table now holds every name
+        // that WAS published, so a name it lacks is one this product never had.
         return null;
     }
 
