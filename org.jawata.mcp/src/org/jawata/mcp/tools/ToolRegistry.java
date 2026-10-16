@@ -256,6 +256,7 @@ public class ToolRegistry {
             def.put("description", tool.getDescription());
             def.put("inputSchema", declaringPrecedentOverride(tool.getInputSchema()));
             def.put("annotations", annotationsFor(tool));
+            def.put("_meta", metaFor(tool));
             definitions.add(def);
         }
 
@@ -351,6 +352,24 @@ public class ToolRegistry {
         }
         // else: OMITTED. See the javadoc — this is the third state, and it is real.
         return annotations;
+    }
+
+    /**
+     * What a client that must decide "did this call change code?" can read without keeping its own list.
+     *
+     * <p>{@code jawata/changesCode} is {@link Tool#changesCode()}, the flag the engine already uses to
+     * classify a hired run's calls (jawata-duplicate: that classification READS the flag, this
+     * PUBLISHES it; HireToolTest pins the reading). The annotations cannot answer the question:
+     * {@code readOnlyHint} is false for {@code compile_workspace}, {@code run_tests},
+     * {@code experience} and {@code hire}, which change no source, and {@code destructiveHint} is
+     * absent for {@code format}, {@code quick_fix}, {@code refactoring} and {@code dependency}, which
+     * do. The studio's hook kept three hand-written lists of these names and they disagreed
+     * (REL44-37); it generates its list from this field. It sits in {@code _meta}, the extension point
+     * the protocol reserves, so a client that validates {@code annotations} strictly sees no new
+     * key.</p>
+     */
+    private static Map<String, Object> metaFor(Tool tool) {
+        return Map.of("jawata/changesCode", tool.changesCode());
     }
 
     /**
