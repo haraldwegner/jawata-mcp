@@ -74,15 +74,26 @@
     .skip { position: absolute; left: -9999px; }
     .skip:focus { left: 1rem; top: 1rem; background: var(--bg-raised); padding: .5rem .8rem; z-index: 10; }
 
-    /* ---- top bar ---- */
+    /* ---- top bar: stays in view, so Download is always one click away ---- */
+    .top { position: sticky; top: 0; z-index: 20;
+           background: rgba(11, 16, 32, .82); border-bottom: 1px solid var(--line); }
+    @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+      .top { background: rgba(11, 16, 32, .68);
+             -webkit-backdrop-filter: blur(12px) saturate(140%); backdrop-filter: blur(12px) saturate(140%); }
+    }
     .bar { display: flex; align-items: center; justify-content: space-between;
-           padding: 1.25rem 0; gap: 1rem; }
+           padding-top: .7rem; padding-bottom: .7rem; gap: 1rem; }
     .brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
     .brand svg { flex: none; }
     .brand span { font-size: 1.15rem; letter-spacing: .16em; font-weight: 650; color: var(--gold); }
-    .nav { display: flex; gap: 1.4rem; font-size: .95rem; }
+    .nav { display: flex; gap: 1.4rem; font-size: .95rem; align-items: center; }
     .nav a { color: var(--text-soft); text-decoration: none; }
     .nav a:hover { color: var(--gold); }
+    .nav a.keep { background: linear-gradient(135deg, var(--blue), var(--blue-deep)); color: #f8fafc;
+                  padding: .42rem .95rem; border-radius: 8px; font-weight: 620; }
+    .nav a.keep:hover { color: #fff; }
+    /* a jumped-to heading must land below the bar, not under it */
+    section[id], .hero { scroll-margin-top: 4.5rem; }
 
     /* ---- hero ---- */
     .hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: 3rem; align-items: center;
@@ -205,9 +216,8 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="wrap">
-
-  <div class="bar">
+<header class="top">
+  <div class="wrap bar">
     <a class="brand" href="/" aria-label="jawata">
       <!-- the arch — the jawata mark (monoline abstraction of Javanese ja) -->
       <svg width="30" height="34" viewBox="8 0 152 188" aria-hidden="true">
@@ -225,6 +235,9 @@
       <a class="keep" href="https://github.com/haraldwegner/jawata-studio/releases">Download</a>
     </nav>
   </div>
+</header>
+
+<div class="wrap">
 
   <main id="main">
 
