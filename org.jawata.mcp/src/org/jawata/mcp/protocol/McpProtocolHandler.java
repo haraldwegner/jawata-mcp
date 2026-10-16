@@ -341,7 +341,10 @@ public class McpProtocolHandler {
 
             return result;
         } catch (ToolRegistry.ToolNotFoundException e) {
-            throw new MethodNotFoundException("Tool not found: " + toolName);
+            // The registry's own text, not a rebuilt one: it carries the "Did you mean" pointer
+            // for a retired name, and rebuilding the bare form here is what kept it from every
+            // client (REL44-35).
+            throw new MethodNotFoundException(e.getMessage());
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize tool result", e);
         }

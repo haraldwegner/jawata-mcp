@@ -299,6 +299,46 @@ class McpProtocolHandlerTest {
         assertEquals(-32601, json.get("error").get("code").asInt());
     }
 
+    /**
+     * REL44-35 — the pointer for a retired tool name has to survive to the CLIENT.
+     *
+     * <p>{@code RidersTest} asks the registry directly and passes; the registry did build
+     * "Did you mean 'inspect'?" and the handler then threw it away, so no MCP client ever read
+     * it. This asks the way a client does, through {@code processMessage}, and asks of EVERY
+     * retired name rather than one, because a table that answers for one entry and not another
+     * is the same defect with a smaller audience.</p>
+     */
+    @Test
+    @DisplayName("tools/call names the replacement for every retired tool name (REL44-35)")
+    void toolsCall_namesTheReplacementForARetiredTool() throws Exception {
+        assertFalse(ToolRegistry.retiredNames().isEmpty(),
+            "the table under test must not be empty or this loop proves nothing");
+        for (String retired : ToolRegistry.retiredNames()) {
+            String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"" + retired + "\",\"arguments\":{}}}";
+
+            JsonNode error = objectMapper.readTree(handler.processMessage(request)).get("error");
+
+            assertNotNull(error, retired + " must be refused");
+            assertEquals(-32601, error.get("code").asInt());
+            String message = error.get("message").asText();
+            assertTrue(message.contains("Did you mean"),
+                retired + " reached the client without its replacement: " + message);
+        }
+    }
+
+    @Test
+    @DisplayName("tools/call: a name that was never a tool gets no invented replacement")
+    void toolsCall_inventsNoReplacementForAnUnknownName() throws Exception {
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+            + "\"params\":{\"name\":\"frobnicate\",\"arguments\":{}}}";
+
+        String message = objectMapper.readTree(handler.processMessage(request))
+            .get("error").get("message").asText();
+
+        assertEquals("Tool not found: frobnicate", message);
+    }
+
     @Test
     @DisplayName("tools/call should return invalid params for missing name")
     void toolsCall_returnsInvalidParamsForMissingName() throws Exception {
