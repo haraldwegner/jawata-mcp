@@ -91,3 +91,25 @@ README counts). The other side must change only for step 4 (studio help.md).
 Step 3 is done in the main loop with a different cure than the report's "delete": the number is now
 read from the README's inventory, which is the one committed list, so a vanished tool still fails
 (commit message and ledger row C9a-1 carry the detail). Steps 1, 2 and 4: see the ledger row.
+
+## D4. What the experience store and the pattern catalogue were asked, and what was selected
+
+**Added afterwards, on 2026-10-16.** The seat ran without the engine (see the top of this report) and
+recorded no consultation, so the D4 gate stopped the studio 4.4.3 release on this report. The
+consultation below was run AFTER the design, by the agent that released, and says so: it did not
+shape the design above.
+
+- **Asked** (`experience(kind=nominate)`, query `f4140508-95ec-4279-8595-71091678fb37`): "A product keeps
+  several hand-written copies of which tools it ships: a count in prose, a list in the README, literal
+  sets in code, a table of retired names. How do we stop the copies from drifting apart?" The code lane
+  was not searched; the catalogue patterns were in the pool.
+- **Candidates:** 8 ranked, none vouched. Two were catalogue patterns (Unit of Work, Object Pool),
+  neither applicable to a drifting list; the rest were lessons about other subjects.
+- **Selected:** one, `0d092a36-3605-4dcb-9891-e15a5f4e614b`, a failed-avoid lesson: what a product exposes
+  has its implementation as the source of truth, and every README or help list is a copy that must be
+  updated FROM the code as part of the change that touched it.
+- **What it changes about this report:** section 2 keeps the studio's help names (M7, M8) as hand-written
+  prose with one name pinned, which is the posture the lesson says does not hold. The whole-run review of
+  2026-10-16 (ledger rows REL44-37 to REL44-39) reached the cure the lesson describes: the engine
+  publishes one list of live and retired names, and every copy is checked against it. This report's
+  own disposition stands as written; it is not revised here.
