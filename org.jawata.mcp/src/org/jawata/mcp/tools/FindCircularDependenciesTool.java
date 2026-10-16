@@ -142,7 +142,7 @@ public class FindCircularDependenciesTool extends AbstractTool {
                 .returnedCount(cycles.size())
                 .suggestedNextTools(cycles.isEmpty()
                     ? List.of("No circular dependencies found")
-                    : List.of("get_dependency_graph to analyze specific packages"))
+                    : List.of("inspect(kind=dependency_graph) to analyze specific packages"))
                 .build());
 
         } catch (Exception e) {

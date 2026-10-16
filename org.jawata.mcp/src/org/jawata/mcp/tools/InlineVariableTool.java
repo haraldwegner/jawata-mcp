@@ -199,7 +199,7 @@ public class InlineVariableTool extends AbstractApplyingRefactoringTool
         if (checked.isRefused()) {
             return Preparation.fail(ToolResponse.error(
                 "INLINE_REFUSED",
-                "inline_variable refused '" + variableName + "': " + checked.messages(),
+                "inline(kind=variable) refused '" + variableName + "': " + checked.messages(),
                 "JDT's Inline Local Variable engine rejected it — no initializer, the "
                     + "variable is reassigned, or inlining would change behavior. Adjust "
                     + "the target and retry. No files were modified."));
@@ -221,7 +221,7 @@ public class InlineVariableTool extends AbstractApplyingRefactoringTool
         String summary = "inline variable " + variableName
             + (initializerText != null ? " = " + initializerText : "")
             + " (" + (references != null ? references.length : 0) + " usages)";
-        log.debug("inline_variable via JDT InlineTempRefactoring: {}", summary);
+        log.debug("inline(kind=variable) via JDT InlineTempRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 

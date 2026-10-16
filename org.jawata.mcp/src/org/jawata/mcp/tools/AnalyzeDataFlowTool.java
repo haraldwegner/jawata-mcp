@@ -158,8 +158,8 @@ public class AnalyzeDataFlowTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "analyze_control_flow for branching and loop analysis",
-                    "extract_method to extract code with understood data dependencies"
+                    "analyze(kind=control_flow) for branching and loop analysis",
+                    "extract(kind=method) to extract code with understood data dependencies"
                 ))
                 .build());
 

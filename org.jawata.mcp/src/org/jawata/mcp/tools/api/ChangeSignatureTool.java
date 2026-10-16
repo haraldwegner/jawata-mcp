@@ -151,7 +151,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
 
             Applies the change directly (default) and returns
             { filesModified, diff, undoChangeId, summary }. Verify with
-            compile_workspace; revert with undo_refactoring(undoChangeId).
+            compile_workspace; revert with refactoring(action=undo, undoChangeId=...).
             Pass auto_apply: false to stage instead — returns { changeId, diff }.
 
             Position on the method declaration, or name it, and provide the changes.
@@ -171,7 +171,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
             compiles without the other). These ARE APPLIED anyway; the response marks
             coupledChange: true and lists every introduced compiler error as your
             worklist. Change the signature here, then fix each reported body/caller site
-            by its compile failure; undo_refactoring to abandon. The reported error
+            by its compile failure; refactoring(action=undo) to abandon. The reported error
             locations ARE the edits to make — do not fall back to a text search.
 
             Requires load_project to be called first.

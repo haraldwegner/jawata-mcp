@@ -108,7 +108,7 @@ public class UpdateDependencyTool extends AbstractTool {
             LoadedProject project = pickProject(service, arguments);
             if (project == null) {
                 return ToolResponse.invalidParameter("projectKey",
-                    "No loaded project. Use list_projects.");
+                    "No loaded project. Use project(action=list).");
             }
 
             Path pom = MavenPomSupport.locatePom(project);
@@ -128,7 +128,7 @@ public class UpdateDependencyTool extends AbstractTool {
             if (result == null) {
                 return ToolResponse.invalidParameter("groupId/artifactId",
                     "No <dependency> matching " + groupId + ":" + artifactId
-                        + " found in " + pom + ". Use add_dependency to introduce it.");
+                        + " found in " + pom + ". Use dependency(action=add) to introduce it.");
             }
             Files.writeString(pom, result.updatedPom, StandardCharsets.UTF_8);
 
@@ -158,7 +158,7 @@ public class UpdateDependencyTool extends AbstractTool {
                 .returnedCount(1)
                 .build());
         } catch (Exception e) {
-            log.warn("update_dependency failed: {}", e.getMessage(), e);
+            log.warn("dependency(action=update) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }
@@ -217,7 +217,7 @@ public class UpdateDependencyTool extends AbstractTool {
         if (result == null) {
             return ToolResponse.invalidParameter("groupId/artifactId",
                 "No Gradle dependency matching " + groupId + ":" + artifactId
-                    + " found in " + buildFile + ". Use add_dependency to introduce it.");
+                    + " found in " + buildFile + ". Use dependency(action=add) to introduce it.");
         }
         Files.writeString(buildFile, result.updatedText(), StandardCharsets.UTF_8);
 

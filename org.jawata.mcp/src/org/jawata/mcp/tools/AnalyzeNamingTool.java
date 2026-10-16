@@ -182,10 +182,10 @@ public class AnalyzeNamingTool extends AbstractTool {
                 .returnedCount(rendered.size())
                 .steering(scan.steering(rendered.size(), "naming conventions"))
                 .suggestedNextTools(List.of(
-                    "analyze_naming(kind=check) to validate a proposed name"))
+                    "analyze(kind=naming, subkind=check) to validate a proposed name"))
                 .build());
         } catch (Exception e) {
-            log.error("analyze_naming({}) failed: {}", kind, e.getMessage(), e);
+            log.error("analyze(kind=naming, subkind={}) failed: {}", kind, e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }

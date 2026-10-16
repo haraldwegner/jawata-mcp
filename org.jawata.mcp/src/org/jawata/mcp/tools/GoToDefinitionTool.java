@@ -143,8 +143,8 @@ public class GoToDefinitionTool extends AbstractTool {
             return ToolResponse.success(result, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "find_references to see all usages of this symbol",
-                    "get_type_hierarchy if this is a type",
-                    "get_type_members to see all members of the containing type"
+                    "inspect(kind=type_hierarchy) if this is a type",
+                    "inspect(kind=type_members) to see all members of the containing type"
                 ))
                 .build());
 

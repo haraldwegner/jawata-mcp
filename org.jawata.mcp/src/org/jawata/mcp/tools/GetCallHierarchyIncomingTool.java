@@ -186,7 +186,7 @@ public class GetCallHierarchyIncomingTool extends AbstractTool {
                 .returnedCount(callers.size())
                 .truncated(callers.size() >= maxResults)
                 .suggestedNextTools(List.of(
-                    "get_call_hierarchy_outgoing to see what this method calls",
+                    "get_call_hierarchy(direction=outgoing) to see what this method calls",
                     "go_to_definition to navigate to a caller"
                 ))
                 .build());

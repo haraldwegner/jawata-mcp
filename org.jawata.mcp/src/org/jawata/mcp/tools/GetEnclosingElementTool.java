@@ -166,8 +166,8 @@ public class GetEnclosingElementTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "get_type_members for type members",
-                    "get_document_symbols for file structure"
+                    "inspect(kind=type_members) for type members",
+                    "inspect(kind=document_symbols) for file structure"
                 ))
                 .build());
 

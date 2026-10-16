@@ -169,7 +169,7 @@ public class FindModernizationTool extends AbstractTool {
             .steering(scan.steering(candidates.size(), kind + " candidates"))
             .suggestedNextTools(List.of(
                 "refactor_to_pattern kind=replace_pattern_with_idiom / the matching refactoring tool to apply a candidate",
-                "analyze_type to inspect a candidate's enclosing type"))
+                "analyze(kind=type) to inspect a candidate's enclosing type"))
             .build());
     }
 

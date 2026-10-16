@@ -218,7 +218,7 @@ public class GenerateTestSkeletonTool extends AbstractTool
                     RefactoringChangeCache.Kind.UNDO,
                     new org.eclipse.ltk.core.refactoring.resource.DeleteResourceChange(
                         createdFile.getFullPath(), true),
-                    "undo: generate_test_skeleton " + testTypeName,
+                    "undo: generate(kind=test_skeleton) " + testTypeName,
                     "", List.of(service.getPathUtils().formatPath(testFile)));
             }
 
@@ -239,7 +239,7 @@ public class GenerateTestSkeletonTool extends AbstractTool
                 .returnedCount(methodNames.size())
                 .build());
         } catch (Exception e) {
-            log.warn("generate_test_skeleton failed: {}", e.getMessage(), e);
+            log.warn("generate(kind=test_skeleton) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }

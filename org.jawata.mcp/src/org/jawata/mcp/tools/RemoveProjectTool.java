@@ -82,7 +82,7 @@ public class RemoveProjectTool implements Tool {
             return ToolResponse.error(
                 "PROJECT_NOT_LOADED",
                 "No workspace exists yet. There is nothing to remove.",
-                "Call load_project to create a workspace before invoking remove_project.");
+                "Call load_project to create a workspace before invoking project(action=remove).");
         }
 
         String projectKey = arguments.get("projectKey").asText();

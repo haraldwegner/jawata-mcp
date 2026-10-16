@@ -328,7 +328,7 @@ class PlanRefactoringTool extends AbstractTool {
             .returnedCount(plan.steps().size())
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the composed refactoring",
-                "undo_refactoring with the undoChangeId to revert the whole plan"))
+                "refactoring(action=undo) with the undoChangeId to revert the whole plan"))
             .build());
     }
 

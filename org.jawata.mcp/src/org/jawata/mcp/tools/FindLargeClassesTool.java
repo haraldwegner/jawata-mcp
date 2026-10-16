@@ -144,8 +144,8 @@ public class FindLargeClassesTool extends AbstractTool {
                 .totalCount(largeClasses.size())
                 .returnedCount(largeClasses.size())
                 .suggestedNextTools(List.of(
-                    "get_complexity_metrics for detailed method-level metrics",
-                    "analyze_type for full type analysis"
+                    "inspect(kind=complexity) for detailed method-level metrics",
+                    "analyze(kind=type) for full type analysis"
                 ))
                 .build());
 

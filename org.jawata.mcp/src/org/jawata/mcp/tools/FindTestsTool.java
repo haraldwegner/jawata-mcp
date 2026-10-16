@@ -135,7 +135,7 @@ public class FindTestsTool extends AbstractTool {
                 .totalCount(testClasses.size())
                 .returnedCount(testClasses.size())
                 .suggestedNextTools(List.of(
-                    "get_document_symbols to explore a test class",
+                    "inspect(kind=document_symbols) to explore a test class",
                     "find_references to find what a test covers"
                 ))
                 .build());

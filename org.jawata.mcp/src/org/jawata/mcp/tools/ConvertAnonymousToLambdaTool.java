@@ -155,7 +155,7 @@ public class ConvertAnonymousToLambdaTool extends AbstractApplyingRefactoringToo
         if (fix == null) {
             return Preparation.fail(ToolResponse.error(
                 "CONVERT_REFUSED",
-                "convert_anonymous_to_lambda refused this anonymous class: JDT's engine "
+                "refactor_to_pattern(kind=replace_pattern_with_idiom) refused this anonymous class: JDT's engine "
                     + "determined it cannot be converted without changing behavior (not a "
                     + "functional interface, multiple members, fields, this/super references, "
                     + "or recursion).",
@@ -171,7 +171,7 @@ public class ConvertAnonymousToLambdaTool extends AbstractApplyingRefactoringToo
         extras.put("methodName", methodName);
 
         String summary = "convert anonymous " + interfaceType + " to lambda";
-        log.debug("convert_anonymous_to_lambda via JDT LambdaExpressionsFixCore: {}", summary);
+        log.debug("refactor_to_pattern(kind=replace_pattern_with_idiom) via JDT LambdaExpressionsFixCore: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 

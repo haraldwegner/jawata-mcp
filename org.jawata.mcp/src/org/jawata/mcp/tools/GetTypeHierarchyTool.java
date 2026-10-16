@@ -164,8 +164,8 @@ public class GetTypeHierarchyTool extends AbstractTool {
                           interfaceList.size() < interfaces.length ||
                           subtypeList.size() < subtypes.length)
                 .suggestedNextTools(List.of(
-                    "get_type_members to see members of a specific type",
-                    "find_implementations to find all implementors",
+                    "inspect(kind=type_members) to see members of a specific type",
+                    "find_references(kind=implementations) to find all implementors",
                     "find_references to see where type is used"
                 ))
                 .build());

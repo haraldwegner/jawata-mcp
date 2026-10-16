@@ -89,8 +89,8 @@ public class AddProjectTool implements Tool {
         if (service == null) {
             return ToolResponse.error(
                 "PROJECT_NOT_LOADED",
-                "No workspace exists yet. Call load_project before add_project.",
-                "Call load_project with the first project's path, then add_project for each additional project.");
+                "No workspace exists yet. Call load_project before project(action=add).",
+                "Call load_project with the first project's path, then project(action=add) for each additional project.");
         }
 
         String projectPath = arguments.get("projectPath").asText();

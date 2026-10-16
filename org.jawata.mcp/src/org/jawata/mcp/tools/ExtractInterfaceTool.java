@@ -257,7 +257,7 @@ public class ExtractInterfaceTool extends AbstractApplyingRefactoringTool
         if (checked.isRefused()) {
             return Preparation.fail(ToolResponse.error(
                 "EXTRACT_REFUSED",
-                "extract_interface refused: " + checked.messages(),
+                "extract(kind=interface) refused: " + checked.messages(),
                 "JDT's Extract Interface engine rejected it — a name collision or an "
                     + "unextractable member. Adjust the input and retry. No files were "
                     + "modified."));
@@ -289,7 +289,7 @@ public class ExtractInterfaceTool extends AbstractApplyingRefactoringTool
 
         String summary = "extract interface " + interfaceName + " from "
             + type.getElementName() + " (" + extractedMethods.size() + " methods)";
-        log.debug("extract_interface via JDT ExtractInterfaceProcessor: {}", summary);
+        log.debug("extract(kind=interface) via JDT ExtractInterfaceProcessor: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 

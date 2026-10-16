@@ -340,7 +340,7 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
                 "compile_workspace to verify the refactoring",
                 "find_modernization kind=class_to_record — an immutable data class with value "
                     + "equality is what a record already is",
-                "undo_refactoring with the undoChangeId if verification fails"))
+                "refactoring(action=undo) with the undoChangeId if verification fails"))
             .build());
     }
 

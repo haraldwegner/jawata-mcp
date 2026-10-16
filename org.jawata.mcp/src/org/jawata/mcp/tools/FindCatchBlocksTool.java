@@ -100,7 +100,7 @@ public class FindCatchBlocksTool extends AbstractTool {
                 .truncated(matches.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "find_throws_declarations to find sources of this exception",
-                    "get_type_hierarchy to see exception hierarchy"
+                    "inspect(kind=type_hierarchy) to see exception hierarchy"
                 ))
                 .build());
 

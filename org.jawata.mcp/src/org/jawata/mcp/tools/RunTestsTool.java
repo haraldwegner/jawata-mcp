@@ -399,7 +399,7 @@ public class RunTestsTool extends AbstractTool {
                     return ToolResponse.projectKeyDropped(projectKey, dropped.get());
                 }
                 return ToolResponse.invalidParameter("projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use list_projects.");
+                    "Unknown projectKey '" + projectKey + "'. Use project(action=list).");
             }
             loaded = scoped.get();
         } else {

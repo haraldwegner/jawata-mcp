@@ -175,7 +175,7 @@ public class FindMethodReferencesTool extends AbstractTool {
                 .truncated(matches.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "find_references for all references including regular calls",
-                    "get_call_hierarchy_incoming to see all callers"
+                    "get_call_hierarchy(direction=incoming) to see all callers"
                 ))
                 .build());
 

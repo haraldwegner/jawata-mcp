@@ -124,9 +124,9 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
 
             Applies the rename directly (default) and returns
             { filesModified, diff, undoChangeId, summary }. Verify with
-            compile_workspace; revert with undo_refactoring(undoChangeId) if needed.
+            compile_workspace; revert with refactoring(action=undo, undoChangeId=...) if needed.
             Pass auto_apply: false to stage instead — returns { changeId, diff } for
-            inspect_refactoring / apply_refactoring.
+            refactoring(action=inspect) / refactoring(action=apply).
 
             USAGE: Position on symbol, provide new name
             OUTPUT: Modified files + unified diff + undo handle

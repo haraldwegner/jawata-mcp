@@ -204,7 +204,7 @@ public class FindFieldWritesTool extends AbstractTool {
                 .truncated(writeLocations.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "find_references to see all usages (reads and writes)",
-                    "get_call_hierarchy_incoming to find callers of methods that modify this field"
+                    "get_call_hierarchy(direction=incoming) to find callers of methods that modify this field"
                 ))
                 .build());
 

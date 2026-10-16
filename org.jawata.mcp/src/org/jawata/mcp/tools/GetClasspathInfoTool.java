@@ -184,9 +184,9 @@ public class GetClasspathInfoTool extends AbstractTool {
                 .totalCount(entries.length)
                 .returnedCount(totalEntries)
                 .suggestedNextTools(List.of(
-                    "get_project_structure to see package hierarchy",
+                    "inspect(kind=project_structure) to see package hierarchy",
                     "search_symbols to find types in the project",
-                    "get_document_symbols to explore a source file"
+                    "inspect(kind=document_symbols) to explore a source file"
                 ))
                 .build());
 

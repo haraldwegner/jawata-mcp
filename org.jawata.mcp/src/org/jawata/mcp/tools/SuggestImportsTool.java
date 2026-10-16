@@ -167,8 +167,8 @@ public class SuggestImportsTool extends AbstractTool {
                 .totalCount(result.size())
                 .returnedCount(result.size())
                 .suggestedNextTools(List.of(
-                    "apply_quick_fix with fixId to add the import",
-                    "get_quick_fixes to see all available fixes"
+                    "quick_fix(action=apply) with fixId to add the import",
+                    "quick_fix(action=list) to see all available fixes"
                 ))
                 .build());
 

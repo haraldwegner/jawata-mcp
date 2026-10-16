@@ -155,7 +155,7 @@ public class GetTypeMembersTool extends AbstractTool {
                 .suggestedNextTools(List.of(
                     "find_references to find usages of a member",
                     "go_to_definition to navigate to member source",
-                    "get_type_hierarchy to see inheritance chain"
+                    "inspect(kind=type_hierarchy) to see inheritance chain"
                 ))
                 .build());
 

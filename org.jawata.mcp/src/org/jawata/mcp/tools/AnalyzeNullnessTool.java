@@ -214,7 +214,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
                     "apply_null_annotations(kind=add) to record a confirmed contract"))
                 .build());
         } catch (Exception e) {
-            log.error("analyze_nullness(find_violations) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=nullness, subkind=find_violations) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }
@@ -309,7 +309,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
                     "apply_null_annotations(kind=add) to record a confirmed contract"))
                 .build());
         } catch (Exception e) {
-            log.error("analyze_nullness(infer_contracts) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=nullness, subkind=infer_contracts) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }
@@ -400,7 +400,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
             data.put("contracts", contracts);
             return ToolResponse.success(data, ResponseMeta.builder().build());
         } catch (Exception e) {
-            log.error("analyze_nullness(check) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=nullness, subkind=check) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }
@@ -553,7 +553,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
                 }
             }
         } catch (Exception e) {
-            log.error("analyze_nullness(detect_style) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=nullness, subkind=detect_style) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
 
@@ -584,7 +584,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
         return ToolResponse.success(data, ResponseMeta.builder()
             .steering(scan.steering(families.size(), "nullness annotation family in use"))
             .suggestedNextTools(List.of(
-                "analyze_nullness(kind=find_violations) to surface probable null bugs"))
+                "analyze(kind=nullness, subkind=find_violations) to surface probable null bugs"))
             .build());
     }
 }

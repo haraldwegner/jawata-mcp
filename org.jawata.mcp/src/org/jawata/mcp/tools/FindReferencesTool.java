@@ -229,7 +229,7 @@ public class FindReferencesTool extends AbstractTool {
                 .truncated(truncated)
                 .suggestedNextTools(List.of(
                     "go_to_definition to see the symbol definition",
-                    "get_type_hierarchy for type symbols"
+                    "inspect(kind=type_hierarchy) for type symbols"
                 ))
                 .build());
 

@@ -244,8 +244,8 @@ public class OverrideMethodsTool extends AbstractTool
                 stagedData.put("filePath", staged.filePath());
                 return ToolResponse.success(stagedData, ResponseMeta.builder()
                     .suggestedNextTools(List.of(
-                        "apply_refactoring with this changeId to commit the staged change",
-                        "inspect_refactoring with this changeId to re-examine the diff"))
+                        "refactoring(action=apply) with this changeId to commit the staged change",
+                        "refactoring(action=inspect) with this changeId to re-examine the diff"))
                     .build());
             }
 

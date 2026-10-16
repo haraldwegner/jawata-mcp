@@ -116,7 +116,7 @@ public class AddDependencyTool extends AbstractTool {
             LoadedProject project = pickProject(service, arguments);
             if (project == null) {
                 return ToolResponse.invalidParameter("projectKey",
-                    "No loaded project. Use list_projects.");
+                    "No loaded project. Use project(action=list).");
             }
 
             Path pom = MavenPomSupport.locatePom(project);
@@ -136,7 +136,7 @@ public class AddDependencyTool extends AbstractTool {
                 return ToolResponse.invalidParameter("groupId/artifactId",
                     "Dependency " + groupId + ":" + artifactId
                         + " is already declared in " + pom + ". "
-                        + "Use update_dependency to change the version.");
+                        + "Use dependency(action=update) to change the version.");
             }
 
             String original = Files.readString(pom, StandardCharsets.UTF_8);
@@ -173,7 +173,7 @@ public class AddDependencyTool extends AbstractTool {
                 .returnedCount(1)
                 .build());
         } catch (Exception e) {
-            log.warn("add_dependency failed: {}", e.getMessage(), e);
+            log.warn("dependency(action=add) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }
@@ -247,7 +247,7 @@ public class AddDependencyTool extends AbstractTool {
             return ToolResponse.invalidParameter("groupId/artifactId",
                 "Dependency " + groupId + ":" + artifactId
                     + " is already declared in " + buildFile
-                    + ". Use update_dependency to change the version.");
+                    + ". Use dependency(action=update) to change the version.");
         }
 
         String original = Files.readString(buildFile, StandardCharsets.UTF_8);

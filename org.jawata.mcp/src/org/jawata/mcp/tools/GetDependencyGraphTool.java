@@ -175,7 +175,7 @@ public class GetDependencyGraphTool extends AbstractTool {
                 .returnedCount(nodeList.size())
                 .suggestedNextTools(List.of(
                     "find_circular_dependencies to detect cycles",
-                    "get_type_hierarchy for inheritance analysis"
+                    "inspect(kind=type_hierarchy) for inheritance analysis"
                 ))
                 .build());
 

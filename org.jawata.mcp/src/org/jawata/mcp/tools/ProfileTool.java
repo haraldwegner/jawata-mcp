@@ -1065,7 +1065,7 @@ public class ProfileTool extends AbstractTool {
             return ToolResponse.error("SEAM_NOT_FOUND",
                 "No method '" + methodName + "' found on '" + className
                     + "' in the workspace source.",
-                "Check the class/method name; get_type_members or find_references can confirm it.");
+                "Check the class/method name; inspect(kind=type_members) or find_references can confirm it.");
         }
 
         int durationSeconds = Math.min(MAX_LATENCY_SECONDS,

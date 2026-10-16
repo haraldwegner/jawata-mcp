@@ -123,7 +123,7 @@ public class GetDiRegistrationsTool extends AbstractTool {
                 .returnedCount(total)
                 .suggestedNextTools(List.of(
                     "find_references to trace a specific dependency",
-                    "analyze_type for details on a registered component"
+                    "analyze(kind=type) for details on a registered component"
                 ))
                 .build());
 

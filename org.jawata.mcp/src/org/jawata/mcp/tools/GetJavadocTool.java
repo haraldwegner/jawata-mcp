@@ -130,7 +130,7 @@ public class GetJavadocTool extends AbstractTool {
             if (javadoc == null || javadoc.isBlank()) {
                 data.put("hasDocumentation", false);
                 return ToolResponse.success(data, ResponseMeta.builder()
-                    .suggestedNextTools(List.of("get_hover_info for basic info"))
+                    .suggestedNextTools(List.of("get_at_position(kind=hover) for basic info"))
                     .build());
             }
 
@@ -142,7 +142,7 @@ public class GetJavadocTool extends AbstractTool {
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "find_references to find usages",
-                    "get_type_members for related members"
+                    "inspect(kind=type_members) for related members"
                 ))
                 .build());
 

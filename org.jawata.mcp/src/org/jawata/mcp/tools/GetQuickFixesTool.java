@@ -172,7 +172,7 @@ public class GetQuickFixesTool extends AbstractTool {
                 .totalCount(fixes.size())
                 .returnedCount(fixes.size())
                 .suggestedNextTools(List.of(
-                    "apply_quick_fix with fixId to apply a fix",
+                    "quick_fix(action=apply) with fixId to apply a fix",
                     "get_diagnostics to see all problems"
                 ))
                 .build());

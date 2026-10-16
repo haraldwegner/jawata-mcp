@@ -110,9 +110,9 @@ public class GetTypeAtPositionTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "get_type_hierarchy for inheritance chain",
-                    "get_type_members for all members",
-                    "find_implementations for implementors"
+                    "inspect(kind=type_hierarchy) for inheritance chain",
+                    "inspect(kind=type_members) for all members",
+                    "find_references(kind=implementations) for implementors"
                 ))
                 .build());
 

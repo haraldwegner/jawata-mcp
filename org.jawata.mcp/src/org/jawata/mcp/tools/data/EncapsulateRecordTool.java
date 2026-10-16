@@ -325,7 +325,7 @@ public class EncapsulateRecordTool extends AbstractRefactoringTool implements To
             .returnedCount(result.modifiedFilePaths().size())
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the refactoring",
-                "undo_refactoring with the undoChangeId if verification fails"))
+                "refactoring(action=undo) with the undoChangeId if verification fails"))
             .build());
     }
 }

@@ -136,7 +136,7 @@ public class GetSignatureHelpTool extends AbstractTool {
                 .totalCount(signatures.size())
                 .returnedCount(signatures.size())
                 .suggestedNextTools(List.of(
-                    "get_javadoc for full documentation",
+                    "get_at_position(kind=javadoc) for full documentation",
                     "find_references to find usages"
                 ))
                 .build());

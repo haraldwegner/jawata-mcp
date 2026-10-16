@@ -109,7 +109,7 @@ public class GetSymbolInfoTool extends AbstractTool {
                 .suggestedNextTools(List.of(
                     "find_references to find all usages",
                     "go_to_definition to navigate to definition",
-                    "get_type_hierarchy for type inheritance"
+                    "inspect(kind=type_hierarchy) for type inheritance"
                 ))
                 .build());
 

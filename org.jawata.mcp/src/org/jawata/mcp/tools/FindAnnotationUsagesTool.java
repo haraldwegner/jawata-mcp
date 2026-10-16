@@ -99,7 +99,7 @@ public class FindAnnotationUsagesTool extends AbstractTool {
                 .returnedCount(usages.size())
                 .truncated(matches.size() >= maxResults)
                 .suggestedNextTools(List.of(
-                    "get_symbol_info at a usage location for details",
+                    "get_at_position(kind=symbol) at a usage location for details",
                     "find_references for all references (not just annotations)"
                 ))
                 .build());

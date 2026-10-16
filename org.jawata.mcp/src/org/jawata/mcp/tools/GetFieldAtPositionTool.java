@@ -116,7 +116,7 @@ public class GetFieldAtPositionTool extends AbstractTool {
                 .suggestedNextTools(List.of(
                     "find_references to find all usages",
                     "find_field_writes to find write accesses",
-                    "get_type_at_position for field type info"
+                    "get_at_position(kind=type) for field type info"
                 ))
                 .build());
 

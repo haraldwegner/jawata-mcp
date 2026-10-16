@@ -69,7 +69,7 @@ public class PullUpTool extends AbstractRefactoringTool implements ToolKindDeleg
               an abstract declaration on the original subtype.
 
             The supertype is the direct superclass of the subtype. To climb
-            multiple levels, call pull_up repeatedly.
+            multiple levels, call hierarchy(direction=up) repeatedly.
 
             Conflict (e.g. supertype already declares the same member,
             superclass is from a binary jar) → REFACTORING_FAILED with no

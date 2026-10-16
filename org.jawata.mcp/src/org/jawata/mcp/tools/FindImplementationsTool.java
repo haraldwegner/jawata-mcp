@@ -208,9 +208,9 @@ public class FindImplementationsTool extends AbstractTool {
                 .returnedCount(implementations.size())
                 .truncated(implementations.size() >= maxResults)
                 .suggestedNextTools(List.of(
-                    "get_type_hierarchy for full inheritance chain",
+                    "inspect(kind=type_hierarchy) for full inheritance chain",
                     "find_references to see all usages",
-                    "get_type_members to see members of an implementation"
+                    "inspect(kind=type_members) to see members of an implementation"
                 ))
                 .build());
 

@@ -281,8 +281,8 @@ public class GenerateConstructorTool extends AbstractTool
                 stagedData.put("filePath", staged.filePath());
                 return ToolResponse.success(stagedData, ResponseMeta.builder()
                     .suggestedNextTools(List.of(
-                        "apply_refactoring with this changeId to commit the staged change",
-                        "inspect_refactoring with this changeId to re-examine the diff"))
+                        "refactoring(action=apply) with this changeId to commit the staged change",
+                        "refactoring(action=inspect) with this changeId to re-examine the diff"))
                     .build());
             }
 
@@ -307,7 +307,7 @@ public class GenerateConstructorTool extends AbstractTool
                 .returnedCount(1)
                 .build());
         } catch (Exception e) {
-            log.warn("generate_constructor failed: {}", e.getMessage(), e);
+            log.warn("generate(kind=constructor) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }

@@ -96,7 +96,7 @@ public class FindUnusedDependenciesTool extends AbstractTool {
             LoadedProject project = pickProject(service, arguments);
             if (project == null) {
                 return ToolResponse.invalidParameter("projectKey",
-                    "No loaded project. Use list_projects.");
+                    "No loaded project. Use project(action=list).");
             }
 
             Path pom = MavenPomSupport.locatePom(project);
@@ -147,7 +147,7 @@ public class FindUnusedDependenciesTool extends AbstractTool {
                 .returnedCount(unused.size())
                 .build());
         } catch (Exception e) {
-            log.warn("find_unused_dependencies failed: {}", e.getMessage(), e);
+            log.warn("dependency(action=find_unused) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }

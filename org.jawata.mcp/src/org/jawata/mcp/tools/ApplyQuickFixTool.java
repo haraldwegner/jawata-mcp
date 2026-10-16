@@ -145,7 +145,7 @@ public class ApplyQuickFixTool extends AbstractTool {
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "get_diagnostics to verify the fix",
-                    "get_quick_fixes to check for remaining issues"
+                    "quick_fix(action=list) to check for remaining issues"
                 ))
                 .build());
 

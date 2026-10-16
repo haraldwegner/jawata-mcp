@@ -227,7 +227,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
     public String footer() {
         return """
             This catalog is intentionally non-overlapping with organize_imports,
-            format, apply_quick_fix and find_modernization. Optional: projectKey
+            format, quick_fix(action=apply) and find_modernization. Optional: projectKey
             to scope a project-wide sweep. Requires load_project first.
             """;
     }

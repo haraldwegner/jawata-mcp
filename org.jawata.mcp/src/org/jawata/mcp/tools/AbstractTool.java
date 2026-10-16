@@ -180,7 +180,7 @@ public abstract class AbstractTool implements Tool {
                 // typo.
                 return ToolResponse.invalidParameter(
                     "projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use list_projects to see available keys.");
+                    "Unknown projectKey '" + projectKey + "'. Use project(action=list) to see available keys.");
             }
             return executeWithService(new ScopedJdtService(service, scoped.get()), arguments);
         }
@@ -204,7 +204,7 @@ public abstract class AbstractTool implements Tool {
         Map<String, Object> newProps = new LinkedHashMap<>(oldProps);
         newProps.putIfAbsent("projectKey", Map.of(
             "type", "string",
-            "description", "Optional. Restrict the query to a single loaded project (see list_projects). Omit to search all projects in the workspace."
+            "description", "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace."
         ));
         wrapped.put("properties", newProps);
         return wrapped;
@@ -223,7 +223,7 @@ public abstract class AbstractTool implements Tool {
             "type", "boolean",
             "description", "Default true: perform the refactoring immediately and return "
                 + "{ filesModified, diff, undoChangeId }. Set false to stage only — returns "
-                + "{ changeId, diff } for a later apply_refactoring call."
+                + "{ changeId, diff } for a later refactoring(action=apply) call."
         ));
         // D7f: the escape from the response cap, declared HERE for the reason auto_apply is
         // — it is the same choice for every refactoring, and a flag each tool spelled for
@@ -293,7 +293,7 @@ public abstract class AbstractTool implements Tool {
     protected static void putStagedUnverified(Map<String, Object> data) {
         data.put("compileVerified", false);
         data.put("verificationNote", "A staged change is not compiled until it is applied, so "
-            + "this diff is unverified. apply_refactoring runs the compile gate and will "
+            + "this diff is unverified. refactoring(action=apply) runs the compile gate and will "
             + "refuse or report errors then.");
     }
 

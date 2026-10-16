@@ -154,8 +154,8 @@ public class AnalyzeControlFlowTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "get_complexity_metrics for cyclomatic and cognitive complexity",
-                    "analyze_data_flow for variable usage within this method"
+                    "inspect(kind=complexity) for cyclomatic and cognitive complexity",
+                    "analyze(kind=data_flow) for variable usage within this method"
                 ))
                 .build());
 

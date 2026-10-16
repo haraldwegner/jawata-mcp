@@ -215,7 +215,7 @@ public class ExtractVariableTool extends AbstractApplyingRefactoringTool
         if (checked.isRefused()) {
             return Preparation.fail(ToolResponse.error(
                 "EXTRACT_REFUSED",
-                "extract_variable refused this selection: " + checked.messages(),
+                "extract(kind=variable) refused this selection: " + checked.messages(),
                 "Select a single complete expression (JDT's Extract Local Variable rules "
                     + "apply) and retry. No files were modified."));
         }
@@ -232,7 +232,7 @@ public class ExtractVariableTool extends AbstractApplyingRefactoringTool
         }
 
         String summary = "extract variable " + typeName + " " + variableName + " = " + expressionText;
-        log.debug("extract_variable via JDT ExtractTempRefactoring: {}", summary);
+        log.debug("extract(kind=variable) via JDT ExtractTempRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 

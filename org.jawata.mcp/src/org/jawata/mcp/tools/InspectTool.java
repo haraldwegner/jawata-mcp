@@ -307,7 +307,7 @@ public class InspectTool extends AbstractTool {
             project = service.getProject(projectKey).orElse(null);
             if (project == null) {
                 return ToolResponse.invalidParameter("projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use list_projects.");
+                    "Unknown projectKey '" + projectKey + "'. Use project(action=list).");
             }
         } else {
             project = service.allProjects().stream().findFirst().orElse(null);

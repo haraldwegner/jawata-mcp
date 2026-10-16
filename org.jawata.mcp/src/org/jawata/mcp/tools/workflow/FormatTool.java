@@ -138,7 +138,7 @@ public class FormatTool extends AbstractTool {
                     LoadedProject scoped = pickProject(service, arguments);
                     if (scoped == null) {
                         return ToolResponse.invalidParameter("projectKey",
-                            "No loaded project. Use list_projects.");
+                            "No loaded project. Use project(action=list).");
                     }
                     targets.addAll(collectPackageCompilationUnits(scoped.javaProject(), pkgName));
                 }
@@ -146,7 +146,7 @@ public class FormatTool extends AbstractTool {
                     LoadedProject scoped = pickProject(service, arguments);
                     if (scoped == null) {
                         return ToolResponse.invalidParameter("projectKey",
-                            "No loaded project. Use list_projects.");
+                            "No loaded project. Use project(action=list).");
                     }
                     targets.addAll(collectAllCompilationUnits(scoped.javaProject()));
                 }

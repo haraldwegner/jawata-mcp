@@ -124,9 +124,9 @@ public class AnalyzeTypeTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "analyze_method for detailed method analysis",
+                    "analyze(kind=method) for detailed method analysis",
                     "find_references for specific symbol usages",
-                    "get_call_hierarchy_incoming for method callers"
+                    "get_call_hierarchy(direction=incoming) for method callers"
                 ))
                 .build());
 

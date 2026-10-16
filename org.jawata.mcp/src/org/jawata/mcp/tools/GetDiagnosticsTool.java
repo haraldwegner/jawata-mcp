@@ -181,7 +181,7 @@ public class GetDiagnosticsTool extends AbstractTool {
                 .truncated(diagnostics.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "go_to_definition to navigate to error location",
-                    "get_document_symbols to see file structure"
+                    "inspect(kind=document_symbols) to see file structure"
                 ))
                 .build());
 

@@ -322,8 +322,8 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
             data.put("summary", summary);
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "apply_refactoring with this changeId to commit the staged change",
-                    "inspect_refactoring with this changeId to re-examine the diff"))
+                    "refactoring(action=apply) with this changeId to commit the staged change",
+                    "refactoring(action=inspect) with this changeId to re-examine the diff"))
                 .build());
         }
 
@@ -385,7 +385,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
             .returnedCount(outcome.modifiedFilePaths().size())
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the refactoring",
-                "undo_refactoring with the undoChangeId if verification fails"))
+                "refactoring(action=undo) with the undoChangeId if verification fails"))
             .build());
     }
 

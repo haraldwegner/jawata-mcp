@@ -201,7 +201,7 @@ public class AnalyzeJavadocsTool extends AbstractTool {
                     "the agent writes prose into the skeleton, then applies it"))
                 .build());
         } catch (Exception e) {
-            log.error("analyze_javadocs(generate) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=javadocs, subkind=generate) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }
@@ -394,7 +394,7 @@ public class AnalyzeJavadocsTool extends AbstractTool {
                 }
             }
         } catch (Exception e) {
-            log.error("analyze_javadocs(validate) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=javadocs, subkind=validate) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
 
@@ -415,7 +415,7 @@ public class AnalyzeJavadocsTool extends AbstractTool {
             .returnedCount(findings.size())
             .steering(scan.steering(findings.size(), "Javadoc problems"))
             .suggestedNextTools(List.of(
-                "analyze_javadocs(kind=generate) for a doclint-correct skeleton to fix a gap"))
+                "analyze(kind=javadocs, subkind=generate) for a doclint-correct skeleton to fix a gap"))
             .build());
     }
 
@@ -486,11 +486,11 @@ public class AnalyzeJavadocsTool extends AbstractTool {
                 .truncated(truncated)
                 .steering(scan.steering(facts.size(), "Javadoc facts"))
                 .suggestedNextTools(List.of(
-                    "analyze_type to inspect a documented type",
+                    "analyze(kind=type) to inspect a documented type",
                     "find_references to see who depends on a documented contract"))
                 .build());
         } catch (Exception e) {
-            log.error("analyze_javadocs(ingest) failed: {}", e.getMessage(), e);
+            log.error("analyze(kind=javadocs, subkind=ingest) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
     }

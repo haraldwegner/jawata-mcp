@@ -104,7 +104,7 @@ public class FindInstanceofChecksTool extends AbstractTool {
                 .truncated(matches.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "find_casts to find related cast expressions",
-                    "get_type_hierarchy to understand inheritance"
+                    "inspect(kind=type_hierarchy) to understand inheritance"
                 ))
                 .build());
 

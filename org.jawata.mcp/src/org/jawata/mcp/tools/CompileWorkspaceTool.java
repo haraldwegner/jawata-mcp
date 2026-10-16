@@ -195,7 +195,7 @@ public class CompileWorkspaceTool extends AbstractTool {
                     return ToolResponse.projectKeyDropped(projectKey, dropped.get());
                 }
                 return ToolResponse.invalidParameter("projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use list_projects.");
+                    "Unknown projectKey '" + projectKey + "'. Use project(action=list).");
             }
             projects = List.of(scoped.get());
         } else {

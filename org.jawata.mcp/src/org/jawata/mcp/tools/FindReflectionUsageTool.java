@@ -145,8 +145,8 @@ public class FindReflectionUsageTool extends AbstractTool {
                 .totalCount(allCalls.size())
                 .returnedCount(allCalls.size())
                 .suggestedNextTools(List.of(
-                    "analyze_change_impact to assess risk of renaming reflected types",
-                    "get_symbol_info at a reflection call site for context"
+                    "analyze(kind=change_impact) to assess risk of renaming reflected types",
+                    "get_at_position(kind=symbol) at a reflection call site for context"
                 ))
                 .build());
 

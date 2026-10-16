@@ -192,8 +192,8 @@ public class SearchSymbolsTool extends AbstractTool {
                 .steering(searchSteering(query, page, total,
                     address -> resolves(service, address)))
                 .suggestedNextTools(List.of(
-                    "get_symbol_info at a result location for detailed info",
-                    "get_type_members for type results",
+                    "get_at_position(kind=symbol) at a result location for detailed info",
+                    "inspect(kind=type_members) for type results",
                     "find_references to see all usages"
                 ))
                 .build());

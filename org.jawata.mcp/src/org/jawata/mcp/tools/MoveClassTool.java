@@ -203,7 +203,7 @@ public class MoveClassTool extends AbstractRefactoringTool
                     return ToolResponse.projectKeyDropped(targetProjectKey, dropped.get());
                 }
                 return ToolResponse.invalidParameter("targetProjectKey",
-                    "Unknown targetProjectKey '" + targetProjectKey + "'. Use list_projects.");
+                    "Unknown targetProjectKey '" + targetProjectKey + "'. Use project(action=list).");
             }
 
             IPackageFragment destination = ensurePackageInProject(targetProject, targetPackage,

@@ -77,7 +77,7 @@ public class InspectRefactoringTool extends AbstractTool {
         if (entry.isEmpty()) {
             return ToolResponse.invalidParameter("changeId",
                 "No cached change with id '" + changeId + "'. It may have expired (1 h TTL) "
-                    + "or already been consumed by apply_refactoring / undo_refactoring.");
+                    + "or already been consumed by refactoring(action=apply) / refactoring(action=undo).");
         }
 
         RefactoringChangeCache.Entry cached = entry.get();
@@ -95,8 +95,8 @@ public class InspectRefactoringTool extends AbstractTool {
         data.put("filePaths", cached.filePaths());
         return ToolResponse.success(data, ResponseMeta.builder()
             .suggestedNextTools(List.of(
-                "apply_refactoring to commit a STAGED change",
-                "undo_refactoring to execute an UNDO handle"))
+                "refactoring(action=apply) to commit a STAGED change",
+                "refactoring(action=undo) to execute an UNDO handle"))
             .build());
     }
 }

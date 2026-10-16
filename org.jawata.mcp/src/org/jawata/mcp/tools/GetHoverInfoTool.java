@@ -108,7 +108,7 @@ public class GetHoverInfoTool extends AbstractTool {
                 .suggestedNextTools(List.of(
                     "go_to_definition to navigate to source",
                     "find_references to find all usages",
-                    "get_javadoc for full documentation"
+                    "get_at_position(kind=javadoc) for full documentation"
                 ))
                 .build());
 

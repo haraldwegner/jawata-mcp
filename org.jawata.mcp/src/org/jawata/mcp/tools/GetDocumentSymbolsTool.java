@@ -126,7 +126,7 @@ public class GetDocumentSymbolsTool extends AbstractTool {
                 .suggestedNextTools(List.of(
                     "go_to_definition to navigate to a symbol",
                     "find_references to find usages of a symbol",
-                    "get_type_members to see members of a specific type"
+                    "inspect(kind=type_members) to see members of a specific type"
                 ))
                 .build());
 

@@ -143,7 +143,7 @@ public class ValidateSyntaxTool extends AbstractTool {
                 nextTools.add("get_diagnostics for detailed semantic errors");
             } else {
                 nextTools.add("get_diagnostics for type checking");
-                nextTools.add("get_document_symbols to explore structure");
+                nextTools.add("inspect(kind=document_symbols) to explore structure");
             }
 
             return ToolResponse.success(data, ResponseMeta.builder()

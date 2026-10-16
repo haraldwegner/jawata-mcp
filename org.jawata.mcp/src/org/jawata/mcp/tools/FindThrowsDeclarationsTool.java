@@ -100,7 +100,7 @@ public class FindThrowsDeclarationsTool extends AbstractTool {
                 .truncated(matches.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "find_catch_blocks to find handlers for this exception",
-                    "get_type_hierarchy to see exception hierarchy"
+                    "inspect(kind=type_hierarchy) to see exception hierarchy"
                 ))
                 .build());
 

@@ -244,7 +244,7 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
             // a generated method that compiles the problem into the code.
             return Preparation.fail(ToolResponse.error(
                 "EXTRACT_REFUSED",
-                "extract_method refused this selection: " + statusMessages(status),
+                "extract(kind=method) refused this selection: " + statusMessages(status),
                 "Adjust the selection (complete statements or a single expression; "
                     + "JDT's Extract Method rules apply) and retry. No files were modified."));
         }
@@ -277,7 +277,7 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         }
 
         String summary = "extract method " + refactoring.getSignature();
-        log.debug("extract_method via JDT ExtractMethodRefactoring: {}", summary);
+        log.debug("extract(kind=method) via JDT ExtractMethodRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 
@@ -316,7 +316,7 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         }
         return ToolResponse.error(
             "EXTRACT_ENGINE_FAILED",
-            "extract_method's engine threw during " + phase + ": "
+            "extract(kind=method)'s engine threw during " + phase + ": "
                 + e.getClass().getSimpleName()
                 + (e.getMessage() == null ? "" : ": " + e.getMessage())
                 + " [at " + where + "]",

@@ -116,8 +116,8 @@ public class GetMethodAtPositionTool extends AbstractTool {
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "find_references to find all callers",
-                    "get_call_hierarchy_incoming for call hierarchy",
-                    "get_super_method for overridden method"
+                    "get_call_hierarchy(direction=incoming) for call hierarchy",
+                    "get_at_position(kind=super) for overridden method"
                 ))
                 .build());
 

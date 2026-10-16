@@ -156,8 +156,8 @@ public class AnalyzeFileTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "analyze_type for detailed type analysis",
-                    "analyze_method for detailed method analysis",
+                    "analyze(kind=type) for detailed type analysis",
+                    "analyze(kind=method) for detailed method analysis",
                     "find_references to find usages"
                 ))
                 .build());

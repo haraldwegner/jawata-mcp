@@ -160,7 +160,7 @@ public class InlineMethodTool extends AbstractApplyingRefactoringTool
         if (checked.isRefused()) {
             return Preparation.fail(ToolResponse.error(
                 "INLINE_REFUSED",
-                "inline_method refused this inline: " + checked.messages(),
+                "inline(kind=method) refused this inline: " + checked.messages(),
                 "JDT's Inline Method engine rejected it — a call it cannot safely "
                     + "substitute, an overridden method, or a body it cannot inline. Adjust "
                     + "the target and retry. No files were modified."));
@@ -184,7 +184,7 @@ public class InlineMethodTool extends AbstractApplyingRefactoringTool
         String summary = "inline method "
             + (method != null ? method.getElementName() : "")
             + " at " + service.getPathUtils().formatPath(path);
-        log.debug("inline_method via JDT InlineMethodRefactoring: {}", summary);
+        log.debug("inline(kind=method) via JDT InlineMethodRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 }

@@ -246,7 +246,7 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         return """
             Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
             auto_apply=false to stage without applying. Verify with compile_workspace;
-            revert with undo_refactoring(undoChangeId).
+            revert with refactoring(action=undo, undoChangeId=...).
 
             Requires load_project to be called first.
             """;

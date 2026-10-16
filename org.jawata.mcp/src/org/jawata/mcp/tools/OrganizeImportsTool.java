@@ -249,7 +249,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             if (project == null) {
                 return Preparation.fail(ToolResponse.invalidParameter("projectKey",
                     "No such project, and no project is loaded to fall back to."
-                        + " Use list_projects."));
+                        + " Use project(action=list)."));
             }
             targets.addAll(compilationUnitsOf(project.javaProject()));
         } else {

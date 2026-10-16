@@ -81,7 +81,7 @@ public class UndoRefactoringTool extends AbstractTool {
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",
-                "undo_refactoring failed: " + outcome.validationError(),
+                "refactoring(action=undo) failed: " + outcome.validationError(),
                 "The workspace may have changed since the refactoring was applied "
                     + "(undo is only valid while the touched files are otherwise unmodified). "
                     + "Restore manually from the diff in the original response.");

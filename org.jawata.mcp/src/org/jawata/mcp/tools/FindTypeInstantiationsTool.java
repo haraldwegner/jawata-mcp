@@ -99,7 +99,7 @@ public class FindTypeInstantiationsTool extends AbstractTool {
                 .returnedCount(instantiations.size())
                 .truncated(matches.size() >= maxResults)
                 .suggestedNextTools(List.of(
-                    "get_type_hierarchy to understand inheritance",
+                    "inspect(kind=type_hierarchy) to understand inheritance",
                     "find_references for all references"
                 ))
                 .build());

@@ -222,7 +222,7 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool
         if (checked.isRefused()) {
             return Preparation.fail(ToolResponse.error(
                 "EXTRACT_REFUSED",
-                "extract_constant refused this selection: " + checked.messages(),
+                "extract(kind=constant) refused this selection: " + checked.messages(),
                 "Select a constant expression (JDT's Extract Constant rules apply) and "
                     + "retry. No files were modified."));
         }
@@ -240,7 +240,7 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool
 
         String summary = "extract constant private static final " + typeName + " "
             + constantName + " = " + expressionText;
-        log.debug("extract_constant via JDT ExtractConstantRefactoring: {}", summary);
+        log.debug("extract(kind=constant) via JDT ExtractConstantRefactoring: {}", summary);
         return Preparation.of(change, summary, extras);
     }
 

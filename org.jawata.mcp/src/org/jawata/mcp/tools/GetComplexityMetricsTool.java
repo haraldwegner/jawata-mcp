@@ -206,7 +206,7 @@ public class GetComplexityMetricsTool extends AbstractTool {
                 .returnedCount(methodMetrics.size())
                 .suggestedNextTools(highRisk > 0
                     ? List.of("Consider refactoring high-complexity methods")
-                    : List.of("get_dependency_graph to analyze dependencies"))
+                    : List.of("inspect(kind=dependency_graph) to analyze dependencies"))
                 .build());
 
         } catch (Exception e) {

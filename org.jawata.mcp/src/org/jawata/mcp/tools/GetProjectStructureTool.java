@@ -119,8 +119,8 @@ public class GetProjectStructureTool extends AbstractTool {
                 .returnedCount(totalPackages)
                 .suggestedNextTools(List.of(
                     "search_symbols to find types",
-                    "get_document_symbols to explore a file",
-                    "get_classpath_info for dependencies"
+                    "inspect(kind=document_symbols) to explore a file",
+                    "inspect(kind=classpath) for dependencies"
                 ))
                 .build());
 

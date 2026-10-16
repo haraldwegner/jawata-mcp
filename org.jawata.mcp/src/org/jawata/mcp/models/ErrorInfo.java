@@ -211,7 +211,7 @@ public class ErrorInfo {
         return new ErrorInfo(
             PROJECT_KEY_DROPPED,
             String.format("Project '%s' was unloaded at %s", projectKey, when),
-            "Re-acquire via list_projects; the workspace's loaded-project set changed mid-session."
+            "Re-acquire via project(action=list); the workspace's loaded-project set changed mid-session."
         );
     }
 

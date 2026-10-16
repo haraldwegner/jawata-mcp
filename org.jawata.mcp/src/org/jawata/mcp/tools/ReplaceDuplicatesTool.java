@@ -156,7 +156,7 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool
             Optional<LoadedProject> scoped = service.getProject(projectKey);
             if (scoped.isEmpty()) {
                 return Preparation.fail(ToolResponse.invalidParameter("projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use list_projects."));
+                    "Unknown projectKey '" + projectKey + "'. Use project(action=list)."));
             }
             projects = List.of(scoped.get());
         } else {
@@ -285,7 +285,7 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool
 
         Change change = ChangeEngine.fromFileEdits(
             "replace duplicates of " + canonical.methodName, editsByFile);
-        String summary = "replace_duplicates: " + replaced.size() + " clone(s) delegated to "
+        String summary = "extract(kind=replace_inline_code): " + replaced.size() + " clone(s) delegated to "
             + canonical.methodName + (skipped.isEmpty() ? "" : " (" + skipped.size() + " skipped)");
         return Preparation.of(change, summary, groupInfo);
     }

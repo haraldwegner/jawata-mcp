@@ -152,9 +152,9 @@ public class AnalyzeMethodTool extends AbstractTool {
                 miss.put("exampleArgs", example);
                 return ToolResponse.success(miss, ResponseMeta.builder()
                     .suggestedNextTools(List.of(
-                        "Re-call analyze_method with a nearbyMethodCandidates line/column",
-                        "get_document_symbols to list every method in the file",
-                        "analyze_type to inspect the whole declaring type"))
+                        "Re-call analyze(kind=method) with a nearbyMethodCandidates line/column",
+                        "inspect(kind=document_symbols) to list every method in the file",
+                        "analyze(kind=type) to inspect the whole declaring type"))
                     .build());
             }
 
@@ -194,7 +194,7 @@ public class AnalyzeMethodTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "analyze_type for declaring type analysis",
+                    "analyze(kind=type) for declaring type analysis",
                     "find_references for all usages",
                     "go_to_definition to navigate to a callee"
                 ))

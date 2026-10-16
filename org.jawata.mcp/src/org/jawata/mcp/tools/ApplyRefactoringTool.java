@@ -90,7 +90,7 @@ public class ApplyRefactoringTool extends AbstractTool {
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",
-                "apply_refactoring failed: " + outcome.validationError(),
+                "refactoring(action=apply) failed: " + outcome.validationError(),
                 "No files were modified. The staged change has been consumed — re-run the "
                     + "originating refactor tool to rebuild it.");
         }
@@ -100,7 +100,7 @@ public class ApplyRefactoringTool extends AbstractTool {
             detail.put("undone", gated.undone());
             return ToolResponse.error(
                 "REFACTORING_BROKE_COMPILE",
-                "apply_refactoring " + gated.failure(),
+                "refactoring(action=apply) " + gated.failure(),
                 "The staged change is wrong for this code shape. It has been consumed; do "
                     + "not re-stage the identical call. The workspace was "
                     + (gated.undone() ? "left as it was." : "NOT restored — check git status."),
@@ -124,7 +124,7 @@ public class ApplyRefactoringTool extends AbstractTool {
             .returnedCount(outcome.modifiedFilePaths().size())
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the refactoring",
-                "undo_refactoring with the undoChangeId if verification fails"))
+                "refactoring(action=undo) with the undoChangeId if verification fails"))
             .build());
     }
 }

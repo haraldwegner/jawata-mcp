@@ -216,8 +216,8 @@ public class CopyClassTool extends AbstractTool
                 data.put("generatedSource", newSource);
                 return ToolResponse.success(data, ResponseMeta.builder()
                     .suggestedNextTools(List.of(
-                        "apply_refactoring with this changeId to create the file",
-                        "inspect_refactoring with this changeId to re-examine the copy"))
+                        "refactoring(action=apply) with this changeId to create the file",
+                        "refactoring(action=inspect) with this changeId to re-examine the copy"))
                     .build());
             }
 
@@ -248,7 +248,7 @@ public class CopyClassTool extends AbstractTool
                 .suggestedNextTools(List.of(
                     "compile_workspace to verify the copy",
                     "extract(kind=superclass) to lift shared members into a common parent",
-                    "undo_refactoring with the undoChangeId to remove the copy"))
+                    "refactoring(action=undo) with the undoChangeId to remove the copy"))
                 .build());
         } catch (Exception e) {
             log.warn("copy_class failed: {}", e.getMessage(), e);

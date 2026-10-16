@@ -132,8 +132,8 @@ public class GetSuperMethodTool extends AbstractTool {
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "find_implementations to find overriding methods",
-                    "get_type_hierarchy for inheritance chain"
+                    "find_references(kind=implementations) to find overriding methods",
+                    "inspect(kind=type_hierarchy) for inheritance chain"
                 ))
                 .build());
 

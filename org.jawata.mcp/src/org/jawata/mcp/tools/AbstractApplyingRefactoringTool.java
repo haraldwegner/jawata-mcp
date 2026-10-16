@@ -218,8 +218,8 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
             preparation.extras.forEach(data::putIfAbsent);
             return ToolResponse.success(data, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
-                    "apply_refactoring with this changeId to commit the staged change",
-                    "inspect_refactoring with this changeId to re-examine the diff"))
+                    "refactoring(action=apply) with this changeId to commit the staged change",
+                    "refactoring(action=inspect) with this changeId to re-examine the diff"))
                 .build());
         }
 
@@ -313,11 +313,11 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
                 : "APPLIED, but the change leaves " + introduced.size() + " compiler error(s) "
                     + "to fix (see introducedErrors) — that is this refactoring's contract "
                     + "(bodies/call sites adapt AFTER a signature change). Fix them NOW or "
-                    + "undo_refactoring; do not leave the workspace red.")
+                    + "refactoring(action=undo); do not leave the workspace red.")
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the whole workspace (this gate checked the "
                     + "modified files only)",
-                "undo_refactoring with the undoChangeId if verification fails"))
+                "refactoring(action=undo) with the undoChangeId if verification fails"))
             .build());
     }
 

@@ -205,7 +205,7 @@ public class ComposeMethodTool extends AbstractTool
             .returnedCount(result.modifiedFilePaths().size())
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the refactoring",
-                "undo_refactoring with the undoChangeId if verification fails"))
+                "refactoring(action=undo) with the undoChangeId if verification fails"))
             .build());
     }
 

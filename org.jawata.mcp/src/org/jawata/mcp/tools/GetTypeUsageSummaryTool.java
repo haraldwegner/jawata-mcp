@@ -157,8 +157,8 @@ public class GetTypeUsageSummaryTool extends AbstractTool {
                 .totalCount(totalUsages)
                 .returnedCount(totalUsages)
                 .suggestedNextTools(List.of(
-                    "analyze_type for complete type analysis",
-                    "get_type_hierarchy to understand inheritance",
+                    "analyze(kind=type) for complete type analysis",
+                    "inspect(kind=type_hierarchy) to understand inheritance",
                     "find_references for all reference types"
                 ))
                 .build());
