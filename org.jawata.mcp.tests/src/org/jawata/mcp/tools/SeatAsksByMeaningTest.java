@@ -482,7 +482,7 @@ class SeatAsksByMeaningTest {
         // embedder is a skip, never a pass (AMissingEmbedderIsASkipNotAPassTest).
         org.junit.jupiter.api.Assumptions.assumeTrue(
             org.jawata.mcp.knowledge.EmbeddingService.shared().available(),
-            "the area is shortlisted by meaning, which needs the embedder");
+            "embedder unavailable: the area is shortlisted by meaning");
         recordTheCorpus();
         recordArea("com.example",
             "The lane between an agent's questions and what this machine already learned.");
