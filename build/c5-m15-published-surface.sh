@@ -10,8 +10,9 @@
 #
 # WHAT IT PROVES:
 #   * D10's tool is PUBLISHED, not merely built and registered in a method nobody calls;
-#   * the shipped surface is EXACTLY 43 tools, and health_check's toolCount is that same
-#     43 — each pinned against the LITERAL, never against the other;
+#   * the shipped surface is EXACTLY as many tools as the README's inventory names, and
+#     health_check's toolCount is that same number — each pinned against the README's count,
+#     never against the other (no literal lives in this script: one went stale, C9a-1);
 #   * every refactoring door publishes exactly the kind count C9 assigns it, with inline at
 #     SIX since Sprint 28g's third change added `unreferenced_member`;
 #   * and hierarchy is counted on `direction`, not `kind`, because that door selects on its
@@ -61,11 +62,12 @@ done
 [ "$READY" -eq 1 ] || { echo "resident never announced readiness in 120s:" >&2
                         tail -20 "$LOG" >&2; exit 2; }
 
-PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" python3 - << 'PY'
-import json, os, urllib.request
+PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_ROOT="$ROOT" python3 - << 'PY'
+import json, os, re, urllib.request
 
 PORT = os.environ["PROBE_PORT"]
 TOKEN = os.environ["PROBE_TOKEN"]
+ROOT = os.environ["PROBE_ROOT"]
 
 passed = failed = 0
 def ok(msg):
@@ -86,11 +88,22 @@ listed = rpc("tools/list", {})["result"]["tools"]
 names = [t["name"] for t in listed]
 by_name = {t["name"]: t for t in listed}
 
-# THE COUNT, PINNED TO AN ABSOLUTE NUMBER. This replaces a `len(names) > 20` floor, and a
-# C5 audit is why: a floor cannot see a tool LEAVE, since any single departure from 43 still
-# lands above 20. The criterion asks for the toolCount "recomputed from the shipped list",
-# and only a literal makes a vanished tool fail.
-EXPECTED_TOOLS = 43
+# THE COUNT, PINNED TO AN ABSOLUTE NUMBER THAT IS NOT A LITERAL HERE (C9a-1). It replaced a
+# `len(names) > 20` floor, and a C5 audit is why: a floor cannot see a tool LEAVE, since any
+# single departure still lands above 20. A literal in this script then did what a literal does:
+# it said 43 for as long as the product shipped 44, and nothing ran this probe to notice. The
+# number now comes from the README's delimited inventory, the one committed list of the tools,
+# which the end-to-end test already holds to the live product in BOTH directions. The count is
+# still independent of the list it checks — it is read from a file, not from the map that both
+# tools/list and health_check read — so a vanished tool still fails.
+with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as readme:
+    block = re.search(r"<!-- TOOLS:BEGIN.*?<!-- TOOLS:END", readme.read(), re.S)
+README_TOOLS = set(re.findall(r"`([a-z_]+)`", block.group(0))) if block else set()
+if not README_TOOLS:
+    print("  FAIL  the README's TOOLS:BEGIN/END block is missing or empty, so there is no committed "
+          "list to count against")
+    raise SystemExit(1)
+EXPECTED_TOOLS = len(README_TOOLS)
 if len(names) == EXPECTED_TOOLS:
     ok("tools/list returns exactly %d tools" % len(names))
 else:

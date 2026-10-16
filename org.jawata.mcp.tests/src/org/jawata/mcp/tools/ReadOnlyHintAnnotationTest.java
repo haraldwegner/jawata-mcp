@@ -48,8 +48,10 @@ class ReadOnlyHintAnnotationTest {
             "analyze_type", "analyze_change_impact",
             "search_symbols",
             // read-only tools whose names match no detect prefix
-            "go_to_definition", "health_check", "list_projects",
-            "validate_syntax", "inspect_refactoring", "suggest_imports");
+            // (`list_projects`, `inspect_refactoring` and `suggest_imports` stood here after the
+            // tools were folded away; the registry's policy no longer names them, C9a-1)
+            "go_to_definition", "health_check",
+            "validate_syntax");
         readOnly.forEach(name -> registry.register(stub(name)));
 
         for (String name : readOnly) {

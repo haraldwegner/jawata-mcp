@@ -187,15 +187,23 @@ esac
 # the signed spec says "one new tool"; the architect report records the tension with 28d-rescue's
 # 46 -> 42 consolidation and the alternative (`inline kind=anonymous_implementation`, which would
 # return the count to 42), and the spec's wording stands until ruled otherwise.
-EXPECTED_TOOLS=44
+# C9a-1: NOT A LITERAL ANY MORE. The line that stood here said 44 and had to be edited by hand in
+# every change that added or removed a tool; its sibling in the C5 probe went stale for exactly
+# that reason. The number is the size of the README's delimited inventory, the one committed list
+# of the tools, which the readme-lists-every-tool check below holds to the live product in BOTH
+# directions. So health_check's count is still met by a number that does not come from the map it
+# reads, and a tool that vanishes or appears fails here or there in the same change as the README.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+EXPECTED_TOOLS="$(sed -n '/<!-- TOOLS:BEGIN/,/<!-- TOOLS:END/p' "$REPO_ROOT/README.md" \
+    | grep -oE '`[a-z_]+`' | tr -d '`' | sort -u | grep -c .)"
 TOOLS="$(printf '%s' "$H" | grep -oE '"toolCount"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+')"
 if [ "${TOOLS:-missing}" = "$EXPECTED_TOOLS" ]; then
     pass "tool-count-still-$EXPECTED_TOOLS health_check reports exactly $EXPECTED_TOOLS tools"
 else
     fail "tool-count-still-$EXPECTED_TOOLS expected $EXPECTED_TOOLS tools, health_check reports:
           ${TOOLS:-no toolCount field at all}. Registered right now: $(tool_names)
-          If a tool was added or removed on purpose, set EXPECTED_TOOLS in this
-          script (and the release note's sentence) in that same change."
+          If a tool was added or removed on purpose, update the TOOLS:BEGIN/END block in
+          README.md (which this count is read from) in that same change."
 fi
 
 # --- readme-lists-every-tool: the front page against the RUNNING product ------
@@ -210,10 +218,10 @@ fi
 # directions — a tool with no row, and a row naming a tool that no longer ships,
 # each fail here.
 #
-# Against the running product on purpose. The registration list is unreachable
-# from a unit test: JawataApplication.registerTools() is private and its only
-# caller is the application's own start(), so the artifact is the sole honest
-# source for "which tools ship".
+# Against the running product on purpose: JawataApplication.registerTools() is private
+# and its only caller is the application's own start(), so the artifact is the honest
+# source for "which tools ship" until a unit-testable producer exists (C9a-1, step 2 of
+# the architect's design in ARCHITECT-REPORT-C9a1-design.md).
 # Set here because the script's other two REPO_ROOT assignments are both further
 # down, so at this point the name is unset — and under `set -u` that is an error,
 # while without it the sed would read /README.md and this check would compare the
@@ -246,6 +254,18 @@ if RTC="$("$REPO_ROOT/build/readme-tool-count.sh" "$REPO_ROOT/README.md" "$LIVE_
 else
     fail "readme-prose-tool-count $RTC
           Update every count in README.md's prose in the same change that added or removed the tool."
+fi
+
+# --- server-json-states-no-tool-count (C9a-1) ---------------------------------------------------
+# The registry manifest said "63 semantic Java analysis tools" while the product shipped 44. A count
+# in prose that no code reads cannot be held to the product from here, so the manifest states none;
+# this keeps it so. A digit directly before a phrase ending in "tools" is a count waiting to go stale.
+SJ_COUNTS="$(grep -oE '[0-9]+ [A-Za-z ]*tools' "$REPO_ROOT/server.json" || true)"
+if [ -z "$SJ_COUNTS" ]; then
+    pass "server-json-states-no-tool-count the registry manifest keeps no hand-kept count of the tools"
+else
+    fail "server-json-states-no-tool-count server.json states a tool count, which goes stale: $SJ_COUNTS
+          Describe the tools without a number; the live count is health_check's toolCount."
 fi
 
 # --- recall-by-meaning: recall by MEANING, the release's central claim ---------------------

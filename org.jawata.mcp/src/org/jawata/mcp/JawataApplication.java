@@ -9,7 +9,6 @@ import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.host.HostProcesses;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
@@ -19,38 +18,9 @@ import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
-import org.jawata.mcp.tools.AnalyzeTool;
-import org.jawata.mcp.tools.ApplyNullAnnotationsTool;
-import org.jawata.mcp.tools.CompileWorkspaceTool;
-import org.jawata.mcp.tools.DebugTool;
 import org.jawata.mcp.tools.ExperienceTool;
-import org.jawata.mcp.tools.FindDuplicateCodeTool;
-import org.jawata.mcp.tools.FindFieldWritesTool;
-import org.jawata.mcp.tools.FindModernizationTool;
-import org.jawata.mcp.tools.FindPatternUsagesTool;
 import org.jawata.mcp.tools.FindQualityIssueTool;
-import org.jawata.mcp.tools.FindRefsTool;
-import org.jawata.mcp.tools.FindStringLiteralsTool;
-import org.jawata.mcp.tools.FindTestsTool;
-import org.jawata.mcp.tools.GetAtPositionTool;
-import org.jawata.mcp.tools.GetCallHierarchyTool;
-import org.jawata.mcp.tools.GetDiagnosticsTool;
-import org.jawata.mcp.tools.GoToDefinitionTool;
-import org.jawata.mcp.tools.HealthCheckTool;
-import org.jawata.mcp.tools.HireTool;
-import org.jawata.mcp.tools.InspectTool;
-import org.jawata.mcp.tools.LoadProjectTool;
-import org.jawata.mcp.tools.ProfileTool;
-import org.jawata.mcp.tools.ProjectTool;
-import org.jawata.mcp.tools.QuickFixTool;
-import org.jawata.mcp.tools.RefactoringTool;
-import org.jawata.mcp.tools.RefreshWorkspaceTool;
-import org.jawata.mcp.tools.RunTestsTool;
-import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.ToolRegistry;
-import org.jawata.mcp.tools.ValidateSyntaxTool;
-import org.jawata.mcp.tools.build.DependencyTool;
-import org.jawata.mcp.tools.workflow.FormatTool;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.ResolvedToken;
 import org.jawata.mcp.transport.StdioTransport;
@@ -1126,240 +1096,46 @@ public class JawataApplication implements IApplication {
         // store's symbol anchors too (the startup auto-load path calls this directly).
         toolRegistry.setProjectsMutatedHook(this::refreshExperienceAfterProjectLoad);
 
-        // Register HealthCheckTool with suppliers for project status, tool
-        // count, loading state, and (Sprint 10) the multi-project workspace
-        // summary.
-        toolRegistry.register(new HealthCheckTool(
+        // C9a-1: THE SHIPPED SET IS BUILT BY ONE PRODUCER, not written out here. This method used to
+        // construct every tool inline (230 lines, 46 callees), so nothing could ask which tools
+        // ship and every answer was a hand-kept copy that drifted. What the tools take from this
+        // application is the wiring below; everything else about them lives in ShippedTools.
+        //
+        // The suppliers are read at call time wherever this application's state changes after boot
+        // (the workspace service, and the store, which is assigned before this runs but replaced on
+        // a degraded reopen).
+        ShippedTools.Built shipped = ShippedTools.build(new ShippedTools.Wiring(
+            () -> jdtService,
+            service -> this.jdtService = service,
             () -> jdtService != null,
             () -> toolRegistry.getToolCount(),
             () -> loadingState,
             () -> loadingError,
-            () -> jdtService
-        ));
+            this::fieldDir,
+            toolRegistry::inFlight,
+            refactoringChangeCache,
+            experienceStore,
+            () -> experienceStore,
+            this::experienceEmbeddingIndex,
+            runtimeSessions,
+            () -> learnerEvents,
+            () -> toolRegistry,
+            this::selfEndpoint,
+            this::defaultMemoryRoots));
 
-        // Register LoadProjectTool — supplies the existing service so the
-        // tool can reuse it (clear-and-load on top), and installs a fresh
-        // service on first call. This is what enables add_project /
-        // remove_project / list_projects to operate on the same workspace.
-        toolRegistry.register(new LoadProjectTool(
-            () -> jdtService,
-            service -> this.jdtService = service
-        ));
+        // Kept for what reads them later: the watch engine's detector binding, the quality ledger's
+        // reach to the pre-advice surface (wired in start()), and the automatic refresh after a
+        // project load.
+        this.findQualityIssueTool = shipped.quality();
+        this.experienceAdvisor = shipped.advisor();
+        this.experienceTool = shipped.experience();
+        // Sprint 28g (D42): the SAME advisor is also asked on every tool response rather than by one
+        // tool of forty-odd. Nothing new is constructed here, which is what keeps D-SIX satisfied.
+        toolRegistry.setExperienceAdvisor(shipped.advisor());
 
-        // Sprint 16b/A (v1.1.1): project(action) collapses list/add/remove_project
-        // (load_project stays separate — it installs the workspace service).
-        toolRegistry.register(new ProjectTool(() -> jdtService));
-
-        // Sprint 28b (D3): the field lane's one front door — the local
-        // recording's ranked shapes, the posted mark, and the two switches.
-        // Needs no loaded project: it answers about jawata's own use, and a
-        // workspace whose projects failed to load is exactly when an agent
-        // most wants to report that.
-        // mcp#42: the registry's own in-flight registry, so `pile` can report the calls
-        // that never came back — the failure the pile itself structurally cannot record,
-        // because the pile is written when a call FINISHES.
-        toolRegistry.register(new org.jawata.mcp.tools.FieldTool(
-            () -> jdtService, this::fieldDir, toolRegistry::inFlight));
-
-        // Batch 1: Core Navigation Tools
-        toolRegistry.register(new SearchSymbolsTool(() -> jdtService));
-        toolRegistry.register(new GoToDefinitionTool(() -> jdtService));
-        // Sprint 16b/A (v1.1.1): find_references(kind) collapses references/implementations/method_references.
-        toolRegistry.register(new FindRefsTool(() -> jdtService));
-
-        // Sprint 16b/A (v1.1.1): inspect(kind) collapses the 9 read-only structural
-        // get_* tools; analyze(kind) collapses the 9 analyze_* tools. Narrow classes
-        // stay in-package as delegates; they're no longer registered.
-        InspectTool inspectTool = new InspectTool(() -> jdtService);
-        toolRegistry.register(inspectTool);
-        toolRegistry.register(new AnalyzeTool(() -> jdtService));
-
-        // Sprint 16b/A: get_at_position collapses the 9 read-only position-lookup tools.
-        toolRegistry.register(new GetAtPositionTool(() -> jdtService));
-
-        // Batch 5: Diagnostics & Call Hierarchy
-        toolRegistry.register(new GetDiagnosticsTool(() -> jdtService));
-        toolRegistry.register(new ValidateSyntaxTool(() -> jdtService));
-        // Sprint 16b/A: get_call_hierarchy collapses incoming + outgoing by direction.
-        toolRegistry.register(new GetCallHierarchyTool(() -> jdtService));
-
-        // Analysis tools
-        toolRegistry.register(new FindFieldWritesTool(() -> jdtService));
-        toolRegistry.register(new FindTestsTool(() -> jdtService));
-
-        // Refactoring tools that dispatch on nothing — same source as the doors below, so a
-        // gate can join against what is REGISTERED rather than against a tool it constructed
-        // itself. C9 found the difference: the Fowler count took `rename_symbol` from a fresh
-        // instance, so deleting this registration would have left it green.
-        // Sprint 28f Stage 7: the store reaches rename_symbol so a renamed member takes the
-        // knowledge anchored at it. A SUPPLIER, read at call time — registerTools runs
-        // before the store is opened, so a direct reference here would be null forever and
-        // renames would quietly stop following. RenameFollowsIntoTheStoreTest asserts this
-        // wiring against the registry the application builds.
-        for (org.jawata.mcp.tools.AbstractTool tool
-                : org.jawata.mcp.tools.RefactoringDoors.standalone(
-                    () -> jdtService, refactoringChangeCache, () -> experienceStore)) {
+        for (org.jawata.mcp.tools.Tool tool : shipped.tools()) {
             toolRegistry.register(tool);
         }
-
-        // S8b step 8: THE NINE REFACTORING DOORS COME FROM ONE SOURCE.
-        // They used to be nine scattered register(...) calls here, and three test
-        // files each kept their own hand-written copy of the same set — memberships
-        // 10, 8, 6 and 8 against a true population of nine. A door added to
-        // RefactoringDoors.all is now registered, mirrored, covered and examined in
-        // the same edit, because none of those files holds a name any more.
-        for (org.jawata.mcp.tools.AbstractTool door
-                : org.jawata.mcp.tools.RefactoringDoors.all(
-                    () -> jdtService, refactoringChangeCache)) {
-            toolRegistry.register(door);
-        }
-
-        // Sprint 16b/A: apply-tool category front doors. Collapse 16 narrow
-        // refactor/codegen tools into 5 parametric verbs; the narrow classes
-        // remain as the delegated implementations, no longer registered.
-        // Sprint 22a P1-a.1: the composition-axis primitive — move an instance
-        // method onto the type of one of its parameters/fields (net-new front door).
-        // Sprint 28d-rescue (stage 1): FOLDED into `move` as kind=method.
-
-        // Sprint 19 (Kerievsky): pattern-targeted refactorings behind one parametric
-        // front door; the per-pattern delegates are not registered standalone.
-
-        // Fine-grained reference search (JDT-unique capabilities).
-        // Sprint 11 Phase D: 13 narrow find_* tools collapsed to 2 parametric ones.
-        // - find_pattern_usages (annotation, instantiation, type_argument, cast, instanceof)
-        // - find_quality_issue  (naming, bugs, unused, large_classes, circular_deps,
-        //                        reflection, throws, catches)
-        // The narrow tool classes remain in the package as the analysis
-        // implementations the parametric tools delegate to; they're no
-        // longer registered as user-facing MCP tools.
-        toolRegistry.register(new FindPatternUsagesTool(() -> jdtService));
-        // Sprint 28d: the store goes in as a SUPPLIER. The detectors whose cure
-        // is a catalogue entry resolve their addresses from it at scan time, so
-        // this line does not depend on whether experienceStore is assigned yet.
-        FindQualityIssueTool qualityTool =
-            new FindQualityIssueTool(() -> jdtService, () -> experienceStore);
-        toolRegistry.register(qualityTool);
-        this.findQualityIssueTool = qualityTool;
-        // Sprint 22a P2-a: literal-content search (net-new front door #2).
-        toolRegistry.register(new FindStringLiteralsTool(() -> jdtService));
-        // find_method_references now via find_references(kind=method_references).
-
-        // Compound analysis (analyze_file/type/method now via analyze(kind);
-        // get_type_usage_summary via inspect(kind)).
-
-        // Advanced refactoring tools (extract/inline now via the `extract`/`inline` front doors above)
-        // Sprint 28d-rescue (stage 1): FOLDED into `refactor_to_pattern` as
-        // kind=replace_pattern_with_idiom, whose default idiom already IS this.
-
-        // Sprint 11 Phase E (v1.5.1): JDT-LTK structural refactoring.
-        // move/pull-up/push-down now via the `move`/`move_in_hierarchy` front doors above.
-
-        // Sprint 12 (v1.6.0): Ring 1 workspace verification tools.
-        toolRegistry.register(new CompileWorkspaceTool(() -> jdtService));
-        RunTestsTool runTestsTool = new RunTestsTool(() -> jdtService);
-        toolRegistry.register(runTestsTool);
-        // Sprint 28g S10-9: the impacted-test selection, on the read-only door too. A hired
-        // Claude is refused run_tests in plan mode; inspect is read-only, so the seat that is
-        // asked "does this change reach any test" can ask D21's own answer.
-        inspectTool.setImpactedTests(runTestsTool::impactedTests);
-
-        // Sprint 24 (D5): the interactive debugger's front door. Dev/sim only —
-        // production runs no agent and exposes no debug channel. It is given the
-        // experience store (D15): a breakpoint hit RECALLS what is already recorded
-        // about its symbol, so a session recalls prior incidents before it probes.
-        toolRegistry.register(new DebugTool(() -> jdtService, runtimeSessions,
-            new org.jawata.mcp.runtime.RuntimeArtifactStore(),
-            new org.jawata.mcp.knowledge.ExperienceRetrieval(experienceStore, () -> jdtService)));
-
-        // Sprint 24 (D10): the profiling floor's front door — process-level
-        // diagnostics (threads/deadlock/heap/GC/native-memory) via jcmd, against
-        // the same sessions `debug` opens. toolCount 44 -> 45 (the budget's end state).
-        toolRegistry.register(new ProfileTool(() -> jdtService, runtimeSessions));
-
-        // Sprint 28g S16 (C16): the hire path's FIRST production caller. HiredRun.issue had seven
-        // callers and every one was a test — filed as S16-5 — so one seat could not hire another
-        // in the live process at all, which is C16's first clause.
-        //
-        // The two suppliers are not symmetric and the asymmetry is the point. The REGISTRY one
-        // breaks a real cycle: this tool sits in the registry its own gates run through, so the
-        // gate runner is built per call from whatever the registry holds by then. The JOURNAL one
-        // may answer null, because a degraded resident has no journal; the tool is still published
-        // and refuses with that reason, since a tool missing from the list is a degradation no
-        // client can see.
-        //
-        // The third supplier is this resident's OWN endpoint (4.4.1): a Claude hire is started with
-        // that as its only MCP server, so it talks to the resident that hired it under tool names
-        // its allowlist can say. Null on stdio and before the transport listens.
-        toolRegistry.register(new HireTool(() -> jdtService, HostProcesses.system(),
-            new org.jawata.mcp.runtime.RuntimeArtifactStore(),
-            new org.jawata.mcp.learn.PlanLedger(),
-            () -> learnerEvents, () -> toolRegistry, this::selfEndpoint));
-
-        // Sprint 14 Phase B.1 (v1.8.0): consolidated lifecycle tool.
-        toolRegistry.register(new RefreshWorkspaceTool(() -> jdtService));
-
-        // Sprint 14 Phase B.3 (v1.8.0): structural clone detector.
-        toolRegistry.register(new FindDuplicateCodeTool(() -> jdtService));
-
-        // Sprint 15 (v1.10.0): parametric modernization sweeps.
-        toolRegistry.register(new FindModernizationTool(() -> jdtService));
-
-        // Sprint 15 (v1.10.0): parametric clean-up catalog (upstream v1.4.2 harvest).
-
-        // Sprint 15a/15b: naming/Javadoc/nullness analysis now via analyze(kind);
-        // apply_null_annotations stays (it mutates).
-        toolRegistry.register(new ApplyNullAnnotationsTool(() -> jdtService, refactoringChangeCache));
-
-        // Sprint 13 (v1.7.0): Ring 2 code generation — now via the parametric `generate` front door above.
-
-        // Sprint 16b/A (v1.1.1): dependency(action) collapses add/update/find_unused (Maven-only).
-        toolRegistry.register(new DependencyTool(() -> jdtService));
-
-        // Sprint 13 (v1.7.0): Ring 4 formatter / workflow polish.
-        toolRegistry.register(new FormatTool(() -> jdtService));
-        // Sprint 28d-rescue (stage 1): FOLDED into `organize_imports` as scope=project
-        // | workspace, which also retires its second, weaker import engine.
-
-        // Sprint 16b/A (v1.1.1): quick_fix(action) collapses suggest_imports/get_quick_fixes/apply_quick_fix.
-        toolRegistry.register(new QuickFixTool(() -> jdtService));
-
-        // Metrics + advanced analysis now via inspect(kind) (complexity/dependency_graph/
-        // di_registrations) and analyze(kind) (change_impact/control_flow/data_flow).
-        // Sprint 11 Phase D: FindCircularDependencies / FindReflectionUsage /
-        // FindLargeClasses / FindNamingViolations / FindUnusedCode /
-        // FindPossibleBugs registrations dropped — exposed via
-        // find_quality_issue(kind=...) above.
-
-        // Sprint 16b/A (v1.1.1): refactoring(action) collapses the staged apply/undo/
-        // inspect lifecycle (changes + undo handles in refactoringChangeCache, 1h TTL, LRU).
-        // Sprint 21 (v2.0): inject the store-backed advisor so the plan lifecycle consults +
-        // records against the knowledge store (fills the Sprint-18 seam; was NoOpAdvisor).
-        // Sprint 27a D2: the pre-advice surface runs the SAME union recall the
-        // front door does — so it is given the embedding index, not left
-        // keyword-only. Held in a field so the quality ledger (wired later in
-        // start()) reaches it; a surface whose speak/abstain is uncounted is
-        // exactly the "component available: true" blindness v3.4.0 shipped.
-        experienceAdvisor = new ExperienceAdvisor(experienceStore, () -> jdtService,
-            experienceEmbeddingIndex());
-        // Sprint 28g (D42): the SAME advisor, now also asked on every tool response rather than
-        // by one tool of forty-two. Measured before wiring: `adviseBefore` had thirteen callers
-        // and exactly ONE in production, so the surface was built, wired at boot, and reachable
-        // only by whoever happened to call plan_refactoring. Nothing new is constructed here —
-        // that is what keeps D-SIX satisfied.
-        toolRegistry.setExperienceAdvisor(experienceAdvisor);
-        toolRegistry.register(new RefactoringTool(() -> jdtService, refactoringChangeCache,
-            experienceAdvisor));
-        // Sprint 14b: composite closing the find_duplicate_code loop.
-        // Sprint 28d-rescue (stage 1): FOLDED into `extract` as kind=replace_inline_code.
-
-        // Sprint 21 (v2.0): the local experience/knowledge store front door.
-        // experience(kind=record|...) — writes now, recall/load/maintenance land in
-        // later stages. Backed by the store opened in start(), closed in stop().
-        // Sprint 21b (item D): keep the reference — autoLoadProjects triggers the
-        // automatic staleness refresh once projects are available.
-        experienceTool = new ExperienceTool(() -> jdtService, experienceStore,
-            this::defaultMemoryRoots);
-        toolRegistry.register(experienceTool);
     }
 
     /** jawata-mcp#2: the exit code for a port the resident could not bind. */

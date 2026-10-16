@@ -63,6 +63,15 @@ public final class ToolHowTo {
     );
 
     /**
+     * The tools this map is keyed by (C9a-1), so a test can ask whether each is still a tool that
+     * ships: a string key is not touched by a reference-updating refactoring. Package-private on
+     * purpose: a public test-only member is what the hollow-wiring gate refuses.
+     */
+    static java.util.Set<String> toolsWithAHowTo() {
+        return HOW_TO.keySet();
+    }
+
+    /**
      * @param tool the tool named by a precedent ({@code null} tolerated)
      * @return its one-line how-to, or {@code null} when the tool has none catalogued
      */

@@ -50,9 +50,12 @@ public class ToolRegistry {
      */
     private static final Set<String> READ_ONLY_PREFIXES =
         Set.of("find_", "get_", "analyze_", "search_");
+    // C9a-1: `list_projects`, `inspect_refactoring` and `suggest_imports` stood here after the tools
+    // were folded away (project, refactoring(action=inspect), quick_fix(action=suggest_imports));
+    // ShippedToolsTest asks the shipped set and found them, which is the check this list lacked.
     private static final Set<String> READ_ONLY_NAMES = Set.of(
-        "go_to_definition", "health_check", "list_projects",
-        "validate_syntax", "inspect_refactoring", "suggest_imports",
+        "go_to_definition", "health_check",
+        "validate_syntax",
         // Sprint 16b/A (v1.1.1): parametric read-only front doors whose names
         // match no detect prefix.
         "analyze", "inspect");
@@ -375,7 +378,7 @@ public class ToolRegistry {
      * tools where a "next step" nudge would be noise or self-referential.
      */
     private static final Set<String> NO_STEER = Set.of(
-        "health_check", "list_projects", "load_project", "project",
+        "health_check", "load_project", "project",
         "refresh_workspace", "validate_syntax", "compile_workspace", "get_diagnostics");
 
     /**
@@ -395,6 +398,19 @@ public class ToolRegistry {
         }
         return "Grounded next step: verify with compile_workspace + get_diagnostics; "
             + "JAWATA changes are reversible (undo / undo_plan).";
+    }
+
+    /**
+     * Every tool name the two name-keyed policy sets mention (C9a-1). A policy keyed by name fails
+     * open when a tool is renamed or retired, because no reference-updating refactoring touches a
+     * string; this is the question that lets a test ask whether each name is still a tool that
+     * ships. Package-private on purpose: a public test-only member is what the hollow-wiring gate
+     * refuses.
+     */
+    static Set<String> namesFixedByPolicy() {
+        Set<String> names = new java.util.TreeSet<>(READ_ONLY_NAMES);
+        names.addAll(NO_STEER);
+        return names;
     }
 
     /** True when the named tool is a detect tool per the Sprint 14b sets. */
