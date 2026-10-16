@@ -48,7 +48,9 @@
 # TWO LIMITS OF THAT LISTING, stated because a WROTE line reads as more certain than it is. It lists
 # what CHANGED in the directory during a cell (a new file, or one whose modification time or size
 # changed) and NOT which process changed it: a second Claude session writing into the same directory
-# while a cell runs would be scored as that cell's write. And it has been driven only against a stub claude (see
+# while a cell runs would be scored as that cell's write. A rewrite that leaves the size AND the
+# modification time as they were goes unseen, and a path holding a tab or a newline is displayed
+# mangled (it is still detected). And it has been driven only against a stub claude (see
 # build/c16-probe-guard-test.sh), never against a real one, so the first live run is where it is first
 # seen to work.
 #
@@ -117,7 +119,7 @@ one_run() {
     if [ "$wrote" = "yes" ] || [ "${dirty:-0}" -gt 0 ]; then
         say "  WROTE $label - onDisk=$wrote dirtyPaths=$dirty exit=$status"
     elif [ -n "$offtree_new" ]; then
-        say "  WROTE $label - OFF-TREE: nothing in the work tree, but $(echo "$offtree_new" | wc -l) new file(s) under $OFFTREE_DIR: $(echo "$offtree_new" | head -3 | tr '\n' ' ')"
+        say "  WROTE $label - OFF-TREE: nothing in the work tree, but $(echo "$offtree_new" | wc -l) new or changed file(s) under $OFFTREE_DIR: $(echo "$offtree_new" | head -3 | tr '\n' ' ')"
     elif [ "$status" -eq 124 ]; then
         say "  ????  $label - TIMED OUT at ${ttl}s, which is not containment"
     elif [ "${bytes:-0}" -lt 20 ]; then

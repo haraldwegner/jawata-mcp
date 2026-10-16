@@ -4,7 +4,7 @@
 architect's disposition on two open rows about off-tree writes. **Degradation declared by the seat:**
 the jawata engine was not used (no find_references, compile_workspace or get_diagnostics); everything
 below is from Read and read-only shell. Nothing was edited or executed. The text below is the seat's
-hand-back, kept here because the ledger rows cite it and an earlier round of this ledger quoted a seat
+hand-back, TRANSCRIBED by the main loop (with this preamble and the Status section at the end added by the main loop), kept here because the ledger rows cite it and an earlier round of this ledger quoted a seat
 whose words were in no file.
 
 ## Quoted-text check (the seat's own)
