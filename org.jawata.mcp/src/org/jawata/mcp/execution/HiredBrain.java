@@ -147,9 +147,8 @@ public final class HiredBrain {
      *
      * @param host    the process boundary — injected rather than reached for, so a test supplies it
      * @param dialect how this brain speaks
-     * @param base    the command's shape (working directory, environment); its argv is REPLACED by
-     *     the dialect's, because what to run is the dialect's answer and where to run it is the
-     *     caller's
+     * @param base    where the brain runs and with what environment. It carries no argv: what to run
+     *     is the dialect's answer alone, and where to run it is the caller's
      * @param prompt  the brief
      * @param tools   the tools this run may use. Handed to the dialect, which attaches them if it
      *     CAN — and a dialect whose {@link BrainDialect#toolAttachment()} is not

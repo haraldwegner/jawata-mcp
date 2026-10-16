@@ -48,4 +48,18 @@ class TheHirePathHasOneArgvSourceTest {
         assertEquals(List.of(), offenders,
             "these take a HostCommand, so a caller can set an argv the run silently replaces");
     }
+
+    @Test
+    @DisplayName("the type that replaced it has no place to put an argv either")
+    void theSiteHasNoPlaceForAnArgv() {
+        // The test above bans one TYPE. An argv field added to HireSite would put the second source
+        // back through the very type that was made to have none, and stay green there.
+        List<String> carriers = Arrays.stream(HireSite.class.getRecordComponents())
+            .filter(c -> List.class.isAssignableFrom(c.getType()) || c.getType().isArray()
+                || c.getName().toLowerCase().contains("argv")
+                || c.getName().toLowerCase().contains("command"))
+            .map(c -> c.getName() + ":" + c.getType().getSimpleName())
+            .toList();
+        assertEquals(List.of(), carriers, "a HireSite component that could carry an argv");
+    }
 }

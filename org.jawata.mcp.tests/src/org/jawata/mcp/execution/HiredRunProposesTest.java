@@ -449,6 +449,15 @@ class HiredRunProposesTest {
                     .get("basis"),
                 "a script has no containment of the hire's making, and the manifest says so"),
 
+            // S16-21: WHAT THE CENSUS COVERS, in the manifest beside `applied` and in the record a
+            // human reads, the two the headline test cannot see. Deleting either leaves the
+            // headline passing, which is how the audit found them uncovered.
+            () -> assertEquals(HiredRun.OFF_TREE_SCOPE,
+                artifacts.readManifest(proposal.artifactId()).orElseThrow().get("appliedScope"),
+                "the manifest says what applied and changedFiles are about"),
+            () -> assertTrue(record.contains("- changes counted in: " + HiredRun.OFF_TREE_SCOPE),
+                "and the record carries the same sentence: " + record),
+
             // THE CONTROL for the crashed-brain case: this run exited cleanly, so the
             // record must NOT carry the did-not-exit-cleanly line. Without this, emitting
             // that line unconditionally would pass every assertion over there.
