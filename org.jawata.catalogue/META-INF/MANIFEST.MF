@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: JAWATA Catalogue
 Bundle-SymbolicName: org.jawata.catalogue
-Bundle-Version: 4.4.5
+Bundle-Version: 4.4.6
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
