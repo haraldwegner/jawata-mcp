@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
   <title>jawata — compiler-accurate Java analysis &amp; refactoring for AI agents</title>
   <meta name="description" content="jawata is a JDT-backed MCP server: IDE-grade Java code intelligence for AI coding agents — compiler-accurate analysis, 62 of Fowler's 66 refactorings compile-verified and reversible, runtime debugging and profiling without code changes, tests chosen by compiler reach, whole-workspace scope, a grounded memory store, and enforcement that keeps agents on the compiler instead of grep. No Eclipse required. Open source, AGPL.">
   <link rel="canonical" href="https://jawata.org/">
@@ -33,158 +34,376 @@
   </script>
   <style>
     :root {
-      --indigo: #0b1020; --indigo-deep: #0f172a; --cream: #f1f5f9;
-      --gold: #b98a2e; --gold-bright: #d4a94e;
+      --bg: #0b1020;
+      --bg-raised: #111833;
+      --bg-code: #080c18;
+      --line: rgba(148, 163, 184, .18);
+      --line-strong: rgba(148, 163, 184, .34);
+      --text: #e2e8f0;
+      --text-soft: #a7b3c7;
+      --text-dim: #8190a8;
+      --gold: #d4a94e;
+      --gold-deep: #b98a2e;
+      --gold-wash: rgba(212, 169, 78, .10);
+      --blue: #2563eb;
+      --blue-deep: #1d4ed8;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      --radius: 12px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
     body {
-      background: var(--indigo); color: var(--cream);
-      font: 17px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(900px 480px at 80% -80px, rgba(37, 99, 235, .16), transparent 70%),
+        radial-gradient(700px 420px at 8% 0, rgba(212, 169, 78, .08), transparent 70%),
+        var(--bg);
+      background-repeat: no-repeat;
+      color: var(--text);
+      font: 17px/1.65 var(--sans);
+      -webkit-font-smoothing: antialiased;
     }
-    main { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 4rem; }
-    header { display: flex; align-items: center; gap: 1rem; margin-bottom: .75rem; }
-    header svg { flex: none; }
-    h1 { font-size: 2.6rem; letter-spacing: .06em; font-weight: 650; color: var(--gold-bright); }
-    .tagline { font-size: 1.45rem; color: var(--gold-bright); font-weight: 600; margin-bottom: .4rem; }
-    .subline { font-size: 1.02rem; color: #94a3b8; margin-bottom: 2.2rem; }
-    h2 { font-size: 1.25rem; color: var(--gold-bright); margin: 2.2rem 0 .6rem; }
+    a { color: var(--gold); text-underline-offset: 3px; }
+    a:hover { color: #ecc977; }
+    :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
     p { margin-bottom: 1rem; }
-    blockquote {
-      border-left: 3px solid var(--gold); padding: .2rem 0 .2rem 1rem;
-      margin: 1.2rem 0; color: #cbd5e1; font-style: italic;
+    strong { color: #f1f5f9; font-weight: 650; }
+    code { font-family: var(--mono); font-size: .9em; background: var(--bg-code);
+           border: 1px solid var(--line); padding: .08rem .38rem; border-radius: 5px; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 1.5rem; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 1rem; top: 1rem; background: var(--bg-raised); padding: .5rem .8rem; z-index: 10; }
+
+    /* ---- top bar ---- */
+    .bar { display: flex; align-items: center; justify-content: space-between;
+           padding: 1.25rem 0; gap: 1rem; }
+    .brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+    .brand svg { flex: none; }
+    .brand span { font-size: 1.15rem; letter-spacing: .16em; font-weight: 650; color: var(--gold); }
+    .nav { display: flex; gap: 1.4rem; font-size: .95rem; }
+    .nav a { color: var(--text-soft); text-decoration: none; }
+    .nav a:hover { color: var(--gold); }
+
+    /* ---- hero ---- */
+    .hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: 3rem; align-items: center;
+            padding: 3.5rem 0 3rem; }
+    .eyebrow { font: 600 .78rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase;
+               color: var(--gold); margin-bottom: 1.2rem; }
+    h1 { font-size: clamp(2.2rem, 5vw, 3.35rem); line-height: 1.08; letter-spacing: -.02em;
+         font-weight: 700; color: #f8fafc; margin-bottom: 1.2rem; }
+    h1 em { font-style: normal; color: var(--gold); }
+    .subline { font-size: 1.12rem; color: var(--text-soft); max-width: 34rem; margin-bottom: 1.8rem; }
+    .situation { font-size: 1.02rem; color: var(--text); max-width: 34rem; margin-bottom: 1.8rem;
+                 padding-left: .9rem; border-left: 2px solid var(--gold-deep); }
+    .cta { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
+    .btn { display: inline-block; padding: .78rem 1.35rem; border-radius: 9px; text-decoration: none;
+           font-weight: 620; font-size: 1rem; line-height: 1.2; transition: transform .12s, background .12s, border-color .12s; }
+    .btn.primary { background: linear-gradient(135deg, var(--blue), var(--blue-deep)); color: #f8fafc;
+                   box-shadow: 0 6px 22px rgba(37, 99, 235, .32); }
+    .btn.primary:hover { transform: translateY(-1px); color: #fff; }
+    .btn.secondary { border: 1.5px solid var(--line-strong); color: var(--text); }
+    .btn.secondary:hover { border-color: var(--gold); color: var(--gold); }
+    .cta-note { font-size: .88rem; color: var(--text-dim); margin-top: .9rem; }
+
+    /* ---- terminal panel ---- */
+    .term { background: var(--bg-code); border: 1px solid var(--line-strong); border-radius: var(--radius);
+            overflow: hidden; box-shadow: 0 18px 50px rgba(0, 0, 0, .42); }
+    .term-top { display: flex; align-items: center; gap: .45rem; padding: .6rem .9rem;
+                background: var(--bg-raised); border-bottom: 1px solid var(--line); }
+    .term-top i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); display: block; }
+    .term-top b { margin-left: .5rem; font: 500 .78rem var(--mono); color: var(--text-dim); }
+    .term-body { padding: 1rem 1.1rem 1.1rem; font: .82rem/1.62 var(--mono); color: var(--text-soft);
+                 overflow-x: auto; }
+    .term-body .row { white-space: pre-wrap; word-break: break-word; margin-bottom: .75rem; }
+    .term-body .prompt { color: var(--text-dim); }
+    .term-body .cmd { color: #e2e8f0; }
+    .term-body .block { color: #fca5a5; }
+    .term-body .hint { color: #86efac; }
+    .term-body .tag { display: inline-block; font-size: .7rem; letter-spacing: .08em; padding: .05rem .45rem;
+                      border-radius: 4px; margin-right: .4rem; text-transform: uppercase; }
+    .term-body .tag.red { background: rgba(248, 113, 113, .14); color: #fca5a5; }
+    .term-body .tag.green { background: rgba(134, 239, 172, .12); color: #86efac; }
+    .term-cap { grid-column: 1 / -1; }
+    .caption { font-size: .84rem; color: var(--text-dim); margin-top: .8rem; }
+
+    /* ---- proof strip ---- */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line);
+             border-radius: var(--radius); background: rgba(17, 24, 51, .55); margin: .5rem 0 3.4rem; }
+    .stat { padding: 1.3rem 1.2rem; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat b { display: block; font-size: 1.9rem; line-height: 1.1; letter-spacing: -.02em; color: var(--gold);
+              font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat b small { font-size: 1rem; color: var(--text-dim); font-weight: 600; }
+    .stat span { display: block; margin-top: .35rem; font-size: .9rem; color: var(--text-soft); line-height: 1.4; }
+
+    /* ---- sections ---- */
+    section { padding: 0 0 3.2rem; }
+    h2 { font-size: 1.55rem; letter-spacing: -.01em; color: #f8fafc; margin-bottom: .5rem; font-weight: 680; }
+    .lede { color: var(--text-soft); max-width: 46rem; margin-bottom: 1.6rem; }
+    .lead-p { font-size: 1.08rem; color: var(--text); max-width: 46rem; }
+
+    /* install */
+    .install { display: flex; align-items: center; gap: .8rem; background: var(--bg-code);
+               border: 1px solid var(--line-strong); border-radius: 10px; padding: .55rem .6rem .55rem 1.1rem;
+               max-width: 40rem; }
+    .install code { flex: 1; background: none; border: 0; padding: 0; font-size: .98rem; color: #93c5fd;
+                    overflow-x: auto; white-space: nowrap; }
+    .copy { flex: none; font: 600 .82rem var(--sans); color: var(--text); background: var(--bg-raised);
+            border: 1px solid var(--line-strong); border-radius: 7px; padding: .5rem .85rem; cursor: pointer; }
+    .copy:hover { border-color: var(--gold); color: var(--gold); }
+    .install-note { font-size: .92rem; color: var(--text-dim); margin: .9rem 0 0; max-width: 46rem; }
+    .install-note code { font-size: .82rem; }
+
+    /* feature cards */
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.1rem; }
+    .card { background: linear-gradient(180deg, rgba(17, 24, 51, .75), rgba(17, 24, 51, .42));
+            border: 1px solid var(--line); border-radius: var(--radius); padding: 1.35rem 1.4rem 1.2rem;
+            font-size: .98rem; line-height: 1.62; color: var(--text-soft); }
+    .card.wide { grid-column: 1 / -1; }
+    .card .n { font: 600 .74rem var(--mono); letter-spacing: .12em; color: var(--gold-deep); display: block;
+               margin-bottom: .4rem; }
+    .card h3 { font-size: 1.13rem; line-height: 1.3; color: #f8fafc; margin-bottom: .55rem; font-weight: 650; }
+    .card p { margin-bottom: 0; }
+    .card em { color: var(--text); }
+
+    /* prose columns */
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 2.6rem; }
+    .two h2 { margin-bottom: .7rem; }
+    blockquote { border: 1px solid var(--line); border-left: 3px solid var(--gold-deep);
+                 background: linear-gradient(180deg, rgba(17, 24, 51, .75), rgba(17, 24, 51, .42));
+                 padding: .9rem 1.1rem; margin: 0 0 1.1rem; color: #cbd5e1; font-style: italic;
+                 border-radius: var(--radius); }
+    blockquote code { font-style: normal; }
+
+    /* closing band */
+    .band { text-align: center; border: 1px solid var(--line-strong); border-radius: 16px; padding: 2.6rem 1.5rem;
+            background:
+              radial-gradient(520px 200px at 50% 0, rgba(37, 99, 235, .22), transparent 70%),
+              var(--bg-raised);
+            margin-bottom: 3rem; }
+    .band h2 { font-size: 1.7rem; margin-bottom: .4rem; }
+    .band p { color: var(--text-soft); margin-bottom: 1.4rem; }
+    .band .cta { justify-content: center; }
+
+    footer { border-top: 1px solid var(--line); padding: 1.6rem 0 3rem; font-size: .9rem; color: var(--text-dim); }
+    footer p { margin-bottom: .6rem; max-width: 52rem; }
+
+    /* ---- small screens ---- */
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; gap: 2rem; padding-top: 2rem; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .grid, .two { grid-template-columns: 1fr; }
+      .nav a:not(.keep) { display: none; }
     }
-    a { color: var(--gold-bright); }
-    ul { margin: 0 0 1rem 1.3rem; }
-    li { margin-bottom: .45rem; }
-    .cta { margin: 2.4rem 0; display: flex; gap: 1rem; flex-wrap: wrap; }
-    .cta a {
-      display: inline-block; padding: .7rem 1.4rem; border-radius: 8px;
-      text-decoration: none; font-weight: 600;
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .btn { transition: none; }
     }
-    .cta .primary { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #f8fafc; }
-    .cta .secondary { border: 1.5px solid rgba(148,163,184,.45); color: #cbd5e1; }
-    footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid rgba(148,163,184,.25);
-             font-size: .9rem; color: #94a3b8; }
-    code { background: var(--indigo-deep); padding: .1rem .4rem; border-radius: 4px; }
-    pre.install {
-      background: var(--indigo-deep); border: 1px solid rgba(148,163,184,.25);
-      border-radius: 10px; padding: .9rem 1.1rem; margin: .4rem 0 .5rem;
-      white-space: pre-wrap; word-break: break-all; font-size: .95rem;
-    }
-    pre.install code { background: none; padding: 0; color: #93c5fd; }
-    .install-note { font-size: .9rem; color: #94a3b8; margin-bottom: 1.6rem; }
   </style>
 </head>
 <body>
-<main>
-  <header>
-    <!-- the arch — the jawata mark (monoline abstraction of Javanese ja) -->
-    <svg width="40" height="44" viewBox="8 0 152 188" aria-hidden="true">
-      <path d="M52,174 C40,170 33,160 33,146 C30,112 30,78 35,56 C42,22 60,12 75,12
-               C92,12 110,24 113,54 C115,92 113,124 113,146 C113,164 119,174 131,174
-               L149,173" fill="none" stroke="#d4a94e" stroke-width="15"
-            stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <h1>JAWATA</h1>
-  </header>
-  <p class="tagline">Agents write. jawata verifies. Java wins.</p>
-  <p class="subline">Compiler-accurate Java analysis &amp; refactoring for AI agents — JDT-backed, over MCP.</p>
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap">
 
-  <p><strong>Semantic Java is table stakes now.</strong> Bridges expose the compiler over
-  MCP; fleet platforms run recipe migrations across a hundred thousand repos. jawata is
-  neither — it is the layer <strong>where the actual work happens</strong>: your agent, your
-  machine, your working tree, today's change. A full refactoring <strong>engine</strong> the
-  agent composes freely — not a recipe library. A <strong>grounded memory</strong> of your
-  codebase's lessons. <strong>Enforcement</strong> that keeps the agent on the compiler
-  instead of drifting back to grep. And your code <strong>never leaves your machine</strong>.</p>
-
-  <div class="cta">
-    <a class="primary" href="https://github.com/haraldwegner/jawata-studio/releases">⬇ Download jawata-studio</a>
-    <a class="secondary" href="https://github.com/haraldwegner/jawata-mcp">the engine: jawata-mcp</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="jawata">
+      <!-- the arch — the jawata mark (monoline abstraction of Javanese ja) -->
+      <svg width="30" height="34" viewBox="8 0 152 188" aria-hidden="true">
+        <path d="M52,174 C40,170 33,160 33,146 C30,112 30,78 35,56 C42,22 60,12 75,12
+                 C92,12 110,24 113,54 C115,92 113,124 113,146 C113,164 119,174 131,174
+                 L149,173" fill="none" stroke="#d4a94e" stroke-width="15"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>JAWATA</span>
+    </a>
+    <nav class="nav" aria-label="Page">
+      <a href="#install">Install</a>
+      <a href="#brings">What it does</a>
+      <a href="https://github.com/haraldwegner/jawata-mcp">GitHub</a>
+      <a class="keep" href="https://github.com/haraldwegner/jawata-studio/releases">Download</a>
+    </nav>
   </div>
 
-  <h2>Install in one line</h2>
-  <pre class="install"><code>curl -fsSL https://jawata.org/install.sh | bash</code></pre>
-  <p class="install-note">Linux &amp; macOS — installs jawata-studio, which downloads and manages the
-  engine and wires up your agent clients. Windows:
-  <a href="https://github.com/haraldwegner/jawata-studio/releases">grab the installer</a> or
-  <code>scoop bucket add jawata https://github.com/haraldwegner/scoop-jawata &amp;&amp;
-  scoop install jawata-studio</code>.</p>
+  <main id="main">
 
-  <h2>What only jawata brings</h2>
-  <ul>
-    <li><strong>The full engine, not a recipe library.</strong> Recipe engines automate
-        the <em>known</em> — the framework upgrade, the CVE sweep, a fix somebody already
-        authored, replayed across a fleet. jawata is built for the <em>unknown</em>: the
-        agent composes the refactoring <em>this</em> design problem needs — rename, move,
-        extract, change signature, multi-step pattern plans — freely, on live code. Every
-        change is compile-verified before it counts, applied for real, reversible with one
-        call. <strong>62 of Martin Fowler's 66 refactorings and 22 of his 24 code
-        smells</strong>, counted at start-up against what the engine actually publishes, so the
-        number cannot drift; the rest are declined in writing, each with its reason. Every
-        finding names the refactoring that cures it and where to run it. Your daily work
-        isn't a migration; it's the change nobody wrote a recipe for.</li>
-    <li><strong>Debug and profile without editing a line.</strong> Launch or attach to a
-        JVM, set a breakpoint or a probe, and read live values while the program keeps
-        running — instead of the agent's reflex of adding log lines to production code.
-        Sample a running JVM and the hotspot comes back named as a symbol, not a stack dump.
-        Meant for development and simulation machines: a JVM not started for debugging cannot
-        be attached to at all.</li>
-    <li><strong>Only the tests your change reaches.</strong> Test runs are chosen by
-        compiler reach from coverage evidence, and widen themselves, with a printed reason,
-        where that evidence cannot carry the claim. Coverage and targeted mutation testing
-        say whether the tests would notice a change at all.</li>
-    <li><strong>Enforcement: fluency over grounding doesn't stand a chance.</strong>
-        Deployed hooks steer and, where it matters, <em>block</em> the agent's grep-and-guess
-        reflex, injecting the compiler-accurate route instead. Other tools hope the agent
-        uses them; jawata makes sure.</li>
-    <li><strong>Memory that doesn't live in a chat product.</strong> A grounded store
-        anchored to <em>your</em> symbols, exported as portable markdown into <em>your</em>
-        git, copied every day and read back before the copy counts — written from any client,
-        recalled from any client. A lesson recorded in Cursor today answers by symbol in
-        Claude Code tomorrow. One fitting fact or an honest nothing — never a similarity
-        pile.</li>
-    <li><strong>Whole codebases, not single projects.</strong> Multi-project workspaces with
-        deterministic routing — an enterprise repo tree is one workspace, not a folder at a
-        time. Something even IntelliJ doesn't give you: it opens one project per window;
-        jawata's agent sees the whole estate at once.</li>
-    <li><strong>Local and yours.</strong> Open source (AGPL-3.0), free, and it runs
-        entirely on your machine — no platform, no upload, no per-seat contract. The
-        compiler model is built from <em>your</em> working tree, live, and stays there.</li>
-    <li><strong>No IDE required — yours stays whatever it is.</strong> Headless residents
-        managed by <a href="https://github.com/haraldwegner/jawata-studio">jawata-studio</a>,
-        wired into six clients in two clicks — Claude Code, Cursor, Codex, Copilot CLI,
-        VS Code, Grok. jawata serves the <em>agent</em>, not the editor: keep IntelliJ,
-        keep Eclipse, keep VS Code — the agent gets Eclipse-grade semantics either way.
-        Tools and the shared memory store work on every supported client (verified on
-        Linux, Windows and macOS); the enforcement guard runs on Claude Code and Cursor,
-        the two with a hook surface; memory auto-push is full on Claude Code,
-        best-effort on Cursor.</li>
-  </ul>
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Compiler-accurate Java for AI agents</p>
+        <h1>Agents write. jawata verifies. <em>Java wins.</em></h1>
+        <p class="subline">Compiler-accurate Java analysis &amp; refactoring for AI agents — JDT-backed, over MCP.
+          Runs on your machine, on your working tree.</p>
+        <p class="situation">Built for existing Java codebases, where checking a change costs more than writing it.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/haraldwegner/jawata-studio/releases">Download jawata-studio</a>
+          <a class="btn secondary" href="https://github.com/haraldwegner/jawata-mcp">The engine: jawata-mcp</a>
+        </div>
+        <p class="cta-note">Free and open source (AGPL-3.0). No platform, no upload. Or <a href="#install">install in one line</a>.</p>
+      </div>
 
-  <h2>The Java renaissance</h2>
-  <p>Java was the "boring" language — verbose, chatty, the workhorse of enterprise business
-  logic that teams left for slicker syntax. AI agents flip that verdict. The boilerplate is
-  now written by the agent and <em>read</em> by you — and chatty means <em>readable</em>.
-  Meanwhile the compiler's exactness and type safety, once bureaucracy, become the agent's
-  safety rail: the language with the strictest compiler and the deepest tooling is suddenly
-  the best language to let an agent loose on. jawata is that tooling — Eclipse-grade
-  semantics and refactoring, packaged for agents.</p>
+      <div>
+        <div class="term" role="figure" aria-label="A real guard message shown when an agent reaches for grep on a Java file">
+          <div class="term-top"><i></i><i></i><i></i><b>agent session</b></div>
+          <div class="term-body">
+            <div class="row"><span class="prompt">agent ▸ </span><span class="cmd">grep -n "area" org.jawata.mcp/src/org/jawata/mcp/knowledge/ExperienceRetrieval.java | head -40</span></div>
+            <div class="row"><span class="tag red">blocked</span><span class="block">Shell text search on .java is blocked — `grep` cannot see symbols, so it misses references and overmatches names. Call search_symbols / find_references / get_call_hierarchy via JAWATA MCP instead.</span></div>
+            <div class="row"><span class="tag green">route</span><span class="hint">If JAWATA genuinely cannot answer this one, re-run with `jawata-fallback: &lt;why&gt;` in the command; the declaration is logged.</span></div>
+          </div>
+        </div>
+        <p class="caption">Verbatim from a jawata development session on 16 October 2026: the guard blocks the grep-and-guess reflex and hands the agent the compiler-accurate call.</p>
+      </div>
+    </div>
 
-  <h2>Why it matters now</h2>
-  <blockquote>The agent's prior is verifiability-seeking, not shortcut-seeking — it is a
-  liability only while design properties are expensive to verify. Make them cheap and it
-  flips sign: the agent grinds toward <code>find_field_writes = 0</code> with the same
-  stubbornness it grinds toward green tests.</blockquote>
-  <p>jawata makes design properties cheap to verify — design erosion becomes a number under
-  surveillance instead of an incident in production. That is the lever that lifts the
-  trust-ceiling for autonomous work on the highest-value, hardest-to-verify language:
-  Java in the enterprise.</p>
+    <div class="stats" role="list">
+      <div class="stat" role="listitem"><b>62<small> / 66</small></b><span>of Martin Fowler's refactorings, compile-verified and reversible</span></div>
+      <div class="stat" role="listitem"><b>22<small> / 24</small></b><span>of his code smells detected, each naming the refactoring that cures it</span></div>
+      <div class="stat" role="listitem"><b>6</b><span>agent clients: Claude Code, Cursor, Codex, Copilot CLI, VS Code, Grok</span></div>
+      <div class="stat" role="listitem"><b>3</b><span>operating systems verified: Linux, Windows and macOS</span></div>
+    </div>
 
-  <div class="cta">
-    <a class="primary" href="https://github.com/haraldwegner/jawata-studio/releases">⬇ Download jawata-studio</a>
-    <a class="secondary" href="https://github.com/haraldwegner/jawata-mcp/releases">engine releases</a>
-  </div>
+    <section>
+      <p class="lead-p"><strong>Semantic Java is table stakes now.</strong> Bridges expose the compiler over
+      MCP; fleet platforms run recipe migrations across a hundred thousand repos. jawata is
+      neither — it is the layer <strong>where the actual work happens</strong>: your agent, your
+      machine, your working tree, today's change. A full refactoring <strong>engine</strong> the
+      agent composes freely — not a recipe library. A <strong>grounded memory</strong> of your
+      codebase's lessons. <strong>Enforcement</strong> that keeps the agent on the compiler
+      instead of drifting back to grep. And your code <strong>never leaves your machine</strong>.</p>
+    </section>
+
+    <section id="install">
+      <h2>Install in one line</h2>
+      <div class="install">
+        <code id="cmd">curl -fsSL https://jawata.org/install.sh | bash</code>
+        <button class="copy" type="button" data-copy="cmd" hidden>Copy</button>
+      </div>
+      <p class="install-note">Linux &amp; macOS — installs jawata-studio, which downloads and manages the
+      engine and wires up your agent clients. Windows:
+      <a href="https://github.com/haraldwegner/jawata-studio/releases">grab the installer</a> or
+      <code>scoop bucket add jawata https://github.com/haraldwegner/scoop-jawata &amp;&amp;
+      scoop install jawata-studio</code>.</p>
+    </section>
+
+    <section id="brings">
+      <h2>What only jawata brings</h2>
+      <p class="lede">Eight things an agent does not get from a bridge or a recipe library.</p>
+      <div class="grid">
+        <article class="card wide">
+          <span class="n">01</span>
+          <h3>The full engine, not a recipe library.</h3>
+          <p>Recipe engines automate
+          the <em>known</em> — the framework upgrade, the CVE sweep, a fix somebody already
+          authored, replayed across a fleet. jawata is built for the <em>unknown</em>: the
+          agent composes the refactoring <em>this</em> design problem needs — rename, move,
+          extract, change signature, multi-step pattern plans — freely, on live code. Every
+          change is compile-verified before it counts, applied for real, reversible with one
+          call. <strong>62 of Martin Fowler's 66 refactorings and 22 of his 24 code
+          smells</strong>, counted at start-up against what the engine actually publishes, so the
+          number cannot drift; the rest are declined in writing, each with its reason. Every
+          finding names the refactoring that cures it and where to run it. Your daily work
+          isn't a migration; it's the change nobody wrote a recipe for.</p>
+        </article>
+        <article class="card">
+          <span class="n">02</span>
+          <h3>Debug and profile without editing a line.</h3>
+          <p>Launch or attach to a
+          JVM, set a breakpoint or a probe, and read live values while the program keeps
+          running — instead of the agent's reflex of adding log lines to production code.
+          Sample a running JVM and the hotspot comes back named as a symbol, not a stack dump.
+          Meant for development and simulation machines: a JVM not started for debugging cannot
+          be attached to at all.</p>
+        </article>
+        <article class="card">
+          <span class="n">03</span>
+          <h3>Only the tests your change reaches.</h3>
+          <p>Test runs are chosen by
+          compiler reach from coverage evidence, and widen themselves, with a printed reason,
+          where that evidence cannot carry the claim. Coverage and targeted mutation testing
+          say whether the tests would notice a change at all.</p>
+        </article>
+        <article class="card">
+          <span class="n">04</span>
+          <h3>Enforcement: fluency over grounding doesn't stand a chance.</h3>
+          <p>Deployed hooks steer and, where it matters, <em>block</em> the agent's grep-and-guess
+          reflex, injecting the compiler-accurate route instead. Other tools hope the agent
+          uses them; jawata makes sure.</p>
+        </article>
+        <article class="card">
+          <span class="n">05</span>
+          <h3>Memory that doesn't live in a chat product.</h3>
+          <p>A grounded store
+          anchored to <em>your</em> symbols, exported as portable markdown into <em>your</em>
+          git, copied every day and read back before the copy counts — written from any client,
+          recalled from any client. A lesson recorded in Cursor today answers by symbol in
+          Claude Code tomorrow. One fitting fact or an honest nothing — never a similarity
+          pile.</p>
+        </article>
+        <article class="card">
+          <span class="n">06</span>
+          <h3>Whole codebases, not single projects.</h3>
+          <p>Multi-project workspaces with
+          deterministic routing — an enterprise repo tree is one workspace, not a folder at a
+          time. Something even IntelliJ doesn't give you: it opens one project per window;
+          jawata's agent sees the whole estate at once.</p>
+        </article>
+        <article class="card">
+          <span class="n">07</span>
+          <h3>Local and yours.</h3>
+          <p>Open source (AGPL-3.0), free, and it runs
+          entirely on your machine — no platform, no upload, no per-user contract. The
+          compiler model is built from <em>your</em> working tree, live, and stays there.</p>
+        </article>
+        <article class="card wide">
+          <span class="n">08</span>
+          <h3>No IDE required — yours stays whatever it is.</h3>
+          <p>Headless residents
+          managed by <a href="https://github.com/haraldwegner/jawata-studio">jawata-studio</a>,
+          wired into six clients in two clicks — Claude Code, Cursor, Codex, Copilot CLI,
+          VS Code, Grok. jawata serves the <em>agent</em>, not the editor: keep IntelliJ,
+          keep Eclipse, keep VS Code — the agent gets Eclipse-grade semantics either way.
+          Tools and the memory store work on every supported client (verified on
+          Linux, Windows and macOS); the enforcement guard runs on Claude Code and Cursor,
+          the two with a hook surface; memory auto-push is full on Claude Code,
+          best-effort on Cursor.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="two">
+      <div>
+        <h2>The Java renaissance</h2>
+        <p>Java was the "boring" language — verbose, chatty, the workhorse of enterprise business
+        logic that teams left for slicker syntax. AI agents flip that verdict. The boilerplate is
+        now written by the agent and <em>read</em> by you — and chatty means <em>readable</em>.
+        Meanwhile the compiler's exactness and type safety, once bureaucracy, become the agent's
+        safety rail: the language with the strictest compiler and the deepest tooling is suddenly
+        the best language to let an agent loose on. jawata is that tooling — Eclipse-grade
+        semantics and refactoring, packaged for agents.</p>
+      </div>
+      <div>
+        <h2>Why it matters now</h2>
+        <blockquote>The agent's prior is verifiability-seeking, not shortcut-seeking — it is a
+        liability only while design properties are expensive to verify. Make them cheap and it
+        flips sign: the agent grinds toward <code>find_field_writes = 0</code> with the same
+        stubbornness it grinds toward green tests.</blockquote>
+        <p>jawata makes design properties cheap to verify — design erosion becomes a number under
+        surveillance instead of an incident in production. That is the lever that lets you
+        trust more of what an agent changes, in the highest-value, hardest-to-verify
+        language: Java in the enterprise.</p>
+      </div>
+    </section>
+
+    <div class="band">
+      <h2>Try it on your own code</h2>
+      <p>Free, open source, and it stays on your machine.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/haraldwegner/jawata-studio/releases">Download jawata-studio</a>
+        <a class="btn secondary" href="https://github.com/haraldwegner/jawata-mcp/releases">Engine releases</a>
+      </div>
+    </div>
+
+  </main>
 
   <footer>
     <p><strong>jawata</strong> — Javanese for <em>the gods</em>; it contains <em>Jawa</em>,
@@ -192,6 +411,22 @@
     <p>jawata-mcp and jawata-studio are open source under AGPL-3.0, © Harald Wegner.
     Some early parts derive from javalens-mcp (MIT) — credit to Peter Zalutski.</p>
   </footer>
-</main>
+</div>
+
+<script>
+  // Progressive enhancement: the copy button only appears when the browser can copy.
+  (function () {
+    var btn = document.querySelector('.copy');
+    if (!btn || !navigator.clipboard) return;
+    btn.hidden = false;
+    btn.addEventListener('click', function () {
+      var text = document.getElementById(btn.dataset.copy).textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+      });
+    });
+  })();
+</script>
 </body>
 </html>
