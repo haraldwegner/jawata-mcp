@@ -475,6 +475,14 @@ class SeatAsksByMeaningTest {
     @Test
     @DisplayName("the map groups areas and jobs and anchors each job to its member")
     void the_map_groups_areas_and_jobs() {
+        // The area shares no words with the task, and the store holds more rows than the
+        // shortlist can carry (14 against MAX_CANDIDATES = 8), so whether the area is
+        // shortlisted is a claim about MEANING. With the embedder off every such row scores
+        // zero and the id order picks the eight: 5 of 8 local runs lost the area. A missing
+        // embedder is a skip, never a pass (AMissingEmbedderIsASkipNotAPassTest).
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            org.jawata.mcp.knowledge.EmbeddingService.shared().available(),
+            "the area is shortlisted by meaning, which needs the embedder");
         recordTheCorpus();
         recordArea("com.example",
             "The lane between an agent's questions and what this machine already learned.");
