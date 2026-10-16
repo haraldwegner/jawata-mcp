@@ -89,9 +89,10 @@
     .nav { display: flex; gap: 1.4rem; font-size: .95rem; align-items: center; }
     .nav a { color: var(--text-soft); text-decoration: none; }
     .nav a:hover { color: var(--gold); }
-    .nav a.keep { background: linear-gradient(135deg, var(--blue), var(--blue-deep)); color: #f8fafc;
-                  padding: .42rem .95rem; border-radius: 8px; font-weight: 620; }
-    .nav a.keep:hover { color: #fff; }
+    /* Download in the bar is a link to the releases page, not a download: a quiet outline, not a button */
+    .nav a.keep { color: var(--text); background: rgba(148, 163, 184, .07);
+                  border: 1px solid var(--line-strong); padding: .36rem .85rem; border-radius: 8px; font-weight: 560; }
+    .nav a.keep:hover { color: var(--gold); border-color: var(--gold); }
     /* a jumped-to heading must land below the bar, not under it */
     section[id], .hero { scroll-margin-top: 4.5rem; }
 
