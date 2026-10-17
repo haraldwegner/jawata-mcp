@@ -111,7 +111,7 @@ record(type="lesson", symptoms=["the run reports fewer classes than it planned"]
                "reads them as untested rather than as unrun.")
 
 print("\n--- MOMENT 1: the map, at the prompt ---------------------------------------")
-m = call("experience", {"kind": "nominate", "lane": "code", "format": "text",
+m = call("experience", {"kind": "nominate", "lane": "experience,patterns,domain,code,rules", "lane": "code", "format": "text",
                         "question": "which parts of the product did the checks "
                                     "actually exercise?"})
 text = str(m.get("data", ""))
@@ -124,7 +124,7 @@ else:
     bad("the prompt produced no map block: %r" % text[:240])
 
 print("\n--- MOMENT 2: the experience lane, on a symptom -----------------------------")
-e = call("experience", {"kind": "recall", "format": "text",
+e = call("experience", {"kind": "recall", "lane": "experience,patterns,domain,code,rules", "format": "text",
                         "symptom": "the run reports fewer classes than it planned"})
 text = str(e.get("data", ""))
 if "shard" in text:
@@ -135,7 +135,7 @@ else:
     bad("the symptom lane answered nothing about the shard: %r" % text[:240])
 
 print("\n--- MOMENT 3: the domain lane, on a type a tool call reads ------------------")
-d = call("experience", {"kind": "recall", "format": "text",
+d = call("experience", {"kind": "recall", "lane": "experience,patterns,domain,code,rules", "format": "text",
                         "symbol": "com.example.CoverageRunner"})
 text = str(d.get("data", ""))
 if "lost a shard" in text or "untested code" in text:
@@ -171,7 +171,7 @@ else:
 print("\n--- THE CONTROL: a bare edit triggers nothing -------------------------------")
 # Not a moment — the thing that makes the four above mean something. A cue-less recall is
 # what a bare Edit produces once the hook has stopped inventing cues from a file name.
-c = call("experience", {"kind": "recall", "format": "text"})
+c = call("experience", {"kind": "recall", "lane": "experience,patterns,domain,code,rules", "format": "text"})
 text = str(c.get("data", ""))
 if "No cue" in text:
     ok("a call carrying no cue is refused rather than answered with a pile — without "

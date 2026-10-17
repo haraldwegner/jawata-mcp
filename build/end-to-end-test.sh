@@ -274,7 +274,7 @@ call experience '{"kind":"record","type":"lesson",
   "situation":"when a season of leaf fall has passed without maintenance",
   "verdict":"failed_avoid",
   "operation":"end-to-end-test","language":"process"}' >/dev/null
-R="$(call experience '{"kind":"recall",
+R="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"water came through the ceiling after the drains clogged with leaves",
   "format":"text"}')"
 case "$R" in
@@ -302,7 +302,7 @@ call experience '{"kind":"record","type":"lesson",
   "situation":"when a service interval has been skipped on a sealed pump",
   "verdict":"failed_avoid",
   "operation":"end-to-end-test","language":"process"}' >/dev/null
-FR="$(call experience '{"kind":"recall","symptom":"the pump seized","format":"text"}')"
+FR="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"the pump seized","format":"text"}')"
 case "$FR" in
     *"pump seized"*)
         pass "entry-form the well-formed twin is recalled back through the front door" ;;
@@ -334,7 +334,7 @@ call experience '{"kind":"record","type":"lesson",
   "situation":"when a load is drawn below 600C in under an hour",
   "verdict":"failed_avoid",
   "operation":"end-to-end-test","language":"process"}' >/dev/null
-FL="$(call experience '{"kind":"recall","symptom":"the glaze crazed","format":"text"}')"
+FL="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"the glaze crazed","format":"text"}')"
 case "$FL" in
     *"when a load is drawn below 600C in under an hour"*)
         pass "form-line the recalled line carries the condition it applies under" ;;
@@ -486,7 +486,7 @@ esac
 # build, not a number any gate produces today. The gate that produces it is C1 clause 2,
 # and until that exists this defect has a frozen instrument and no automated reading.
 # What THIS probe owns is the ingest write surface Stage 0 added, and nothing more.
-FR="$(call experience '{"kind":"recall","symptom":"size the native buffer once the scale factor is known","format":"text"}')"
+FR="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"size the native buffer once the scale factor is known","format":"text"}')"
 case "$FR" in
     *"scale factor is known"*) pass "ingest-carries-the-form the ingested lesson round-trips to a recall of the built product" ;;
     *) fail "ingest-carries-the-form the ingested lesson did not come back: $(printf '%s' "$FR" | head -c 300)" ;;
@@ -610,7 +610,7 @@ def call(args):
 qs = json.load(open(fixture))["questions"]
 missed, ranks = [], []
 for q in qs:
-    d = call({"kind":"nominate","question":q["question"]})
+    d = call({"kind":"nominate","lane":"experience,patterns,domain,code,rules","question":q["question"]})
     cands = d.get("candidates") or []
     at = None
     for i, c in enumerate(cands):
@@ -634,7 +634,7 @@ EOF_CAT
     # it off the entry rather than compose one. That is only possible if the entry
     # carries it — the candidate map used to carry id, situation, principle, outcome
     # and scores, and nothing that locates anything.
-    CADDR="$(call experience '{"kind":"nominate","question":"one of the services we depend on keeps going unresponsive and our retries are dragging the rest of the system down with it"}')"
+    CADDR="$(call experience '{"kind":"nominate","lane":"experience,patterns,domain,code,rules","question":"one of the services we depend on keeps going unresponsive and our retries are dragging the rest of the system down with it"}')"
     case "$CADDR" in
         *'"address":"catalogue:java-design-patterns/'*)
             pass "catalogue-answers-design a nominated pattern carries an openable canonical address" ;;
@@ -799,7 +799,7 @@ if [ -n "$DID" ]; then
     # PROOF OF LIFE FIRST. Without it every check below passes against a store
     # that never held the row, and "it is gone" reads exactly like "recall
     # cannot see it".
-    LIVE="$(call experience '{"kind":"recall","symptom":"zylophantic breeb","format":"text"}')"
+    LIVE="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"zylophantic breeb","format":"text"}')"
     case "$LIVE" in
         *"zylophantic breeb is filed"*)
             pass "demand-and-delete the row is there before the delete" ;;
@@ -814,7 +814,7 @@ if [ -n "$DID" ]; then
         fail "demand-and-delete no usable copy at '$BK' — the delete has no undo"
     fi
 
-    GONE="$(call experience '{"kind":"recall","symptom":"zylophantic breeb","format":"text"}')"
+    GONE="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"zylophantic breeb","format":"text"}')"
     case "$GONE" in
         *"zylophantic breeb is filed"*)
             fail "demand-and-delete the control: the row survived its own delete" ;;
@@ -825,7 +825,7 @@ if [ -n "$DID" ]; then
     # directory, so a caller cannot point the store at an arbitrary file. And
     # confirm is the engine's own gate — one call replaces every row.
     RES="$(call experience "{\"kind\":\"restore\",\"name\":\"$(basename "$BK")\",\"confirm\":true}")"
-    BACK="$(call experience '{"kind":"recall","symptom":"zylophantic breeb","format":"text"}')"
+    BACK="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"zylophantic breeb","format":"text"}')"
     case "$BACK" in
         *"zylophantic breeb is filed"*)
             pass "demand-and-delete restore brings the deleted row back, by version name" ;;
@@ -857,7 +857,7 @@ case "$FIX" in
     *'"seat_rewritten"'*) pass "repair-front-door set_form rewrites and stamps seat_rewritten" ;;
     *) fail "repair-front-door set_form did not rewrite: $(printf '%s' "$FIX" | head -c 300)" ;;
 esac
-FOUND="$(call experience '{"kind":"nominate","question":"what happens when an amend races a cancel on a quokka ledger slot"}')"
+FOUND="$(call experience '{"kind":"nominate","lane":"experience,patterns,domain,code,rules","question":"what happens when an amend races a cancel on a quokka ledger slot"}')"
 case "$FOUND" in
     *"$RID"*) pass "repair-front-door the rewritten entry answers by its NEW situation" ;;
     *) fail "repair-front-door the new situation does not surface the entry: $(printf '%s' "$FOUND" | head -c 300)" ;;
@@ -926,7 +926,7 @@ fi
 # path argument, free prose, and the bearer token this run authenticates with.
 # The pile may carry that each call failed; it may carry none of these.
 call load_project "{\"projectPath\":\"$WS/no-such-project-here\"}" >/dev/null
-call experience '{"kind":"recall","symptom":"marzipan-barometer-needle","format":"text"}' >/dev/null
+call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"marzipan-barometer-needle","format":"text"}' >/dev/null
 LEAKED="$(grep -oE "com\.acme\.SecretLedger|no-such-project-here|marzipan-barometer-needle|$TOKEN" \
     "$FIELD_PILE" 2>/dev/null | sort -u | tr '\n' ' ')"
 if [ -z "$LEAKED" ]; then
@@ -1030,7 +1030,7 @@ else
 fi
 
 # --- restored-found-by-meaning: fixture knowledge is reachable by MEANING ---------------------
-M="$(call experience '{"kind":"recall",
+M="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"my sourdough fell in on itself after I let it rise for too long",
   "format":"text"}')"
 case "$M" in
@@ -1055,12 +1055,12 @@ case "$M" in
     # something else above it, which is a retrieval-quality finding and not a loss.
     *) fail "restored-found-by-meaning the restored fixture is invisible to meaning recall.
           WHAT THE MEANING CUE RETURNED: $(printf '%s' "$M" | head -c 1200)
-          AND THE SAME ROW ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","symptom":"the sourdough collapsed after proofing past the poke-test window","format":"text"}' | head -c 400)" ;;
+          AND THE SAME ROW ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"the sourdough collapsed after proofing past the poke-test window","format":"text"}' | head -c 400)" ;;
 esac
 no_score "recall(meaning)" "$M"
 
 # --- nonsense-never-vouched: nonsense produces NO VOUCHED ANSWER, nominees labelled --------
-N="$(call experience '{"kind":"recall",
+N="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"the marzipan barometer forgot its velvet inventory",
   "format":"text"}')"
 answered "nonsense-never-vouched" "$N"
@@ -1080,7 +1080,7 @@ no_score "recall(nonsense)" "$N"
 # store could not serve, where the old path returned the maximum eleven candidates for
 # each of seven nonsense questions. The claims asserted here are the design itself:
 # nominating is not answering, and choosing nothing is a real answer.
-NOM="$(call experience '{"kind":"nominate",
+NOM="$(call experience '{"kind":"nominate","lane":"experience,patterns,domain,code,rules",
   "question":"the marzipan barometer forgot its velvet inventory"}')"
 case "$NOM" in
     *'"result":"match"'*)
@@ -1143,7 +1143,7 @@ esac
 # A FRESH nomination, because deciding CONSUMES one — the probe above already spent
 # $QID. Reusing it here tested the already-decided refusal instead, which is a real
 # behaviour but not this one; the tightened assertion is what surfaced the mix-up.
-NOM2="$(call experience '{"kind":"nominate",
+NOM2="$(call experience '{"kind":"nominate","lane":"experience,patterns,domain,code,rules",
   "question":"the marzipan barometer forgot its velvet inventory"}')"
 QID2="$(printf '%s' "$NOM2" | sed -n 's/.*"query_id":"\([^"]*\)".*/\1/p')"
 BAD="$(call experience "{\"kind\":\"decide\",\"query_id\":\"$QID2\",\"selected_ids\":[\"not-a-candidate\"]}")"
@@ -1156,7 +1156,7 @@ case "$BAD" in
 esac
 
 # --- rejected-stays-gone: a rejected note stays gone BY MEANING -------------------------
-G="$(call experience '{"kind":"recall",
+G="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",
   "format":"text"}')"
 answered "rejected-stays-gone" "$G"
@@ -1166,7 +1166,7 @@ case "$G" in
 esac
 
 # --- past-run-dispatch: dispatch rides recall — the seeded seat run is found ----------
-DS="$(call experience '{"kind":"recall",
+DS="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"how was the scheduler retry loop covered before its refactor",
   "format":"json"}')"
 case "$DS" in
@@ -1184,7 +1184,7 @@ case "$DS" in
     # reach it at all when asked in its own words.
     *) fail "past-run-dispatch no dispatch decoration on the seat-run recall.
           WHAT THE CUE RETURNED: $(printf '%s' "$DS" | head -c 1200)
-          AND THE SEAT RUN ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","symptom":"covered the scheduler retry loop with characterization tests before the refactor","format":"text"}' | head -c 400)" ;;
+          AND THE SEAT RUN ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"covered the scheduler retry loop with characterization tests before the refactor","format":"text"}' | head -c 400)" ;;
 esac
 no_score "recall(dispatch)" "$DS"
 
@@ -1699,7 +1699,7 @@ case "$H3" in
     *) fail "degrade-is-honest the disable switch did not take" ;;
 esac
 
-W="$(call experience '{"kind":"recall",
+W="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"why did my cone-six glaze crawl on the bisque",
   "format":"text"}')"
 case "$W" in
@@ -1712,13 +1712,13 @@ case "$W" in
     # cause that does not cover all three is not the cause.
     *) fail "words-only-answers KEYWORD-ONLY DEGRADE CANNOT ANSWER PROSE (v3.4.1 shape).
           WHAT THE PROSE CUE RETURNED: $(printf '%s' "$W" | head -c 1200)
-          AND THE SAME ROW ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","symptom":"the cone-six glaze crawled where the bisque was dusty","format":"text"}' | head -c 400)" ;;
+          AND THE SAME ROW ASKED FOR IN ITS OWN WORDS: $(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules","symptom":"the cone-six glaze crawled where the bisque was dusty","format":"text"}' | head -c 400)" ;;
 esac
 no_score "recall(words-only)" "$W"
 
 # the FULL degrade pass (C7 audit F3): the recall-honesty checks re-run
 # words-only — the contract holds without any model, not just the happy path.
-N3="$(call experience '{"kind":"recall",
+N3="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"the marzipan barometer forgot its velvet inventory",
   "format":"text"}')"
 answered "nonsense-never-vouched-degraded" "$N3"
@@ -1726,7 +1726,7 @@ case "$N3" in
     *'"result":"match"'*) fail "nonsense-never-vouched-degraded nonsense got VOUCHED with the embedder off" ;;
     *) pass "nonsense-never-vouched-degraded nonsense is never vouched, words-only included" ;;
 esac
-G3="$(call experience '{"kind":"recall",
+G3="$(call experience '{"kind":"recall","lane":"experience,patterns,domain,code,rules",
   "symptom":"when in the lunar cycle is the right time to prune fruit trees",
   "format":"text"}')"
 answered "rejected-stays-gone-degraded" "$G3"

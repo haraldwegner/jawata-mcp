@@ -234,7 +234,7 @@ else:
 # format=text is the form the hooks inject, and it is the form mcp#73 was about:
 # the distinction existed for a JSON reader and was invisible to this one.
 print("\n--- clause 3: an unknown symbol produces a stated absence ---")
-u = call("experience", {"kind": "recall", "symbol": UNKNOWN_SYMBOL, "format": "text"})
+u = call("experience", {"kind": "recall", "lane": "experience,patterns,domain,code,rules", "symbol": UNKNOWN_SYMBOL, "format": "text"})
 utext = u if isinstance(u, str) else json.dumps(u)
 states_absence = (ABSENT in utext) or (ABSENT_2 in utext)
 renders_pile   = "In a similar situation" in utext
@@ -251,7 +251,7 @@ else:
 # Without this arm, a statement printed unconditionally would pass the arm above
 # and be as wrong as the silence it replaced.
 print("\n--- clause 3 control: an anchored symbol does not state an absence ---")
-a = call("experience", {"kind": "recall", "symbol": ANCHORED_SYMBOL, "format": "text"})
+a = call("experience", {"kind": "recall", "lane": "experience,patterns,domain,code,rules", "symbol": ANCHORED_SYMBOL, "format": "text"})
 atext = a if isinstance(a, str) else json.dumps(a)
 if ABSENT in atext:
     bad("the anchored symbol %s ALSO states an absence — the line is unconditional"

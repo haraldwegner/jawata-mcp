@@ -217,7 +217,7 @@ pos_ok = 0
 for i, pq in enumerate(fx["positive_questions"], 1):
     q = pq["question"]
     want = next(r for r in fx["records"] if r["id"] == pq["expect_id"])
-    nom = call("experience", {"kind": "nominate", "question": q})
+    nom = call("experience", {"kind": "nominate", "lane": "experience,patterns,domain,code,rules", "question": q})
     data = nom.get("data", nom)
     if data.get("result") == "match":
         bad("positive %d nominate VOUCHED — ranking must never answer" % i); continue
@@ -262,7 +262,7 @@ else:
 #        call with an absence too, so a decide verb bypassed to recall passes.
 abs_ok = 0
 for i, q in enumerate(fx["unrelated_questions"], 1):
-    nom = call("experience", {"kind": "nominate", "question": q})
+    nom = call("experience", {"kind": "nominate", "lane": "experience,patterns,domain,code,rules", "question": q})
     qid = nom.get("data", nom).get("query_id")
     if not qid:
         bad("unrelated %d nominate returned no query_id" % i); continue

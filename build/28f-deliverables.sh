@@ -102,7 +102,7 @@ print("  ---- proof of life: the store accepts a row ----")
 # One verb, driven live. The suite owns "every verb"; this owns "the shipped product does
 # not lose a row when a maintenance verb runs".
 exp(kind="refresh")
-after = exp(kind="recall", symbol="com.example.Gantry#oxidise", format="text")
+after = exp(kind="recall", lane="experience,patterns,domain,code,rules", symbol="com.example.Gantry#oxidise", format="text")
 if MARKER[:30] in str(after.get("data", "")):
     ok("D1", "a recorded story survives a maintenance verb and is still recalled")
 else:
@@ -139,7 +139,7 @@ else:
 # `nominate` is the product's meaning-by-prose path; `recall` answers a CUE. D4's clause
 # is about meaning, so it is asked of the verb that does meaning — an earlier version
 # asked `recall(symptom=…)`, which is a cue match and was the wrong question.
-meaning = exp(kind="nominate", format="text",
+meaning = exp(kind="nominate", lane="experience,patterns,domain,code,rules", format="text",
               question="rust on the crane rail before it is checked")
 if "flange" in str(meaning.get("data", "")):
     ok("D4", "a row written moments ago is reachable BY MEANING from prose sharing none "
@@ -202,7 +202,7 @@ else:
     exp(kind="record", type="job",
         symbol="org.jawata.mcp.tools.shared.DraftSource#methodsIn",
         summary="Read the methods a draft declares, whether a whole file or a fragment.")
-    job = exp(kind="recall", symbol="org.jawata.mcp.tools.shared.DraftSource#methodsIn")
+    job = exp(kind="recall", lane="experience,patterns,domain,code,rules", symbol="org.jawata.mcp.tools.shared.DraftSource#methodsIn")
     entries = ((job.get("data") or {}).get("entries") or [])
     ptr = entries[0].get("resolved_pointer") if entries else None
     if ptr and ptr.get("resolved") and ptr.get("file"):
