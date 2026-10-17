@@ -96,6 +96,8 @@ public final class ExperienceRetrieval {
     /** Sprint 27 D6: measurement. NULL = not installed; retrieval is identical
      *  either way, because a counter must never change what it counts. */
     private QualityLedger quality;
+    /** Sprint 28g S21: the transcript lane. NULL when none is installed, which an answer says. */
+    private TranscriptStore transcript;
 
     /**
      * Retrieval over {@code store}, WITH meaning-based nomination whenever the
@@ -137,6 +139,11 @@ public final class ExperienceRetrieval {
     /** Sprint 27 D6: install the quality ledger (application wiring / tests). */
     public void setQualityLedger(QualityLedger ledger) {
         this.quality = ledger;
+    }
+
+    /** Sprint 28g S21: install the transcript lane (application wiring / tests). */
+    public void setTranscriptStore(TranscriptStore lane) {
+        this.transcript = lane;
     }
 
     private void count(Runnable measurement) {
@@ -207,6 +214,9 @@ public final class ExperienceRetrieval {
             out.put("entries", List.of());
             return out;
         }
+        if (q.scope().contains(KnowledgeLane.TRANSCRIPT)) {
+            return recallWithTranscript(q, surface, budgetMillis, cap);
+        }
 
         // THE TASK GETS ITS OWN MAP. Sharing `out` with the pool thread is a data race
         // with a specific, ugly outcome: a straggler that finally completes writes
@@ -227,6 +237,28 @@ public final class ExperienceRetrieval {
                 "the store failed while answering: " + e.getClass().getSimpleName()
                     + (e.getMessage() == null ? "" : ": " + e.getMessage()));
         }
+    }
+
+    /**
+     * Sprint 28g S21 — a call that names the transcript lane: the other lanes it names are asked as
+     * they always are, and the discussion is searched beside them. The transcript is not rows of
+     * the knowledge store, so it is not ranked with them; its quotes arrive as their own entries.
+     */
+    private Map<String, Object> recallWithTranscript(RecallQuery q, String surface,
+            long budgetMillis, int cap) {
+        java.util.Set<KnowledgeLane> rest = java.util.EnumSet.copyOf(q.scope().lanes());
+        rest.remove(KnowledgeLane.TRANSCRIPT);
+        Map<String, Object> answer;
+        if (rest.isEmpty()) {
+            answer = new LinkedHashMap<>();
+            answer.put("cue", cueMap(q));
+            answer.put("result", RESULT_ABSENCE);
+            answer.put("message", "No transcript quote matches this cue.");
+        } else {
+            answer = recall(new RecallQuery(q.symbol(), q.packageName(), q.operation(),
+                q.symptom(), q.externalSystem(), new LaneScope(rest)), surface, budgetMillis, cap);
+        }
+        return TranscriptAnswer.merge(answer, transcript, cueText(q), cap);
     }
 
     /** The store-backed half of {@link #recall(RecallQuery, String)} — everything that can fail. */
@@ -997,6 +1029,13 @@ public final class ExperienceRetrieval {
      */
     public Map<String, Object> nominate(String question, LaneScope scope, long budgetMillis) {
         java.util.Objects.requireNonNull(scope, "a nomination must name its lanes");
+        if (scope.contains(KnowledgeLane.TRANSCRIPT)) {
+            // The discussion has no situation and no outcome to judge a candidate by: it is
+            // searched for words (recall), never nominated.
+            throw new LaneScope.Refused("The transcript lane is searched with recall, not"
+                + " nominate: it holds what was said, with no situation or outcome to judge a"
+                + " candidate by. Ask recall with lane=transcript.");
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("question", question);
         out.put("lane", String.join(",", scope.wires()));
@@ -1528,7 +1567,7 @@ public final class ExperienceRetrieval {
             // The absence says how much it looked at: "found nothing in 221 lessons" and
             // "looked at nothing" are different answers, and a text reader sees only this.
             return (msg == null ? "No known knowledge for this cue." : msg.toString())
-                + searchedLine(result);
+                + searchedLine(result) + TranscriptAnswer.noteLine(result);
         }
         if (RESULT_UNAVAILABLE.equals(res)) {
             // #37: the text carrier renders it too, so a caller that renders BEFORE
@@ -1600,7 +1639,7 @@ public final class ExperienceRetrieval {
             sb.append(renderAnalogyLine(a));
         }
         if (sb.length() > 0) {
-            sb.append(searchedLine(result));
+            sb.append(searchedLine(result)).append(TranscriptAnswer.noteLine(result));
         }
         return sb.toString();
     }

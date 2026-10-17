@@ -80,7 +80,17 @@ public enum KnowledgeLane {
     CODE("code"),
 
     /** Versioned, amended, retired — Stage 5's {@code type=rule}. */
-    RULES("rules");
+    RULES("rules"),
+
+    /**
+     * The discussion itself (Sprint 28g S21): what he typed, what the agent said to him, and one
+     * line per tool call. It is not in {@code experience_entry} and {@link #of} never answers it:
+     * its rows live in {@link TranscriptStore}'s own tables, so that it can be switched off and
+     * removed as a whole and no export, review or import can reach it. It is asked on three
+     * occasions only (after a compaction, before something is attributed to him, on demand) and
+     * is therefore never part of {@link LaneScope#everyLane()}.
+     */
+    TRANSCRIPT("transcript");
 
     private final String wire;
 

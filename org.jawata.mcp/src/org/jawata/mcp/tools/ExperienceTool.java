@@ -87,7 +87,12 @@ public final class ExperienceTool implements Tool {
             // lands — "is this job already done?" It is a QUESTION about a draft rather
             // than a record of anything, which is why it is a verb here and not a flag on
             // `recall`: the thing it asks about does not exist yet and has no anchor.
-            "duplicate_check");
+            "duplicate_check",
+            // Sprint 28g S21: the transcript lane. `transcript_append` stores one turn of the
+            // discussion (idempotent per session and turn), `transcript_verify` answers whether
+            // he said given words. The lane is READ with `recall lane=transcript`, never with a
+            // verb of its own.
+            "transcript_append", "transcript_verify");
 
     /**
      * Sprint 28f D4 — HOW KNOWLEDGE IS ADDED, said once.
@@ -228,6 +233,20 @@ public final class ExperienceTool implements Tool {
     }
 
     private org.jawata.mcp.knowledge.ToolExperienceStore toolLane;
+
+    /**
+     * Sprint 28g S21 — the transcript lane, installed by the application beside the tool lane.
+     * Handed to the retrieval this tool owns as well, so {@code lane=transcript} reaches it;
+     * while it is absent every answer that names the lane says so.
+     */
+    public void setTranscriptStore(org.jawata.mcp.knowledge.TranscriptStore lane) {
+        this.transcript = lane;
+        if (retrieval != null) {
+            retrieval.setTranscriptStore(lane);
+        }
+    }
+
+    private org.jawata.mcp.knowledge.TranscriptStore transcript;
 
     /** Sprint 21a (item C): {@code defaultRoots} feed no-path {@code load} / {@code reseed}. */
     public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
@@ -579,7 +598,7 @@ public final class ExperienceTool implements Tool {
                 + " still answer. Retiring is not rejecting and not superseding — the rule"
                 + " was right, nothing replaced it, and it stopped applying."));
         props.put("lane", Map.of("type", "string",
-            "enum", List.of("experience", "patterns", "domain", "code", "rules",
+            "enum", List.of("experience", "patterns", "domain", "code", "rules", "transcript",
                 "lessons", "business"),
             "description", "recall/nominate: REQUIRED (this or lanes) — which LIFECYCLE is"
                 + " searched, chosen BEFORE the search; a call naming no lane is refused."
@@ -588,7 +607,10 @@ public final class ExperienceTool implements Tool {
                 + " 'domain' (also 'business') is what is true whoever reads it: facts,"
                 + " contracts, conventions; 'rules' are versioned and retired; 'code' says what"
                 + " each member and package is FOR, regenerated from the code it came from, and"
-                + " is asked only to check whether something already exists. Each lane is"
+                + " is asked only to check whether something already exists; 'transcript' is the"
+                + " discussion itself (what he typed, what the agent said to him, one line per"
+                + " tool call), asked with recall only, after a compaction, before something is"
+                + " attributed to him, or on demand, and never part of 'all'. Each lane is"
                 + " ranked and cut on its own and the answer says how many rows each searched."
                 + " It is a FILTER, not a cue: give a cue as well."));
         props.put("lanes", Map.of("type", "array", "items", Map.of("type", "string"),
@@ -596,6 +618,29 @@ public final class ExperienceTool implements Tool {
                 + " lane. Each is searched and ranked on its own."));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: exceptions / caveats."));
+        props.put("key", Map.of("type", "string", "description",
+            "transcript_append: the client's own id for the record that opened the turn; the same"
+                + " for every capture of that turn, so a second capture completes the first. The"
+                + " store numbers the turns of a session itself."));
+        props.put("ts", Map.of("type", "string", "description",
+            "transcript_append: when the turn ended, ISO-8601 (default: now)."));
+        props.put("client", Map.of("type", "string", "description",
+            "transcript_append: the client that held the session."));
+        props.put("capture", Map.of("type", "string", "description",
+            "transcript_append: 'turn' for a capture at a turn's end (default), 'compaction' for"
+                + " the catch-up taken before a compaction."));
+        props.put("his", Map.of("type", "string", "description",
+            "transcript_append: what he typed in the turn, verbatim."));
+        props.put("agent", Map.of("type", "string", "description",
+            "transcript_append: what the agent said to him in the turn, verbatim."));
+        props.put("tools", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "transcript_append: one line per tool call (tool, key argument, ok or"
+                + " failed). Never tool output."));
+        props.put("quote", Map.of("type", "string", "description",
+            "transcript_verify: the words attributed to him."));
+        props.put("recent", Map.of("type", "integer", "description",
+            "recall with lane=transcript alone: his most recent N messages, newest first, with"
+                + " the turn each came from. The thread to pick up after a compaction."));
         props.put(BUDGET_MILLIS, Map.of("type", "integer",
             "description", "recall/primer: the CALLER's deadline in milliseconds — state it"
                 + " when your own timeout is shorter than the 15s default, so a wedged store"
@@ -646,6 +691,8 @@ public final class ExperienceTool implements Tool {
             case "amend_rule" -> amendRule(args);
             case "retire_rule" -> retireRule(args);
             case "describe" -> describe(args);
+            case "transcript_append" -> transcriptAppend(args);
+            case "transcript_verify" -> transcriptVerify(args);
             case "duplicate_check" -> duplicateCheck(
                 serviceSupplier == null ? null : serviceSupplier.get(), args);
             default -> ToolResponse.invalidParameter("kind",
@@ -984,6 +1031,17 @@ public final class ExperienceTool implements Tool {
             out.put("quality", q.statsBlock());
         }
         out.put("catalogue", catalogueBlock());
+        // Sprint 28g S21 — the discussion's size and whether the lane is on. Counts only: what was
+        // said is never listed here, and no other verb here reaches the lane's rows.
+        java.util.Map<String, Object> transcriptBlock = new java.util.LinkedHashMap<>();
+        transcriptBlock.put("enabled", org.jawata.mcp.knowledge.TranscriptStore.enabled());
+        transcriptBlock.put("installed", transcript != null);
+        if (transcript != null) {
+            transcriptBlock.put("turns", transcript.count());
+            // A turn lost after every retry is a number a reader can see, not a silent gap.
+            transcriptBlock.put("failedWrites", transcript.failedWrites());
+        }
+        out.put("transcript", transcriptBlock);
         // Sprint 28g D28 — THE HEADING AUDIT, HERE, because M10's measure is a POST-RELOAD
         // QUERY and until this line there was no door to run one through.
         //
@@ -3375,6 +3433,19 @@ public final class ExperienceTool implements Tool {
             text(args, "symptom"),
             text(args, "external_system"),
             scope);
+        // Sprint 28g S21 — the thread to pick up after a compaction: what he typed most recently,
+        // newest first. It carries no cue, so it is the transcript lane ALONE.
+        if (args != null && args.has("recent") && args.get("recent").canConvertToInt()) {
+            if (!scope.contains(org.jawata.mcp.knowledge.KnowledgeLane.TRANSCRIPT)
+                    || scope.lanes().size() != 1) {
+                return ToolResponse.invalidParameter("recent",
+                    "recent reads the discussion: name lane=transcript, and no other lane.");
+            }
+            Map<String, Object> base = new java.util.LinkedHashMap<>();
+            base.put("cue", Map.of("recent", args.get("recent").asInt()));
+            return respond(args, org.jawata.mcp.knowledge.TranscriptAnswer.recent(base, transcript,
+                text(args, "session"), Math.max(1, args.get("recent").asInt())));
+        }
         // Sprint 27 D6: the caller may name the surface it is asking from
         // ("seat" for a seat run's recall). Absent = the ordinary question hook.
         // Retrieval is identical either way; only the counter differs.
@@ -3402,6 +3473,11 @@ public final class ExperienceTool implements Tool {
                 ? args.get("limit").asInt() : 0;
             result = retrieval.recall(q, counted, budgetIn(args), asked);
         } else {
+            if (scope.contains(org.jawata.mcp.knowledge.KnowledgeLane.TRANSCRIPT)) {
+                return ToolResponse.invalidParameter("lane",
+                    "The transcript lane takes one cue (symptom or symbol), not the symbols or"
+                        + " symptoms lists: its quotes are not ranked with the other lanes.");
+            }
             List<RecallQuery> cues = new java.util.ArrayList<>();
             if (!q.isEmpty()) {
                 cues.add(q);
@@ -3422,6 +3498,57 @@ public final class ExperienceTool implements Tool {
             response.applySteering(CLASSIFY_STEERING);
         }
         return response;
+    }
+
+    /**
+     * Sprint 28g S21 — store one turn of the discussion. Idempotent per session and turn: a turn
+     * already held in full is left alone, one held in part is completed, and a lane that is
+     * switched off stores nothing and says so.
+     */
+    private ToolResponse transcriptAppend(JsonNode args) {
+        if (transcript == null) {
+            return ToolResponse.invalidParameter("kind",
+                "The transcript lane is not installed on this resident, so nothing was stored.");
+        }
+        String session = text(args, "session");
+        if (session == null || session.isBlank()) {
+            return ToolResponse.invalidParameter("session", "transcript_append needs the session.");
+        }
+        String key = text(args, "key");
+        if (key == null || key.isBlank()) {
+            return ToolResponse.invalidParameter("key",
+                "transcript_append needs the client's own id for the record that opened the turn,"
+                    + " the same for every capture of that turn.");
+        }
+        java.time.Instant ts;
+        try {
+            String when = text(args, "ts");
+            ts = when == null || when.isBlank() ? java.time.Instant.now() : java.time.Instant.parse(when);
+        } catch (java.time.format.DateTimeParseException e) {
+            return ToolResponse.invalidParameter("ts", "ts must be an ISO-8601 instant: " + e.getMessage());
+        }
+        org.jawata.mcp.knowledge.TranscriptStore.Appended result = transcript.append(
+            new org.jawata.mcp.knowledge.TranscriptStore.Turn(session, key, ts,
+                text(args, "client"), text(args, "capture"), text(args, "his"),
+                text(args, "agent"), strings(args, "tools")));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("appended", result.name().toLowerCase(java.util.Locale.ROOT));
+        out.put("enabled", org.jawata.mcp.knowledge.TranscriptStore.enabled());
+        return ToolResponse.success(out);
+    }
+
+    /**
+     * Sprint 28g S21 — whether he said these words. The check made before something is attributed
+     * to him: found, with the turn that holds them, or not found. A lane that could not check says
+     * {@code checked:false}, which is never the same as not found.
+     */
+    private ToolResponse transcriptVerify(JsonNode args) {
+        String quote = text(args, "quote");
+        if (quote == null || quote.isBlank()) {
+            return ToolResponse.invalidParameter("quote", "transcript_verify needs the quote.");
+        }
+        return ToolResponse.success(
+            org.jawata.mcp.knowledge.TranscriptAnswer.verify(transcript, quote));
     }
 
     /**
@@ -3453,7 +3580,12 @@ public final class ExperienceTool implements Tool {
         } catch (org.jawata.mcp.knowledge.LaneScope.Refused refused) {
             return ToolResponse.invalidParameter("lane", refused.getMessage());
         }
-        Map<String, Object> result = retrieval.nominate(question, scope, budgetIn(args));
+        Map<String, Object> result;
+        try {
+            result = retrieval.nominate(question, scope, budgetIn(args));
+        } catch (org.jawata.mcp.knowledge.LaneScope.Refused refused) {
+            return ToolResponse.invalidParameter("lane", refused.getMessage());
+        }
         if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(result.get("result"))) {
             return respond(args, result);
         }

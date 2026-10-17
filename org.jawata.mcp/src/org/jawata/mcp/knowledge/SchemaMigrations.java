@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 24;
+    static final int LATEST = 25;
 
     private SchemaMigrations() {
     }
@@ -196,6 +196,9 @@ final class SchemaMigrations {
         }
         if (from < 24) {
             migrateToV24(conn);
+        }
+        if (from < 25) {
+            migrateToV25(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -1208,6 +1211,48 @@ final class SchemaMigrations {
             // The queue reads this ordered by recency, which is the only query there is.
             s.execute("CREATE INDEX IF NOT EXISTS idx_worked_package_last_seen "
                 + "ON worked_package(last_seen)");
+        }
+    }
+
+    /**
+     * v25 (Sprint 28g S21): the transcript lane — what was said in the discussion, kept so that a
+     * compaction forgets nothing.
+     *
+     * <p>Two tables of its own, deliberately NOT columns on {@code experience_entry}: every verb
+     * that walks that table (export, import, review, prune, describe, wipe and import) would
+     * otherwise need a "leave the transcript alone" filter, and the lane has to be removable as a
+     * whole and never leave the machine. {@code transcript_turn} holds one compressed row per
+     * turn; {@code transcript_term} maps each word of a turn to the turn, so a search is an index
+     * lookup in the database and not a scan held in memory.</p>
+     *
+     * <p>No foreign key, and no size cap: the lane is append-only and compressed. {@code
+     * (session_id, turn_key)} is unique, the key being the client's own id for the record that
+     * opened the turn, so that capturing a turn twice, once at its end and again in the catch-up
+     * before a compaction, stores it once. {@code turn_no} is the turn's number within its
+     * session, assigned by the store in the order turns first arrive, and is what a quote's
+     * pointer shows.</p>
+     */
+    private static void migrateToV25(Connection conn) throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("CREATE TABLE IF NOT EXISTS transcript_turn ("
+                + "id IDENTITY PRIMARY KEY, "
+                + "session_id VARCHAR(80) NOT NULL, "
+                + "turn_key VARCHAR(120) NOT NULL, "
+                + "turn_no INT NOT NULL, "
+                + "ts TIMESTAMP NOT NULL, "
+                + "client VARCHAR(40), "
+                + "kind VARCHAR(16) NOT NULL, "
+                + "chars INT NOT NULL, "
+                + "body BLOB NOT NULL, "
+                + "workspace_id VARCHAR(256), "
+                + "UNIQUE (session_id, turn_key))");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_transcript_turn_ts ON transcript_turn(ts)");
+            s.execute("CREATE TABLE IF NOT EXISTS transcript_term ("
+                + "term VARCHAR(48) NOT NULL, "
+                + "turn_id BIGINT NOT NULL, "
+                + "PRIMARY KEY (term, turn_id))");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_transcript_term_turn "
+                + "ON transcript_term(turn_id)");
         }
     }
 }

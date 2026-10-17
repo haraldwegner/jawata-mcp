@@ -252,6 +252,10 @@ public class JawataApplication implements IApplication {
                 // unwired collaborator here would make the fallback verb refuse
                 // every declaration, which the hook would see as an outage.
                 experienceTool.setToolExperienceStore(toolExperienceStore);
+                // Sprint 28g S21: the transcript lane, installed here for the same reason as the
+                // tool lane above. A resident without it answers every call that names the lane
+                // with "not installed" and refuses to store a turn: said, never silent.
+                experienceTool.setTranscriptStore(new org.jawata.mcp.knowledge.TranscriptStore(h2));
             } else {
                 // registerTools() runs above, so this cannot happen today — and if
                 // a reordering ever makes it happen, the symptom would be a quality

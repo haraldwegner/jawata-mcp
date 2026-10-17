@@ -68,9 +68,13 @@ public record LaneScope(Set<KnowledgeLane> lanes) {
         return new LaneScope(set);
     }
 
-    /** Every lane, named by the caller. */
+    /**
+     * Every lane of KNOWLEDGE, named by the caller. The transcript is not knowledge written down
+     * but the discussion kept (Sprint 28g S21), asked on three occasions only, so a call that
+     * means it says {@code transcript} and "all" never reaches it.
+     */
     public static LaneScope everyLane() {
-        return new LaneScope(EnumSet.allOf(KnowledgeLane.class));
+        return new LaneScope(EnumSet.complementOf(EnumSet.of(KnowledgeLane.TRANSCRIPT)));
     }
 
     /**
