@@ -1253,6 +1253,22 @@ final class SchemaMigrations {
                 + "PRIMARY KEY (term, turn_id))");
             s.execute("CREATE INDEX IF NOT EXISTS idx_transcript_term_turn "
                 + "ON transcript_term(turn_id)");
+            createHisTerms(s);
         }
+    }
+
+    /**
+     * The postings of the words HE typed, apart from the postings of every word of a turn. A quote
+     * attributed to him is checked against these, so the speaker is decided inside the database
+     * before any cut. Safe to run again: the transcript lane creates it when it opens a store
+     * whose version 25 was written before this table existed.
+     */
+    static void createHisTerms(Statement s) throws SQLException {
+        s.execute("CREATE TABLE IF NOT EXISTS transcript_his_term ("
+            + "term VARCHAR(48) NOT NULL, "
+            + "turn_id BIGINT NOT NULL, "
+            + "PRIMARY KEY (term, turn_id))");
+        s.execute("CREATE INDEX IF NOT EXISTS idx_transcript_his_term_turn "
+            + "ON transcript_his_term(turn_id)");
     }
 }

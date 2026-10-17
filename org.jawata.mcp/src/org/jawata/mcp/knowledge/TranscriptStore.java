@@ -1,8 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -22,10 +19,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 28g S21 — <b>the transcript lane</b>: the discussion, kept so that nothing said is lost
@@ -181,6 +180,47 @@ public final class TranscriptStore {
     public record Found(List<Hit> hits, long rowsSearched) {
     }
 
+    /** What a check of his words came to. */
+    public enum Verdict {
+        /** A turn holds the words among his. */
+        FOUND,
+        /** The lane was read in full and no turn holds them among his words. */
+        NOT_FOUND,
+        /** The lane could not say: off, empty, unreadable, or too many turns to read them all. */
+        UNCHECKED
+    }
+
+    /**
+     * The answer to "did he say this": a verdict, and the turn when it was found. Only
+     * {@link Verdict#NOT_FOUND} may be said to him as an accusation; an unchecked answer is a
+     * failure to look and is never worded as an absence.
+     *
+     * @param verdict what the check came to
+     * @param hit the turn that holds the words, present only for {@link Verdict#FOUND}
+     */
+    public record Said(Verdict verdict, Hit hit) {
+        static Said found(Hit hit) {
+            return new Said(Verdict.FOUND, hit);
+        }
+
+        static Said notFound() {
+            return new Said(Verdict.NOT_FOUND, null);
+        }
+
+        static Said unchecked() {
+            return new Said(Verdict.UNCHECKED, null);
+        }
+    }
+
+    /** Words of his message that are indexed; his words are the ones a quote is checked against. */
+    static final int MAX_HIS_TERMS = 5000;
+
+    /** Words of a quoted sentence that must all be present in a turn of his. */
+    static final int MAX_QUOTE_TERMS = 40;
+
+    /** Turns of his that hold every word of a quote, read in full before the check gives up. */
+    static final int MAX_QUOTE_CANDIDATES = 500;
+
     private final H2ExperienceStore store;
     private long failedWrites;
 
@@ -188,6 +228,8 @@ public final class TranscriptStore {
         this.store = store;
         if (!enabled()) {
             purge();
+        } else {
+            ensureHisTerms();
         }
     }
 
@@ -260,10 +302,12 @@ public final class TranscriptStore {
             }
             long id;
             if (existingId != null) {
-                try (PreparedStatement ps = conn.prepareStatement(
-                        "DELETE FROM transcript_term WHERE turn_id = ?")) {
-                    ps.setLong(1, existingId);
-                    ps.executeUpdate();
+                for (String table : new String[] {"transcript_term", "transcript_his_term"}) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "DELETE FROM " + table + " WHERE turn_id = ?")) {
+                        ps.setLong(1, existingId);
+                        ps.executeUpdate();
+                    }
                 }
                 try (PreparedStatement ps = conn.prepareStatement(
                         "UPDATE transcript_turn SET ts = ?, kind = ?, chars = ?, body = ?"
@@ -317,6 +361,7 @@ public final class TranscriptStore {
                 }
                 ps.executeBatch();
             }
+            insertHisTerms(conn, id, turn.his());
             conn.commit();
             return existingId == null ? Appended.STORED : Appended.COMPLETED;
         } catch (Exception e) {
@@ -324,6 +369,65 @@ public final class TranscriptStore {
             throw e;
         } finally {
             conn.setAutoCommit(autoCommit);
+        }
+    }
+
+    /**
+     * Posts the words he typed in a turn on their own, so the check of a quote asks the database for
+     * his turns and the speaker is decided before anything is cut.
+     */
+    private void insertHisTerms(Connection conn, long turnId, String his) throws Exception {
+        List<String> terms = tokensOf(his, MAX_HIS_TERMS);
+        if (terms.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO transcript_his_term (term, turn_id) VALUES (?, ?)")) {
+            for (String term : terms) {
+                ps.setString(1, term);
+                ps.setLong(2, turnId);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    /**
+     * Creates the postings of his words if this store predates them, and fills them from the turns
+     * already held. A store migrated by an earlier build of version 25 has the turns and not the
+     * postings; without this its quotes could not be checked until every old turn was stored again.
+     */
+    private void ensureHisTerms() {
+        synchronized (store) {
+            try {
+                Connection conn = store.sharedConnection();
+                try (Statement s = conn.createStatement()) {
+                    SchemaMigrations.createHisTerms(s);
+                }
+                long posted;
+                try (Statement s = conn.createStatement();
+                        ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM transcript_his_term")) {
+                    rs.next();
+                    posted = rs.getLong(1);
+                }
+                if (posted > 0 || countTurns(conn) == 0) {
+                    return;
+                }
+                int filled = 0;
+                try (Statement s = conn.createStatement();
+                        ResultSet rs = s.executeQuery("SELECT id, body FROM transcript_turn")) {
+                    while (rs.next()) {
+                        String his = String.join("\n", decode(decompress(rs.getBytes(2)))
+                            .getOrDefault(Who.HE, List.of()));
+                        insertHisTerms(conn, rs.getLong(1), his);
+                        filled++;
+                    }
+                }
+                log.info("transcript lane: postings of his words built for {} existing turn(s)", filled);
+            } catch (Exception e) {
+                log.error("transcript lane: the postings of his words could not be prepared; quote"
+                    + " checks answer 'could not check' until they can", e);
+            }
         }
     }
 
@@ -347,7 +451,7 @@ public final class TranscriptStore {
                 if (terms.isEmpty() || turns == 0) {
                     return new Found(List.of(), turns);
                 }
-                return new Found(rank(conn, terms, turns, Math.max(1, limit), null), turns);
+                return new Found(rank(conn, terms, turns, Math.max(1,limit)), turns);
             } catch (Exception e) {
                 log.error("transcript search failed for '{}'", cue, e);
                 return new Found(List.of(), -1);
@@ -362,30 +466,80 @@ public final class TranscriptStore {
      * @param quote the words attributed to him
      * @return the turn that holds them among his words, or empty when none does
      */
-    public Optional<Hit> findHisWords(String quote) {
+    public TranscriptStore.Said findHisWords(String quote) {
         if (!enabled() || quote == null || quote.isBlank()) {
-            return Optional.empty();
+            return Said.unchecked();
         }
         synchronized (store) {
             try {
                 Connection conn = store.sharedConnection();
-                long turns = countTurns(conn);
-                List<String> terms = tokensOf(quote, MAX_CUE_TERMS);
-                if (terms.isEmpty() || turns == 0) {
-                    return Optional.empty();
+                List<String> terms = tokensOf(quote, MAX_QUOTE_TERMS);
+                if (terms.isEmpty() || countTurns(conn) == 0) {
+                    // Nothing to look for, or nothing held to look in: the lane cannot vouch either way.
+                    return Said.unchecked();
                 }
+                List<Long> candidates = hisTurnsHoldingEvery(conn, terms);
                 String wanted = normalise(quote);
-                for (Hit h : rank(conn, terms, turns, 40, Who.HE)) {
-                    if (normalise(h.quote()).contains(wanted)) {
-                        return Optional.of(h);
+                for (Long id : candidates) {
+                    Hit hit = hisSentenceContaining(conn, id, wanted);
+                    if (hit != null) {
+                        return Said.found(hit);
                     }
                 }
-                return Optional.empty();
+                // Read in full, so a miss is an absence; cut at the cap, it is only a failure to look.
+                return candidates.size() >= MAX_QUOTE_CANDIDATES ? Said.unchecked() : Said.notFound();
             } catch (Exception e) {
                 log.error("transcript quote check failed", e);
-                return Optional.empty();
+                return Said.unchecked();
             }
         }
+    }
+
+    /**
+     * The turns, newest first, whose own typed words contain every word of a quote. The speaker is
+     * part of the posting, so the cut to {@link #MAX_QUOTE_CANDIDATES} is taken among turns of his
+     * and never among everything that mentions the words, where the agent's later echoes of a
+     * ruling would push the ruling out.
+     */
+    private List<Long> hisTurnsHoldingEvery(Connection conn, List<String> terms) throws Exception {
+        String in = String.join(",", Collections.nCopies(terms.size(), "?"));
+        List<Long> ids = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT turn_id FROM transcript_his_term WHERE term IN (" + in
+                    + ") GROUP BY turn_id HAVING COUNT(*) = ? ORDER BY turn_id DESC LIMIT ?")) {
+            int p = 1;
+            for (String term : terms) {
+                ps.setString(p++, term);
+            }
+            ps.setInt(p++, terms.size());
+            ps.setInt(p, MAX_QUOTE_CANDIDATES);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    ids.add(rs.getLong(1));
+                }
+            }
+        }
+        return ids;
+    }
+
+    /** The turn {@code id} as a hit when one of his sentences in it contains {@code wanted}. */
+    private Hit hisSentenceContaining(Connection conn, long id, String wanted) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT session_id, turn_no, ts, body FROM transcript_turn WHERE id = ?")) {
+            ps.setLong(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                for (String sentence : decode(decompress(rs.getBytes(4))).getOrDefault(Who.HE, List.of())) {
+                    if (normalise(sentence).contains(wanted)) {
+                        return new Hit(rs.getString(1), rs.getInt(2), rs.getTimestamp(3).toInstant(),
+                            Who.HE, clip(sentence, 0), 0);
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -453,6 +607,7 @@ public final class TranscriptStore {
                 int turns;
                 try (Statement s = conn.createStatement()) {
                     s.executeUpdate("DELETE FROM transcript_term");
+                    s.executeUpdate("DELETE FROM transcript_his_term");
                     turns = s.executeUpdate("DELETE FROM transcript_turn");
                 }
                 if (turns > 0) {
@@ -468,8 +623,7 @@ public final class TranscriptStore {
 
     // --- ranking -------------------------------------------------------------------------
 
-    private List<Hit> rank(Connection conn, List<String> terms, long turns, int limit,
-            Who onlyWho) throws Exception {
+    private List<Hit> rank(Connection conn, List<String> terms, long turns, int limit) throws Exception {
         String in = String.join(",", Collections.nCopies(terms.size(), "?"));
         Map<String, Integer> docFreq = new HashMap<>();
         try (PreparedStatement ps = conn.prepareStatement(
@@ -526,7 +680,7 @@ public final class TranscriptStore {
             .<Map.Entry<Long, double[]>>comparingDouble(e -> -e.getValue()[0])
             .thenComparingDouble(e -> -e.getValue()[1])
             .thenComparing(e -> -e.getKey()));
-        int take = Math.min(candidates.size(), onlyWho == null ? limit * 3 : limit);
+        int take = Math.min(candidates.size(), limit * 3);
         List<Long> ids = new ArrayList<>();
         for (int i = 0; i < take; i++) {
             ids.add(candidates.get(i).getKey());
@@ -557,7 +711,7 @@ public final class TranscriptStore {
             }
             Map<Who, List<String>> segments = decode(decompress((byte[]) row[3]));
             Hit hit = bestSegment((String) row[0], (int) row[1], (Instant) row[2], segments,
-                used, (int) scores.get(id)[0], onlyWho);
+                used, (int) scores.get(id)[0]);
             if (hit != null) {
                 hits.add(hit);
             }
@@ -569,14 +723,11 @@ public final class TranscriptStore {
     }
 
     private static Hit bestSegment(String session, int turnNo, Instant ts,
-            Map<Who, List<String>> segments, List<String> terms, int matched, Who onlyWho) {
+            Map<Who, List<String>> segments, List<String> terms, int matched) {
         Set<String> wanted = new LinkedHashSet<>(terms);
         Hit best = null;
         int bestOverlap = 0;
         for (Who who : new Who[] {Who.HE, Who.AGENT, Who.TOOL}) {
-            if (onlyWho != null && who != onlyWho) {
-                continue;
-            }
             for (String segment : segments.getOrDefault(who, List.of())) {
                 int overlap = 0;
                 Set<String> present = new LinkedHashSet<>(LexicalIndex.tokenize(segment));
@@ -588,8 +739,7 @@ public final class TranscriptStore {
                 if (overlap > bestOverlap) {
                     bestOverlap = overlap;
                     best = new Hit(session, turnNo, ts, who,
-                        onlyWho == null ? clip(segment, firstMatchAt(segment, wanted)) : segment,
-                        matched);
+                        clip(segment, firstMatchAt(segment, wanted)), matched);
                 }
             }
         }

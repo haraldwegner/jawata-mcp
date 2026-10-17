@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Sprint 28g S21 — what the transcript lane says, in the shape every other lane already answers
@@ -132,16 +131,29 @@ public final class TranscriptAnswer {
                 : "The transcript lane is switched off, so nothing was checked.");
             return out;
         }
-        Optional<TranscriptStore.Hit> hit = transcript.findHisWords(quote);
-        out.put("checked", true);
-        out.put("found", hit.isPresent());
-        hit.ifPresent(h -> out.put("entry", row(h)));
+        TranscriptStore.Said said = transcript.findHisWords(quote);
+        boolean checked = said.verdict() != TranscriptStore.Verdict.UNCHECKED;
+        out.put("checked", checked);
+        out.put("found", said.verdict() == TranscriptStore.Verdict.FOUND);
+        if (said.hit() != null) {
+            out.put("entry", row(said.hit()));
+        }
+        if (!checked) {
+            out.put("note", "The transcript lane could not check these words (nothing held to look"
+                + " in, nothing to look for, a read that failed, or too many turns to read them"
+                + " all). That is not an absence.");
+        }
         return out;
     }
 
     private static Map<String, Object> finish(Map<String, Object> out,
             List<Map<String, Object>> entries, Map<String, Object> scanned) {
         out.put("entries", entries);
+        if (out.containsKey("count")) {
+            // The rows are the answer, so the count is theirs; a count of the knowledge rows alone
+            // beside quote rows would read as "count 0, result match".
+            out.put("count", entries.size());
+        }
         out.put("scanned", scanned);
         boolean quotes = entries.stream().anyMatch(e -> TYPE.equals(e.get("type")));
         if (quotes && ExperienceRetrieval.RESULT_ABSENCE.equals(out.get("result"))) {

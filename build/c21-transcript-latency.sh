@@ -9,12 +9,21 @@
 # The content goes into a private resident's scratch store and is deleted with it. Only counts and
 # times are printed or kept.
 #
-# Usage:  build/c21-transcript-latency.sh [dist-dir] [evidence-dir] [max-windows]
+# Usage:  build/c21-transcript-latency.sh [dist-dir] [evidence-dir] [max-windows] [windows-file]
+#
+# windows-file is the output of the hook crate's `dump_windows` example (one JSON line per window,
+# cut by the hook's own reader). Optional environment:
+#   C21_JVM_ARGS      extra JVM arguments for the resident, e.g. the debug(action=preset_args)
+#                     line, so the profiler seat can attach to it
+#   C21_SERVE_SECONDS after the timed groups, keep the resident up and ask it a steady mix of the
+#                     three calls for this long, and write $EVIDENCE/ready with the resident's pid
+#                     when that starts, so a profile can be taken while it is being asked
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="${1:-$ROOT/build/dist/target/dist}"
 EVIDENCE="${2:-$ROOT/build/c21-latency-evidence}"
 MAXW="${3:-0}"
+WINDOWS="${4:-$EVIDENCE/windows.jsonl}"
 JAR="$DIST/jawata.jar"
 PORT="${JAWATA_C21_PORT:-8933}"
 TOKEN="c21-lat-$$"
@@ -26,11 +35,11 @@ cleanup() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; [ -n "$PID" ] && wait "$PI
 trap cleanup EXIT INT TERM HUP
 VECTOR=""; java --add-modules jdk.incubator.vector -version >/dev/null 2>&1 && VECTOR="--add-modules jdk.incubator.vector"
 # shellcheck disable=SC2086
-java $VECTOR -Xmx3g -Djawata.experience.shared.dir="$STORE" -jar "$JAR" -data "$WS/ws" -port "$PORT" -token "$TOKEN" > "$LOG" 2>&1 &
+java $VECTOR ${C21_JVM_ARGS:-} -Xmx3g -Djawata.experience.shared.dir="$STORE" -jar "$JAR" -data "$WS/ws" -port "$PORT" -token "$TOKEN" > "$LOG" 2>&1 &
 PID=$!
 for _ in $(seq 1 180); do grep -q "READY\|Server started\|listening" "$LOG" 2>/dev/null && break; sleep 1; done
 
-PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_EVIDENCE="$EVIDENCE" PROBE_STORE="$STORE" PROBE_MAXW="$MAXW" python3 -I - << 'PY'
+PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_EVIDENCE="$EVIDENCE" PROBE_STORE="$STORE" PROBE_MAXW="$MAXW" PROBE_WINDOWS="$WINDOWS" PROBE_PID="$PID" PROBE_SERVE="${C21_SERVE_SECONDS:-0}" python3 -I - << 'PY'
 import concurrent.futures, glob, json, os, statistics, time, urllib.request
 
 PORT = os.environ["PROBE_PORT"]; TOKEN = os.environ["PROBE_TOKEN"]
@@ -45,76 +54,27 @@ def call(args, who="lat"):
     return json.loads(json.loads(urllib.request.urlopen(r, timeout=900).read().decode())
                       ["result"]["content"][0]["text"])
 
-def key_arg(inp):
-    if not isinstance(inp, dict):
-        return ""
-    for k in ("file_path", "command", "pattern", "query", "path", "url", "description", "prompt"):
-        v = inp.get(k)
-        if isinstance(v, str):
-            return " ".join(v.split())[:120]
-    return ""
-
-def windows(path):
-    """The windows of one transcript, the way the hook cuts them."""
-    out = []; cur = None; pending = {}
-    def close():
-        nonlocal cur
-        if cur and (cur["his"].strip() or cur["agent"] or cur["tools"]) and cur["key"]:
-            out.append(cur)
-        cur = None
-    with open(path, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            try:
-                e = json.loads(line)
-            except ValueError:
-                continue
-            t = e.get("type"); msg = e.get("message") if isinstance(e.get("message"), dict) else {}
-            content = msg.get("content")
-            if t == "user":
-                text = None
-                if isinstance(content, str) and content.strip():
-                    text = content
-                elif isinstance(content, list):
-                    texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
-                    if texts and not e.get("isMeta"):
-                        text = "\n".join(texts)
-                    for b in content:
-                        if isinstance(b, dict) and b.get("type") == "tool_result" and cur is not None:
-                            tid = b.get("tool_use_id")
-                            if b.get("is_error") and tid in pending:
-                                pending[tid]["failed"] = True
-                if text is not None:
-                    close()
-                    cur = {"key": e.get("uuid"), "ts": e.get("timestamp"), "his": text, "agent": [], "tools": []}
-            elif t == "assistant" and isinstance(content, list) and cur is not None:
-                for b in content:
-                    if not isinstance(b, dict):
-                        continue
-                    if b.get("type") == "text" and b.get("text", "").strip():
-                        cur["agent"].append(b["text"])
-                    elif b.get("type") == "tool_use":
-                        rec = {"line": b.get("name", "") + " " + key_arg(b.get("input")), "failed": False}
-                        pending[b.get("id")] = rec; cur["tools"].append(rec)
-    close()
-    return out
-
-files = sorted(glob.glob(os.path.expanduser("~/.claude/projects/**/*.jsonl"), recursive=True))
+# THE WINDOWS COME FROM THE HOOK'S OWN READER. `dump_windows` is a cargo example of the hook crate
+# that runs every transcript through `stop::read_turn_keeping`, the one parser of that file, so the
+# corpus is what the hook would store and not what a script guesses is a window (the first C21
+# audit found the script's own cutting gave 14,400 "windows" where the hook sees 1,762).
 jobs = []
-for f in files:
-    session = os.path.basename(f)[:-6]
-    for w in windows(f):
-        jobs.append((session, w))
+with open(os.environ["PROBE_WINDOWS"], encoding="utf-8") as fh:
+    for line in fh:
+        w = json.loads(line)
+        jobs.append((w["session"], {"key": w["key"], "ts": w["ts"], "his": w["his"],
+                                    "agent": [w["agent"]] if w["agent"] else [],
+                                    "tools": [{"line": t, "failed": False} for t in w["tools"]]}))
         if MAXW and len(jobs) >= MAXW:
             break
-    if MAXW and len(jobs) >= MAXW:
-        break
+files = [None] * len(set(s for s, _ in jobs))
 print("windows to store: %d from %d transcripts" % (len(jobs), len(files)), flush=True)
 
 def store(job):
     session, w = job
     args = {"kind": "transcript_append", "session": session, "key": w["key"], "client": "claude-code",
             "his": w["his"], "agent": "\n\n".join(w["agent"]),
-            "tools": [t["line"] + (" failed" if t["failed"] else " ok") for t in w["tools"]]}
+            "tools": [t["line"] for t in w["tools"]]}
     if w["ts"]:
         args["ts"] = w["ts"]
     return (call(args, "ingest").get("data") or {}).get("appended")
@@ -142,21 +102,56 @@ CUES = [
     "the", "kestrel", "quantefaktweb", "mvn clean package skiptests", "no size cap just compression",
     "who owns the fault", "live session transcript evidence",
 ]
-times = []; empty = 0
-for cue in CUES:
-    for _ in range(5):
-        a = time.time()
-        d = call({"kind": "recall", "lanes": ["transcript"], "symptom": cue}).get("data") or {}
-        times.append((time.time() - a) * 1000)
-        if not (d.get("entries") or []):
-            empty += 1
-times.sort()
-def pct(p): return times[min(len(times) - 1, int(len(times) * p))]
-print("searches: %d (%d cues x 5), %d answered empty" % (len(times), len(CUES), empty))
-print("latency ms  median=%.0f  p95=%.0f  max=%.0f" % (statistics.median(times), pct(0.95), times[-1]))
-print("bar: 1200 ms  -> %s" % ("WITHIN" if times[-1] <= 1200 else ("p95 within, max over" if pct(0.95) <= 1200 else "OVER")))
+
+# Sentences he really typed (taken from the stored corpus, spread over its length) and sentences he
+# never typed. The check of a quote is the stop hook's call, so it is timed as the hook makes it.
+def sentences():
+    real = []
+    step = max(1, len(jobs) // 12)
+    for _, w in jobs[::step]:
+        words = w["his"].split()
+        if len(words) >= 8:
+            real.append(" ".join(words[:12]))
+        if len(real) == 12:
+            break
+    never = ["we should rewrite the whole engine in a language nobody here has used", "he insisted the hook must never touch the network at all",
+             "send every transcript to the vendor so they can train on it"] * 4
+    return real, never[:12]
+REAL, NEVER = sentences()
+SESSIONS = sorted({s for s, _ in jobs})[:: max(1, len({s for s, _ in jobs}) // 12)][:12]
+
+def timed(label, calls):
+    ms = []; misses = 0; unchecked = 0
+    for c in calls:
+        a = time.time(); d = (call(c).get("data") or {}); ms.append((time.time() - a) * 1000)
+        if c.get("kind") == "recall" and not (d.get("entries") or []): misses += 1
+        if c.get("kind") == "transcript_verify" and d.get("checked") is False: unchecked += 1
+    ms.sort()
+    pc = lambda p: ms[min(len(ms) - 1, int(len(ms) * p))]
+    r = {"calls": len(ms), "median_ms": round(statistics.median(ms)), "p95_ms": round(pc(0.95)),
+         "max_ms": round(ms[-1]), "empty_answers": misses, "unchecked": unchecked}
+    print("%-8s %s" % (label, r), flush=True)
+    return r
+
+search_calls = [{"kind": "recall", "lanes": ["transcript"], "symptom": c} for c in CUES for _ in range(5)]
+verify_calls = [{"kind": "transcript_verify", "quote": q} for q in REAL + NEVER for _ in range(5)]
+recent_calls = [{"kind": "recall", "lanes": ["transcript"], "recent": 12, "session": s, "format": "text"}
+                for s in SESSIONS for _ in range(5)]
+results = {"search": timed("search", search_calls), "verify": timed("verify", verify_calls),
+           "recent": timed("recent", recent_calls)}
+worst = max(r["max_ms"] for r in results.values())
+print("bar: 1200 ms  -> %s (worst single call %d ms)" % ("WITHIN" if worst <= 1200 else "OVER", worst))
 json.dump({"windows": len(jobs), "turns": stats.get("turns"), "store_mb": round(size / 1e6, 1),
-           "ingest_s": round(ingest), "median_ms": round(statistics.median(times)),
-           "p95_ms": round(pct(0.95)), "max_ms": round(times[-1]), "empty_answers": empty},
+           "ingest_s": round(ingest), "groups": results},
           open(os.path.join(os.environ["PROBE_EVIDENCE"], "latency.json"), "w"))
+
+serve = int(os.environ.get("PROBE_SERVE", "0"))
+if serve:
+    open(os.path.join(os.environ["PROBE_EVIDENCE"], "ready"), "w").write(os.environ["PROBE_PID"])
+    end = time.time() + serve
+    mix = search_calls[::5] + verify_calls[::5] + recent_calls[::5]
+    n = 0
+    while time.time() < end:
+        call(mix[n % len(mix)]); n += 1
+    print("served %d calls while a profile could be taken" % n, flush=True)
 PY

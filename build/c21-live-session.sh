@@ -67,7 +67,7 @@ start_resident "$LOG" || exit 2
 # The scratch project: a file the agent will read (its content is the TOOL OUTPUT that must not be
 # kept), and the hooks wired as the studio wires them.
 mkdir -p "$PROJECT/.claude"
-echo "OUTPUTMARKERQX the first word of this file is banana" > "$PROJECT/notes.txt"
+echo "OUTPUTMARKERQX the first word of this file is banana" > "$PROJECT/zq7marker.txt"
 for role in primer stop observer userprompt; do cp "$HOOK" "$STAGE/jawata-hook-$role"; done
 mkdir -p "$STAGE/home"
 cat > "$STAGE/hook_config.json" <<EOF
@@ -138,7 +138,7 @@ HIS = ("The lighthouse keeper's rule is that every ledger entry must be signed t
        "the morning watch, and nothing said here may be forgotten after a compaction.")
 
 print("\n--- A. turns are stored as they end --------------------------------------------")
-turn("1-first-turn", HIS + " Remember it. Also read notes.txt and answer only yes or no: is the file non-empty?", first=True)
+turn("1-first-turn", HIS + " Remember it. Also read the only .txt file in this directory and answer only yes or no: is it non-empty?", first=True)
 turn("2-second-turn", "What is two plus two? Answer in one short sentence.")
 turn("3-third-turn", "Name three colours in one short sentence.")
 turn("4-fourth-turn", "Name three animals in one short sentence.")
@@ -158,20 +158,20 @@ if scanned and scanned >= 3:
 else:
     bad("expected at least 3 turns stored after four prompts, the lane holds %s" % scanned)
 
-# The tool line carries the scratch project's directory name, which none of his or the agent's
-# words do, so asking for it reaches the tool line and not the sentence that mentions the file.
-tool = recall(os.path.basename(PROJECT).replace(".", " ") + " notes")
+# The tool line carries the file's name, which none of his or the agent's words do (he is told to
+# find it, and the agent is told to answer yes or no), so asking for it reaches the tool line.
+tool = recall("zq7marker")
 tool_rows = [r for r in (tool.get("entries") or []) if r.get("who") == "tool"]
 read_happened = any(
-    b.get("type") == "tool_use" and b.get("name") == "Read"
+    b.get("type") == "tool_use" and "zq7marker" in json.dumps(b.get("input"))
     for e in events(open(os.path.join(EVIDENCE, "1-first-turn.jsonl")).read())
     if e.get("type") == "assistant" for b in (e.get("message") or {}).get("content", []))
-if tool_rows and "notes.txt" in str(tool_rows[0].get("summary")):
+if tool_rows and "zq7marker" in str(tool_rows[0].get("summary")):
     ok("the tool call is one line (%s)" % str(tool_rows[0].get("summary"))[:100])
 elif not read_happened:
-    unknown("the agent never called Read in turn 1, so there is no tool call to find (see 1-first-turn.jsonl)")
+    unknown("the agent never read the file in turn 1, so there is no tool call to find (see 1-first-turn.jsonl)")
 else:
-    bad("no tool line for the Read of notes.txt: %s" % json.dumps(tool)[:1800])
+    bad("no tool line for the read of zq7marker.txt: %s" % json.dumps(tool)[:1800])
 
 leak = recall("OUTPUTMARKERQX banana")
 if any("OUTPUTMARKERQX" in str(r.get("summary")) for r in (leak.get("entries") or [])):

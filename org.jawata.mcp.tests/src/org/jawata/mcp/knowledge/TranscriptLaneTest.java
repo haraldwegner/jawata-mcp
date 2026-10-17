@@ -307,6 +307,76 @@ class TranscriptLaneTest {
             () -> "an off lane did not check; 'not found' would be a lie: " + off);
     }
 
+    /**
+     * The first audit of C21: the check cut to the 40 best turns across every speaker and only then
+     * kept his, so enough later agent turns echoing a ruling pushed the ruling out and the stop hook
+     * told the agent it had invented words he really said.
+     */
+    @Test
+    void hisSentenceIsStillFoundWhenTheAgentEchoedItInMoreTurnsThanTheCheckReads() {
+        String ruling = "No size cap, just compression, and the works council gets a switch.";
+        assertEquals("stored", answer(append(1, ruling, "Noted.")).get("appended"));
+        // More echoes than the check reads in full: a check that cuts before it knows who spoke
+        // loses his sentence here, and one that decides the speaker first does not.
+        java.time.Instant start = java.time.Instant.parse("2026-10-18T00:00:00Z");
+        for (int turn = 2; turn <= TranscriptStore.MAX_QUOTE_CANDIDATES + 20; turn++) {
+            assertEquals(TranscriptStore.Appended.STORED, lane.append(new TranscriptStore.Turn(
+                SESSION, "echo-" + turn, start.plusSeconds(turn), "claude-code", "turn",
+                "ok", "As you ruled: " + ruling, List.of())));
+        }
+        ObjectNode verify = json.createObjectNode();
+        verify.put("kind", "transcript_verify");
+        verify.put("quote", ruling);
+        Map<String, Object> said = answer(verify);
+        assertEquals(true, said.get("found"), () -> "his sentence is found past the echoes: " + said);
+        assertEquals(1, ((Map<?, ?>) said.get("entry")).get("turn"));
+    }
+
+    @Test
+    void aLaneWithNothingHeldOrNothingToLookForCannotVouchEitherWay() {
+        ObjectNode verify = json.createObjectNode();
+        verify.put("kind", "transcript_verify");
+        verify.put("quote", "No size cap, just compression.");
+        Map<String, Object> empty = answer(verify);
+        assertEquals(false, empty.get("checked"),
+            () -> "an empty lane holds no evidence either way, so it does not accuse: " + empty);
+
+        seedDiscussion();
+        verify.put("quote", "to be or no");
+        Map<String, Object> plain = answer(verify);
+        assertEquals(false, plain.get("checked"),
+            () -> "a quote with no word long enough to look up was not checked: " + plain);
+    }
+
+    @Test
+    void aStoreThatHeldTurnsBeforeThePostingsOfHisWordsExistedBuildsThemWhenTheLaneOpens()
+            throws Exception {
+        seedDiscussion();
+        try (java.sql.Statement s = store.sharedConnection().createStatement()) {
+            s.execute("DROP TABLE transcript_his_term");
+        }
+        new TranscriptStore(store);
+        ObjectNode verify = json.createObjectNode();
+        verify.put("kind", "transcript_verify");
+        verify.put("quote", "No size cap, just compression.");
+        Map<String, Object> said = answer(verify);
+        assertEquals(true, said.get("found"),
+            () -> "turns stored by an earlier build of this version are still his: " + said);
+    }
+
+    @Test
+    void theCountOfAMergedAnswerIsTheCountOfItsRows() {
+        seedDiscussion();
+        Map<String, Object> base = new java.util.LinkedHashMap<>();
+        base.put("count", 0);
+        base.put("result", ExperienceRetrieval.RESULT_ABSENCE);
+        base.put("message", "nothing in the knowledge lanes");
+        Map<String, Object> merged = TranscriptAnswer.merge(base, lane, "works council switch", 5);
+        assertFalse(entries(merged).isEmpty());
+        assertEquals(entries(merged).size(), merged.get("count"),
+            () -> "a match with quote rows does not say count 0: " + merged);
+    }
+
     // ---- the thread after a compaction -----------------------------------------------------
 
     @Test
