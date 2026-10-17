@@ -85,7 +85,7 @@ cat > "$PROJECT/.claude/settings.json" <<EOF
 }
 EOF
 
-PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_PROJECT="$PROJECT" PROBE_EVIDENCE="$EVIDENCE" \
+PROBE_STAGE="$STAGE" PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_PROJECT="$PROJECT" PROBE_EVIDENCE="$EVIDENCE" \
 PROBE_MODEL="$MODEL" PROBE_RESIDENT_LOG="$LOG" python3 - << 'PY'
 import json, os, subprocess, urllib.request
 
@@ -162,12 +162,40 @@ print("\n--- 3. a genuinely new method -----------------------------------------
 t3 = session("3-new-method",
              "In src/com/example/Util.java add a static method celsiusToFahrenheit(double). "
              "Use the Write tool on that file. If the tooling holds the write, follow what it says.")
-declarations = t3.count("jawata-distinct:")
+evs = list(events(t3))
+def bash_commands(evs):
+    out = []
+    for i, e in enumerate(evs):
+        content = (e.get("message") or {}).get("content") if isinstance(e.get("message"), dict) else None
+        for block in content if isinstance(content, list) else []:
+            if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Bash":
+                out.append((i, str((block.get("input") or {}).get("command", ""))))
+    return out
+held_at = next((i for i, e in enumerate(evs) if "HELD" in json.dumps(e)), None)
+said = [(i, c) for i, c in bash_commands(evs) if "jawata-distinct:" in c or "jawata-duplicate:" in c]
 wrote = "celsiusToFahrenheit" in open(os.path.join(PROJECT, "src/com/example/Util.java")).read()
-if wrote:
-    ok("the new method was written (declarations seen in the transcript: %d)" % declarations)
-else:
+if not wrote:
     bad("the new method never reached the file")
+elif held_at is None:
+    unknown("the new method was written and no write was HELD, so the declaration route was not exercised")
+elif len(said) != 1:
+    bad("a genuinely new method must cost exactly ONE declaration line, and the session made %d" % len(said))
+elif said[0][0] < held_at:
+    bad("the declaration came BEFORE the refusal it should answer")
+else:
+    ok("the new method was HELD once, answered with exactly one declaration line, and then written")
+
+print("\n--- the declaration reaches the architect's watch (the gate's signal log) --------")
+signal_log = os.path.join(os.environ["PROBE_STAGE"], "home", ".claude", "jawata-studio", "outcomes.log")
+try:
+    lines = [l for l in open(signal_log).read().splitlines()
+             if "duplicate-distinct-declared" in l or "duplicate-declared" in l]
+except OSError:
+    lines = []
+if any(" :: " in l for l in lines):
+    ok("the declaration is logged WITH the job it was given about: %s" % lines[-1][-160:])
+else:
+    bad("no declaration line with a job location in the signal log (%d lines found)" % len(lines))
 
 print("\n--- the whole run: no experience call failed, and the log CAN see one fail ------")
 import re
