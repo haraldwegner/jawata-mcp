@@ -212,9 +212,6 @@ public final class TranscriptStore {
         }
     }
 
-    /** Words of his message that are indexed; his words are the ones a quote is checked against. */
-    static final int MAX_HIS_TERMS = 5000;
-
     /** Words of a quoted sentence that must all be present in a turn of his. */
     static final int MAX_QUOTE_TERMS = 40;
 
@@ -377,7 +374,9 @@ public final class TranscriptStore {
      * his turns and the speaker is decided before anything is cut.
      */
     private void insertHisTerms(Connection conn, long turnId, String his) throws Exception {
-        List<String> terms = tokensOf(his, MAX_HIS_TERMS);
+        // Every word, with no cap: a pasted passage is his too, and a cut here would answer "not
+        // found" for a sentence from the part that was cut.
+        List<String> terms = tokensOf(his, Integer.MAX_VALUE);
         if (terms.isEmpty()) {
             return;
         }
@@ -404,26 +403,39 @@ public final class TranscriptStore {
                 try (Statement s = conn.createStatement()) {
                     SchemaMigrations.createHisTerms(s);
                 }
-                long posted;
+                // Every turn with no posting of his words, not only a wholly empty table: a fill that
+                // stopped part way, or a turn written by an older resident sharing this store, would
+                // otherwise answer "not found" for words he did say. A turn he typed nothing in has
+                // none and is read again each time, which costs one decompression apiece.
+                List<Long> missing = new ArrayList<>();
                 try (Statement s = conn.createStatement();
-                        ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM transcript_his_term")) {
-                    rs.next();
-                    posted = rs.getLong(1);
-                }
-                if (posted > 0 || countTurns(conn) == 0) {
-                    return;
-                }
-                int filled = 0;
-                try (Statement s = conn.createStatement();
-                        ResultSet rs = s.executeQuery("SELECT id, body FROM transcript_turn")) {
+                        ResultSet rs = s.executeQuery("SELECT t.id FROM transcript_turn t WHERE NOT"
+                            + " EXISTS (SELECT 1 FROM transcript_his_term h WHERE h.turn_id = t.id)")) {
                     while (rs.next()) {
-                        String his = String.join("\n", decode(decompress(rs.getBytes(2)))
-                            .getOrDefault(Who.HE, List.of()));
-                        insertHisTerms(conn, rs.getLong(1), his);
-                        filled++;
+                        missing.add(rs.getLong(1));
                     }
                 }
-                log.info("transcript lane: postings of his words built for {} existing turn(s)", filled);
+                int filled = 0;
+                for (Long id : missing) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT body FROM transcript_turn WHERE id = ?")) {
+                        ps.setLong(1, id);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next()) {
+                                String his = String.join("\n", decode(decompress(rs.getBytes(1)))
+                                    .getOrDefault(Who.HE, List.of()));
+                                if (!his.isBlank()) {
+                                    insertHisTerms(conn, id, his);
+                                    filled++;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (filled > 0) {
+                    log.info("transcript lane: postings of his words built for {} turn(s) that had none",
+                        filled);
+                }
             } catch (Exception e) {
                 log.error("transcript lane: the postings of his words could not be prepared; quote"
                     + " checks answer 'could not check' until they can", e);

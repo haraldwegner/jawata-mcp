@@ -377,6 +377,75 @@ class TranscriptLaneTest {
             () -> "a match with quote rows does not say count 0: " + merged);
     }
 
+    /**
+     * The second audit: his words were indexed up to five thousand per turn, so a sentence from
+     * the later part of a long paste was answered "not found" and the agent was told it had
+     * invented words he really typed.
+     */
+    @Test
+    void aSentenceFromTheLaterPartOfAVeryLongPasteIsStillFoundAmongHisWords() {
+        StringBuilder paste = new StringBuilder();
+        for (int i = 0; i < 6000; i++) {
+            paste.append((char) ('a' + (i / 17576) % 26)).append((char) ('a' + (i / 676) % 26))
+                .append((char) ('a' + (i / 26) % 26)).append((char) ('a' + i % 26)).append(' ');
+        }
+        String text = paste.toString().strip();
+        String[] words = text.split(" ");
+        String tail = String.join(" ", java.util.Arrays.copyOfRange(words, words.length - 8, words.length));
+        assertEquals(TranscriptStore.Appended.STORED, lane.append(new TranscriptStore.Turn(
+            SESSION, "paste-1", java.time.Instant.parse("2026-10-18T00:00:00Z"), "claude-code", "turn",
+            text, "Noted.", List.of())));
+        ObjectNode verify = json.createObjectNode();
+        verify.put("kind", "transcript_verify");
+        verify.put("quote", tail);
+        Map<String, Object> said = answer(verify);
+        assertEquals(true, said.get("found"), () -> "the last words of the paste are his: " + said);
+    }
+
+    /**
+     * Reading the lane stops at a cap of turns of his that hold every word of a quote. A quote
+     * that is not found within that cap was not read in full, and says so instead of accusing.
+     */
+    @Test
+    void aCheckThatReachesItsCapWithoutAFindingSaysItCouldNotCheck() {
+        String scattered = "ledger entry signed morning watch";
+        java.time.Instant start = java.time.Instant.parse("2026-10-18T00:00:00Z");
+        for (int turn = 1; turn <= 5; turn++) {
+            lane.append(new TranscriptStore.Turn(SESSION, "few-" + turn, start.plusSeconds(turn),
+                "claude-code", "turn", scattered, "Noted.", List.of()));
+        }
+        ObjectNode verify = json.createObjectNode();
+        verify.put("kind", "transcript_verify");
+        verify.put("quote", "watch morning signed entry ledger");
+        Map<String, Object> few = answer(verify);
+        assertEquals(true, few.get("checked"), () -> "five candidates were read in full: " + few);
+        assertEquals(false, few.get("found"));
+
+        for (int turn = 6; turn <= TranscriptStore.MAX_QUOTE_CANDIDATES + 5; turn++) {
+            lane.append(new TranscriptStore.Turn(SESSION, "many-" + turn, start.plusSeconds(turn),
+                "claude-code", "turn", scattered, "Noted.", List.of()));
+        }
+        Map<String, Object> many = answer(verify);
+        assertEquals(false, many.get("checked"),
+            () -> "more candidates than the cap reads: that is not an absence: " + many);
+    }
+
+    @Test
+    void aTurnWhoseWordsWereNeverPostedGetsThemWhenTheLaneOpensEvenWithOthersPosted() throws Exception {
+        seedDiscussion();
+        try (java.sql.Statement s = store.sharedConnection().createStatement()) {
+            s.execute("DELETE FROM transcript_his_term WHERE turn_id = (SELECT id FROM transcript_turn"
+                + " WHERE turn_no = 2)");
+        }
+        new TranscriptStore(store);
+        ObjectNode verify = json.createObjectNode();
+        verify.put("kind", "transcript_verify");
+        verify.put("quote", "No size cap, just compression.");
+        Map<String, Object> said = answer(verify);
+        assertEquals(true, said.get("found"),
+            () -> "a turn left without postings by a partial fill is still his: " + said);
+    }
+
     // ---- the thread after a compaction -----------------------------------------------------
 
     @Test
