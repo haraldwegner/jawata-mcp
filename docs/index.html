@@ -155,7 +155,7 @@
     .lead-p { max-width: 46rem; }
     .lead-list { max-width: 46rem; padding-left: 1.3rem; }
     .lead-list li { margin-bottom: 1rem; }
-    .lead-p strong, .lead-list strong { color: var(--gold); font-weight: 700; }
+    .jw { color: var(--gold); font-weight: 700; }
 
     /* install */
     .install { display: flex; align-items: center; gap: .8rem; background: var(--bg-code);
@@ -248,7 +248,7 @@
     <div class="hero">
       <div>
         <p class="eyebrow">Compiler-accurate Java for AI agents</p>
-        <h1>Agents write. jawata verifies. <em>Java wins.</em></h1>
+        <h1>Agents write. <span class="jw">jawata</span> verifies. <em>Java wins.</em></h1>
         <p class="subline">Compiler-accurate Java analysis &amp; refactoring for AI agents — JDT-backed, over MCP.
           Runs on your machine, on your working tree.</p>
         <p class="situation">Built for existing Java codebases, where checking a change costs more than writing it.</p>
@@ -268,7 +268,7 @@
             <div class="row"><span class="tag green">route</span><span class="hint">If JAWATA genuinely cannot answer this one, re-run with `jawata-fallback: &lt;why&gt;` in the command; the declaration is logged.</span></div>
           </div>
         </div>
-        <p class="caption">Verbatim from a jawata development session on 16 October 2026: the guard blocks the grep-and-guess reflex and hands the agent the compiler-accurate call.</p>
+        <p class="caption">Verbatim from a <span class="jw">jawata</span> development session on 16 October 2026: the guard blocks the grep-and-guess reflex and hands the agent the compiler-accurate call.</p>
       </div>
     </div>
 
@@ -282,14 +282,14 @@
     <section>
       <p class="lead-p">Semantic Java is table stakes now. Bridges expose the compiler over
       MCP; fleet platforms run recipe migrations across a hundred thousand repos.</p>
-      <p class="lead-p"><strong>jawata</strong> is neither:</p>
+      <p class="lead-p"><span class="jw">jawata</span> is neither:</p>
       <ul class="lead-list">
         <li>It is the layer where the actual work happens: your agent, your
         machine, your working tree, today's change.</li>
         <li>A full refactoring engine the agent composes freely — not a recipe
         library. Moving a codebase from Java 8 to 21 is a recipe. Turning its classes into
         records, sealed hierarchies and design patterns is modernization and design change, and
-        that is the work <strong>jawata</strong> does.</li>
+        that is the work <span class="jw">jawata</span> does.</li>
         <li>A grounded memory of your codebase's lessons. Enforcement that keeps the
         agent on the compiler. And your code never leaves your machine.</li>
       </ul>
@@ -312,7 +312,7 @@
     </section>
 
     <section id="brings">
-      <h2>What only jawata brings</h2>
+      <h2>What only <span class="jw">jawata</span> brings</h2>
       <p class="lede">Eight things an agent does not get from a bridge or a recipe library.</p>
       <div class="grid">
         <article class="card wide">
@@ -320,7 +320,7 @@
           <h3>The full engine, not a recipe library.</h3>
           <p>Recipe engines automate
           the <em>known</em> — the framework upgrade, the CVE sweep, a fix somebody already
-          authored, replayed across a fleet. jawata is built for the <em>unknown</em>: the
+          authored, replayed across a fleet. <span class="jw">jawata</span> is built for the <em>unknown</em>: the
           agent composes the refactoring <em>this</em> design problem needs — rename, move,
           extract, change signature, multi-step pattern plans — freely, on live code. Every
           change is compile-verified before it counts, applied for real, reversible with one
@@ -353,7 +353,7 @@
           <h3>Enforcement: fluency over grounding doesn't stand a chance.</h3>
           <p>Deployed hooks steer and, where it matters, <em>block</em> the agent's grep-and-guess
           reflex, injecting the compiler-accurate route instead. Other tools hope the agent
-          uses them; jawata makes sure.</p>
+          uses them; <span class="jw">jawata</span> makes sure.</p>
         </article>
         <article class="card">
           <span class="n">05</span>
@@ -371,7 +371,7 @@
           <p>Multi-project workspaces with
           deterministic routing — an enterprise repo tree is one workspace, not a folder at a
           time. Something even IntelliJ doesn't give you: it opens one project per window;
-          jawata's agent sees the whole estate at once.</p>
+          <span class="jw">jawata</span>'s agent sees the whole estate at once.</p>
         </article>
         <article class="card">
           <span class="n">07</span>
@@ -386,7 +386,7 @@
           <p>Headless residents
           managed by <a href="https://github.com/haraldwegner/jawata-studio">jawata-studio</a>,
           wired into six clients in two clicks — Claude Code, Cursor, Codex, Copilot CLI,
-          VS Code, Grok. jawata serves the <em>agent</em>, not the editor: keep IntelliJ,
+          VS Code, Grok. <span class="jw">jawata</span> serves the <em>agent</em>, not the editor: keep IntelliJ,
           keep Eclipse, keep VS Code — the agent gets Eclipse-grade semantics either way.
           Tools and the memory store work on every supported client (verified on
           Linux, Windows and macOS); the enforcement guard runs on Claude Code and Cursor,
@@ -404,7 +404,7 @@
         now written by the agent and <em>read</em> by you — and chatty means <em>readable</em>.
         Meanwhile the compiler's exactness and type safety, once bureaucracy, become the agent's
         safety rail: the language with the strictest compiler and the deepest tooling is suddenly
-        the best language to let an agent loose on. jawata is that tooling — Eclipse-grade
+        the best language to let an agent loose on. <span class="jw">jawata</span> is that tooling — Eclipse-grade
         semantics and refactoring, packaged for agents.</p>
       </div>
       <div>
@@ -413,7 +413,7 @@
         liability only while design properties are expensive to verify. Make them cheap and it
         flips sign: the agent grinds toward <code>find_field_writes = 0</code> with the same
         stubbornness it grinds toward green tests.</blockquote>
-        <p>jawata makes design properties cheap to verify — design erosion becomes a number under
+        <p><span class="jw">jawata</span> makes design properties cheap to verify — design erosion becomes a number under
         surveillance instead of an incident in production. That is the lever that lets you
         trust more of what an agent changes, in the highest-value, hardest-to-verify
         language: Java in the enterprise.</p>
@@ -432,7 +432,7 @@
   </main>
 
   <footer>
-    <p><strong>jawata</strong> — Javanese for <em>the gods</em>; it contains <em>Jawa</em>,
+    <p><span class="jw">jawata</span> — Javanese for <em>the gods</em>; it contains <em>Jawa</em>,
     the island that gave Java its name. "Gods of Java," in Java's own language.</p>
     <p>jawata-mcp and jawata-studio are open source under AGPL-3.0, © Harald Wegner.
     Some early parts derive from javalens-mcp (MIT) — credit to Peter Zalutski.</p>
