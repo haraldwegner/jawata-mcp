@@ -74,8 +74,9 @@ class LaneMigrationTest {
             "the stage's own clause: a lesson is what happened in a situation"),
         new Ruled("failure_mode", null, KnowledgeLane.EXPERIENCE,
             "the stage's own clause"),
-        new Ruled("reference", CatalogueManifest.PROVENANCE, KnowledgeLane.EXPERIENCE,
-            "a borrowed pattern is somebody else's experience — the clause names it"),
+        new Ruled("reference", CatalogueManifest.PROVENANCE, KnowledgeLane.PATTERNS,
+            "RULED 2026-10-17, superseding the clause that filed a borrowed pattern as somebody"
+                + " else's experience: his words are \"for design in the patterns lane\""),
         new Ruled("domain_fact", null, KnowledgeLane.DOMAIN,
             "the stage's own clause"),
         new Ruled("api_contract", null, KnowledgeLane.DOMAIN,
@@ -230,6 +231,56 @@ class LaneMigrationTest {
                     + " catch-all would put it in a lane here and every other assertion in"
                     + " this class would still pass."));
             assertAll("the migrated lanes", checks);
+        }
+    }
+
+    /**
+     * v24 (Sprint 28g S22) — a store whose rows were laned under the PREVIOUS ruling is moved to
+     * today's: the catalogue's patterns out of the experience lane into their own, and the two
+     * event types, which had no lane, into experience.
+     *
+     * <p>The wind-back reproduces what a v23 store really holds: every row carries a lane, and
+     * the patterns carry the one the old ruling gave them. Without that the case would measure
+     * the first lane migration over again. A row that is ALREADY in its lane must be left alone,
+     * which the lesson row proves by keeping its lane.</p>
+     */
+    @Test
+    void an_upgrade_from_v23_restamps_what_the_ruling_moved(@TempDir Path dir) throws Exception {
+        try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
+            Map<Ruled, String> ids = new LinkedHashMap<>();
+            for (Ruled r : RULED) {
+                ids.put(r, write(store, r.type(), r.provenance(),
+                    "a " + r.type() + " row for the v24 migration"));
+            }
+            Connection c = store.sharedConnection();
+            try (Statement s = c.createStatement()) {
+                // What a v23 store held: patterns filed as experience, the two event types
+                // with no lane, everything else already where it is today.
+                s.execute("UPDATE experience_entry SET lane = 'experience'"
+                    + " WHERE type = 'reference' AND provenance_kind = '"
+                    + CatalogueManifest.PROVENANCE + "'");
+                s.execute("UPDATE experience_entry SET lane = NULL"
+                    + " WHERE type IN ('hazard', '" + DispatchRecall.SEAT_RUN_TYPE + "')");
+                s.execute("UPDATE schema_version SET version = 23");
+            }
+            for (Ruled r : RULED) {
+                if (r.lane() == KnowledgeLane.PATTERNS) {
+                    assertEquals("experience", laneOf(store, ids.get(r)),
+                        "PROOF OF LIFE: the pattern starts in the lane the old ruling gave it");
+                }
+            }
+            assertEquals(23, SchemaMigrations.detectVersion(c), "the wind-back must take");
+
+            SchemaMigrations.migrate(c, dir, false);
+
+            assertEquals(SchemaMigrations.LATEST, SchemaMigrations.detectVersion(c));
+            List<Executable> checks = new ArrayList<>();
+            for (Map.Entry<Ruled, String> e : ids.entrySet()) {
+                Ruled r = e.getKey();
+                checks.add(() -> assertEquals(r.lane().wire(), laneOf(store, e.getValue()),
+                    r.describe() + " must be in " + r.lane().wire() + " after v24 — " + r.why()));
+            }
+            assertAll("the lanes after v24", checks);
         }
     }
 

@@ -84,10 +84,10 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
 
         // THE CONTROL that makes the above mean something: the pattern IS in the store and IS
         // reachable, through the lane the note names.
-        String experienceOnly = renderOf(recall(ANCHOR, "experience"));
-        assertTrue(experienceOnly.contains("Strategy: vary an algorithm"),
+        String patternsOnly = renderOf(recall(ANCHOR, "patterns"));
+        assertTrue(patternsOnly.contains("Strategy: vary an algorithm"),
             () -> "the pattern must be reachable in its own lane, or the first assertion is "
-                + "just an empty store: " + experienceOnly);
+                + "just an empty store: " + patternsOnly);
     }
 
     @Test
@@ -108,8 +108,8 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
     @Test
     @DisplayName("the lane that HOLDS the patterns says nothing — the note is not on every answer")
     void theCatalogueOwnLaneIsSilent() {
-        assertNull(recall(ANCHOR, "experience").get("catalogueExcluded"),
-            "lane=experience is where a catalogue pattern lives, so nothing is excluded and "
+        assertNull(recall(ANCHOR, "patterns").get("catalogueExcluded"),
+            "lane=patterns is where a catalogue pattern lives, so nothing is excluded and "
                 + "nothing should be claimed");
     }
 

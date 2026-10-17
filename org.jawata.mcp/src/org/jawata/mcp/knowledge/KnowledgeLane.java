@@ -6,8 +6,9 @@ import java.util.Set;
 /**
  * Sprint 28f Stage 5 — which LIFECYCLE a stored row lives under.
  *
- * <p>Four lanes, and the point of the split is that they are governed differently:
- * an experience is reviewed and can be superseded by a later one; a domain fact is
+ * <p>Five lanes, and the point of the split is that they are governed differently:
+ * an experience is reviewed and can be superseded by a later one; a pattern is lent by the
+ * catalogue and changes only when its pinned upstream does; a domain fact is
  * corrected or it is wrong; a rule is versioned, amended and retired; code-derived
  * knowledge is regenerated from the code it came from.</p>
  *
@@ -62,8 +63,15 @@ import java.util.Set;
  */
 public enum KnowledgeLane {
 
-    /** Reviewed, superseded by later experience: lessons, failure modes, borrowed patterns. */
+    /** Reviewed, superseded by later experience: lessons, failure modes, events. */
     EXPERIENCE("experience"),
+
+    /**
+     * A pattern the catalogue lent us: read-only, pinned to an upstream commit, never reviewed
+     * here. Sprint 28g S22 — it left the experience lane on his word, "for design in the
+     * patterns lane", which supersedes the 28f ruling that lessons and patterns are one.
+     */
+    PATTERNS("patterns"),
 
     /** Corrected or wrong, never outdated by a newer outcome: facts, contracts, conventions. */
     DOMAIN("domain"),
@@ -146,9 +154,9 @@ public enum KnowledgeLane {
      * when no ruling covers the type.
      *
      * <p>{@code provenanceKind} is read for ONE type. A {@code reference} from the
-     * catalogue is a borrowed EXPERIENCE — a pattern is what worked for somebody else —
-     * while a {@code reference} of ours is a pointer to a resource, which carries neither
-     * a situation nor an outcome and is therefore domain. Measured on the live store
+     * catalogue is a PATTERN — what worked for somebody else, lent to us and not reviewed
+     * here — while a {@code reference} of ours is a pointer to a resource, which carries
+     * neither a situation nor an outcome and is therefore domain. Measured on the live store
      * 2026-09-12: 190 {@code reference} rows, 189 of them the catalogue.</p>
      *
      * @param type the entry's type; {@code null} or blank is unclassified
@@ -167,7 +175,7 @@ public enum KnowledgeLane {
             return RULES;
         }
         if (REFERENCE_TYPE.equals(t)) {
-            return CatalogueManifest.PROVENANCE.equals(provenanceKind) ? EXPERIENCE : DOMAIN;
+            return CatalogueManifest.PROVENANCE.equals(provenanceKind) ? PATTERNS : DOMAIN;
         }
         if (CODE_TYPES.contains(t)) {
             return CODE;
@@ -176,61 +184,6 @@ public enum KnowledgeLane {
             return DOMAIN;
         }
         return null;
-    }
-
-    /**
-     * Sprint 28g D7h — whether a lane filter spelled {@code wire} can return a CATALOGUE
-     * pattern at all.
-     *
-     * <p>The field report: eight lookups filtered {@code lane=domain} and came back with the
-     * project's own domain facts and no patterns whatever. That is correct and it is
-     * invisible — a catalogue {@code reference} is a borrowed EXPERIENCE by {@link #of}'s own
-     * ruling, so a domain filter removes the entire pattern corpus from a design question
-     * without saying so, and <b>the caller cannot tell "no pattern fits" from "patterns were
-     * never searched"</b>. Those two answers want opposite next moves.</p>
-     *
-     * <p><b>It is a property of the FILTER, not of the result, which is what makes it exact.</b>
-     * Counting the catalogue rows a particular query dropped would undercount, because the
-     * keyword source filters by lane in SQL and those rows never reach the pool to be
-     * counted. Asking whether the lane CAN hold a pattern needs no rows at all and cannot be
-     * wrong.</p>
-     *
-     * <p>And it ASKS {@link #of} rather than restating its answer, so a ruling that moves the
-     * catalogue to another lane moves this with it. A second spelling of "the catalogue's
-     * lane" is the copy that would still say {@code experience} the day it stopped being
-     * true.</p>
-     *
-     * @param wire a lane filter's wire name, or null/blank for no filter
-     * @return true when that filter excludes every catalogue pattern
-     */
-    public static boolean excludesCatalogue(String wire) {
-        if (wire == null || wire.isBlank()) {
-            return false;
-        }
-        String asked = wire.strip();
-        // AN UNKNOWN LANE NAME IS NOT AN EXCLUSION, and the first version of this method
-        // said it was. Any string that is not the catalogue's lane answered TRUE — so
-        // `lane=domian` produced the note in full, naming the lane to ask for instead, about
-        // a filter that does not exist. That is this very defect pointed at its own fix: the
-        // note exists so a caller can tell "no pattern fits" from "patterns were never
-        // searched", and a third case — "that is not a lane" — was being answered as the
-        // second, with the same authority. Found by the C3 audit; no test asserted either way.
-        //
-        // Checked against the enum rather than against a second list of names, for the reason
-        // the rest of this method gives about `of`: a lane added here must not need a sibling
-        // list updated to be recognised.
-        boolean known = false;
-        for (KnowledgeLane lane : values()) {
-            if (lane.wire().equals(asked)) {
-                known = true;
-                break;
-            }
-        }
-        if (!known) {
-            return false;
-        }
-        KnowledgeLane catalogue = of(REFERENCE_TYPE, CatalogueManifest.PROVENANCE);
-        return catalogue != null && !catalogue.wire().equals(asked);
     }
 
     /** The lane a caller must ask for to reach the catalogue, derived rather than restated. */

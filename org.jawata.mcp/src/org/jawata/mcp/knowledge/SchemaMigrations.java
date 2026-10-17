@@ -44,7 +44,7 @@ final class SchemaMigrations {
     private static final Logger log = LoggerFactory.getLogger(SchemaMigrations.class);
 
     /** Current schema version — bump together with a new {@code migrateToVn} step. */
-    static final int LATEST = 23;
+    static final int LATEST = 24;
 
     private SchemaMigrations() {
     }
@@ -193,6 +193,9 @@ final class SchemaMigrations {
         }
         if (from < 23) {
             migrateToV23(conn);
+        }
+        if (from < 24) {
+            migrateToV24(conn);
         }
         writeVersion(conn, LATEST);
         report.put("migrated", true);
@@ -979,6 +982,10 @@ final class SchemaMigrations {
             s.execute("CREATE INDEX IF NOT EXISTS idx_experience_lane "
                 + "ON experience_entry(lane)");
         }
+        stampLanes(conn);
+    }
+
+    private static void stampLanes(Connection conn) throws SQLException {
         List<String[]> pairs = new ArrayList<>();
         try (Statement s = conn.createStatement();
                 ResultSet rs = s.executeQuery(
@@ -1000,11 +1007,12 @@ final class SchemaMigrations {
                 pair[1] == null ? "provenance_kind IS NULL" : "provenance_kind = ?";
             try (PreparedStatement ps = conn.prepareStatement(
                     "UPDATE experience_entry SET lane = ? "
-                        + "WHERE lane IS NULL AND type = ? AND " + provenanceClause)) {
+                        + "WHERE (lane IS NULL OR lane <> ?) AND type = ? AND " + provenanceClause)) {
                 ps.setString(1, lane);
-                ps.setString(2, pair[0]);
+                ps.setString(2, lane);
+                ps.setString(3, pair[0]);
                 if (pair[1] != null) {
-                    ps.setString(3, pair[1]);
+                    ps.setString(4, pair[1]);
                 }
                 stamped.merge(lane, ps.executeUpdate(), Integer::sum);
             }
@@ -1142,6 +1150,24 @@ final class SchemaMigrations {
             s.execute("CREATE INDEX IF NOT EXISTS idx_described_unit_bundle "
                 + "ON described_unit(bundle)");
         }
+    }
+
+    /**
+     * v24 — the patterns lane, and the two event types a lane could not reach (Sprint 28g S22).
+     *
+     * <p>The catalogue's patterns were filed in the experience lane on a ruling that a borrowed
+     * pattern is somebody else's experience. He ruled otherwise on 2026-10-17 — <i>"for design in
+     * the patterns lane"</i> — so every row {@link KnowledgeLane#of} now answers
+     * {@code patterns} for is re-stamped, and so are {@code hazard} and {@code seat_run} rows,
+     * which no ruling covered and which therefore had no lane at all.</p>
+     *
+     * <p>It is the same stamp the lane's first migration made, run again over today's ruling:
+     * one mapping owns "which lane is this row" and a second copy of it in SQL would be the
+     * answer that went stale the next time the ruling moved. A row already in its lane is not
+     * touched.</p>
+     */
+    private static void migrateToV24(Connection conn) throws SQLException {
+        stampLanes(conn);
     }
 
     /**
