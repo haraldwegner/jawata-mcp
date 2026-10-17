@@ -104,6 +104,7 @@ class CalibrationGateTest {
             ExperienceRetrieval keyword = ExperienceRetrieval.keywordOnly(store, () -> null);
 
             int passed = 0;
+            int perLanePassed = 0;
             int keywordPassed = 0;
             int embeddingsPassed = 0;
             int lexicalPassed = 0;
@@ -140,6 +141,17 @@ class CalibrationGateTest {
                 String designatedId = cue.get("designated").asText();
                 boolean semantic = contractHolds(rankedAnswer(unionAnswer), ok, designatedId);
                 boolean kw = contractHolds(rankedAnswer(kwAnswer), ok, designatedId);
+                // The union asked the way the hooks ask since S22: in the lane the answer lives in.
+                // Measured and printed, not asserted: the bar above was set for one ranking across
+                // every lane, which the product no longer produces.
+                LaneScope answerLanes = lanesOfAcceptableAnswers(ok);
+                if (contractHolds(rankedAnswer(union.recall(query(cue, text, answerLanes))),
+                        ok, designatedId)) {
+                    perLanePassed++;
+                } else {
+                    System.out.printf("  [S22 lane MISS] %s lanes=%s%n",
+                        cue.path("id").asText(), answerLanes.lanes());
+                }
 
                 // THE EMBEDDINGS-ONLY ARM, and the frozen contract's second
                 // half. The C2 gate is written as "embeddings alone >=9/12 AND
@@ -222,6 +234,8 @@ class CalibrationGateTest {
                 passed, n, embeddingsPassed, n, keywordPassed, n, BAR);
             System.out.printf("[E2 GATE] D9 arms — words-alone %d/%d · FUSED %d/%d%n",
                 lexicalPassed, n, fusedPassed, n);
+            System.out.printf("[E2 GATE] S22 — union asked in the designated entry's own lane %d/%d "
+                + "(every-lane union above: %d/%d)%n", perLanePassed, n, passed, n);
             if (!embeddingsFailing.isEmpty()) {
                 System.out.println("[E2 GATE] embeddings-alone failing: " + embeddingsFailing);
             }
@@ -330,9 +344,32 @@ class CalibrationGateTest {
 
     /** The cue as the agent would pose it: a symbol cue by symbol, prose by symptom. */
     private static RecallQuery query(JsonNode cue, String text) {
+        return query(cue, text, LaneScope.everyLane());
+    }
+
+    private static RecallQuery query(JsonNode cue, String text, LaneScope scope) {
         return "symbol".equals(cue.path("keyword_cue_field").asText("symptom"))
-            ? new RecallQuery(text, null, null, null, null, LaneScope.everyLane())
-            : new RecallQuery(null, null, null, text, null, LaneScope.everyLane());
+            ? new RecallQuery(text, null, null, null, null, scope)
+            : new RecallQuery(null, null, null, text, null, scope);
+    }
+
+    /**
+     * The lane the designated entry lives in, which is the lane a caller who knew the answer's kind
+     * would name (Sprint 28g S22: the lane is chosen before the search, and each lane ranks on its
+     * own, so "the first answer across all five lanes" is no longer a ranking anyone reads). An
+     * entry the corpus does not hold has no lane, and the cue falls back to every lane.
+     */
+    private static LaneScope lanesOfAcceptableAnswers(Set<String> acceptablePrefixes) {
+        Set<KnowledgeLane> lanes = new LinkedHashSet<>();
+        for (StoredEntry e : sharedStore.all()) {
+            if (e.id() != null && acceptablePrefixes.stream().anyMatch(e.id()::startsWith)) {
+                KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+                if (lane != null) {
+                    lanes.add(lane);
+                }
+            }
+        }
+        return lanes.isEmpty() ? LaneScope.everyLane() : new LaneScope(lanes);
     }
 
     // The winner-only rule that used to judge the union and keyword arms lived
