@@ -49,7 +49,7 @@ import java.util.OptionalDouble;
  *                  closing one, and collecting both made "READY" read "READY\nREADY"
  */
 public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
-                        boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, boolean terminal) {
+                        boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, boolean terminal, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls) {
 
     /** The shape every dialect used before names were recorded; callers that cannot name keep it. */
     public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps,
@@ -73,5 +73,13 @@ public record BrainLine(OptionalDouble costUsd, Optional<String> text, int toolS
 
     public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps, boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
         this(costUsd, text, toolSteps, parsed, toolNames, toolsOffered, false);
+    }
+
+    public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps, boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, boolean terminal) {
+        this(costUsd, text, toolSteps, parsed, toolNames, toolsOffered, terminal, java.util.Optional.empty());
+    }
+
+    public BrainLine(OptionalDouble costUsd, Optional<String> text, int toolSteps, boolean parsed, java.util.List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, boolean terminal, java.util.Optional<TokenUsage> tokens) {
+        this(costUsd, text, toolSteps, parsed, toolNames, toolsOffered, terminal, tokens, java.util.List.of());
     }
 }

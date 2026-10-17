@@ -18,6 +18,7 @@ import org.jawata.mcp.execution.BrainDialect;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
+import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SelfEndpoint;
@@ -210,6 +211,11 @@ public class HireTool extends AbstractTool {
             "items", Map.of("type", "object", "properties", Map.of(
                 "tool", Map.of("type", "string"),
                 "arguments", Map.of("type", "object")))));
+        properties.put("instructionsFrom", Map.of("type", "string",
+            "description", "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this"
+                + " hire carries out. The answer then reports how many ran as written (one tool, one call, the"
+                + " arguments written, no rework) and the issuer's tokens per instruction that did, read from the"
+                + " two hire records and never from either seat's report of itself."));
         properties.put("workingDirectory", Map.of("type", "string",
             "description", "Where the brain runs — REQUIRED, never defaulted. It is the hire's"
                 + " blast radius: the brain reads and may write here, so a caller states it rather"
@@ -353,11 +359,9 @@ public class HireTool extends AbstractTool {
         // brain that attaches this resident, by the engine's own flag. --allowedTools only
         // PRE-APPROVES; the rest stayed offered (a read-only PM's init event listed all 44).
         ToolRegistry engineTools = registry.get();
-        List<String> hiddenTools = engineTools.getToolNames().stream()
+        List<String> hiddenTools = seat.toolsToHide(engineTools.getToolNames().stream()
             .filter(name -> engineTools.getTool(name).map(Tool::changesCode).orElse(false))
-            .filter(name -> !seat.tools().contains(name))
-            .sorted()
-            .toList();
+            .toList());
         BrainDialect dialect = seat.dialect(endpoint, hiddenTools);
         WriteContainment containment = dialect.writeContainment();
         if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
@@ -469,6 +473,29 @@ public class HireTool extends AbstractTool {
         proposal.outcome().toolsOffered().ifPresent(offered -> data.put("toolsOffered", offered));
         data.put("attemptedButNotOffered", effects.notOffered());
         data.put("codeChangingCalls", effects.changesCode());
+        // THE WORKER'S MEASURE (sprint spec, 2026-10-11): the share of its code changes made through an
+        // engine tool against those made by the brain CLI's own editors, where a hand edit counts against
+        // it. A run that changed no code has no share, and says so in words rather than 0.0 or 1.0.
+        data.put("codeChangesThroughTools", effects.changesThroughTools());
+        data.put("codeChangesByHand", effects.changesByHand());
+        data.put("shareThroughTools", effects.shareThroughTools().isPresent()
+            ? (Object) effects.shareThroughTools().getAsDouble() : "NO CODE CHANGE MADE");
+        // TOKENS, from the brain's own final event. A brain that reported none is NOT a brain that spent
+        // none: the record says so in words, and never shows zero.
+        data.put("tokensReported", proposal.outcome().tokens().isPresent());
+        data.put("tokens", proposal.outcome().tokens().isPresent()
+            ? (Object) proposal.outcome().tokens().get().asMap() : "NOT REPORTED BY THIS BRAIN");
+        // WHAT THIS RUN ISSUED, for a PM or a chief engineer: the INSTRUCTION blocks of its answer.
+        List<Instructions.Instruction> issuedHere = Instructions.parse(proposal.outcome().text());
+        if (!issuedHere.isEmpty()) {
+            data.put("instructionsIssued", Instructions.rows(issuedHere));
+        }
+        // THE PM'S MEASURE, for a worker hired to carry those instructions out.
+        String instructionsFrom = getStringParam(arguments, "instructionsFrom");
+        if (instructionsFrom != null && !instructionsFrom.isBlank()) {
+            data.put("instructionScore", instructionScore(landsIn, instructionsFrom.trim(),
+                proposal.outcome(), engine, effects.notOffered()));
+        }
         data.put("shellCalls", effects.shell());
         data.put("unclassifiedCalls", effects.unknown());
         data.put("unnamedToolSteps", effects.unnamed());
@@ -534,6 +561,73 @@ public class HireTool extends AbstractTool {
         report.put("journalRow", shown);
         report.put("journalBasis", "read back from the journal by this run's plan id");
         return report;
+    }
+
+    /**
+     * HOW MANY OF THE ISSUER'S INSTRUCTIONS THE WORKER RAN AS WRITTEN, and what the issuer spent per
+     * instruction that did (the sprint spec's measure for the PM). Both halves are read from the hire
+     * records: the issuer's from its journal row (the instructions its answer carried and the tokens its
+     * brain reported), the worker's from the calls its own event stream showed. Whatever cannot be
+     * computed says why in words; a missing figure is never a zero.
+     * @param refusedAttempts the names of calls the brain's CLI never offered, which it answered with an
+     *     error and did nothing: neither the instruction nor rework nor a code change, the same
+     *     reading the worker's share-through-tools figure takes
+     */
+    static Map<String, Object> instructionScore(LearnerEventStore journal, String issuerPlan,
+            HiredBrain.Outcome worker, ToolRegistry engine, List<String> refusedAttempts) {
+        Map<String, Object> score = new LinkedHashMap<>();
+        score.put("issuerPlan", issuerPlan);
+        Optional<List<LearnerEvent>> read = journal.eventsOfSession(issuerPlan);
+        Optional<LearnerEvent> row = read.flatMap(events -> events.stream()
+            .filter(event -> LearnerEvent.KIND_HIRED_RUN.equals(event.kind()))
+            .reduce((earlier, later) -> later));
+        if (row.isEmpty()) {
+            score.put("computable", false);
+            score.put("because", "the journal holds no hired-run row for plan " + issuerPlan
+                + (read.isEmpty() ? " (the journal could not be read)" : ""));
+            return score;
+        }
+        JsonNode detail;
+        try {
+            detail = JSON.readTree(row.get().detailJson());
+        } catch (IOException | RuntimeException e) {
+            score.put("computable", false);
+            score.put("because", "the issuer's journal row could not be read back: " + e.getMessage());
+            return score;
+        }
+        List<Instructions.Instruction> issued = Instructions.fromRows(detail.path("instructions"));
+        if (issued.isEmpty()) {
+            score.put("computable", false);
+            score.put("because", "the issuer's answer carried no INSTRUCTION block, so there is nothing to have run as written");
+            return score;
+        }
+        if (worker.toolCalls().isEmpty() && worker.toolSteps() > 0) {
+            score.put("computable", false);
+            score.put("because", "the worker's brain shows how many calls it made but not what it passed, so"
+                + " whether any ran as written cannot be read");
+            return score;
+        }
+        var made = worker.toolCalls().stream()
+            .filter(call -> !refusedAttempts.contains(call.name()))
+            .toList();
+        Instructions.Score s = Instructions.score(issued, made,
+            bare -> engine.getTool(bare).map(Tool::changesCode));
+        score.put("computable", true);
+        score.put("instructionsIssued", s.issued());
+        score.put("ranAsWritten", s.ranAsWritten());
+        score.put("notAsWritten", s.notAsWritten());
+        score.put("extraCodeChangingCalls", s.extraCodeChangingCalls());
+        JsonNode spent = detail.path("tokensSpent");
+        if (!spent.isNumber()) {
+            score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the issuer's brain reported no tokens");
+        } else if (s.ranAsWritten() == 0) {
+            score.put("issuerTokensSpent", spent.asLong());
+            score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: no instruction ran as written");
+        } else {
+            score.put("issuerTokensSpent", spent.asLong());
+            score.put("issuerTokensPerInstruction", (double) spent.asLong() / s.ranAsWritten());
+        }
+        return score;
     }
 
     /** A row's payload as an object, or as the text it was written as when it does not parse. */

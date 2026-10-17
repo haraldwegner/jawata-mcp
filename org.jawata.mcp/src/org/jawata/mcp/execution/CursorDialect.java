@@ -197,10 +197,18 @@ public final class CursorDialect implements BrainDialect {
             // The terminal event. NO cost is published here by this brain — see the class javadoc.
             case "result" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.textOf(event.path("result")), 0, true, List.of(),
-                Optional.empty(), true);
+                Optional.empty(), true,
+                // cursor's usage block names its counts inputTokens/outputTokens/cacheReadTokens/
+                // cacheWriteTokens; whether inputTokens already includes the cached part is not
+                // established, so the cached part is added and the basis line says so.
+                TokenUsage.read(event.path("usage"), "inputTokens", false,
+                    new String[] {"cacheReadTokens", "cacheWriteTokens"}, "outputTokens", null,
+                    "cursor: inputTokens counted without the cached part, which is added; whether cursor's own figure"
+                        + " includes it is not established"));
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
-                StreamJsonEvents.toolUseNames(event));
+                StreamJsonEvents.toolUseNames(event), Optional.empty(), false, Optional.empty(),
+                StreamJsonEvents.toolUseCalls(event));
             // THINKING IS NOT THE ANSWER, and it arrives as a stream of deltas — measured: four
             // `{"type":"thinking","subtype":"delta","text":...}` events for a one-word reply.
             // Collecting them would put the brain's reasoning into the record as though it were

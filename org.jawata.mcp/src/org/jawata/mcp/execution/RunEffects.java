@@ -3,6 +3,7 @@ package org.jawata.mcp.execution;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -68,11 +69,34 @@ public final class RunEffects {
      * @param unnamed      calls a dialect counted and could not name
      */
     public record Classification(List<String> changesCode, List<String> readOnly,
-                                 List<String> shell, List<String> unknown, int unnamed, java.util.List<String> notOffered) {
+                                 List<String> shell, List<String> unknown, int unnamed, java.util.List<String> notOffered, java.util.List<String> byHand) {
 
         /** M11's measure, and only M11's: zero calls the engine classifies as changing code. */
         public boolean performedNoCodeChangingOperation() {
             return changesCode.isEmpty();
+        }
+
+        /** Code changes made through an engine tool: the code-changing calls that were not the brain CLI's own editors. */
+        public int changesThroughTools() {
+            return changesCode.size() - byHand.size();
+        }
+
+        /** Code changes made by the brain CLI's own editors, which is by hand. */
+        public int changesByHand() {
+            return byHand.size();
+        }
+
+        /**
+         * THE WORKER'S MEASURE (the sprint spec, 2026-10-11): the share of its code changes made through a
+         * tool, against those made by hand, where a hand edit counts against it. NOT a count of tool calls,
+         * because harmless reads inflate that. Absent when the run made no code change at all: a share of
+         * nothing is not 1.0 and not 0.0. A shell is counted on neither side, because what it did is not in
+         * its name; {@link #incompleteBecause()} names it beside this figure.
+         */
+        public OptionalDouble shareThroughTools() {
+            return changesCode.isEmpty()
+                ? OptionalDouble.empty()
+                : OptionalDouble.of((double) changesThroughTools() / changesCode.size());
         }
 
         /**
@@ -100,6 +124,10 @@ public final class RunEffects {
         public Classification(List<String> changesCode, List<String> readOnly, List<String> shell, List<String> unknown, int unnamed) {
             this(changesCode, readOnly, shell, unknown, unnamed, java.util.List.of());
         }
+
+        public Classification(List<String> changesCode, List<String> readOnly, List<String> shell, List<String> unknown, int unnamed, java.util.List<String> notOffered) {
+            this(changesCode, readOnly, shell, unknown, unnamed, notOffered, java.util.List.of());
+        }
     }
 
     /**
@@ -119,6 +147,7 @@ public final class RunEffects {
         List<String> shell = new ArrayList<>();
         List<String> unknown = new ArrayList<>();
         List<String> notOffered = new ArrayList<>();
+        List<String> byHand = new ArrayList<>();
         for (String raw : names) {
             String name = raw == null ? "" : raw;
             if (!name.isEmpty() && offered.isPresent() && !offered.get().contains(name)) {
@@ -131,6 +160,7 @@ public final class RunEffects {
                 (engine.get() ? changes : readOnly).add(name);
             } else if (CLI_EDITORS.contains(bare)) {
                 changes.add(name);
+                byHand.add(name);
             } else if (CLI_SHELLS.contains(bare)) {
                 shell.add(name);
             } else if (CLI_READERS.contains(bare)) {
@@ -140,7 +170,12 @@ public final class RunEffects {
             }
         }
         return new Classification(List.copyOf(changes), List.copyOf(readOnly), List.copyOf(shell),
-            List.copyOf(unknown), Math.max(0, unnamedSteps), List.copyOf(notOffered));
+            List.copyOf(unknown), Math.max(0, unnamedSteps), List.copyOf(notOffered), List.copyOf(byHand));
+    }
+
+    /** Whether a bare name is one of the brain CLIs' own file editors, which change code by hand. */
+    static boolean isCliEditor(String bare) {
+        return CLI_EDITORS.contains(bare);
     }
 
     /**

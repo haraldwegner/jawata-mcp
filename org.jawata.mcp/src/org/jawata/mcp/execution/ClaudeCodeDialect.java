@@ -57,6 +57,9 @@ public final class ClaudeCodeDialect implements BrainDialect {
     /** The resident's tools taken away from the brain; see the constructor. */
     private final List<String> hiddenTools;
 
+    /** The CLI's own tools offered to the brain; empty is none, which is the default. */
+    private final List<String> builtIns;
+
     /** The hiring resident's own endpoint, or null when it has none (stdio). See {@link SelfEndpoint}. */
     private final SelfEndpoint self;
 
@@ -111,6 +114,34 @@ public final class ClaudeCodeDialect implements BrainDialect {
      */
     public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly,
             SelfEndpoint self, List<String> hiddenTools) {
+        this(binary, maxTurns, model, readOnly, self, hiddenTools, List.of());
+    }
+
+    /**
+     * The CLI's own tools a seat that must read the project's files is offered (S10-12): reading is
+     * not the cut, writing is, so these are the three that only read and never Bash, Edit, Write,
+     * NotebookEdit or Agent.
+     */
+    public static final List<String> READ_ONLY_BUILT_INS = List.of("Read", "Glob", "Grep");
+
+    /**
+     * @param builtIns the CLI's own tools to offer the brain, by name; empty for none, which is what
+     *     a hire has always had. Only meaningful with an endpoint, where {@code --tools} is sent.
+     *     The caller passes {@link #READ_ONLY_BUILT_INS} for a seat that declares {@code reads_files}
+     *     and nothing else: a name that can write is refused here, so no caller can widen this into
+     *     the editors by passing the wrong list.
+     */
+    public ClaudeCodeDialect(String binary, int maxTurns, String model, boolean readOnly,
+            SelfEndpoint self, List<String> hiddenTools, List<String> builtIns) {
+        if (builtIns != null) {
+            for (String name : builtIns) {
+                if (!READ_ONLY_BUILT_INS.contains(name)) {
+                    throw new IllegalArgumentException("'" + name + "' is not a read-only built-in"
+                        + " tool; the only ones a hire may be offered are " + READ_ONLY_BUILT_INS);
+                }
+            }
+        }
+        this.builtIns = builtIns == null ? List.of() : List.copyOf(builtIns);
         this.binary = binary == null || binary.isBlank() ? "claude" : binary;
         this.maxTurns = maxTurns > 0 ? maxTurns : DEFAULT_MAX_TURNS;
         this.model = model;
@@ -180,8 +211,13 @@ public final class ClaudeCodeDialect implements BrainDialect {
             // (Bash, Write, Edit, Agent, …); the allowlist below only names the MCP operations
             // allowed and never touched those. Measured 2026-10-12: a hired PM, whose seat lists
             // read operations only, used Bash three times, a sub-agent once and Write once.
+            //
+            // A seat that declares reads_files is offered Read, Glob and Grep and nothing else of
+            // the CLI's own: a UX seat that cannot open the component it is asked about reports a
+            // census of 0 (measured 2026-10-17, S10-12). The comma-joined list is this flag's own
+            // form, unlike --allowedTools below, which takes its names as separate arguments.
             argv.add("--tools");
-            argv.add("");
+            argv.add(String.join(",", builtIns));
         }
         if (tools != null && !tools.isEmpty()) {
             argv.add("--allowedTools");
@@ -227,8 +263,12 @@ public final class ClaudeCodeDialect implements BrainDialect {
     @Override
     public WriteContainment writeContainment() {
         if (self != null) {
-            return WriteContainment.mechanism("--tools \"\": the CLI's OWN editors (Edit, Write,"
-                + " NotebookEdit) are not offered to the brain, so there is nothing to refuse."
+            return WriteContainment.mechanism(builtIns.isEmpty()
+                ? "--tools \"\": the CLI's OWN editors (Edit, Write,"
+                    + " NotebookEdit) are not offered to the brain, so there is nothing to refuse."
+                : "--tools \"" + String.join(",", builtIns) + "\": the CLI's own tools offered are"
+                    + " the read-only ones named, so its OWN editors (Edit, Write, NotebookEdit) and"
+                    + " Bash are not offered and there is nothing to refuse."
                 + " The resident's own tools stay attached and some of them change code; those are"
                 + " governed by the hirer's tool list and the record's code-change count, not by"
                 + " this bound");
@@ -261,8 +301,12 @@ public final class ClaudeCodeDialect implements BrainDialect {
             // the seat's list and does not hide the rest.
             return ToolAttachment.perRun("only the hiring resident's MCP server (--strict-mcp-config"
                 + " --mcp-config), none of the user's settings or hooks (--setting-sources project),"
-                + " --tools \"\" (the CLI's own built-in tools — Bash, Edit, Write, Agent — are not"
-                + " offered; the CLI's start-up list of what it offers is read into this record as"
+                + (builtIns.isEmpty()
+                    ? " --tools \"\" (the CLI's own built-in tools — Bash, Edit, Write, Agent — are not"
+                        + " offered; "
+                    : " --tools \"" + String.join(",", builtIns) + "\" (of the CLI's own built-in tools"
+                        + " only these read-only ones are offered — Bash, Edit, Write, Agent are not; ")
+                + "the CLI's start-up list of what it offers is read into this record as"
                 + " toolsOffered, and a call naming a tool not on it is listed as"
                 + " attemptedButNotOffered and not counted as a call), --allowedTools naming the"
                 + " seat's jawata operations as the CLI sees them (mcp__jawata__<tool>), and"
@@ -308,10 +352,11 @@ public final class ClaudeCodeDialect implements BrainDialect {
         return switch (type) {
             case "result" -> new BrainLine(costOf(event),
                 StreamJsonEvents.textOf(event.path("result")), 0, true, List.of(),
-                Optional.empty(), true);
+                Optional.empty(), true, tokensOf(event));
             case "assistant" -> new BrainLine(OptionalDouble.empty(),
                 StreamJsonEvents.assistantText(event), StreamJsonEvents.toolUseBlocks(event), true,
-                StreamJsonEvents.toolUseNames(event));
+                StreamJsonEvents.toolUseNames(event), Optional.empty(), false, Optional.empty(),
+                StreamJsonEvents.toolUseCalls(event));
             // THE CLI'S OWN ANNOUNCEMENT OF WHAT IT OFFERS THE BRAIN. Measured 2026-10-13: with
             // --tools "" the init event's `tools` is [], where an unflagged run advertised Edit,
             // Write and NotebookEdit. A call to a tool this list does not name cannot have run.
@@ -338,6 +383,17 @@ public final class ClaudeCodeDialect implements BrainDialect {
             }
         }
         return Optional.of(List.copyOf(names));
+    }
+
+    /**
+     * The tokens the terminal event reports for the whole run, from its {@code usage} block. Claude's
+     * {@code input_tokens} EXCLUDES what it served from cache ({@code cache_read_input_tokens} and
+     * {@code cache_creation_input_tokens}), so those are added to make {@code input} mean all input.
+     */
+    private static Optional<TokenUsage> tokensOf(JsonNode resultEvent) {
+        return TokenUsage.read(resultEvent.path("usage"), "input_tokens", false,
+            new String[] {"cache_read_input_tokens", "cache_creation_input_tokens"}, "output_tokens", null,
+            "claude: input_tokens excludes the cached part, which is added");
     }
 
     private static OptionalDouble costOf(JsonNode resultEvent) {

@@ -759,7 +759,7 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("REL44-6: the hire hides the engine's code-changing tools from claude, except the ones the seat names")
+    @DisplayName("REL44-6: the hire hides the engine's code-changing tools from claude, except the ones a seat that changes code names")
     void aHiredClaudeIsNotOfferedTheEnginesCodeChangingToolsTheSeatDidNotAskFor() throws Exception {
         StandsIn spy = new StandsIn(host, aBrainThatAnswers());
         HireTool hire = toolWith(spy, events, aRegistryWithAChangingOperation());
@@ -768,19 +768,29 @@ class HireToolTest {
         List<String> argv = spy.asked();
         int hidden = argv.indexOf("--disallowedTools");
 
-        // THE CONTROL: a seat that names the changing tool itself keeps it.
+        // THE CONTROL: a seat that says it changes code and names the changing tool itself keeps it.
         StandsIn spy2 = new StandsIn(host, aBrainThatAnswers());
         toolWith(spy2, events, aRegistryWithAChangingOperation()).execute(hireArgs(seatFile(
+            CATALOGUER_SEAT.replace("tools: [inspect,", "tools: [extract, inspect,")
+                .replace("name: cataloguer", "name: cataloguer\nchanges_code: true"))));
+
+        // ... and one that does NOT say so loses it even though its list names it (architect watch, C10:
+        // the seat answers for what it may change, so a tool list cannot grant it).
+        StandsIn spy3 = new StandsIn(host, aBrainThatAnswers());
+        toolWith(spy3, events, aRegistryWithAChangingOperation()).execute(hireArgs(seatFile(
             CATALOGUER_SEAT.replace("tools: [inspect,", "tools: [extract, inspect,"))));
 
         assertAll(
+            () -> assertTrue(spy3.asked().indexOf("--disallowedTools") >= 0
+                    && spy3.asked().lastIndexOf("mcp__jawata__extract") > spy3.asked().indexOf("--disallowedTools"),
+                "a seat not declared as changing code loses the tool it names: " + spy3.asked()),
             () -> assertTrue(hidden >= 0, "the changing fixture 'extract' is hidden: " + argv),
             () -> assertEquals("mcp__jawata__extract", argv.get(hidden + 1), argv.toString()),
             () -> assertFalse(argv.contains("mcp__jawata__compile_workspace")
                     && argv.indexOf("mcp__jawata__compile_workspace") > hidden,
                 "a read-only tool is not hidden: " + argv),
             () -> assertFalse(spy2.asked().contains("--disallowedTools"),
-                "a seat that asked for the tool by name keeps it: " + spy2.asked()));
+                "a seat declared as changing code keeps the tool it names: " + spy2.asked()));
     }
 
     @Test
@@ -1050,4 +1060,133 @@ class HireToolTest {
         assertTrue(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))).isSuccess(),
             "a hire ran with no project loaded");
     }
+
+    // ---- S10-8: the PM's measure, read from two hire records ---------------------------------------------
+
+    /** A brain that says the given text and then reports the given tokens in its final event. */
+    private HostCommand aBrainSayingWithTokens(String text, int in, int out) throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        String event = JSON.writeValueAsString(Map.of("type", "assistant", "message",
+            Map.of("role", "assistant", "content", List.of(Map.of("type", "text", "text", text)))));
+        Files.writeString(file, "#!/bin/sh\ncat <<'JAWATA_EVENT'\n" + event + "\nJAWATA_EVENT\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":"
+            + in + ",\"output_tokens\":" + out + "}}'\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    /** A worker brain: makes one call to {@code rename_symbol} with the given arguments, then reports tokens. */
+    private HostCommand aWorkerThatCalls(String argumentsJson) throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        String event = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\","
+            + "\"name\":\"rename_symbol\",\"input\":" + argumentsJson + "}]}}";
+        Files.writeString(file, "#!/bin/sh\ncat <<'JAWATA_EVENT'\n" + event + "\nJAWATA_EVENT\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":50,\"output_tokens\":10}}'\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    private static final String PM_ANSWER = "Reading Foo.java, the change is one rename.\n\n"
+        + "INSTRUCTION 1\nTOOL: rename_symbol\nARGUMENTS: {\"symbol\":\"a.B#c\",\"newName\":\"d\"}\n";
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> workerHiredAgainst(String issuerPlan, String workerCallArguments) throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aWorkerThatCalls(workerCallArguments).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("instructionsFrom", issuerPlan);
+        return dataOf(hire.execute(args));
+    }
+
+    @Test
+    @DisplayName("S10-8: the issuer's tokens per instruction that ran as written are read from the two hire records")
+    @SuppressWarnings("unchecked")
+    void theIssuersTokensPerInstructionAreReadFromTheTwoRecords() throws Exception {
+        // The PM: its answer carries one INSTRUCTION block and its brain reports 1000 in, 500 out.
+        HireTool pm = toolWith(new StandsIn(host, aBrainSayingWithTokens(PM_ANSWER, 1000, 500).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        Map<String, Object> issued = dataOf(pm.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        String issuerPlan = (String) issued.get("plan");
+        Map<String, Object> worker = workerHiredAgainst(issuerPlan, "{\"symbol\":\"a.B#c\",\"newName\":\"d\"}");
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, issued.get("tokensReported"), String.valueOf(issued)),
+            () -> assertEquals(1, ((List<?>) issued.get("instructionsIssued")).size(), "the PM's answer is parsed into its record"),
+            () -> assertEquals(Boolean.TRUE, score.get("computable"), String.valueOf(score)),
+            () -> assertEquals(1, score.get("ranAsWritten")),
+            () -> assertEquals(1500L, ((Number) score.get("issuerTokensSpent")).longValue(),
+                "the issuer's tokens come from ITS final event, read back from the journal row"),
+            () -> assertEquals(1500.0, ((Number) score.get("issuerTokensPerInstruction")).doubleValue(), 1e-9),
+            () -> assertEquals(Boolean.TRUE, worker.get("tokensReported"), "the worker's own tokens are on its record too"));
+    }
+
+    @Test
+    @DisplayName("S10-8, the control: a worker that passed other arguments ran nothing as written, and the figure says it is not computable rather than zero")
+    @SuppressWarnings("unchecked")
+    void aWorkerThatPassedOtherArgumentsRanNothingAsWritten() throws Exception {
+        HireTool pm = toolWith(new StandsIn(host, aBrainSayingWithTokens(PM_ANSWER, 1000, 500).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        String issuerPlan = (String) dataOf(pm.execute(hireArgs(seatFile(CATALOGUER_SEAT)))).get("plan");
+        Map<String, Object> worker = workerHiredAgainst(issuerPlan, "{\"symbol\":\"a.B#c\",\"newName\":\"SOMETHING ELSE\"}");
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        assertAll(
+            () -> assertEquals(0, score.get("ranAsWritten"), String.valueOf(score)),
+            () -> assertTrue(String.valueOf(score.get("notAsWritten")).contains("not with the arguments written")),
+            () -> assertTrue(String.valueOf(score.get("issuerTokensPerInstruction")).startsWith("NOT COMPUTABLE"),
+                "no instruction ran as written, so there is no per-instruction figure and no zero stands in for it"));
+    }
+
+    /**
+     * A worker brain whose CLI offered only the jawata rename (the init event says so): it makes the right
+     * call, then ATTEMPTS the CLI's own Write, which was never offered and so cannot have run.
+     */
+    private HostCommand aWorkerThatAlsoAttemptsAWriteItWasNeverOffered(String argumentsJson) throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"mcp__jawata__rename_symbol\"]}";
+        String calls = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":["
+            + "{\"type\":\"tool_use\",\"name\":\"mcp__jawata__rename_symbol\",\"input\":" + argumentsJson + "},"
+            + "{\"type\":\"tool_use\",\"name\":\"Write\",\"input\":{\"file_path\":\"/x\",\"content\":\"y\"}}]}}";
+        Files.writeString(file, "#!/bin/sh\ncat <<'JAWATA_EVENT'\n" + init + "\n" + calls + "\nJAWATA_EVENT\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":50,\"output_tokens\":10}}'\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    @Test
+    @DisplayName("S10-8: a call to a tool the CLI never offered is a refused attempt, so it is neither rework nor an extra code change")
+    @SuppressWarnings("unchecked")
+    void aRefusedAttemptIsNotAnExtraCodeChange() throws Exception {
+        HireTool pm = toolWith(new StandsIn(host, aBrainSayingWithTokens(PM_ANSWER, 1000, 500).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        String issuerPlan = (String) dataOf(pm.execute(hireArgs(seatFile(CATALOGUER_SEAT)))).get("plan");
+        HireTool hire = toolWith(new StandsIn(host,
+            aWorkerThatAlsoAttemptsAWriteItWasNeverOffered("{\"symbol\":\"a.B#c\",\"newName\":\"d\"}").withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("instructionsFrom", issuerPlan);
+        Map<String, Object> worker = dataOf(hire.execute(args));
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        assertAll(
+            () -> assertEquals(List.of("Write"), worker.get("attemptedButNotOffered"), String.valueOf(worker)),
+            () -> assertEquals(1, score.get("ranAsWritten"), String.valueOf(score)),
+            () -> assertEquals(List.of(), score.get("extraCodeChangingCalls"),
+                "the share-through-tools measure sets the refused Write aside; the instruction score must agree with it: " + score));
+    }
+
+    @Test
+    @DisplayName("S10-8: a score against a plan the journal does not hold says so instead of inventing one")
+    @SuppressWarnings("unchecked")
+    void aScoreAgainstAnUnknownPlanIsNotComputable() throws Exception {
+        Map<String, Object> worker = workerHiredAgainst("no-such-plan", "{\"symbol\":\"a.B#c\",\"newName\":\"d\"}");
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, score.get("computable"), String.valueOf(score)),
+            () -> assertTrue(String.valueOf(score.get("because")).contains("holds no hired-run row")));
+    }
+
 }

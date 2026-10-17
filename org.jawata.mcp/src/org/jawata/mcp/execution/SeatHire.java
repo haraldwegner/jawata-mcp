@@ -3,6 +3,7 @@ package org.jawata.mcp.execution;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -73,7 +74,7 @@ import java.util.Optional;
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -182,6 +183,28 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 + " or remove the line");
         }
 
+        // A switch a dialect cannot carry is refused, as a script line on another brain is: the seat
+        // would be told its job is to change code and meet a brain that never heard of it.
+        boolean changesCode = readSwitch("changes_code", front.get("changes_code"));
+        if (changesCode && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
+            throw new IllegalArgumentException("seat declares changes_code: true on brain '"
+                + brain.spellings.get(0) + "', whose dialect has no write-capable mode to select, so the"
+                + " declaration would be IGNORED. Only claude-code and cursor carry it");
+        }
+        // The same refusal for the same reason: the read-only built-ins are a claude start-up
+        // choice, and a seat on another brain would be told it can read and never be offered it.
+        boolean readsFiles = readSwitch("reads_files", front.get("reads_files"));
+        if (readsFiles && brain != Brain.CLAUDE_CODE) {
+            throw new IllegalArgumentException("seat declares reads_files: true on brain '"
+                + brain.spellings.get(0) + "', whose dialect has no built-in file reader to offer, so"
+                + " the declaration would be IGNORED. Only claude-code carries it");
+        }
+        if (readsFiles && changesCode) {
+            throw new IllegalArgumentException("seat declares both reads_files and changes_code: a"
+                + " seat that changes code does so through the engine's tools, and offering it the"
+                + " CLI's own file tools as well would open the editors the hire keeps closed");
+        }
+
         return new SeatHire(
             front.getOrDefault("name", ""),
             brain,
@@ -197,7 +220,47 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             list(front.get("answer_gates")),
             enabled(front.get("enabled")),
             script,
-            acceptsUncontainedWrites(markdown));
+            acceptsUncontainedWrites(markdown),
+            changesCode,
+            readsFiles);
+    }
+
+    /**
+     * The resident's code-changing tools this seat's brain must not be offered (REL44-6): all of them
+     * when the seat does not change code, even one its tool list names, and only the ones it did not
+     * name when it does. The seat answers for itself, so the hire does not weigh its tool list.
+     *
+     * @param engineCodeChangingTools the names of every tool the engine flags as changing code
+     * @return those names, sorted
+     */
+    public List<String> toolsToHide(Collection<String> engineCodeChangingTools) {
+        return engineCodeChangingTools.stream()
+            .filter(name -> !changesCode || !tools.contains(name))
+            .sorted()
+            .toList();
+    }
+
+    /**
+     * A seat's capability switch: {@code changes_code: true} says its job is to change code through
+     * the engine's tools; {@code reads_files: true} says it must read the project's files and is
+     * offered the read-only built-ins. Absent means no for both, and the hire gets the narrower
+     * run, because an unattended run proposes. Read STRICTLY, as {@link #enabled} is: a switch that
+     * widens what a brain holds is not guessed from a misspelling.
+     *
+     * @param key the frontmatter key, named in the refusal
+     * @param value the text after the colon, or null when the seat does not say
+     */
+    private static boolean readSwitch(String key, String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return switch (value.strip()) {
+            case "true" -> true;
+            case "false" -> false;
+            default -> throw new IllegalArgumentException("seat declares " + key + " '" + value.strip()
+                + "': expected true or false. NOT read as either — a misspelled grant is refused"
+                + " rather than guessed");
+        };
     }
 
     /**
@@ -248,9 +311,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      */
     public BrainDialect dialect(SelfEndpoint self, List<String> hiddenTools) {
         return switch (brain) {
-            case CLAUDE_CODE -> new ClaudeCodeDialect("claude",
-                ClaudeCodeDialect.DEFAULT_MAX_TURNS, model, true, self, hiddenTools);
-            case CURSOR -> new CursorDialect("cursor-agent", true, model);
+            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), model, !changesCode, self,
+                hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of());
+            case CURSOR -> new CursorDialect("cursor-agent", !changesCode, model);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
             // auto_mode_resolved event reports which it chose and why), and codex's is set in its
             // config, out of band. Passing one would be a flag invented rather than measured.
@@ -258,6 +321,20 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             case CODEX -> new CodexDialect();
             case SCRIPT -> new ScriptDialect(script, List.of());
         };
+    }
+
+    /**
+     * How many turns the CLI may take. The default is twelve, which is right for a seat that calls
+     * a few jawata tools and wrong for one that reads: measured 2026-10-18, the first real UX hire
+     * with the read-only built-ins made 24 reads in twelve turns and was cut off by the CLI (exit 1)
+     * before it wrote its census. A seat that reads files is given as many turns as the step
+     * ceiling it declared, so the ceiling the engine enforces is the bound and the CLI's own turn
+     * count is not a second, tighter, undeclared one. Every other seat keeps the default.
+     */
+    int maxTurns() {
+        int steps = ceilings.maxToolSteps();
+        return readsFiles && steps > ClaudeCodeDialect.DEFAULT_MAX_TURNS
+            ? steps : ClaudeCodeDialect.DEFAULT_MAX_TURNS;
     }
 
     /**
@@ -437,5 +514,13 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, null, false);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, false);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, false);
     }
 }

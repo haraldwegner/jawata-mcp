@@ -72,17 +72,35 @@ final class StreamJsonEvents {
      * the count and an unnamed call cannot quietly vanish from it.</p>
      */
     static List<String> toolUseNames(JsonNode event) {
-        JsonNode content = event.path("message").path("content");
+        // ONE reader of the blocks: the names are the calls' names, so the two lists cannot disagree.
         List<String> names = new ArrayList<>();
+        for (ToolCall call : toolUseCalls(event)) {
+            names.add(call.name());
+        }
+        return names;
+    }
+
+    /**
+     * This turn's tool calls with the arguments each passed, in order, one per {@code tool_use} block.
+     *
+     * <p>The same blocks {@link #toolUseNames} reads, so the two lists are the same length and agree on
+     * order. A block with no {@code input} yields an empty object, never null, so a caller comparing
+     * arguments never meets a missing node.</p>
+     */
+    static List<ToolCall> toolUseCalls(JsonNode event) {
+        JsonNode content = event.path("message").path("content");
+        List<ToolCall> calls = new ArrayList<>();
         if (!content.isArray()) {
-            return names;
+            return calls;
         }
         for (JsonNode block : content) {
             if ("tool_use".equals(block.path("type").asText(""))) {
-                names.add(block.path("name").asText(""));
+                JsonNode input = block.path("input");
+                calls.add(new ToolCall(block.path("name").asText(""),
+                    input.isObject() ? input : com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()));
             }
         }
-        return names;
+        return calls;
     }
 
     /** Tool calls in this turn, counted as BLOCKS rather than as turns. */

@@ -286,10 +286,18 @@ public final class HiredRun {
         // recording it failed.
         if (journal != null) {
             try {
+                // The detail stays small, and carries the two figures a later hire is scored against by
+                // reading this row: the tokens this run reported (null when it reported none) and the
+                // instructions its answer issued. Everything else is in the artifact.
+                java.util.Map<String, Object> detail = new LinkedHashMap<>();
+                detail.put("artifactId", artifactId);
+                detail.put("stepsPassed", passed);
+                detail.put("ofSteps", planned.size());
+                detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);
+                detail.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));
                 journal.append(new LearnerEvent(plan.value(), LearnerEvent.KIND_HIRED_RUN,
-                    dialect.name(), "{\"artifactId\":\"" + artifactId + "\",\"stepsPassed\":"
-                        + passed + ",\"ofSteps\":" + planned.size() + "}"));
-            } catch (RuntimeException e) {
+                    dialect.name(), new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(detail)));
+            } catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException e) {
                 // the proposal is already on disk; the journal row is bookkeeping
             }
         }
@@ -355,6 +363,14 @@ public final class HiredRun {
         // the Rust reference tells.
         p.put("costUsd", outcome.costUsd().isPresent() ? outcome.costUsd().getAsDouble() : null);
         p.put("sawTerminalCost", outcome.sawTerminalCost());
+        // WHAT THE BRAIN REPORTED SPENDING IN TOKENS, from its own final event, and NULL beside
+        // `tokensReported: false` when it reported none. A brain that did not report is not a brain
+        // that spent nothing: the PM's score divides these, and a zero would read as an efficient run.
+        p.put("tokensReported", outcome.tokens().isPresent());
+        p.put("tokens", outcome.tokens().map(TokenUsage::asMap).orElse(null));
+        // THE INSTRUCTIONS THIS RUN ISSUED, parsed from its answer, so a later hire of the worker can be
+        // scored against them by reading this row (the PM's measure: tokens per instruction that ran as written).
+        p.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));
         p.put("timedOut", outcome.timedOut());
         p.put("stoppedBy", outcome.stoppedBy().orElse(null));
         p.put("exitCode", outcome.exitCode().isPresent() ? outcome.exitCode().getAsInt() : null);

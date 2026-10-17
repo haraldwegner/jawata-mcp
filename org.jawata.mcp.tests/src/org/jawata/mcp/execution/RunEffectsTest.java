@@ -108,6 +108,30 @@ class RunEffectsTest {
     }
 
     @Test
+    @DisplayName("the worker's measure: the share of code changes made through a tool, a hand edit counting against it")
+    void theShareThroughToolsCountsAHandEditAgainstTheWorker() {
+        // Three changes through the engine's tool, one by the CLI's editor: 3 of 4, and the reads change nothing.
+        RunEffects.Classification mixed = RunEffects.classify(
+            List.of("mcp__jawata-javata-dev__extract", "extract", "Read", "extract", "Edit", "search_symbols"), 0, ASK, Optional.empty());
+        // All through the tool: 1.0. All by hand: 0.0. These are the two ends a raw call count cannot tell apart from reads.
+        RunEffects.Classification allTool = RunEffects.classify(List.of("extract", "search_symbols", "search_symbols"), 0, ASK, Optional.empty());
+        RunEffects.Classification allHand = RunEffects.classify(List.of("Write", "search_symbols"), 0, ASK, Optional.empty());
+        // No change at all has NO share, which is neither 1.0 nor 0.0.
+        RunEffects.Classification none = RunEffects.classify(List.of("search_symbols", "Read"), 0, ASK, Optional.empty());
+        // A shell changes code by a command this class cannot see: counted on neither side, named beside the figure.
+        RunEffects.Classification withShell = RunEffects.classify(List.of("extract", "Bash"), 0, ASK, Optional.empty());
+        assertAll(
+            () -> assertEquals(3, mixed.changesThroughTools()),
+            () -> assertEquals(1, mixed.changesByHand()),
+            () -> assertEquals(0.75, mixed.shareThroughTools().getAsDouble(), 1e-9),
+            () -> assertEquals(1.0, allTool.shareThroughTools().getAsDouble(), 1e-9),
+            () -> assertEquals(0.0, allHand.shareThroughTools().getAsDouble(), 1e-9),
+            () -> assertTrue(none.shareThroughTools().isEmpty(), "no code change means no share"),
+            () -> assertEquals(1.0, withShell.shareThroughTools().getAsDouble(), 1e-9),
+            () -> assertFalse(withShell.incompleteBecause().isEmpty(), "but the shell is named beside the share"));
+    }
+
+    @Test
     @DisplayName("a shell is NEITHER code-changing NOR harmless: it is reported on its own, and the zero is incomplete")
     void aShellIsNotFoldedIntoEitherSide() {
         RunEffects.Classification c = RunEffects.classify(List.of("Bash", "search_symbols"), 0, ASK, Optional.empty());

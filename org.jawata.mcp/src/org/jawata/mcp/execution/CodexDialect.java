@@ -160,8 +160,16 @@ public final class CodexDialect implements BrainDialect {
             // would make the ceiling fire on events nobody has seen.
             return BrainLine.nothing();
         }
-        // thread.started, turn.started, item.started, and turn.completed — which is terminal and
-        // carries token counts rather than a cost, so there is nothing here to publish.
+        // turn.completed is terminal and carries token counts rather than a cost: codex's
+        // input_tokens already INCLUDES cached_input_tokens, so nothing is added to it.
+        if ("turn.completed".equals(event.path("type").asText(""))) {
+            return new BrainLine(OptionalDouble.empty(), java.util.Optional.empty(), 0, true,
+                java.util.List.of(), java.util.Optional.empty(), false,
+                TokenUsage.read(event.path("usage"), "input_tokens", true, new String[] {"cached_input_tokens"},
+                    "output_tokens", "reasoning_output_tokens",
+                    "codex: input_tokens already includes the cached part"));
+        }
+        // thread.started, turn.started and item.started carry nothing a driver acts on.
         return BrainLine.nothing();
     }
 }

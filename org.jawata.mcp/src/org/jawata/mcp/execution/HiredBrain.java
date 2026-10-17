@@ -102,7 +102,7 @@ public final class HiredBrain {
     public record Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
                           boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
                           String stderrTail, Optional<String> stoppedBy,
-                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
+                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls) {
 
         /** The shape every caller used before names were recorded. */
         public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
@@ -139,6 +139,14 @@ public final class HiredBrain {
 
         public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines, boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode, String stderrTail, Optional<String> stoppedBy, List<String> toolNames) {
             this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, java.util.Optional.empty());
+        }
+
+        public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines, boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode, String stderrTail, Optional<String> stoppedBy, List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered) {
+            this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, toolsOffered, java.util.Optional.empty());
+        }
+
+        public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines, boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode, String stderrTail, Optional<String> stoppedBy, List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens) {
+            this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, toolsOffered, tokens, java.util.List.of());
         }
     }
 
@@ -193,6 +201,11 @@ public final class HiredBrain {
         boolean sawTerminalCost = false;
         int toolSteps = 0;
         List<String> toolNames = new ArrayList<>();
+        // WHAT EACH CALL PASSED, beside the names: the PM's score compares an instruction's tool and
+        // arguments with the call the worker actually made.
+        List<ToolCall> toolCalls = new ArrayList<>();
+        // What the brain reported spending, from its own final event; absent for a brain that reports none.
+        Optional<TokenUsage> tokens = Optional.empty();
         // What the brain's own CLI said it offers, when its dialect reads that (claude's init event).
         Optional<List<String>> toolsOffered = Optional.empty();
         int unreadable = 0;
@@ -216,6 +229,10 @@ public final class HiredBrain {
                 }
                 toolSteps += read.toolSteps();
                 toolNames.addAll(read.toolNames());
+                toolCalls.addAll(read.toolCalls());
+                if (read.tokens().isPresent()) {
+                    tokens = tokens.isPresent() ? Optional.of(tokens.get().plus(read.tokens().get())) : read.tokens();
+                }
                 if (read.toolsOffered().isPresent()) {
                     toolsOffered = read.toolsOffered();
                 }
@@ -259,7 +276,7 @@ public final class HiredBrain {
 
         return new Outcome(String.join("\n", said), cost, toolSteps, unreadable, sawTerminalCost,
             reapedByClock[0], exitCode, stderrTail.toString(), Optional.ofNullable(stoppedBy),
-            List.copyOf(toolNames), toolsOffered);
+            List.copyOf(toolNames), toolsOffered, tokens, List.copyOf(toolCalls));
     }
 
     /**
