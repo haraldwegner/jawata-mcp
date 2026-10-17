@@ -289,7 +289,7 @@ class EmbeddingStoreTest {
                 assertTrue(store.get(id).isPresent(), "the row landed");
                 ExperienceRetrieval recall = new ExperienceRetrieval(store, () -> null);
                 Map<String, Object> answer = recall.recall(new RecallQuery(
-                    null, null, null, "database file already locked", null));
+                    null, null, null, "database file already locked", null, LaneScope.everyLane()));
                 assertEquals(ExperienceRetrieval.RESULT_MATCH, answer.get("result"),
                     "keyword recall still finds it with embedding off");
 

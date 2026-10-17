@@ -301,7 +301,7 @@ class CalibrationGateTest {
             ExperienceRetrieval recall =
                 new ExperienceRetrieval(sharedStore, () -> null, sharedIndex);
             Map<String, Object> answer = recall.recall(
-                new RecallQuery(null, null, null, PARAPHRASE_CUE, null));
+                new RecallQuery(null, null, null, PARAPHRASE_CUE, null, LaneScope.everyLane()));
 
             List<String> ranked = new ArrayList<>();
             for (String key : new String[] {"entries", "analogies"}) {
@@ -331,8 +331,8 @@ class CalibrationGateTest {
     /** The cue as the agent would pose it: a symbol cue by symbol, prose by symptom. */
     private static RecallQuery query(JsonNode cue, String text) {
         return "symbol".equals(cue.path("keyword_cue_field").asText("symptom"))
-            ? new RecallQuery(text, null, null, null, null)
-            : new RecallQuery(null, null, null, text, null);
+            ? new RecallQuery(text, null, null, null, null, LaneScope.everyLane())
+            : new RecallQuery(null, null, null, text, null, LaneScope.everyLane());
     }
 
     // The winner-only rule that used to judge the union and keyword arms lived

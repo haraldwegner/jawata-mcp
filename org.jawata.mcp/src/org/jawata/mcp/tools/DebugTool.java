@@ -676,7 +676,10 @@ public class DebugTool extends AbstractTool {
         }
         try {
             return experience.recall(
-                new org.jawata.mcp.knowledge.RecallQuery(symbol, null, null, null, null));
+                new org.jawata.mcp.knowledge.RecallQuery(symbol, null, null, null, null,
+                    org.jawata.mcp.knowledge.LaneScope.of(
+                        org.jawata.mcp.knowledge.KnowledgeLane.EXPERIENCE,
+                        org.jawata.mcp.knowledge.KnowledgeLane.DOMAIN)));
         } catch (Exception e) {
             log.debug("recall-before-probe for {} failed: {}", symbol, e.getMessage());
             return Map.of();

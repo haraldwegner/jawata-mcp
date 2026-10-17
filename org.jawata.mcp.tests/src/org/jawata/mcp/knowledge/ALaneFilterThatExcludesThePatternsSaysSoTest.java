@@ -114,10 +114,10 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
     }
 
     @Test
-    @DisplayName("no lane filter says nothing either")
+    @DisplayName("naming every lane says nothing either")
     void noFilterIsSilent() {
-        assertNull(recall(ANCHOR, null).get("catalogueExcluded"),
-            "an unfiltered recall searches the patterns, so there is no exclusion to report");
+        assertNull(recall(ANCHOR, "experience,patterns,domain,code,rules").get("catalogueExcluded"),
+            "a recall that names every lane searches the patterns, so there is no exclusion to report");
     }
 
     @Test
@@ -206,9 +206,7 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
         ObjectNode args = objectMapper.createObjectNode();
         args.put("kind", "recall");
         args.put("symbol", symbol);
-        if (lane != null) {
-            args.put("lane", lane);
-        }
+        args.put("lane", lane);
         return dataOf(new ExperienceTool(() -> null, store).execute(args));
     }
 

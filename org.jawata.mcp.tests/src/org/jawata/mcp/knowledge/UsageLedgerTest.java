@@ -54,6 +54,7 @@ class UsageLedgerTest {
     private ObjectNode argsOf(String kind, String... kv) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", kind);
+        if (kind.equals("recall") || kind.equals("nominate")) { a.put("lane", "experience,patterns,domain,code,rules"); }
         for (int i = 0; i < kv.length; i += 2) {
             if (kv[i].endsWith("_ids")) {
                 a.putArray(kv[i]).add(kv[i + 1]);

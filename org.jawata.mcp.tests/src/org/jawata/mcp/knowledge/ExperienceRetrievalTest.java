@@ -69,7 +69,7 @@ class ExperienceRetrievalTest {
             .build());
 
         String text = ExperienceRetrieval.renderText(retrieval.recall(
-            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null, LaneScope.everyLane())));
 
         assertTrue(text.contains("when a consumer reconnects mid-batch"),
             "the condition is on the line: " + text);
@@ -91,7 +91,7 @@ class ExperienceRetrievalTest {
             "com.example.orders.RetryLoop");
 
         String text = ExperienceRetrieval.renderText(retrieval.recall(
-            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null, LaneScope.everyLane())));
 
         assertFalse(text.contains(" · when "),
             "no situation marker on a row that has no situation: " + text);
@@ -116,7 +116,7 @@ class ExperienceRetrievalTest {
             .build());
 
         String text = ExperienceRetrieval.renderText(retrieval.recall(
-            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null, LaneScope.everyLane())));
 
         assertEquals(1, text.split("\n").length,
             "one entry, one line, whatever the stored text contains: " + text);
@@ -149,7 +149,7 @@ class ExperienceRetrievalTest {
             "com.example.orders.RetryLoop");
 
         List<Map<String, Object>> hits = entries(retrieval.recall(
-            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null)));
+            new RecallQuery("com.example.orders.RetryLoop", null, null, null, null, LaneScope.everyLane())));
 
         assertFalse(hits.isEmpty(), "the anchored cue finds something");
         assertEquals(exact, hits.get(0).get("id"),
@@ -190,7 +190,7 @@ class ExperienceRetrievalTest {
         String section = putFamily("memory:/m/webkit.md", "Tauri blank webview fix", true,
             "tauri webview renders blank on aarch64");
 
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertTrue(ids(entries(r)).contains(section), "the fact answers");
         assertFalse(ids(entries(r)).contains(parent), "the bundle is dropped from the fit set");
@@ -202,7 +202,7 @@ class ExperienceRetrievalTest {
             "orphan preamble cue");
         putFamily("memory:/m/f.md", "Some unrelated section", true, "different topic entirely");
 
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "orphan preamble cue", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "orphan preamble cue", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertTrue(ids(entries(r)).contains(parent), "no fitting section → the parent answers");
     }
@@ -214,7 +214,7 @@ class ExperienceRetrievalTest {
         String s1 = putFamily("memory:/m/a.md", "Lock retry on open", true, "lock file recently modified");
         String s2 = putFamily("memory:/m/b.md", "Lock race at swap", true, "lock file recently modified");
 
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "lock file recently modified", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "lock file recently modified", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertEquals(2, entries(r).size(), "both siblings visible — ambiguity stays honest");
         assertTrue(ids(entries(r)).containsAll(java.util.Set.of(s1, s2)));
@@ -228,14 +228,14 @@ class ExperienceRetrievalTest {
         String recorded = store.put(rb.build());
         String section = putFamily("memory:/m/x.md", "Sectioned fact", true, "shared cue words");
 
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "shared cue words", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "shared cue words", null, LaneScope.everyLane()));
         assertEquals(2, entries(r).size(), "a recorded entry has no family — never dropped");
         assertTrue(ids(entries(r)).containsAll(java.util.Set.of(recorded, section)));
     }
 
     @Test
     void empty_cue_is_absence() {
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, null, null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"));
         assertEquals("no cue provided", r.get("reason"));
     }
@@ -245,7 +245,7 @@ class ExperienceRetrievalTest {
         putSymbol("failure_mode", "OSGi resolve NPE running Maven tests", "com.example.alpol.Gateway",
             "OSGi NPE", "null service at startup");
         // Cue is a paraphrase with different case/spacing — alias normalization bridges it.
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "  osgi   NPE ", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "  osgi   NPE ", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertEquals(1, entries(r).size());
         assertEquals("failure_mode", entries(r).get(0).get("type"));
@@ -260,7 +260,7 @@ class ExperienceRetrievalTest {
             "WebKitGTK DMABUF compositor fails silently; window chrome renders, "
                 + "webview content area stays blank (GTK background colour)",
             null);
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertEquals(1, entries(r).size());
     }
@@ -276,7 +276,7 @@ class ExperienceRetrievalTest {
         // webview that initializes fine ARE related — the gate still refuses it
         // as an answer, which is the property this test protects.
         ExperienceRetrieval keyword = ExperienceRetrieval.keywordOnly(store, () -> null);
-        Map<String, Object> r = keyword.recall(new RecallQuery(null, null, null, "blank webview", null));
+        Map<String, Object> r = keyword.recall(new RecallQuery(null, null, null, "blank webview", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"));
     }
 
@@ -284,7 +284,7 @@ class ExperienceRetrievalTest {
     void scope_mismatch_returns_absence() {
         putSymbol("lesson", "guard the workbench lifecycle", "com.a.Foo");
         // A symbol in a different tree does not fit — terminal absence, not a loose match.
-        Map<String, Object> r = retrieval.recall(new RecallQuery("com.b.Bar", null, null, null, null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery("com.b.Bar", null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"));
         assertTrue(entries(r).isEmpty());
     }
@@ -293,7 +293,7 @@ class ExperienceRetrievalTest {
     void package_scoped_entry_fits_a_symbol_inside_it() {
         putPackage("domain_fact", "billing DTOs keep no-arg constructors", "com.example.billing");
         Map<String, Object> r = retrieval.recall(
-            new RecallQuery("com.example.billing.InvoiceDto", null, null, null, null));
+            new RecallQuery("com.example.billing.InvoiceDto", null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertEquals(1, entries(r).size());
     }
@@ -303,7 +303,7 @@ class ExperienceRetrievalTest {
         putPackage("domain_fact", "package-level note", "com.example.billing");
         putSymbol("lesson", "symbol-level note", "com.example.billing.InvoiceDto");
         Map<String, Object> r = retrieval.recall(
-            new RecallQuery("com.example.billing.InvoiceDto", null, null, null, null));
+            new RecallQuery("com.example.billing.InvoiceDto", null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         // Both fit; the symbol-scoped node is more specific → it is the head.
         assertEquals("symbol-level note", entries(r).get(0).get("summary"));
@@ -319,7 +319,7 @@ class ExperienceRetrievalTest {
         // wired in (v3.4.1), refused knowledge started coming back as "in a
         // similar situation...". A rejected entry is one a human looked at and
         // said no to. It may not return by ANY path.
-        Map<String, Object> r = retrieval.recall(new RecallQuery("com.a.Foo", null, null, null, null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery("com.a.Foo", null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, r.get("result"),
             "a rejected entry must not resurface as an analogy either");
     }
@@ -330,11 +330,11 @@ class ExperienceRetrievalTest {
             SymbolFact.of("failure_mode", "run_tests OSGi NPE on plain Maven", Confidence.HIGH)
                 .symbol("com.example.alpol.Gateway").build())
             .operation("run_tests").build());
-        Map<String, Object> hit = retrieval.recall(new RecallQuery(null, null, "run_tests", null, null));
+        Map<String, Object> hit = retrieval.recall(new RecallQuery(null, null, "run_tests", null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, hit.get("result"));
         assertFalse(entries(hit).isEmpty());
         // A different operation does not fit → absence.
-        Map<String, Object> miss = retrieval.recall(new RecallQuery(null, null, "rename_symbol", null, null));
+        Map<String, Object> miss = retrieval.recall(new RecallQuery(null, null, "rename_symbol", null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_ABSENCE, miss.get("result"));
     }
 
@@ -363,7 +363,7 @@ class ExperienceRetrievalTest {
             .operation("dogfood-probe").build());
 
         Map<String, Object> r = retrieval.recall(
-            new RecallQuery(null, null, "dogfood-probe", null, null));
+            new RecallQuery(null, null, "dogfood-probe", null, null, LaneScope.everyLane()));
 
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
         assertEquals(5, entries(r).size(), "the cap still holds");
@@ -379,7 +379,7 @@ class ExperienceRetrievalTest {
     void pointer_resolution_flags_no_project_when_jdt_absent() {
         putSymbol("lesson", "guard lifecycle", "com.example.WorkflowCoordinator");
         Map<String, Object> r = retrieval.recall(
-            new RecallQuery("com.example.WorkflowCoordinator", null, null, null, null));
+            new RecallQuery("com.example.WorkflowCoordinator", null, null, null, null, LaneScope.everyLane()));
         Map<String, Object> pointer = (Map<String, Object>) entries(r).get(0).get("resolved_pointer");
         assertEquals(false, pointer.get("resolved"));
         assertEquals("no project loaded", pointer.get("note"));

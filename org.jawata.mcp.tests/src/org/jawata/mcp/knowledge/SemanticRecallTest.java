@@ -54,7 +54,7 @@ class SemanticRecallTest {
     }
 
     private static RecallQuery symptom(String s) {
-        return new RecallQuery(null, null, null, s, null);
+        return new RecallQuery(null, null, null, s, null, LaneScope.everyLane());
     }
 
     @SuppressWarnings("unchecked")
@@ -238,7 +238,7 @@ class SemanticRecallTest {
 
         List<StoredEntry> both = store.all();
         List<ExperienceAnalogies.Analogy> ranked = ExperienceAnalogies.rank(
-            both, new RecallQuery(null, null, "rename_symbol", null, null),
+            both, new RecallQuery(null, null, "rename_symbol", null, null, LaneScope.everyLane()),
             Map.of(), 2, () -> null);
 
         assertEquals(sameOp, ranked.get(0).entry().id(),
@@ -335,7 +335,7 @@ class SemanticRecallTest {
             .operation("seat:javadocs").build());
 
         Map<String, Object> r = semantic.recall(
-            new RecallQuery(null, null, "seat:javadoc-like-work-never-run-before", null, null));
+            new RecallQuery(null, null, "seat:javadoc-like-work-never-run-before", null, null, LaneScope.everyLane()));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> vouched =
@@ -468,7 +468,7 @@ class SemanticRecallTest {
         }
 
         RecallQuery cue = new RecallQuery(null, null, "rename_symbol",
-            "a rebuild was needed after moving code between modules", null);
+            "a rebuild was needed after moving code between modules", null, LaneScope.everyLane());
 
         // PRECONDITION, or this test cannot tell a working boost from a boost
         // that does nothing: the target must NOT already lead on the evidence.
@@ -478,7 +478,7 @@ class SemanticRecallTest {
         // this: without it, disabling promotion() entirely would leave this
         // test, and every calibration arm, green.
         List<Map<String, Object>> withoutOperation = analogies(semantic.recall(
-            new RecallQuery(null, null, null, cue.symptom(), null)));
+            new RecallQuery(null, null, null, cue.symptom(), null, LaneScope.everyLane())));
         assertFalse(withoutOperation.isEmpty(), "precondition: analogies expected");
         assertFalse(sameOperation.equals(withoutOperation.get(0).get("id")),
             "precondition: with the operation removed the OTHER entry must lead, "
@@ -539,9 +539,9 @@ class SemanticRecallTest {
     void the_cue_text_is_the_words_of_the_cue() {
         assertEquals("blank window rename_symbol com.foo.Bar",
             ExperienceRetrieval.cueText(
-                new RecallQuery("com.foo.Bar", null, "rename_symbol", "blank window", null)));
+                new RecallQuery("com.foo.Bar", null, "rename_symbol", "blank window", null, LaneScope.everyLane())));
         assertEquals("", ExperienceRetrieval.cueText(null));
         assertEquals("", ExperienceRetrieval.cueText(
-            new RecallQuery(null, null, null, null, null)));
+            new RecallQuery(null, null, null, null, null, LaneScope.everyLane())));
     }
 }

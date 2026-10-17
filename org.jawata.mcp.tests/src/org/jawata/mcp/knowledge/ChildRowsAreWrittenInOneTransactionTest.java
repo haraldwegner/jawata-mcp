@@ -121,6 +121,6 @@ class ChildRowsAreWrittenInOneTransactionTest {
      * entry's own body. The two disagree exactly in the window this test exists for.
      */
     private static List<StoredEntry> recalledBySymptom(ExperienceStore store) {
-        return store.query(new RecallQuery(null, null, null, SYMPTOM, null));
+        return store.query(new RecallQuery(null, null, null, SYMPTOM, null, LaneScope.everyLane()));
     }
 }

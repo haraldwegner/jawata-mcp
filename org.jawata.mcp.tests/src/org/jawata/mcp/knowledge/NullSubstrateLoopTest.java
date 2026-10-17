@@ -40,6 +40,7 @@ class NullSubstrateLoopTest {
     private static ObjectNode args(String kind) {
         ObjectNode n = JSON.createObjectNode();
         n.put("kind", kind);
+        if (kind.equals("recall") || kind.equals("nominate")) { n.put("lane", "experience,patterns,domain,code,rules"); }
         return n;
     }
 
@@ -75,6 +76,7 @@ class NullSubstrateLoopTest {
             assertEquals(1L, store.count());
 
             ObjectNode recall = args("recall");
+            recall.put("lane", "experience,patterns,domain,code,rules");
             recall.put("symptom", "an event dated to 1970");
             recall.put("format", "text");
             assertTrue(tool.execute(recall).isSuccess(), "and recall answers");

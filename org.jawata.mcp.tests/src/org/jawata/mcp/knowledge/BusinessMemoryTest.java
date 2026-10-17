@@ -52,13 +52,13 @@ class BusinessMemoryTest {
     void a_business_fact_recalls_by_a_business_keyword() throws Exception {
         recordBusinessFact();
         var recall = tool.execute(mapper.readTree(
-            "{\"kind\":\"recall\",\"operation\":\"billing-cycle\"}"));
+            "{\"kind\":\"recall\",\"operation\":\"billing-cycle\",\"lane\":\"business\"}"));
         assertTrue(recall.isSuccess());
         assertTrue(String.valueOf(recall.getData()).contains("net-60"),
             "recall by the business operation cue, no symbol involved");
         // And by symptom-style free cue phrasing.
         var bySymptom = tool.execute(mapper.readTree(
-            "{\"kind\":\"recall\",\"symptom\":\"invoicing\"}"));
+            "{\"kind\":\"recall\",\"symptom\":\"invoicing\",\"lane\":\"business\"}"));
         assertTrue(bySymptom.isSuccess(),
             "a business-phrased cue must not error: " + bySymptom.getError());
     }

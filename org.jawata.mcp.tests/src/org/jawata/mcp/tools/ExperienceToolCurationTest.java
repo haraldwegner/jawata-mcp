@@ -106,7 +106,7 @@ class ExperienceToolCurationTest {
         assertEquals(rustId, afterRust.get(0).id());
         // Symptoms travelled: recall by symptom still hits.
         assertFalse(store.query(new org.jawata.mcp.knowledge.RecallQuery(
-            null, null, null, "flaky test", null)).isEmpty());
+            null, null, null, "flaky test", null, org.jawata.mcp.knowledge.LaneScope.everyLane())).isEmpty());
 
         // Importing the same entries again only counts duplicates.
         Map<String, Object> again = data(tool.execute(importArgs));

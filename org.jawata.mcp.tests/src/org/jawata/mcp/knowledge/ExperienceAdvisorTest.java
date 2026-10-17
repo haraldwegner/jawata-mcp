@@ -184,7 +184,7 @@ class ExperienceAdvisorTest {
             List.of("parity gate failed: compile 2 errors")));
 
         assertEquals(1L, store.count());
-        List<StoredEntry> found = store.query(new RecallQuery("com.example.OrderService", null, null, null, null));
+        List<StoredEntry> found = store.query(new RecallQuery("com.example.OrderService", null, null, null, null, LaneScope.everyLane()));
         assertEquals(1, found.size());
         assertEquals("failure_mode", found.get(0).type());
         assertEquals(ExperienceEntry.CANDIDATE, found.get(0).status());
@@ -208,7 +208,7 @@ class ExperienceAdvisorTest {
             List.of("parity gate failed: compile 2 errors")));
 
         StoredEntry stored = store.query(
-            new RecallQuery("com.example.OrderService", null, null, null, null)).get(0);
+            new RecallQuery("com.example.OrderService", null, null, null, null, LaneScope.everyLane())).get(0);
 
         assertEquals("when applying a compose_method refactoring plan", stored.facets().situation(),
             "the situation says what you are DOING when this applies — a task, not a "
@@ -241,7 +241,7 @@ class ExperienceAdvisorTest {
             Outcome.FLAGGED, List.of(), null, List.of("purity check flagged shared state")));
         assertEquals(1L, store.count());
         assertEquals("hazard",
-            store.query(new RecallQuery("com.example.Config", null, null, null, null)).get(0).type());
+            store.query(new RecallQuery("com.example.Config", null, null, null, null, LaneScope.everyLane())).get(0).type());
     }
 
     @Test

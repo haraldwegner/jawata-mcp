@@ -35,6 +35,7 @@ class KnowledgeUnavailableTest {
     private static ObjectNode recall(String symbol) {
         ObjectNode a = JSON.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         a.put("symbol", symbol);
         return a;
     }
@@ -176,7 +177,7 @@ class KnowledgeUnavailableTest {
 
         long start = System.currentTimeMillis();
         Map<String, Object> result = retrieval.recall(
-            new RecallQuery("com.example.Anything", null, null, null, null),
+            new RecallQuery("com.example.Anything", null, null, null, null, LaneScope.everyLane()),
             org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
         long waited = System.currentTimeMillis() - start;
 
@@ -209,7 +210,7 @@ class KnowledgeUnavailableTest {
         // manufactured outage — this test fails on that code.
         ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(
             new UnreadableStore(800, true), () -> null);
-        RecallQuery q = new RecallQuery("com.example.Anything", null, null, null, null);
+        RecallQuery q = new RecallQuery("com.example.Anything", null, null, null, null, LaneScope.everyLane());
         String surface = org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK;
 
         Map<String, Object> first = retrieval.recall(q, surface, 200);
@@ -255,7 +256,7 @@ class KnowledgeUnavailableTest {
             new UnreadableStore(1_000, true), () -> null);
 
         Map<String, Object> result = retrieval.recall(
-            new RecallQuery("com.example.Anything", null, null, null, null),
+            new RecallQuery("com.example.Anything", null, null, null, null, LaneScope.everyLane()),
             org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
         assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"));
 
@@ -291,7 +292,7 @@ class KnowledgeUnavailableTest {
         ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(slow, () -> null);
 
         Map<String, Object> result = retrieval.recall(
-            new RecallQuery("com.example.Anything", null, null, null, null),
+            new RecallQuery("com.example.Anything", null, null, null, null, LaneScope.everyLane()),
             org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
         assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"),
             "the caller IS released on its deadline");

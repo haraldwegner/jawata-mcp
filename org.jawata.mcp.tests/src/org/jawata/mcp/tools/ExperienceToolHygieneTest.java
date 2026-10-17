@@ -119,7 +119,7 @@ class ExperienceToolHygieneTest {
         Map<String, Object> merged = data(exec("dedup", a -> a.put("confirm", true)));
         assertEquals(1, merged.get("merged"));
         // The loser is superseded: recall no longer returns it, curation list still can.
-        List<?> hits = store.query(new RecallQuery("com.example.Hook", null, null, null, null));
+        List<?> hits = store.query(new RecallQuery("com.example.Hook", null, null, null, null, org.jawata.mcp.knowledge.LaneScope.everyLane()));
         assertEquals(1, hits.size());
         assertEquals(1, data(exec("list", a -> a.put("status", "superseded"))).get("count"));
         assertTrue(store.get(newer).isPresent(), "merge supersedes, never deletes");

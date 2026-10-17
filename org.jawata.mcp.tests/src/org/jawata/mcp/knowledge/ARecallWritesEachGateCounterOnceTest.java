@@ -61,7 +61,7 @@ class ARecallWritesEachGateCounterOnceTest {
             s.execute("SET QUERY_STATISTICS TRUE");
         }
 
-        retrieval.recall(new RecallQuery(null, "com.acme.billing", null, null, null));
+        retrieval.recall(new RecallQuery(null, "com.acme.billing", null, null, null, LaneScope.everyLane()));
 
         long counterWrites = counterWrites(db);
         long checked = quality.counters().getOrDefault("gate.package.checked", 0L);

@@ -21,15 +21,12 @@ import java.util.Set;
  * is the domain lane (the two he used when ruling on the lanes, 2026-10-17). The wire name
  * remains the one stored in {@code experience_entry.lane}.</p>
  *
- * <p>{@link #derived} marks a scope the engine chose because the caller named none. It exists for
- * the span between this class arriving and the refusal of a call with no lane (architecture step
- * M6), and for the one place that must still say so to a caller: the note that a lane was not
- * searched.</p>
+ * <p>There is no scope the engine chooses for a caller. A call that names no lane is refused with
+ * the list of lanes, so every scope in the system was written down by whoever asked.</p>
  *
- * @param lanes   the lanes to search, in lane order; never empty
- * @param derived true when the engine chose the scope rather than the caller
+ * @param lanes the lanes to search, in lane order; never empty
  */
-public record LaneScope(Set<KnowledgeLane> lanes, boolean derived) {
+public record LaneScope(Set<KnowledgeLane> lanes) {
 
     /** What a caller sees when a call names no lane, or a lane that does not exist. */
     public static final class Refused extends IllegalArgumentException {
@@ -68,25 +65,12 @@ public record LaneScope(Set<KnowledgeLane> lanes, boolean derived) {
     /** A scope of exactly these lanes, named by the caller. */
     public static LaneScope of(KnowledgeLane first, KnowledgeLane... rest) {
         EnumSet<KnowledgeLane> set = EnumSet.of(first, rest);
-        return new LaneScope(set, false);
+        return new LaneScope(set);
     }
 
     /** Every lane, named by the caller. */
     public static LaneScope everyLane() {
-        return new LaneScope(EnumSet.allOf(KnowledgeLane.class), false);
-    }
-
-    /**
-     * The scope a call gets when it named none: today's rule, applied BEFORE the search. A cue
-     * that names a symbol or a package asks about code and may be answered by any lane; any
-     * other cue must not be answered out of the code lane.
-     */
-    public static LaneScope derivedFor(boolean codeShaped) {
-        EnumSet<KnowledgeLane> set = EnumSet.allOf(KnowledgeLane.class);
-        if (!codeShaped) {
-            set.remove(KnowledgeLane.CODE);
-        }
-        return new LaneScope(set, true);
+        return new LaneScope(EnumSet.allOf(KnowledgeLane.class));
     }
 
     /**
@@ -108,7 +92,7 @@ public record LaneScope(Set<KnowledgeLane> lanes, boolean derived) {
             }
             set.add(byName(name));
         }
-        return new LaneScope(set, false);
+        return new LaneScope(set);
     }
 
     /** Parse the several names of a {@code lanes} list. */

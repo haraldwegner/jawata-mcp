@@ -208,7 +208,7 @@ class PrecedentPushTest {
         tes.append(new ToolExperience("s1", "rename_symbol com.demo.Widget",
             "rename_symbol", ToolExperience.OUTCOME_COMPILED, "{}"));
 
-        List<StoredEntry> hits = store.query(new RecallQuery("com.demo.Widget", null, null, null, null));
+        List<StoredEntry> hits = store.query(new RecallQuery("com.demo.Widget", null, null, null, null, org.jawata.mcp.knowledge.LaneScope.everyLane()));
         assertFalse(hits.isEmpty(), "the general store still recalls");
         assertTrue(hits.stream().anyMatch(h -> "widget recall still works".equals(h.summary())),
             "a NON-tool memory recalls alongside tool_experience rows — the store stayed general");

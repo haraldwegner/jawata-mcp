@@ -62,7 +62,7 @@ class ExperiencePrimerTest {
         store.put(ExperienceEntry.of(
             SymbolFact.of("failure_mode", "compose_method rolled back here", Confidence.HIGH)
                 .symbol("com.example.OrderService").details("recursive body").build()).build());
-        Map<String, Object> r = retrieval.recall(new RecallQuery("com.example.OrderService", null, null, null, null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery("com.example.OrderService", null, null, null, null, LaneScope.everyLane()));
         String text = ExperienceRetrieval.renderText(r);
         assertTrue(text.startsWith("[failure_mode] compose_method rolled back here"), text);
         assertTrue(text.contains("recursive body"), "details rendered");
@@ -70,7 +70,7 @@ class ExperiencePrimerTest {
 
     @Test
     void renderText_renders_message_for_absence() {
-        Map<String, Object> r = retrieval.recall(new RecallQuery("com.nothing.Here", null, null, null, null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery("com.nothing.Here", null, null, null, null, LaneScope.everyLane()));
         assertEquals("No known knowledge for this cue.", ExperienceRetrieval.renderText(r));
     }
 }

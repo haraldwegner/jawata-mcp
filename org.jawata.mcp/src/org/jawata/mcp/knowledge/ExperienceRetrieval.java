@@ -234,41 +234,6 @@ public final class ExperienceRetrieval {
             Map<String, Object> out, int cap) {
         List<StoredEntry> candidates = store.query(q);
 
-        // Sprint 28g D42(b) — THE DERIVED LANE REACHES THE VOUCHED PATH TOO, and leaving it to
-        // the pool filter below would have been the 28f defect pointed the other way.
-        //
-        // The keyword query filters by lane IN SQL — but only when the caller NAMED one. A
-        // derived exclusion names none, so these rows arrive unfiltered and flow into BOTH
-        // `fitting`, which is answered as vouched fact, and `turnedAwayExperience`. The pool
-        // filter further down never sees the first of those. So the derivation is applied at the
-        // one place every keyword-sourced row enters, which is exactly the shape that comment
-        // argues for about status: a per-destination filter is a rule a fourth destination can
-        // be added without.
-        //
-        // It is not pushed into the SQL, and that is a cost decision rather than a correctness
-        // one: `query` applies no LIMIT — measured, its callees carry no `setMaxRows` and build
-        // no limit clause, and the cap is applied later during ranking — so fetching code rows
-        // and dropping them here cannot truncate the answer the way a capped page would. What it
-        // costs is reading rows nobody will use, and expressing "every lane except code" in that
-        // statement means a second, negated lane parameter there. Recorded as available rather
-        // than done.
-        if (q.scope().derived() && !q.scope().contains(KnowledgeLane.CODE)) {
-            // AND IT SAYS SO. The deliverable's own words are that an uncategorised question
-            // "cannot SILENTLY answer from all three lanes" — the first version of this stopped
-            // the answering and left the silence, which is half the clause. This file already
-            // states the rule twice: `noteCatalogueExclusion` exists because "the caller could
-            // not tell 'no pattern fits' from 'patterns were never searched'. Those two answers
-            // want opposite next moves"; and `recall` carries that note "whatever the outcome"
-            // precisely so the ABSENCE branch is not the one that goes quiet. Found by the C14a
-            // audit, which cited both.
-            out.put("lanes_not_searched", List.of(KnowledgeLane.CODE.wire()));
-            out.put("lane_note", "This cue names no symbol and no package, so the CODE lane was"
-                + " not searched — it holds what each member and package is FOR, which a"
-                + " question naming neither is not asking about. That is a property of the"
-                + " filter and not an absence of answers: ask again with lane=code to search"
-                + " it.");
-        }
-
         // Sprint 28g S22 — HOW MANY ROWS EACH SEARCHED LANE HELD, so "found nothing" is told
         // apart from "looked at nothing": a lessons-only search over a store whose lessons are
         // few says that it searched few, not that the store knows nothing.
@@ -421,8 +386,31 @@ public final class ExperienceRetrieval {
                 (StoredEntry e) -> meaningBand(meaning.getOrDefault(e.id(), 0.0))).reversed())
             .thenComparing(e -> e.createdAt() == null ? 0L : -e.createdAt().toEpochMilli()));
 
-        boolean capped = fitting.size() > cap;
-        List<StoredEntry> top = capped ? withNewestKept(fitting, cap) : fitting;
+        // Sprint 28g S22 — THE CAP IS PER LANE, and the answer is grouped by lane in the order
+        // the caller named them. One cap over a mixed fit set let the lane with the most
+        // matching rows fill the page and leave another lane's best row on the floor — the same
+        // crowding the shortlist used to suffer, one stage later.
+        Map<KnowledgeLane, List<StoredEntry>> fittingByLane = new LinkedHashMap<>();
+        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
+            fittingByLane.put(knowledgeLane, new ArrayList<>());
+        }
+        for (StoredEntry e : fitting) {
+            KnowledgeLane rowLane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+            List<StoredEntry> laneRows = rowLane == null ? null : fittingByLane.get(rowLane);
+            if (laneRows != null) {
+                laneRows.add(e);
+            }
+        }
+        boolean capped = false;
+        List<StoredEntry> top = new ArrayList<>();
+        for (List<StoredEntry> laneRows : fittingByLane.values()) {
+            if (laneRows.size() > cap) {
+                capped = true;
+                top.addAll(withNewestKept(laneRows, cap));
+            } else {
+                top.addAll(laneRows);
+            }
+        }
 
         List<Map<String, Object>> entries = new ArrayList<>();
         for (StoredEntry e : top) {
@@ -996,31 +984,18 @@ public final class ExperienceRetrieval {
      * {@code SeatAsksByMeaningTest} holds a sub-floor pair open against exactly that.</p>
      *
      * @param question     the caller's own words
-     * @param scope        the lanes that may answer, or null for the one derived from a question
-     *                     in prose (never the code lane)
+     * @param scope        the lanes that may answer — named by the caller, never defaulted
      * @param budgetMillis the caller's deadline
      */
     public Map<String, Object> nominate(String question, LaneScope scope, long budgetMillis) {
-        LaneScope asked = scope == null ? LaneScope.derivedFor(false) : scope;
+        java.util.Objects.requireNonNull(scope, "a nomination must name its lanes");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("question", question);
-        if (!asked.derived()) {
-            out.put("lane", String.join(",", asked.wires()));
-        }
+        out.put("lane", String.join(",", scope.wires()));
         // D7h — a DESIGN question is the case the report hit, and the one where a silently
         // pattern-free answer costs most: this is the path the architect seat asks on.
-        noteCatalogueExclusion(out, asked);
-        // Sprint 28g D42(b) — and the SAME rule for the lane this path derives. A nomination's
-        // cue is prose, so it is never code-shaped and the code lane is excluded unless the
-        // caller named it; D7h's own argument applies unchanged, one lane over.
-        if (asked.derived()) {
-            out.put("lanes_not_searched", List.of(KnowledgeLane.CODE.wire()));
-            out.put("lane_note", "A question in prose names no code, so the CODE lane was not"
-                + " searched — ranking ~10,000 rows that say what members are FOR against a"
-                + " question in words returns whichever is nearest in wording and reads as an"
-                + " opinion about the question. Ask with lane=code to search it.");
-        }
-        return within(() -> nominateFromStore(question, asked, out), out, budgetMillis);
+        noteCatalogueExclusion(out, scope);
+        return within(() -> nominateFromStore(question, scope, out), out, budgetMillis);
     }
 
     /**
@@ -1039,7 +1014,7 @@ public final class ExperienceRetrieval {
      * two would come to differ.</p>
      */
     private static void noteCatalogueExclusion(Map<String, Object> out, LaneScope scope) {
-        if (scope == null || scope.derived() || scope.contains(catalogueLaneOf())) {
+        if (scope == null || scope.contains(catalogueLaneOf())) {
             return;
         }
         String lane = String.join(",", scope.wires());
@@ -1049,7 +1024,7 @@ public final class ExperienceRetrieval {
             + "pattern. A borrowed pattern is typed `reference` with catalogue provenance, "
             + "which this store rules into the `" + reach + "` lane — so an answer here "
             + "carrying no pattern means the patterns were NOT SEARCHED, not that none fits. "
-            + "Ask again with lane=" + reach + ", or with no lane at all, before concluding "
+            + "Ask again with lane=" + reach + " (or add it to lanes=) before concluding "
             + "anything about them.");
     }
 
@@ -1126,7 +1101,7 @@ public final class ExperienceRetrieval {
         // scorer rather than adding a second one is the point — two ranking paths
         // would drift, and the sprint already has one rendering path that lapsed
         // while its twin kept the rules.
-        RecallQuery q = new RecallQuery(null, null, null, question, null);
+        RecallQuery q = new RecallQuery(null, null, null, question, null, scope);
         // Sprint 28g S22 — EACH LANE IS SCORED, RANKED AND CUT ON ITS OWN. The scope is chosen
         // before any scoring: a lane's word rarity is counted over that lane's rows, its meaning
         // scan reads only that lane's vectors, and its shortlist is its own, so a lesson is
@@ -2030,6 +2005,11 @@ public final class ExperienceRetrieval {
         // statement about code unless it actually is one.
         KnowledgeKind kind = KnowledgeKind.of(e);
         m.put("kind", kind.isFact() ? "fact" : "experience");
+        // Sprint 28g S22: and which LANE it came from, so a grouped answer can be read back.
+        String laneWire = KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind());
+        if (laneWire != null) {
+            m.put("lane", laneWire);
+        }
         // Sprint 28c: a form-1 entry says WHEN it applies and HOW it turned out,
         // and both belong in the answer. Without the situation the reader cannot
         // judge whether the entry is relevant to the call in front of them, and

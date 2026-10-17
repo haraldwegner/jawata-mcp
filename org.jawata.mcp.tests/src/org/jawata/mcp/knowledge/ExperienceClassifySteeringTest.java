@@ -59,6 +59,7 @@ class ExperienceClassifySteeringTest {
     private ToolResponse recall(String symptom) throws Exception {
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "recall");
+        args.put("lane", "experience,patterns,domain,code,rules");
         args.put("symptom", symptom);
         return registry.callTool("experience", args);
     }
@@ -89,7 +90,7 @@ class ExperienceClassifySteeringTest {
         putLesson("lock retry on open", "lock file recently modified");
         ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
         Map<String, Object> result =
-            retrieval.recall(new RecallQuery(null, null, null, "lock file recently modified", null));
+            retrieval.recall(new RecallQuery(null, null, null, "lock file recently modified", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, result.get("result"));
 
         String withoutMeta = ExperienceRetrieval.renderText(result);
@@ -107,6 +108,7 @@ class ExperienceClassifySteeringTest {
         putLesson("lock retry on open", "lock file recently modified");
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "recall");
+        args.put("lane", "experience,patterns,domain,code,rules");
         args.put("symptom", "lock file recently modified");
         args.put("format", "text");
         ToolResponse r = registry.callTool("experience", args);

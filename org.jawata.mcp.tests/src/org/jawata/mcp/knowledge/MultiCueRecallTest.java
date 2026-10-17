@@ -61,6 +61,7 @@ class MultiCueRecallTest {
     private Map<String, Object> recall(String session, String... symptoms) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         if (session != null) {
             a.put("session", session);
         }
@@ -151,6 +152,7 @@ class MultiCueRecallTest {
         record("Reached the old way.", "wombat reconciliation stalls");
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         a.put("symptom", "wombat reconciliation stalls");
         Map<String, Object> d = data(tool.execute(a));
         assertTrue(d.get("cues_asked") == null,

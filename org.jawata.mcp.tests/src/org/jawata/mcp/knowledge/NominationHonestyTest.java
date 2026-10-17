@@ -118,7 +118,7 @@ class NominationHonestyTest {
     private Map<String, Object> nominate(String question) {
         ExperienceRetrieval retrieval =
             new ExperienceRetrieval(store, () -> null, EmbeddingIndex.forStore(store));
-        return retrieval.nominate(question, null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+        return retrieval.nominate(question, LaneScope.everyLane(), ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
     }
 
     /**
@@ -255,7 +255,7 @@ class NominationHonestyTest {
 
         EmbeddingIndex index = EmbeddingIndex.forStore(store);
         ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null, index);
-        Map<String, Object> n = retrieval.nominate("what happens when a pelican ledger is reconciled during settlement", null, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+        Map<String, Object> n = retrieval.nominate("what happens when a pelican ledger is reconciled during settlement", LaneScope.everyLane(), ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
 
         Map<?, ?> coverage = (Map<?, ?>) n.get("meaning_coverage");
         assertNotNull(coverage, "coverage is reported either way");

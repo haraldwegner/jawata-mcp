@@ -98,6 +98,7 @@ class ExperienceToolPrimerTest {
     void recall_format_text_absence_is_a_string_message() {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         a.put("symbol", "com.nothing.Here");
         a.put("format", "text");
         ToolResponse r = tool.execute(a);

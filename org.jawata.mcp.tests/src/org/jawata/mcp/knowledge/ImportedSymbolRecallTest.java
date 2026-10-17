@@ -36,7 +36,7 @@ class ImportedSymbolRecallTest {
             assertEquals(1, report.get("imported"), "the row must land: " + report);
 
             List<StoredEntry> gathered =
-                store.query(new RecallQuery(FQN, null, null, null, null));
+                store.query(new RecallQuery(FQN, null, null, null, null, LaneScope.everyLane()));
             assertEquals(1, gathered.size(),
                 "phase-1 must gather the entry by exact symbol; got " + gathered);
             assertEquals(FQN, gathered.get(0).symbolFqn(),
@@ -44,7 +44,7 @@ class ImportedSymbolRecallTest {
 
             ExperienceRetrieval recall = new ExperienceRetrieval(store, () -> null);
             Map<String, Object> answer =
-                recall.recall(new RecallQuery(FQN, null, null, null, null));
+                recall.recall(new RecallQuery(FQN, null, null, null, null, LaneScope.everyLane()));
             assertEquals(ExperienceRetrieval.RESULT_MATCH, answer.get("result"),
                 "the fit gate must confirm an exact-symbol match; got " + answer);
         } finally {

@@ -63,6 +63,7 @@ class DurabilityPerVerbTest {
     private static ObjectNode args(String kind) {
         ObjectNode n = JSON.createObjectNode();
         n.put("kind", kind);
+        if (kind.equals("recall") || kind.equals("nominate")) { n.put("lane", "experience,patterns,domain,code,rules"); }
         return n;
     }
 
@@ -122,6 +123,7 @@ class DurabilityPerVerbTest {
                 + " — it was typed by a human and no file backs it up");
 
         ObjectNode a = args("recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         a.put("symbol", ANCHOR);
         a.put("format", "text");
         String rendered = String.valueOf(ran(tool.execute(a), "recall after " + afterVerb));

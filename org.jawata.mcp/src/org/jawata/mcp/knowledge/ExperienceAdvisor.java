@@ -126,7 +126,11 @@ public final class ExperienceAdvisor implements Advisor {
             null,                                    // package
             blankToNull(kind),                       // operation = the refactoring kind
             null,                                    // symptom
-            null);                                   // external_system
+            null,                                    // external_system
+            // What was LEARNED about this symbol and operation, and the contracts and rules that
+            // bind it — never the code lane, which says what each member is FOR and is asked by
+            // the agent when the talk turns to functionality (Sprint 28g S22, ruling 1).
+            LaneScope.of(KnowledgeLane.EXPERIENCE, KnowledgeLane.DOMAIN, KnowledgeLane.RULES));
         if (q.isEmpty()) {
             return PriorWork.nothingToAsk();
         }
@@ -294,7 +298,8 @@ public final class ExperienceAdvisor implements Advisor {
             return false;
         }
         String norm = H2ExperienceStore.normalize(summary);
-        for (StoredEntry e : store.query(new RecallQuery(target, null, null, null, null))) {
+        for (StoredEntry e : store.query(
+                new RecallQuery(target, null, null, null, null, LaneScope.of(KnowledgeLane.EXPERIENCE)))) {
             if (H2ExperienceStore.normalize(e.summary()).equals(norm)) {
                 return true;
             }

@@ -72,7 +72,7 @@ class DeclaredCuesReplaceHarvestingTest {
 
     /** Is anything findable by this phrase through the exact cue lane? */
     private boolean resolves(String cue) {
-        List<StoredEntry> hits = store.query(new RecallQuery(null, null, null, cue, null));
+        List<StoredEntry> hits = store.query(new RecallQuery(null, null, null, cue, null, LaneScope.everyLane()));
         return !hits.isEmpty();
     }
 
@@ -131,7 +131,7 @@ class DeclaredCuesReplaceHarvestingTest {
         // against a load that stored nothing at all, which is the shape that has bitten
         // this sprint twice — an instrument reporting clean because it examined nothing.
         assertFalse(store.query(new RecallQuery(null, null, null,
-                "the mouse cursor proves the GPU is still scanning out", null)).isEmpty(),
+                "the mouse cursor proves the GPU is still scanning out", null, LaneScope.everyLane())).isEmpty(),
             "PROOF OF LIFE: the entry must actually be in the store, or the absences"
                 + " asserted below are absences of everything");
 

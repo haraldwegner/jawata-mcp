@@ -608,7 +608,7 @@ class SchemaMigrationsTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(dir)) {
             // THE proof — findability by the NEW name through the recall API:
             var hits = store.query(new RecallQuery(
-                "org.jawata.mcp.JawataApplication#registerTools", null, null, null, null));
+                "org.jawata.mcp.JawataApplication#registerTools", null, null, null, null, LaneScope.everyLane()));
             assertTrue(hits.stream().anyMatch(e -> e.id().equals("rec-goja")),
                 "record-sourced note is recalled by its NEW symbol name after migration");
         }

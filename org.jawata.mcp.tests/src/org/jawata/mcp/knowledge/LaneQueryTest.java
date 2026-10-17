@@ -58,7 +58,7 @@ class LaneQueryTest {
             // PROOF OF LIFE: unfiltered, the cue finds BOTH. Every assertion below is
             // meaningless without it — an empty answer satisfies both exclusions at once.
             Set<String> unfiltered =
-                typesOf(store.query(new RecallQuery(CUE, null, null, null, null)));
+                typesOf(store.query(new RecallQuery(CUE, null, null, null, null, LaneScope.everyLane())));
             assertTrue(unfiltered.contains("lesson") && unfiltered.contains("domain_fact"),
                 () -> "the cue must find both rows before a filter can be measured; found "
                     + unfiltered);
@@ -102,22 +102,16 @@ class LaneQueryTest {
                 + " whole corpus and return whatever came first.");
         assertFalse(new RecallQuery(CUE, null, null, null, null, LaneScope.parse("domain")).isEmpty(),
             "the control: a cue WITH a lane is a real query");
-        assertFalse(new RecallQuery(CUE, null, null, null, null).isEmpty(),
+        assertFalse(new RecallQuery(CUE, null, null, null, null, LaneScope.everyLane()).isEmpty(),
             "and so is a cue without one");
     }
 
-    /**
-     * The five-cue constructor means NO lane filter — every one of the 64 call sites that
-     * predates the column keeps searching every lane.
-     */
     /** Drive the published verb the way a client does, and return what it rendered. */
     private static String recallText(ExperienceTool tool, ObjectMapper mapper, String lane) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
         a.put("symbol", CUE);
-        if (lane != null) {
-            a.put("lane", lane);
-        }
+        a.put("lane", lane);
         ToolResponse r = tool.execute(a);
         assertTrue(r.isSuccess(), () -> "recall failed: " + r.getError());
         return String.valueOf(r.getData());
@@ -144,7 +138,7 @@ class LaneQueryTest {
             put(store, "lesson", "the quokka lantern was restocked before the inspection");
             put(store, "domain_fact", "the pangolin ledger settles its totals at dusk");
 
-            String unfiltered = recallText(tool, mapper, null);
+            String unfiltered = recallText(tool, mapper, "experience,domain");
             assertTrue(unfiltered.contains("quokka") && unfiltered.contains("pangolin"),
                 () -> "PROOF OF LIFE: unfiltered, the verb must return both rows, or the"
                     + " exclusion below is true of an answer that is simply empty. Got: "
@@ -162,11 +156,14 @@ class LaneQueryTest {
     }
 
     @Test
-    void the_five_cue_form_filters_nothing() {
-        RecallQuery q = new RecallQuery(CUE, "com.example", "rename_symbol", "a symptom", "h2");
-        assertFalse(q.namesScope(), "the compatibility form must not claim the caller named a lane");
-        assertTrue(q.scope().derived(), "its scope is the one derived from the cues");
-        assertTrue(q.scope().contains(KnowledgeLane.CODE),
-            "and a cue naming a symbol or package may be answered by any lane, code included");
+    void a_query_cannot_be_built_without_its_lanes() {
+        boolean refused = false;
+        try {
+            new RecallQuery(CUE, "com.example", "rename_symbol", "a symptom", "h2", null);
+        } catch (NullPointerException e) {
+            refused = true;
+        }
+        assertTrue(refused, "a query that names no lane has not said what it is asking, so the"
+            + " engine builds no default for it");
     }
 }

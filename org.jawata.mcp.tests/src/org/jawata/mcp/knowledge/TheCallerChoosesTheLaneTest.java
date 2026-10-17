@@ -13,21 +13,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Sprint 28g D42(b) — <b>the lane is DERIVED from the cue rather than asked for</b>, so an
- * uncategorised question cannot silently answer out of the code lane.
+ * Sprint 28g S22 — <b>the caller CHOOSES the lane, so a search that does not name the code lane
+ * never answers out of it</b>. (This class was written for the derivation of the lane from the
+ * cue, D42(b); the lane is now chosen by the caller before the search and never derived, and the
+ * same exclusions are pinned under that rule.)
  *
- * <p>The deliverable's reason is cost, in the sprint's own words: <i>"experience is small and can
- * be asked every time; the code lane is ~10,000 rows and must be asked only of a code question."</i>
- * So the rule has teeth in ONE direction — keep code out of a non-code question — and the tests
- * below are shaped to that claim and not to a wider one.</p>
+ * <p>The reason is cost, in the sprint's own words: <i>"experience is small and can be asked every
+ * time; the code lane is ~10,000 rows and must be asked only of a code question."</i></p>
  *
- * <h2>Why the override case IS the proof of life</h2>
+ * <h2>Why the code-lane case IS the proof of life</h2>
  *
  * <p>Every exclusion assertion here needs a companion showing the excluded row was REACHABLE by
- * that very cue, or it is equally true of a store that answers nothing. The companion cannot be
- * an unfiltered recall, because unfiltered is the case under test. So it is the OVERRIDE: the same
- * cue with {@code lane=code} must return the job row. That one case proves the row is findable,
- * proves the caller can override, and is the clause the deliverable asks to have tested.</p>
+ * that very cue, or it is equally true of a store that answers nothing. So the same cue with
+ * {@code lane=code} must return the job row: that one case proves the row is findable.</p>
  *
  * <h2>The fixture is built so only the lane can separate the rows</h2>
  *
@@ -35,7 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * summaries, so a symptom cue reaches both through the summary match and a symbol cue reaches
  * both through the anchor. They differ in TYPE alone, which is what decides the lane.</p>
  */
-class TheLaneIsDerivedFromTheCueTest {
+class TheCallerChoosesTheLaneTest {
+
+    /** Every lane but the code lane, named by the caller. */
+    private static final String WITHOUT_CODE = "experience,patterns,domain,rules";
 
     /** The anchor both rows carry, so a symbol cue cannot be what separates them. */
     private static final String ANCHOR = "com.example.lanecue.Ledger";
@@ -49,7 +50,7 @@ class TheLaneIsDerivedFromTheCueTest {
      *
      * <p>This javadoc first ended "so a symptom cue cannot fit it and it can only arrive as an
      * analogy". Both halves are struck: the arrival route is NOT established (see
-     * {@link #an_area_row_is_excluded_by_the_derivation_too}), and the case's own proof-of-life
+     * {@link #an_area_row_is_excluded_by_leaving_the_code_lane_out_too}), and the case's own proof-of-life
      * shows the row IS returned on a symptom cue once the lane is named. A re-audit found this
      * sentence standing 47 lines above the withdrawal of the same claim, in a javadoc the
      * withdrawing commit itself wrote.</p>
@@ -156,18 +157,16 @@ class TheLaneIsDerivedFromTheCueTest {
         return new RecallQuery(ANCHOR, null, null, null, null, scopeOf(lane));
     }
 
-    /** No lane named means the scope derived from the cue, which a null scope asks for. */
     private static LaneScope scopeOf(String lane) {
-        return lane == null ? null : LaneScope.parse(lane);
+        return LaneScope.parse(lane);
     }
 
     /**
-     * THE PROOF OF LIFE AND THE OVERRIDE, in one case. The job row is reachable by the symptom
-     * cue when the caller asks for its lane by name — so its absence below is the derivation's
-     * doing, and a caller who wants the code lane can still have it.
+     * THE PROOF OF LIFE. The job row is reachable by the symptom cue when the caller asks for its
+     * lane by name — so its absence below is the choice of lanes' doing.
      */
     @Test
-    void the_caller_can_override_the_derivation_and_reach_the_code_lane() {
+    void the_caller_can_name_the_code_lane_and_reach_it() {
         Set<String> types = recalled(bySymptom("code"));
 
         assertTrue(types.contains("job"),
@@ -176,12 +175,12 @@ class TheLaneIsDerivedFromTheCueTest {
     }
 
     @Test
-    void a_symptom_cue_is_not_answered_out_of_the_code_lane() {
-        Set<String> types = recalled(bySymptom(null));
+    void a_search_that_does_not_name_the_code_lane_is_not_answered_out_of_it() {
+        Set<String> types = recalled(bySymptom(WITHOUT_CODE));
 
         assertFalse(types.contains("job"),
-            () -> "A SYMPTOM IS NOT A CODE QUESTION. The job row shares this cue's words and its"
-                + " anchor, so only the derived lane can exclude it — drop the derivation and"
+            () -> "THE CODE LANE WAS NOT NAMED. The job row shares this cue's words and its"
+                + " anchor, so only the chosen lanes can exclude it — search every lane and"
                 + " this is what goes red. Found " + types);
         assertTrue(types.contains("lesson"),
             () -> "and the experience lane still answers, so this is an exclusion rather than an"
@@ -189,55 +188,53 @@ class TheLaneIsDerivedFromTheCueTest {
     }
 
     /**
-     * THE DISCRIMINATOR. Without it, "a symptom cue excludes code" is equally satisfied by a
-     * build that excludes the code lane from everything — which would make the ~10,000 rows the
-     * cataloguer writes unreachable by the one cue shape they exist to answer.
+     * THE DISCRIMINATOR. Without it, "no code lane, no code rows" is equally satisfied by a build
+     * that excludes the code lane from everything — which would make the ~10,000 rows the
+     * cataloguer writes unreachable.
      */
     @Test
-    void a_symbol_cue_is_a_code_question_and_does_reach_the_code_lane() {
-        Set<String> types = recalled(bySymbol(null));
+    void a_symbol_cue_reaches_the_code_lane_when_the_code_lane_is_named() {
+        Set<String> types = recalled(bySymbol("code"));
 
         assertTrue(types.contains("job"),
-            () -> "a symbol cue IS asking about code, so the code lane must answer it with no"
-                + " lane named at all. Found " + types);
+            () -> "a symbol cue with the code lane named must be answered out of it."
+                + " Found " + types);
     }
 
     /**
-     * The reading this build took, pinned. The deliverable names code, experience and patterns;
-     * the product has a fourth lane, and {@code api_contract} is in it while being anchored to
-     * a symbol. Excluding it would be knowledge lost to satisfy a rule that was never about it.
+     * The domain lane is its own lane: an {@code api_contract} anchored to a symbol is answered
+     * when the caller names the domain lane, and is not lost because the code lane was left out.
      */
     @Test
-    void a_domain_fact_on_the_same_anchor_survives_a_non_code_cue() {
-        Set<String> types = recalled(bySymptom(null));
+    void a_domain_fact_on_the_same_anchor_survives_leaving_the_code_lane_out() {
+        Set<String> types = recalled(bySymptom(WITHOUT_CODE));
 
         assertTrue(types.contains("api_contract"),
-            () -> "the derivation keeps CODE out of a non-code question; it says nothing about"
-                + " domain, and an api_contract anchored to this symbol is exactly the kind of"
-                + " thing a symptom cue should still find. Found " + types);
+            () -> "leaving the CODE lane out says nothing about domain, and an api_contract"
+                + " anchored to this symbol is exactly what the domain lane holds. Found "
+                + types);
     }
 
     /**
-     * A prose question is never code-shaped, so the nomination path excludes the code lane
-     * without being told to — and the deliverable is sharpest here: a question in words, ranked
-     * by meaning against rows describing what members are for, reads as if the store had an
-     * opinion about the question.
+     * A prose nomination that does not name the code lane is not answered out of it — a question
+     * in words, ranked by meaning against rows describing what members are for, reads as if the
+     * store had an opinion about the question.
      */
     @Test
-    void a_prose_nomination_is_not_answered_out_of_the_code_lane() {
+    void a_prose_nomination_that_does_not_name_the_code_lane_is_not_answered_out_of_it() {
         Set<String> overridden = typesFrom(retrieval.nominate(SHARED_WORDS, LaneScope.parse("code"), 15_000));
         assertTrue(overridden.contains("job"),
             () -> "PROOF OF LIFE: lane=code must nominate the job row, or the exclusion below"
                 + " measures nothing. Found " + overridden);
 
-        Set<String> derived = typesFrom(retrieval.nominate(SHARED_WORDS, null, 15_000));
-        assertFalse(derived.contains("job"),
-            () -> "prose must never reach the code lane — the deliverable's sharpest clause."
-                + " Found " + derived);
+        Set<String> chosen = typesFrom(retrieval.nominate(SHARED_WORDS, LaneScope.parse(WITHOUT_CODE), 15_000));
+        assertFalse(chosen.contains("job"),
+            () -> "a nomination that left the code lane out must not reach it."
+                + " Found " + chosen);
     }
 
     /**
-     * C14a — THE DERIVATION EXCLUDES AN {@code area} ROW TOO, not only a {@code job}.
+     * C14a — LEAVING THE CODE LANE OUT EXCLUDES AN {@code area} ROW TOO, not only a {@code job}.
      *
      * <p>{@code CodeKind} declares TWO code-lane kinds and every case above exercises one of
      * them. This exercises the other, and it is not a restatement: an {@code area} is anchored
@@ -272,17 +269,17 @@ class TheLaneIsDerivedFromTheCueTest {
      * <b>The analogy-pool exclusion remains exercised by nothing.</b></p>
      */
     @Test
-    void an_area_row_is_excluded_by_the_derivation_too() {
+    void an_area_row_is_excluded_by_leaving_the_code_lane_out_too() {
         Set<String> overridden = recalled(bySymptom("code"));
         assertTrue(overridden.contains("area"),
             () -> "PROOF OF LIFE: the area row must be REACHABLE on a symptom cue when the"
                 + " caller names the code lane, or the exclusion below measures nothing. Found "
                 + overridden);
 
-        Set<String> derived = recalled(bySymptom(null));
-        assertFalse(derived.contains("area"),
-            () -> "an area row describing what a package is FOR must not answer a cue about a"
-                + " symptom — the derivation covers BOTH code-lane kinds, not just the job."
-                + " Found " + derived);
+        Set<String> chosen = recalled(bySymptom(WITHOUT_CODE));
+        assertFalse(chosen.contains("area"),
+            () -> "an area row describing what a package is FOR must not answer a search that"
+                + " left the code lane out — both code-lane kinds, not just the job."
+                + " Found " + chosen);
     }
 }

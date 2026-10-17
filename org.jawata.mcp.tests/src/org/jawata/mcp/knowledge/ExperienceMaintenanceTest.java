@@ -56,7 +56,7 @@ class ExperienceMaintenanceTest {
         assertEquals(2, report.get("loaded"));
         assertEquals(2L, store.count());
 
-        List<StoredEntry> feedback = store.query(new RecallQuery(null, null, null, "guard the workbench", null));
+        List<StoredEntry> feedback = store.query(new RecallQuery(null, null, null, "guard the workbench", null, LaneScope.everyLane()));
         assertFalse(feedback.isEmpty(), "loaded entry is queryable by its summary");
         // THE STAMP DECIDES THE STATUS (Sprint 28f Stage 6). This used to read ACCEPTED
         // for every loaded file, which claimed a review of anything anybody put on disk.
@@ -67,7 +67,7 @@ class ExperienceMaintenanceTest {
         assertEquals("feedback", feedback.get(0).type());
 
         List<StoredEntry> stamped =
-            store.query(new RecallQuery(null, null, null, "billing DTOs", null));
+            store.query(new RecallQuery(null, null, null, "billing DTOs", null, LaneScope.everyLane()));
         assertFalse(stamped.isEmpty(), "the stamped note is queryable too");
         assertEquals(ExperienceEntry.ACCEPTED, stamped.get(0).status(),
             "b.md carries a stamp, so it arrives accepted — which is what makes the"
@@ -175,7 +175,7 @@ class ExperienceMaintenanceTest {
         assertEquals("com.example.HelloWorld#greet", seen.get(),
             "the quoted frontmatter symbol must reach the JDT resolver UNQUOTED");
         assertFalse(
-            store.query(new RecallQuery("com.example.HelloWorld#greet", null, null, null, null)).isEmpty(),
+            store.query(new RecallQuery("com.example.HelloWorld#greet", null, null, null, null, LaneScope.everyLane())).isEmpty(),
             "the entry must be recallable by its unquoted FQN anchor");
     }
 
@@ -191,7 +191,7 @@ class ExperienceMaintenanceTest {
         // The stale entry is superseded and no longer surfaces in recall.
         StoredEntry after = store.all().stream().filter(e -> e.id().equals(id)).findFirst().orElseThrow();
         assertEquals(ExperienceEntry.SUPERSEDED, after.status());
-        assertTrue(store.query(new RecallQuery("com.gone.Removed", null, null, null, null)).isEmpty());
+        assertTrue(store.query(new RecallQuery("com.gone.Removed", null, null, null, null, LaneScope.everyLane())).isEmpty());
     }
 
     /**
@@ -526,7 +526,7 @@ class ExperienceMaintenanceTest {
         assertEquals(1, maint(fqn -> null).load(dir, true).get("loaded"));
 
         ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> null);
-        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(null, null, null, "blank webview", null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"),
             "name tokens are recallable symptom cues");
     }

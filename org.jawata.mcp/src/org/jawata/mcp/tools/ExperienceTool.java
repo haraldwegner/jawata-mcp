@@ -572,14 +572,21 @@ public final class ExperienceTool implements Tool {
                 + " still answer. Retiring is not rejecting and not superseding — the rule"
                 + " was right, nothing replaced it, and it stopped applying."));
         props.put("lane", Map.of("type", "string",
-            "enum", List.of("experience", "domain", "code", "rules"),
-            "description", "recall/nominate: which LIFECYCLE may answer — a FILTER, not a cue."
-                + " 'experience' is what happened in a situation (lessons, failure modes,"
-                + " borrowed patterns); 'domain' is what is true whoever reads it (facts,"
-                + " contracts, conventions); 'rules' are versioned and retired; 'code' is"
-                + " regenerated from the code it came from. It NARROWS what the cues found"
-                + " and never widens it, so a lane on its own retrieves nothing: give a cue"
-                + " as well. Omit it to search every lane, which is the default."));
+            "enum", List.of("experience", "patterns", "domain", "code", "rules",
+                "lessons", "business"),
+            "description", "recall/nominate: REQUIRED (this or lanes) — which LIFECYCLE is"
+                + " searched, chosen BEFORE the search; a call naming no lane is refused."
+                + " 'experience' (also 'lessons') is what happened in a situation: lessons and"
+                + " failure modes; 'patterns' is the borrowed catalogue of design patterns;"
+                + " 'domain' (also 'business') is what is true whoever reads it: facts,"
+                + " contracts, conventions; 'rules' are versioned and retired; 'code' says what"
+                + " each member and package is FOR, regenerated from the code it came from, and"
+                + " is asked only to check whether something already exists. Each lane is"
+                + " ranked and cut on its own and the answer says how many rows each searched."
+                + " It is a FILTER, not a cue: give a cue as well."));
+        props.put("lanes", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "recall/nominate: several lanes at once, by the same names as"
+                + " lane. Each is searched and ranked on its own."));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: exceptions / caveats."));
         props.put(BUDGET_MILLIS, Map.of("type", "integer",
@@ -3321,18 +3328,17 @@ public final class ExperienceTool implements Tool {
 
     /**
      * The lanes the caller named: {@code lanes} (a list) or {@code lane} (one name, or several
-     * separated by commas). Neither given answers {@code null}, which the retrieval reads as the
-     * scope derived from the cue — until a call that names no lane is refused (S22, step M6).
+     * separated by commas). Neither given is REFUSED (Sprint 28g S22): the lane is chosen by the
+     * caller before the search, and a call that does not choose has not said what it is asking.
      *
-     * @throws org.jawata.mcp.knowledge.LaneScope.Refused when a name is not a lane
+     * @throws org.jawata.mcp.knowledge.LaneScope.Refused when no lane is named, or a name is not a lane
      */
     private org.jawata.mcp.knowledge.LaneScope scopeOf(JsonNode args) {
         List<String> many = strings(args, "lanes");
         if (!many.isEmpty()) {
             return org.jawata.mcp.knowledge.LaneScope.parse(many);
         }
-        String one = text(args, "lane");
-        return one == null || one.isBlank() ? null : org.jawata.mcp.knowledge.LaneScope.parse(one);
+        return org.jawata.mcp.knowledge.LaneScope.parse(text(args, "lane"));
     }
 
     private ToolResponse recall(JsonNode args) {

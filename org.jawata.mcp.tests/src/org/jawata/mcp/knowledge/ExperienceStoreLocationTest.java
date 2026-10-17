@@ -186,7 +186,7 @@ class ExperienceStoreLocationTest {
             assertTrue(store.get("orph-2").isPresent());
 
             // Symptoms travel with the entry (recall by symptom must keep working).
-            RecallQuery bySymptom = new RecallQuery(null, null, null, "orphan symptom", null);
+            RecallQuery bySymptom = new RecallQuery(null, null, null, "orphan symptom", null, LaneScope.everyLane());
             assertEquals(2, store.query(bySymptom).size());
 
             // Markers make the sweep idempotent.

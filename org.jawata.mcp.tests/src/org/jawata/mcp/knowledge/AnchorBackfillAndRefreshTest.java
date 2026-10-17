@@ -168,7 +168,7 @@ class AnchorBackfillAndRefreshTest {
             assertTrue(store.updateSymbolAnchor(knowsMember, "pipeline.SlotManager"));
 
             Map<String, Object> r = retrieval.recall(
-                new RecallQuery("pipeline.SlotManager#freeSlot", null, null, null, null));
+                new RecallQuery("pipeline.SlotManager#freeSlot", null, null, null, null, LaneScope.everyLane()));
             assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"));
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> entries = (List<Map<String, Object>>) r.get("entries");
@@ -179,7 +179,7 @@ class AnchorBackfillAndRefreshTest {
 
     @SuppressWarnings("unchecked")
     private static void assertMatch(ExperienceRetrieval retrieval, String symbolCue, String expectedSummary) {
-        Map<String, Object> r = retrieval.recall(new RecallQuery(symbolCue, null, null, null, null));
+        Map<String, Object> r = retrieval.recall(new RecallQuery(symbolCue, null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, r.get("result"),
             "cue '" + symbolCue + "' must match: " + r);
         List<Map<String, Object>> entries = (List<Map<String, Object>>) r.get("entries");

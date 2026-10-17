@@ -61,6 +61,7 @@ class ExperienceToolRecallTest {
     void recall_with_no_cue_is_absence() {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         Map<String, Object> d = data(tool.execute(a));
         assertEquals("absence", d.get("result"));
     }
@@ -72,6 +73,7 @@ class ExperienceToolRecallTest {
 
         ObjectNode recall = mapper.createObjectNode();
         recall.put("kind", "recall");
+        recall.put("lane", "experience,patterns,domain,code,rules");
         recall.put("symbol", "com.example.WorkflowCoordinator");
         Map<String, Object> d = data(tool.execute(recall));
 
@@ -91,6 +93,7 @@ class ExperienceToolRecallTest {
 
         ObjectNode recall = mapper.createObjectNode();
         recall.put("kind", "recall");
+        recall.put("lane", "experience,patterns,domain,code,rules");
         recall.put("symptom", "osgi npe");
         Map<String, Object> d = data(tool.execute(recall));
         assertEquals("match", d.get("result"));

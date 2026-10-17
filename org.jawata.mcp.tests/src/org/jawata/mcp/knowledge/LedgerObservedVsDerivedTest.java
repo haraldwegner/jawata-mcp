@@ -68,6 +68,7 @@ class LedgerObservedVsDerivedTest {
     private Map<String, Object> call(String kind, String... kv) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", kind);
+        if (kind.equals("recall") || kind.equals("nominate")) { a.put("lane", "experience,patterns,domain,code,rules"); }
         for (int i = 0; i < kv.length; i += 2) {
             if (kv[i].startsWith("min_") || kv[i].equals("limit")) {
                 a.put(kv[i], Integer.parseInt(kv[i + 1]));

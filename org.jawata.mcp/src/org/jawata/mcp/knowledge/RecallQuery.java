@@ -18,31 +18,9 @@ package org.jawata.mcp.knowledge;
 public record RecallQuery(String symbol, String packageName, String operation,
                           String symptom, String externalSystem, LaneScope scope) {
 
-    /**
-     * The five-cue form: every cue, and the scope the engine derives from them.
-     *
-     * <p>Kept until the call that names no lane is refused (S22, architecture step M6), because
-     * the scope arrived after 64 construction sites existed and widening a record's canonical
-     * constructor breaks every one of them. A cue naming a symbol or a package asks about code
-     * and may be answered by any lane; any other cue is never answered out of the code lane.</p>
-     *
-     * @param symbol         an FQN the agent is working on
-     * @param packageName    a package the agent is working in
-     * @param operation      the operation about to run
-     * @param symptom        an observed symptom / cue phrase
-     * @param externalSystem an external dependency implicated in a symptom
-     */
-    public RecallQuery(String symbol, String packageName, String operation,
-                       String symptom, String externalSystem) {
-        this(symbol, packageName, operation, symptom, externalSystem,
-            LaneScope.derivedFor(!blank(symbol) || !blank(packageName)));
-    }
-
-    /** A query built without a scope gets the one derived from its cues. */
+    /** A query always carries the lanes its caller named; there is no default to fall back on. */
     public RecallQuery {
-        if (scope == null) {
-            scope = LaneScope.derivedFor(!blank(symbol) || !blank(packageName));
-        }
+        java.util.Objects.requireNonNull(scope, "a query must name its lanes");
     }
 
     private static boolean blank(String s) {
@@ -101,42 +79,5 @@ public record RecallQuery(String symbol, String packageName, String operation,
      */
     public boolean hasExternalSystem() {
         return !blank(externalSystem);
-    }
-
-    /**
-     * Whether this cue ASKS A CODE QUESTION — Sprint 28g D42(b), the lane derived from the cue.
-     *
-     * <p>A cue naming a {@code symbol} or a {@code packageName} is asking about code. Anything
-     * else — a symptom, an operation, an external system, a question in prose — is not, and
-     * must not be answered out of the code lane.</p>
-     *
-     * <p><b>The rule has teeth in ONE direction, and that is the requirement rather than a
-     * softening of it.</b> Its reason is cost, in the sprint's own words: <i>"experience is small
-     * and can be asked every time; the code lane is ~10,000 rows and must be asked only of a code
-     * question; the patterns answer design questions."</i> So what the derivation does is keep
-     * CODE out of a non-code question; it does not narrow a code question to the code lane, and
-     * it says nothing about domain or rules. Reading the deliverable's lists as EXHAUSTIVE would
-     * drop {@code api_contract} and {@code naming_convention} — {@link KnowledgeLane#DOMAIN_TYPES},
-     * anchored to symbols — out of every symbol recall, which is knowledge lost to satisfy a rule
-     * that was never about them.</p>
-     *
-     * <p>The deliverable's third category needs no branch here, which is worth stating because
-     * its absence looks like an omission: <i>"experience and patterns"</i> are ONE lane.
-     * Measured rather than assumed — {@code KnowledgeLane.of("reference", }
-     * {@code CatalogueManifest.PROVENANCE)} answers {@link KnowledgeLane#EXPERIENCE}, on the
-     * ruling that a borrowed pattern is somebody else's experience.</p>
-     *
-     * @return {@code true} when a {@code symbol} or {@code packageName} cue is set
-     */
-    public boolean isCodeShaped() {
-        return hasSymbol() || hasPackage();
-    }
-
-    /**
-     * Whether the caller NAMED the lanes, rather than the engine deriving them from the cue.
-     * @return {@code true} when {@link #scope()} came from the caller
-     */
-    public boolean namesScope() {
-        return !scope.derived();
     }
 }

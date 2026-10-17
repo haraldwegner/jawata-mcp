@@ -84,6 +84,7 @@ class UnembeddedRowIsMarkedTest {
     private Map<String, Object> call(String kind, String... kv) {
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", kind);
+        if (kind.equals("recall") || kind.equals("nominate")) { a.put("lane", "experience,patterns,domain,code,rules"); }
         for (int i = 0; i < kv.length; i += 2) {
             a.put(kv[i], kv[i + 1]);
         }
@@ -161,6 +162,7 @@ class UnembeddedRowIsMarkedTest {
         // actually sees, which is where D4 asks for the mark.
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         a.put("symptom", CUE);
         a.put("format", "text");
         ToolResponse recalled = tool.execute(a);
@@ -286,6 +288,7 @@ class UnembeddedRowIsMarkedTest {
 
         ObjectNode a = mapper.createObjectNode();
         a.put("kind", "recall");
+        a.put("lane", "experience,patterns,domain,code,rules");
         a.put("symptom", CUE);
         // The operation NEITHER row declares. This is the whole construction: both are
         // admitted on the symptom and then dropped by the refinement, so both are turned

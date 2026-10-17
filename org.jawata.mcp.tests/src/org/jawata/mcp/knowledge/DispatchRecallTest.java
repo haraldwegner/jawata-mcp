@@ -79,7 +79,7 @@ class DispatchRecallTest {
     }
 
     private static RecallQuery symptom(String s) {
-        return new RecallQuery(null, null, null, s, null);
+        return new RecallQuery(null, null, null, s, null, LaneScope.everyLane());
     }
 
     /**
@@ -230,7 +230,7 @@ class DispatchRecallTest {
         // Found by the SCOPE gate this time (operation cue), not by meaning —
         // the facts must not depend on which nominator did the finding.
         Map<String, Object> out = retrieval.recall(
-            new RecallQuery(null, null, "seat:debugger", null, null));
+            new RecallQuery(null, null, "seat:debugger", null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, out.get("result"));
         List<Map<String, Object>> es = entries(out);
         assertFalse(es.isEmpty());
